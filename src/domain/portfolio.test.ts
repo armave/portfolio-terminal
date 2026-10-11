@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  calculateMarginInterest,
   createBlankState,
   normalizePortfolioBackup,
   normalizePortfolioState,
   realizeClosedTrade,
   resolveSaleQuantity,
   resolveTradeDateTimestamp,
-  type MarginPosition
+  type MarginPosition,
+  type TradeTranche
 } from './portfolio';
 
 const basePosition: MarginPosition = {
@@ -55,6 +57,18 @@ describe('portfolio domain', () => {
     expect(resolveSaleQuantity(10, 10 + 1e-9)).toBe(10);
     expect(() => resolveSaleQuantity(10, 11)).toThrow('only 10 are available');
     expect(() => resolveSaleQuantity(0, 1)).toThrow('no valid shares');
+  });
+
+  it('calculates accrued margin interest across tranches with mixed date formats', () => {
+    const tranches: TradeTranche[] = [
+      { qty: 100, price: 100, date: '06 Oct' },
+      { qty: 50, price: 100, date: '2026-10-08' }
+    ];
+    const fixedNow = new Date(2026, 9, 11, 12, 0, 0);
+    const accrued = calculateMarginInterest(tranches, { now: fixedNow, annualRate: 0.15 });
+
+    expect(Math.round(accrued)).toBe(27);
+    expect(accrued).toBeCloseTo(27.11, 1);
   });
 
   it('parses short buy dates and falls back for invalid dates', () => {
