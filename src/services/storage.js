@@ -75,28 +75,6 @@ export function areHeaderCredentialsConfigured() {
   return getGatewaySecret().length > 0;
 }
 
-export function getGistConfig() {
-  if (typeof localStorage === 'undefined') return { gistId: '', token: '' };
-  return {
-    gistId: (localStorage.getItem('github_gist_id') || '').trim(),
-    token: (localStorage.getItem('github_pat_token') || '').trim()
-  };
-}
-
-export function setGistConfig({ gistId, token } = {}) {
-  if (typeof localStorage === 'undefined') return;
-  if (gistId !== undefined) {
-    const trimmedId = (gistId || '').trim();
-    if (trimmedId) localStorage.setItem('github_gist_id', trimmedId);
-    else localStorage.removeItem('github_gist_id');
-  }
-  if (token !== undefined) {
-    const trimmedToken = (token || '').trim();
-    if (trimmedToken) localStorage.setItem('github_pat_token', trimmedToken);
-    else localStorage.removeItem('github_pat_token');
-  }
-}
-
 export function loadBrokerRules(fallback = {}) {
   if (typeof localStorage === 'undefined') return { ...fallback };
   const raw = localStorage.getItem(TRADERNET_RULES_STORAGE_KEY);
@@ -133,7 +111,7 @@ export function saveQuoteRefreshInterval(interval) {
   localStorage.setItem(QUOTE_REFRESH_INTERVAL_KEY, String(interval));
 }
 
-export function saveState(state, onPushToGist) {
+export function saveState(state, onPushToCloud) {
   if (!state || typeof state !== 'object') return;
   state.lastUpdated = Date.now();
   delete state.marginFee;
@@ -150,8 +128,8 @@ export function saveState(state, onPushToGist) {
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(state));
   }
-  if (typeof onPushToGist === 'function') {
-    onPushToGist(false);
+  if (typeof onPushToCloud === 'function') {
+    onPushToCloud(false);
   }
 }
 

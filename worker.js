@@ -49,8 +49,10 @@ export default {
         };
 
         // SECURITY CHECK: Validate Gateway Secret
-        const clientSecret = request.headers.get("X-App-Auth");
-        if (clientSecret !== env.GATEWAY_SECRET) {
+        const authHeader = request.headers.get("Authorization") || "";
+        const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim();
+        const clientSecret = request.headers.get("X-App-Auth") || bearerToken;
+        if (!env.GATEWAY_SECRET || clientSecret !== env.GATEWAY_SECRET) {
             return new Response(JSON.stringify({ error: "Unauthorized gateway access." }), {
                 status: 401,
                 headers: corsHeaders
@@ -59,9 +61,54 @@ export default {
 
         const url = new URL(request.url);
         const action = url.searchParams.get("action");
+        const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
         try {
+            // --- ACTION 0: Cloudflare Workers KV State Storage ---
+            if (pathname === "/api/state" || action === "state") {
+                if (!env.PORTFOLIO_KV) {
+                    return new Response(JSON.stringify({ error: "PORTFOLIO_KV binding is missing." }), {
+                        status: 500,
+                        headers: corsHeaders
+                    });
+                }
+
+                if (request.method === "GET") {
+                    const rawState = await env.PORTFOLIO_KV.get("portfolio_state");
+                    if (!rawState) {
+                        return new Response(JSON.stringify({ error: "Portfolio state not found." }), {
+                            status: 404,
+                            headers: corsHeaders
+                        });
+                    }
+                    return new Response(rawState, {
+                        status: 200,
+                        headers: corsHeaders
+                    });
+                }
+
+                if (request.method === "POST") {
+                    const body = await request.json().catch(() => null);
+                    if (!body || typeof body !== "object") {
+                        return new Response(JSON.stringify({ error: "Missing or invalid JSON body." }), {
+                            status: 400,
+                            headers: corsHeaders
+                        });
+                    }
+                    await env.PORTFOLIO_KV.put("portfolio_state", JSON.stringify(body));
+                    return new Response(JSON.stringify({ success: true, timestamp: Date.now() }), {
+                        status: 200,
+                        headers: corsHeaders
+                    });
+                }
+
+                return new Response(JSON.stringify({ error: "Method not allowed." }), {
+                    status: 405,
+                    headers: corsHeaders
+                });
+            }
+
             // --- ACTION 1: Finnhub Company News ---
             if (action === "news") {
                 if (!symbol) throw new Error("Missing symbol for news.");
@@ -166,44 +213,6 @@ export default {
                     const data = await res.json();
                     return new Response(JSON.stringify(data), { headers: corsHeaders });
                 }
-            }
-
-            // --- ACTION 4: GitHub Gist Storage Proxy (Backend Only) ---
-            if (action === "gist") {
-                const githubToken = env.GITHUB_KEY || env.GITHUB_TOKEN || env.GITHUB_PAT;
-                const gistId = env.GIST_ID; // Pulled from Cloudflare, not the URL
-
-                if (!githubToken || !gistId) {
-                    return new Response(JSON.stringify({
-                        error: "Backend is missing GITHUB_KEY or GIST_ID secrets."
-                    }), { status: 500, headers: corsHeaders });
-                }
-
-                const ghHeaders = {
-                    "Accept": "application/vnd.github+json",
-                    "Authorization": `Bearer ${githubToken.trim()}`,
-                    "X-GitHub-Api-Version": "2022-11-28",
-                    "User-Agent": USER_AGENT
-                };
-
-                if (request.method === "GET") {
-                    const ghRes = await fetch(`https://api.github.com/gists/${gistId}`, { headers: ghHeaders });
-                    const data = await ghRes.json();
-                    return new Response(JSON.stringify(data), { status: ghRes.status, headers: corsHeaders });
-                }
-
-                if (request.method === "POST") {
-                    const bodyPayload = await request.text();
-                    const ghRes = await fetch(`https://api.github.com/gists/${gistId}`, {
-                        method: "PATCH",
-                        headers: { ...ghHeaders, "Content-Type": "application/json" },
-                        body: bodyPayload
-                    });
-                    const data = await ghRes.json();
-                    return new Response(JSON.stringify(data), { status: ghRes.status, headers: corsHeaders });
-                }
-
-                return new Response(JSON.stringify({ error: "Method not allowed." }), { status: 405, headers: corsHeaders });
             }
 
             // --- DEFAULT ACTION: Yahoo Deep Stock Data & Live Quotes (Group Fetch) ---

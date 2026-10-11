@@ -29,7 +29,7 @@
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
   <div class="max-w-6xl mx-auto space-y-5">
 
-    <!-- Top Bar: Status, Keys, GitHub Gist Sync, Reset & Backups -->
+    <!-- Top Bar: Status, Keys, KV Cloud Sync, Reset & Backups -->
     <div class="border-card p-4 sm:p-5 rounded-xl space-y-4">
       <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
@@ -158,7 +158,7 @@
             </button>
             <label
               class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"
-              title="Validate and confirm a portfolio backup import; cloud sync depends on Gist configuration">
+              title="Validate and confirm a portfolio backup import; cloud sync depends on KV configuration">
               Import
               <input type="file" id="importFileInput" class="hidden" accept=".json" onchange="importBackupJSON(event)">
             </label>
@@ -335,7 +335,7 @@
 
             <div id="terminalLog"
               class="h-64 overflow-y-auto bg-slate-950 p-3 rounded text-xs space-y-2 border border-slate-800/80">
-              <div class="text-slate-500">[System]: Portfolio ready. Check the Gist status indicator for cloud sync.</div>
+              <div class="text-slate-500">[System]: Portfolio ready. Check the KV cloud status indicator for sync.</div>
             </div>
 
             <div class="flex gap-2">
