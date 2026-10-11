@@ -52,7 +52,7 @@ export function loadGatewaySecret() {
     const recovered = deobfuscateSecret(stored);
     if (recovered) return recovered;
   }
-  const legacy = localStorage.getItem(GATEWAY_SECRET_KEY);
+  const legacy = localStorage.getItem(GATEWAY_SECRET_KEY) || localStorage.getItem('gatewaySecret');
   if (legacy) {
     const trimmed = legacy.trim();
     if (trimmed) {

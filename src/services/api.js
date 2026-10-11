@@ -3,19 +3,17 @@ import { getGatewaySecret, loadSavedState, saveStateToStorage } from './storage.
 
 export const YAHOO_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
-let secretGetter = null;
-
-export function setSecretGetter(getter) {
-  secretGetter = getter;
-}
+export function setSecretGetter(_getter) {}
 
 export function getActiveGatewaySecret(state) {
   if (state?.gatewaySecret) return state.gatewaySecret;
-  if (typeof secretGetter === 'function') {
-    const fromGetter = secretGetter();
-    if (fromGetter) return fromGetter;
+  const stored = getGatewaySecret();
+  if (stored) return stored;
+  if (typeof document !== 'undefined') {
+    const input = document.getElementById('headerGatewaySecretInput') || document.getElementById('gatewaySecretInput');
+    if (input?.value?.trim()) return input.value.trim();
   }
-  return getGatewaySecret();
+  return '';
 }
 
 export async function proxyFetch(action = '', queryParams = {}, fetchOptions = {}) {
@@ -73,9 +71,9 @@ export async function pullCloudState(options = {}) {
     logTerminal = (msg) => (typeof window !== 'undefined' && typeof window.logTerminal === 'function' ? window.logTerminal(msg) : console.log(msg))
   } = handlers;
 
-  const secret = handlers.secret || getActiveGatewaySecret(state);
+  const currentSecret = handlers.secret || getActiveGatewaySecret(state);
 
-  if (!secret) {
+  if (!currentSecret) {
     showToast('Gateway Secret required to access cloud state.', 'error');
     return loadSavedState(state || {});
   }
@@ -88,8 +86,8 @@ export async function pullCloudState(options = {}) {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'X-App-Auth': secret,
-        'Authorization': `Bearer ${secret}`
+        'X-App-Auth': currentSecret,
+        'Authorization': `Bearer ${currentSecret}`
       }
     });
 
@@ -112,18 +110,25 @@ export async function pullCloudState(options = {}) {
     let parsedState;
     if (typeof data.encryptedPayload === 'string') {
       try {
-        const bytes = CryptoJS.AES.decrypt(data.encryptedPayload, secret);
-        const decryptedStr = bytes.toString(CryptoJS.enc.Utf8);
+        const bytes = CryptoJS.AES.decrypt(data.encryptedPayload, currentSecret);
+        const decryptedStr = bytes ? bytes.toString(CryptoJS.enc.Utf8) : '';
         if (!decryptedStr) {
-          throw new Error('Invalid Gateway Secret or corrupt data.');
+          console.error("Decryption failed: Incorrect Gateway Secret or empty string returned.");
+          throw new Error("Incorrect Gateway Secret or empty string returned.");
         }
-        parsedState = JSON.parse(decryptedStr);
+        try {
+          parsedState = JSON.parse(decryptedStr);
+        } catch (parseErr) {
+          console.error("Decryption failed: Incorrect Gateway Secret or empty string returned.");
+          throw new Error(`Invalid JSON in decrypted state: ${parseErr.message}`);
+        }
       } catch (decryptErr) {
+        console.error("Decryption failed: Incorrect Gateway Secret or empty string returned.");
         throw new Error(`Failed to decrypt cloud state: ${decryptErr.message}`);
       }
     } else {
       parsedState = data;
-      pushCloudState(parsedState, { ...handlers, secret }).catch((err) => {
+      pushCloudState(parsedState, { ...handlers, secret: currentSecret }).catch((err) => {
         console.warn('Background encryption upgrade failed:', err);
       });
     }
@@ -157,15 +162,15 @@ export async function pushCloudState(state, options = {}) {
   } = handlers;
 
   const currentState = state || (typeof getState === 'function' ? getState() : {});
-  const secret = handlers.secret || getActiveGatewaySecret(currentState);
+  const currentSecret = handlers.secret || getActiveGatewaySecret(currentState);
 
-  if (!secret) {
+  if (!currentSecret) {
     showToast('Gateway Secret required to access cloud state.', 'error');
     return false;
   }
 
   try {
-    const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(currentState), secret).toString();
+    const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(currentState), currentSecret).toString();
     const payload = { encryptedPayload: ciphertext };
 
     const url = new URL('/api/state', YAHOO_PROXY_URL);
@@ -173,8 +178,8 @@ export async function pushCloudState(state, options = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-App-Auth': secret,
-        'Authorization': `Bearer ${secret}`
+        'X-App-Auth': currentSecret,
+        'Authorization': `Bearer ${currentSecret}`
       },
       body: JSON.stringify(payload)
     });
