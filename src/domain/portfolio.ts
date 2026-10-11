@@ -166,7 +166,10 @@ export function calculateMarginInterest(
     tranches = target;
     debtValue = options.marginDebt ?? options.totalDebt;
   } else if (isRecord(target)) {
-    if (typeof target.marginDebt === 'number' && target.marginDebt >= 0) {
+    if (typeof target.marginBalance === 'number' && target.marginBalance >= 0 && target.marginDebt === undefined) {
+      return 0;
+    }
+    if (target.marginDebt === 0 || target.totalDebt === 0) {
       return 0;
     }
     if (Array.isArray(target.tranches)) {
@@ -174,7 +177,7 @@ export function calculateMarginInterest(
     } else if (isRecord(target.positions)) {
       tranches = Object.values(target.positions).flatMap(p => (isRecord(p) && Array.isArray(p.tranches) ? p.tranches : []));
     }
-    const targetDebt = target.marginDebt ?? target.marginBalance ?? target.totalDebt;
+    const targetDebt = target.marginDebt ?? (typeof target.marginBalance === 'number' && target.marginBalance < 0 ? target.marginBalance : undefined) ?? target.totalDebt;
     debtValue = typeof targetDebt === 'number' ? targetDebt : (options.marginDebt ?? options.totalDebt);
   }
 
