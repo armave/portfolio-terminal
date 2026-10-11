@@ -51,6 +51,16 @@ import {
   showToast
 } from './src/ui/notifications.js';
 
+import {
+  formatUSD,
+  getCashCushionTotal,
+  getTotalPortfolioInvested,
+  renderBoard as renderBoardUI,
+  renderCashCushion,
+  renderPositionsTable,
+  renderSummaryCards
+} from './src/ui/renderBoard.js';
+
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
 // ==========================================
@@ -72,11 +82,6 @@ const TRADERNET_RULES = { ...DEFAULT_TRADERNET_RULES };
 const TRADERNET_RULES_STORAGE_KEY = 'tradernet_rules_v1';
 const GIST_FILE_NAME = "margin_state.json";
 const GIST_CREDENTIALS_FILE_NAME = "provider_keys.enc.json";
-
-function formatUSD(val) {
-  const num = Number(val) || 0;
-  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 let state = createBlankState();
 let gistSyncTimeout = null;
@@ -765,19 +770,6 @@ function renderConsoleQuickActions() {
   });
 }
 
-function getTotalPortfolioInvested() {
-  return Object.values(state.positions).reduce((acc, pos) => {
-    return acc + (pos.tranches || []).reduce((sum, tr) => sum + (tr.qty * tr.price), 0);
-  }, 0);
-}
-
-function getCashCushionTotal() {
-  if (!state.cashCushion) return 0;
-  const cashVal = Number(state.cashCushion.freeCash) || 0;
-  const stocksVal = (state.cashCushion.holdings || []).reduce((sum, h) => sum + (h.shares * h.price), 0);
-  return cashVal + stocksVal;
-}
-
 function updateCombinedBreakeven() {
   const beEl = document.getElementById('daysToBreakeven');
   if (!beEl) return;
@@ -849,101 +841,10 @@ function createStockPageLink(ticker, provider) {
   return link;
 }
 
-function renderBoard() {
-  const tickers = Object.keys(state.positions);
-  const tabsContainer = document.getElementById('tickerTabs');
-  tabsContainer.innerHTML = '';
-
-  const isCushionActive = state.activeView === "CASH_CUSHION";
-  const isClosedHistoryActive = state.activeView === "CLOSED_HISTORY";
-  updateEmptyStateVisibility(tickers.length === 0 && !isCushionActive && !isClosedHistoryActive);
-
-  if (tickers.length === 0) {
-    if (!isCushionActive && !isClosedHistoryActive) state.activeView = "COMBINED";
-    const emptyLabel = document.createElement('span');
-    emptyLabel.className = "text-xs font-bold text-slate-500 uppercase tracking-wider";
-    emptyLabel.innerText = "NO ACTIVE TRADES";
-    tabsContainer.appendChild(emptyLabel);
-  } else if (tickers.length === 1) {
-    if (!isCushionActive && !isClosedHistoryActive) state.activeView = tickers[0];
-    const btn = document.createElement('button');
-    btn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0] ? 'bg-emerald-600 text-black' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`;
-    btn.innerText = `MARGIN: ${tickers[0]}`;
-    btn.onclick = () => setActiveView(tickers[0]);
-    tabsContainer.appendChild(btn);
-  } else {
-    if (!isCushionActive && !isClosedHistoryActive && state.activeView !== "COMBINED" && !state.positions[state.activeView]) {
-      state.activeView = "COMBINED";
-    }
-
-    const combinedBtn = document.createElement('button');
-    combinedBtn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === "COMBINED" ? 'bg-emerald-600 text-black' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`;
-    combinedBtn.innerText = "COMBINED PORTFOLIO";
-    combinedBtn.onclick = () => setActiveView("COMBINED");
-    tabsContainer.appendChild(combinedBtn);
-
-    tickers.forEach(t => {
-      const btn = document.createElement('button');
-      btn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === t ? 'bg-emerald-600 text-black' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`;
-      btn.innerText = t;
-      btn.onclick = () => setActiveView(t);
-      tabsContainer.appendChild(btn);
-    });
-  }
-
-  const cushionTotal = getCashCushionTotal();
-  const cushionBtn = document.createElement('button');
-  cushionBtn.className = `px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive ? 'bg-cyan-500 text-black' : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'}`;
-  cushionBtn.innerHTML = `<span>🛡️ BALANCE</span> <span class="text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'}">+$${cushionTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>`;
-  cushionBtn.onclick = () => setActiveView("CASH_CUSHION");
-  tabsContainer.appendChild(cushionBtn);
-
-  const closedHistoryBtn = document.createElement('button');
-  closedHistoryBtn.className = `px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive ? 'bg-purple-500 text-black' : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'}`;
-  closedHistoryBtn.innerText = `CLOSED HISTORY (${state.closedTrades.length})`;
-  closedHistoryBtn.onclick = () => setActiveView("CLOSED_HISTORY");
-  tabsContainer.appendChild(closedHistoryBtn);
-  document.getElementById('closedTradesCount').textContent =
-    `${state.closedTrades.length} realized exit${state.closedTrades.length === 1 ? '' : 's'}`;
-
-  const mainDesk = document.getElementById('mainDeskContainer');
-  const cushionDesk = document.getElementById('cashCushionContainer');
-  const closedHistoryDesk = document.getElementById('closedHistoryContainer');
-  let activeDesk;
-  let activeDeskView;
-
-  if (isCushionActive) {
-    mainDesk.classList.add('hidden');
-    cushionDesk.classList.remove('hidden');
-    closedHistoryDesk.classList.add('hidden');
-    renderCashCushionPanel();
-    activeDesk = cushionDesk;
-    activeDeskView = 'CASH_CUSHION';
-  } else if (isClosedHistoryActive) {
-    mainDesk.classList.add('hidden');
-    cushionDesk.classList.add('hidden');
-    closedHistoryDesk.classList.remove('hidden');
-    renderClosedHistoryPanel();
-    activeDesk = closedHistoryDesk;
-    activeDeskView = 'CLOSED_HISTORY';
-  } else {
-    mainDesk.classList.remove('hidden');
-    cushionDesk.classList.add('hidden');
-    closedHistoryDesk.classList.add('hidden');
-
-    if (state.activeView === "COMBINED" && tickers.length !== 1) {
-      renderCombinedView(tickers);
-    } else if (tickers.length > 0) {
-      renderSingleAssetView(state.positions[state.activeView] || state.positions[tickers[0]]);
-    } else {
-      renderCombinedView([]);
-    }
-    activeDesk = mainDesk;
-    activeDeskView = state.activeView;
-  }
-
+function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
   const stockPageLinks = document.getElementById('boardExternalLinks');
+  if (!stockPageLinks) return;
   stockPageLinks.replaceChildren();
   if (activeTicker) {
     stockPageLinks.append(
@@ -951,16 +852,24 @@ function renderBoard() {
       createStockPageLink(activeTicker, 'Stocktwits')
     );
   }
+}
 
-  renderConsoleQuickActions();
-
-  if (activeDeskView !== lastRenderedDeskView) {
-    playEntryAnimation(activeDesk, 'ui-view-enter');
-    lastRenderedDeskView = activeDeskView;
-  }
-
-  updateCombinedBreakeven();
-  syncMarketInsightsPanel();
+function renderBoard() {
+  renderBoardUI(state, {
+    rules: TRADERNET_RULES,
+    onSetActiveView: setActiveView,
+    onRenderClosedHistory: renderClosedHistoryPanel,
+    onRenderAnalystConsensus: renderBoardAnalystConsensus,
+    onFetchLivePrice: fetchLivePrice,
+    onRemoveCashStock: removeCashStock,
+    onRenderExternalLinks: renderBoardExternalLinks,
+    onRenderConsoleQuickActions: renderConsoleQuickActions,
+    onUpdateCombinedBreakeven: updateCombinedBreakeven,
+    onSyncMarketInsightsPanel: syncMarketInsightsPanel,
+    refreshIntervalMs: Number(localStorage.getItem(QUOTE_REFRESH_INTERVAL_KEY)) || DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
+    lastDeskView: lastRenderedDeskView,
+    onUpdateLastDeskView: view => { lastRenderedDeskView = view; }
+  });
 }
 
 function getMarketInsightsTicker() {
@@ -1069,100 +978,11 @@ function playEntryAnimation(element, animationClass) {
 }
 
 function renderCashCushionPanel() {
-  if (!state.cashCushion) state.cashCushion = { freeCash: 0.00, holdings: [] };
-  const freeCash = Number(state.cashCushion.freeCash) || 0;
-  const marginDebt = Math.abs(Number(state.marginBalance) || 0);
-  const signedBalance = freeCash + (Number(state.marginBalance) || 0);
-  document.getElementById('freeCashInput').value = signedBalance.toFixed(2);
-  const debtMeta = document.getElementById('cashBalanceDebtMeta');
-  if (debtMeta) {
-    debtMeta.textContent = `Balance: $${formatUSD(freeCash)} | Debt: -$${formatUSD(marginDebt)}`;
-  }
-
-  const tableBody = document.getElementById('cashStocksTableBody');
-  const tableFooter = document.getElementById('cashStocksTableFooter');
-  tableBody.innerHTML = '';
-
-  let stocksTotal = 0;
-  const holdings = state.cashCushion.holdings || [];
-
-  holdings.forEach(h => {
-    stocksTotal += (Number(h.shares) || 0) * (Number(h.price) || 0);
+  renderCashCushion(state, {
+    onFetchLivePrice: fetchLivePrice,
+    onRemoveCashStock: removeCashStock,
+    refreshIntervalMs: Number(localStorage.getItem(QUOTE_REFRESH_INTERVAL_KEY)) || DEFAULT_QUOTE_REFRESH_INTERVAL_MS
   });
-
-  holdings.forEach((h, idx) => {
-    const shares = Number(h.shares) || 0;
-    const price = Number(h.currentPrice) || 0;
-    const val = shares * price;
-    const allocation = stocksTotal > 0 ? (val / stocksTotal) * 100 : 0;
-    const quoteMeta = formatQuoteMetadata(h);
-
-    const tr = document.createElement('tr');
-    tr.className = "hover:bg-slate-900/40";
-    const addCell = (content, className) => {
-      const cell = document.createElement('td');
-      cell.className = className;
-      cell.textContent = content;
-      tr.appendChild(cell);
-      return cell;
-    };
-    const tickerCell = addCell('', 'py-2 px-3 text-cyan-300 font-bold');
-    tickerCell.append(
-      createInsightElement('span', '', h.ticker),
-      document.createTextNode(' '),
-      sentimentBadge(
-        Number.isFinite(h.quoteDetails?.change)
-          ? h.quoteDetails.change > 0 ? 'bullish' : h.quoteDetails.change < 0 ? 'bearish' : 'neutral'
-          : 'unknown',
-        Number.isFinite(h.quoteDetails?.change) && `${h.quoteDetails.changePercent.toFixed(2)}%`
-      )
-    );
-    addCell(shares.toLocaleString('en-US', { maximumFractionDigits: 3 }), 'py-2 px-3 text-right text-slate-200 tabular-nums');
-    const priceCell = document.createElement('td');
-    priceCell.className = 'py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums';
-    const priceLabel = document.createElement('span');
-    priceLabel.textContent = `$${formatUSD(price)}`;
-    const quoteLabel = document.createElement('span');
-    quoteLabel.className = 'mt-0.5 block text-[9px] font-normal text-slate-500';
-    quoteLabel.textContent = quoteMeta;
-    priceCell.append(priceLabel);
-    const dailyQuoteLabel = createDailyQuoteLabel(h.quoteDetails);
-    if (dailyQuoteLabel) priceCell.append(dailyQuoteLabel);
-    priceCell.append(quoteLabel);
-    tr.appendChild(priceCell);
-    addCell(`$${formatUSD(val)}`, 'py-2 px-3 text-right text-white font-semibold');
-    addCell(`${allocation.toFixed(1)}%`, 'py-2 px-3 text-right text-slate-300 tabular-nums');
-    const actionsCell = addCell('', 'py-2 px-3 text-center space-x-2');
-    const refreshButton = document.createElement('button');
-    refreshButton.className = 'text-cyan-400 hover:text-cyan-300 text-xs font-bold';
-    refreshButton.title = 'Refresh Live Price';
-    refreshButton.setAttribute('aria-label', `Refresh ${h.ticker} quote`);
-    refreshButton.textContent = '↻';
-    refreshButton.addEventListener('click', () => fetchLivePrice(h.ticker));
-    const removeButton = document.createElement('button');
-    removeButton.className = 'text-rose-400 hover:text-rose-300 text-xs font-bold';
-    removeButton.textContent = 'Remove';
-    removeButton.addEventListener('click', () => removeCashStock(idx));
-    actionsCell.append(refreshButton, removeButton);
-    tableBody.appendChild(tr);
-  });
-
-  if ((state.cashCushion.holdings || []).length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="6" class="py-3 text-center text-slate-500 italic">No cash stocks entered. Add unleveraged stocks below (price auto-fetches).</td></tr>`;
-  }
-  tableFooter.innerHTML = holdings.length > 0
-    ? `<tr>
-        <td class="py-2 px-3 text-slate-300 font-bold" colspan="3">${holdings.length} holding${holdings.length === 1 ? '' : 's'}</td>
-        <td class="py-2 px-3 text-right text-white font-bold">$${formatUSD(stocksTotal)}</td>
-        <td class="py-2 px-3 text-right text-slate-300 font-bold">${stocksTotal > 0 ? '100.0%' : '—'}</td>
-        <td></td>
-      </tr>`
-    : '';
-  document.getElementById('cashHoldingsSummary').textContent =
-    `${holdings.length} holding${holdings.length === 1 ? '' : 's'} · $${formatUSD(stocksTotal)} market value`;
-
-  const totalCushion = freeCash + stocksTotal;
-  document.getElementById('cushionTotalValue').innerText = `$${formatUSD(totalCushion)}`;
 }
 
 function renderClosedHistoryPanel() {
@@ -2238,254 +2058,6 @@ function removeCashStock(index) {
   showToast(`${removed.ticker} removed from cash holdings.`, 'info');
 }
 
-function renderCombinedView(tickers) {
-  let totalInvested = 0;
-  let totalMarketValue = 0;
-  let totalCommBuy = 0;
-  let totalCommSell = 0;
-  let totalGrossTarget = 0;
-  let totalMarginCharged = state.realizedMarginCharged || 0;
-
-  tickers.forEach(t => {
-    const pos = state.positions[t];
-    const cost = (pos.tranches || []).reduce((sum, tr) => sum + (tr.qty * tr.price), 0);
-    totalInvested += cost;
-    totalMarketValue += pos.shares * pos.currentPrice;
-    totalCommBuy += pos.commBuy;
-    const valSell = pos.shares * pos.pt;
-    totalCommSell += calcCommission(pos.shares, valSell);
-    totalGrossTarget += (valSell - cost);
-    totalMarginCharged += (pos.marginCharged || 0.00);
-  });
-
-  const totalComms = totalCommBuy + totalCommSell;
-  const net0 = totalGrossTarget - totalComms - totalMarginCharged;
-  const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
-  const totalUnrealized = totalMarketValue - totalInvested;
-  const unrealizedPct = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
-
-  const totalDebt = Math.abs(state.marginBalance);
-  const dailyAccrual = totalDebt * getDailyRate();
-
-  document.getElementById('boardTitle').innerText = tickers.length > 0
-    ? `COMBINED PORTFOLIO (${tickers.length} Positions | ${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% Net Combined Target)`
-    : `NO ACTIVE MARGIN POSITIONS`;
-
-  document.getElementById('boardTranches').innerText = tickers.length > 0
-    ? tickers.map(t => `${t}: ${state.positions[t].shares}sh @ PT $${formatUSD(state.positions[t].pt)}`).join(' | ')
-    : "None";
-
-  document.getElementById('boardInvested').innerText = `$${formatUSD(totalInvested)} | Across ${tickers.length} Assets`;
-
-  const unSign = totalUnrealized >= 0 ? '+' : '';
-  document.getElementById('boardPrice').innerHTML = `$${formatUSD(totalMarketValue)} – <span class="${totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${unSign}$${formatUSD(totalUnrealized)} (${unSign}${unrealizedPct.toFixed(2)}%)</span>`;
-
-  document.getElementById('boardMargin').innerText = `-$${formatUSD(totalDebt)} ($${formatUSD(dailyAccrual)}/day @ ${(getDailyRate() * 100).toFixed(4)}%)`;
-  document.getElementById('boardComms').innerText = `$${formatUSD(totalComms)} ($${formatUSD(totalCommBuy)} buy / $${formatUSD(totalCommSell)} sell)`;
-  document.getElementById('boardMarginCharged').innerText = `$${formatUSD(totalMarginCharged)}`;
-
-  const cushionTotal = getCashCushionTotal();
-  document.getElementById('boardCushionLabel').innerText = 'Cash / Collateral Cushion:';
-  document.getElementById('boardCushionMetric').innerText = `+$${formatUSD(cushionTotal)}`;
-  const quotes = tickers.map(ticker => state.positions[ticker]).filter(position => position.quoteUpdatedAt);
-  const latestQuote = quotes.sort((a, b) => b.quoteUpdatedAt - a.quoteUpdatedAt)[0];
-  document.getElementById('boardQuoteMeta').innerText = latestQuote
-    ? `Latest portfolio quote · ${formatQuoteMetadata(latestQuote)}`
-    : 'No live quotes fetched for margin positions';
-  const portfolioHoldings = [
-    ...Object.values(state.positions),
-    ...(state.cashCushion?.holdings || [])
-  ];
-  const dailySummary = summarizeDailyQuote(portfolioHoldings);
-
-  const moveEl = document.getElementById('boardDailyMove');
-  if (moveEl) moveEl.classList.remove('hidden');
-
-  renderBoardAnalystConsensus(tickers[0]);
-
-  const totalAccountEquity = (totalMarketValue + cushionTotal) - totalDebt;
-  const totalAccountAssets = totalMarketValue + cushionTotal;
-  const equityPct = totalAccountAssets > 0 ? (totalAccountEquity / totalAccountAssets) * 100 : 0;
-  document.getElementById('boardEquity').innerText = `$${formatUSD(totalAccountEquity)} (${equityPct.toFixed(2)}%)`;
-
-  renderMarginRisk(totalDebt, totalMarketValue, cushionTotal);
-
-  renderProjectionTable(totalGrossTarget, totalComms, totalDebt, totalMarginCharged, state.startDate);
-}
-
-function renderSingleAssetView(pos) {
-  if (!pos) return;
-  const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + (t.qty * t.price), 0);
-  const avgPrice = pos.shares > 0 ? totalInvested / pos.shares : 0;
-  const valSell = pos.shares * pos.pt;
-  const commSell = calcCommission(pos.shares, valSell);
-  const totalComms = pos.commBuy + commSell;
-  const gross = valSell - totalInvested;
-
-  const portfolioInvested = getTotalPortfolioInvested();
-  const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
-
-  const totalAccountDebt = Math.abs(state.marginBalance);
-  const allocatedDebt = totalAccountDebt * weight;
-  const totalCushion = getCashCushionTotal();
-  const allocatedCushion = totalCushion * weight;
-  const allocatedDailyAccrual = allocatedDebt * getDailyRate();
-  const posMarginCharged = pos.marginCharged || 0.00;
-
-  const net0 = gross - totalComms - posMarginCharged;
-  const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
-
-  const currentMktVal = pos.shares * pos.currentPrice;
-  const unrealized = currentMktVal - totalInvested;
-  const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
-
-  document.getElementById('boardTitle').innerText = `${pos.ticker} (${pos.shares} Shares @ $${formatUSD(pos.pt)} PT | ${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% Net Target)`;
-  document.getElementById('boardTranches').innerText = (pos.tranches && pos.tranches.length > 0)
-    ? pos.tranches.map(t => `${t.qty} @ $${formatUSD(t.price)} (${t.date || 'New'})`).join(' + ')
-    : "None";
-  document.getElementById('boardInvested').innerText = `$${formatUSD(totalInvested)} | $${formatUSD(avgPrice)}`;
-
-  const unSign = unrealized >= 0 ? '+' : '';
-  document.getElementById('boardPrice').innerHTML = `$${formatUSD(pos.currentPrice)} | $${formatUSD(currentMktVal)} – <span class="${unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${unSign}$${formatUSD(unrealized)} (${unSign}${unrealizedPct.toFixed(2)}%)</span>`;
-  const boardDailyQuote = document.getElementById('boardDailyQuote');
-  const dailyQuoteLabel = createDailyQuoteLabel(pos.quoteDetails);
-  boardDailyQuote.textContent = dailyQuoteLabel?.textContent || '';
-  boardDailyQuote.className = dailyQuoteLabel?.className || 'block text-[10px] text-slate-500';
-
-  renderBoardAnalystConsensus(pos.ticker);
-
-  const isFullDebt = Math.abs(allocatedDebt - totalAccountDebt) < 0.01;
-  document.getElementById('boardMargin').innerText = isFullDebt
-    ? `-$${formatUSD(allocatedDebt)} ($${formatUSD(allocatedDailyAccrual)}/day)`
-    : `-$${formatUSD(allocatedDebt)} ($${formatUSD(allocatedDailyAccrual)}/day) [${((allocatedDebt / (totalAccountDebt || 1)) * 100).toFixed(0)}% of -$${formatUSD(totalAccountDebt)} Total]`;
-
-  document.getElementById('boardComms').innerText = `$${formatUSD(totalComms)} ($${formatUSD(pos.commBuy)} buy / $${formatUSD(commSell)} sell)`;
-  document.getElementById('boardMarginCharged').innerText = `$${formatUSD(posMarginCharged)} (Position To Date)`;
-
-  document.getElementById('boardCushionLabel').innerText = 'Allocated Cash / Collateral:';
-  document.getElementById('boardCushionMetric').innerText = `+$${formatUSD(allocatedCushion)}`;
-  document.getElementById('boardQuoteMeta').innerText = formatQuoteMetadata(pos);
-
-  const positionAssets = currentMktVal + allocatedCushion;
-  const positionEquity = positionAssets - allocatedDebt;
-  const equityPct = positionAssets > 0 ? (positionEquity / positionAssets) * 100 : 0;
-  document.getElementById('boardEquity').innerText = `$${formatUSD(positionEquity)} (${equityPct.toFixed(2)}%)`;
-
-  renderMarginRisk(allocatedDebt, currentMktVal, allocatedCushion);
-
-  renderProjectionTable(gross, totalComms, allocatedDebt, posMarginCharged, pos.startDate || state.startDate);
-}
-
-function renderMarginRisk(debt, positionValue, collateral) {
-  const marginCallRow = document.getElementById('boardMarginCallRow');
-  const stopOutRow = document.getElementById('boardStopOutRow');
-  const riskSummary = document.getElementById('boardMarginRisk');
-
-  if (debt <= 0) {
-    riskSummary.innerText = 'No margin debt';
-    riskSummary.className = 'text-emerald-400 font-bold font-mono';
-    marginCallRow.classList.add('hidden');
-    stopOutRow.classList.add('hidden');
-    return;
-  }
-
-  const assets = positionValue + collateral;
-  const equity = assets - debt;
-  const equityRatio = assets > 0 ? (equity / assets) * 100 : -Infinity;
-  const maintenanceRatio = TRADERNET_RULES.maintenanceMarginRatio * 100;
-  const stopOutRatio = TRADERNET_RULES.stopOutRatio * 100;
-  let riskLevel;
-  let riskClass;
-
-  if (equityRatio <= stopOutRatio) {
-    riskLevel = 'Stop-out level';
-    riskClass = 'text-rose-400';
-  } else if (equityRatio <= maintenanceRatio) {
-    riskLevel = 'Margin-call level';
-    riskClass = 'text-rose-400';
-  } else if (equityRatio <= maintenanceRatio + 5) {
-    riskLevel = 'Elevated';
-    riskClass = 'text-amber-400';
-  } else {
-    riskLevel = 'Healthy';
-    riskClass = 'text-emerald-400';
-  }
-  riskSummary.innerText = `${riskLevel} · ${Number.isFinite(equityRatio) ? `${equityRatio.toFixed(1)}% equity` : 'negative equity'} (${maintenanceRatio.toFixed(1)}% maintenance)`;
-  riskSummary.className = `${riskClass} font-bold font-mono`;
-
-  const marginCallAssetsRequired = debt / (1 - TRADERNET_RULES.maintenanceMarginRatio);
-  const stopOutAssetsRequired = debt / (1 - TRADERNET_RULES.stopOutRatio);
-  marginCallRow.classList.toggle('hidden', collateral >= marginCallAssetsRequired);
-  stopOutRow.classList.toggle('hidden', collateral >= stopOutAssetsRequired);
-  const marginCallValue = Math.max(0, marginCallAssetsRequired - collateral);
-  const stopOutValue = Math.max(0, stopOutAssetsRequired - collateral);
-
-  if (marginCallValue > 0) document.getElementById('boardMarginCall').innerText = formatRiskTrigger(marginCallValue, positionValue);
-  if (collateral < stopOutAssetsRequired) document.getElementById('boardStopOut').innerText = formatRiskTrigger(stopOutValue, positionValue);
-}
-
-function formatRiskTrigger(triggerValue, currentValue) {
-  if (currentValue <= 0) return `Position value $${formatUSD(triggerValue)}`;
-
-  const bufferPct = ((currentValue - triggerValue) / currentValue) * 100;
-  if (bufferPct < 0) {
-    return `Position value $${formatUSD(triggerValue)} (already ${Math.abs(bufferPct).toFixed(1)}% below trigger)`;
-  }
-  return `Position value $${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
-}
-
-function renderProjectionTable(gross, totalComms, debtToUse, marginChargedToUse, entryDate) {
-  const tableBody = document.getElementById('projectionTableBody');
-  tableBody.innerHTML = '';
-
-  if (debtToUse > 0 || gross > 0) {
-    getUsEquityProjectionDates(new Date(), entryDate).forEach(({ date, daysFromToday, kind }) => {
-      const dateFormatted = date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-      });
-      if (kind === 'entry') {
-        const entryRow = document.createElement('tr');
-        entryRow.className = 'border-b border-slate-800/50 text-slate-500';
-        entryRow.innerHTML = `
-          <td class="py-1.5 px-3 text-[10px] font-medium">Entry · ${dateFormatted}</td>
-          <td colspan="4" class="py-1.5 px-3 text-[10px] italic">Position opened · projection values start today</td>
-        `;
-        tableBody.appendChild(entryRow);
-        return;
-      }
-      const label = kind === 'today'
-        ? `${dateFormatted} <span class="ml-1 text-[9px] font-normal uppercase tracking-wide text-cyan-500/80">Today</span>`
-        : kind === 'week-end'
-          ? `${dateFormatted} (End of week · +${daysFromToday}d)`
-          : `${dateFormatted} (+${daysFromToday}d)`;
-
-      const b_t = calculateCompoundedDebt(debtToUse, getDailyRate(), daysFromToday);
-      const additionalAccrual = calculateMarginInterest(debtToUse, getDailyRate(), daysFromToday);
-      const m_d = marginChargedToUse + additionalAccrual;
-      const fee_c = calculateAccruedFees(totalComms, marginChargedToUse, additionalAccrual);
-      const net_p = gross - fee_c;
-      const dr = b_t * getDailyRate();
-
-      const tr = document.createElement('tr');
-      tr.className = kind === 'today' ? "bg-slate-900/80 font-bold" : "hover:bg-slate-900/40";
-      const netClass = net_p >= 0 ? "text-emerald-400" : "text-rose-400";
-      const netSign = net_p >= 0 ? "+" : "";
-
-      tr.innerHTML = `
-        <td class="py-2 px-3 text-slate-300 font-semibold">${label}</td>
-        <td class="py-2 px-3 text-right ${netClass} font-semibold">${netSign}$${formatUSD(net_p)}</td>
-        <td class="py-2 px-3 text-right text-slate-200">$${formatUSD(fee_c)}</td>
-        <td class="py-2 px-3 text-right text-slate-400">$${formatUSD(m_d)} ($${formatUSD(dr)})</td>
-        <td class="py-2 px-3 text-right text-rose-400">-$${formatUSD(b_t)}</td>
-      `;
-      tableBody.appendChild(tr);
-    });
-  } else {
-    tableBody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500 italic">No active position to project.</td></tr>`;
-  }
-}
 
 function updateEmptyStateVisibility(isEmpty) {
   const panel = document.getElementById('emptyStatePanel');
@@ -3358,6 +2930,10 @@ Object.assign(window, {
   importBackupJSON,
   loadMarketInsight,
   logTerminal,
+  renderBoard,
+  renderCashCushion,
+  renderPositionsTable,
+  renderSummaryCards,
   syncCloudState,
   refreshAllLivePrices,
   refreshMarketInsight,
