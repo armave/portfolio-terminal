@@ -10,8 +10,6 @@ import {
   obfuscateSecret,
   deobfuscateSecret,
   areHeaderCredentialsConfigured,
-  getGistConfig,
-  setGistConfig,
   loadBrokerRules,
   saveBrokerRules,
   clearBrokerRules,
@@ -234,18 +232,6 @@ describe('storage service', () => {
 
       expect(result).toBe(false);
       expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Please enter'), 'error');
-    });
-  });
-
-  describe('gist config', () => {
-    it('manages gist id and token', () => {
-      expect(getGistConfig()).toEqual({ gistId: '', token: '' });
-
-      setGistConfig({ gistId: 'gist123', token: 'token456' });
-      expect(getGistConfig()).toEqual({ gistId: 'gist123', token: 'token456' });
-
-      setGistConfig({ gistId: '' });
-      expect(getGistConfig()).toEqual({ gistId: '', token: 'token456' });
     });
   });
 
