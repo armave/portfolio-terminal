@@ -162,8 +162,8 @@ export function renderPositionsTable(gross, totalComms, debtToUse, marginCharged
         const entryRow = document.createElement('tr');
         entryRow.className = 'border-b border-slate-800/50 text-slate-500';
         entryRow.innerHTML = `
-          <td class="py-1.5 px-3 text-[10px] font-medium">Entry · ${dateFormatted}</td>
-          <td colspan="4" class="py-1.5 px-3 text-[10px] italic">Position opened · projection values start today</td>
+          <td class="py-1.5 px-3 text-[10px] font-medium text-left">Entry · ${dateFormatted}</td>
+          <td colspan="4" class="py-1.5 px-3 text-[10px] italic text-left">Position opened · projection values start today</td>
         `;
         tableBody.appendChild(entryRow);
         return;
@@ -187,7 +187,7 @@ export function renderPositionsTable(gross, totalComms, debtToUse, marginCharged
       const netSign = net_p >= 0 ? "+" : "";
 
       tr.innerHTML = `
-        <td class="py-2 px-3 text-slate-300 font-semibold">${label}</td>
+        <td class="py-2 px-3 text-left text-slate-300 font-semibold">${label}</td>
         <td class="py-2 px-3 text-right ${netClass} font-semibold">${netSign}$${formatUSD(net_p)}</td>
         <td class="py-2 px-3 text-right text-slate-200">$${formatUSD(fee_c)}</td>
         <td class="py-2 px-3 text-right text-slate-400">$${formatUSD(m_d)} ($${formatUSD(dr)})</td>

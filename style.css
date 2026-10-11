@@ -163,12 +163,25 @@ table tbody tr:nth-child(even) {
   background: var(--bg-table-zebra);
 }
 
+.portfolio-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.625rem;
+}
+
+@media (max-width: 640px) {
+  .portfolio-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .portfolio-metric {
   min-width: 0;
   border: 1px solid var(--border-subtle);
-  border-radius: 0.625rem;
+  border-radius: 0.75rem;
   background: var(--bg-surface-subtle);
-  padding: 0.8rem 0.9rem;
+  padding: 0.875rem 1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .portfolio-metric-label {
@@ -264,6 +277,11 @@ tbody tr {
 #cashCushionContainer {
   position: relative;
   z-index: 1;
+}
+
+#projectionTableContainer {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 768px) {
