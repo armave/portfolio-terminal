@@ -69,8 +69,11 @@ button {
 }
 
 #terminalLog {
+  background: #090c13;
+  border: 1px solid rgba(30, 41, 59, 0.85);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
   scrollbar-width: thin;
-  scrollbar-color: var(--text-dim) transparent;
+  scrollbar-color: rgba(71, 85, 105, 0.6) rgba(15, 23, 42, 0.7);
 }
 
 #terminalLog::-webkit-scrollbar {
@@ -78,12 +81,19 @@ button {
 }
 
 #terminalLog::-webkit-scrollbar-track {
-  background: var(--bg-surface-subtle);
+  background: rgba(15, 23, 42, 0.7);
+  border-radius: 4px;
 }
 
 #terminalLog::-webkit-scrollbar-thumb {
-  background: var(--text-dim);
+  background: rgba(71, 85, 105, 0.6);
   border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+#terminalLog::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.85);
 }
 
 #tickerTabs {
@@ -101,23 +111,38 @@ button {
   border-radius: 999px;
 }
 
-button,
-input,
-select {
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+button {
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    filter 0.2s ease;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
 }
 
 button:hover:not(:disabled) {
-  filter: brightness(1.08);
+  filter: brightness(1.12);
+  transform: translateY(-1px);
 }
 
 button:active:not(:disabled) {
-  filter: brightness(0.96);
+  filter: brightness(0.92);
+  transform: translateY(1px);
 }
 
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+  transform: none;
+  filter: none;
+}
+
+input,
+select {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
 }
 
 input::placeholder {
@@ -161,6 +186,27 @@ table th {
 
 table tbody tr:nth-child(even) {
   background: var(--bg-table-zebra);
+}
+
+tbody tr {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+tbody tr:hover {
+  background-color: rgba(30, 41, 59, 0.42) !important;
+}
+
+summary {
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+summary:hover {
+  color: var(--color-accent);
+}
+
+.insight-tab {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .portfolio-metrics-grid {
@@ -235,10 +281,6 @@ table tbody tr:nth-child(even) {
   font-family: var(--font-mono);
 }
 
-tbody tr {
-  transition: background-color 140ms ease, color 140ms ease;
-}
-
 .border-card {
   transition: border-color 180ms ease;
 }
@@ -247,8 +289,17 @@ tbody tr {
   animation: ui-view-enter 220ms ease-out both;
 }
 
+.ui-toast {
+  pointer-events: auto;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+}
+
 .ui-toast-enter {
-  animation: ui-toast-enter 180ms ease-out both;
+  animation: ui-toast-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.ui-toast-exit {
+  animation: ui-toast-exit 0.2s ease-in forwards;
 }
 
 @keyframes ui-view-enter {
@@ -265,11 +316,22 @@ tbody tr {
 @keyframes ui-toast-enter {
   from {
     opacity: 0;
-    transform: translateY(-6px);
+    transform: translateX(1.25rem) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes ui-toast-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(1.25rem) scale(0.96);
   }
 }
 

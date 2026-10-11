@@ -5,20 +5,21 @@ export function showToast(message, type = 'info') {
 
   const toast = document.createElement('div');
   const palette = {
-    success: 'border-emerald-500/60 bg-emerald-950/80 text-emerald-200',
-    error: 'border-rose-500/60 bg-rose-950/80 text-rose-200',
-    warning: 'border-amber-500/60 bg-amber-950/80 text-amber-200',
-    info: 'border-sky-500/60 bg-sky-950/80 text-sky-200'
+    success: 'border-emerald-600/70 bg-[#12241b] text-emerald-200',
+    error: 'border-rose-600/70 bg-[#291418] text-rose-200',
+    warning: 'border-amber-600/70 bg-[#2b2111] text-amber-200',
+    info: 'border-sky-600/70 bg-[#102331] text-sky-200'
   };
 
-  toast.className = `border rounded-lg px-3 py-2 text-xs font-semibold shadow-lg backdrop-blur-sm ${palette[type] || palette.info}`;
+  toast.className = `ui-toast border rounded-lg px-3 py-2 text-xs font-semibold ${palette[type] || palette.info}`;
   toast.classList.add('ui-toast-enter');
   toast.textContent = message;
   container.appendChild(toast);
 
   setTimeout(() => {
-    toast.classList.add('opacity-0', 'translate-y-1');
-    setTimeout(() => toast.remove(), 220);
+    toast.classList.remove('ui-toast-enter');
+    toast.classList.add('ui-toast-exit');
+    setTimeout(() => toast.remove(), 200);
   }, 2600);
 }
 
