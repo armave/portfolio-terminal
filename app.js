@@ -657,13 +657,7 @@ function applyOvernightRollover() {
 
     const tickers = Object.keys(state.positions);
     const totalInvested = getTotalPortfolioInvested();
-    if (tickers.length > 0 && totalInvested > 0) {
-      tickers.forEach(ticker => {
-        const position = state.positions[ticker];
-        const invested = (position.tranches || []).reduce((sum, tranche) => sum + (tranche.qty * tranche.price), 0);
-        position.marginCharged = (position.marginCharged || 0) + (interestAccrued * invested / totalInvested);
-      });
-    } else {
+    if (tickers.length === 0 || totalInvested === 0) {
       state.realizedMarginCharged = (state.realizedMarginCharged || 0) + interestAccrued;
     }
 
@@ -780,9 +774,16 @@ function updateCombinedBreakeven() {
       const commSell = calcCommission(pos.shares, valSell);
       totalGrossTarget += (valSell - cost);
       totalComms += (pos.commBuy || 0) + commSell;
-      totalMarginCharged += (pos.marginCharged || 0.00);
     }
   });
+
+  const tranchesForCombined = state.tranches || tickers.flatMap(t => state.positions[t]?.tranches || []);
+  const openMarginCharged = calculateMarginInterest(tranchesForCombined, {
+    dailyRate: getDailyRate(),
+    marginDebt: totalDebt,
+    totalDebt
+  });
+  totalMarginCharged += openMarginCharged;
 
   const netTargetProfit = totalGrossTarget - totalComms - totalMarginCharged;
 
@@ -1761,7 +1762,11 @@ function runLadderSimulation(data) {
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
 
   let runningDebt = Math.abs(state.marginBalance) * weight;
-  let totalAccruedMargin = pos.marginCharged || 0.00;
+  let totalAccruedMargin = calculateMarginInterest(state.tranches || pos.tranches || [], {
+    dailyRate: getDailyRate(),
+    marginDebt: runningDebt,
+    totalDebt: Math.abs(state.marginBalance)
+  });
   let totalComms = pos.commBuy;
   let totalGrossProceeds = 0;
   let currentDay = 0;
@@ -1831,7 +1836,11 @@ function runComparison(data) {
   const portfolioInvested = getTotalPortfolioInvested();
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
   const debtToUse = Math.abs(state.marginBalance) * weight;
-  const marginChargedToUse = pos.marginCharged || 0.00;
+  const marginChargedToUse = calculateMarginInterest(state.tranches || pos.tranches || [], {
+    dailyRate: getDailyRate(),
+    marginDebt: debtToUse,
+    totalDebt: Math.abs(state.marginBalance)
+  });
 
   const computed = data.scenarios.map(s => {
     const grossProceeds = pos.shares * s.price;
@@ -1930,7 +1939,12 @@ function runSimulation(simPrice, daysOffset, label, tickerTarget) {
 
   const b_t = calculateCompoundedDebt(debtToUse, getDailyRate(), daysOffset);
   const additionalMargin = calculateMarginInterest(debtToUse, getDailyRate(), daysOffset);
-  const totalMarginAtDate = (pos.marginCharged || 0.00) + additionalMargin;
+  const currentMarginInterest = calculateMarginInterest(state.tranches || pos.tranches || [], {
+    dailyRate: getDailyRate(),
+    marginDebt: debtToUse,
+    totalDebt: Math.abs(state.marginBalance)
+  });
+  const totalMarginAtDate = currentMarginInterest + additionalMargin;
 
   const netPnl = grossPnl - totalComms - totalMarginAtDate;
   const netPct = totalInvested > 0 ? (netPnl / totalInvested) * 100 : 0;
@@ -1981,7 +1995,6 @@ async function applyPortfolioActions(action) {
         quoteSource: 'Trade input',
         pt: action.pt ? Number(action.pt) : Number((price * 1.05).toFixed(2)),
         commBuy: 0,
-        marginCharged: 0.00,
         startDate: new Date().toISOString().split('T')[0]
       };
     }
@@ -2089,6 +2102,7 @@ async function applyPortfolioActions(action) {
       }
     } else {
       const realizedTrade = realizeClosedTrade(pos, ticker, sharesToSell, sellPrice, sellComm, Date.now());
+      delete realizedTrade.position.marginCharged;
       state.positions[ticker] = realizedTrade.position;
       if (realizedTrade.trade) state.closedTrades.push(realizedTrade.trade);
       state.realizedMarginCharged = (state.realizedMarginCharged || 0) + realizedTrade.marginFee;

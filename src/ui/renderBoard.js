@@ -384,8 +384,15 @@ export function renderSummaryCards(state, options = {}) {
       const valSell = pos.shares * pos.pt;
       totalCommSell += calculateCommission(pos.shares, valSell, rules);
       totalGrossTarget += (valSell - cost);
-      totalMarginCharged += (pos.marginCharged || 0.00);
     });
+
+    const tranchesForCombined = state.tranches || tickers.flatMap(t => state.positions[t]?.tranches || []);
+    const openMarginCharged = calculateMarginInterest(tranchesForCombined, {
+      dailyRate,
+      marginDebt: Math.abs(state.marginBalance),
+      totalDebt: Math.abs(state.marginBalance)
+    });
+    totalMarginCharged += openMarginCharged;
 
     const totalComms = totalCommBuy + totalCommSell;
     const net0 = totalGrossTarget - totalComms - totalMarginCharged;
@@ -454,7 +461,12 @@ export function renderSummaryCards(state, options = {}) {
     const totalCushion = getCashCushionTotal(state);
     const allocatedCushion = totalCushion * weight;
     const allocatedDailyAccrual = allocatedDebt * dailyRate;
-    const posMarginCharged = pos.marginCharged || 0.00;
+    const tranches = state.tranches || pos.tranches || [];
+    const posMarginCharged = calculateMarginInterest(tranches, {
+      dailyRate,
+      marginDebt: allocatedDebt,
+      totalDebt: totalAccountDebt
+    });
 
     const net0 = gross - totalComms - posMarginCharged;
     const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;

@@ -123,6 +123,17 @@ export function saveQuoteRefreshInterval(interval) {
 export function saveState(state, onPushToGist) {
   if (!state || typeof state !== 'object') return;
   state.lastUpdated = Date.now();
+  delete state.marginFee;
+  delete state.accruedMargin;
+  if (state.positions && typeof state.positions === 'object') {
+    Object.values(state.positions).forEach(pos => {
+      if (pos && typeof pos === 'object') {
+        delete pos.marginCharged;
+        delete pos.marginFee;
+        delete pos.accruedMargin;
+      }
+    });
+  }
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(state));
   }
@@ -133,6 +144,17 @@ export function saveState(state, onPushToGist) {
 
 export function saveStateToStorage(state) {
   if (!state || typeof state !== 'object' || typeof localStorage === 'undefined') return;
+  delete state.marginFee;
+  delete state.accruedMargin;
+  if (state.positions && typeof state.positions === 'object') {
+    Object.values(state.positions).forEach(pos => {
+      if (pos && typeof pos === 'object') {
+        delete pos.marginCharged;
+        delete pos.marginFee;
+        delete pos.accruedMargin;
+      }
+    });
+  }
   localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(state));
 }
 
@@ -150,6 +172,17 @@ export function loadSavedState(currentState = {}) {
     try {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
+        delete parsed.marginFee;
+        delete parsed.accruedMargin;
+        if (parsed.positions && typeof parsed.positions === 'object') {
+          Object.values(parsed.positions).forEach(pos => {
+            if (pos && typeof pos === 'object') {
+              delete pos.marginCharged;
+              delete pos.marginFee;
+              delete pos.accruedMargin;
+            }
+          });
+        }
         return {
           ...currentState,
           ...parsed,
