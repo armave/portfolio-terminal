@@ -1,22 +1,42 @@
+// @ts-ignore
 import fs from 'node:fs';
+// @ts-ignore
 import path from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
+
+function findRootWithIndexHtml(startPath: string): string {
+  let current = path.resolve(startPath);
+  try {
+    if (path.extname(startPath) || (fs.existsSync(current) && fs.statSync(current).isFile())) {
+      current = path.dirname(current);
+    }
+    while (current) {
+      if (fs.existsSync(path.join(current, 'index.html'))) {
+        return current;
+      }
+      const parent = path.dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  } catch {
+    // Fall back to current directory
+  }
+  return path.resolve('.');
+}
 
 function normalizeRootPlugin(): Plugin {
   return {
     name: 'normalize-root-arg',
     config(config) {
       if (config.root) {
-        try {
-          const resolved = path.resolve(config.root);
-          if (path.extname(config.root) || (fs.existsSync(resolved) && fs.statSync(resolved).isFile())) {
-            return {
-              root: path.dirname(resolved)
-            };
-          }
-        } catch {
-          // Fall back to default config if stat fails
-        }
+        const rootDir = findRootWithIndexHtml(config.root);
+        config.root = rootDir;
+        return { root: rootDir };
+      }
+    },
+    configResolved(resolvedConfig) {
+      if (resolvedConfig.root) {
+        (resolvedConfig as any).root = findRootWithIndexHtml(resolvedConfig.root);
       }
     }
   };
