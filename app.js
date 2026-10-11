@@ -1,4 +1,16 @@
-import { createBlankState, normalizePortfolioBackup, normalizePortfolioState, realizeClosedTrade, resolveSaleQuantity, resolveTradeDateTimestamp } from './src/domain/portfolio.ts';
+import {
+  calculateAccruedFees,
+  calculateBreakevenDays,
+  calculateCommission,
+  calculateCompoundedDebt,
+  calculateMarginInterest,
+  createBlankState,
+  normalizePortfolioBackup,
+  normalizePortfolioState,
+  realizeClosedTrade,
+  resolveSaleQuantity,
+  resolveTradeDateTimestamp
+} from './src/domain/portfolio.ts';
 import { getUsEquityProjectionDates } from './src/domain/tradingCalendar.ts';
 import { generateIntentText, GeminiApiError, listGeminiModels, shouldTryAnotherGeminiModel } from './src/features/ai/geminiClient.ts';
 import { parseAiIntent } from './src/features/ai/intent.ts';
@@ -389,8 +401,7 @@ function resetToBlankState() {
 }
 
 function calcCommission(shares, totalVal) {
-  if (shares <= 0) return 0;
-  return Math.max(TRADERNET_RULES.minCommOrder, (TRADERNET_RULES.commPerShare * shares) + (TRADERNET_RULES.commVolumePct * totalVal));
+  return calculateCommission(shares, totalVal, TRADERNET_RULES);
 }
 
 function getDailyRate() {
@@ -645,8 +656,8 @@ function applyOvernightRollover() {
 
   if (elapsedCycles > 0 && Math.abs(state.marginBalance) > 0) {
     const currentDebt = Math.abs(state.marginBalance);
-    const compoundedDebt = currentDebt * Math.pow(1 + getDailyRate(), elapsedCycles);
-    const interestAccrued = compoundedDebt - currentDebt;
+    const compoundedDebt = calculateCompoundedDebt(currentDebt, getDailyRate(), elapsedCycles);
+    const interestAccrued = calculateMarginInterest(currentDebt, getDailyRate(), elapsedCycles);
 
     state.marginBalance = -compoundedDebt;
 
@@ -814,8 +825,7 @@ function updateCombinedBreakeven() {
     return;
   }
 
-  const t_be = Math.log(1 + (netTargetProfit / totalDebt)) / Math.log(1 + getDailyRate());
-  const beDays = Math.ceil(t_be);
+  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate());
 
   const beDate = new Date();
   beDate.setDate(beDate.getDate() + beDays);
@@ -2451,10 +2461,10 @@ function renderProjectionTable(gross, totalComms, debtToUse, marginChargedToUse,
           ? `${dateFormatted} (End of week · +${daysFromToday}d)`
           : `${dateFormatted} (+${daysFromToday}d)`;
 
-      const b_t = debtToUse * Math.pow(1 + getDailyRate(), daysFromToday);
-      const additionalAccrual = b_t - debtToUse;
+      const b_t = calculateCompoundedDebt(debtToUse, getDailyRate(), daysFromToday);
+      const additionalAccrual = calculateMarginInterest(debtToUse, getDailyRate(), daysFromToday);
       const m_d = marginChargedToUse + additionalAccrual;
-      const fee_c = totalComms + m_d;
+      const fee_c = calculateAccruedFees(totalComms, marginChargedToUse, additionalAccrual);
       const net_p = gross - fee_c;
       const dr = b_t * getDailyRate();
 
@@ -2726,8 +2736,8 @@ function runLadderSimulation(data) {
   data.steps.forEach((step, idx) => {
     const stepDays = Math.max(0, step.days - currentDay);
     if (stepDays > 0 && runningDebt > 0) {
-      const compounded = runningDebt * Math.pow(1 + getDailyRate(), stepDays);
-      totalAccruedMargin += (compounded - runningDebt);
+      const compounded = calculateCompoundedDebt(runningDebt, getDailyRate(), stepDays);
+      totalAccruedMargin += calculateMarginInterest(runningDebt, getDailyRate(), stepDays);
       runningDebt = compounded;
     }
     currentDay = step.days;
@@ -2794,8 +2804,8 @@ function runComparison(data) {
     const commSell = calcCommission(pos.shares, grossProceeds);
     const totalComms = pos.commBuy + commSell;
 
-    const b_t = debtToUse * Math.pow(1 + getDailyRate(), s.days);
-    const additionalMargin = b_t - debtToUse;
+    const b_t = calculateCompoundedDebt(debtToUse, getDailyRate(), s.days);
+    const additionalMargin = calculateMarginInterest(debtToUse, getDailyRate(), s.days);
     const totalMargin = marginChargedToUse + additionalMargin;
 
     const netPnl = grossPnl - totalComms - totalMargin;
@@ -2883,8 +2893,8 @@ function runSimulation(simPrice, daysOffset, label, tickerTarget) {
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
   const debtToUse = Math.abs(state.marginBalance) * weight;
 
-  const b_t = debtToUse * Math.pow(1 + getDailyRate(), daysOffset);
-  const additionalMargin = b_t - debtToUse;
+  const b_t = calculateCompoundedDebt(debtToUse, getDailyRate(), daysOffset);
+  const additionalMargin = calculateMarginInterest(debtToUse, getDailyRate(), daysOffset);
   const totalMarginAtDate = (pos.marginCharged || 0.00) + additionalMargin;
 
   const netPnl = grossPnl - totalComms - totalMarginAtDate;

@@ -44,10 +44,60 @@ export interface PortfolioState {
   [key: string]: unknown;
 }
 
+export interface CommissionConfig {
+  commPerShare: number;
+  commVolumePct: number;
+  minCommOrder: number;
+}
+
 export interface ClosedTradeResult {
   position: MarginPosition;
   trade: ClosedTrade | null;
   marginFee: number;
+}
+
+export function calculateCommission(
+  shares: number,
+  totalVal: number,
+  rules: CommissionConfig
+): number {
+  if (shares <= 0) return 0;
+  return Math.max(rules.minCommOrder, (rules.commPerShare * shares) + (rules.commVolumePct * totalVal));
+}
+
+export function calculateCompoundedDebt(
+  principal: number,
+  dailyRate: number,
+  days: number
+): number {
+  if (principal <= 0 || days <= 0 || dailyRate <= 0) return principal;
+  return principal * Math.pow(1 + dailyRate, days);
+}
+
+export function calculateMarginInterest(
+  principal: number,
+  dailyRate: number,
+  days: number
+): number {
+  return Math.max(0, calculateCompoundedDebt(principal, dailyRate, days) - principal);
+}
+
+export function calculateAccruedFees(
+  totalComms: number,
+  marginCharged: number,
+  additionalAccrual = 0
+): number {
+  return totalComms + marginCharged + additionalAccrual;
+}
+
+export function calculateBreakevenDays(
+  netTargetProfit: number,
+  totalDebt: number,
+  dailyRate: number
+): number | null {
+  if (totalDebt <= 0 || netTargetProfit <= 0 || dailyRate <= 0) return 0;
+  const days = Math.log(1 + (netTargetProfit / totalDebt)) / Math.log(1 + dailyRate);
+  return Number.isFinite(days) ? Math.ceil(days) : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
