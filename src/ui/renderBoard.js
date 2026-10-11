@@ -149,6 +149,20 @@ export function renderMarginRisk(debt, positionValue, collateral, rules) {
 export function renderPositionsTable(gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate) {
   const tableBody = document.getElementById('projectionTableBody');
   if (!tableBody) return;
+
+  const table = tableBody.closest('table');
+  if (table) {
+    const parent = table.parentElement;
+    if (parent && parent.id === 'projectionTableContainer') {
+      parent.classList.add('table-scroll-wrapper');
+    } else if (parent && !parent.classList.contains('table-scroll-wrapper')) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'table-scroll-wrapper';
+      parent.insertBefore(wrapper, table);
+      wrapper.appendChild(table);
+    }
+  }
+
   tableBody.innerHTML = '';
 
   if (debtToUse > 0 || gross > 0) {

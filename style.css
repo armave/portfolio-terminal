@@ -360,9 +360,22 @@ summary:hover {
   z-index: 1;
 }
 
+.table-scroll-wrapper,
 #projectionTableContainer {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+.table-scroll-wrapper table,
+#projectionTableContainer table {
+  min-width: max-content;
+  width: 100%;
+}
+
+.table-scroll-wrapper th,
+.table-scroll-wrapper td {
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {
