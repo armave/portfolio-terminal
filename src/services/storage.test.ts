@@ -33,7 +33,7 @@ describe('storage service', () => {
 
   describe('saveState', () => {
     it('persists state to localStorage and updates lastUpdated', () => {
-      const state = { activeView: 'AAPL', marginBalance: 1200 };
+      const state = { activeView: 'AAPL', marginBalance: 1200, lastUpdated: Date.now() };
       const beforeTime = Date.now();
 
       saveState(state);
