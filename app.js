@@ -1048,7 +1048,7 @@ function formatQuoteMetadata(holding) {
   const updatedAt = Number(holding.quoteUpdatedAt);
   if (!Number.isFinite(updatedAt)) return holding.quoteSource || 'Not fetched';
   const time = new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const refreshInterval = Number(localStorage.getItem(QUOTE_REFRESH_INTERVAL_KEY)) || DEFAULT_QUOTE_REFRESH_INTERVAL_MS;
+  const refreshInterval = getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS);
   const isStale = Date.now() - updatedAt > Math.max(5 * 60 * 1000, refreshInterval * 2);
   return `${isStale ? 'Stale · ' : ''}${holding.quoteSource || 'Quote'} · ${time}`;
 }
