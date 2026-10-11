@@ -69,6 +69,25 @@ describe('US equity trading calendar', () => {
     expect(dateLabel(projections[1].date)).toBe('2026-10-12');
   });
 
+  it('resolves the first milestone to Monday (NTD) and next to Friday (EOW) when today is Saturday', () => {
+    const projections = getUsEquityProjectionDates(localDate(2026, 10, 10));
+    expect(projections[1]).toMatchObject({
+      daysFromToday: 2,
+      kind: 'next-trading-day',
+      label: '(NTD · +2d)'
+    });
+    expect(dateLabel(projections[1].date)).toBe('2026-10-12');
+    expect(projections[1].label).toContain('NTD');
+
+    expect(projections[2]).toMatchObject({
+      daysFromToday: 6,
+      kind: 'week-end',
+      label: '(EOW · +6d)'
+    });
+    expect(dateLabel(projections[2].date)).toBe('2026-10-16');
+    expect(projections[2].label).toContain('EOW');
+  });
+
   it('resolves the first milestone to Monday (NTD) and next to Friday (EOW) when today is Sunday', () => {
     const projections = getUsEquityProjectionDates(localDate(2026, 10, 11));
     expect(projections[1]).toMatchObject({
