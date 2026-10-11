@@ -317,20 +317,65 @@
           </div>
         </section>
 
-        <!-- Projection Table -->
-        <div class="table-scroll-wrapper overflow-x-auto pt-2" id="projectionTableContainer">
-          <table class="w-full min-w-[540px] text-xs border-collapse">
-            <thead>
-              <tr class="border-b border-slate-800 text-slate-400">
-                <th class="py-2 px-3 text-left">Date</th>
-                <th class="py-2 px-3 text-right">P&L (Net)</th>
-                <th class="py-2 px-3 text-right">Fee&Com</th>
-                <th class="py-2 px-3 text-right">Margin Fee</th>
-                <th class="py-2 px-3 text-right">Balance</th>
-              </tr>
-            </thead>
-            <tbody id="projectionTableBody" class="divide-y divide-slate-800/60 font-mono"></tbody>
-          </table>
+        <div class="desktop-workspace-grid">
+          <!-- Projection Table -->
+          <div class="table-scroll-wrapper overflow-x-auto pt-2" id="projectionTableContainer">
+            <table class="w-full min-w-[540px] text-xs border-collapse">
+              <thead>
+                <tr class="border-b border-slate-800 text-slate-400">
+                  <th class="py-2 px-3 text-left">Date</th>
+                  <th class="py-2 px-3 text-right">P&L (Net)</th>
+                  <th class="py-2 px-3 text-right">Fee&Com</th>
+                  <th class="py-2 px-3 text-right">Margin Fee</th>
+                  <th class="py-2 px-3 text-right">Balance</th>
+                </tr>
+              </thead>
+              <tbody id="projectionTableBody" class="divide-y divide-slate-800/60 font-mono"></tbody>
+            </table>
+          </div>
+
+          <!-- Conversational Terminal Box -->
+          <div class="trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3">
+            <div class="text-xs font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center">
+              <span>Trading Console (Deterministic Engine + Gemini AI)</span>
+              <span id="aiStatus" class="text-slate-500 text-[10px]">READY</span>
+            </div>
+
+            <div id="terminalLog"
+              class="h-64 overflow-y-auto bg-slate-950 p-3 rounded text-xs space-y-2 border border-slate-800/80">
+              <div class="text-slate-500">[System]: Portfolio ready. Check the Gist status indicator for cloud sync.</div>
+            </div>
+
+            <div class="flex gap-2">
+              <input id="cmdInput" type="text"
+                placeholder="e.g. sell today for [current price] vs sell 14 days later for [target price]"
+                class="flex-1 bg-slate-900 border border-slate-700 text-xs px-3 py-2 rounded focus:outline-none focus:border-emerald-500 text-white"
+                onkeydown="if(event.key === 'Enter') executeCommand()">
+              <button onclick="executeCommand()"
+                class="bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-4 py-2 rounded transition">
+                Send
+              </button>
+            </div>
+
+            <div id="consoleQuickActions" class="flex flex-wrap items-center gap-2"
+              aria-label="Quick actions for the selected stock"></div>
+
+            <!-- Quick Commands Reference -->
+            <div class="pt-3 mt-3 border-t border-slate-800">
+              <p class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 font-bold">Quick Commands Guide</p>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-400">
+                <div><span class="text-emerald-400 font-bold">Buy Shares:</span> <span id="hintBuyShares"></span></div>
+                <div><span class="text-cyan-400 font-bold">Non-Margin Holding:</span> <span id="hintCashHolding"></span></div>
+                <div><span class="text-cyan-400 font-bold">Balance / Margin Debt:</span> balance 5000 <span
+                    class="text-slate-600 italic">or</span> balance -5000</div>
+                <div><span class="text-purple-400 font-bold">Ladder Exit:</span> <span id="hintLadderExit"></span></div>
+                <div><span class="text-cyan-400 font-bold">Exit Comparison:</span> <span id="hintExitComparison"></span></div>
+                <div><span class="text-amber-400 font-bold">Live Market Quote:</span> <span id="hintLiveQuote"></span></div>
+                <div><span class="text-emerald-400 font-bold">Sync Margin Debt:</span> b: -5000</div>
+                <div><span class="text-rose-400 font-bold">Close Position:</span> <span id="hintClosePosition"></span></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -465,49 +510,6 @@
           </thead>
           <tbody id="closedTradesTableBody" class="divide-y divide-slate-800/60 font-mono"></tbody>
         </table>
-      </div>
-    </div>
-
-    <!-- Conversational Terminal Box -->
-    <div class="border-card p-4 sm:p-5 rounded-xl space-y-3">
-      <div class="text-xs font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center">
-        <span>Trading Console (Deterministic Engine + Gemini AI)</span>
-        <span id="aiStatus" class="text-slate-500 text-[10px]">READY</span>
-      </div>
-
-      <div id="terminalLog"
-        class="h-64 overflow-y-auto bg-slate-950 p-3 rounded text-xs space-y-2 border border-slate-800/80">
-        <div class="text-slate-500">[System]: Portfolio ready. Check the Gist status indicator for cloud sync.</div>
-      </div>
-
-      <div class="flex gap-2">
-        <input id="cmdInput" type="text"
-          placeholder="e.g. sell today for [current price] vs sell 14 days later for [target price]"
-          class="flex-1 bg-slate-900 border border-slate-700 text-xs px-3 py-2 rounded focus:outline-none focus:border-emerald-500 text-white"
-          onkeydown="if(event.key === 'Enter') executeCommand()">
-        <button onclick="executeCommand()"
-          class="bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-4 py-2 rounded transition">
-          Send
-        </button>
-      </div>
-
-      <div id="consoleQuickActions" class="flex flex-wrap items-center gap-2"
-        aria-label="Quick actions for the selected stock"></div>
-
-      <!-- Quick Commands Reference -->
-      <div class="pt-3 mt-3 border-t border-slate-800">
-        <p class="text-[10px] text-slate-500 uppercase tracking-wider mb-2 font-bold">Quick Commands Guide</p>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-xs text-slate-400">
-          <div><span class="text-emerald-400 font-bold">Buy Shares:</span> <span id="hintBuyShares"></span></div>
-          <div><span class="text-cyan-400 font-bold">Non-Margin Holding:</span> <span id="hintCashHolding"></span></div>
-          <div><span class="text-cyan-400 font-bold">Balance / Margin Debt:</span> balance 5000 <span
-              class="text-slate-600 italic">or</span> balance -5000</div>
-          <div><span class="text-purple-400 font-bold">Ladder Exit:</span> <span id="hintLadderExit"></span></div>
-          <div><span class="text-cyan-400 font-bold">Exit Comparison:</span> <span id="hintExitComparison"></span></div>
-          <div><span class="text-amber-400 font-bold">Live Market Quote:</span> <span id="hintLiveQuote"></span></div>
-          <div><span class="text-emerald-400 font-bold">Sync Margin Debt:</span> b: -5000</div>
-          <div><span class="text-rose-400 font-bold">Close Position:</span> <span id="hintClosePosition"></span></div>
-        </div>
       </div>
     </div>
 

@@ -482,6 +482,41 @@ summary:hover {
   z-index: 1;
 }
 
+.desktop-workspace-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.desktop-workspace-grid > * {
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .desktop-workspace-grid {
+    display: grid;
+    grid-template-columns: 1.25fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  .desktop-workspace-grid #projectionTableContainer {
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .desktop-workspace-grid #projectionTableContainer table {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .desktop-workspace-grid .trading-console-card {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 .table-scroll-wrapper,
 #projectionTableContainer {
   overflow-x: auto;
