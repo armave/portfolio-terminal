@@ -21,7 +21,10 @@ export function getTotalPortfolioInvested(state) {
 export function getCashCushionTotal(state) {
   if (!state.cashCushion) return 0;
   const cashVal = Number(state.cashCushion.freeCash) || 0;
-  const stocksVal = (state.cashCushion.holdings || []).reduce((sum, h) => sum + (h.shares * h.price), 0);
+  const stocksVal = (state.cashCushion.holdings || []).reduce((sum, h) => {
+    const price = Number(h.currentPrice ?? h.price) || 0;
+    return sum + ((Number(h.shares) || 0) * price);
+  }, 0);
   return cashVal + stocksVal;
 }
 
@@ -221,12 +224,13 @@ export function renderCashCushion(state, options = {}) {
   const holdings = state.cashCushion.holdings || [];
 
   holdings.forEach(h => {
-    stocksTotal += (Number(h.shares) || 0) * (Number(h.price) || 0);
+    const price = Number(h.currentPrice ?? h.price) || 0;
+    stocksTotal += (Number(h.shares) || 0) * price;
   });
 
   holdings.forEach((h, idx) => {
     const shares = Number(h.shares) || 0;
-    const price = Number(h.currentPrice) || 0;
+    const price = Number(h.currentPrice ?? h.price) || 0;
     const val = shares * price;
     const allocation = stocksTotal > 0 ? (val / stocksTotal) * 100 : 0;
     const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
