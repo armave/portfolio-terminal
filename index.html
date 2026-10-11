@@ -110,71 +110,73 @@
           </div>
         </details>
 
-        <div class="flex flex-wrap items-center justify-center gap-4 w-full">
-          <div id="headerCredentialsFields" class="flex items-center">
-            <div class="flex flex-col gap-1 w-[225px]">
-              <label class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Gateway Secret</label>
-              <input id="headerGatewaySecretInput" type="password" placeholder="Gateway Secret" autocomplete="off"
-                class="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500" />
+        <div class="terminal-toolbar flex flex-wrap items-center justify-between gap-2 py-1">
+          <!-- Cluster 1: Cloud & Secret -->
+          <div class="flex flex-wrap items-center gap-1.5">
+            <div id="headerCredentialsFields" class="flex items-center">
+              <input id="headerGatewaySecretInput" type="password" placeholder="Gateway Secret..." autocomplete="off"
+                class="w-36 h-8 bg-slate-800 text-slate-200 border border-slate-700 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500" />
             </div>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-2 mt-2 sm:mt-5">
             <button id="toggleHeaderCredentialsButton" onclick="toggleHeaderCredentialsVisibility()"
               aria-expanded="true"
-              class="hidden bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-3 py-2 rounded transition"
+              class="hidden h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition"
               title="Hide credential inputs">
               Hide keys
             </button>
             <button id="saveApiKeysButton" onclick="saveApiKeys()"
-              class="bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-3 py-2 rounded transition"
+              class="h-8 bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-2.5 py-1 rounded transition"
               title="Save keys and pull latest cloud state">
               Save
             </button>
-
             <button onclick="syncCloudState('pull')"
-              class="bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-3 py-2 rounded transition flex items-center gap-1"
+              class="h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1"
               title="Force pull cloud data and rewrite local storage">
               <span>☁↓</span> Pull
             </button>
           </div>
-        </div>
 
-        <div class="flex flex-wrap items-center justify-center gap-2">
-          <button id="refreshQuotesButton" onclick="refreshAllLivePrices()"
-            class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-3 py-2 rounded transition flex items-center gap-1">
-            <span>↻</span> Quotes
-          </button>
-          <label class="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-500">
-            Auto
-            <select id="quoteRefreshInterval"
-              class="bg-slate-900 border border-slate-700 text-xs px-2 py-2 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
-              aria-label="Automatic quote refresh interval">
-              <option value="0">Off</option>
-              <option value="15000">15 sec</option>
-              <option value="30000">30 sec</option>
-              <option value="60000">1 min</option>
-            </select>
-          </label>
+          <div class="border-r border-slate-700 h-5 mx-1 hidden sm:block"></div>
 
-          <button onclick="exportBackupJSON()"
-            class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-3 py-2 rounded transition"
-            title="Export portfolio state to JSON file">
-            Export
-          </button>
+          <!-- Cluster 2: Quotes -->
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button id="refreshQuotesButton" onclick="refreshAllLivePrices()"
+              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1">
+              <span>↻</span> Quotes
+            </button>
+            <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
+              Auto
+              <select id="quoteRefreshInterval"
+                class="h-8 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
+                aria-label="Automatic quote refresh interval">
+                <option value="0">Off</option>
+                <option value="15000">15 sec</option>
+                <option value="30000">30 sec</option>
+                <option value="60000">1 min</option>
+              </select>
+            </label>
+          </div>
 
-          <label
-            class="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-3 py-2 rounded transition cursor-pointer"
-            title="Validate and confirm a portfolio backup import; cloud sync depends on Gist configuration">
-            Import
-            <input type="file" id="importFileInput" class="hidden" accept=".json" onchange="importBackupJSON(event)">
-          </label>
+          <div class="border-r border-slate-700 h-5 mx-1 hidden sm:block"></div>
 
-          <button onclick="resetToBlankState()"
-            class="bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-3 py-2 rounded transition"
-            title="Clear all local data and return to blank slate">
-            Reset
-          </button>
+          <!-- Cluster 3: Data -->
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button onclick="exportBackupJSON()"
+              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition"
+              title="Export portfolio state to JSON file">
+              Export
+            </button>
+            <label
+              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center"
+              title="Validate and confirm a portfolio backup import; cloud sync depends on Gist configuration">
+              Import
+              <input type="file" id="importFileInput" class="hidden" accept=".json" onchange="importBackupJSON(event)">
+            </label>
+            <button onclick="resetToBlankState()"
+              class="h-8 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition"
+              title="Clear all local data and return to blank slate">
+              Reset
+            </button>
+          </div>
         </div>
       </div>
     </div>

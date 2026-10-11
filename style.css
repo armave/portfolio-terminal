@@ -178,6 +178,13 @@ select {
   min-height: 2.5rem;
 }
 
+.terminal-toolbar input,
+.terminal-toolbar select,
+.terminal-toolbar button,
+.terminal-toolbar label.cursor-pointer {
+  min-height: 0;
+}
+
 table thead {
   background: var(--bg-table-head);
 }
