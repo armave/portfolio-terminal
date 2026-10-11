@@ -110,39 +110,37 @@
           </div>
         </details>
 
-        <div class="terminal-toolbar flex flex-wrap items-center justify-center lg:justify-between gap-3 lg:gap-2 py-1">
+        <div class="terminal-toolbar flex flex-wrap items-center justify-center lg:justify-between gap-3 lg:gap-2 divide-slate-700 sm:divide-x py-1">
           <!-- Cluster 1: Cloud & Secret -->
-          <div class="flex flex-wrap items-center justify-center gap-1.5">
+          <div class="flex flex-wrap items-center justify-center gap-1.5 sm:px-3">
             <div id="headerCredentialsFields" class="flex items-center">
               <input id="headerGatewaySecretInput" type="password" placeholder="Gateway Secret..." autocomplete="off"
                 class="w-36 h-8 bg-slate-800 text-slate-200 border border-slate-700 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500" />
             </div>
             <button id="toggleHeaderCredentialsButton" onclick="toggleHeaderCredentialsVisibility()"
               aria-expanded="true"
-              class="hidden h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition"
+              class="hidden h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
               title="Hide credential inputs">
               Hide keys
             </button>
             <div id="headerCredentialsActions" class="flex items-center gap-1.5">
               <button id="saveApiKeysButton" onclick="saveApiKeys()"
-                class="secret-action-btn h-8 bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-2.5 py-1 rounded transition"
+                class="secret-action-btn h-8 bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
                 title="Save keys and pull latest cloud state">
                 Save
               </button>
               <button onclick="syncCloudState('pull')"
-                class="secret-action-btn h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1"
+                class="secret-action-btn h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
                 title="Force pull cloud data and rewrite local storage">
                 <span>☁↓</span> Pull
               </button>
             </div>
           </div>
 
-          <div class="border-r border-slate-700 h-5 mx-1 hidden sm:block"></div>
-
           <!-- Cluster 2: Quotes -->
-          <div class="flex flex-wrap items-center justify-center gap-1.5">
+          <div class="flex flex-wrap items-center justify-center gap-1.5 sm:px-3">
             <button id="refreshQuotesButton" onclick="refreshAllLivePrices()"
-              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1">
+              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1">
               <span>↻</span> Quotes
             </button>
             <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
@@ -158,23 +156,21 @@
             </label>
           </div>
 
-          <div class="border-r border-slate-700 h-5 mx-1 hidden sm:block"></div>
-
           <!-- Cluster 3: Data -->
-          <div class="flex flex-wrap items-center justify-center gap-1.5">
+          <div class="flex flex-wrap items-center justify-center gap-1.5 sm:px-3">
             <button onclick="exportBackupJSON()"
-              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition"
+              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
               title="Export portfolio state to JSON file">
               Export
             </button>
             <label
-              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center"
+              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"
               title="Validate and confirm a portfolio backup import; cloud sync depends on Gist configuration">
               Import
               <input type="file" id="importFileInput" class="hidden" accept=".json" onchange="importBackupJSON(event)">
             </label>
             <button onclick="resetToBlankState()"
-              class="h-8 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition"
+              class="h-8 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
               title="Clear all local data and return to blank slate">
               Reset
             </button>
