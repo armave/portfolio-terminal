@@ -1,5 +1,4 @@
 import {
-  calculateAccruedFees,
   calculateBreakevenDays,
   calculateCommission,
   calculateCompoundedDebt,
@@ -11,8 +10,6 @@ import {
   resolveSaleQuantity,
   resolveTradeDateTimestamp
 } from './src/domain/portfolio.ts';
-import { getUsEquityProjectionDates } from './src/domain/tradingCalendar.ts';
-import { generateIntentText, GeminiApiError, listGeminiModels, shouldTryAnotherGeminiModel } from './src/features/ai/geminiClient.ts';
 import { parseAiIntent } from './src/features/ai/intent.ts';
 import { buildIntentPrompt } from './src/features/ai/prompt.ts';
 
@@ -31,7 +28,6 @@ import {
 
 import {
   fetchYahooStockData,
-  proxyFetch,
   syncCloudState as syncCloudStateService,
   YAHOO_PROXY_URL
 } from './src/services/api.js';
@@ -900,60 +896,6 @@ function syncMarketInsightsPanel() {
   }
 }
 
-async function renderYahooInsights(ticker) {
-  const container = document.getElementById('marketInsightsBody') || document.getElementById('marketInsightsPanel');
-  if (!container) return;
-
-  container.innerHTML = '<div class="py-3 text-center text-xs text-slate-500 font-mono animate-pulse">Loading market insights...</div>';
-
-  try {
-    const res = await fetch(`${YAHOO_PROXY_URL}?symbol=${encodeURIComponent(ticker)}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-App-Auth': getGatewaySecret()
-      },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    const val = data.valuation || {};
-    const cal = data.calendar || {};
-    const t = data.analystTargets || {};
-    const p = data.price || {};
-
-    container.innerHTML = `
-      <div class="p-3 bg-slate-950/60 rounded border border-slate-800 space-y-3 font-mono text-xs">
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-            <span class="text-[10px] text-slate-500 uppercase block">Trailing P/E</span>
-            <span class="text-white font-bold">${val.peTrailing ? Number(val.peTrailing).toFixed(2) : '—'}</span>
-          </div>
-          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-            <span class="text-[10px] text-slate-500 uppercase block">Forward P/E</span>
-            <span class="text-white font-bold">${val.peForward ? Number(val.peForward).toFixed(2) : '—'}</span>
-          </div>
-          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-            <span class="text-[10px] text-slate-500 uppercase block">PEG Ratio</span>
-            <span class="text-white font-bold">${val.pegRatio ?? '—'}</span>
-          </div>
-          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-            <span class="text-[10px] text-slate-500 uppercase block">Short % Float</span>
-            <span class="text-amber-400 font-bold">${val.shortPercentOfFloat ?? '—'}</span>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-800/60 text-[11px]">
-          <div><span class="text-slate-500">Mean Target:</span> <span class="text-emerald-400 font-bold">$${t.mean ? t.mean.toFixed(2) : '—'}</span></div>
-          <div><span class="text-slate-500">Consensus:</span> <span class="text-cyan-300 font-bold uppercase">${t.consensusRecommendation || '—'}</span> (${t.numberOfAnalysts || 0} analysts)</div>
-          <div><span class="text-slate-500">Next Earnings:</span> <span class="text-purple-300 font-bold">${cal.earningsDate || 'TBD'}</span></div>
-        </div>
-      </div>
-    `;
-  } catch (err) {
-    container.innerHTML = `<div class="py-2 text-rose-400 text-xs">Failed to load insights: ${err.message}</div>`;
-  }
-}
-
 function toggleMarketInsights() {
   const ticker = getMarketInsightsTicker();
   if (!ticker) return;
@@ -961,13 +903,6 @@ function toggleMarketInsights() {
   marketInsightsOpen = !marketInsightsOpen;
   syncMarketInsightsPanel();
   if (marketInsightsOpen && tickerWasLoaded) loadMarketInsight(activeInsightSection);
-}
-
-function playEntryAnimation(element, animationClass) {
-  element.classList.remove(animationClass);
-  void element.offsetWidth;
-  element.classList.add(animationClass);
-  element.addEventListener('animationend', () => element.classList.remove(animationClass), { once: true });
 }
 
 function renderCashCushionPanel() {
@@ -1299,6 +1234,8 @@ async function loadMarketInsight(section, force = false) {
 
   if (!content) return;
 
+  const currentRequestId = ++insightRequestId;
+
   if (!ticker) {
     content.innerHTML = '<div class="py-4 text-center text-xs text-slate-500">Select a margin position to load its market insights.</div>';
     return;
@@ -1329,6 +1266,8 @@ async function loadMarketInsight(section, force = false) {
       if (!res.ok) throw new Error("Worker news proxy request failed.");
       const news = await res.json();
 
+      if (currentRequestId !== insightRequestId) return;
+
       if (!Array.isArray(news) || news.length === 0) {
         content.innerHTML = '<div class="py-3 text-slate-500 text-xs">No recent news found.</div>';
         return;
@@ -1352,6 +1291,8 @@ async function loadMarketInsight(section, force = false) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+
+    if (currentRequestId !== insightRequestId) return;
 
     if (section === 'fundamentals') {
       const val = data.valuation || {};
@@ -1616,21 +1557,6 @@ async function requestLivePrice(symbol) {
     return await request;
   } finally {
     if (livePriceRequests.get(symbol) === request) livePriceRequests.delete(symbol);
-  }
-}
-
-async function fetchQuoteProvider(url) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), QUOTE_PROVIDER_TIMEOUT_MS);
-  try {
-    return await fetch(url, { signal: controller.signal });
-  } catch (error) {
-    if (controller.signal.aborted) {
-      throw new Error(`Request timed out after ${QUOTE_PROVIDER_TIMEOUT_MS / 1000} seconds.`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

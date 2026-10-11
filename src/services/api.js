@@ -1,3 +1,5 @@
+import { getGatewaySecret, saveStateToStorage } from './storage.js';
+
 export const YAHOO_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
 export async function proxyFetch(action, queryParams = {}, fetchOptions = {}) {
@@ -11,7 +13,7 @@ export async function proxyFetch(action, queryParams = {}, fetchOptions = {}) {
     ...fetchOptions,
     headers: {
       'Content-Type': 'application/json',
-      'X-App-Auth': localStorage.getItem('gateway_secret') || '',
+      'X-App-Auth': getGatewaySecret(),
       ...(fetchOptions.headers || {})
     }
   });
@@ -31,7 +33,7 @@ export async function fetchYahooStockData(ticker) {
 
   try {
     const res = await fetch(`${YAHOO_PROXY_URL}?symbol=${encodeURIComponent(cleanTicker)}`, {
-      headers: { "X-App-Auth": localStorage.getItem("gateway_secret") || "" }
+      headers: { "X-App-Auth": getGatewaySecret() }
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -55,7 +57,7 @@ export async function syncCloudState(mode = 'push', options = {}) {
     logTerminal = (msg) => (typeof window !== 'undefined' && typeof window.logTerminal === 'function' ? window.logTerminal(msg) : console.log(msg))
   } = handlers;
 
-  const secret = localStorage.getItem('gateway_secret');
+  const secret = getGatewaySecret();
 
   if (!secret) {
     if (mode === 'pull') showToast('Gateway Secret required to access cloud state.', 'error');
@@ -107,8 +109,14 @@ export async function syncCloudState(mode = 'push', options = {}) {
         throw new Error('Gist data is corrupted. Please manually fix the Gist in GitHub.');
       }
 
-      let parsedState = JSON.parse(fileToProcess.content);
-      if (parsedState.payload && typeof parsedState.payload === 'string') {
+      let parsedState;
+      try {
+        parsedState = JSON.parse(fileToProcess.content);
+      } catch (parseError) {
+        throw new Error('Gist state payload is not valid JSON.');
+      }
+
+      if (parsedState && parsedState.payload && typeof parsedState.payload === 'string') {
         try {
           parsedState = JSON.parse(atob(parsedState.payload));
         } catch (e) {
@@ -116,7 +124,7 @@ export async function syncCloudState(mode = 'push', options = {}) {
         }
       }
 
-      localStorage.setItem('portfolio_state', JSON.stringify(parsedState));
+      saveStateToStorage(parsedState);
       if (typeof pullCloudAndRewriteLocal === 'function') {
         pullCloudAndRewriteLocal(parsedState);
       }
