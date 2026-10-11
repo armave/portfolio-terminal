@@ -126,7 +126,17 @@ function parseAction(value: Record<string, unknown>): PortfolioActionIntent {
   }
 }
 
-export function parseAiIntent(raw: string): AiIntent {
+export function evaluateIntent<T extends AiIntent>(
+  intent: T,
+  state?: { positions?: Record<string, unknown>; activeView?: string; [key: string]: unknown }
+): T {
+  return intent;
+}
+
+export function parseAiIntent(
+  raw: string,
+  state?: { positions?: Record<string, unknown>; activeView?: string; [key: string]: unknown }
+): AiIntent {
   let value: unknown;
   try {
     value = JSON.parse(raw);

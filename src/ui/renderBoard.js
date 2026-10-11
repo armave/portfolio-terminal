@@ -50,8 +50,9 @@ export function formatUSD(val) {
 }
 
 export function getTotalPortfolioInvested(state) {
+  if (!state || typeof state !== 'object') return 0;
   return Object.values(state.positions || {}).reduce((acc, pos) => {
-    return acc + (pos.tranches || []).reduce((sum, tr) => sum + (tr.qty * tr.price), 0);
+    return acc + (pos?.tranches || []).reduce((sum, tr) => sum + (tr.qty * tr.price), 0);
   }, 0);
 }
 

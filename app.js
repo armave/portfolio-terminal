@@ -10,7 +10,7 @@ import {
   resolveSaleQuantity,
   resolveTradeDateTimestamp
 } from './src/domain/portfolio.ts';
-import { parseAiIntent } from './src/features/ai/intent.ts';
+import { evaluateIntent, parseAiIntent } from './src/features/ai/intent.ts';
 import { buildIntentPrompt } from './src/features/ai/prompt.ts';
 
 import {
@@ -659,7 +659,7 @@ function applyOvernightRollover() {
     state.marginBalance = -compoundedDebt;
 
     const tickers = Object.keys(state.positions);
-    const totalInvested = getTotalPortfolioInvested();
+    const totalInvested = getTotalPortfolioInvested(state);
     if (tickers.length === 0 || totalInvested === 0) {
       state.realizedMarginCharged = (state.realizedMarginCharged || 0) + interestAccrued;
     }
@@ -1752,16 +1752,18 @@ async function importBackupJSON(event) {
   }
 }
 
-function runLadderSimulation(data) {
-  const ticker = data.ticker || (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
-  const pos = state.positions[ticker];
+function runLadderSimulation(data, activeState = state) {
+  const targetState = activeState || state;
+  const positions = targetState?.positions || {};
+  const ticker = data.ticker || (targetState.activeView !== "COMBINED" && targetState.activeView !== "CASH_CUSHION" && targetState.activeView !== "CLOSED_HISTORY" ? targetState.activeView : Object.keys(positions)[0]);
+  const pos = positions[ticker];
   if (!pos || pos.shares <= 0) {
     logTerminal(`[Ladder Error]: No active position found for ${ticker}.`);
     return;
   }
 
   const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + (t.qty * t.price), 0);
-  const portfolioInvested = getTotalPortfolioInvested();
+  const portfolioInvested = getTotalPortfolioInvested(targetState);
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
 
   let runningDebt = Math.abs(state.marginBalance) * weight;
@@ -1827,16 +1829,18 @@ function runLadderSimulation(data) {
   logTerminal(html, false, true);
 }
 
-function runComparison(data) {
-  const ticker = data.ticker || (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
-  const pos = state.positions[ticker];
+function runComparison(data, activeState = state) {
+  const targetState = activeState || state;
+  const positions = targetState?.positions || {};
+  const ticker = data.ticker || (targetState.activeView !== "COMBINED" && targetState.activeView !== "CASH_CUSHION" && targetState.activeView !== "CLOSED_HISTORY" ? targetState.activeView : Object.keys(positions)[0]);
+  const pos = positions[ticker];
   if (!pos || pos.shares <= 0) {
     logTerminal(`[Comparison Error]: No active position found for ${ticker}.`);
     return;
   }
 
   const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + (t.qty * t.price), 0);
-  const portfolioInvested = getTotalPortfolioInvested();
+  const portfolioInvested = getTotalPortfolioInvested(targetState);
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
   const debtToUse = Math.abs(state.marginBalance) * weight;
   const marginChargedToUse = calculateMarginInterest(state.tranches || pos.tranches || [], {
@@ -1922,9 +1926,11 @@ function runComparison(data) {
   logTerminal(html, false, true);
 }
 
-function runSimulation(simPrice, daysOffset, label, tickerTarget) {
-  const ticker = tickerTarget || (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
-  const pos = state.positions[ticker];
+function runSimulation(simPrice, daysOffset, label, tickerTarget, activeState = state) {
+  const targetState = activeState || state;
+  const positions = targetState?.positions || {};
+  const ticker = tickerTarget || (targetState.activeView !== "COMBINED" && targetState.activeView !== "CASH_CUSHION" && targetState.activeView !== "CLOSED_HISTORY" ? targetState.activeView : Object.keys(positions)[0]);
+  const pos = positions[ticker];
   if (!pos || pos.shares <= 0) {
     logTerminal(`[Simulation Error]: No active position open for ${ticker}.`);
     return;
@@ -1936,7 +1942,7 @@ function runSimulation(simPrice, daysOffset, label, tickerTarget) {
   const commSell = calcCommission(pos.shares, grossProceeds);
   const totalComms = pos.commBuy + commSell;
 
-  const portfolioInvested = getTotalPortfolioInvested();
+  const portfolioInvested = getTotalPortfolioInvested(targetState);
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
   const debtToUse = Math.abs(state.marginBalance) * weight;
 
@@ -2245,7 +2251,8 @@ function confirmAiPortfolioAction(action) {
   return confirm(`Gemini interpreted your input as this portfolio change:\n\n${message}\n\nApply it?`);
 }
 
-async function executeCommand() {
+async function executeCommand(activeState = state) {
+  const targetState = activeState || state;
   const input = document.getElementById("cmdInput");
   const text = input.value.trim();
   if (!text) return;
@@ -2292,8 +2299,9 @@ async function executeCommand() {
   try {
     const prompt = buildIntentPrompt({
       text,
-      activeTickers: Object.keys(state.positions),
-      activeView: state.activeView,
+      state: targetState,
+      activeTickers: Object.keys(targetState?.positions || {}),
+      activeView: targetState?.activeView,
       today: new Date().toISOString().split("T")[0]
     });
 
@@ -2314,19 +2322,19 @@ async function executeCommand() {
     const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!rawText) throw new Error("No response content generated by Gemini.");
 
-    const parsed = parseAiIntent(rawText);
+    const parsed = evaluateIntent(parseAiIntent(rawText, targetState), targetState);
 
     if (parsed.intent === "ladder") {
-      runLadderSimulation(parsed);
+      runLadderSimulation(parsed, targetState);
       logTerminal("[Ladder Exit Evaluated via Gemini Proxy]");
     } else if (parsed.intent === "comparison") {
-      runComparison(parsed);
+      runComparison(parsed, targetState);
       logTerminal("[Comparison Evaluated via Gemini Proxy]");
     } else if (parsed.intent === "simulation") {
-      runSimulation(parsed.simPrice, parsed.daysOffset, parsed.label, parsed.ticker);
+      runSimulation(parsed.simPrice, parsed.daysOffset, parsed.label, parsed.ticker, targetState);
       logTerminal("[Simulation Evaluated via Gemini Proxy]");
     } else if (parsed.intent === "fetch_quote") {
-      const tickerToFetch = parsed.ticker ? parsed.ticker.toUpperCase() : (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
+      const tickerToFetch = parsed.ticker ? parsed.ticker.toUpperCase() : (targetState.activeView !== "COMBINED" && targetState.activeView !== "CASH_CUSHION" && targetState.activeView !== "CLOSED_HISTORY" ? targetState.activeView : Object.keys(targetState.positions || {})[0]);
       if (tickerToFetch) fetchLivePrice(tickerToFetch);
       else logTerminal("[Notice]: No active ticker specified to fetch quote for.");
     } else if (parsed.intent === "action") {
