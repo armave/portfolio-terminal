@@ -400,66 +400,6 @@ function resetBrokerRules() {
   showToast('Broker assumptions restored to defaults.', 'info');
 }
 
-function getQuoteSymbolMapping(ticker) {
-  const symbol = ticker.trim().toUpperCase();
-  return state.quoteSymbols?.[symbol] || {};
-}
-
-function setQuoteSymbolMapping(ticker, mapping) {
-  const symbol = ticker.trim().toUpperCase();
-  if (!symbol) throw new Error('A portfolio ticker is required.');
-  if (!state.quoteSymbols || typeof state.quoteSymbols !== 'object') state.quoteSymbols = {};
-  const normalizedMapping = {
-    finnhub: (mapping.finnhub || '').trim(),
-    stooq: (mapping.stooq || '').trim()
-  };
-  if (!normalizedMapping.finnhub && !normalizedMapping.stooq) {
-    delete state.quoteSymbols[symbol];
-  } else {
-    state.quoteSymbols[symbol] = normalizedMapping;
-  }
-  const trackedItems = [
-    state.positions[symbol],
-    state.cashCushion?.holdings?.find(holding => holding.ticker === symbol)
-  ].filter(Boolean);
-  trackedItems.forEach(item => {
-    item.quoteSource = 'Symbol mapping changed; refresh quote';
-    delete item.quoteUpdatedAt;
-    delete item.quoteDetails;
-  });
-  saveState(state, pushStateToGist);
-  return normalizedMapping;
-}
-
-function populateQuoteSymbolMapping(ticker) {
-  const symbol = ticker.trim().toUpperCase();
-  const mapping = getQuoteSymbolMapping(symbol);
-  document.getElementById('finnhubSymbolInput').value = mapping.finnhub || '';
-  document.getElementById('stooqSymbolInput').value = mapping.stooq || '';
-  document.getElementById('quoteMappingStatus').textContent = symbol
-    ? `Mapping for ${symbol}. Blank provider symbol uses its default US ticker format.`
-    : 'Blank provider symbol uses its default US ticker format.';
-}
-
-function saveQuoteSymbolMapping(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  if (!form.reportValidity()) return;
-
-  const ticker = document.getElementById('quoteMappingTickerInput').value.trim().toUpperCase();
-  if (!ticker) return;
-
-  const mapping = setQuoteSymbolMapping(ticker, {
-    finnhub: document.getElementById('finnhubSymbolInput').value.trim(),
-    stooq: document.getElementById('stooqSymbolInput').value.trim()
-  });
-  document.getElementById('quoteMappingStatus').textContent =
-    mapping.finnhub || mapping.stooq
-      ? `Saved ${ticker}: Finnhub ${mapping.finnhub || '(default)'}, Stooq ${mapping.stooq || '(default)'}. Refresh quotes to apply.`
-      : `${ticker} uses default provider symbols. Refresh quotes to apply.`;
-  showToast(`Quote symbols updated for ${ticker}.`, 'success');
-}
-
 function verifyTradernetRulesOnload() {
   const ratePct = (TRADERNET_RULES.annualRate * 100).toFixed(2);
   const dailyPct = (getDailyRate() * 100).toFixed(4);
@@ -2047,28 +1987,6 @@ async function executeCommand(activeState = state) {
     return;
   }
 
-  const quoteSymbolCommand = text.match(/^quote\s+symbol(?:\s+(.*))?$/i);
-  if (quoteSymbolCommand) {
-    const [tickerInput, ...assignments] = (quoteSymbolCommand[1] || "").trim().split(/\s+/);
-    if (!tickerInput || !/^[A-Za-z0-9._:-]+$/.test(tickerInput) || assignments.length === 0) {
-      logTerminal("[Command Error]: Use quote symbol TICKER finnhub=SYMBOL stooq=SYMBOL (use default to clear a provider mapping).");
-      return;
-    }
-    const mapping = { ...getQuoteSymbolMapping(tickerInput) };
-    for (const assignment of assignments) {
-      const match = assignment.match(/^(finnhub|stooq)=(.+)$/i);
-      if (!match) {
-        logTerminal("[Command Error]: Use quote symbol TICKER finnhub=SYMBOL stooq=SYMBOL (use default to clear a provider mapping).");
-        return;
-      }
-      mapping[match[1].toLowerCase()] = match[2].toLowerCase() === "default" ? "" : match[2];
-    }
-    const ticker = tickerInput.toUpperCase();
-    const updatedMapping = setQuoteSymbolMapping(ticker, mapping);
-    logTerminal(`[Quote Mapping]: ${ticker} — Finnhub: ${updatedMapping.finnhub || "default"} | Stooq: ${updatedMapping.stooq || "default"}. Refresh ${ticker} or click Quotes to apply.`);
-    return;
-  }
-
   const quoteMatch = text.match(/^(?:quote|price of|fetch price|get price)\s+([A-Za-z]+)$/i);
   if (quoteMatch) {
     fetchLivePrice(quoteMatch[1].toUpperCase());
@@ -2174,10 +2092,6 @@ async function startApp(secret) {
   setBrokerRuleInputs();
   document.getElementById('brokerRulesForm')?.addEventListener('submit', saveBrokerRuleInputs);
   document.getElementById('resetBrokerRulesButton')?.addEventListener('click', resetBrokerRules);
-  document.getElementById('quoteSymbolForm')?.addEventListener('submit', saveQuoteSymbolMapping);
-  document.getElementById('quoteMappingTickerInput')?.addEventListener('change', event => {
-    populateQuoteSymbolMapping(event.target.value);
-  });
   document.getElementById('marketInsightsTabs')?.addEventListener('keydown', handleMarketInsightsTabKeydown);
 
   updateHeaderCredentialsVisibility();

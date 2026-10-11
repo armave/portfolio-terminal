@@ -53,9 +53,8 @@
 
       <div class="space-y-3">
         <details class="rounded border border-slate-800 bg-slate-950/40 p-3">
-          <summary class="cursor-pointer text-xs font-bold text-slate-300 hover:text-cyan-300">Broker assumptions &amp;
-            quote symbols</summary>
-          <div class="mt-3 grid gap-4 lg:grid-cols-2">
+          <summary class="cursor-pointer text-xs font-bold text-slate-300 hover:text-cyan-300">Broker assumptions</summary>
+          <div class="mt-3">
             <form id="brokerRulesForm" class="space-y-2">
               <p class="text-[10px] uppercase tracking-wider text-slate-500">Margin and commission assumptions (USD)</p>
               <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -108,35 +107,6 @@
                   defaults</button>
                 <span class="text-[10px] text-slate-500">Saved in this browser. Confirm rates with your broker.</span>
               </div>
-            </form>
-            <form id="quoteSymbolForm" class="space-y-2">
-              <p class="text-[10px] uppercase tracking-wider text-slate-500">Provider-specific symbols</p>
-              <div class="grid grid-cols-2 gap-2">
-                <label class="col-span-2 flex flex-col gap-1 text-[10px] text-slate-400">Portfolio ticker
-                  <input id="quoteMappingTickerInput" type="text" placeholder="e.g. 7203" required
-                    autocapitalize="characters"
-                    class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white uppercase">
-                </label>
-                <label class="flex flex-col gap-1 text-[10px] text-slate-400">Finnhub symbol
-                  <input id="finnhubSymbolInput" type="text" placeholder="e.g. TSE:7203" autocapitalize="characters"
-                    class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white uppercase">
-                </label>
-                <label class="flex flex-col gap-1 text-[10px] text-slate-400">Stooq symbol
-                  <input id="stooqSymbolInput" type="text" placeholder="e.g. 7203.jp" autocapitalize="characters"
-                    class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white lowercase">
-                </label>
-              </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <button type="submit"
-                  class="rounded bg-cyan-800 px-3 py-1.5 text-xs font-bold text-cyan-100 hover:bg-cyan-700">Save quote
-                  symbols</button>
-                <span id="quoteMappingStatus" class="text-[10px] text-slate-500">Blank provider symbol uses its default
-                  US ticker format.</span>
-              </div>
-              <p class="text-[10px] text-slate-500">Console:
-                <code>quote symbol 7203 finnhub=TSE:7203 stooq=7203.jp</code>. Use <code>default</code> to clear a
-                mapping.
-              </p>
             </form>
           </div>
         </details>
@@ -535,8 +505,6 @@
           <div><span class="text-purple-400 font-bold">Ladder Exit:</span> <span id="hintLadderExit"></span></div>
           <div><span class="text-cyan-400 font-bold">Exit Comparison:</span> <span id="hintExitComparison"></span></div>
           <div><span class="text-amber-400 font-bold">Live Market Quote:</span> <span id="hintLiveQuote"></span></div>
-          <div><span class="text-cyan-400 font-bold">Quote Symbol:</span> quote symbol [TICKER] finnhub=[provider
-            symbol] stooq=[provider symbol]</div>
           <div><span class="text-emerald-400 font-bold">Sync Margin Debt:</span> b: -5000</div>
           <div><span class="text-rose-400 font-bold">Close Position:</span> <span id="hintClosePosition"></span></div>
         </div>
