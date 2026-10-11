@@ -1,0 +1,15 @@
+model: gemini/gemini-flash-latest
+
+# Fully autonomous execution
+yes-always: true
+auto-commits: true
+auto-test: true
+auto-lint: true
+
+# Verification commands
+test-cmd: npm test
+lint-cmd: npm run build
+
+# Context & instructions
+read: CONVENTIONS.md
+map-tokens: 2048
