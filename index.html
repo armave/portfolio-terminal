@@ -110,9 +110,9 @@
           </div>
         </details>
 
-        <div class="terminal-toolbar flex flex-wrap items-center justify-center lg:justify-between gap-3 lg:gap-2 divide-slate-700 sm:divide-x py-1">
+        <div class="terminal-toolbar flex flex-col lg:flex-row w-full items-center lg:divide-x divide-slate-700 gap-y-3 lg:gap-y-0 py-1">
           <!-- Cluster 1: Cloud & Secret -->
-          <div class="flex flex-wrap items-center justify-center gap-1.5 sm:px-3">
+          <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2">
             <div id="headerCredentialsFields" class="flex items-center">
               <input id="headerGatewaySecretInput" type="password" placeholder="Gateway Secret..." autocomplete="off"
                 class="w-36 h-8 bg-slate-800 text-slate-200 border border-slate-700 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500" />
@@ -138,7 +138,7 @@
           </div>
 
           <!-- Cluster 2: Quotes -->
-          <div class="flex flex-wrap items-center justify-center gap-1.5 sm:px-3">
+          <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2">
             <button id="refreshQuotesButton" onclick="refreshAllLivePrices()"
               class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1">
               <span>↻</span> Quotes
@@ -157,7 +157,7 @@
           </div>
 
           <!-- Cluster 3: Data -->
-          <div class="flex flex-wrap items-center justify-center gap-1.5 sm:px-3">
+          <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2">
             <button onclick="exportBackupJSON()"
               class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
               title="Export portfolio state to JSON file">
