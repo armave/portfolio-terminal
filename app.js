@@ -656,12 +656,22 @@ function updateCombinedBreakeven() {
   beEl.innerText = `Combined Breakeven: ${beDays} days (${beDateStr})`;
 }
 
-function createStockPageLink(ticker, provider) {
+export function createStockPageLink(ticker, provider) {
   const link = document.createElement('a');
   const symbol = encodeURIComponent(ticker);
-  link.href = provider === 'Finviz'
-    ? `https://finviz.com/stock?t=${symbol}`
-    : `https://stocktwits.com/symbol/${symbol}`;
+  let href = '';
+  if (provider === 'Finviz') {
+    href = `https://finviz.com/stock?t=${symbol}`;
+  } else if (provider === 'Stocktwits') {
+    href = `https://stocktwits.com/symbol/${symbol}`;
+  } else if (provider === 'TV Chart') {
+    href = `https://tradingview.com/chart/?symbol=${symbol}`;
+    link.id = 'tvChartLink';
+  } else if (provider === 'TV Ideas') {
+    href = `https://tradingview.com/symbols/${symbol}/`;
+    link.id = 'tvIdeasLink';
+  }
+  link.href = href;
   link.target = '_blank';
   link.rel = 'noopener noreferrer';
   link.className = 'px-2 py-1 rounded text-[10px] font-bold text-cyan-300 border border-cyan-900/70 hover:bg-slate-800';
@@ -671,7 +681,7 @@ function createStockPageLink(ticker, provider) {
   return link;
 }
 
-function renderBoardExternalLinks() {
+export function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
   const stockPageLinks = document.getElementById('boardExternalLinks');
   if (!stockPageLinks) return;
@@ -679,7 +689,9 @@ function renderBoardExternalLinks() {
   if (activeTicker) {
     stockPageLinks.append(
       createStockPageLink(activeTicker, 'Finviz'),
-      createStockPageLink(activeTicker, 'Stocktwits')
+      createStockPageLink(activeTicker, 'Stocktwits'),
+      createStockPageLink(activeTicker, 'TV Chart'),
+      createStockPageLink(activeTicker, 'TV Ideas')
     );
   }
 }
@@ -2160,12 +2172,14 @@ if (document.readyState === 'loading') {
 Object.assign(window, {
   addCashStockFromUI,
   clearLocalData,
+  createStockPageLink,
   executeCommand,
   exportBackupJSON,
   importBackupJSON,
   loadMarketInsight,
   logTerminal,
   renderBoard,
+  renderBoardExternalLinks,
   renderCashCushion,
   renderPositionsTable,
   renderSummaryCards,
