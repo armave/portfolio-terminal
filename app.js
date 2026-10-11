@@ -267,13 +267,16 @@ function updateHeaderCredentialsVisibility() {
   const isConfigured = areHeaderCredentialsConfigured();
   const fieldsContainer = document.getElementById('headerCredentialsFields');
   const toggleBtn = document.getElementById('toggleHeaderCredentialsButton');
+  const saveBtn = document.getElementById('authSaveButton');
 
   if (isConfigured) {
     toggleBtn.classList.remove('hidden');
     fieldsContainer.style.display = headerCredentialsHidden ? 'none' : 'flex';
+    saveBtn.style.display = headerCredentialsHidden ? 'none' : 'inline-block';
     toggleBtn.textContent = headerCredentialsHidden ? 'Show keys' : 'Hide keys';
   } else {
     toggleBtn.classList.add('hidden');
+    saveBtn.classList.add('hidden');
     fieldsContainer.style.display = 'flex';
     headerCredentialsHidden = false;
   }
