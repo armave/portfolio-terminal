@@ -11,6 +11,22 @@
 </head>
 
 <body class="p-3 sm:p-4 md:p-6">
+  <div id="auth-container" style="display: none;" class="auth-overlay">
+    <div class="auth-card border-card">
+      <div class="space-y-1">
+        <h2 class="text-sm font-bold text-emerald-400 tracking-wider uppercase">Gateway Authentication</h2>
+        <p class="text-xs text-slate-400">Enter Gateway Secret to unlock the terminal and sync data.</p>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-2 pt-2">
+        <input type="password" id="gatewaySecretInput" placeholder="Enter Gateway Secret" autocomplete="current-password"
+          class="flex-1 bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
+        <button id="authSaveButton" type="button"
+          class="bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-4 py-2 rounded transition">
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
   <div class="max-w-6xl mx-auto space-y-5">
 
@@ -129,7 +145,7 @@
           <div id="headerCredentialsFields" class="flex items-center">
             <div class="flex flex-col gap-1 w-[225px]">
               <label class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Gateway Secret</label>
-              <input id="gatewaySecretInput" type="text" placeholder="Gateway Secret" autocomplete="off"
+              <input id="headerGatewaySecretInput" type="password" placeholder="Gateway Secret" autocomplete="off"
                 class="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500" />
             </div>
           </div>

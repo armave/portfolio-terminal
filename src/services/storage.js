@@ -218,6 +218,10 @@ export function loadSavedState(currentState = {}) {
   if (savedGateway && gatewayInput) {
     gatewayInput.value = savedGateway;
   }
+  const headerGatewayInput = typeof document !== 'undefined' ? document.getElementById('headerGatewaySecretInput') : null;
+  if (savedGateway && headerGatewayInput) {
+    headerGatewayInput.value = savedGateway;
+  }
 
   const raw = localStorage.getItem(STATE_STORAGE_KEY) || localStorage.getItem(LEGACY_STATE_STORAGE_KEY);
   if (raw) {
@@ -255,7 +259,7 @@ export function clearLocalData() {
 }
 
 export async function saveApiKeys(options = {}) {
-  const secretEl = options.secretInput || (typeof document !== 'undefined' ? document.getElementById("gatewaySecretInput") : null);
+  const secretEl = options.secretInput || (typeof document !== 'undefined' ? (document.getElementById("headerGatewaySecretInput") || document.getElementById("gatewaySecretInput")) : null);
   const secret = (options.secret !== undefined ? options.secret : secretEl?.value)?.trim() || "";
 
   const showToast = options.showToast || (typeof window !== 'undefined' && typeof window.showToast === 'function' ? window.showToast : console.log);

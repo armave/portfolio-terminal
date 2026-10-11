@@ -28,6 +28,7 @@ import {
 
 import {
   fetchYahooStockData,
+  setSecretGetter,
   syncCloudState as syncCloudStateService,
   YAHOO_PROXY_URL
 } from './src/services/api.js';
@@ -42,9 +43,11 @@ import {
   getProviderKeys,
   getQuoteRefreshInterval,
   loadBrokerRules,
+  loadGatewaySecret,
   loadSavedState,
   saveApiKeys,
   saveBrokerRules,
+  saveGatewaySecret,
   saveProviderKeys,
   saveQuoteRefreshInterval,
   saveState,
@@ -2344,16 +2347,34 @@ async function executeCommand() {
 
 let appInitialized = false;
 
-async function initApp() {
-  if (appInitialized) return;
-  appInitialized = true;
+setSecretGetter(() => state.gatewaySecret || getGatewaySecret());
 
+function showAuthContainer() {
+  const container = document.getElementById('auth-container');
+  if (container) {
+    container.style.display = 'flex';
+    const input = document.getElementById('gatewaySecretInput');
+    input?.focus();
+  }
+}
+
+function hideAuthContainer() {
+  const container = document.getElementById('auth-container');
+  if (container) {
+    container.style.display = 'none';
+  }
+}
+
+async function startApp(secret) {
+  state.gatewaySecret = secret;
   state = loadSavedState(state);
 
-  const savedGateway = getGatewaySecret();
-  if (savedGateway) await syncCloudState();
+  const headerGatewayInput = document.getElementById('headerGatewaySecretInput');
+  if (headerGatewayInput) headerGatewayInput.value = secret;
 
-  ['gatewaySecretInput'].forEach(id => {
+  if (secret) await syncCloudState();
+
+  ['gatewaySecretInput', 'headerGatewaySecretInput'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', updateHeaderCredentialsVisibility);
   });
 
@@ -2392,6 +2413,46 @@ async function initApp() {
   window.addEventListener('online', () => {
     refreshAllLivePrices();
   });
+}
+
+async function initApp() {
+  if (appInitialized) return;
+
+  const authSaveBtn = document.getElementById('authSaveButton');
+  const authInput = document.getElementById('gatewaySecretInput');
+
+  if (authSaveBtn) {
+    authSaveBtn.onclick = async () => {
+      const secret = authInput?.value?.trim() || '';
+      if (!secret) {
+        showToast('Please enter the Gateway Secret.', 'error');
+        return;
+      }
+      saveGatewaySecret(secret);
+      hideAuthContainer();
+      if (!appInitialized) {
+        appInitialized = true;
+        await startApp(secret);
+      }
+    };
+  }
+
+  if (authInput) {
+    authInput.onkeydown = e => {
+      if (e.key === 'Enter') {
+        authSaveBtn?.click();
+      }
+    };
+  }
+
+  const secret = loadGatewaySecret();
+  if (secret) {
+    appInitialized = true;
+    hideAuthContainer();
+    await startApp(secret);
+  } else {
+    showAuthContainer();
+  }
 }
 
 if (document.readyState === 'loading') {

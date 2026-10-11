@@ -354,6 +354,34 @@ summary:hover {
   }
 }
 
+#auth-container {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(6px);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 26rem;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+}
+
+#auth-container input[type="password"] {
+  background: #090c13;
+  color: var(--text-primary);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  letter-spacing: 0.08em;
+}
+
 #mainDeskContainer,
 #cashCushionContainer {
   position: relative;

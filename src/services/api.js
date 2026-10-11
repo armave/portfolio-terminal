@@ -2,6 +2,21 @@ import { getGatewaySecret, saveStateToStorage } from './storage.js';
 
 export const YAHOO_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
+let secretGetter = null;
+
+export function setSecretGetter(getter) {
+  secretGetter = getter;
+}
+
+export function getActiveGatewaySecret(state) {
+  if (state?.gatewaySecret) return state.gatewaySecret;
+  if (typeof secretGetter === 'function') {
+    const fromGetter = secretGetter();
+    if (fromGetter) return fromGetter;
+  }
+  return getGatewaySecret();
+}
+
 export async function proxyFetch(action, queryParams = {}, fetchOptions = {}) {
   const url = new URL(YAHOO_PROXY_URL);
   url.searchParams.append('action', action);
@@ -9,11 +24,13 @@ export async function proxyFetch(action, queryParams = {}, fetchOptions = {}) {
     if (v) url.searchParams.append(k, v);
   });
 
+  const authSecret = fetchOptions.secret || getActiveGatewaySecret(fetchOptions.state);
+
   const res = await fetch(url.toString(), {
     ...fetchOptions,
     headers: {
       'Content-Type': 'application/json',
-      'X-App-Auth': getGatewaySecret(),
+      'X-App-Auth': authSecret,
       ...(fetchOptions.headers || {})
     }
   });
@@ -33,7 +50,7 @@ export async function fetchYahooStockData(ticker) {
 
   try {
     const res = await fetch(`${YAHOO_PROXY_URL}?symbol=${encodeURIComponent(cleanTicker)}`, {
-      headers: { "X-App-Auth": getGatewaySecret() }
+      headers: { "X-App-Auth": getActiveGatewaySecret() }
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -57,7 +74,7 @@ export async function syncCloudState(mode = 'push', options = {}) {
     logTerminal = (msg) => (typeof window !== 'undefined' && typeof window.logTerminal === 'function' ? window.logTerminal(msg) : console.log(msg))
   } = handlers;
 
-  const secret = getGatewaySecret();
+  const secret = getActiveGatewaySecret(state);
 
   if (!secret) {
     if (mode === 'pull') showToast('Gateway Secret required to access cloud state.', 'error');
