@@ -249,6 +249,12 @@ function pullCloudAndRewriteLocal(parsedState) {
   state = { ...state, ...parsedState };
   state = loadSavedState(state);
   renderBoard();
+  setTimeout(() => {
+    const mainView = document.getElementById('mainTerminalView');
+    if (mainView) {
+      mainView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 100);
 }
 
 async function syncCloudState(mode = 'push') {
@@ -2123,9 +2129,14 @@ async function startApp(secret) {
   document.getElementById('marketInsightsTabs')?.addEventListener('keydown', handleMarketInsightsTabKeydown);
 
   updateHeaderCredentialsVisibility();
-  document.getElementById('mainDeskContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   renderBoard();
+  setTimeout(() => {
+    const mainView = document.getElementById('mainTerminalView');
+    if (mainView) {
+      mainView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 100);
   await refreshAllLivePrices();
 
   document.addEventListener('visibilitychange', () => {
