@@ -660,21 +660,28 @@ export function createStockPageLink(ticker, provider) {
   const link = document.createElement('a');
   const symbol = encodeURIComponent(ticker);
   let href = '';
+  let brandClass = '';
   if (provider === 'Finviz') {
     href = `https://finviz.com/stock?t=${symbol}`;
+    link.id = 'finvizLink';
+    brandClass = 'stock-link-finviz';
   } else if (provider === 'Stocktwits') {
     href = `https://stocktwits.com/symbol/${symbol}`;
+    link.id = 'stocktwitsLink';
+    brandClass = 'stock-link-stocktwits';
   } else if (provider === 'TV Chart') {
     href = `https://tradingview.com/chart/?symbol=${symbol}`;
     link.id = 'tvChartLink';
+    brandClass = 'stock-link-tv-chart';
   } else if (provider === 'TV Ideas') {
     href = `https://tradingview.com/symbols/${symbol}/ideas/?sort=recent/`;
     link.id = 'tvIdeasLink';
+    brandClass = 'stock-link-tv-ideas';
   }
   link.href = href;
   link.target = '_blank';
   link.rel = 'noopener noreferrer';
-  link.className = 'px-2 py-1 rounded text-[10px] font-bold text-cyan-300 border border-cyan-900/70 hover:bg-slate-800';
+  link.className = `stock-external-link ${brandClass} px-2 py-1 rounded text-[10px] font-bold font-mono uppercase`;
   link.textContent = provider;
   link.title = `Open ${ticker} on ${provider} in a new tab`;
   link.setAttribute('aria-label', `Open ${ticker} on ${provider} in a new tab`);

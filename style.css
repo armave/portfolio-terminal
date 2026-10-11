@@ -303,6 +303,73 @@ summary:hover {
   gap: 0.5rem;
 }
 
+.stock-external-link,
+#boardExternalLinks a {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  line-height: 1;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+#finvizLink,
+.stock-link-finviz {
+  background: rgba(30, 58, 138, 0.2);
+  border: 1px solid #2563eb;
+  color: #60a5fa;
+}
+
+#finvizLink:hover,
+.stock-link-finviz:hover {
+  background: rgba(37, 99, 235, 0.35);
+  color: #93c5fd;
+}
+
+#stocktwitsLink,
+.stock-link-stocktwits {
+  background: rgba(6, 78, 59, 0.2);
+  border: 1px solid #059669;
+  color: #34d399;
+}
+
+#stocktwitsLink:hover,
+.stock-link-stocktwits:hover {
+  background: rgba(16, 185, 129, 0.35);
+  color: #6ee7b7;
+}
+
+#tvChartLink,
+.stock-link-tv-chart {
+  background: rgba(37, 99, 235, 0.2);
+  border: 1px solid #2962ff;
+  color: #38bdf8;
+}
+
+#tvChartLink:hover,
+.stock-link-tv-chart:hover {
+  background: rgba(41, 98, 255, 0.35);
+  color: #7dd3fc;
+}
+
+#tvIdeasLink,
+.stock-link-tv-ideas {
+  background: rgba(180, 83, 9, 0.2);
+  border: 1px solid #d97706;
+  color: #fbbf24;
+}
+
+#tvIdeasLink:hover,
+.stock-link-tv-ideas:hover {
+  background: rgba(245, 158, 11, 0.35);
+  color: #fde68a;
+}
+
 #boardTitle {
   min-width: 0;
   word-break: normal;
