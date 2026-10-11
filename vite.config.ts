@@ -54,6 +54,7 @@ export default defineConfig({
   appType: 'spa',
   plugins: [normalizeRootPlugin()],
   build: {
-    target: 'es2022'
+    target: 'es2022',
+    emptyOutDir: true
   }
 });
