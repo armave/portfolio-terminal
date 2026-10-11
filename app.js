@@ -40,10 +40,22 @@ import {
 
 import {
   areHeaderCredentialsConfigured,
+  clearBrokerRules,
   clearLocalData,
+  getGatewaySecret,
+  getGeminiUnlockKey,
+  getGistConfig,
+  getProviderKeys,
+  getQuoteRefreshInterval,
+  loadBrokerRules,
   loadSavedState,
   saveApiKeys,
-  saveState
+  saveBrokerRules,
+  saveProviderKeys,
+  saveQuoteRefreshInterval,
+  saveState,
+  saveStateToStorage,
+  setGeminiUnlockKey
 } from './src/services/storage.js';
 
 import {
@@ -144,8 +156,7 @@ function setGistStatus(status, text) {
 }
 
 async function pushStateToGist(forceImmediate = false) {
-  const gistId = localStorage.getItem('github_gist_id');
-  const token = (localStorage.getItem('github_pat_token') || '').trim();
+  const { gistId, token } = getGistConfig();
   if (!gistId || !token) {
     const missing = [];
     if (!gistId) missing.push('GIST ID');
@@ -203,39 +214,25 @@ async function pushStateToGist(forceImmediate = false) {
 }
 
 function getProviderKeysFromStorage() {
-  return {
-    finnhub: localStorage.getItem('finnhub_api_key') || '',
-    alphaVantage: localStorage.getItem('alpha_vantage_api_key') || '',
-    twelveData: localStorage.getItem('twelve_data_api_key') || '',
-    rapidApiYahoo: localStorage.getItem('rapidapi_yahoo_key') || ''
-  };
+  return getProviderKeys();
 }
 
 function applyProviderKeys(keys) {
-  const storageKeys = {
-    finnhub: 'finnhub_api_key',
-    alphaVantage: 'alpha_vantage_api_key',
-    twelveData: 'twelve_data_api_key',
-    rapidApiYahoo: 'rapidapi_yahoo_key'
-  };
+  saveProviderKeys(keys);
   const inputIds = {
     finnhub: 'finnhubKeyInput',
     alphaVantage: 'alphaVantageKeyInput',
     twelveData: 'twelveDataKeyInput',
     rapidApiYahoo: 'rapidApiKeyInput'
   };
-  Object.entries(storageKeys).forEach(([keyName, storageKey]) => {
-    const value = keys[keyName] || '';
-    if (value) localStorage.setItem(storageKey, value);
-    else localStorage.removeItem(storageKey);
-    const input = document.getElementById(inputIds[keyName]);
-    if (input) input.value = value;
+  Object.entries(inputIds).forEach(([keyName, inputId]) => {
+    const input = document.getElementById(inputId);
+    if (input) input.value = keys[keyName] || '';
   });
 }
 
 async function saveProviderKeysToGist(keys, geminiKey) {
-  const gistId = localStorage.getItem('github_gist_id');
-  const token = (localStorage.getItem('github_pat_token') || '').trim();
+  const { gistId, token } = getGistConfig();
   if (!gistId || !token) return false;
   if (!geminiKey.trim()) {
     throw new Error('Enter the Gemini key to encrypt provider keys for Gist storage.');
@@ -273,7 +270,7 @@ async function restoreProviderKeysFromGistFile(file) {
   }
 
   let geminiKey = sessionStorage.getItem('gemini_api_key') ||
-    localStorage.getItem('gemini_gist_unlock_key') ||
+    getGeminiUnlockKey() ||
     '';
   if (!geminiKey) {
     geminiKey = window.prompt('Encrypted provider keys were found in this Gist. Enter the Gemini API key to unlock them:')?.trim() || '';
@@ -286,7 +283,7 @@ async function restoreProviderKeysFromGistFile(file) {
   try {
     const keys = await decryptProviderKeys(envelope, geminiKey);
     sessionStorage.setItem('gemini_api_key', geminiKey);
-    localStorage.setItem('gemini_gist_unlock_key', geminiKey);
+    setGeminiUnlockKey(geminiKey);
     const geminiInput = document.getElementById('apiKeyInput');
     if (geminiInput) geminiInput.value = geminiKey;
     applyProviderKeys(keys);
@@ -298,8 +295,7 @@ async function restoreProviderKeysFromGistFile(file) {
 }
 
 async function pullStateFromGistOnLoad() {
-  const gistId = localStorage.getItem('github_gist_id');
-  const token = (localStorage.getItem('github_pat_token') || '').trim();
+  const { gistId, token } = getGistConfig();
   if (!gistId) return false;
 
   setGistStatus('syncing', 'FETCHING...');
@@ -340,7 +336,7 @@ async function pullStateFromGistOnLoad() {
 
     if (remoteState && typeof remoteState === 'object') {
       state = normalizePortfolioState(remoteState);
-      localStorage.setItem('margin_portfolio_state_dynamic_v2', JSON.stringify(state));
+      saveStateToStorage(state);
 
       setGistStatus('synced', 'ONLINE');
       logTerminal("[Gist]: Cloud data successfully loaded. Local storage rewritten with remote state.");
@@ -414,11 +410,10 @@ function getDailyRate() {
 }
 
 function loadTradernetRules() {
-  const stored = localStorage.getItem(TRADERNET_RULES_STORAGE_KEY);
-  if (!stored) return;
+  const savedRules = loadBrokerRules();
+  if (!savedRules || Object.keys(savedRules).length === 0) return;
 
   try {
-    const savedRules = JSON.parse(stored);
     const candidates = {
       annualRate: Number(savedRules.annualRate),
       dayCountBasis: savedRules.dayCountBasis === undefined ? DEFAULT_TRADERNET_RULES.dayCountBasis : Number(savedRules.dayCountBasis),
@@ -486,7 +481,7 @@ function saveBrokerRuleInputs(event) {
   }
   document.getElementById('stopOutRatioInput').setCustomValidity('');
   Object.assign(TRADERNET_RULES, updatedRules);
-  localStorage.setItem(TRADERNET_RULES_STORAGE_KEY, JSON.stringify(updatedRules));
+  saveBrokerRules(updatedRules);
   const nextRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   if (previousRollover !== nextRollover) {
     state.lastRolloverTimestamp = getLatestRolloverTimestamp();
@@ -500,7 +495,7 @@ function saveBrokerRuleInputs(event) {
 function resetBrokerRules() {
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   Object.assign(TRADERNET_RULES, DEFAULT_TRADERNET_RULES);
-  localStorage.removeItem(TRADERNET_RULES_STORAGE_KEY);
+  clearBrokerRules();
   setBrokerRuleInputs();
   if (previousRollover !== `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`) {
     state.lastRolloverTimestamp = getLatestRolloverTimestamp();
@@ -866,7 +861,7 @@ function renderBoard() {
     onRenderConsoleQuickActions: renderConsoleQuickActions,
     onUpdateCombinedBreakeven: updateCombinedBreakeven,
     onSyncMarketInsightsPanel: syncMarketInsightsPanel,
-    refreshIntervalMs: Number(localStorage.getItem(QUOTE_REFRESH_INTERVAL_KEY)) || DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
+    refreshIntervalMs: getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS),
     lastDeskView: lastRenderedDeskView,
     onUpdateLastDeskView: view => { lastRenderedDeskView = view; }
   });
@@ -917,7 +912,7 @@ async function renderYahooInsights(ticker) {
     const res = await fetch(`${YAHOO_PROXY_URL}?symbol=${encodeURIComponent(ticker)}`, {
       headers: {
         'Content-Type': 'application/json',
-        'X-App-Auth': localStorage.getItem("gateway_secret") || ""
+        'X-App-Auth': getGatewaySecret()
       },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -981,7 +976,7 @@ function renderCashCushionPanel() {
   renderCashCushion(state, {
     onFetchLivePrice: fetchLivePrice,
     onRemoveCashStock: removeCashStock,
-    refreshIntervalMs: Number(localStorage.getItem(QUOTE_REFRESH_INTERVAL_KEY)) || DEFAULT_QUOTE_REFRESH_INTERVAL_MS
+    refreshIntervalMs: getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS)
   });
 }
 
@@ -1112,9 +1107,7 @@ function getAnalystTargetPrice(result) {
 }
 
 async function fetchBoardAnalystTarget(ticker) {
-  const finnhubKey = localStorage.getItem('finnhub_api_key') || '';
-  const alphaVantageKey = localStorage.getItem('alpha_vantage_api_key') || '';
-  const rapidApiKey = localStorage.getItem('rapidapi_yahoo_key') || '';
+  const { finnhub: finnhubKey, alphaVantage: alphaVantageKey, rapidApiYahoo: rapidApiKey } = getProviderKeys();
   const failures = [];
   const restrictionKey = `${FINNHUB_ANALYST_RESTRICTED_PREFIX}${ticker}`;
   const finnhubRestricted = sessionStorage.getItem(restrictionKey) === 'true';
@@ -1127,7 +1120,7 @@ async function fetchBoardAnalystTarget(ticker) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-App-Auth': localStorage.getItem("gateway_secret") || ""
+        'X-App-Auth': getGatewaySecret()
       }
     });
     if (res.ok) {
@@ -1210,9 +1203,7 @@ function renderBoardAnalystConsensus(ticker, force = false) {
     return;
   }
 
-  const finnhubKey = localStorage.getItem('finnhub_api_key') || '';
-  const alphaVantageKey = localStorage.getItem('alpha_vantage_api_key') || '';
-  const rapidApiKey = localStorage.getItem('rapidapi_yahoo_key') || '';
+  const { finnhub: finnhubKey, alphaVantage: alphaVantageKey, rapidApiYahoo: rapidApiKey } = getProviderKeys();
   const credentials = `${finnhubKey}|${alphaVantageKey}|${rapidApiKey}`;
   const now = Date.now();
   const snapshot = boardAnalystSnapshots.get(ticker);
@@ -1267,15 +1258,17 @@ function renderBoardAnalystConsensus(ticker, force = false) {
   const request = { credentials };
   boardAnalystRequests.set(ticker, request);
   fetchBoardAnalystTarget(ticker).then(result => {
-    if (localStorage.getItem('finnhub_api_key') !== finnhubKey ||
-      localStorage.getItem('alpha_vantage_api_key') !== alphaVantageKey ||
-      localStorage.getItem('rapidapi_yahoo_key') !== rapidApiKey) return;
+    const currentKeys = getProviderKeys();
+    if (currentKeys.finnhub !== finnhubKey ||
+      currentKeys.alphaVantage !== alphaVantageKey ||
+      currentKeys.rapidApiYahoo !== rapidApiKey) return;
     boardAnalystSnapshots.set(ticker, { ...result, credentials, fetchedAt: Date.now() });
     boardAnalystErrors.delete(ticker);
   }).catch(requestError => {
-    if (localStorage.getItem('finnhub_api_key') !== finnhubKey ||
-      localStorage.getItem('alpha_vantage_api_key') !== alphaVantageKey ||
-      localStorage.getItem('rapidapi_yahoo_key') !== rapidApiKey) return;
+    const currentKeys = getProviderKeys();
+    if (currentKeys.finnhub !== finnhubKey ||
+      currentKeys.alphaVantage !== alphaVantageKey ||
+      currentKeys.rapidApiYahoo !== rapidApiKey) return;
     const message = requestError instanceof Error ? requestError.message : String(requestError);
     const summaryParts = [];
     if (message.includes('Finnhub analyst price targets are restricted')) {
@@ -1788,7 +1781,7 @@ async function loadMarketInsight(section, force = false) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-App-Auth': localStorage.getItem("gateway_secret") || ""
+          'X-App-Auth': getGatewaySecret()
         }
       });
       if (!res.ok) throw new Error("Worker news proxy request failed.");
@@ -1812,7 +1805,7 @@ async function loadMarketInsight(section, force = false) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-App-Auth': localStorage.getItem("gateway_secret") || ""
+        'X-App-Auth': getGatewaySecret()
       }
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2230,7 +2223,7 @@ function setQuoteRefreshInterval(interval) {
 
   if (quoteRefreshTimer !== null) clearInterval(quoteRefreshTimer);
   quoteRefreshTimer = null;
-  localStorage.setItem(QUOTE_REFRESH_INTERVAL_KEY, String(intervalMs));
+  saveQuoteRefreshInterval(intervalMs);
 
   if (intervalMs > 0) {
     quoteRefreshTimer = setInterval(() => {
@@ -2821,7 +2814,7 @@ async function executeCommand() {
 
     const res = await fetch(`${YAHOO_PROXY_URL}?action=gemini`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", 'X-App-Auth': localStorage.getItem("gateway_secret") || "" },
+      headers: { "Content-Type": "application/json", 'X-App-Auth': getGatewaySecret() },
       body: JSON.stringify({ prompt })
     });
 
@@ -2865,10 +2858,15 @@ async function executeCommand() {
   }
 }
 
+let appInitialized = false;
+
 async function initApp() {
+  if (appInitialized) return;
+  appInitialized = true;
+
   state = loadSavedState(state);
 
-  const savedGateway = localStorage.getItem('gateway_secret');
+  const savedGateway = getGatewaySecret();
   if (savedGateway) await syncCloudState();
 
   ['gatewaySecretInput'].forEach(id => {
@@ -2878,11 +2876,7 @@ async function initApp() {
   headerCredentialsHidden = areHeaderCredentialsConfigured();
 
   const quoteRefreshInterval = document.getElementById('quoteRefreshInterval');
-  const savedQuoteRefreshInterval = localStorage.getItem(QUOTE_REFRESH_INTERVAL_KEY);
-  const parsedQuoteRefreshInterval = savedQuoteRefreshInterval === null ? NaN : Number(savedQuoteRefreshInterval);
-  const initialQuoteRefreshInterval = QUOTE_REFRESH_INTERVALS.has(parsedQuoteRefreshInterval)
-    ? parsedQuoteRefreshInterval
-    : DEFAULT_QUOTE_REFRESH_INTERVAL_MS;
+  const initialQuoteRefreshInterval = getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS);
 
   if (quoteRefreshInterval) {
     quoteRefreshInterval.value = String(initialQuoteRefreshInterval);

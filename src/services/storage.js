@@ -1,29 +1,151 @@
+export const STATE_STORAGE_KEY = 'margin_portfolio_state_dynamic_v2';
+export const LEGACY_STATE_STORAGE_KEY = 'portfolio_state';
+export const GATEWAY_SECRET_KEY = 'gateway_secret';
+export const TRADERNET_RULES_STORAGE_KEY = 'tradernet_rules_v1';
+export const QUOTE_REFRESH_INTERVAL_KEY = 'quote_refresh_interval_ms';
+
+export function getGatewaySecret() {
+  if (typeof localStorage === 'undefined') return '';
+  return (localStorage.getItem(GATEWAY_SECRET_KEY) || '').trim();
+}
+
+export function setGatewaySecret(secret) {
+  if (typeof localStorage === 'undefined') return;
+  const trimmed = (secret || '').trim();
+  if (trimmed) {
+    localStorage.setItem(GATEWAY_SECRET_KEY, trimmed);
+  } else {
+    localStorage.removeItem(GATEWAY_SECRET_KEY);
+  }
+}
+
 export function areHeaderCredentialsConfigured() {
-  if (typeof localStorage === 'undefined') return false;
-  return (localStorage.getItem('gateway_secret') || '').trim().length > 0;
+  return getGatewaySecret().length > 0;
+}
+
+export function getGistConfig() {
+  if (typeof localStorage === 'undefined') return { gistId: '', token: '' };
+  return {
+    gistId: (localStorage.getItem('github_gist_id') || '').trim(),
+    token: (localStorage.getItem('github_pat_token') || '').trim()
+  };
+}
+
+export function setGistConfig({ gistId, token } = {}) {
+  if (typeof localStorage === 'undefined') return;
+  if (gistId !== undefined) {
+    const trimmedId = (gistId || '').trim();
+    if (trimmedId) localStorage.setItem('github_gist_id', trimmedId);
+    else localStorage.removeItem('github_gist_id');
+  }
+  if (token !== undefined) {
+    const trimmedToken = (token || '').trim();
+    if (trimmedToken) localStorage.setItem('github_pat_token', trimmedToken);
+    else localStorage.removeItem('github_pat_token');
+  }
+}
+
+export function getProviderKeys() {
+  if (typeof localStorage === 'undefined') {
+    return { finnhub: '', alphaVantage: '', twelveData: '', rapidApiYahoo: '' };
+  }
+  return {
+    finnhub: localStorage.getItem('finnhub_api_key') || '',
+    alphaVantage: localStorage.getItem('alpha_vantage_api_key') || '',
+    twelveData: localStorage.getItem('twelve_data_api_key') || '',
+    rapidApiYahoo: localStorage.getItem('rapidapi_yahoo_key') || ''
+  };
+}
+
+export function saveProviderKeys(keys = {}) {
+  if (typeof localStorage === 'undefined') return;
+  const storageMap = {
+    finnhub: 'finnhub_api_key',
+    alphaVantage: 'alpha_vantage_api_key',
+    twelveData: 'twelve_data_api_key',
+    rapidApiYahoo: 'rapidapi_yahoo_key'
+  };
+  Object.entries(storageMap).forEach(([prop, key]) => {
+    const val = (keys[prop] || '').trim();
+    if (val) localStorage.setItem(key, val);
+    else localStorage.removeItem(key);
+  });
+}
+
+export function getGeminiUnlockKey() {
+  if (typeof localStorage === 'undefined') return '';
+  return localStorage.getItem('gemini_gist_unlock_key') || '';
+}
+
+export function setGeminiUnlockKey(key) {
+  if (typeof localStorage === 'undefined') return;
+  const trimmed = (key || '').trim();
+  if (trimmed) localStorage.setItem('gemini_gist_unlock_key', trimmed);
+  else localStorage.removeItem('gemini_gist_unlock_key');
+}
+
+export function loadBrokerRules(fallback = {}) {
+  if (typeof localStorage === 'undefined') return { ...fallback };
+  const raw = localStorage.getItem(TRADERNET_RULES_STORAGE_KEY);
+  if (!raw) return { ...fallback };
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : { ...fallback };
+  } catch (e) {
+    console.warn('Failed to parse saved broker rules:', e);
+    return { ...fallback };
+  }
+}
+
+export function saveBrokerRules(rules) {
+  if (typeof localStorage === 'undefined' || !rules || typeof rules !== 'object') return;
+  localStorage.setItem(TRADERNET_RULES_STORAGE_KEY, JSON.stringify(rules));
+}
+
+export function clearBrokerRules() {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.removeItem(TRADERNET_RULES_STORAGE_KEY);
+}
+
+export function getQuoteRefreshInterval(fallback = 60000) {
+  if (typeof localStorage === 'undefined') return fallback;
+  const raw = localStorage.getItem(QUOTE_REFRESH_INTERVAL_KEY);
+  if (raw === null || raw === undefined) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+export function saveQuoteRefreshInterval(interval) {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(QUOTE_REFRESH_INTERVAL_KEY, String(interval));
 }
 
 export function saveState(state, onPushToGist) {
   if (!state || typeof state !== 'object') return;
   state.lastUpdated = Date.now();
   if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('margin_portfolio_state_dynamic_v2', JSON.stringify(state));
+    localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(state));
   }
   if (typeof onPushToGist === 'function') {
     onPushToGist(false);
   }
 }
 
+export function saveStateToStorage(state) {
+  if (!state || typeof state !== 'object' || typeof localStorage === 'undefined') return;
+  localStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(state));
+}
+
 export function loadSavedState(currentState = {}) {
   if (typeof localStorage === 'undefined') return currentState;
 
-  const savedGateway = localStorage.getItem('gateway_secret');
+  const savedGateway = getGatewaySecret();
   const gatewayInput = typeof document !== 'undefined' ? document.getElementById('gatewaySecretInput') : null;
   if (savedGateway && gatewayInput) {
     gatewayInput.value = savedGateway;
   }
 
-  const raw = localStorage.getItem('portfolio_state');
+  const raw = localStorage.getItem(STATE_STORAGE_KEY) || localStorage.getItem(LEGACY_STATE_STORAGE_KEY);
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
@@ -43,8 +165,8 @@ export function loadSavedState(currentState = {}) {
 
 export function clearLocalData() {
   if (typeof localStorage === 'undefined') return;
-  localStorage.removeItem('portfolio_state');
-  localStorage.removeItem('margin_portfolio_state_dynamic_v2');
+  localStorage.removeItem(LEGACY_STATE_STORAGE_KEY);
+  localStorage.removeItem(STATE_STORAGE_KEY);
 }
 
 export async function saveApiKeys(options = {}) {
@@ -61,9 +183,7 @@ export async function saveApiKeys(options = {}) {
 
   secretEl?.toggleAttribute('disabled', true);
 
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem("gateway_secret", secret);
-  }
+  setGatewaySecret(secret);
   logTerminal("[System]: Gateway Secret saved.");
   showToast("Gateway unlocked.", "success");
 

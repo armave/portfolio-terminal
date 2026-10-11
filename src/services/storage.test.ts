@@ -1,5 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { saveState, loadSavedState } from './storage.js';
+import {
+  saveState,
+  loadSavedState,
+  clearLocalData,
+  getGatewaySecret,
+  setGatewaySecret,
+  areHeaderCredentialsConfigured,
+  getGistConfig,
+  setGistConfig,
+  getProviderKeys,
+  saveProviderKeys,
+  getGeminiUnlockKey,
+  setGeminiUnlockKey,
+  loadBrokerRules,
+  saveBrokerRules,
+  clearBrokerRules,
+  getQuoteRefreshInterval,
+  saveQuoteRefreshInterval,
+  saveApiKeys
+} from './storage.js';
 
 describe('storage service', () => {
   const storageMap = new Map<string, string>();
@@ -152,6 +171,133 @@ describe('storage service', () => {
       loadSavedState({});
 
       expect(inputElement.value).toBe('secret-token-xyz');
+    });
+  });
+
+  describe('gateway secret & header credentials', () => {
+    it('gets, sets and clears gateway secret', () => {
+      expect(getGatewaySecret()).toBe('');
+      expect(areHeaderCredentialsConfigured()).toBe(false);
+
+      setGatewaySecret('my-secret-key');
+      expect(getGatewaySecret()).toBe('my-secret-key');
+      expect(areHeaderCredentialsConfigured()).toBe(true);
+
+      setGatewaySecret('');
+      expect(getGatewaySecret()).toBe('');
+      expect(areHeaderCredentialsConfigured()).toBe(false);
+    });
+
+    it('saveApiKeys saves gateway secret and logs status', async () => {
+      const showToast = vi.fn();
+      const logTerminal = vi.fn();
+
+      const result = await saveApiKeys({
+        secret: 'test-gateway-secret',
+        showToast,
+        logTerminal
+      });
+
+      expect(result).toBe(true);
+      expect(getGatewaySecret()).toBe('test-gateway-secret');
+      expect(logTerminal).toHaveBeenCalledWith(expect.stringContaining('Gateway Secret saved'));
+      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Gateway unlocked'), 'success');
+    });
+
+    it('saveApiKeys rejects empty secret', async () => {
+      const showToast = vi.fn();
+      const result = await saveApiKeys({ secret: '   ', showToast });
+
+      expect(result).toBe(false);
+      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Please enter'), 'error');
+    });
+  });
+
+  describe('gist config', () => {
+    it('manages gist id and token', () => {
+      expect(getGistConfig()).toEqual({ gistId: '', token: '' });
+
+      setGistConfig({ gistId: 'gist123', token: 'token456' });
+      expect(getGistConfig()).toEqual({ gistId: 'gist123', token: 'token456' });
+
+      setGistConfig({ gistId: '' });
+      expect(getGistConfig()).toEqual({ gistId: '', token: 'token456' });
+    });
+  });
+
+  describe('provider keys', () => {
+    it('gets, sets and removes provider keys', () => {
+      expect(getProviderKeys()).toEqual({
+        finnhub: '',
+        alphaVantage: '',
+        twelveData: '',
+        rapidApiYahoo: ''
+      });
+
+      saveProviderKeys({
+        finnhub: 'fh-key',
+        alphaVantage: 'av-key',
+        twelveData: 'td-key',
+        rapidApiYahoo: 'rapid-key'
+      });
+
+      expect(getProviderKeys()).toEqual({
+        finnhub: 'fh-key',
+        alphaVantage: 'av-key',
+        twelveData: 'td-key',
+        rapidApiYahoo: 'rapid-key'
+      });
+
+      saveProviderKeys({ finnhub: '' });
+      expect(getProviderKeys().finnhub).toBe('');
+      expect(getProviderKeys().alphaVantage).toBe('');
+    });
+  });
+
+  describe('gemini unlock key', () => {
+    it('gets and sets unlock key', () => {
+      expect(getGeminiUnlockKey()).toBe('');
+      setGeminiUnlockKey('gemini-secret');
+      expect(getGeminiUnlockKey()).toBe('gemini-secret');
+      setGeminiUnlockKey('');
+      expect(getGeminiUnlockKey()).toBe('');
+    });
+  });
+
+  describe('broker rules', () => {
+    it('manages broker rules with defensive fallback on corrupted JSON', () => {
+      const defaultRules = { annualRate: 0.15, dayCountBasis: 365 };
+      expect(loadBrokerRules(defaultRules)).toEqual(defaultRules);
+
+      const customRules = { annualRate: 0.12, dayCountBasis: 360 };
+      saveBrokerRules(customRules);
+      expect(loadBrokerRules(defaultRules)).toEqual(customRules);
+
+      storageMap.set('tradernet_rules_v1', '{"broken');
+      expect(loadBrokerRules(defaultRules)).toEqual(defaultRules);
+
+      clearBrokerRules();
+      expect(loadBrokerRules(defaultRules)).toEqual(defaultRules);
+    });
+  });
+
+  describe('quote refresh interval', () => {
+    it('gets and sets refresh interval with fallback', () => {
+      expect(getQuoteRefreshInterval(60000)).toBe(60000);
+      saveQuoteRefreshInterval(15000);
+      expect(getQuoteRefreshInterval(60000)).toBe(15000);
+    });
+  });
+
+  describe('clearLocalData', () => {
+    it('clears state items from storage', () => {
+      storageMap.set('portfolio_state', 'data1');
+      storageMap.set('margin_portfolio_state_dynamic_v2', 'data2');
+
+      clearLocalData();
+
+      expect(storageMap.has('portfolio_state')).toBe(false);
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
     });
   });
 });
