@@ -5,6 +5,10 @@ import {
   clearLocalData,
   getGatewaySecret,
   setGatewaySecret,
+  saveGatewaySecret,
+  loadGatewaySecret,
+  obfuscateSecret,
+  deobfuscateSecret,
   areHeaderCredentialsConfigured,
   getGistConfig,
   setGistConfig,
@@ -184,6 +188,32 @@ describe('storage service', () => {
       setGatewaySecret('');
       expect(getGatewaySecret()).toBe('');
       expect(areHeaderCredentialsConfigured()).toBe(false);
+    });
+
+    it('obfuscates secret before writing to localStorage and recovers it on load', () => {
+      const secret = 'super-secret-token-123';
+      saveGatewaySecret(secret);
+
+      const storedRaw = storageMap.get('_gw_auth');
+      expect(storedRaw).toBeDefined();
+      expect(storedRaw).not.toBe(secret);
+      expect(storedRaw).not.toContain(secret);
+      expect(storageMap.has('gateway_secret')).toBe(false);
+
+      const recovered = loadGatewaySecret();
+      expect(recovered).toBe(secret);
+    });
+
+    it('handles obfuscation helpers defensively without exposing plaintext', () => {
+      const plain = 'my-gateway-password';
+      const obfuscated = obfuscateSecret(plain);
+      expect(obfuscated).not.toBe(plain);
+      expect(obfuscated).not.toContain(plain);
+      expect(deobfuscateSecret(obfuscated)).toBe(plain);
+
+      expect(obfuscateSecret('')).toBe('');
+      expect(deobfuscateSecret('')).toBe('');
+      expect(deobfuscateSecret('invalid-base-64-!!!')).toBe('');
     });
 
     it('saveApiKeys saves gateway secret and logs status', async () => {

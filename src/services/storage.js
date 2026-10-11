@@ -1,22 +1,74 @@
 export const STATE_STORAGE_KEY = 'margin_portfolio_state_dynamic_v2';
 export const LEGACY_STATE_STORAGE_KEY = 'portfolio_state';
 export const GATEWAY_SECRET_KEY = 'gateway_secret';
+export const GATEWAY_AUTH_KEY = '_gw_auth';
 export const TRADERNET_RULES_STORAGE_KEY = 'tradernet_rules_v1';
 export const QUOTE_REFRESH_INTERVAL_KEY = 'quote_refresh_interval_ms';
 
-export function getGatewaySecret() {
-  if (typeof localStorage === 'undefined') return '';
-  return (localStorage.getItem(GATEWAY_SECRET_KEY) || '').trim();
+const STATIC_XOR_SALT = 'portfolio-salt';
+
+export function obfuscateSecret(str) {
+  if (!str || typeof str !== 'string') return '';
+  try {
+    let xored = '';
+    for (let i = 0; i < str.length; i++) {
+      xored += String.fromCharCode(str.charCodeAt(i) ^ STATIC_XOR_SALT.charCodeAt(i % STATIC_XOR_SALT.length));
+    }
+    return btoa(xored);
+  } catch {
+    return '';
+  }
 }
 
-export function setGatewaySecret(secret) {
+export function deobfuscateSecret(str) {
+  if (!str || typeof str !== 'string') return '';
+  try {
+    const decoded = atob(str);
+    let result = '';
+    for (let i = 0; i < decoded.length; i++) {
+      result += String.fromCharCode(decoded.charCodeAt(i) ^ STATIC_XOR_SALT.charCodeAt(i % STATIC_XOR_SALT.length));
+    }
+    return result;
+  } catch {
+    return '';
+  }
+}
+
+export function saveGatewaySecret(secret) {
   if (typeof localStorage === 'undefined') return;
   const trimmed = (secret || '').trim();
   if (trimmed) {
-    localStorage.setItem(GATEWAY_SECRET_KEY, trimmed);
+    localStorage.setItem(GATEWAY_AUTH_KEY, obfuscateSecret(trimmed));
   } else {
-    localStorage.removeItem(GATEWAY_SECRET_KEY);
+    localStorage.removeItem(GATEWAY_AUTH_KEY);
   }
+  localStorage.removeItem(GATEWAY_SECRET_KEY);
+}
+
+export function loadGatewaySecret() {
+  if (typeof localStorage === 'undefined') return '';
+  const stored = localStorage.getItem(GATEWAY_AUTH_KEY);
+  if (stored) {
+    const recovered = deobfuscateSecret(stored);
+    if (recovered) return recovered;
+  }
+  const legacy = localStorage.getItem(GATEWAY_SECRET_KEY);
+  if (legacy) {
+    const trimmed = legacy.trim();
+    if (trimmed) {
+      saveGatewaySecret(trimmed);
+      return trimmed;
+    }
+  }
+  return '';
+}
+
+export function getGatewaySecret() {
+  return loadGatewaySecret();
+}
+
+export function setGatewaySecret(secret) {
+  saveGatewaySecret(secret);
 }
 
 export function areHeaderCredentialsConfigured() {
