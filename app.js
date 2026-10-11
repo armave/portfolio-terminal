@@ -30,7 +30,6 @@ import {
   clearBrokerRules,
   clearLocalData,
   getGatewaySecret,
-  getGistConfig,
   getQuoteRefreshInterval,
   loadBrokerRules,
   loadGatewaySecret,
@@ -76,7 +75,6 @@ const DEFAULT_TRADERNET_RULES = {
 };
 
 const TRADERNET_RULES = { ...DEFAULT_TRADERNET_RULES };
-const GIST_FILE_NAME = "margin_state.json";
 
 let state = createBlankState();
 let gistSyncTimeout = null;
@@ -99,28 +97,14 @@ const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
 
 
 // ==========================================
-// GITHUB GIST ENCODING & REPLICATION ENGINE
+// CLOUDFLARE WORKERS KV REPLICATION ENGINE
 // ==========================================
-function encodePayload(obj) {
-  const jsonStr = JSON.stringify(obj);
-  return btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, function (match, p1) {
-    return String.fromCharCode('0x' + p1);
-  }));
-}
-
-function decodePayload(str) {
-  const jsonStr = decodeURIComponent(Array.prototype.map.call(atob(str), function (c) {
-    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-  }).join(''));
-  return JSON.parse(jsonStr);
-}
-
-function setGistStatus(status, text) {
+function setCloudStatus(status, text) {
   const dot = document.getElementById('cloudStatusDot');
   const label = document.getElementById('cloudStatusText');
   if (!dot || !label) return;
 
-  label.innerText = `GIST: ${text.toUpperCase()}`;
+  label.innerText = `KV: ${text.toUpperCase()}`;
   dot.className = "w-1.5 h-1.5 rounded-full";
 
   if (status === 'syncing') {
@@ -134,52 +118,26 @@ function setGistStatus(status, text) {
   }
 }
 
-async function pushStateToGist(forceImmediate = false) {
-  const { gistId, token } = getGistConfig();
-  if (!gistId || !token) {
-    const missing = [];
-    if (!gistId) missing.push('GIST ID');
-    if (!token) missing.push('TOKEN');
-    setGistStatus('idle', `ADD ${missing.join(' + ')}`);
+async function pushStateToCloud(forceImmediate = false) {
+  if (!areHeaderCredentialsConfigured()) {
+    setCloudStatus('idle', 'ADD SECRET');
     return;
   }
 
   state.lastUpdated = Date.now();
 
   const doPush = async () => {
-    setGistStatus('syncing', 'WRITING...');
+    setCloudStatus('syncing', 'WRITING...');
     try {
-      const encodedBase64 = encodePayload(state);
-      const fileBody = JSON.stringify({
-        updated: state.lastUpdated,
-        payload: encodedBase64
-      }, null, 2);
-
-      const res = await fetch(`https://api.github.com/gists/${gistId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          files: {
-            [GIST_FILE_NAME]: {
-              content: fileBody
-            }
-          }
-        })
-      });
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(`HTTP ${res.status}: ${errJson.message || 'Gist update rejected'}`);
+      const ok = await syncCloudState('push');
+      if (ok) {
+        setCloudStatus('synced', 'UPDATED');
+      } else {
+        setCloudStatus('error', 'FAIL');
       }
-
-      setGistStatus('synced', 'UPDATED');
     } catch (err) {
-      logTerminal(`[Gist Sync Error]: ${err.message}`);
-      setGistStatus('error', 'FAIL');
+      logTerminal(`[KV Cloud Sync Error]: ${err.message}`);
+      setCloudStatus('error', 'FAIL');
     }
   };
 
@@ -192,58 +150,7 @@ async function pushStateToGist(forceImmediate = false) {
   }
 }
 
-async function pullStateFromGistOnLoad() {
-  const { gistId, token } = getGistConfig();
-  if (!gistId) return false;
-
-  setGistStatus('syncing', 'FETCHING...');
-  try {
-    const headers = { 'Accept': 'application/vnd.github+json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const res = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
-    if (!res.ok) {
-      const errJson = await res.json().catch(() => ({}));
-      throw new Error(`HTTP ${res.status}: ${errJson.message || 'Fetch failed'}`);
-    }
-
-    const data = await res.json();
-    const files = data.files || {};
-    const targetFile = files[GIST_FILE_NAME] || Object.values(files)[0];
-    if (!targetFile || !targetFile.content) throw new Error("Gist contains no readable file.");
-
-    let remoteState = null;
-    let parsedEnvelope = null;
-    try { parsedEnvelope = JSON.parse(targetFile.content); } catch (e) { }
-
-    if (parsedEnvelope) {
-      if (parsedEnvelope.payload && typeof parsedEnvelope.payload === 'string') {
-        try {
-          remoteState = decodePayload(parsedEnvelope.payload);
-        } catch (decErr) {
-          try { remoteState = JSON.parse(atob(parsedEnvelope.payload)); } catch (e2) { }
-        }
-      } else if (typeof parsedEnvelope === 'object') {
-        remoteState = parsedEnvelope;
-      }
-    }
-
-    if (remoteState && typeof remoteState === 'object') {
-      state = normalizePortfolioState(remoteState);
-      saveStateToStorage(state);
-
-      setGistStatus('synced', 'ONLINE');
-      logTerminal("[Gist]: Cloud data successfully loaded. Local storage rewritten with remote state.");
-      return true;
-    } else {
-      throw new Error("Invalid remote payload structure");
-    }
-  } catch (e) {
-    logTerminal(`[Gist Notice]: Could not pull remote Gist (${e.message}). Falling back to local cache.`);
-    setGistStatus('error', 'OFFLINE');
-  }
-  return false;
-}
+const pushStateToGist = pushStateToCloud;
 
 function pullCloudAndRewriteLocal(parsedState) {
   state = { ...state, ...parsedState };
@@ -300,7 +207,7 @@ function toggleHeaderCredentialsVisibility() {
 }
 
 function resetToBlankState() {
-  if (confirm("Reset the entire terminal to a blank slate? This will clear all holdings, balances, and history locally and on GitHub Gist.")) {
+  if (confirm("Reset the entire terminal to a blank slate? This will clear all holdings, balances, and history locally and on KV cloud.")) {
     state = createBlankState();
     saveState(state, pushStateToGist);
     pushStateToGist(true);
@@ -1483,7 +1390,7 @@ async function importBackupJSON(event) {
   try {
     const parsed = JSON.parse(await file.text());
     const importedState = normalizePortfolioBackup(parsed);
-    if (!confirm(`Replace this browser's portfolio with "${file.name}"? If Gist sync is configured, the imported portfolio will replace its remote copy too.`)) {
+    if (!confirm(`Replace this browser's portfolio with "${file.name}"? If KV cloud sync is configured, the imported portfolio will replace its remote copy too.`)) {
       logTerminal('[Backup Import]: Import cancelled; the current portfolio was not changed.');
       return;
     }
@@ -1499,8 +1406,8 @@ async function importBackupJSON(event) {
     }
     await pushStateToGist(true);
     renderBoard();
-    logTerminal(`[Backup Import]: Imported ${file.name} into this browser. Check Gist status for cloud sync results.`);
-    showToast('Backup imported locally. Check Gist status for cloud sync.', 'success');
+    logTerminal(`[Backup Import]: Imported ${file.name} into this browser. Check KV cloud status for sync results.`);
+    showToast('Backup imported locally. Check KV cloud status for sync.', 'success');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logTerminal(`[Backup Error]: Could not import backup (${message}).`);
@@ -2211,6 +2118,8 @@ Object.assign(window, {
   renderPositionsTable,
   renderSummaryCards,
   syncCloudState,
+  pullCloudState: () => syncCloudState('pull'),
+  pushCloudState: () => syncCloudState('push'),
   refreshAllLivePrices,
   refreshMarketInsight,
   resetToBlankState,
