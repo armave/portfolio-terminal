@@ -419,8 +419,7 @@ summary:hover {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   max-width: 960px;
-  margin-left: auto;
-  margin-right: auto;
+  margin: 0 auto;
   width: 100%;
 }
 
@@ -429,8 +428,7 @@ summary:hover {
   min-width: max-content;
   max-width: 960px;
   width: 100%;
-  margin-left: auto;
-  margin-right: auto;
+  margin: 0 auto;
 }
 
 .table-scroll-wrapper th,

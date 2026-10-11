@@ -10,6 +10,9 @@ auto-lint: true
 test-cmd: npm test
 lint-cmd: npm run build
 
+# Language enforcement (English only)
+commit-prompt: "Write a concise, imperative git commit message in English describing the changes. Do not use any other language."
+
 # Context & instructions
 read: CONVENTIONS.md
 map-tokens: 2048
