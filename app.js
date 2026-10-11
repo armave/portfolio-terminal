@@ -26,6 +26,14 @@ import {
   YAHOO_PROXY_URL
 } from './src/services/api.js';
 
+import {
+  areHeaderCredentialsConfigured,
+  clearLocalData,
+  loadSavedState,
+  saveApiKeys,
+  saveState
+} from './src/services/storage.js';
+
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
 // ==========================================
@@ -327,7 +335,7 @@ async function pullStateFromGistOnLoad() {
 
 function pullCloudAndRewriteLocal(parsedState) {
   state = { ...state, ...parsedState };
-  loadSavedState();
+  state = loadSavedState(state);
   renderBoard();
 }
 
@@ -339,30 +347,6 @@ async function syncCloudState(mode = 'push') {
     showToast,
     logTerminal
   });
-}
-
-function loadSavedState() {
-  const savedGateway = localStorage.getItem('gateway_secret');
-  const gatewayInput = document.getElementById('gatewaySecretInput');
-  if (savedGateway && gatewayInput) {
-    gatewayInput.value = savedGateway;
-  }
-
-  const raw = localStorage.getItem('portfolio_state');
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        state = {
-          ...state,
-          ...parsed,
-          positions: parsed.positions || state.positions
-        };
-      }
-    } catch (e) {
-      console.warn('Failed to parse saved state:', e);
-    }
-  }
 }
 
 let headerCredentialsHidden = false;
@@ -388,45 +372,15 @@ function toggleHeaderCredentialsVisibility() {
   updateHeaderCredentialsVisibility();
 }
 
-function saveState() {
-  state.lastUpdated = Date.now();
-  localStorage.setItem('margin_portfolio_state_dynamic_v2', JSON.stringify(state));
-  pushStateToGist(false);
-}
-
 function resetToBlankState() {
   if (confirm("Reset the entire terminal to a blank slate? This will clear all holdings, balances, and history locally and on GitHub Gist.")) {
     state = createBlankState();
-    saveState();
+    saveState(state, pushStateToGist);
     pushStateToGist(true);
     renderBoard();
     logTerminal("[System]: Portfolio reset to a clean blank slate.");
     showToast('Portfolio reset to a blank slate.', 'warning');
   }
-}
-
-async function saveApiKeys() {
-  const secretEl = document.getElementById("gatewaySecretInput");
-  const secret = secretEl?.value.trim() || "";
-
-  if (!secret) {
-    showToast("Please enter the Gateway Secret.", "error");
-    return;
-  }
-
-  secretEl.toggleAttribute('disabled', true);
-
-  localStorage.setItem("gateway_secret", secret);
-  logTerminal("[System]: Gateway Secret saved.");
-  showToast("Gateway unlocked.", "success");
-
-  const success = await syncCloudState();
-  if (success) {
-    await refreshAllLivePrices();
-    toggleHeaderCredentialsVisibility();
-  }
-
-  secretEl.toggleAttribute('disabled', false);
 }
 
 function calcCommission(shares, totalVal) {
@@ -515,7 +469,7 @@ function saveBrokerRuleInputs(event) {
   const nextRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   if (previousRollover !== nextRollover) {
     state.lastRolloverTimestamp = getLatestRolloverTimestamp();
-    saveState();
+    saveState(state, pushStateToGist);
   }
   verifyTradernetRulesOnload();
   renderBoard();
@@ -529,7 +483,7 @@ function resetBrokerRules() {
   setBrokerRuleInputs();
   if (previousRollover !== `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`) {
     state.lastRolloverTimestamp = getLatestRolloverTimestamp();
-    saveState();
+    saveState(state, pushStateToGist);
   }
   verifyTradernetRulesOnload();
   renderBoard();
@@ -563,7 +517,7 @@ function setQuoteSymbolMapping(ticker, mapping) {
     delete item.quoteUpdatedAt;
     delete item.quoteDetails;
   });
-  saveState();
+  saveState(state, pushStateToGist);
   return normalizedMapping;
 }
 
@@ -665,7 +619,7 @@ function applyOvernightRollover() {
   const now = new Date();
   if (!Number.isFinite(Number(state.lastRolloverTimestamp)) || Number(state.lastRolloverTimestamp) <= 0) {
     state.lastRolloverTimestamp = getLatestRolloverTimestamp(now);
-    saveState();
+    saveState(state, pushStateToGist);
     return;
   }
 
@@ -704,11 +658,11 @@ function applyOvernightRollover() {
     }
 
     state.lastRolloverTimestamp = now.getTime();
-    saveState();
+    saveState(state, pushStateToGist);
     logTerminal(`[Broker ${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')} Armenia rollover]: Processed ${elapsedCycles} cycle(s). Accrued interest: +$${formatUSD(interestAccrued)}. Margin Debt: -$${formatUSD(compoundedDebt)}.`);
   } else if (elapsedCycles > 0) {
     state.lastRolloverTimestamp = now.getTime();
-    saveState();
+    saveState(state, pushStateToGist);
   }
 }
 
@@ -1252,7 +1206,7 @@ function deleteClosedTrade(index) {
   if (!confirm(`Delete the ${trade.ticker || 'unknown'} closed trade from history? This cannot be undone.`)) return;
 
   state.closedTrades.splice(index, 1);
-  saveState();
+  saveState(state, pushStateToGist);
   renderBoard();
   logTerminal(`[History]: Removed the ${trade.ticker || 'unknown'} closed trade from history.`);
   showToast('Closed trade removed from history.', 'info');
@@ -2222,7 +2176,7 @@ function saveCurrentBalanceFromInput() {
 
   const inputValue = input.valueAsNumber;
   const { balance, debt } = setCurrentBalance(inputValue);
-  saveState();
+  saveState(state, pushStateToGist);
   renderBoard();
   logTerminal(`[Balance]: Current balance/debt updated. Balance: $${formatUSD(balance)} | Margin debt: -$${formatUSD(debt)}.`);
   showToast(`Balance $${formatUSD(balance)} | Debt -$${formatUSD(debt)}`, 'success');
@@ -2252,7 +2206,7 @@ async function addCashStockFromUI() {
   sharesInput.value = '';
   priceInput.value = '';
 
-  saveState();
+  saveState(state, pushStateToGist);
   renderBoard();
   logTerminal(`[Balance]: Added ${shares} ${ticker}. Fetching live online quote...`);
   showToast(`${shares} ${ticker} added to balance holdings.`, 'success');
@@ -2263,7 +2217,7 @@ function removeCashStock(index) {
   const holding = state.cashCushion?.holdings?.[index];
   if (!holding) return;
   const removed = removeCashHolding(holding.ticker);
-  saveState();
+  saveState(state, pushStateToGist);
   renderBoard();
   logTerminal(`[Cash Cushion]: Removed ${removed.ticker} from cash holdings.`);
   showToast(`${removed.ticker} removed from cash holdings.`, 'info');
@@ -2642,7 +2596,7 @@ async function fetchLivePrice(ticker, silent = false) {
   const result = await requestLivePrice(symbol);
 
   if (result.price !== null) {
-    saveState();
+    saveState(state, pushStateToGist);
     renderBoard();
     if (!silent) {
       logTerminal(`[${result.sourceName}]: ${symbol} updated to $${formatUSD(result.price)}${result.matched ? '' : ' (quote only)'}.`);
@@ -2712,7 +2666,7 @@ async function refreshAllLivePrices() {
     }
 
     if (updatedCount > 0) {
-      saveState();
+      saveState(state, pushStateToGist);
       renderBoard();
       logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
     } else {
@@ -2771,7 +2725,7 @@ async function importBackupJSON(event) {
     const previousState = state;
     state = importedState;
     try {
-      saveState();
+      saveState(state, pushStateToGist);
     } catch (error) {
       state = previousState;
       throw error;
@@ -3052,7 +3006,7 @@ async function applyPortfolioActions(action) {
     state.marginBalance = state.marginBalance - debtAdded;
     state.activeView = ticker;
 
-    saveState();
+    saveState(state, pushStateToGist);
     logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ $${formatUSD(price)}. Outlay: $${formatUSD(totalOutlay)} (Comm: $${formatUSD(buyComm)}). Funded: $${formatUSD(cashUsed)} cash | +$${formatUSD(debtAdded)} margin debt. Free Cash remaining: $${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -$${formatUSD(Math.abs(state.marginBalance))}.`);
     showToast(`${shares} ${ticker} bought at $${formatUSD(price)}.`, 'success');
   }
@@ -3141,14 +3095,14 @@ async function applyPortfolioActions(action) {
       }
     }
 
-    saveState();
+    saveState(state, pushStateToGist);
     showToast(resultMessage, 'success');
   }
   else if (action.action === "set_pt") {
     const ticker = (action.ticker ? action.ticker.toUpperCase() : null) || (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
     if (state.positions[ticker] && Number(action.pt) > 0) {
       state.positions[ticker].pt = Number(action.pt);
-      saveState();
+      saveState(state, pushStateToGist);
       logTerminal(`[Target Updated]: ${ticker} PT updated to $${formatUSD(action.pt)}.`);
     }
   }
@@ -3163,18 +3117,18 @@ async function applyPortfolioActions(action) {
 
     const updated = recordTrackedPrice(ticker, newP, 'Manual');
     if (updated) {
-      saveState();
+      saveState(state, pushStateToGist);
       logTerminal(`[Price Updated]: ${ticker} market price set to $${formatUSD(newP)}.`);
     }
   }
   else if (action.action === "set_balance") {
     state.marginBalance = -Math.abs(Number(action.balance));
-    saveState();
+    saveState(state, pushStateToGist);
     logTerminal(`[Margin Synced]: Total margin balance explicitly set to -$${formatUSD(Math.abs(state.marginBalance))}.`);
   }
   else if (action.action === "set_free_cash") {
     const { balance, debt } = setCurrentBalance(action.amount);
-    saveState();
+    saveState(state, pushStateToGist);
     logTerminal(`[Balance]: Current balance/debt updated. Balance: $${formatUSD(balance)} | Margin debt: -$${formatUSD(debt)}.`);
   }
   else if (action.action === "add_cash_stock") {
@@ -3183,7 +3137,7 @@ async function applyPortfolioActions(action) {
     const givenPrice = Number(action.price) || 0;
 
     addCashHolding(ticker, shares, givenPrice);
-    saveState();
+    saveState(state, pushStateToGist);
     logTerminal(`[Balance]: Added ${shares} ${ticker} to balance holdings. Syncing online quote...`);
     renderBoard();
     await fetchLivePrice(ticker);
@@ -3193,7 +3147,7 @@ async function applyPortfolioActions(action) {
     const ticker = action.ticker.toUpperCase();
     const removed = removeCashHolding(ticker);
     if (removed) {
-      saveState();
+      saveState(state, pushStateToGist);
       logTerminal(`[Balance]: Removed ${removed.ticker} from balance holdings.`);
     }
   }
@@ -3367,12 +3321,8 @@ async function executeCommand() {
   }
 }
 
-function areHeaderCredentialsConfigured() {
-  return (localStorage.getItem('gateway_secret') || '').trim().length > 0;
-}
-
 async function initApp() {
-  await loadSavedState();
+  state = loadSavedState(state);
 
   const savedGateway = localStorage.getItem('gateway_secret');
   if (savedGateway) await syncCloudState();
@@ -3430,6 +3380,7 @@ if (document.readyState === 'loading') {
 
 Object.assign(window, {
   addCashStockFromUI,
+  clearLocalData,
   executeCommand,
   exportBackupJSON,
   importBackupJSON,
