@@ -123,16 +123,18 @@
               title="Hide credential inputs">
               Hide keys
             </button>
-            <button id="saveApiKeysButton" onclick="saveApiKeys()"
-              class="h-8 bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-2.5 py-1 rounded transition"
-              title="Save keys and pull latest cloud state">
-              Save
-            </button>
-            <button onclick="syncCloudState('pull')"
-              class="h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1"
-              title="Force pull cloud data and rewrite local storage">
-              <span>☁↓</span> Pull
-            </button>
+            <div id="headerCredentialsActions" class="flex items-center gap-1.5">
+              <button id="saveApiKeysButton" onclick="saveApiKeys()"
+                class="secret-action-btn h-8 bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-2.5 py-1 rounded transition"
+                title="Save keys and pull latest cloud state">
+                Save
+              </button>
+              <button onclick="syncCloudState('pull')"
+                class="secret-action-btn h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1"
+                title="Force pull cloud data and rewrite local storage">
+                <span>☁↓</span> Pull
+              </button>
+            </div>
           </div>
 
           <div class="border-r border-slate-700 h-5 mx-1 hidden sm:block"></div>

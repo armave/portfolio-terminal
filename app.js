@@ -266,19 +266,25 @@ let headerCredentialsHidden = false;
 function updateHeaderCredentialsVisibility() {
   const isConfigured = areHeaderCredentialsConfigured();
   const fieldsContainer = document.getElementById('headerCredentialsFields');
+  const actionsContainer = document.getElementById('headerCredentialsActions');
   const toggleBtn = document.getElementById('toggleHeaderCredentialsButton');
-  const saveBtn = document.getElementById('authSaveButton');
 
   if (isConfigured) {
     toggleBtn.classList.remove('hidden');
     fieldsContainer.style.display = headerCredentialsHidden ? 'none' : 'flex';
-    saveBtn.style.display = headerCredentialsHidden ? 'none' : 'inline-block';
+    if (actionsContainer) {
+      actionsContainer.style.display = headerCredentialsHidden ? 'none' : 'flex';
+    }
     toggleBtn.textContent = headerCredentialsHidden ? 'Show keys' : 'Hide keys';
+    toggleBtn.setAttribute('aria-expanded', String(!headerCredentialsHidden));
   } else {
     toggleBtn.classList.add('hidden');
-    saveBtn.classList.add('hidden');
     fieldsContainer.style.display = 'flex';
+    if (actionsContainer) {
+      actionsContainer.style.display = 'flex';
+    }
     headerCredentialsHidden = false;
+    toggleBtn.setAttribute('aria-expanded', 'true');
   }
 }
 
