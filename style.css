@@ -504,7 +504,7 @@ summary:hover {
 @media (min-width: 1024px) {
   .desktop-workspace-grid {
     display: grid;
-    grid-template-columns: 1.25fr 1fr;
+    grid-template-columns: 3fr 7fr;
     gap: 1.5rem;
     align-items: start;
   }
