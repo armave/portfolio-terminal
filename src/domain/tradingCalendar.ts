@@ -2,6 +2,23 @@ export interface ProjectionDate {
   date: Date;
   daysFromToday: number;
   kind: 'entry' | 'today' | 'week-end' | 'weekly';
+  label?: string;
+}
+
+export function getProjectionMilestoneLabel(
+  date: Date,
+  daysFromToday: number,
+  kind: ProjectionDate['kind']
+): string {
+  if (kind === 'entry') return 'Entry';
+  if (kind === 'today') return 'Today';
+  if (kind === 'week-end') {
+    if (date.getDay() === 1) {
+      return daysFromToday === 1 ? '(Next trading day · +1d)' : `(Next trading day · +${daysFromToday}d)`;
+    }
+    return `(End of week · +${daysFromToday}d)`;
+  }
+  return `(+${daysFromToday}d)`;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -93,11 +110,15 @@ function calendarDayDifference(from: Date, to: Date): number {
 export function getUsEquityProjectionDates(today = new Date(), entryDate?: string): ProjectionDate[] {
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const weekday = start.getDay();
+  const isWeekend = weekday === 0 || weekday === 6;
+
   const daysUntilFriday = weekday === 5 ? 3
-    : weekday === 6 ? 2
-      : weekday === 0 ? 1
+    : weekday === 6 ? 6
+      : weekday === 0 ? 5
         : 5 - weekday;
-  const endOfWeekMarketDate = rollForwardToTradingDay(addDays(start, daysUntilFriday));
+
+  const targetFridayDate = addDays(start, daysUntilFriday);
+  const endOfWeekMarketDate = rollForwardToTradingDay(targetFridayDate);
   const projections: ProjectionDate[] = [];
   if (entryDate && /^\d{4}-\d{2}-\d{2}$/.test(entryDate)) {
     const [year, month, day] = entryDate.split('-').map(Number);
@@ -106,29 +127,54 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
       entry.getMonth() === month - 1 &&
       entry.getDate() === day;
     if (isValidEntry && calendarDayDifference(entry, start) > 0) {
+      const daysFromToday = calendarDayDifference(start, entry);
       projections.push({
         date: entry,
-        daysFromToday: calendarDayDifference(start, entry),
-        kind: 'entry'
+        daysFromToday,
+        kind: 'entry',
+        label: getProjectionMilestoneLabel(entry, daysFromToday, 'entry')
       });
     }
   }
+
+  const endOfWeekDays = calendarDayDifference(start, endOfWeekMarketDate);
   projections.push(
-    { date: start, daysFromToday: 0, kind: 'today' },
+    {
+      date: start,
+      daysFromToday: 0,
+      kind: 'today',
+      label: getProjectionMilestoneLabel(start, 0, 'today')
+    },
     {
       date: endOfWeekMarketDate,
-      daysFromToday: calendarDayDifference(start, endOfWeekMarketDate),
-      kind: 'week-end'
+      daysFromToday: endOfWeekDays,
+      kind: 'week-end',
+      label: getProjectionMilestoneLabel(endOfWeekMarketDate, endOfWeekDays, 'week-end')
     }
   );
 
-  for (const offset of [7, 14, 21, 28, 35]) {
-    const projectedDate = rollForwardToTradingDay(addDays(start, offset));
-    projections.push({
-      date: projectedDate,
-      daysFromToday: calendarDayDifference(start, projectedDate),
-      kind: 'weekly'
-    });
+  if (isWeekend) {
+    for (const week of [1, 2, 3, 4, 5]) {
+      const projectedDate = rollForwardToTradingDay(addDays(targetFridayDate, week * 7));
+      const daysFromToday = calendarDayDifference(start, projectedDate);
+      projections.push({
+        date: projectedDate,
+        daysFromToday,
+        kind: 'weekly',
+        label: getProjectionMilestoneLabel(projectedDate, daysFromToday, 'weekly')
+      });
+    }
+  } else {
+    for (const offset of [7, 14, 21, 28, 35]) {
+      const projectedDate = rollForwardToTradingDay(addDays(start, offset));
+      const daysFromToday = calendarDayDifference(start, projectedDate);
+      projections.push({
+        date: projectedDate,
+        daysFromToday,
+        kind: 'weekly',
+        label: getProjectionMilestoneLabel(projectedDate, daysFromToday, 'weekly')
+      });
+    }
   }
   return projections;
 }

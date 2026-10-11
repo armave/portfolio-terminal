@@ -204,7 +204,8 @@ export function renderPositionsTable(gross, totalComms, debtToUse, marginCharged
   tableBody.innerHTML = '';
 
   if (debtToUse > 0 || gross > 0) {
-    getUsEquityProjectionDates(new Date(), entryDate).forEach(({ date, daysFromToday, kind }) => {
+    getUsEquityProjectionDates(new Date(), entryDate).forEach(item => {
+      const { date, daysFromToday, kind } = item;
       const dateFormatted = date.toLocaleDateString('en-US', {
         weekday: 'short',
         month: 'short',
@@ -220,11 +221,15 @@ export function renderPositionsTable(gross, totalComms, debtToUse, marginCharged
         tableBody.appendChild(entryRow);
         return;
       }
+      const milestoneLabel = item.label || (kind === 'week-end'
+        ? (date.getDay() === 1
+          ? (daysFromToday === 1 ? '(Next trading day · +1d)' : `(Next trading day · +${daysFromToday}d)`)
+          : `(End of week · +${daysFromToday}d)`)
+        : `(+${daysFromToday}d)`);
+
       const label = kind === 'today'
         ? `${dateFormatted} <span class="ml-1 text-[9px] font-normal uppercase tracking-wide text-cyan-500/80">Today</span>`
-        : kind === 'week-end'
-          ? `${dateFormatted} (End of week · +${daysFromToday}d)`
-          : `${dateFormatted} (+${daysFromToday}d)`;
+        : `${dateFormatted} ${milestoneLabel.startsWith('(') ? milestoneLabel : `(${milestoneLabel})`}`;
 
       const b_t = calculateCompoundedDebt(debtToUse, dailyRate, daysFromToday);
       const additionalAccrual = calculateMarginInterest(debtToUse, dailyRate, daysFromToday);

@@ -51,20 +51,44 @@ describe('US equity trading calendar', () => {
 
   it('moves a Good Friday end-of-week projection to Monday but retains calendar-day accrual', () => {
     const projections = getUsEquityProjectionDates(localDate(2026, 4, 2));
-    expect(projections[1]).toMatchObject({ daysFromToday: 4, kind: 'week-end' });
+    expect(projections[1]).toMatchObject({
+      daysFromToday: 4,
+      kind: 'week-end',
+      label: '(Next trading day · +4d)'
+    });
     expect(dateLabel(projections[1].date)).toBe('2026-04-06');
   });
 
-  it('uses the following Monday when today is Friday', () => {
+  it('uses the following Monday when today is Friday with next trading day label', () => {
     const projections = getUsEquityProjectionDates(localDate(2026, 10, 9));
-    expect(projections[1]).toMatchObject({ daysFromToday: 3, kind: 'week-end' });
+    expect(projections[1]).toMatchObject({
+      daysFromToday: 3,
+      kind: 'week-end',
+      label: '(Next trading day · +3d)'
+    });
     expect(dateLabel(projections[1].date)).toBe('2026-10-12');
   });
 
-  it('uses the upcoming Monday when today is a weekend', () => {
+  it('resolves the end of week milestone to Friday (+5d) with correct label when today is Sunday', () => {
     const projections = getUsEquityProjectionDates(localDate(2026, 10, 11));
-    expect(projections[1]).toMatchObject({ daysFromToday: 1, kind: 'week-end' });
-    expect(dateLabel(projections[1].date)).toBe('2026-10-12');
+    expect(projections[1]).toMatchObject({
+      daysFromToday: 5,
+      kind: 'week-end',
+      label: '(End of week · +5d)'
+    });
+    expect(dateLabel(projections[1].date)).toBe('2026-10-16');
+  });
+
+  it('projects multi-week intervals to subsequent Fridays when today is a weekend', () => {
+    const projections = getUsEquityProjectionDates(localDate(2026, 10, 11));
+    expect(projections.slice(1).map(({ date, daysFromToday }) => [dateLabel(date), daysFromToday])).toEqual([
+      ['2026-10-16', 5],
+      ['2026-10-23', 12],
+      ['2026-10-30', 19],
+      ['2026-11-06', 26],
+      ['2026-11-13', 33],
+      ['2026-11-20', 40]
+    ]);
   });
 
   it('rolls the +7-day checkpoint forward when it lands on Juneteenth', () => {
