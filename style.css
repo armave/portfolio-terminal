@@ -320,54 +320,50 @@ summary:hover {
 
 #finvizLink,
 .stock-link-finviz {
-  background: rgba(30, 58, 138, 0.2);
-  border: 1px solid #2563eb;
+  background: rgba(59, 130, 246, 0.18);
+  border: 1px solid #3b82f6;
   color: #60a5fa;
 }
 
 #finvizLink:hover,
 .stock-link-finviz:hover {
-  background: rgba(37, 99, 235, 0.35);
-  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.35);
 }
 
 #stocktwitsLink,
 .stock-link-stocktwits {
-  background: rgba(6, 78, 59, 0.2);
-  border: 1px solid #059669;
-  color: #34d399;
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid #10b981;
+  color: #6ee7b7;
 }
 
 #stocktwitsLink:hover,
 .stock-link-stocktwits:hover {
   background: rgba(16, 185, 129, 0.35);
-  color: #6ee7b7;
 }
 
 #tvChartLink,
 .stock-link-tv-chart {
-  background: rgba(37, 99, 235, 0.2);
-  border: 1px solid #2962ff;
-  color: #38bdf8;
+  background: rgba(37, 99, 235, 0.22);
+  border: 1px solid #2563eb;
+  color: #93c5fd;
 }
 
 #tvChartLink:hover,
 .stock-link-tv-chart:hover {
-  background: rgba(41, 98, 255, 0.35);
-  color: #7dd3fc;
+  background: rgba(37, 99, 235, 0.35);
 }
 
 #tvIdeasLink,
 .stock-link-tv-ideas {
-  background: rgba(180, 83, 9, 0.2);
-  border: 1px solid #d97706;
-  color: #fbbf24;
+  background: rgba(124, 58, 237, 0.18);
+  border: 1px solid #7c3aed;
+  color: #c4b5fd;
 }
 
 #tvIdeasLink:hover,
 .stock-link-tv-ideas:hover {
-  background: rgba(245, 158, 11, 0.35);
-  color: #fde68a;
+  background: rgba(124, 58, 237, 0.35);
 }
 
 #boardTitle {
