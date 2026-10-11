@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { getUsEquityProjectionDates, isUsEquityTradingDay } from './tradingCalendar';
+import {
+  getNextTradingDay,
+  getUsEquityProjectionDates,
+  isStockHoliday,
+  isTradingDay,
+  isUsEquityTradingDay
+} from './tradingCalendar';
 
 function localDate(year: number, month: number, day: number): Date {
   return new Date(year, month - 1, day);
@@ -10,11 +16,38 @@ function dateLabel(date: Date): string {
 }
 
 describe('US equity trading calendar', () => {
-  it('excludes weekends and scheduled exchange holidays', () => {
-    expect(isUsEquityTradingDay(localDate(2026, 10, 10))).toBe(false);
+  it('identifies stock holidays and excludes weekends and scheduled exchange holidays', () => {
+    expect(isTradingDay(localDate(2026, 10, 10))).toBe(false);
+    expect(isTradingDay(localDate(2026, 10, 12))).toBe(true);
+    expect(isStockHoliday(localDate(2026, 6, 19))).toBe(true);
+    expect(isTradingDay(localDate(2026, 6, 19))).toBe(false);
+    expect(isStockHoliday(localDate(2026, 4, 3))).toBe(true);
+    expect(isTradingDay(localDate(2026, 4, 3))).toBe(false);
     expect(isUsEquityTradingDay(localDate(2026, 10, 12))).toBe(true);
-    expect(isUsEquityTradingDay(localDate(2026, 6, 19))).toBe(false);
-    expect(isUsEquityTradingDay(localDate(2026, 4, 3))).toBe(false);
+  });
+
+  it('resolves NTD to Tuesday (+2d) when base date is Sunday before Labor Day', () => {
+    const sundayBeforeLaborDay = localDate(2026, 9, 6);
+    const ntd = getNextTradingDay(sundayBeforeLaborDay);
+    expect(dateLabel(ntd)).toBe('2026-09-08');
+
+    const projections = getUsEquityProjectionDates(sundayBeforeLaborDay);
+    expect(projections[1]).toMatchObject({
+      daysFromToday: 2,
+      kind: 'next-trading-day',
+      label: '(NTD · +2d)'
+    });
+    expect(dateLabel(projections[1].date)).toBe('2026-09-08');
+  });
+
+  it('resolves EOW to Thursday (+0d) when base date is Thursday before Good Friday', () => {
+    const thursdayBeforeGoodFriday = localDate(2026, 4, 2);
+    const projections = getUsEquityProjectionDates(thursdayBeforeGoodFriday);
+    expect(projections[1]).toMatchObject({
+      daysFromToday: 0,
+      kind: 'week-end'
+    });
+    expect(dateLabel(projections[1].date)).toBe('2026-04-02');
   });
 
   it('starts the schedule at Friday when Friday is a trading day', () => {
@@ -47,16 +80,6 @@ describe('US equity trading calendar', () => {
     const projections = getUsEquityProjectionDates(localDate(2026, 10, 6), '2026-10-06');
     expect(projections[0]).toMatchObject({ daysFromToday: 0, kind: 'today' });
     expect(projections.filter(({ kind }) => kind === 'entry')).toHaveLength(0);
-  });
-
-  it('moves a Good Friday end-of-week projection to Monday but retains calendar-day accrual', () => {
-    const projections = getUsEquityProjectionDates(localDate(2026, 4, 2));
-    expect(projections[1]).toMatchObject({
-      daysFromToday: 4,
-      kind: 'week-end',
-      label: '(NTD · +4d)'
-    });
-    expect(dateLabel(projections[1].date)).toBe('2026-04-06');
   });
 
   it('uses the following Monday when today is Friday with next trading day label', () => {
