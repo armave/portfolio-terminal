@@ -230,8 +230,14 @@ summary:hover {
 
 .portfolio-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.625rem;
+}
+
+@media (max-width: 1024px) {
+  .portfolio-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -432,8 +438,7 @@ summary:hover {
     line-height: 1.45;
   }
 
-  #summary-cards,
-  .portfolio-metrics-grid {
+  #summary-cards {
     grid-template-columns: 1fr !important;
   }
 
