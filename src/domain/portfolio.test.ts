@@ -68,7 +68,33 @@ describe('portfolio domain', () => {
     const accrued = calculateMarginInterest(tranches, { now: fixedNow, annualRate: 0.15 });
 
     expect(Math.round(accrued)).toBe(27);
-    expect(accrued).toBeCloseTo(27.11, 1);
+    expect(accrued).toBeCloseTo(26.71, 1);
+  });
+
+  it('simulates daily ledger where tranche bought on Day 1 and deposit on Day 3 reduces interest', () => {
+    const tranches: TradeTranche[] = [
+      { qty: 100, price: 100, date: '2026-10-01' }
+    ];
+    const balanceAdjustments = [
+      { date: '2026-10-03', amount: 10_000 }
+    ];
+    const now = new Date(2026, 9, 4, 12, 0, 0);
+
+    const interestWithoutDeposit = calculateMarginInterest(tranches, {
+      now,
+      annualRate: 0.15
+    });
+
+    const interestWithDeposit = calculateMarginInterest(tranches, {
+      now,
+      annualRate: 0.15,
+      balanceAdjustments
+    });
+
+    const oneDayInterest = 10_000 * (0.15 / 365);
+    expect(interestWithoutDeposit).toBeCloseTo(oneDayInterest * 3, 2);
+    expect(interestWithDeposit).toBeCloseTo(oneDayInterest * 2, 2);
+    expect(interestWithDeposit).toBeLessThan(interestWithoutDeposit);
   });
 
   it('parses short buy dates and falls back for invalid dates', () => {

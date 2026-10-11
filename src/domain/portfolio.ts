@@ -74,6 +74,12 @@ export function calculateCompoundedDebt(
   return principal * Math.pow(1 + dailyRate, days);
 }
 
+export interface BalanceAdjustment {
+  date?: string | Date | number;
+  amount: number;
+  [key: string]: unknown;
+}
+
 export interface MarginInterestOptions {
   totalDebt?: number;
   annualRate?: number;
@@ -81,18 +87,28 @@ export interface MarginInterestOptions {
   dayCountBasis?: number;
   now?: Date | number | string;
   rolloverHour?: number;
+  balanceAdjustments?: BalanceAdjustment[];
+  cashAdjustments?: BalanceAdjustment[];
 }
 
-function parseTrancheDateToDate(dateStr: unknown, referenceDate: Date): Date {
-  if (dateStr instanceof Date) return dateStr;
-  if (typeof dateStr === 'number' && Number.isFinite(dateStr)) return new Date(dateStr);
-  if (typeof dateStr !== 'string' || !dateStr.trim()) return referenceDate;
+function normalizeLedgerDate(value: unknown, fallbackYear: number): Date | null {
+  if (value instanceof Date) {
+    if (!Number.isNaN(value.getTime())) {
+      return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    }
+    return null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const d = new Date(value);
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  if (typeof value !== 'string') return null;
 
-  let raw = dateStr.trim();
-  const currentYear = referenceDate.getFullYear();
+  let raw = value.trim();
+  if (!raw || raw.toLowerCase() === 'new') return null;
 
   if (!/\b\d{4}\b/.test(raw)) {
-    raw = `${raw} ${currentYear}`;
+    raw = `${raw} ${fallbackYear}`;
   }
 
   const ymdMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -102,31 +118,10 @@ function parseTrancheDateToDate(dateStr: unknown, referenceDate: Date): Date {
 
   const parsed = new Date(raw);
   if (!Number.isNaN(parsed.getTime())) {
-    return parsed;
-  }
-  return referenceDate;
-}
-
-function calculateTrancheDayDifference(openDate: Date, today: Date, rolloverHour = 4): number {
-  const effectiveToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  if (today.getHours() < rolloverHour) {
-    effectiveToday.setDate(effectiveToday.getDate() - 1);
+    return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
   }
 
-  const effectiveOpen = new Date(openDate.getFullYear(), openDate.getMonth(), openDate.getDate());
-  if (
-    openDate.getHours() < rolloverHour &&
-    (openDate.getHours() !== 0 || openDate.getMinutes() !== 0 || openDate.getSeconds() !== 0)
-  ) {
-    effectiveOpen.setDate(effectiveOpen.getDate() - 1);
-  }
-
-  const msPerDay = 86400000;
-  const utcToday = Date.UTC(effectiveToday.getFullYear(), effectiveToday.getMonth(), effectiveToday.getDate());
-  const utcOpen = Date.UTC(effectiveOpen.getFullYear(), effectiveOpen.getMonth(), effectiveOpen.getDate());
-
-  const dayDiff = Math.round((utcToday - utcOpen) / msPerDay);
-  return Math.max(0, dayDiff);
+  return null;
 }
 
 export function calculateMarginInterest(
@@ -136,13 +131,13 @@ export function calculateMarginInterest(
 ): number;
 export function calculateMarginInterest(
   tranches: Array<TradeTranche | string | Record<string, unknown>>,
-  debtOrOptions?: number | MarginInterestOptions,
+  debtOrOptions?: number | MarginInterestOptions | BalanceAdjustment[],
   annualRateOrOptions?: number | MarginInterestOptions,
   maybeOptions?: MarginInterestOptions
 ): number;
 export function calculateMarginInterest(
   target: number | Array<TradeTranche | string | Record<string, unknown>>,
-  arg2?: number | MarginInterestOptions,
+  arg2?: number | MarginInterestOptions | BalanceAdjustment[],
   arg3?: number | MarginInterestOptions,
   arg4?: MarginInterestOptions
 ): number {
@@ -154,77 +149,117 @@ export function calculateMarginInterest(
 
   if (!Array.isArray(target) || target.length === 0) return 0;
 
-  const options: MarginInterestOptions =
-    typeof arg2 === 'object' && arg2 !== null
-      ? arg2
-      : typeof arg3 === 'object' && arg3 !== null
-        ? arg3
-        : typeof arg4 === 'object' && arg4 !== null
-          ? arg4
-          : {};
+  const options: MarginInterestOptions = {
+    ...(typeof arg2 === 'object' && arg2 !== null && !Array.isArray(arg2) ? arg2 : {}),
+    ...(typeof arg3 === 'object' && arg3 !== null ? arg3 : {}),
+    ...(typeof arg4 === 'object' && arg4 !== null ? arg4 : {})
+  };
 
-  const debtFromArgs = typeof arg2 === 'number' && arg2 > 1 ? arg2 : undefined;
+  if (Array.isArray(arg2)) {
+    options.balanceAdjustments = arg2;
+  }
+
+  const rolloverHour = options.rolloverHour ?? 4;
+  let nowDate: Date;
+  if (options.now instanceof Date) {
+    nowDate = options.now;
+  } else if (typeof options.now === 'string' || typeof options.now === 'number') {
+    if (typeof options.now === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(options.now.trim())) {
+      const parts = options.now.trim().split('-').map(Number);
+      nowDate = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0);
+    } else {
+      nowDate = new Date(options.now);
+    }
+  } else {
+    nowDate = new Date();
+  }
+
+  const currentYear = nowDate.getFullYear();
+  const cutoffDate = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
+  if (nowDate.getHours() < rolloverHour) {
+    cutoffDate.setDate(cutoffDate.getDate() - 1);
+  }
+
   const rateFromArgs =
     typeof arg2 === 'number' && arg2 <= 1
       ? arg2
       : typeof arg3 === 'number'
         ? arg3
         : undefined;
-
-  const rolloverHour = options.rolloverHour ?? 4;
-  const now = options.now
-    ? (options.now instanceof Date ? options.now : new Date(options.now))
-    : new Date();
-  const dayCountBasis = options.dayCountBasis ?? 360;
   const annualRate = options.annualRate ?? (rateFromArgs ?? 0.15);
+  const dayCountBasis = options.dayCountBasis ?? 365;
   const dailyRate = options.dailyRate ?? (annualRate / dayCountBasis);
 
-  const parsedTranches = target.map(item => {
-    if (typeof item === 'string') {
-      return { date: item, acquiredAt: undefined, cost: 0 };
+  const rawAdjustments = options.balanceAdjustments || options.cashAdjustments || [];
+  const normalizedAdjustments: Array<{ amount: number; date: Date }> = [];
+  rawAdjustments.forEach(item => {
+    if (!isRecord(item)) return;
+    const amount = Number(item.amount) || Number(item.cash) || 0;
+    const date = normalizeLedgerDate(item.date, currentYear);
+    if (date) {
+      normalizedAdjustments.push({ amount, date });
     }
-    if (isRecord(item)) {
+  });
+
+  const normalizedTranches: Array<{ cost: number; date: Date }> = [];
+  target.forEach(item => {
+    if (typeof item === 'string') {
+      const date = normalizeLedgerDate(item, currentYear);
+      if (date) normalizedTranches.push({ cost: 0, date });
+    } else if (isRecord(item)) {
       const qty = Number(item.qty) || 0;
       const price = Number(item.price) || 0;
       const cost = Number(item.cost) || (qty > 0 && price > 0 ? qty * price : Number(item.principal) || 0);
-      const date = typeof item.date === 'string' ? item.date : undefined;
-      const acquiredAt = typeof item.acquiredAt === 'number' ? item.acquiredAt : undefined;
-      return { date, acquiredAt, cost };
-    }
-    return { date: undefined, acquiredAt: undefined, cost: 0 };
-  });
-
-  const totalCost = parsedTranches.reduce((sum, t) => sum + (t.cost > 0 ? t.cost : 0), 0);
-  const totalDebt = options.totalDebt ?? debtFromArgs;
-  const effectiveTotalDebt = typeof totalDebt === 'number' && totalDebt > 0
-    ? totalDebt
-    : (totalCost > 0 ? totalCost : 0);
-
-  let totalAccruedInterest = 0;
-
-  parsedTranches.forEach(tranche => {
-    const trancheDate = tranche.acquiredAt
-      ? new Date(tranche.acquiredAt)
-      : parseTrancheDateToDate(tranche.date, now);
-
-    const days = calculateTrancheDayDifference(trancheDate, now, rolloverHour);
-    if (days <= 0) return;
-
-    let tranchePrincipal = 0;
-    if (totalCost > 0) {
-      const weight = tranche.cost / totalCost;
-      tranchePrincipal = effectiveTotalDebt * weight;
-    } else if (effectiveTotalDebt > 0) {
-      tranchePrincipal = effectiveTotalDebt / parsedTranches.length;
-    }
-
-    if (tranchePrincipal > 0) {
-      const interest = calculateCompoundedDebt(tranchePrincipal, dailyRate, days) - tranchePrincipal;
-      totalAccruedInterest += interest;
+      const rawDate = item.date ?? item.acquiredAt;
+      const date = normalizeLedgerDate(rawDate, currentYear) ?? cutoffDate;
+      normalizedTranches.push({ cost, date });
     }
   });
 
-  return Math.max(0, totalAccruedInterest);
+  const debtFromArgs = typeof arg2 === 'number' && arg2 > 1 ? arg2 : undefined;
+  const totalDebtOption = options.totalDebt ?? debtFromArgs;
+  const totalInvestedSum = normalizedTranches.reduce((sum, t) => sum + t.cost, 0);
+
+  if (totalInvestedSum === 0 && typeof totalDebtOption === 'number' && totalDebtOption > 0 && normalizedTranches.length > 0) {
+    const perTranche = totalDebtOption / normalizedTranches.length;
+    normalizedTranches.forEach(t => { t.cost = perTranche; });
+  }
+
+  let earliestDate: Date = cutoffDate;
+  normalizedTranches.forEach(t => {
+    if (t.date < earliestDate) earliestDate = t.date;
+  });
+  normalizedAdjustments.forEach(a => {
+    if (a.date < earliestDate) earliestDate = a.date;
+  });
+
+  let accruedInterest = 0;
+  const current = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), earliestDate.getDate());
+
+  while (current < cutoffDate) {
+    let totalInvested = 0;
+    for (const t of normalizedTranches) {
+      if (t.date <= current) {
+        totalInvested += t.cost;
+      }
+    }
+
+    let totalAllocatedCash = 0;
+    for (const a of normalizedAdjustments) {
+      if (a.date <= current) {
+        totalAllocatedCash += a.amount;
+      }
+    }
+
+    if (totalInvested > totalAllocatedCash) {
+      const dailyMarginDebt = totalInvested - totalAllocatedCash;
+      accruedInterest += dailyMarginDebt * (annualRate / 365);
+    }
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return Math.max(0, accruedInterest);
 }
 
 export function calculateAccruedFees(
