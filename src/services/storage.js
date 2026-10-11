@@ -97,45 +97,6 @@ export function setGistConfig({ gistId, token } = {}) {
   }
 }
 
-export function getProviderKeys() {
-  if (typeof localStorage === 'undefined') {
-    return { finnhub: '', alphaVantage: '', twelveData: '', rapidApiYahoo: '' };
-  }
-  return {
-    finnhub: localStorage.getItem('finnhub_api_key') || '',
-    alphaVantage: localStorage.getItem('alpha_vantage_api_key') || '',
-    twelveData: localStorage.getItem('twelve_data_api_key') || '',
-    rapidApiYahoo: localStorage.getItem('rapidapi_yahoo_key') || ''
-  };
-}
-
-export function saveProviderKeys(keys = {}) {
-  if (typeof localStorage === 'undefined') return;
-  const storageMap = {
-    finnhub: 'finnhub_api_key',
-    alphaVantage: 'alpha_vantage_api_key',
-    twelveData: 'twelve_data_api_key',
-    rapidApiYahoo: 'rapidapi_yahoo_key'
-  };
-  Object.entries(storageMap).forEach(([prop, key]) => {
-    const val = (keys[prop] || '').trim();
-    if (val) localStorage.setItem(key, val);
-    else localStorage.removeItem(key);
-  });
-}
-
-export function getGeminiUnlockKey() {
-  if (typeof localStorage === 'undefined') return '';
-  return localStorage.getItem('gemini_gist_unlock_key') || '';
-}
-
-export function setGeminiUnlockKey(key) {
-  if (typeof localStorage === 'undefined') return;
-  const trimmed = (key || '').trim();
-  if (trimmed) localStorage.setItem('gemini_gist_unlock_key', trimmed);
-  else localStorage.removeItem('gemini_gist_unlock_key');
-}
-
 export function loadBrokerRules(fallback = {}) {
   if (typeof localStorage === 'undefined') return { ...fallback };
   const raw = localStorage.getItem(TRADERNET_RULES_STORAGE_KEY);

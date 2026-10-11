@@ -14,23 +14,15 @@ import { evaluateIntent, parseAiIntent } from './src/features/ai/intent.ts';
 import { buildIntentPrompt } from './src/features/ai/prompt.ts';
 
 import {
-  decryptProviderKeys,
-  encryptProviderKeys
-} from './src/features/credentials/encryptedProviderKeys.ts';
-
-import { fetchAlphaVantageAnalysts } from './src/features/quotes/alphaVantageAnalysts.ts';
-import { fetchFinnhubInsight } from './src/features/quotes/finnhubInsights.ts';
-import { fetchRapidApiYahooAnalystTarget } from './src/features/quotes/rapidApiYahoo.ts';
-import {
   calculateTargetUpsidePercent,
   sentimentLabel
 } from './src/features/quotes/sentiment.ts';
 
 import {
   fetchYahooStockData,
+  proxyFetch,
   setSecretGetter,
-  syncCloudState as syncCloudStateService,
-  YAHOO_PROXY_URL
+  syncCloudState as syncCloudStateService
 } from './src/services/api.js';
 
 import {
@@ -38,9 +30,7 @@ import {
   clearBrokerRules,
   clearLocalData,
   getGatewaySecret,
-  getGeminiUnlockKey,
   getGistConfig,
-  getProviderKeys,
   getQuoteRefreshInterval,
   loadBrokerRules,
   loadGatewaySecret,
@@ -48,11 +38,9 @@ import {
   saveApiKeys,
   saveBrokerRules,
   saveGatewaySecret,
-  saveProviderKeys,
   saveQuoteRefreshInterval,
   saveState,
-  saveStateToStorage,
-  setGeminiUnlockKey
+  saveStateToStorage
 } from './src/services/storage.js';
 
 import {
@@ -88,28 +76,22 @@ const DEFAULT_TRADERNET_RULES = {
 };
 
 const TRADERNET_RULES = { ...DEFAULT_TRADERNET_RULES };
-const TRADERNET_RULES_STORAGE_KEY = 'tradernet_rules_v1';
 const GIST_FILE_NAME = "margin_state.json";
-const GIST_CREDENTIALS_FILE_NAME = "provider_keys.enc.json";
 
 let state = createBlankState();
 let gistSyncTimeout = null;
 let quoteRefreshTimer = null;
-let isRefreshingLivePrices = false;
 let lastRenderedDeskView = null;
 const livePriceRequests = new Map();
 let marketInsightsOpen = false;
 let activeInsightSection = 'news';
 let loadedInsightTicker = '';
 let insightRequestId = 0;
-let insightTicker = '';
 const boardAnalystSnapshots = new Map();
 const boardAnalystErrors = new Map();
 const boardAnalystRequests = new Map();
 const BOARD_ANALYST_CACHE_TTL_MS = 5 * 60 * 1000;
 const BOARD_ANALYST_RETRY_MS = 60 * 1000;
-const FINNHUB_ANALYST_RESTRICTED_PREFIX = 'finnhub_analyst_target_restricted:';
-const QUOTE_PROVIDER_TIMEOUT_MS = 15 * 1000;
 
 const QUOTE_REFRESH_INTERVAL_KEY = 'quote_refresh_interval_ms';
 const DEFAULT_QUOTE_REFRESH_INTERVAL_MS = 60 * 1000;
@@ -210,87 +192,6 @@ async function pushStateToGist(forceImmediate = false) {
   }
 }
 
-function getProviderKeysFromStorage() {
-  return getProviderKeys();
-}
-
-function applyProviderKeys(keys) {
-  saveProviderKeys(keys);
-  const inputIds = {
-    finnhub: 'finnhubKeyInput',
-    alphaVantage: 'alphaVantageKeyInput',
-    twelveData: 'twelveDataKeyInput',
-    rapidApiYahoo: 'rapidApiKeyInput'
-  };
-  Object.entries(inputIds).forEach(([keyName, inputId]) => {
-    const input = document.getElementById(inputId);
-    if (input) input.value = keys[keyName] || '';
-  });
-}
-
-async function saveProviderKeysToGist(keys, geminiKey) {
-  const { gistId, token } = getGistConfig();
-  if (!gistId || !token) return false;
-  if (!geminiKey.trim()) {
-    throw new Error('Enter the Gemini key to encrypt provider keys for Gist storage.');
-  }
-  const envelope = await encryptProviderKeys(keys, geminiKey);
-  const response = await fetch(`https://api.github.com/gists/${gistId}`, {
-    method: 'PATCH',
-    headers: {
-      Authorization: `token ${token}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      files: {
-        [GIST_CREDENTIALS_FILE_NAME]: {
-          content: JSON.stringify(envelope, null, 2)
-        }
-      }
-    })
-  });
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(`Could not save encrypted provider keys to Gist (HTTP ${response.status}: ${error.message || 'Gist update rejected'}).`);
-  }
-  return true;
-}
-
-async function restoreProviderKeysFromGistFile(file) {
-  if (!file?.content) return;
-  let envelope;
-  try {
-    envelope = JSON.parse(file.content);
-  } catch {
-    throw new Error('Encrypted provider-keys file is not valid JSON.');
-  }
-
-  let geminiKey = sessionStorage.getItem('gemini_api_key') ||
-    getGeminiUnlockKey() ||
-    '';
-  if (!geminiKey) {
-    geminiKey = window.prompt('Encrypted provider keys were found in this Gist. Enter the Gemini API key to unlock them:')?.trim() || '';
-    if (!geminiKey) {
-      logTerminal('[Gist Keys]: Restore skipped because the Gemini unlock key was not provided.');
-      return;
-    }
-  }
-
-  try {
-    const keys = await decryptProviderKeys(envelope, geminiKey);
-    sessionStorage.setItem('gemini_api_key', geminiKey);
-    setGeminiUnlockKey(geminiKey);
-    const geminiInput = document.getElementById('apiKeyInput');
-    if (geminiInput) geminiInput.value = geminiKey;
-    applyProviderKeys(keys);
-    logTerminal('[Gist Keys]: Encrypted provider keys unlocked and saved in this browser.');
-  } catch (error) {
-    logTerminal(`[Gist Keys Error]: ${error instanceof Error ? error.message : String(error)}`);
-    showToast('Could not unlock provider keys. Check the Gemini key.', 'error');
-  }
-}
-
 async function pullStateFromGistOnLoad() {
   const { gistId, token } = getGistConfig();
   if (!gistId) return false;
@@ -308,12 +209,8 @@ async function pullStateFromGistOnLoad() {
 
     const data = await res.json();
     const files = data.files || {};
-    const targetFile = files[GIST_FILE_NAME] ||
-      Object.entries(files).find(([name]) => name !== GIST_CREDENTIALS_FILE_NAME)?.[1];
+    const targetFile = files[GIST_FILE_NAME] || Object.values(files)[0];
     if (!targetFile || !targetFile.content) throw new Error("Gist contains no readable file.");
-    if (files[GIST_CREDENTIALS_FILE_NAME]) {
-      await restoreProviderKeysFromGistFile(files[GIST_CREDENTIALS_FILE_NAME]);
-    }
 
     let remoteState = null;
     let parsedEnvelope = null;
@@ -1037,94 +934,35 @@ function sentimentBadge(direction, label = sentimentLabel(direction)) {
   return badge;
 }
 
-function getAnalystTargetPrice(result) {
-  const targets = result?.targets && typeof result.targets === 'object' ? result.targets : {};
-  const values = [result?.targetPrice, targets.targetMean, targets.targetMedian];
-  return values.find(value => typeof value === 'number' && Number.isFinite(value) && value > 0);
-}
-
 async function fetchBoardAnalystTarget(ticker) {
-  const { finnhub: finnhubKey, alphaVantage: alphaVantageKey, rapidApiYahoo: rapidApiKey } = getProviderKeys();
-  const failures = [];
-  const restrictionKey = `${FINNHUB_ANALYST_RESTRICTED_PREFIX}${ticker}`;
-  const finnhubRestricted = sessionStorage.getItem(restrictionKey) === 'true';
-
   if (!ticker) return null;
   const cleanTicker = ticker.trim().toUpperCase();
 
   try {
-    const res = await fetch(`${YAHOO_PROXY_URL}?symbol=${encodeURIComponent(cleanTicker)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-App-Auth': getGatewaySecret()
-      }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const t = data.analystTargets;
-      const targetPrice = t?.median || t?.mean || t?.high;
+    const data = await proxyFetch('', { symbol: cleanTicker }, { method: 'POST' });
+    const t = data?.analystTargets;
+    const targetPrice = t?.median || t?.mean || t?.high;
 
-      if (typeof targetPrice === "number" && Number.isFinite(targetPrice) && targetPrice > 0) {
-        return {
-          targetPrice: targetPrice,
-          provider: "Yahoo",
-          source: "Yahoo",
-          targetMean: t.mean,
-          targetHigh: t.high,
-          targetLow: t.low,
-          numberOfAnalysts: t.numberOfAnalysts || 0,
-          consensus: t.consensusRecommendation || null,
-          valuation: data.valuation,
-          calendar: data.calendar,
-          profile: data.profile
-        };
-      }
+    if (typeof targetPrice === "number" && Number.isFinite(targetPrice) && targetPrice > 0) {
+      return {
+        targetPrice,
+        provider: "Yahoo",
+        source: "Yahoo",
+        targetMean: t.mean,
+        targetHigh: t.high,
+        targetLow: t.low,
+        numberOfAnalysts: t.numberOfAnalysts || 0,
+        consensus: t.consensusRecommendation || null,
+        valuation: data.valuation,
+        calendar: data.calendar,
+        profile: data.profile
+      };
     }
   } catch (err) {
     console.warn(`[Yahoo Worker Error for ${cleanTicker}]:`, err.message);
   }
 
-  if (finnhubKey && !finnhubRestricted) {
-    try {
-      const result = await fetchFinnhubInsight(finnhubKey, 'stock/price-target', { symbol: ticker });
-      const targetPrice = getAnalystTargetPrice({ targets: result });
-      if (targetPrice) return { targetPrice, source: 'Finnhub' };
-      failures.push('Finnhub returned no consensus price target.');
-    } catch (error) {
-      if (error?.status === 403) {
-        sessionStorage.setItem(restrictionKey, 'true');
-        failures.push('Finnhub analyst price targets are restricted for this symbol or plan (HTTP 403).');
-      } else {
-        failures.push(`Finnhub: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-  } else if (finnhubKey && finnhubRestricted) {
-    failures.push('Finnhub analyst price targets were previously restricted for this symbol in this session.');
-  }
-
-  if (alphaVantageKey) {
-    try {
-      const result = await fetchAlphaVantageAnalysts(alphaVantageKey, ticker);
-      if (result.targetPrice) return { targetPrice: result.targetPrice, source: 'Alpha Vantage' };
-      failures.push('Alpha Vantage returned no consensus price target.');
-    } catch (error) {
-      failures.push(`Alpha Vantage: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  if (rapidApiKey) {
-    try {
-      return await fetchRapidApiYahooAnalystTarget(rapidApiKey, ticker);
-    } catch (error) {
-      failures.push(`Yahoo Finance via RapidAPI: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  if (failures.length === 0) {
-    throw new Error('Add a Finnhub, Alpha Vantage, or RapidAPI key to load analyst consensus.');
-  }
-  throw new Error(failures.join(' '));
+  throw new Error(`Analyst price target unavailable via proxy for ${cleanTicker}.`);
 }
 
 function renderBoardAnalystConsensus(ticker, force = false) {
@@ -1140,19 +978,12 @@ function renderBoardAnalystConsensus(ticker, force = false) {
     return;
   }
 
-  const { finnhub: finnhubKey, alphaVantage: alphaVantageKey, rapidApiYahoo: rapidApiKey } = getProviderKeys();
-  const credentials = `${finnhubKey}|${alphaVantageKey}|${rapidApiKey}`;
   const now = Date.now();
   const snapshot = boardAnalystSnapshots.get(ticker);
   const error = boardAnalystErrors.get(ticker);
   const currentPrice = Number(state.positions[ticker].currentPrice);
 
-  if (!finnhubKey && !alphaVantageKey && !rapidApiKey) {
-    hideConsensus();
-    return;
-  }
-
-  if (!force && snapshot?.credentials === credentials && now - snapshot.fetchedAt < BOARD_ANALYST_CACHE_TTL_MS) {
+  if (!force && snapshot && now - snapshot.fetchedAt < BOARD_ANALYST_CACHE_TTL_MS) {
     const upside = calculateTargetUpsidePercent(snapshot.targetPrice, currentPrice);
     if (upside !== undefined) {
       const color = upside > 0
@@ -1160,75 +991,43 @@ function renderBoardAnalystConsensus(ticker, force = false) {
         : upside < 0
           ? 'border-rose-800 bg-rose-950/40 text-rose-300'
           : 'border-slate-700 bg-slate-900 text-slate-300';
-      const isRapidApiAverage = snapshot.basis?.startsWith('average of ') ?? false;
-      const shortSource = isRapidApiAverage ? 'Yahoo avg' : snapshot.source;
-      const reportCount = isRapidApiAverage ? ` · ${snapshot.basis.match(/\d+/)?.[0]} reports` : '';
-      container.textContent = `${shortSource} · $${formatUSD(snapshot.targetPrice)}${reportCount} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`;
-      container.title = `Target from ${snapshot.source}${snapshot.basis ? ` (${snapshot.basis} from the past year)` : ''}: $${formatUSD(snapshot.targetPrice)} versus current price $${formatUSD(currentPrice)}.`;
+      container.textContent = `${snapshot.source} · $${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`;
+      container.title = `Target from ${snapshot.source}: $${formatUSD(snapshot.targetPrice)} versus current price $${formatUSD(currentPrice)}.`;
       container.className = `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`;
     } else {
-      container.textContent = `${snapshot.source} price target · $${formatUSD(snapshot.targetPrice)}${snapshot.basis ? ` · ${snapshot.basis}` : ''} · current price unavailable`;
-      container.title = `Price target from ${snapshot.source}${snapshot.basis ? ` (${snapshot.basis})` : ''}.`;
+      container.textContent = `${snapshot.source} price target · $${formatUSD(snapshot.targetPrice)} · current price unavailable`;
+      container.title = `Price target from ${snapshot.source}.`;
       container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300';
     }
     return;
   }
 
-  if (!force && error?.credentials === credentials && now - error.failedAt < BOARD_ANALYST_RETRY_MS) {
-    container.textContent = `Analyst target unavailable · ${error.summary}`;
+  if (!force && error && now - error.failedAt < BOARD_ANALYST_RETRY_MS) {
+    container.textContent = 'Analyst target unavailable';
     container.title = error.message;
     container.className = 'rounded border border-amber-800 bg-amber-950/30 px-2.5 py-1 text-[10px] font-semibold text-amber-300';
     return;
   }
 
-  const existingRequest = boardAnalystRequests.get(ticker);
-  if (existingRequest?.credentials === credentials) {
-    container.textContent = 'Checking analyst target providers…';
-    container.removeAttribute('title');
-    container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
+  if (boardAnalystRequests.has(ticker)) {
     return;
   }
 
-  container.textContent = 'Checking analyst target providers…';
+  container.textContent = 'Checking analyst target…';
   container.removeAttribute('title');
   container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
-  const request = { credentials };
-  boardAnalystRequests.set(ticker, request);
-  fetchBoardAnalystTarget(ticker).then(result => {
-    const currentKeys = getProviderKeys();
-    if (currentKeys.finnhub !== finnhubKey ||
-      currentKeys.alphaVantage !== alphaVantageKey ||
-      currentKeys.rapidApiYahoo !== rapidApiKey) return;
-    boardAnalystSnapshots.set(ticker, { ...result, credentials, fetchedAt: Date.now() });
+
+  const request = fetchBoardAnalystTarget(ticker).then(result => {
+    boardAnalystSnapshots.set(ticker, { ...result, fetchedAt: Date.now() });
     boardAnalystErrors.delete(ticker);
   }).catch(requestError => {
-    const currentKeys = getProviderKeys();
-    if (currentKeys.finnhub !== finnhubKey ||
-      currentKeys.alphaVantage !== alphaVantageKey ||
-      currentKeys.rapidApiYahoo !== rapidApiKey) return;
     const message = requestError instanceof Error ? requestError.message : String(requestError);
-    const summaryParts = [];
-    if (message.includes('Finnhub analyst price targets are restricted')) {
-      summaryParts.push('Finnhub plan restricted');
-    }
-    if (/25 requests per day|rate limit|frequency exceeded/i.test(message)) {
-      summaryParts.push('Alpha Vantage limit reached');
-    } else if (alphaVantageKey && message.includes('Alpha Vantage')) {
-      summaryParts.push('Alpha Vantage returned no target');
-    } else if (!alphaVantageKey) {
-      summaryParts.push('add Alpha Vantage key for fallback');
-    }
-    if (message.includes('no analyst price target')) {
-      summaryParts.push('RapidAPI returned no analyst target');
-    } else if (message.includes('RapidAPI')) {
-      summaryParts.push('RapidAPI Yahoo Finance unavailable');
-    }
-    const summary = summaryParts.join(' · ') || 'provider access or data unavailable';
-    boardAnalystErrors.set(ticker, { credentials, failedAt: Date.now(), message, summary });
+    boardAnalystErrors.set(ticker, { failedAt: Date.now(), message });
   }).finally(() => {
-    if (boardAnalystRequests.get(ticker) === request) boardAnalystRequests.delete(ticker);
+    boardAnalystRequests.delete(ticker);
     if (getMarketInsightsTicker() === ticker) renderBoardAnalystConsensus(ticker);
   });
+  boardAnalystRequests.set(ticker, request);
 }
 
 async function loadMarketInsight(section, force = false) {
@@ -1245,7 +1044,6 @@ async function loadMarketInsight(section, force = false) {
     return;
   }
 
-  insightTicker = ticker;
   activeInsightSection = section;
   if (tickerBadge) tickerBadge.textContent = `· ${ticker}`;
 
@@ -1260,15 +1058,7 @@ async function loadMarketInsight(section, force = false) {
 
   try {
     if (section === 'news') {
-      const res = await fetch(`${YAHOO_PROXY_URL}?action=news&symbol=${encodeURIComponent(ticker)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-App-Auth': getGatewaySecret()
-        }
-      });
-      if (!res.ok) throw new Error("Worker news proxy request failed.");
-      const news = await res.json();
+      const news = await proxyFetch('news', { symbol: ticker }, { method: 'POST' });
 
       if (currentRequestId !== insightRequestId) return;
 
@@ -1286,15 +1076,7 @@ async function loadMarketInsight(section, force = false) {
       return;
     }
 
-    const res = await fetch(`${YAHOO_PROXY_URL}?symbol=${encodeURIComponent(ticker)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-App-Auth': getGatewaySecret()
-      }
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await proxyFetch('', { symbol: ticker }, { method: 'POST' });
 
     if (currentRequestId !== insightRequestId) return;
 
@@ -2307,18 +2089,10 @@ async function executeCommand(activeState = state) {
 
     document.getElementById("aiStatus").innerText = "PARSING...";
 
-    const res = await fetch(`${YAHOO_PROXY_URL}?action=gemini`, {
+    const data = await proxyFetch('gemini', {}, {
       method: "POST",
-      headers: { "Content-Type": "application/json", 'X-App-Auth': getGatewaySecret() },
       body: JSON.stringify({ prompt })
     });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Worker returned HTTP ${res.status}`);
-    }
-
-    const data = await res.json();
     const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!rawText) throw new Error("No response content generated by Gemini.");
 

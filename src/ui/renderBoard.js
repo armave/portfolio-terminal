@@ -5,7 +5,7 @@ import {
   calculateMarginInterest
 } from '../domain/portfolio.ts';
 import { getUsEquityProjectionDates } from '../domain/tradingCalendar.ts';
-import { sentimentLabel, summarizeDailyQuote } from '../features/quotes/sentiment.ts';
+import { sentimentLabel } from '../features/quotes/sentiment.ts';
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

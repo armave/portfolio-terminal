@@ -12,10 +12,6 @@ import {
   areHeaderCredentialsConfigured,
   getGistConfig,
   setGistConfig,
-  getProviderKeys,
-  saveProviderKeys,
-  getGeminiUnlockKey,
-  setGeminiUnlockKey,
   loadBrokerRules,
   saveBrokerRules,
   clearBrokerRules,
@@ -250,45 +246,6 @@ describe('storage service', () => {
 
       setGistConfig({ gistId: '' });
       expect(getGistConfig()).toEqual({ gistId: '', token: 'token456' });
-    });
-  });
-
-  describe('provider keys', () => {
-    it('gets, sets and removes provider keys', () => {
-      expect(getProviderKeys()).toEqual({
-        finnhub: '',
-        alphaVantage: '',
-        twelveData: '',
-        rapidApiYahoo: ''
-      });
-
-      saveProviderKeys({
-        finnhub: 'fh-key',
-        alphaVantage: 'av-key',
-        twelveData: 'td-key',
-        rapidApiYahoo: 'rapid-key'
-      });
-
-      expect(getProviderKeys()).toEqual({
-        finnhub: 'fh-key',
-        alphaVantage: 'av-key',
-        twelveData: 'td-key',
-        rapidApiYahoo: 'rapid-key'
-      });
-
-      saveProviderKeys({ finnhub: '' });
-      expect(getProviderKeys().finnhub).toBe('');
-      expect(getProviderKeys().alphaVantage).toBe('');
-    });
-  });
-
-  describe('gemini unlock key', () => {
-    it('gets and sets unlock key', () => {
-      expect(getGeminiUnlockKey()).toBe('');
-      setGeminiUnlockKey('gemini-secret');
-      expect(getGeminiUnlockKey()).toBe('gemini-secret');
-      setGeminiUnlockKey('');
-      expect(getGeminiUnlockKey()).toBe('');
     });
   });
 

@@ -17,9 +17,9 @@ export function getActiveGatewaySecret(state) {
   return getGatewaySecret();
 }
 
-export async function proxyFetch(action, queryParams = {}, fetchOptions = {}) {
+export async function proxyFetch(action = '', queryParams = {}, fetchOptions = {}) {
   const url = new URL(YAHOO_PROXY_URL);
-  url.searchParams.append('action', action);
+  if (action) url.searchParams.append('action', action);
   Object.entries(queryParams).forEach(([k, v]) => {
     if (v) url.searchParams.append(k, v);
   });
@@ -49,15 +49,7 @@ export async function fetchYahooStockData(ticker) {
   const cleanTicker = ticker.trim().toUpperCase();
 
   try {
-    const res = await fetch(`${YAHOO_PROXY_URL}?symbol=${encodeURIComponent(cleanTicker)}`, {
-      headers: { "X-App-Auth": getActiveGatewaySecret() }
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    const data = await res.json();
-    return data;
+    return await proxyFetch('', { symbol: cleanTicker });
   } catch (err) {
     console.warn(`[Yahoo Data Error for ${cleanTicker}]:`, err.message);
     return null;
