@@ -221,10 +221,10 @@ export function renderPositionsTable(gross, totalComms, debtToUse, marginCharged
         tableBody.appendChild(entryRow);
         return;
       }
-      const milestoneLabel = item.label || (kind === 'week-end'
+      const milestoneLabel = item.label || (kind === 'week-end' || kind === 'next-trading-day'
         ? (date.getDay() === 1
-          ? (daysFromToday === 1 ? '(Next trading day · +1d)' : `(Next trading day · +${daysFromToday}d)`)
-          : `(End of week · +${daysFromToday}d)`)
+          ? (daysFromToday === 1 ? '(NTD · +1d)' : `(NTD · +${daysFromToday}d)`)
+          : `(EOW · +${daysFromToday}d)`)
         : `(+${daysFromToday}d)`);
 
       const label = kind === 'today'

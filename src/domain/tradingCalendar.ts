@@ -1,22 +1,27 @@
+export type ProjectionKind = 'entry' | 'today' | 'next-trading-day' | 'week-end' | 'weekly';
+
 export interface ProjectionDate {
   date: Date;
   daysFromToday: number;
-  kind: 'entry' | 'today' | 'week-end' | 'weekly';
+  kind: ProjectionKind;
   label?: string;
 }
 
 export function getProjectionMilestoneLabel(
   date: Date,
   daysFromToday: number,
-  kind: ProjectionDate['kind']
+  kind: ProjectionKind
 ): string {
   if (kind === 'entry') return 'Entry';
   if (kind === 'today') return 'Today';
+  if (kind === 'next-trading-day') {
+    return `(NTD · +${daysFromToday}d)`;
+  }
   if (kind === 'week-end') {
     if (date.getDay() === 1) {
-      return daysFromToday === 1 ? '(Next trading day · +1d)' : `(Next trading day · +${daysFromToday}d)`;
+      return `(NTD · +${daysFromToday}d)`;
     }
-    return `(End of week · +${daysFromToday}d)`;
+    return `(EOW · +${daysFromToday}d)`;
   }
   return `(+${daysFromToday}d)`;
 }
@@ -138,20 +143,30 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
   }
 
   const endOfWeekDays = calendarDayDifference(start, endOfWeekMarketDate);
-  projections.push(
-    {
-      date: start,
-      daysFromToday: 0,
-      kind: 'today',
-      label: getProjectionMilestoneLabel(start, 0, 'today')
-    },
-    {
-      date: endOfWeekMarketDate,
-      daysFromToday: endOfWeekDays,
-      kind: 'week-end',
-      label: getProjectionMilestoneLabel(endOfWeekMarketDate, endOfWeekDays, 'week-end')
-    }
-  );
+  projections.push({
+    date: start,
+    daysFromToday: 0,
+    kind: 'today',
+    label: getProjectionMilestoneLabel(start, 0, 'today')
+  });
+
+  if (isWeekend) {
+    const nextTradingDay = rollForwardToTradingDay(addDays(start, 1));
+    const nextTradingDays = calendarDayDifference(start, nextTradingDay);
+    projections.push({
+      date: nextTradingDay,
+      daysFromToday: nextTradingDays,
+      kind: 'next-trading-day',
+      label: getProjectionMilestoneLabel(nextTradingDay, nextTradingDays, 'next-trading-day')
+    });
+  }
+
+  projections.push({
+    date: endOfWeekMarketDate,
+    daysFromToday: endOfWeekDays,
+    kind: 'week-end',
+    label: getProjectionMilestoneLabel(endOfWeekMarketDate, endOfWeekDays, 'week-end')
+  });
 
   if (isWeekend) {
     for (const week of [1, 2, 3, 4, 5]) {

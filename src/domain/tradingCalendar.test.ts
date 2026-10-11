@@ -54,7 +54,7 @@ describe('US equity trading calendar', () => {
     expect(projections[1]).toMatchObject({
       daysFromToday: 4,
       kind: 'week-end',
-      label: '(Next trading day · +4d)'
+      label: '(NTD · +4d)'
     });
     expect(dateLabel(projections[1].date)).toBe('2026-04-06');
   });
@@ -64,24 +64,34 @@ describe('US equity trading calendar', () => {
     expect(projections[1]).toMatchObject({
       daysFromToday: 3,
       kind: 'week-end',
-      label: '(Next trading day · +3d)'
+      label: '(NTD · +3d)'
     });
     expect(dateLabel(projections[1].date)).toBe('2026-10-12');
   });
 
-  it('resolves the end of week milestone to Friday (+5d) with correct label when today is Sunday', () => {
+  it('resolves the first milestone to Monday (NTD) and next to Friday (EOW) when today is Sunday', () => {
     const projections = getUsEquityProjectionDates(localDate(2026, 10, 11));
     expect(projections[1]).toMatchObject({
+      daysFromToday: 1,
+      kind: 'next-trading-day',
+      label: '(NTD · +1d)'
+    });
+    expect(dateLabel(projections[1].date)).toBe('2026-10-12');
+    expect(projections[1].label).toContain('NTD');
+
+    expect(projections[2]).toMatchObject({
       daysFromToday: 5,
       kind: 'week-end',
-      label: '(End of week · +5d)'
+      label: '(EOW · +5d)'
     });
-    expect(dateLabel(projections[1].date)).toBe('2026-10-16');
+    expect(dateLabel(projections[2].date)).toBe('2026-10-16');
+    expect(projections[2].label).toContain('EOW');
   });
 
   it('projects multi-week intervals to subsequent Fridays when today is a weekend', () => {
     const projections = getUsEquityProjectionDates(localDate(2026, 10, 11));
     expect(projections.slice(1).map(({ date, daysFromToday }) => [dateLabel(date), daysFromToday])).toEqual([
+      ['2026-10-12', 1],
       ['2026-10-16', 5],
       ['2026-10-23', 12],
       ['2026-10-30', 19],
