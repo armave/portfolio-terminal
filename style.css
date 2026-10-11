@@ -494,7 +494,7 @@ summary:hover {
 .table-scroll-wrapper table,
 #projectionTableContainer table {
   min-width: max-content;
-  max-width: 960px;
+  max-width: 550px;
   width: 100%;
   margin: 0 auto;
 }
