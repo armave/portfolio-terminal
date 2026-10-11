@@ -380,7 +380,13 @@ summary:hover {
 
 @media (max-width: 768px) {
   body {
+    padding: 0.5rem !important;
     line-height: 1.45;
+  }
+
+  #summary-cards,
+  .portfolio-metrics-grid {
+    grid-template-columns: 1fr !important;
   }
 
   .border-card {
@@ -395,8 +401,11 @@ summary:hover {
     font-size: 1.25rem;
   }
 
+  #terminalLogs,
   #terminalLog {
     height: 14rem;
+    font-size: 0.7rem;
+    overflow-y: auto;
   }
 
   #cashCushionContainer > .bg-slate-900\/60 {
