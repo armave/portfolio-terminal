@@ -1,3 +1,4 @@
+import CryptoJS from 'crypto-js';
 import { getGatewaySecret, loadSavedState, saveStateToStorage } from './storage.js';
 
 export const YAHOO_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
@@ -103,7 +104,30 @@ export async function pullCloudState(options = {}) {
       throw new Error(errData.error || `HTTP ${res.status}`);
     }
 
-    const parsedState = await res.json();
+    const data = await res.json();
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid state payload from KV.');
+    }
+
+    let parsedState;
+    if (typeof data.encryptedPayload === 'string') {
+      try {
+        const bytes = CryptoJS.AES.decrypt(data.encryptedPayload, secret);
+        const decryptedStr = bytes.toString(CryptoJS.enc.Utf8);
+        if (!decryptedStr) {
+          throw new Error('Invalid Gateway Secret or corrupt data.');
+        }
+        parsedState = JSON.parse(decryptedStr);
+      } catch (decryptErr) {
+        throw new Error(`Failed to decrypt cloud state: ${decryptErr.message}`);
+      }
+    } else {
+      parsedState = data;
+      pushCloudState(parsedState, { ...handlers, secret }).catch((err) => {
+        console.warn('Background encryption upgrade failed:', err);
+      });
+    }
+
     if (!parsedState || typeof parsedState !== 'object') {
       throw new Error('Invalid state payload from KV.');
     }
@@ -141,6 +165,9 @@ export async function pushCloudState(state, options = {}) {
   }
 
   try {
+    const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(currentState), secret).toString();
+    const payload = { encryptedPayload: ciphertext };
+
     const url = new URL('/api/state', YAHOO_PROXY_URL);
     const res = await fetch(url.toString(), {
       method: 'POST',
@@ -149,7 +176,7 @@ export async function pushCloudState(state, options = {}) {
         'X-App-Auth': secret,
         'Authorization': `Bearer ${secret}`
       },
-      body: JSON.stringify(currentState)
+      body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
