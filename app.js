@@ -156,6 +156,7 @@ function pullCloudAndRewriteLocal(parsedState) {
   state = { ...state, ...parsedState };
   state = loadSavedState(state);
   renderBoard();
+  console.log("[Sync]: Cloud state ingested and UI re-rendered successfully", state);
   setTimeout(() => {
     const mainView = document.getElementById('mainTerminalView');
     if (mainView) {
@@ -2013,7 +2014,7 @@ async function startApp(secret) {
   const headerGatewayInput = document.getElementById('headerGatewaySecretInput');
   if (headerGatewayInput) headerGatewayInput.value = secret;
 
-  if (secret) await syncCloudState();
+  if (secret) await syncCloudState('pull');
 
   ['gatewaySecretInput', 'headerGatewaySecretInput'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', updateHeaderCredentialsVisibility);
@@ -2075,6 +2076,9 @@ async function initApp() {
       if (!appInitialized) {
         appInitialized = true;
         await startApp(secret);
+      } else {
+        state.gatewaySecret = secret;
+        await syncCloudState('pull');
       }
     };
   }

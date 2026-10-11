@@ -220,7 +220,7 @@ export async function saveApiKeys(options = {}) {
   const toggleFn = options.toggleHeaderCredentialsVisibility || (typeof window !== 'undefined' ? window.toggleHeaderCredentialsVisibility : null);
 
   if (typeof syncFn === 'function') {
-    const success = await syncFn();
+    const success = await syncFn('pull');
     if (success) {
       if (typeof refreshFn === 'function') await refreshFn();
       if (typeof toggleFn === 'function') toggleFn();

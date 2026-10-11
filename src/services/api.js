@@ -113,17 +113,17 @@ export async function pullCloudState(options = {}) {
         const bytes = CryptoJS.AES.decrypt(data.encryptedPayload, currentSecret);
         const decryptedStr = bytes ? bytes.toString(CryptoJS.enc.Utf8) : '';
         if (!decryptedStr) {
-          console.error("Decryption failed: Incorrect Gateway Secret or empty string returned.");
-          throw new Error("Incorrect Gateway Secret or empty string returned.");
+          console.error("[Sync]: Decryption failed — verify Gateway Secret matches the encryption key.");
+          throw new Error("Decryption failed — verify Gateway Secret matches the encryption key.");
         }
         try {
           parsedState = JSON.parse(decryptedStr);
         } catch (parseErr) {
-          console.error("Decryption failed: Incorrect Gateway Secret or empty string returned.");
+          console.error("[Sync]: Decryption failed — verify Gateway Secret matches the encryption key.");
           throw new Error(`Invalid JSON in decrypted state: ${parseErr.message}`);
         }
       } catch (decryptErr) {
-        console.error("Decryption failed: Incorrect Gateway Secret or empty string returned.");
+        console.error("[Sync]: Decryption failed — verify Gateway Secret matches the encryption key.");
         throw new Error(`Failed to decrypt cloud state: ${decryptErr.message}`);
       }
     } else {
@@ -140,8 +140,11 @@ export async function pullCloudState(options = {}) {
     saveStateToStorage(parsedState);
     if (typeof pullCloudAndRewriteLocal === 'function') {
       pullCloudAndRewriteLocal(parsedState);
+    } else if (typeof window !== 'undefined' && typeof window.renderBoard === 'function') {
+      window.renderBoard();
     }
 
+    console.log("[Sync]: Cloud state ingested and UI re-rendered successfully", parsedState);
     showToast('KV cloud state pulled.', 'success');
     logTerminal('[KV Cloud]: Synced successfully.');
     return parsedState;
