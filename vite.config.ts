@@ -28,15 +28,22 @@ function normalizeRootPlugin(): Plugin {
   return {
     name: 'normalize-root-arg',
     config(config) {
-      if (config.root) {
-        const rootDir = findRootWithIndexHtml(config.root);
-        config.root = rootDir;
-        return { root: rootDir };
-      }
+      const rootDir = findRootWithIndexHtml(config.root || '.');
+      config.root = rootDir;
+      return {
+        root: rootDir,
+        build: {
+          rollupOptions: {
+            input: path.resolve(rootDir, 'index.html')
+          }
+        }
+      };
     },
     configResolved(resolvedConfig) {
-      if (resolvedConfig.root) {
-        (resolvedConfig as any).root = findRootWithIndexHtml(resolvedConfig.root);
+      const rootDir = findRootWithIndexHtml(resolvedConfig.root || '.');
+      (resolvedConfig as any).root = rootDir;
+      if (resolvedConfig.build?.rollupOptions) {
+        resolvedConfig.build.rollupOptions.input = path.resolve(rootDir, 'index.html');
       }
     }
   };
