@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@config "./tailwind.config.js";
 
 :root {
   --bg-app: #121212;
