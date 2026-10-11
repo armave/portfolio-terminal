@@ -283,7 +283,22 @@ summary:hover {
   color: var(--text-muted);
 }
 
+.board-header-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.board-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 #boardTitle {
+  min-width: 0;
+  word-break: normal;
   letter-spacing: -0.025em;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -425,8 +440,30 @@ summary:hover {
     padding: 0.7rem 0.75rem;
   }
 
+  .board-header-banner {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .board-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
   #boardTitle {
+    min-width: 0;
+    width: 100%;
+    word-break: normal;
     font-size: 1.25rem;
+  }
+
+  .board-title-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
   #terminalLogs,
