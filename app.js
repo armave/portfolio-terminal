@@ -668,7 +668,7 @@ export function createStockPageLink(ticker, provider) {
     href = `https://tradingview.com/chart/?symbol=${symbol}`;
     link.id = 'tvChartLink';
   } else if (provider === 'TV Ideas') {
-    href = `https://tradingview.com/symbols/${symbol}/`;
+    href = `https://tradingview.com/symbols/${symbol}/ideas/?sort=recent/`;
     link.id = 'tvIdeasLink';
   }
   link.href = href;
