@@ -34,6 +34,11 @@ import {
   saveState
 } from './src/services/storage.js';
 
+import {
+  logTerminal,
+  showToast
+} from './src/ui/notifications.js';
+
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
 // ==========================================
@@ -2472,53 +2477,10 @@ function renderProjectionTable(gross, totalComms, debtToUse, marginChargedToUse,
   }
 }
 
-function showToast(message, type = 'info') {
-  const container = document.getElementById('toastContainer');
-  if (!container) return;
-
-  const toast = document.createElement('div');
-  const palette = {
-    success: 'border-emerald-500/60 bg-emerald-950/80 text-emerald-200',
-    error: 'border-rose-500/60 bg-rose-950/80 text-rose-200',
-    warning: 'border-amber-500/60 bg-amber-950/80 text-amber-200',
-    info: 'border-sky-500/60 bg-sky-950/80 text-sky-200'
-  };
-
-  toast.className = `border rounded-lg px-3 py-2 text-xs font-semibold shadow-lg backdrop-blur-sm ${palette[type] || palette.info}`;
-  toast.classList.add('ui-toast-enter');
-  toast.textContent = message;
-  container.appendChild(toast);
-
-  setTimeout(() => {
-    toast.classList.add('opacity-0', 'translate-y-1');
-    setTimeout(() => toast.remove(), 220);
-  }, 2600);
-}
-
 function updateEmptyStateVisibility(isEmpty) {
   const panel = document.getElementById('emptyStatePanel');
   if (!panel) return;
   panel.classList.toggle('hidden', !isEmpty);
-}
-
-function logTerminal(content, isUser = false, isHtml = false) {
-  const log = document.getElementById('terminalLog');
-  if (!log) {
-    console.log(content);
-    return;
-  }
-  const div = document.createElement('div');
-  if (isUser) {
-    div.className = "text-cyan-400 font-semibold";
-    div.innerText = "> " + content;
-  } else if (isHtml) {
-    div.innerHTML = content;
-  } else {
-    div.className = "text-slate-300";
-    div.innerText = content;
-  }
-  log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
 }
 
 async function requestLivePrice(symbol) {
@@ -3385,12 +3347,14 @@ Object.assign(window, {
   exportBackupJSON,
   importBackupJSON,
   loadMarketInsight,
+  logTerminal,
   syncCloudState,
   refreshAllLivePrices,
   refreshMarketInsight,
   resetToBlankState,
   saveApiKeys,
   saveCurrentBalanceFromInput,
+  showToast,
   toggleMarketInsights,
   toggleHeaderCredentialsVisibility
 });
