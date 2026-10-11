@@ -1,7 +1,15 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "trading-proxy",
-  "main": "worker.js",
-  "compatibility_date": "2026-10-08",
-  "compatibility_flags": ["nodejs_compat"]
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "trading-proxy",
+	"main": "worker.js",
+	"compatibility_date": "2026-10-08",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"kv_namespaces": [
+		{
+			"binding": "PORTFOLIO_KV",
+			"id": "01c5f86edd6b4307b82d54b316ec6bdd"
+		}
+	]
 }
