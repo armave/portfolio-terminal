@@ -107,32 +107,30 @@ describe('storage service', () => {
       expect(loaded).toEqual(expect.objectContaining(fallback));
     });
 
-    it('handles empty string payload gracefully without throwing', () => {
+    it('handles empty string payload gracefully and returns fallback state', () => {
       storageMap.set('portfolio_state', '');
       storageMap.set('margin_portfolio_state_dynamic_v2', '');
 
       const fallback = { activeView: 'COMBINED', marginBalance: 500 };
-      let loaded: unknown;
+      const loaded = loadSavedState(fallback);
 
-      expect(() => {
-        loaded = loadSavedState(fallback);
-      }).not.toThrow();
-
-      expect(loaded).toEqual(expect.objectContaining(fallback));
+      expect(loaded).toEqual(fallback);
     });
 
-    it('handles corrupted JSON payloads gracefully without throwing', () => {
+    it('handles corrupted JSON payloads gracefully and returns exact fallback state', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       storageMap.set('portfolio_state', '{"broken_json: true,');
       storageMap.set('margin_portfolio_state_dynamic_v2', '{"broken_json: true,');
 
       const fallback = { activeView: 'DEFAULT', marginBalance: 1500 };
-      let loaded: unknown;
+      const loaded = loadSavedState(fallback);
 
-      expect(() => {
-        loaded = loadSavedState(fallback);
-      }).not.toThrow();
-
-      expect(loaded).toEqual(expect.objectContaining(fallback));
+      expect(loaded).toEqual(fallback);
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to parse saved state:',
+        expect.any(SyntaxError)
+      );
+      warnSpy.mockRestore();
     });
 
     it('loads and merges valid state when present in localStorage', () => {
@@ -273,8 +271,14 @@ describe('storage service', () => {
       saveBrokerRules(customRules);
       expect(loadBrokerRules(defaultRules)).toEqual(customRules);
 
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       storageMap.set('tradernet_rules_v1', '{"broken');
       expect(loadBrokerRules(defaultRules)).toEqual(defaultRules);
+      expect(warnSpy).toHaveBeenCalledWith(
+        'Failed to parse saved broker rules:',
+        expect.any(SyntaxError)
+      );
+      warnSpy.mockRestore();
 
       clearBrokerRules();
       expect(loadBrokerRules(defaultRules)).toEqual(defaultRules);
