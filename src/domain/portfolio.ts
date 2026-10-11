@@ -166,6 +166,9 @@ export function calculateMarginInterest(
     tranches = target;
     debtValue = options.marginDebt ?? options.totalDebt;
   } else if (isRecord(target)) {
+    if (typeof target.marginDebt === 'number' && target.marginDebt >= 0) {
+      return 0;
+    }
     if (Array.isArray(target.tranches)) {
       tranches = target.tranches as Array<TradeTranche | Record<string, unknown>>;
     } else if (isRecord(target.positions)) {
@@ -175,7 +178,7 @@ export function calculateMarginInterest(
     debtValue = typeof targetDebt === 'number' ? targetDebt : (options.marginDebt ?? options.totalDebt);
   }
 
-  if (tranches.length === 0) return 0;
+  if (!tranches || tranches.length === 0) return 0;
 
   let totalInvested = 0;
   for (const tranche of tranches) {
@@ -185,9 +188,10 @@ export function calculateMarginInterest(
     totalInvested += shares * price;
   }
 
-  if (totalInvested <= 0) return 0;
+  if (!Number.isFinite(totalInvested) || totalInvested <= 0) return 0;
 
   const marginDebt = typeof debtValue === 'number' ? Math.abs(debtValue) : totalInvested;
+  if (marginDebt <= 0) return 0;
   const marginRatio = Math.min(1, marginDebt / totalInvested);
 
   let totalAccruedInterest = 0;
