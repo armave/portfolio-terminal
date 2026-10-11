@@ -45,6 +45,11 @@ export function logTerminal(content, isUser = false, isHtml = false) {
   }
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      log.scrollTop = log.scrollHeight;
+    });
+  }
 }
 
 if (typeof window !== 'undefined') {

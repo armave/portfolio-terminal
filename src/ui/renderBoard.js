@@ -76,7 +76,7 @@ export function createDailyQuoteLabel(details) {
   if (hasChange) {
     const sign = details.change >= 0 ? '+' : '−';
     parts.push(`${sign}$${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`);
-    label.classList.add('text-slate-400');
+    label.classList.add(details.change > 0 ? 'text-emerald-400' : details.change < 0 ? 'text-rose-400' : 'text-slate-400');
   } else {
     label.classList.add('text-slate-400');
   }
