@@ -333,9 +333,11 @@ function verifyTradernetRulesOnload() {
   const dailyPct = (getDailyRate() * 100).toFixed(4);
   const maintenancePct = (TRADERNET_RULES.maintenanceMarginRatio * 100).toFixed(2);
   const rolloverTime = `${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')}`;
-  document.getElementById('rulesSummary').innerText =
+  const saveMsg =
     `Broker model: ${ratePct}% p.a. (${dailyPct}%/d, /${TRADERNET_RULES.dayCountBasis}) | ${rolloverTime} Armenia time compounding | Maintenance equity ${maintenancePct}%`;
   updateRiskAssumptionTitles();
+
+  logTerminal(saveMsg);
 }
 
 function updateRiskAssumptionTitles() {
