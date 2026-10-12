@@ -147,6 +147,9 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       // Await the data
       const data = await pullCloudState(activeSecret);
       
+      // Diagnostic Logging
+      console.log('[Context] Pulled data:', data);
+      
       if (data) {
         mutateState((draft: any) => {
           const currentView = draft.activeView;
@@ -919,7 +922,12 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setActiveView, fetchLivePrice, refreshAllLivePrices, executeCommand, syncFromCloud, saveToCloud,
       refreshInterval, setRefreshInterval, getCombinedBreakeven,
       marketInsightsOpen, setMarketInsightsOpen, activeInsightSection, setActiveInsightSection,
-      saveLocalState
+      saveLocalState,
+      // Direct exports for destructuring as requested
+      marginPositions: state.positions || {},
+      brokerAssumptions: rules,
+      cashHoldings: state.cashCushion?.holdings || [],
+      cashBalance: state.cashCushion?.freeCash || 0
     }}>
       {children}
     </PortfolioContext.Provider>

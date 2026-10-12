@@ -3,14 +3,12 @@ import { usePortfolio } from '../store/PortfolioContext';
 import { formatUSD, formatQuoteMetadata, DailyQuoteLabel, SentimentBadge, getActivePrice, getMarketStateBadge } from '../utils';
 
 export function HoldingsTable() {
-  const { state, mutateState, fetchLivePrice } = usePortfolio();
+  const { state, mutateState, fetchLivePrice, cashHoldings, cashBalance } = usePortfolio();
   const [newTicker, setNewTicker] = useState('');
   const [newShares, setNewShares] = useState('');
   const [newPrice, setNewPrice] = useState('');
 
-  const cashBalance = Number(state.cashCushion?.freeCash) || 0;
   const marginDebt = Math.abs(Number(state.balance) || 0);
-  const cashHoldings = state.cashCushion?.holdings || [];
   
   let stocksTotal = 0;
   cashHoldings.forEach((h: any) => { 
@@ -44,7 +42,7 @@ export function HoldingsTable() {
         <div><h2 className="text-lg font-black text-cyan-400 tracking-wide">CASH &amp; NON-MARGIN HOLDINGS</h2></div>
         <div className="text-right">
           <span className="text-xs text-slate-500 block">Cash + Holdings</span>
-          <span className="text-xl font-bold text-cyan-300 font-mono">${formatUSD(cashBalance + stocksTotal)}</span>
+          <span id="cushionTotalValue" className="text-xl font-bold text-cyan-300 font-mono">${formatUSD(cashBalance + stocksTotal)}</span>
         </div>
       </div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 py-1">
@@ -63,7 +61,7 @@ export function HoldingsTable() {
               <th className="w-[15%] py-2 px-2 text-center">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/60 font-mono">
+          <tbody id="cashStocksTableBody" className="divide-y divide-slate-800/60 font-mono">
             {cashHoldings.map((h: any, idx: number) => {
               const price = getActivePrice(h.quoteDetails) || Number(h.currentPrice ?? h.price) || 0;
               const badge = getMarketStateBadge(h.quoteDetails?.marketState);
