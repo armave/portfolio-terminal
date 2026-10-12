@@ -60,7 +60,7 @@ export async function fetchYahooStockData(ticker) {
   }
 }
 
-export async function pullCloudState(secret) {
+export async function pullCloudState(secret = getGatewaySecret()) {
   if (!secret) {
     throw new Error('Gateway Secret required to access cloud state.');
   }
@@ -122,7 +122,7 @@ export async function pullCloudState(secret) {
   return parsedState;
 }
 
-export async function pushCloudState(state, secret) {
+export async function pushCloudState(state, secret = getGatewaySecret()) {
   if (!secret) {
     throw new Error('Gateway Secret required to access cloud state.');
   }
