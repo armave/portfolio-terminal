@@ -1253,11 +1253,24 @@ async function fetchLivePriceFromProviders(symbol) {
       sourceName = "Yahoo Proxy";
 
       const prevClose = data.price.previousClose ?? data.price.regularMarketPreviousClose;
-      const change = data.price.change ?? data.price.regularMarketChange ?? (price - prevClose);
+      let change = data.price.change ?? data.price.regularMarketChange ?? (price - prevClose);
+      let current = price ?? data.regularMarketPrice ?? data.price;
+
+      // "PRE", "REGULAR", "POST", or "CLOSED"
+      const marketState = data.price?.marketState || '';
+      if (marketState === 'PRE') {
+          current = data.price.preMarketPrice;
+          change = current - data.current;
+      }
+       else if (marketState === 'POST' || marketState === 'CLOSED') {
+          current = data.price.postMarketPrice;
+          change = current - data.current;
+      }
 
       quoteDetails = {
-        price: price,
-        change: change,
+        marketState,
+        price: current,
+        change,
         changePercent: prevClose ? (change / prevClose) * 100 : 0
       };
     }
@@ -1322,13 +1335,26 @@ async function refreshAllLivePrices() {
       }
 
       const ticker = data.symbol;
-      const current = data.price.current ?? data.regularMarketPrice ?? data.price;
-      const previous = data.price.previousClose ?? data.regularMarketPreviousClose;
-      const change = data.price.change ?? data.regularMarketChange ?? (current - previous);
+      
+      let current = data.price.current ?? data.regularMarketPrice ?? data.price;
+      let previous = data.price.previousClose ?? data.regularMarketPreviousClose;
+      let change = data.price.change ?? data.regularMarketChange ?? (current - previous);
+
+      // "PRE", "REGULAR", "POST", or "CLOSED"
+      const marketState = data.price?.marketState || '';
+      if (marketState === 'PRE') {
+          current = data.price.preMarketPrice;
+          change = current - data.current;
+      }
+       else if (marketState === 'POST' || marketState === 'CLOSED') {
+          current = data.price.postMarketPrice;
+          change = current - data.current;
+      }
 
       const quoteDetails = {
+        marketState,
         price: current,
-        change: change,
+        change,
         changePercent: previous ? (change / previous) * 100 : 0
       };
 
