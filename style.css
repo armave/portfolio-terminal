@@ -39,6 +39,10 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans);
   line-height: 1.5;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 body::before {
@@ -568,7 +572,10 @@ summary:hover {
   }
 
   body {
-    padding: 0.5rem !important;
+    padding-top: max(0.5rem, env(safe-area-inset-top)) !important;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
+    padding-left: max(0.5rem, env(safe-area-inset-left)) !important;
+    padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
     line-height: 1.45;
   }
 

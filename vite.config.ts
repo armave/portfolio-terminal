@@ -5,6 +5,7 @@ import path from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 // @ts-ignore
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
 function findRootWithIndexHtml(startPath: string): string {
   let current = path.resolve(startPath);
@@ -54,7 +55,34 @@ function normalizeRootPlugin(): Plugin {
 export default defineConfig({
   base: '/portfolio-terminal/',
   appType: 'spa',
-  plugins: [react(), normalizeRootPlugin()],
+  plugins: [
+    react(),
+    normalizeRootPlugin(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.ico'],
+      manifest: {
+        name: 'Portfolio Terminal',
+        short_name: 'PortfolioTerm',
+        description: 'Personal stock portfolio tracker and margin scenario calculator',
+        theme_color: '#0f172a',
+        background_color: '#0f172a',
+        display: 'standalone',
+        orientation: 'portrait',
+        icons: [
+          {
+            src: 'favicon.ico',
+            sizes: '64x64 32x32 24x24 16x16',
+            type: 'image/x-icon'
+          }
+        ]
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        cleanupOutdatedCaches: true
+      }
+    })
+  ],
   build: {
     target: 'es2022',
     emptyOutDir: true
