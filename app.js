@@ -6,6 +6,7 @@ import {
   createBlankState,
   normalizePortfolioBackup,
   normalizePortfolioState,
+  processRollovers,
   realizeClosedTrade,
   resolveSaleQuantity,
   resolveTradeDateTimestamp
@@ -2116,6 +2117,7 @@ Object.assign(window, {
   importBackupJSON,
   loadMarketInsight,
   logTerminal,
+  processRollovers,
   renderBoard,
   renderBoardExternalLinks,
   renderCashCushion,

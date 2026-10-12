@@ -167,6 +167,9 @@ export function loadSavedState(currentState = {}) {
     try {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
+        if (!parsed.lastRolloverTimestamp) {
+          parsed.lastRolloverTimestamp = Date.now();
+        }
         delete parsed.marginFee;
         delete parsed.accruedMargin;
         if (parsed.positions && typeof parsed.positions === 'object') {

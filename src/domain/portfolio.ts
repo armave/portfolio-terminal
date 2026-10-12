@@ -30,6 +30,8 @@ export interface ClosedTrade {
 export interface PortfolioState {
   activeView: string;
   marginBalance: number;
+  balance?: number;
+  settings?: { marginRate?: number; [key: string]: unknown };
   realizedMarginCharged: number;
   startDate: string;
   lastRolloverTimestamp: number;
@@ -263,6 +265,7 @@ export function createBlankState(now = Date.now()): PortfolioState {
   return {
     activeView: 'COMBINED',
     marginBalance: 0,
+    balance: 0,
     realizedMarginCharged: 0,
     startDate: new Date(now).toISOString().split('T')[0],
     lastRolloverTimestamp: now,
@@ -329,9 +332,10 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
       holdings: Array.isArray(sourceCashCushion.holdings) ? sourceCashCushion.holdings : []
     },
     closedTrades,
+    balance: candidate.balance !== undefined ? finiteNumber(candidate.balance, 0) : finiteNumber(candidate.marginBalance, blankState.marginBalance),
     positions: normalizedPositions,
     quoteSymbols: isRecord(candidate.quoteSymbols) ? candidate.quoteSymbols : {},
-    lastRolloverTimestamp: Number.isFinite(sourceTimestamp) ? sourceTimestamp : now,
+    lastRolloverTimestamp: Number.isFinite(sourceTimestamp) && sourceTimestamp > 0 ? sourceTimestamp : now,
     startDate: typeof candidate.startDate === 'string' && candidate.startDate
       ? candidate.startDate
       : blankState.startDate
@@ -468,4 +472,53 @@ export function realizeClosedTrade(
     trade,
     marginFee
   };
+}
+
+export function processRollovers(state: any): boolean {
+  if (!state || typeof state !== 'object') return false;
+
+  if (!state.lastRolloverTimestamp) {
+    state.lastRolloverTimestamp = Date.now();
+    return false;
+  }
+
+  if (state.balance === undefined && typeof state.marginBalance === 'number') {
+    state.balance = state.marginBalance;
+  }
+
+  const now = new Date();
+  let lastTime = new Date(state.lastRolloverTimestamp);
+  let rolloversApplied = 0;
+  let totalDeducted = 0;
+
+  // Find the very next 04:00 AM boundary after the last recorded timestamp
+  let nextBoundary = new Date(lastTime);
+  if (nextBoundary.getHours() >= 4) {
+    nextBoundary.setDate(nextBoundary.getDate() + 1);
+  }
+  nextBoundary.setHours(4, 0, 0, 0);
+
+  // Time-travel loop: execute for every 04:00 AM passed
+  while (nextBoundary <= now) {
+    if (state.balance < 0) {
+      // Dynamically fetch margin rate (fallback to 0.12 if not explicitly defined in settings)
+      const marginRate = state.settings?.marginRate || 0.12; 
+      const dailyFee = Math.abs(state.balance) * (marginRate / 365);
+      
+      state.balance -= dailyFee; // Deduct fee (compounding the negative balance)
+      if (typeof state.marginBalance === 'number') {
+        state.marginBalance = state.balance;
+      }
+      totalDeducted += dailyFee;
+    }
+    rolloversApplied++;
+    nextBoundary.setDate(nextBoundary.getDate() + 1); // Advance to next day's 04:00 AM
+  }
+
+  if (rolloversApplied > 0) {
+    state.lastRolloverTimestamp = Date.now();
+    console.log(`[System]: Applied ${rolloversApplied} missed 04:00 AM rollovers. Deducted $${totalDeducted.toFixed(2)} total margin.`);
+    return true;
+  }
+  return false;
 }

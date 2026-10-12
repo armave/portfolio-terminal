@@ -1,7 +1,9 @@
 import CryptoJS from 'crypto-js';
+import { processRollovers } from '../domain/portfolio.ts';
 import { getGatewaySecret, loadSavedState, saveStateToStorage } from './storage.js';
 
 export const YAHOO_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
+export { processRollovers };
 
 export function setSecretGetter(_getter) {}
 
@@ -135,6 +137,18 @@ export async function pullCloudState(options = {}) {
 
     if (!parsedState || typeof parsedState !== 'object') {
       throw new Error('Invalid state payload from KV.');
+    }
+
+    if (!parsedState.lastRolloverTimestamp) {
+      parsedState.lastRolloverTimestamp = Date.now();
+    }
+
+    const wasUpdated = processRollovers(parsedState);
+    if (wasUpdated) {
+      saveStateToStorage(parsedState);
+      pushCloudState(parsedState, { ...handlers, secret: currentSecret, showToast: () => {} }).catch((err) => {
+        console.warn('Background rollover sync failed:', err);
+      });
     }
 
     saveStateToStorage(parsedState);
