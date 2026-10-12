@@ -54,7 +54,7 @@ export function getCashCushionTotal(state: any): number {
   if (!state.cashCushion) return 0;
   const cashVal = Number(state.cashCushion.freeCash) || 0;
   const stocksVal = (state.cashCushion.holdings || []).reduce((sum: number, h: any) => {
-    const price = getActivePrice(h.quoteDetails) || Number(h.currentPrice ?? h.price) || 0;
+    const price = Number(h.currentPrice ?? h.price) || 0;
     return sum + ((Number(h.shares) || 0) * price);
   }, 0);
   return cashVal + stocksVal;
@@ -67,26 +67,6 @@ export function formatQuoteMetadata(holding: any, refreshIntervalMs = 60000): st
   const time = new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const isStale = Date.now() - updatedAt > Math.max(5 * 60 * 1000, refreshIntervalMs * 2);
   return `${isStale ? 'Stale · ' : ''}${holding.quoteSource || 'Quote'} · ${time}`;
-}
-
-export function getActivePrice(quote: any): number {
-  if (!quote) return 0;
-  const state = (quote.marketState || '').toUpperCase();
-  if (state === 'PRE' || state === 'PREPRE') {
-    return quote.preMarketPrice ?? quote.current ?? quote.price ?? 0;
-  }
-  if (state === 'POST' || state === 'CLOSED') {
-    return quote.postMarketPrice ?? quote.current ?? quote.price ?? 0;
-  }
-  return quote.current ?? quote.price ?? 0;
-}
-
-export function getMarketStateBadge(marketState?: string | null): string | null {
-  if (!marketState) return null;
-  const state = marketState.toUpperCase();
-  if (state === 'PRE' || state === 'PREPRE') return 'Pre';
-  if (state === 'POST' || state === 'CLOSED') return 'Post';
-  return null;
 }
 
 export function SentimentBadge({ direction }: { direction: any }) {

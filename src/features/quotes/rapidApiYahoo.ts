@@ -25,10 +25,6 @@ export interface RapidApiYahooQuote {
   preMarketPrice?: number;
   preMarketChange?: number;
   preMarketChangePercent?: number;
-  postMarketPrice?: number;
-  postMarketChange?: number;
-  postMarketChangePercent?: number;
-  marketState?: string;
 }
 
 export class RapidApiYahooError extends Error {
@@ -68,9 +64,6 @@ export function parseRapidApiYahooQuote(value: unknown): RapidApiYahooQuote {
     throw new RapidApiYahooError('RapidAPI Yahoo Finance returned no valid current price.');
   }
   const preMarketPrice = rawNumber(price.preMarketPrice);
-  const postMarketPrice = rawNumber(price.postMarketPrice);
-  const marketState = typeof price.marketState === 'string' ? price.marketState : undefined;
-
   return {
     price: currentPrice,
     ...(rawNumber(price.regularMarketChange) === undefined
@@ -91,15 +84,7 @@ export function parseRapidApiYahooQuote(value: unknown): RapidApiYahooQuote {
       : { preMarketChange: rawNumber(price.preMarketChange) }),
     ...(rawNumber(price.preMarketChangePercent) === undefined
       ? {}
-      : { preMarketChangePercent: rawNumber(price.preMarketChangePercent) }),
-    ...(marketState ? { marketState } : {}),
-    ...(postMarketPrice === undefined || postMarketPrice <= 0 ? {} : { postMarketPrice }),
-    ...(rawNumber(price.postMarketChange) === undefined
-      ? {}
-      : { postMarketChange: rawNumber(price.postMarketChange) }),
-    ...(rawNumber(price.postMarketChangePercent) === undefined
-      ? {}
-      : { postMarketChangePercent: rawNumber(price.postMarketChangePercent) })
+      : { preMarketChangePercent: rawNumber(price.preMarketChangePercent) })
   };
 }
 

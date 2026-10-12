@@ -1,20 +1,18 @@
 import React, { useState } from 'react';
 import { usePortfolio } from '../store/PortfolioContext';
-import { formatUSD, formatQuoteMetadata, DailyQuoteLabel, SentimentBadge, getActivePrice, getMarketStateBadge } from '../utils';
+import { formatUSD, formatQuoteMetadata, DailyQuoteLabel, SentimentBadge } from '../utils';
 
 export function HoldingsTable() {
-  const { state, mutateState, fetchLivePrice, cashHoldings, cashBalance } = usePortfolio();
+  const { state, mutateState, fetchLivePrice } = usePortfolio();
   const [newTicker, setNewTicker] = useState('');
   const [newShares, setNewShares] = useState('');
   const [newPrice, setNewPrice] = useState('');
 
+  const freeCash = Number(state.cashCushion?.freeCash) || 0;
   const marginDebt = Math.abs(Number(state.balance) || 0);
-  
+  const holdings = state.cashCushion?.holdings || [];
   let stocksTotal = 0;
-  cashHoldings.forEach((h: any) => { 
-    const price = getActivePrice(h.quoteDetails) || Number(h.currentPrice ?? h.price) || 0;
-    stocksTotal += (Number(h.shares) || 0) * price; 
-  });
+  holdings.forEach((h: any) => { stocksTotal += (Number(h.shares) || 0) * (Number(h.currentPrice ?? h.price) || 0); });
 
   const handleAddCashStock = () => {
     if (!newTicker || !newShares) return;
@@ -42,12 +40,12 @@ export function HoldingsTable() {
         <div><h2 className="text-lg font-black text-cyan-400 tracking-wide">CASH &amp; NON-MARGIN HOLDINGS</h2></div>
         <div className="text-right">
           <span className="text-xs text-slate-500 block">Cash + Holdings</span>
-          <span id="cushionTotalValue" className="text-xl font-bold text-cyan-300 font-mono">${formatUSD(cashBalance + stocksTotal)}</span>
+          <span className="text-xl font-bold text-cyan-300 font-mono">${formatUSD(freeCash + stocksTotal)}</span>
         </div>
       </div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 py-1">
         <div className="flex items-center gap-3">
-          <span className="text-xs font-medium text-slate-300 font-mono">Balance: ${formatUSD(cashBalance)} | Debt: -${formatUSD(marginDebt)}</span>
+          <span className="text-xs font-medium text-slate-300 font-mono">Balance: ${formatUSD(freeCash)} | Debt: -${formatUSD(marginDebt)}</span>
         </div>
       </div>
       <div className="table-scroll-wrapper overflow-x-auto">
@@ -61,10 +59,9 @@ export function HoldingsTable() {
               <th className="w-[15%] py-2 px-2 text-center">Actions</th>
             </tr>
           </thead>
-          <tbody id="cashStocksTableBody" className="divide-y divide-slate-800/60 font-mono">
-            {cashHoldings.map((h: any, idx: number) => {
-              const price = getActivePrice(h.quoteDetails) || Number(h.currentPrice ?? h.price) || 0;
-              const badge = getMarketStateBadge(h.quoteDetails?.marketState);
+          <tbody className="divide-y divide-slate-800/60 font-mono">
+            {holdings.map((h: any, idx: number) => {
+              const price = Number(h.currentPrice ?? h.price) || 0;
               const val = (Number(h.shares) || 0) * price;
               return (
                 <tr key={idx} className="hover:bg-slate-900/40">
@@ -76,10 +73,7 @@ export function HoldingsTable() {
                   </td>
                   <td className="py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap">{Number(h.shares).toLocaleString('en-US', { maximumFractionDigits: 3 })}</td>
                   <td className="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums">
-                    <div className="flex items-center justify-end gap-1">
-                      <span>${formatUSD(price)}</span>
-                      {badge && <span className="text-[9px] bg-slate-800 text-slate-300 px-1 py-0.5 rounded uppercase">{badge}</span>}
-                    </div>
+                    <span>${formatUSD(price)}</span>
                     <DailyQuoteLabel details={h.quoteDetails} />
                     <span className="mt-0.5 block text-[9px] font-normal text-slate-500">{formatQuoteMetadata(h)}</span>
                   </td>
