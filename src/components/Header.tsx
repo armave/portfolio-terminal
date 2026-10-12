@@ -1,12 +1,13 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { usePortfolio } from '../store/PortfolioContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import { createBlankState } from '../domain/portfolio';
 
 export function Header({ keysHidden, onToggleKeys }: { keysHidden: boolean, onToggleKeys: () => void }) {
-  const { state, mutateState, syncFromCloud, saveToCloud, refreshAllLivePrices, refreshInterval, setRefreshInterval, cloudStatus } = usePortfolio();
+  const { state, mutateState, syncFromCloud, saveToCloud, refreshAllLivePrices, refreshInterval, setRefreshInterval, cloudStatus, rules: brokerAssumptions, setRules, saveLocalState } = usePortfolio();
   const { showToast } = useNotifications();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showRules, setShowRules] = useState(false);
 
   const handleExport = async () => {
     const jsonStr = JSON.stringify(state, null, 2);
@@ -66,6 +67,20 @@ export function Header({ keysHidden, onToggleKeys }: { keysHidden: boolean, onTo
     }
   };
 
+  const handleRuleChange = (field: string, value: string) => {
+    setRules((prev: any) => {
+      const updated = { ...prev, [field]: Number(value) };
+      return updated;
+    });
+  };
+
+  const handleSaveRules = () => {
+    saveLocalState();
+    saveToCloud();
+    showToast('Broker rules saved', 'success');
+    setShowRules(false);
+  };
+
   return (
     <div className="border-card p-4 sm:p-5 rounded-xl space-y-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -83,6 +98,9 @@ export function Header({ keysHidden, onToggleKeys }: { keysHidden: boolean, onTo
         <div className="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2">
           <button onClick={onToggleKeys} className="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition">
             {keysHidden ? 'Show keys' : 'Hide keys'}
+          </button>
+          <button onClick={() => setShowRules(!showRules)} className="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition">
+            Broker Rules
           </button>
           <button onClick={() => syncFromCloud(state.gatewaySecret)} className="h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1">
             <span>☁↓</span> Pull
@@ -116,6 +134,39 @@ export function Header({ keysHidden, onToggleKeys }: { keysHidden: boolean, onTo
           </label>
         </div>
       </div>
+
+      {showRules && (
+        <div className="mt-4 p-4 bg-slate-900/50 border border-slate-700 rounded-lg">
+          <h3 className="text-xs font-bold text-slate-300 mb-3 uppercase tracking-wider">Broker Assumptions</h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <label className="flex flex-col gap-1 text-[10px] text-slate-400 uppercase">
+              Annual Margin Rate
+              <input type="number" step="0.0001" value={brokerAssumptions.annualRate} onChange={e => handleRuleChange('annualRate', e.target.value)} className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-cyan-500" />
+            </label>
+            <label className="flex flex-col gap-1 text-[10px] text-slate-400 uppercase">
+              Maintenance Margin
+              <input type="number" step="0.01" value={brokerAssumptions.maintenanceMarginRatio} onChange={e => handleRuleChange('maintenanceMarginRatio', e.target.value)} className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-cyan-500" />
+            </label>
+            <label className="flex flex-col gap-1 text-[10px] text-slate-400 uppercase">
+              Comm Per Share
+              <input type="number" step="0.001" value={brokerAssumptions.commPerShare} onChange={e => handleRuleChange('commPerShare', e.target.value)} className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-cyan-500" />
+            </label>
+            <label className="flex flex-col gap-1 text-[10px] text-slate-400 uppercase">
+              Comm Volume Pct
+              <input type="number" step="0.0001" value={brokerAssumptions.commVolumePct} onChange={e => handleRuleChange('commVolumePct', e.target.value)} className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-cyan-500" />
+            </label>
+            <label className="flex flex-col gap-1 text-[10px] text-slate-400 uppercase">
+              Min Comm Order
+              <input type="number" step="0.01" value={brokerAssumptions.minCommOrder} onChange={e => handleRuleChange('minCommOrder', e.target.value)} className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-slate-200 font-mono text-xs focus:outline-none focus:border-cyan-500" />
+            </label>
+          </div>
+          <div className="mt-4 flex justify-end">
+            <button onClick={handleSaveRules} className="bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold px-4 py-1.5 rounded transition">
+              Apply & Save
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

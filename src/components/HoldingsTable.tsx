@@ -8,11 +8,12 @@ export function HoldingsTable() {
   const [newShares, setNewShares] = useState('');
   const [newPrice, setNewPrice] = useState('');
 
-  const freeCash = Number(state.cashCushion?.freeCash) || 0;
+  const cashBalance = Number(state.cashCushion?.freeCash) || 0;
   const marginDebt = Math.abs(Number(state.balance) || 0);
-  const holdings = state.cashCushion?.holdings || [];
+  const cashHoldings = state.cashCushion?.holdings || [];
+  
   let stocksTotal = 0;
-  holdings.forEach((h: any) => { 
+  cashHoldings.forEach((h: any) => { 
     const price = getActivePrice(h.quoteDetails) || Number(h.currentPrice ?? h.price) || 0;
     stocksTotal += (Number(h.shares) || 0) * price; 
   });
@@ -43,12 +44,12 @@ export function HoldingsTable() {
         <div><h2 className="text-lg font-black text-cyan-400 tracking-wide">CASH &amp; NON-MARGIN HOLDINGS</h2></div>
         <div className="text-right">
           <span className="text-xs text-slate-500 block">Cash + Holdings</span>
-          <span className="text-xl font-bold text-cyan-300 font-mono">${formatUSD(freeCash + stocksTotal)}</span>
+          <span className="text-xl font-bold text-cyan-300 font-mono">${formatUSD(cashBalance + stocksTotal)}</span>
         </div>
       </div>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 py-1">
         <div className="flex items-center gap-3">
-          <span className="text-xs font-medium text-slate-300 font-mono">Balance: ${formatUSD(freeCash)} | Debt: -${formatUSD(marginDebt)}</span>
+          <span className="text-xs font-medium text-slate-300 font-mono">Balance: ${formatUSD(cashBalance)} | Debt: -${formatUSD(marginDebt)}</span>
         </div>
       </div>
       <div className="table-scroll-wrapper overflow-x-auto">
@@ -63,7 +64,7 @@ export function HoldingsTable() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 font-mono">
-            {holdings.map((h: any, idx: number) => {
+            {cashHoldings.map((h: any, idx: number) => {
               const price = getActivePrice(h.quoteDetails) || Number(h.currentPrice ?? h.price) || 0;
               const badge = getMarketStateBadge(h.quoteDetails?.marketState);
               const val = (Number(h.shares) || 0) * price;

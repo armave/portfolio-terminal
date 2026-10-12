@@ -105,7 +105,11 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     setCloudStatus({ status: 'syncing', text: 'WRITING...' });
     try {
-      await pushCloudState(stateRef.current, secret);
+      const payload = {
+        ...stateRef.current,
+        brokerRules: rulesRef.current
+      };
+      await pushCloudState(payload, secret);
       setCloudStatus({ status: 'synced', text: 'UPDATED' });
     } catch (err: any) {
       logTerminal(`[KV Cloud Sync Error]: ${err.message}`);
@@ -131,9 +135,24 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (parsedState) {
         mutateState((draft: any) => {
           const currentView = draft.activeView;
-          Object.assign(draft, parsedState);
+          
+          // Explicitly set state slices from fetched data
+          draft.positions = parsedState.positions || draft.positions || {};
+          draft.cashCushion = parsedState.cashCushion || draft.cashCushion || { freeCash: 0, holdings: [] };
+          draft.closedTrades = parsedState.closedTrades || draft.closedTrades || [];
+          draft.balance = parsedState.balance ?? draft.balance ?? 0;
+          draft.realizedMarginCharged = parsedState.realizedMarginCharged ?? draft.realizedMarginCharged ?? 0;
+          draft.startDate = parsedState.startDate || draft.startDate;
+          draft.lastRolloverTimestamp = parsedState.lastRolloverTimestamp || draft.lastRolloverTimestamp;
+          
           if (!parsedState?.activeView && currentView) draft.activeView = currentView;
         });
+
+        // Explicitly set broker assumptions if present in cloud payload
+        if (parsedState.brokerRules) {
+          setRules((prev: any) => ({ ...prev, ...parsedState.brokerRules }));
+        }
+
         saveLocalState();
         setCloudStatus({ status: 'synced', text: 'UPDATED' });
         showToast('KV cloud state pulled.', 'success');
