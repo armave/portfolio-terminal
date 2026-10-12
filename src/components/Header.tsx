@@ -4,7 +4,7 @@ import { useNotifications } from '../contexts/NotificationContext';
 import { createBlankState } from '../domain/portfolio';
 
 export function Header({ keysHidden, onToggleKeys }: { keysHidden: boolean, onToggleKeys: () => void }) {
-  const { state, mutateState, syncCloudState, refreshAllLivePrices, refreshInterval, setRefreshInterval, cloudStatus } = usePortfolio();
+  const { state, mutateState, syncFromCloud, saveToCloud, refreshAllLivePrices, refreshInterval, setRefreshInterval, cloudStatus } = usePortfolio();
   const { showToast } = useNotifications();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -84,8 +84,11 @@ export function Header({ keysHidden, onToggleKeys }: { keysHidden: boolean, onTo
           <button onClick={onToggleKeys} className="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition">
             {keysHidden ? 'Show keys' : 'Hide keys'}
           </button>
-          <button onClick={() => syncCloudState('pull')} className="h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1">
+          <button onClick={() => syncFromCloud(state.gatewaySecret)} className="h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1">
             <span>☁↓</span> Pull
+          </button>
+          <button onClick={() => saveToCloud()} className="h-8 bg-slate-800 hover:bg-slate-700 border border-emerald-600 text-emerald-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1">
+            <span>☁↑</span> Save
           </button>
           <button onClick={handleExport} className="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition">
             Export JSON

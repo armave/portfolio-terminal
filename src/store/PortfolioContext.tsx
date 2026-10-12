@@ -11,7 +11,7 @@ import {
 } from '../domain/portfolio';
 import { evaluateIntent, parseAiIntent } from '../features/ai/intent';
 import { buildIntentPrompt } from '../features/ai/prompt';
-import { fetchYahooStockData, proxyFetch, setSecretGetter, syncCloudState as syncCloudStateService } from '../services/api.js';
+import { fetchYahooStockData, proxyFetch, setSecretGetter, pullCloudState, pushCloudState } from '../services/api.js';
 import { 
   loadSavedState, 
   saveState, 
@@ -97,57 +97,65 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  const mutateState = useCallback((mutator: (draft: any) => void) => {
-    setState((prev: any) => {
-      const next = JSON.parse(JSON.stringify(prev));
-      mutator(next);
-      saveState(JSON.parse(JSON.stringify(next)), pushStateToCloud);
-      return next;
-    });
-  }, []);
-
-  const pushStateToCloud = useCallback(async (forceImmediate = false) => {
-    if (!areHeaderCredentialsConfigured()) {
+  const saveToCloud = useCallback(async () => {
+    const secret = stateRef.current.gatewaySecret || loadGatewaySecret();
+    if (!secret) {
       setCloudStatus({ status: 'idle', text: 'ADD SECRET' });
       return;
     }
     setCloudStatus({ status: 'syncing', text: 'WRITING...' });
     try {
-      const ok = await syncCloudStateService('push', {
-        state: stateRef.current,
-        getState: () => stateRef.current,
-        showToast,
-        logTerminal
-      });
-      setCloudStatus(ok ? { status: 'synced', text: 'UPDATED' } : { status: 'error', text: 'FAIL' });
+      await pushCloudState(stateRef.current, secret);
+      setCloudStatus({ status: 'synced', text: 'UPDATED' });
     } catch (err: any) {
       logTerminal(`[KV Cloud Sync Error]: ${err.message}`);
       setCloudStatus({ status: 'error', text: 'FAIL' });
+      showToast(`Cloud push failed: ${err.message}`, 'error');
     }
-  }, [showToast, logTerminal]);
+  }, [logTerminal, showToast]);
 
-  const syncCloudState = useCallback(async (mode = 'push') => {
-    return syncCloudStateService(mode, {
-      state: stateRef.current,
-      getState: () => stateRef.current,
-      pullCloudAndRewriteLocal: (parsedState: any) => {
+  const mutateState = useCallback((mutator: (draft: any) => void) => {
+    setState((prev: any) => {
+      const next = JSON.parse(JSON.stringify(prev));
+      mutator(next);
+      saveState(JSON.parse(JSON.stringify(next)), saveToCloud);
+      return next;
+    });
+  }, [saveToCloud]);
+
+  const syncFromCloud = useCallback(async (secret: string) => {
+    if (!secret) return;
+    setCloudStatus({ status: 'syncing', text: 'PULLING...' });
+    try {
+      const parsedState = await pullCloudState(secret);
+      if (parsedState) {
         mutateState((draft: any) => {
           const currentView = draft.activeView;
           Object.assign(draft, parsedState);
           if (!parsedState?.activeView && currentView) draft.activeView = currentView;
         });
-      },
-      showToast,
-      logTerminal
-    });
-  }, [mutateState, showToast, logTerminal]);
+        saveLocalState();
+        setCloudStatus({ status: 'synced', text: 'UPDATED' });
+        showToast('KV cloud state pulled.', 'success');
+        logTerminal('[KV Cloud]: Synced successfully.');
+      } else {
+        setCloudStatus({ status: 'idle', text: 'NO DATA' });
+        showToast('No KV cloud state found. Retaining local state.', 'info');
+        logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
+      }
+    } catch (err: any) {
+      setCloudStatus({ status: 'error', text: 'FAIL' });
+      showToast(`Cloud pull failed: ${err.message}`, 'error');
+      logTerminal(`[KV Cloud Error]: ${err.message}. Retaining local state.`);
+    }
+  }, [mutateState, saveLocalState, showToast, logTerminal]);
 
   const initApp = async (secret: string) => {
     if (secret) {
       saveGatewaySecret(secret);
       setSecretGetter(() => secret);
       mutateState((draft: any) => { draft.gatewaySecret = secret; });
-      await syncCloudState('pull');
+      await syncFromCloud(secret);
     }
     setIsAppInitialized(true);
   };
@@ -769,7 +777,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     logTerminal(text, true);
     
     if (/^(?:pull|sync cloud|cloud pull|pull cloud|load cloud)$/i.test(text)) {
-      await syncCloudState('pull');
+      await syncFromCloud(stateRef.current.gatewaySecret);
       return;
     }
     const balanceMatch = text.match(/^(?:b:|balance:?)\s*(-?\d+(?:\.\d+)?)$/i);
@@ -865,7 +873,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   return (
     <PortfolioContext.Provider value={{
       state, mutateState, rules, setRules, cloudStatus, isAppInitialized, initApp,
-      setActiveView, fetchLivePrice, refreshAllLivePrices, executeCommand, syncCloudState,
+      setActiveView, fetchLivePrice, refreshAllLivePrices, executeCommand, syncFromCloud, saveToCloud,
       refreshInterval, setRefreshInterval, getCombinedBreakeven,
       marketInsightsOpen, setMarketInsightsOpen, activeInsightSection, setActiveInsightSection,
       saveLocalState
