@@ -86,6 +86,34 @@ export function MarginDesk() {
     }
   }
 
+  // Calculate Global Margin Defense Metrics
+  const globalDebt = Math.abs(state.balance || 0);
+  const globalCushion = getCashCushionTotal(state);
+  let globalMarketValue = 0;
+  Object.keys(state.positions || {}).forEach(t => {
+    const p = state.positions[t];
+    globalMarketValue += (p.shares * p.currentPrice);
+  });
+  const globalEquity = (globalMarketValue + globalCushion) - globalDebt;
+  const maintenanceRatio = rules.maintenanceMarginRatio || 0.10;
+  const globalMaintenanceReq = globalMarketValue * maintenanceRatio;
+  const downsideBuffer = globalEquity - globalMaintenanceReq;
+  const equityRatio = globalMaintenanceReq > 0 ? (globalEquity / globalMaintenanceReq) : 999;
+
+  let gaugeColor = "bg-emerald-500";
+  let gaugeText = "text-emerald-400";
+  let riskLabel = "SAFE";
+  if (equityRatio < 1.2) {
+    gaugeColor = "bg-rose-500";
+    gaugeText = "text-rose-400";
+    riskLabel = "DANGER";
+  } else if (equityRatio < 1.5) {
+    gaugeColor = "bg-amber-500";
+    gaugeText = "text-amber-400";
+    riskLabel = "WARNING";
+  }
+  const gaugeWidth = globalMaintenanceReq === 0 ? 100 : Math.min(100, Math.max(0, (globalEquity / (globalMaintenanceReq * 2)) * 100));
+
   return (
     <>
       <div className="board-title-row flex flex-wrap items-center justify-between gap-2">
@@ -115,6 +143,22 @@ export function MarginDesk() {
         <div className="portfolio-risk-summary flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
           <div><span className="text-slate-500">Account Equity:</span> <span className="text-white font-bold font-mono">{equityText}</span></div>
           <div><span className="text-slate-500">Allocated Cash / Collateral:</span> <span className="text-cyan-400 font-bold font-mono">+${formatUSD(allocatedCushion)}</span></div>
+        </div>
+      </div>
+
+      {/* Margin Defense Gauge */}
+      <div className="mt-4 bg-slate-900/40 rounded-lg border border-slate-800 p-3">
+        <div className="flex justify-between items-end mb-2">
+          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Margin Defense Gauge</h3>
+          <span className={`text-[10px] font-bold ${gaugeText}`}>{riskLabel}</span>
+        </div>
+        <div className="w-full bg-slate-800 rounded-full h-2.5 mb-2 overflow-hidden">
+          <div className={`h-2.5 rounded-full ${gaugeColor} transition-all duration-500`} style={{ width: `${gaugeWidth}%` }}></div>
+        </div>
+        <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+          <span>Req: ${formatUSD(globalMaintenanceReq)}</span>
+          <span>Equity: ${formatUSD(globalEquity)}</span>
+          <span>Buffer: <span className={downsideBuffer >= 0 ? gaugeText : 'text-rose-500'}>{downsideBuffer >= 0 ? '+' : '-'}${formatUSD(Math.abs(downsideBuffer))}</span></span>
         </div>
       </div>
       
