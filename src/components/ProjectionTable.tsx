@@ -1,6 +1,6 @@
 import React from 'react';
 import { usePortfolio } from '../store/PortfolioContext';
-import { formatUSD, getTotalPortfolioInvested } from '../utils';
+import { formatUSD, getTotalPortfolioInvested, getActivePrice } from '../utils';
 import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { calculateCommission, calculateCompoundedDebt, calculateMarginInterest, calculateAccruedFees } from '../domain/portfolio';
 
@@ -11,6 +11,7 @@ export function ProjectionTable() {
   const dailyRate = rules.annualRate / rules.dayCountBasis;
   
   let debtToUse = 0, gross = 0, totalComms = 0, marginChargedToUse = 0, entryDate = state.startDate;
+  let activePrice = 0;
   
   if (isCombined) {
     debtToUse = Math.abs(state.balance);
@@ -26,6 +27,7 @@ export function ProjectionTable() {
   } else {
     const pos = state.positions[state.activeView] || state.positions[tickers[0]];
     if (pos) {
+      activePrice = getActivePrice(pos.quoteDetails) || pos.currentPrice;
       const totalInvested = (pos.tranches || []).reduce((sum: number, t: any) => sum + (t.qty * t.price), 0);
       const valSell = pos.shares * pos.pt;
       gross = valSell - totalInvested;
@@ -42,6 +44,12 @@ export function ProjectionTable() {
 
   return (
     <div className="table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none lg:mx-0">
+      {(!isCombined && activePrice > 0 && gross > 0) && (
+        <div className="text-[10px] text-slate-400 mb-2">
+          Projecting exit at <span className="text-cyan-400 font-bold">${formatUSD(state.positions[state.activeView]?.pt)}</span> 
+          (Current: ${formatUSD(activePrice)}, Delta: {(((state.positions[state.activeView]?.pt - activePrice) / activePrice) * 100).toFixed(2)}%)
+        </div>
+      )}
       <table className="w-full min-w-[300px] text-xs border-collapse">
         <thead>
           <tr className="border-b border-slate-800 text-slate-400">

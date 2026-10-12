@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { usePortfolio } from '../store/PortfolioContext';
 import { proxyFetch } from '../services/api.js';
+import { getActivePrice } from '../utils';
 
 export function MarketInsightsDrawer() {
   const { marketInsightsOpen, activeInsightSection, setActiveInsightSection, state } = usePortfolio();
@@ -9,6 +10,8 @@ export function MarketInsightsDrawer() {
   const [error, setError] = useState<string | null>(null);
 
   const ticker = state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions || {})[0];
+  const activePos = state.positions[ticker];
+  const currentPrice = activePos ? (getActivePrice(activePos.quoteDetails) || activePos.currentPrice) : 0;
 
   useEffect(() => {
     if (!marketInsightsOpen || !ticker) return;
@@ -75,12 +78,27 @@ export function MarketInsightsDrawer() {
     if (activeInsightSection === 'analysts') {
       const t = data.analystTargets || {};
       const upDown = data.upgradesDowngrades || [];
+      
+      const renderTarget = (targetPrice: number) => {
+        if (!targetPrice) return <span className="text-slate-500 font-bold">—</span>;
+        if (!currentPrice) return <span className="text-emerald-400 font-bold">${targetPrice.toFixed(2)}</span>;
+        const delta = ((targetPrice - currentPrice) / currentPrice) * 100;
+        const color = delta >= 0 ? 'text-emerald-400' : 'text-rose-400';
+        const sign = delta >= 0 ? '+' : '';
+        return (
+          <div className="flex items-center gap-1">
+            <span className={color + " font-bold"}>${targetPrice.toFixed(2)}</span>
+            <span className={`text-[9px] ${color}`}>({sign}{delta.toFixed(1)}%)</span>
+          </div>
+        );
+      };
+
       return (
         <div className="p-3 bg-slate-950/60 rounded border border-slate-800 space-y-3 font-mono text-xs mt-2">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-b border-slate-800/60 pb-3">
-            <div><span className="text-slate-500 block text-[10px]">Mean Target</span><span className="text-emerald-400 font-bold">${t.mean ? t.mean.toFixed(2) : '—'}</span></div>
-            <div><span className="text-slate-500 block text-[10px]">High Target</span><span className="text-emerald-400 font-bold">${t.high ? t.high.toFixed(2) : '—'}</span></div>
-            <div><span className="text-slate-500 block text-[10px]">Low Target</span><span className="text-rose-400 font-bold">${t.low ? t.low.toFixed(2) : '—'}</span></div>
+            <div><span className="text-slate-500 block text-[10px]">Mean Target</span>{renderTarget(t.mean)}</div>
+            <div><span className="text-slate-500 block text-[10px]">High Target</span>{renderTarget(t.high)}</div>
+            <div><span className="text-slate-500 block text-[10px]">Low Target</span>{renderTarget(t.low)}</div>
             <div><span className="text-slate-500 block text-[10px]">Consensus</span><span className="text-cyan-300 font-bold uppercase">{t.consensusRecommendation || '—'}</span></div>
           </div>
           <div>
