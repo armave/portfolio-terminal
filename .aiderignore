@@ -1,0 +1,10 @@
+*.ico
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.gif
+*.webp
+*.wasm
+dist/
+node_modules/
