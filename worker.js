@@ -145,10 +145,10 @@ export default {
                 // Deduplicate and prioritize models with healthy free limits
                 const rawCandidates = [
                     body.model,
-                    "gemini-2.0-flash",       // Fast, strong structured reasoning, 1,500 RPD
-                    "gemini-2.0-flash-lite",  // Lowest latency, high throughput (up to 30 RPM), 1,500 RPD
-                    "gemini-1.5-flash",       // Extremely stable workhorse, 1,500 RPD
-                    "gemini-1.5-flash-8b"     // Ultra-lightweight 8B parameter model, fast fail-safe
+                    "gemini-2.0-flash",
+                    "gemini-2.0-flash-lite",
+                    "gemini-1.5-flash",
+                    "gemini-1.5-flash-latest"
                 ].filter(Boolean);
 
                 const candidateModels = Array.from(new Set(rawCandidates));
