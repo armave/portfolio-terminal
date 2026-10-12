@@ -349,7 +349,7 @@ export function Console() {
         <span className="text-slate-500 text-[8px]">READY</span>
       </div>
       <div className="h-64 overflow-y-auto bg-slate-950 p-3 rounded text-xs space-y-2 border border-slate-800/80 flex flex-col">
-        {logs.map(log => (
+        {logs.map((log: any) => (
           <div key={log.id} className={log.isUser ? "text-cyan-400 font-semibold" : "text-slate-300"} dangerouslySetInnerHTML={log.isHtml ? { __html: log.content } : undefined}>
             {!log.isHtml && (log.isUser ? `> ${log.content}` : log.content)}
           </div>
@@ -421,7 +421,7 @@ export function Holdings({ type }: { type: 'cushion' | 'history' }) {
     const ticker = newTicker.toUpperCase();
     const shares = Number(newShares);
     const price = Number(newPrice) || 0;
-    mutateState(draft => {
+    mutateState((draft: any) => {
       if (!draft.cashCushion) draft.cashCushion = { freeCash: 0, holdings: [] };
       const existing = draft.cashCushion.holdings.find((h: any) => h.ticker === ticker);
       if (existing) {
@@ -482,7 +482,7 @@ export function Holdings({ type }: { type: 'cushion' | 'history' }) {
                   <td className="py-2 px-3 text-right text-white font-semibold">${formatUSD(val)}</td>
                   <td className="py-2 px-3 text-center space-x-2">
                     <button onClick={() => fetchLivePrice(h.ticker)} className="text-cyan-400 hover:text-cyan-300 text-xs font-bold">↻</button>
-                    <button onClick={() => mutateState(draft => { draft.cashCushion.holdings.splice(idx, 1); })} className="text-rose-400 hover:text-rose-300 text-xs font-bold">Remove</button>
+                    <button onClick={() => mutateState((draft: any) => { draft.cashCushion.holdings.splice(idx, 1); })} className="text-rose-400 hover:text-rose-300 text-xs font-bold">Remove</button>
                   </td>
                 </tr>
               );

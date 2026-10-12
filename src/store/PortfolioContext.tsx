@@ -93,7 +93,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       state: stateRef.current,
       getState: () => stateRef.current,
       pullCloudAndRewriteLocal: (parsedState: any) => {
-        mutateState(draft => {
+        mutateState((draft: any) => {
           const currentView = draft.activeView;
           Object.assign(draft, parsedState);
           if (!parsedState?.activeView && currentView) draft.activeView = currentView;
@@ -108,7 +108,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (secret) {
       saveGatewaySecret(secret);
       setSecretGetter(() => secret);
-      mutateState(draft => { draft.gatewaySecret = secret; });
+      mutateState((draft: any) => { draft.gatewaySecret = secret; });
       await syncCloudState('pull');
     }
     setIsAppInitialized(true);
@@ -123,7 +123,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const setActiveView = (view: string) => {
-    mutateState(draft => { draft.activeView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED'); });
+    mutateState((draft: any) => { draft.activeView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED'); });
   };
 
   const recordTrackedPrice = (draft: any, ticker: string, price: number, sourceName: string, updatedAt: number | null = null, quoteDetails: any = null) => {
@@ -159,7 +159,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const change = data.price.change ?? data.price.regularMarketChange ?? (price - prevClose);
         const quoteDetails = { price, change, changePercent: prevClose ? (change / prevClose) * 100 : 0 };
         
-        mutateState(draft => {
+        mutateState((draft: any) => {
           recordTrackedPrice(draft, symbol, price, "Yahoo Proxy", Date.now(), quoteDetails);
         });
         if (!silent) logTerminal(`[Yahoo Proxy]: ${symbol} updated to $${formatUSD(price)}.`);
@@ -183,7 +183,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const results = Array.isArray(responseData) ? responseData : [responseData];
       let updatedCount = 0;
       
-      mutateState(draft => {
+      mutateState((draft: any) => {
         for (const data of results) {
           if (!data || data.error || !data.price) continue;
           const ticker = data.symbol;
@@ -505,7 +505,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const applyPortfolioActions = async (action: any) => {
     const todayDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 
-    mutateState(draft => {
+    mutateState((draft: any) => {
       if (action.action === "buy") {
         const ticker = action.ticker.toUpperCase();
         const shares = Number(action.shares);
@@ -715,7 +715,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const balanceMatch = text.match(/^(?:b:|balance:?)\s*(-?\d+(?:\.\d+)?)$/i);
     if (balanceMatch) {
       const val = Number(balanceMatch[1]);
-      mutateState(draft => {
+      mutateState((draft: any) => {
         draft.cashCushion.freeCash = Math.max(0, val);
         draft.balance = Math.min(0, val);
       });
@@ -753,7 +753,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         logTerminal("[Simulation Evaluated via Gemini Proxy]");
       } else if (parsed.intent === "fetch_quote") {
         const tickerToFetch = parsed.ticker ? parsed.ticker.toUpperCase() : (stateRef.current.activeView !== "COMBINED" && stateRef.current.activeView !== "CASH_CUSHION" && stateRef.current.activeView !== "CLOSED_HISTORY" ? stateRef.current.activeView : Object.keys(stateRef.current.positions || {})[0]);
-        if (tickerToFetch) fetchLivePrice(tickerToFetch);
+        if (tickerToFetch) fetchLivePrice(tickerToFetch as string);
         else logTerminal("[Notice]: No active ticker specified to fetch quote for.");
       } else if (parsed.intent === "action") {
         if (confirmAiPortfolioAction(parsed)) {
