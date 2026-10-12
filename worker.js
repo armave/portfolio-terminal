@@ -124,7 +124,6 @@ export default {
             }
 
             // --- ACTION 2: Gemini AI Chat / Intent Routing ---
-            // --- ACTION 2: Gemini AI Chat / Intent Routing ---
             if (action === "gemini") {
                 const geminiKey = env.GEMINI_KEY || env.GEMINI_API_KEY || env.GOOGLE_API_KEY;
                 if (!geminiKey) {
@@ -146,10 +145,10 @@ export default {
                 // Deduplicate and prioritize models with healthy free limits
                 const rawCandidates = [
                     body.model,
-                    "gemini-2.0-flash",
-                    "gemini-1.5-flash",
-                    "gemini-1.5-flash-8b",
-                    "gemini-2.5-flash"
+                    "gemini-2.0-flash",       // Fast, strong structured reasoning, 1,500 RPD
+                    "gemini-2.0-flash-lite",  // Lowest latency, high throughput (up to 30 RPM), 1,500 RPD
+                    "gemini-1.5-flash",       // Extremely stable workhorse, 1,500 RPD
+                    "gemini-1.5-flash-8b"     // Ultra-lightweight 8B parameter model, fast fail-safe
                 ].filter(Boolean);
 
                 const candidateModels = Array.from(new Set(rawCandidates));
