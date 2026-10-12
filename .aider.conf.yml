@@ -15,4 +15,3 @@ commit-prompt: "Write a concise, imperative git commit message in English descri
 
 # Context & instructions
 read: CONVENTIONS.md
-map-tokens: 2048
