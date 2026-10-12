@@ -144,10 +144,10 @@ export default {
 
                 // High-allowance Lite models (500 RPD) prioritized over 20 RPD tier models
                 const candidateModels = [
-                    body.model || "gemini-3.5-flash-lite",
-                    "gemini-3.1-flash-lite",
-                    "gemini-3.7-flash",
-                    "gemini-3.6-flash"
+                    body.model || "gemini-1.5-flash",
+                    "gemini-1.5-flash-8b",
+                    "gemini-2.0-flash",
+                    "gemini-1.5-pro"
                 ];
 
                 let lastResponse = null;
