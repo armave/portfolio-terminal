@@ -310,9 +310,9 @@ export function renderCashCushion(state, options = {}) {
       return cell;
     };
     const tickerCell = addCell('', 'py-2 px-3 text-cyan-300 font-bold');
-    tickerCell.append(
+    const tickerContainer = createInsightElement('div', 'inline-flex items-center gap-1.5');
+    tickerContainer.append(
       createInsightElement('span', '', h.ticker),
-      document.createTextNode(' '),
       sentimentBadge(
         Number.isFinite(h.quoteDetails?.change)
           ? h.quoteDetails.change > 0 ? 'bullish' : h.quoteDetails.change < 0 ? 'bearish' : 'neutral'
@@ -320,7 +320,8 @@ export function renderCashCushion(state, options = {}) {
         Number.isFinite(h.quoteDetails?.change) && `${h.quoteDetails.changePercent.toFixed(2)}%`
       )
     );
-    addCell(shares.toLocaleString('en-US', { maximumFractionDigits: 3 }), 'py-2 px-3 text-right text-slate-200 tabular-nums');
+    tickerCell.appendChild(tickerContainer);
+    addCell(shares.toLocaleString('en-US', { maximumFractionDigits: 3 }), 'py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap');
     const priceCell = document.createElement('td');
     priceCell.className = 'py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums';
     const priceLabel = document.createElement('span');
