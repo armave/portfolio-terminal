@@ -387,14 +387,14 @@
 
         <!-- Streamlined Balance Toolbar & Holdings -->
         <div class="space-y-2">
-          <div class="flex flex-wrap items-center justify-between gap-2 py-1">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 py-1">
             <div class="flex items-center gap-3">
               <span id="cashBalanceDebtMeta" class="text-xs font-medium text-slate-300 font-mono">Balance: $0.00 | Debt: -$0.00</span>
               <span class="text-slate-700">|</span>
               <span id="cashHoldingsSummary" class="text-xs text-slate-400">0 holdings · $0.00 market value</span>
             </div>
             <div class="flex items-center gap-2">
-              <span class="text-[10px] uppercase tracking-wider text-slate-500">Signed amount:</span>
+              <span class="text-[10px] uppercase tracking-wider text-slate-500 whitespace-nowrap">Signed amount:</span>
               <div class="relative">
                 <span class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs" aria-hidden="true">$</span>
                 <input type="number" id="freeCashInput" step="0.01" required inputmode="decimal"
@@ -423,6 +423,28 @@
               </thead>
               <tbody id="cashStocksTableBody" class="divide-y divide-slate-800/60 font-mono"></tbody>
               <tfoot id="cashStocksTableFooter" class="border-t border-slate-700 font-mono"></tfoot>
+              <tbody class="border-t border-slate-800 bg-slate-900/30">
+                <tr>
+                  <td class="py-2 px-3">
+                    <input type="text" id="newCashTicker" placeholder="TICKER" required aria-label="Stock ticker symbol" autocomplete="off" autocapitalize="characters" class="bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-20 uppercase focus:outline-none focus:border-cyan-500">
+                  </td>
+                  <td class="py-2 px-3 text-right">
+                    <input type="number" id="newCashShares" placeholder="Shares" min="0.001" step="0.001" required inputmode="decimal" aria-label="Number of shares" class="number-input bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-20 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500">
+                  </td>
+                  <td class="py-2 px-3 text-right">
+                    <div class="relative inline-block text-left">
+                      <span class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs" aria-hidden="true">$</span>
+                      <input type="number" id="newCashPrice" placeholder="Auto" min="0.01" step="0.01" inputmode="decimal" aria-label="Optional price per share in US dollars" class="number-input bg-slate-950 border border-slate-700 text-xs pl-5 pr-2 py-1 rounded text-white w-24 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500">
+                    </div>
+                  </td>
+                  <td class="py-2 px-3" colspan="2"></td>
+                  <td class="py-2 px-3 text-center">
+                    <button type="button" onclick="addCashStockFromUI()" class="bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold px-3 py-1 rounded transition whitespace-nowrap">
+                      + Add
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
             </table>
           </div>
 
