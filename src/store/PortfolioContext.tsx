@@ -383,7 +383,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     logTerminal(html, false, true);
   };
 
-  const runSimulation = (simPrice: number, daysOffset: number, label: string, tickerTarget: string, targetState: any) => {
+  const runSimulation = (simPrice: number, daysOffset: number, label: string, tickerTarget: string | null, targetState: any) => {
     const positions = targetState?.positions || {};
     const ticker = tickerTarget || (targetState.activeView !== "COMBINED" && targetState.activeView !== "CASH_CUSHION" && targetState.activeView !== "CLOSED_HISTORY" ? targetState.activeView : Object.keys(positions)[0]);
     const pos = positions[ticker];
@@ -645,7 +645,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       else if (action.action === "set_pt") {
         const ticker = (action.ticker ? action.ticker.toUpperCase() : null) || (draft.activeView !== "COMBINED" && draft.activeView !== "CASH_CUSHION" && draft.activeView !== "CLOSED_HISTORY" ? draft.activeView : Object.keys(draft.positions)[0]);
-        if (draft.positions[ticker] && Number(action.pt) > 0) {
+        if (ticker && draft.positions[ticker] && Number(action.pt) > 0) {
           draft.positions[ticker].pt = Number(action.pt);
           logTerminal(`[Target Updated]: ${ticker} PT updated to $${formatUSD(action.pt)}.`);
         }
@@ -657,7 +657,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           logTerminal(`[Price Unchanged]: No valid price amount supplied. Enter: price ${ticker} <number>.`);
           return;
         }
-        if (recordTrackedPrice(draft, ticker, newP, 'Manual')) {
+        if (ticker && recordTrackedPrice(draft, ticker, newP, 'Manual')) {
           logTerminal(`[Price Updated]: ${ticker} market price set to $${formatUSD(newP)}.`);
         }
       }
