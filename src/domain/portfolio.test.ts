@@ -31,12 +31,12 @@ describe('portfolio domain', () => {
 
   it('normalizes missing collections while preserving existing state', () => {
     const normalized = normalizePortfolioState({
-      marginBalance: -25,
+      balance: -25,
       positions: { TEST: basePosition },
       cashCushion: { freeCash: 20, holdings: 'invalid' }
     }, 10_000);
 
-    expect(normalized.marginBalance).toBe(-25);
+    expect(normalized.balance).toBe(-25);
     expect(normalized.positions.TEST).toEqual(basePosition);
     expect(normalized.cashCushion).toMatchObject({ freeCash: 20, holdings: [] });
     expect(normalized.closedTrades).toEqual([]);

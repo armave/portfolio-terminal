@@ -50,7 +50,7 @@ describe('storage service', () => {
 
   describe('saveState', () => {
     it('persists state to localStorage and updates lastUpdated', () => {
-      const state = { activeView: 'AAPL', marginBalance: 1200, lastUpdated: Date.now() };
+      const state = { activeView: 'AAPL', balance: 1200, lastUpdated: Date.now() };
       const beforeTime = Date.now();
 
       saveState(state);
@@ -69,7 +69,7 @@ describe('storage service', () => {
 
       const parsed = JSON.parse(savedJson!);
       expect(parsed.activeView).toBe('AAPL');
-      expect(parsed.marginBalance).toBe(1200);
+      expect(parsed.balance).toBe(1200);
       expect(parsed.lastUpdated).toBe(state.lastUpdated);
     });
 
@@ -99,7 +99,7 @@ describe('storage service', () => {
 
   describe('loadSavedState', () => {
     it('handles missing payload gracefully and returns fallback state', () => {
-      const fallback = { activeView: 'COMBINED', marginBalance: 0 };
+      const fallback = { activeView: 'COMBINED', balance: 0 };
       const loaded = loadSavedState(fallback);
 
       expect(loaded).toEqual(expect.objectContaining(fallback));
@@ -109,7 +109,7 @@ describe('storage service', () => {
       storageMap.set('portfolio_state', '');
       storageMap.set('margin_portfolio_state_dynamic_v2', '');
 
-      const fallback = { activeView: 'COMBINED', marginBalance: 500 };
+      const fallback = { activeView: 'COMBINED', balance: 500 };
       const loaded = loadSavedState(fallback);
 
       expect(loaded).toEqual(fallback);
@@ -120,7 +120,7 @@ describe('storage service', () => {
       storageMap.set('portfolio_state', '{"broken_json: true,');
       storageMap.set('margin_portfolio_state_dynamic_v2', '{"broken_json: true,');
 
-      const fallback = { activeView: 'DEFAULT', marginBalance: 1500 };
+      const fallback = { activeView: 'DEFAULT', balance: 1500 };
       const loaded = loadSavedState(fallback);
 
       expect(loaded).toEqual(fallback);
@@ -132,15 +132,15 @@ describe('storage service', () => {
     });
 
     it('loads and merges valid state when present in localStorage', () => {
-      const savedPayload = { activeView: 'GOOGL', marginBalance: 3400 };
+      const savedPayload = { activeView: 'GOOGL', balance: 3400 };
       storageMap.set('portfolio_state', JSON.stringify(savedPayload));
       storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(savedPayload));
 
-      const fallback = { activeView: 'COMBINED', marginBalance: 0, testField: 'preserved' };
+      const fallback = { activeView: 'COMBINED', balance: 0, testField: 'preserved' };
       const loaded = loadSavedState(fallback);
 
       expect(loaded.activeView).toBe('GOOGL');
-      expect(loaded.marginBalance).toBe(3400);
+      expect(loaded.balance).toBe(3400);
     });
 
     it('returns fallback state when localStorage is undefined', () => {
