@@ -264,10 +264,24 @@ export default {
                     return {
                         symbol: ticker,
                         price: {
+                            // Regular session
                             current: result.price?.regularMarketPrice?.raw ?? null,
                             previousClose: result.price?.regularMarketPreviousClose?.raw ?? null,
                             change: result.price?.regularMarketChange?.raw ?? null,
-                            changePercent: result.price?.regularMarketChangePercent?.raw ?? null
+                            changePercent: result.price?.regularMarketChangePercent?.raw ?? null,
+
+                            // Premarket session (04:00 - 09:30 AM ET)
+                            preMarketPrice: result.price?.preMarketPrice?.raw ?? null,
+                            preMarketChange: result.price?.preMarketChange?.raw ?? null,
+                            preMarketChangePercent: result.price?.preMarketChangePercent?.raw ?? null,
+
+                            // Postmarket session (16:00 - 20:00 PM ET)
+                            postMarketPrice: result.price?.postMarketPrice?.raw ?? null,
+                            postMarketChange: result.price?.postMarketChange?.raw ?? null,
+                            postMarketChangePercent: result.price?.postMarketChangePercent?.raw ?? null,
+
+                            // Session state: "PRE", "REGULAR", "POST", or "CLOSED"
+                            marketState: result.price?.marketState ?? "CLOSED"
                         },
                         valuation: {
                             peTrailing: result.summaryDetail?.trailingPE?.raw ?? null,
