@@ -154,9 +154,13 @@ async function pushStateToCloud(forceImmediate = false) {
 const pushStateToGist = pushStateToCloud;
 
 function pullCloudAndRewriteLocal(parsedState) {
+  const currentView = state.activeView;
   state = { ...state, ...parsedState };
+  if (!parsedState?.activeView && currentView) {
+    state.activeView = currentView;
+  }
   state = loadSavedState(state);
-  renderBoard();
+  switchView(state.activeView);
   console.log("[Sync]: Cloud state ingested and UI re-rendered successfully", state);
   setTimeout(() => {
     const mainView = document.getElementById('mainTerminalView');
@@ -434,10 +438,14 @@ function applyOvernightRollover() {
   }
 }
 
-function setActiveView(view) {
-  state.activeView = view;
+export function setActiveView(view) {
+  const normalizedView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED');
+  state.activeView = normalizedView;
+  saveState(state, pushStateToGist);
   renderBoard();
 }
+
+export const switchView = setActiveView;
 
 function renderConsoleQuickActions() {
   const container = document.getElementById('consoleQuickActions');
@@ -2062,7 +2070,7 @@ async function startApp(secret) {
 
   updateHeaderCredentialsVisibility();
 
-  renderBoard();
+  switchView(state.activeView);
   setTimeout(() => {
     const mainView = document.getElementById('mainTerminalView');
     if (mainView) {
@@ -2121,6 +2129,8 @@ async function initApp() {
     hideAuthContainer();
     await startApp(secret);
   } else {
+    state = loadSavedState(state);
+    switchView(state.activeView);
     showAuthContainer();
   }
 }
@@ -2154,7 +2164,9 @@ Object.assign(window, {
   resetToBlankState,
   saveApiKeys,
   saveCurrentBalanceFromInput,
+  setActiveView,
   showToast,
+  switchView,
   toggleMarketInsights,
   toggleHeaderCredentialsVisibility
 });

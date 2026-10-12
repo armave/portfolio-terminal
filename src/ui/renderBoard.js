@@ -552,7 +552,7 @@ export function renderBoard(state, options = {}) {
   const tabsContainer = document.getElementById('tickerTabs');
   if (tabsContainer) tabsContainer.innerHTML = '';
 
-  const isCushionActive = state.activeView === "CASH_CUSHION";
+  const isCushionActive = state.activeView === "CASH_CUSHION" || state.activeView === "BALANCE";
   const isClosedHistoryActive = state.activeView === "CLOSED_HISTORY";
   const emptyPanel = document.getElementById('emptyStatePanel');
   if (emptyPanel) {
