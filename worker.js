@@ -145,10 +145,11 @@ export default {
                 // Deduplicate and prioritize models with healthy free limits
                 const rawCandidates = [
                     body.model,
-                    "gemini-2.0-flash",
+                    "gemini-2.5-flash-lite",
                     "gemini-2.0-flash-lite",
-                    "gemini-1.5-flash",
-                    "gemini-1.5-flash-latest"
+                    "gemini-2.0-flash",
+                    "gemini-3.5-flash-lite",
+                    "gemini-3.8-flash"
                 ].filter(Boolean);
 
                 const candidateModels = Array.from(new Set(rawCandidates));
