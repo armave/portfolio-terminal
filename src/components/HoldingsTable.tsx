@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePortfolio } from '../store/PortfolioContext';
-import { formatUSD, formatQuoteMetadata, DailyQuoteLabel, SentimentBadge } from '../utils';
+import { formatUSD, formatQuoteMetadata, DailyQuoteLabel, SentimentBadge, getActivePrice, getMarketStateBadge } from '../utils';
 
 export function HoldingsTable() {
   const { state, mutateState, fetchLivePrice } = usePortfolio();
@@ -12,7 +12,10 @@ export function HoldingsTable() {
   const marginDebt = Math.abs(Number(state.balance) || 0);
   const holdings = state.cashCushion?.holdings || [];
   let stocksTotal = 0;
-  holdings.forEach((h: any) => { stocksTotal += (Number(h.shares) || 0) * (Number(h.currentPrice ?? h.price) || 0); });
+  holdings.forEach((h: any) => { 
+    const price = getActivePrice(h.quoteDetails) || Number(h.currentPrice ?? h.price) || 0;
+    stocksTotal += (Number(h.shares) || 0) * price; 
+  });
 
   const handleAddCashStock = () => {
     if (!newTicker || !newShares) return;
@@ -61,7 +64,8 @@ export function HoldingsTable() {
           </thead>
           <tbody className="divide-y divide-slate-800/60 font-mono">
             {holdings.map((h: any, idx: number) => {
-              const price = Number(h.currentPrice ?? h.price) || 0;
+              const price = getActivePrice(h.quoteDetails) || Number(h.currentPrice ?? h.price) || 0;
+              const badge = getMarketStateBadge(h.quoteDetails?.marketState);
               const val = (Number(h.shares) || 0) * price;
               return (
                 <tr key={idx} className="hover:bg-slate-900/40">
@@ -73,7 +77,10 @@ export function HoldingsTable() {
                   </td>
                   <td className="py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap">{Number(h.shares).toLocaleString('en-US', { maximumFractionDigits: 3 })}</td>
                   <td className="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums">
-                    <span>${formatUSD(price)}</span>
+                    <div className="flex items-center justify-end gap-1">
+                      <span>${formatUSD(price)}</span>
+                      {badge && <span className="text-[9px] bg-slate-800 text-slate-300 px-1 py-0.5 rounded uppercase">{badge}</span>}
+                    </div>
                     <DailyQuoteLabel details={h.quoteDetails} />
                     <span className="mt-0.5 block text-[9px] font-normal text-slate-500">{formatQuoteMetadata(h)}</span>
                   </td>

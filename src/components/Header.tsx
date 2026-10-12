@@ -8,11 +8,28 @@ export function Header({ keysHidden, onToggleKeys }: { keysHidden: boolean, onTo
   const { showToast } = useNotifications();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleExport = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+  const handleExport = async () => {
+    const jsonStr = JSON.stringify(state, null, 2);
+    const fileName = "portfolio_backup.json";
+
+    try {
+      const file = new File([jsonStr], fileName, { type: "application/json" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Portfolio Backup',
+        });
+        return;
+      }
+    } catch (err) {
+      console.log("Web Share API failed or was cancelled", err);
+    }
+
+    // Fallback to standard anchor download
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonStr);
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", "portfolio_backup.json");
+    downloadAnchorNode.setAttribute("download", fileName);
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();

@@ -25,7 +25,7 @@ import {
   saveQuoteRefreshInterval 
 } from '../services/storage.js';
 import { useNotifications } from '../contexts/NotificationContext';
-import { formatUSD, getTotalPortfolioInvested } from '../utils';
+import { formatUSD, getTotalPortfolioInvested, getActivePrice } from '../utils';
 
 const DEFAULT_TRADERNET_RULES = {
   broker: "Freedom Broker Armenia (Tradernet)",
@@ -153,17 +153,27 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const symbol = ticker.toUpperCase();
     try {
       const data = await fetchYahooStockData(symbol);
-      if (data?.price?.current > 0) {
-        const price = data.price.current;
-        const prevClose = data.price.previousClose ?? data.price.regularMarketPreviousClose;
-        const change = data.price.change ?? data.price.regularMarketChange ?? (price - prevClose);
-        const quoteDetails = { price, change, changePercent: prevClose ? (change / prevClose) * 100 : 0 };
+      const priceObj = data?.price || data;
+      if (priceObj && (priceObj.current > 0 || priceObj.regularMarketPrice > 0)) {
+        const current = priceObj.current ?? priceObj.regularMarketPrice ?? priceObj.price;
+        const prevClose = priceObj.previousClose ?? priceObj.regularMarketPreviousClose;
+        const change = priceObj.change ?? priceObj.regularMarketChange ?? (current - prevClose);
+        const quoteDetails = { 
+          price: current, 
+          current, 
+          change, 
+          changePercent: prevClose ? (change / prevClose) * 100 : 0,
+          marketState: priceObj.marketState,
+          preMarketPrice: priceObj.preMarketPrice,
+          postMarketPrice: priceObj.postMarketPrice
+        };
+        const activePrice = getActivePrice(quoteDetails);
         
         mutateState((draft: any) => {
-          recordTrackedPrice(draft, symbol, price, "Yahoo Proxy", Date.now(), quoteDetails);
+          recordTrackedPrice(draft, symbol, activePrice, "Yahoo Proxy", Date.now(), quoteDetails);
         });
-        if (!silent) logTerminal(`[Yahoo Proxy]: ${symbol} updated to $${formatUSD(price)}.`);
-        return price;
+        if (!silent) logTerminal(`[Yahoo Proxy]: ${symbol} updated to $${formatUSD(activePrice)}.`);
+        return activePrice;
       }
     } catch (e: any) {
       if (!silent) logTerminal(`[Market Data Error]: Could not fetch ${symbol}. ${e.message}`);
@@ -185,14 +195,26 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       
       mutateState((draft: any) => {
         for (const data of results) {
-          if (!data || data.error || !data.price) continue;
-          const ticker = data.symbol;
-          const current = data.price.current ?? data.regularMarketPrice ?? data.price;
-          const previous = data.price.previousClose ?? data.regularMarketPreviousClose;
-          const change = data.price.change ?? data.regularMarketChange ?? (current - previous);
-          const quoteDetails = { price: current, change, changePercent: previous ? (change / previous) * 100 : 0 };
+          if (!data || data.error) continue;
+          const priceObj = data.price || data;
+          if (!priceObj || (!priceObj.current && !priceObj.regularMarketPrice && !priceObj.price)) continue;
           
-          if (recordTrackedPrice(draft, ticker, current, "Yahoo Proxy", Date.now(), quoteDetails)) {
+          const ticker = data.symbol;
+          const current = priceObj.current ?? priceObj.regularMarketPrice ?? priceObj.price;
+          const previous = priceObj.previousClose ?? priceObj.regularMarketPreviousClose;
+          const change = priceObj.change ?? priceObj.regularMarketChange ?? (current - previous);
+          const quoteDetails = { 
+            price: current, 
+            current, 
+            change, 
+            changePercent: previous ? (change / previous) * 100 : 0,
+            marketState: priceObj.marketState,
+            preMarketPrice: priceObj.preMarketPrice,
+            postMarketPrice: priceObj.postMarketPrice
+          };
+          const activePrice = getActivePrice(quoteDetails);
+          
+          if (recordTrackedPrice(draft, ticker, activePrice, "Yahoo Proxy", Date.now(), quoteDetails)) {
             updatedCount++;
           }
         }

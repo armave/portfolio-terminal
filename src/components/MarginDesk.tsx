@@ -1,6 +1,6 @@
 import React from 'react';
 import { usePortfolio } from '../store/PortfolioContext';
-import { formatUSD, formatTrancheDate, getTotalPortfolioInvested, getCashCushionTotal } from '../utils';
+import { formatUSD, formatTrancheDate, getTotalPortfolioInvested, getCashCushionTotal, getActivePrice, getMarketStateBadge } from '../utils';
 import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
 
 export function MarginDesk() {
@@ -22,9 +22,10 @@ export function MarginDesk() {
     let totalCommBuy = 0, totalCommSell = 0, totalGrossTarget = 0;
     tickers.forEach(t => {
       const pos = state.positions[t];
+      const activePrice = getActivePrice(pos.quoteDetails) || pos.currentPrice;
       const cost = (pos.tranches || []).reduce((sum: number, tr: any) => sum + (tr.qty * tr.price), 0);
       totalInvested += cost;
-      totalMarketValue += pos.shares * pos.currentPrice;
+      totalMarketValue += pos.shares * activePrice;
       totalCommBuy += pos.commBuy;
       const valSell = pos.shares * pos.pt;
       totalCommSell += calculateCommission(pos.shares, valSell, rules);
@@ -54,6 +55,10 @@ export function MarginDesk() {
     const pos = state.positions[state.activeView] || state.positions[tickers[0]];
     if (pos) {
       activePos = pos;
+      const activePrice = getActivePrice(pos.quoteDetails) || pos.currentPrice;
+      const badge = getMarketStateBadge(pos.quoteDetails?.marketState);
+      const badgeHtml = badge ? `<span class="ml-1 text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded uppercase">${badge}</span>` : '';
+
       totalInvested = (pos.tranches || []).reduce((sum: number, t: any) => sum + (t.qty * t.price), 0);
       const avgPrice = pos.shares > 0 ? totalInvested / pos.shares : 0;
       const valSell = pos.shares * pos.pt;
@@ -67,15 +72,15 @@ export function MarginDesk() {
       totalMarginCharged = calculateMarginInterest(state.tranches || pos.tranches || [], { dailyRate, marginDebt: allocatedDebt, totalDebt });
       const net0 = gross - totalComms - totalMarginCharged;
       const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
-      totalMarketValue = pos.shares * pos.currentPrice;
+      totalMarketValue = pos.shares * activePrice;
       const unrealized = totalMarketValue - totalInvested;
-      const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
+      const unrealizedPct = avgPrice > 0 ? ((activePrice - avgPrice) / avgPrice) * 100 : 0;
 
       title = `${pos.ticker} (${pos.shares} Shares @ $${formatUSD(pos.pt)} PT | ${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% Net Target)`;
       tranchesText = (pos.tranches && pos.tranches.length > 0) ? pos.tranches.map((t: any) => `${t.qty} @ $${formatUSD(t.price)} (${formatTrancheDate(t.date)})`).join(' + ') : "None";
       investedText = `$${formatUSD(totalInvested)} | $${formatUSD(avgPrice)}`;
       const unSign = unrealized >= 0 ? '+' : '';
-      priceHtml = `$${formatUSD(pos.currentPrice)} | $${formatUSD(totalMarketValue)} – <span class="${unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${unSign}$${formatUSD(unrealized)} (${unSign}${unrealizedPct.toFixed(2)}%)</span>`;
+      priceHtml = `$${formatUSD(activePrice)}${badgeHtml} | $${formatUSD(totalMarketValue)} – <span class="${unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${unSign}$${formatUSD(unrealized)} (${unSign}${unrealizedPct.toFixed(2)}%)</span>`;
       marginText = `-$${formatUSD(allocatedDebt)} ($${formatUSD(allocatedDebt * dailyRate)}/day)`;
       commsText = `$${formatUSD(totalComms)} ($${formatUSD(pos.commBuy)} buy / $${formatUSD(commSell)} sell)`;
       marginChargedText = `$${formatUSD(totalMarginCharged)} (Position To Date)`;
@@ -85,6 +90,35 @@ export function MarginDesk() {
       equityText = `$${formatUSD(positionEquity)} (${positionAssets > 0 ? ((positionEquity / positionAssets) * 100).toFixed(2) : 0}%)`;
     }
   }
+
+  // Calculate Global Margin Defense Metrics
+  const globalDebt = Math.abs(state.balance || 0);
+  const globalCushion = getCashCushionTotal(state);
+  let globalMarketValue = 0;
+  Object.keys(state.positions || {}).forEach(t => {
+    const p = state.positions[t];
+    const activePrice = getActivePrice(p.quoteDetails) || p.currentPrice;
+    globalMarketValue += (p.shares * activePrice);
+  });
+  const globalEquity = (globalMarketValue + globalCushion) - globalDebt;
+  const maintenanceRatio = rules.maintenanceMarginRatio || 0.10;
+  const globalMaintenanceReq = globalMarketValue * maintenanceRatio;
+  const downsideBuffer = globalEquity - globalMaintenanceReq;
+  const equityRatio = globalMaintenanceReq > 0 ? (globalEquity / globalMaintenanceReq) : 999;
+
+  let gaugeColor = "bg-emerald-500";
+  let gaugeText = "text-emerald-400";
+  let riskLabel = "SAFE";
+  if (equityRatio < 1.2) {
+    gaugeColor = "bg-rose-500";
+    gaugeText = "text-rose-400";
+    riskLabel = "DANGER";
+  } else if (equityRatio < 1.5) {
+    gaugeColor = "bg-amber-500";
+    gaugeText = "text-amber-400";
+    riskLabel = "WARNING";
+  }
+  const gaugeWidth = globalMaintenanceReq === 0 ? 100 : Math.min(100, Math.max(0, (globalEquity / (globalMaintenanceReq * 2)) * 100));
 
   return (
     <>
@@ -107,7 +141,7 @@ export function MarginDesk() {
         <div className="portfolio-metric px-3 py-1.5"><span className="portfolio-metric-label text-[10px]">Total Invested | Avg</span><span className="portfolio-metric-value text-xs sm:text-sm">{investedText}</span></div>
         <div className="portfolio-metric px-3 py-1.5">
           <span className="portfolio-metric-label text-[10px]">Share Price | Market Value</span>
-          <span className="portfolio-metric-value text-xs sm:text-sm text-emerald-400" dangerouslySetInnerHTML={{ __html: priceHtml }}></span>
+          <span className="portfolio-metric-value text-xs sm:text-sm text-emerald-400 flex items-center gap-1" dangerouslySetInnerHTML={{ __html: priceHtml }}></span>
         </div>
         <div className="portfolio-metric px-3 py-1.5"><span className="portfolio-metric-label text-[10px]">Margin Debt</span><span className="portfolio-metric-value text-xs sm:text-sm text-rose-300">{marginText}</span></div>
         <div className="portfolio-metric px-3 py-1.5"><span className="portfolio-metric-label text-[10px]">Total Commissions</span><span className="portfolio-metric-value text-xs sm:text-sm">{commsText}</span></div>
@@ -115,6 +149,22 @@ export function MarginDesk() {
         <div className="portfolio-risk-summary flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
           <div><span className="text-slate-500">Account Equity:</span> <span className="text-white font-bold font-mono">{equityText}</span></div>
           <div><span className="text-slate-500">Allocated Cash / Collateral:</span> <span className="text-cyan-400 font-bold font-mono">+${formatUSD(allocatedCushion)}</span></div>
+        </div>
+      </div>
+
+      {/* Margin Defense Gauge */}
+      <div className="mt-4 bg-slate-900/40 rounded-lg border border-slate-800 p-3">
+        <div className="flex justify-between items-end mb-2">
+          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Margin Defense Gauge</h3>
+          <span className={`text-[10px] font-bold ${gaugeText}`}>{riskLabel}</span>
+        </div>
+        <div className="w-full bg-slate-800 rounded-full h-2.5 mb-2 overflow-hidden">
+          <div className={`h-2.5 rounded-full ${gaugeColor} transition-all duration-500`} style={{ width: `${gaugeWidth}%` }}></div>
+        </div>
+        <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+          <span>Req: ${formatUSD(globalMaintenanceReq)}</span>
+          <span>Equity: ${formatUSD(globalEquity)}</span>
+          <span>Buffer: <span className={downsideBuffer >= 0 ? gaugeText : 'text-rose-500'}>{downsideBuffer >= 0 ? '+' : '-'}${formatUSD(Math.abs(downsideBuffer))}</span></span>
         </div>
       </div>
       
