@@ -17,6 +17,9 @@ export function getProjectionMilestoneLabel(
   if (kind === 'next-trading-day') {
     return `(NTD · +${daysFromToday}d)`;
   }
+  if (kind === 'week-end') {
+    return `(EOW · +${daysFromToday}d)`;
+  }
   return `(+${daysFromToday}d)`;
 }
 
@@ -120,6 +123,21 @@ function rollBackwardToTradingDay(date: Date): Date {
   return result;
 }
 
+export function getClosestTradingDay(date: Date): Date {
+  if (isTradingDay(date)) return date;
+  const forward = rollForwardToTradingDay(date);
+  const backward = rollBackwardToTradingDay(date);
+  const diffForward = Math.abs(calendarDayDifference(date, forward));
+  const diffBackward = Math.abs(calendarDayDifference(date, backward));
+  return diffForward <= diffBackward ? forward : backward;
+}
+
+function getLastTradingDayOfWeek(date: Date): Date {
+  const weekday = date.getDay();
+  const friday = addDays(date, 5 - weekday);
+  return rollBackwardToTradingDay(friday);
+}
+
 function calendarDayDifference(from: Date, to: Date): number {
   const fromUtc = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
   const toUtc = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
@@ -156,17 +174,34 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
     label: getProjectionMilestoneLabel(start, 0, 'today')
   });
 
-  const nextTradingDay = getNextTradingDay(start);
-  const nextTradingDays = calendarDayDifference(start, nextTradingDay);
-  projections.push({
-    date: nextTradingDay,
-    daysFromToday: nextTradingDays,
-    kind: 'next-trading-day',
-    label: `(NTD · +${nextTradingDays}d)`
-  });
+  const isWorkingDay = isTradingDay(start);
+
+  if (isWorkingDay) {
+    const eowDate = getLastTradingDayOfWeek(start);
+    const eowDays = calendarDayDifference(start, eowDate);
+    if (eowDays > 0) {
+      projections.push({
+        date: eowDate,
+        daysFromToday: eowDays,
+        kind: 'week-end',
+        label: getProjectionMilestoneLabel(eowDate, eowDays, 'week-end')
+      });
+    }
+  } else {
+    const nextTradingDay = getNextTradingDay(start);
+    const nextTradingDays = calendarDayDifference(start, nextTradingDay);
+    projections.push({
+      date: nextTradingDay,
+      daysFromToday: nextTradingDays,
+      kind: 'next-trading-day',
+      label: getProjectionMilestoneLabel(nextTradingDay, nextTradingDays, 'next-trading-day')
+    });
+  }
+
+  const referenceDate = getClosestTradingDay(start);
 
   for (const week of [1, 2, 3, 4, 5, 6]) {
-    const targetDate = addDays(nextTradingDay, week * 7);
+    const targetDate = addDays(referenceDate, week * 7);
     const projectedDate = rollForwardToTradingDay(targetDate);
     const daysFromToday = calendarDayDifference(start, projectedDate);
     projections.push({
