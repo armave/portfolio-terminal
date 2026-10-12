@@ -59,6 +59,44 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const rulesRef = useRef(rules);
   useEffect(() => { rulesRef.current = rules; }, [rules]);
 
+  const refreshIntervalRef = useRef(refreshInterval);
+  useEffect(() => { refreshIntervalRef.current = refreshInterval; }, [refreshInterval]);
+
+  const saveLocalState = useCallback(() => {
+    try {
+      const stateToSave = {
+        ...stateRef.current,
+        refreshInterval: refreshIntervalRef.current
+      };
+      localStorage.setItem('portfolioState', JSON.stringify(stateToSave));
+      localStorage.setItem('brokerAssumptions', JSON.stringify(rulesRef.current));
+    } catch (e) {
+      console.error("Failed to save state to localStorage", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const savedState = localStorage.getItem('portfolioState');
+      if (savedState) {
+        const parsedState = JSON.parse(savedState);
+        setState((prev: any) => ({ ...prev, ...parsedState }));
+        if (parsedState.gatewaySecret) {
+          setSecretGetter(() => parsedState.gatewaySecret);
+        }
+        if (parsedState.refreshInterval) {
+          setRefreshInterval(parsedState.refreshInterval);
+        }
+      }
+      const savedRules = localStorage.getItem('brokerAssumptions');
+      if (savedRules) {
+        setRules((prev: any) => ({ ...prev, ...JSON.parse(savedRules) }));
+      }
+    } catch (e) {
+      console.error("Failed to hydrate state from localStorage", e);
+    }
+  }, []);
+
   const mutateState = useCallback((mutator: (draft: any) => void) => {
     setState((prev: any) => {
       const next = JSON.parse(JSON.stringify(prev));
@@ -829,7 +867,8 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       state, mutateState, rules, setRules, cloudStatus, isAppInitialized, initApp,
       setActiveView, fetchLivePrice, refreshAllLivePrices, executeCommand, syncCloudState,
       refreshInterval, setRefreshInterval, getCombinedBreakeven,
-      marketInsightsOpen, setMarketInsightsOpen, activeInsightSection, setActiveInsightSection
+      marketInsightsOpen, setMarketInsightsOpen, activeInsightSection, setActiveInsightSection,
+      saveLocalState
     }}>
       {children}
     </PortfolioContext.Provider>
