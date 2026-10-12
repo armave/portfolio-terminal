@@ -23,7 +23,8 @@ import {
   fetchYahooStockData,
   proxyFetch,
   setSecretGetter,
-  syncCloudState as syncCloudStateService
+  pullCloudState,
+  pushCloudState
 } from './src/services/api.js';
 
 import {
@@ -130,7 +131,7 @@ async function pushStateToCloud(forceImmediate = false) {
   const doPush = async () => {
     setCloudStatus('syncing', 'WRITING...');
     try {
-      const ok = await syncCloudState('push');
+      const ok = await _syncCloudState('push');
       if (ok) {
         setCloudStatus('synced', 'UPDATED');
       } else {
@@ -170,14 +171,21 @@ function pullCloudAndRewriteLocal(parsedState) {
   }, 100);
 }
 
-async function syncCloudState(mode = 'push') {
-  return syncCloudStateService(mode, {
+async function _syncCloudState(mode = 'push') {
+  
+  mode = mode && mode.trim();
+
+  if (mode === "pull") {
+    return pullCloudState(state.gatewaySecret);
+  } else {
+    return pushCloudState({
     state,
     getState: () => state,
     pullCloudAndRewriteLocal,
     showToast,
     logTerminal
-  });
+  }, state.gatewaySecret);
+  }
 }
 
 let headerCredentialsHidden = false;
@@ -1946,7 +1954,7 @@ async function executeCommand(activeState = state) {
   input.value = "";
 
   if (/^(?:pull|sync cloud|cloud pull|pull cloud|load cloud)$/i.test(text)) {
-    await syncCloudState();
+    await _syncCloudState();
     return;
   }
 
@@ -2046,7 +2054,7 @@ async function startApp(secret) {
   const headerGatewayInput = document.getElementById('headerGatewaySecretInput');
   if (headerGatewayInput) headerGatewayInput.value = secret;
 
-  if (secret) await syncCloudState('pull');
+  if (secret) await _syncCloudState('pull');
 
   ['gatewaySecretInput', 'headerGatewaySecretInput'].forEach(id => {
     document.getElementById(id)?.addEventListener('input', updateHeaderCredentialsVisibility);
@@ -2110,7 +2118,7 @@ async function initApp() {
         await startApp(secret);
       } else {
         state.gatewaySecret = secret;
-        await syncCloudState('pull');
+        await _syncCloudState('pull');
       }
     };
   }
@@ -2156,9 +2164,9 @@ Object.assign(window, {
   renderCashCushion,
   renderPositionsTable,
   renderSummaryCards,
-  syncCloudState,
-  pullCloudState: () => syncCloudState('pull'),
-  pushCloudState: () => syncCloudState('push'),
+  _syncCloudState,
+  pullCloudState: () => _syncCloudState('pull'),
+  pushCloudState: () => _syncCloudState('push'),
   refreshAllLivePrices,
   refreshMarketInsight,
   resetToBlankState,

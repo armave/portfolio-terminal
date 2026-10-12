@@ -11,7 +11,7 @@ import {
 } from '../domain/portfolio';
 import { evaluateIntent, parseAiIntent } from '../features/ai/intent';
 import { buildIntentPrompt } from '../features/ai/prompt';
-import { fetchYahooStockData, proxyFetch, setSecretGetter, syncCloudState as syncCloudStateService } from '../services/api.js';
+import { fetchYahooStockData, proxyFetch, setSecretGetter, pullCloudState, pushCloudState } from '../services/api.js';
 import { 
   loadSavedState, 
   saveState, 
@@ -59,57 +59,149 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const rulesRef = useRef(rules);
   useEffect(() => { rulesRef.current = rules; }, [rules]);
 
-  const mutateState = useCallback((mutator: (draft: any) => void) => {
-    setState((prev: any) => {
-      const next = JSON.parse(JSON.stringify(prev));
-      mutator(next);
-      saveState(JSON.parse(JSON.stringify(next)), pushStateToCloud);
-      return next;
-    });
+  const refreshIntervalRef = useRef(refreshInterval);
+  useEffect(() => { refreshIntervalRef.current = refreshInterval; }, [refreshInterval]);
+
+  const saveLocalState = useCallback(() => {
+    try {
+      const stateToSave = {
+        ...stateRef.current,
+        refreshInterval: refreshIntervalRef.current
+      };
+      localStorage.setItem('portfolioState', JSON.stringify(stateToSave));
+      localStorage.setItem('brokerAssumptions', JSON.stringify(rulesRef.current));
+    } catch (e) {
+      console.error("Failed to save state to localStorage", e);
+    }
   }, []);
 
-  const pushStateToCloud = useCallback(async (forceImmediate = false) => {
-    if (!areHeaderCredentialsConfigured()) {
+  useEffect(() => {
+    try {
+      const savedState = localStorage.getItem('portfolioState');
+      if (savedState) {
+        const parsedState = JSON.parse(savedState);
+        setState((prev: any) => ({ ...prev, ...parsedState }));
+        if (parsedState.gatewaySecret) {
+          setSecretGetter(() => parsedState.gatewaySecret);
+        }
+        if (parsedState.refreshInterval) {
+          setRefreshInterval(parsedState.refreshInterval);
+        }
+      }
+      const savedRules = localStorage.getItem('brokerAssumptions');
+      if (savedRules) {
+        setRules((prev: any) => ({ ...prev, ...JSON.parse(savedRules) }));
+      }
+    } catch (e) {
+      console.error("Failed to hydrate state from localStorage", e);
+    }
+  }, []);
+
+  const saveToCloud = useCallback(async () => {
+    const activeSecret = stateRef.current.gatewaySecret || loadGatewaySecret();
+    if (!activeSecret) {
       setCloudStatus({ status: 'idle', text: 'ADD SECRET' });
       return;
     }
     setCloudStatus({ status: 'syncing', text: 'WRITING...' });
     try {
-      const ok = await syncCloudStateService('push', {
-        state: stateRef.current,
-        getState: () => stateRef.current,
-        showToast,
-        logTerminal
-      });
-      setCloudStatus(ok ? { status: 'synced', text: 'UPDATED' } : { status: 'error', text: 'FAIL' });
+      // Construct the current portfolio state object from the active React state
+      const currentState = {
+        positions: stateRef.current.positions || {},
+        cashHoldings: stateRef.current.cashCushion?.holdings || [],
+        closedTrades: stateRef.current.closedTrades || [],
+        cashBalance: stateRef.current.cashCushion?.freeCash || 0,
+        brokerRules: rulesRef.current,
+        // Preserving other necessary fields for the app to function correctly
+        balance: stateRef.current.balance,
+        realizedMarginCharged: stateRef.current.realizedMarginCharged,
+        startDate: stateRef.current.startDate,
+        lastRolloverTimestamp: stateRef.current.lastRolloverTimestamp,
+        activeView: stateRef.current.activeView
+      };
+      
+      // Pass this state to the API
+      await pushCloudState(currentState, activeSecret);
+      
+      setCloudStatus({ status: 'synced', text: 'UPDATED' });
     } catch (err: any) {
       logTerminal(`[KV Cloud Sync Error]: ${err.message}`);
       setCloudStatus({ status: 'error', text: 'FAIL' });
+      showToast(`Cloud push failed: ${err.message}`, 'error');
     }
-  }, [showToast, logTerminal]);
+  }, [logTerminal, showToast]);
 
-  const syncCloudState = useCallback(async (mode = 'push') => {
-    return syncCloudStateService(mode, {
-      state: stateRef.current,
-      getState: () => stateRef.current,
-      pullCloudAndRewriteLocal: (parsedState: any) => {
+  const mutateState = useCallback((mutator: (draft: any) => void) => {
+    setState((prev: any) => {
+      const next = JSON.parse(JSON.stringify(prev));
+      mutator(next);
+      saveState(JSON.parse(JSON.stringify(next)), saveToCloud);
+      return next;
+    });
+  }, [saveToCloud]);
+
+  const syncFromCloud = useCallback(async (activeSecret: string) => {
+    if (!activeSecret) return;
+    setCloudStatus({ status: 'syncing', text: 'PULLING...' });
+    try {
+      // Await the data
+      const data = await pullCloudState(activeSecret);
+      
+      // Diagnostic Logging
+      console.log('[Context] Pulled data:', data);
+      
+      if (data) {
         mutateState((draft: any) => {
           const currentView = draft.activeView;
-          Object.assign(draft, parsedState);
-          if (!parsedState?.activeView && currentView) draft.activeView = currentView;
+          
+          // Explicitly update the React state using the mapped data
+          draft.positions = data.positions || draft.positions || {};
+          
+          if (!draft.cashCushion) draft.cashCushion = { freeCash: 0, holdings: [] };
+          draft.cashCushion.holdings = data.cashHoldings || data.cashCushion?.holdings || [];
+          draft.cashCushion.freeCash = data.cashBalance ?? data.cashCushion?.freeCash ?? 0;
+          
+          draft.closedTrades = data.closedTrades || draft.closedTrades || [];
+          draft.balance = data.balance ?? draft.balance ?? 0;
+          draft.realizedMarginCharged = data.realizedMarginCharged ?? draft.realizedMarginCharged ?? 0;
+          draft.startDate = data.startDate || draft.startDate;
+          draft.lastRolloverTimestamp = data.lastRolloverTimestamp || draft.lastRolloverTimestamp;
+          
+          if (!data?.activeView && currentView) draft.activeView = currentView;
         });
-      },
-      showToast,
-      logTerminal
-    });
-  }, [mutateState, showToast, logTerminal]);
+
+        // Explicitly update broker assumptions
+        const defaultRules = DEFAULT_TRADERNET_RULES;
+        setRules((prev: any) => ({ 
+          ...defaultRules, 
+          ...prev, 
+          ...(data.brokerRules || data.brokerAssumptions || {}) 
+        }));
+
+        // After updating the state, call the function that saves everything to localStorage
+        saveLocalState();
+        
+        setCloudStatus({ status: 'synced', text: 'UPDATED' });
+        showToast('KV cloud state pulled.', 'success');
+        logTerminal('[KV Cloud]: Synced successfully.');
+      } else {
+        setCloudStatus({ status: 'idle', text: 'NO DATA' });
+        showToast('No KV cloud state found. Retaining local state.', 'info');
+        logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
+      }
+    } catch (err: any) {
+      setCloudStatus({ status: 'error', text: 'FAIL' });
+      showToast(`Cloud pull failed: ${err.message}`, 'error');
+      logTerminal(`[KV Cloud Error]: ${err.message}. Retaining local state.`);
+    }
+  }, [mutateState, saveLocalState, showToast, logTerminal]);
 
   const initApp = async (secret: string) => {
     if (secret) {
       saveGatewaySecret(secret);
       setSecretGetter(() => secret);
       mutateState((draft: any) => { draft.gatewaySecret = secret; });
-      await syncCloudState('pull');
+      await syncFromCloud(secret);
     }
     setIsAppInitialized(true);
   };
@@ -731,7 +823,7 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     logTerminal(text, true);
     
     if (/^(?:pull|sync cloud|cloud pull|pull cloud|load cloud)$/i.test(text)) {
-      await syncCloudState('pull');
+      await syncFromCloud(stateRef.current.gatewaySecret);
       return;
     }
     const balanceMatch = text.match(/^(?:b:|balance:?)\s*(-?\d+(?:\.\d+)?)$/i);
@@ -827,9 +919,15 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   return (
     <PortfolioContext.Provider value={{
       state, mutateState, rules, setRules, cloudStatus, isAppInitialized, initApp,
-      setActiveView, fetchLivePrice, refreshAllLivePrices, executeCommand, syncCloudState,
+      setActiveView, fetchLivePrice, refreshAllLivePrices, executeCommand, syncFromCloud, saveToCloud,
       refreshInterval, setRefreshInterval, getCombinedBreakeven,
-      marketInsightsOpen, setMarketInsightsOpen, activeInsightSection, setActiveInsightSection
+      marketInsightsOpen, setMarketInsightsOpen, activeInsightSection, setActiveInsightSection,
+      saveLocalState,
+      // Direct exports for destructuring as requested
+      marginPositions: state.positions || {},
+      brokerAssumptions: rules,
+      cashHoldings: state.cashCushion?.holdings || [],
+      cashBalance: state.cashCushion?.freeCash || 0
     }}>
       {children}
     </PortfolioContext.Provider>

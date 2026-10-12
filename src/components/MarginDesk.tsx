@@ -4,35 +4,47 @@ import { formatUSD, formatTrancheDate, getTotalPortfolioInvested, getCashCushion
 import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
 
 export function MarginDesk() {
-  const { state, rules, setMarketInsightsOpen, marketInsightsOpen } = usePortfolio();
-  const tickers = Object.keys(state.positions || {});
-  const isCombined = state.activeView === "COMBINED" || (tickers.length !== 1 && !state.positions[state.activeView]);
-  const dailyRate = rules.annualRate / rules.dayCountBasis;
+  const { state, marginPositions, brokerAssumptions, setMarketInsightsOpen, marketInsightsOpen } = usePortfolio();
+  const tickers = Object.keys(marginPositions);
+  const isCombined = state.activeView === "COMBINED" || (tickers.length !== 1 && !marginPositions[state.activeView]);
+  const dailyRate = brokerAssumptions.annualRate / brokerAssumptions.dayCountBasis;
 
   let title = "NO ACTIVE MARGIN POSITIONS";
-  let totalInvested = 0, totalMarketValue = 0, totalDebt = Math.abs(state.balance), totalComms = 0, totalMarginCharged = state.realizedMarginCharged || 0;
+  let totalInvested = 0;
+  let totalMarketValue = 0;
+  let totalMarginDebt = Math.abs(state.balance || 0);
+  let totalComms = 0;
+  let totalMarginCharged = state.realizedMarginCharged || 0;
   let cushionTotal = getCashCushionTotal(state);
-  let allocatedDebt = totalDebt, allocatedCushion = cushionTotal;
-  let tranchesText = "None", investedText = "$0.00 | $0.00", priceHtml = "$0.00 | $0.00 – +$0.00 (+0.00%)";
-  let marginText = `-$0.00`, commsText = "$0.00", marginChargedText = "$0.00";
-  let equityText = "$0.00 (0.00%)";
+  let allocatedDebt = totalMarginDebt;
+  let allocatedCushion = cushionTotal;
+  let accountEquity = 0;
+  
+  // Dynamic fallbacks based on actual variables
+  let tranchesText = "None";
+  let investedText = `$${formatUSD(0)} | $${formatUSD(0)}`;
+  let priceHtml = `$${formatUSD(0)} | $${formatUSD(0)} – +$${formatUSD(0)} (0.00%)`;
+  let marginText = `-$${formatUSD(totalMarginDebt)} ($${formatUSD(totalMarginDebt * dailyRate)}/day @ ${(dailyRate * 100).toFixed(4)}%)`;
+  let commsText = `$${formatUSD(0)}`;
+  let marginChargedText = `$${formatUSD(totalMarginCharged)}`;
+  let equityText = `$${formatUSD(cushionTotal - totalMarginDebt)} (0.00%)`;
   let activePos = null;
 
   if (isCombined && tickers.length > 0) {
     let totalCommBuy = 0, totalCommSell = 0, totalGrossTarget = 0;
     tickers.forEach(t => {
-      const pos = state.positions[t];
+      const pos = marginPositions[t];
       const activePrice = getActivePrice(pos.quoteDetails) || pos.currentPrice;
       const cost = (pos.tranches || []).reduce((sum: number, tr: any) => sum + (tr.qty * tr.price), 0);
       totalInvested += cost;
       totalMarketValue += pos.shares * activePrice;
       totalCommBuy += pos.commBuy;
       const valSell = pos.shares * pos.pt;
-      totalCommSell += calculateCommission(pos.shares, valSell, rules);
+      totalCommSell += calculateCommission(pos.shares, valSell, brokerAssumptions);
       totalGrossTarget += (valSell - cost);
     });
-    const tranchesForCombined = state.tranches || tickers.flatMap(t => state.positions[t]?.tranches || []);
-    totalMarginCharged += calculateMarginInterest(tranchesForCombined, { dailyRate, marginDebt: totalDebt, totalDebt });
+    const tranchesForCombined = state.tranches || tickers.flatMap(t => marginPositions[t]?.tranches || []);
+    totalMarginCharged += calculateMarginInterest(tranchesForCombined, { dailyRate, marginDebt: totalMarginDebt, totalDebt: totalMarginDebt });
     totalComms = totalCommBuy + totalCommSell;
     const net0 = totalGrossTarget - totalComms - totalMarginCharged;
     const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
@@ -40,19 +52,19 @@ export function MarginDesk() {
     const unrealizedPct = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
     
     title = `COMBINED PORTFOLIO (${tickers.length} Positions | ${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% Net Combined Target)`;
-    tranchesText = tickers.map(t => `${t}: ${state.positions[t].shares}sh @ PT $${formatUSD(state.positions[t].pt)}`).join(' | ');
+    tranchesText = tickers.map(t => `${t}: ${marginPositions[t].shares}sh @ PT $${formatUSD(marginPositions[t].pt)}`).join(' | ');
     investedText = `$${formatUSD(totalInvested)} | Across ${tickers.length} Assets`;
     const unSign = totalUnrealized >= 0 ? '+' : '';
     priceHtml = `$${formatUSD(totalMarketValue)} – <span class="${totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${unSign}$${formatUSD(totalUnrealized)} (${unSign}${unrealizedPct.toFixed(2)}%)</span>`;
-    marginText = `-$${formatUSD(totalDebt)} ($${formatUSD(totalDebt * dailyRate)}/day @ ${(dailyRate * 100).toFixed(4)}%)`;
+    marginText = `-$${formatUSD(totalMarginDebt)} ($${formatUSD(totalMarginDebt * dailyRate)}/day @ ${(dailyRate * 100).toFixed(4)}%)`;
     commsText = `$${formatUSD(totalComms)} ($${formatUSD(totalCommBuy)} buy / $${formatUSD(totalCommSell)} sell)`;
     marginChargedText = `$${formatUSD(totalMarginCharged)}`;
     
-    const totalAccountEquity = (totalMarketValue + cushionTotal) - totalDebt;
+    accountEquity = (totalMarketValue + cushionTotal) - totalMarginDebt;
     const totalAccountAssets = totalMarketValue + cushionTotal;
-    equityText = `$${formatUSD(totalAccountEquity)} (${totalAccountAssets > 0 ? ((totalAccountEquity / totalAccountAssets) * 100).toFixed(2) : 0}%)`;
+    equityText = `$${formatUSD(accountEquity)} (${totalAccountAssets > 0 ? ((accountEquity / totalAccountAssets) * 100).toFixed(2) : 0}%)`;
   } else if (!isCombined) {
-    const pos = state.positions[state.activeView] || state.positions[tickers[0]];
+    const pos = marginPositions[state.activeView] || marginPositions[tickers[0]];
     if (pos) {
       activePos = pos;
       const activePrice = getActivePrice(pos.quoteDetails) || pos.currentPrice;
@@ -62,14 +74,14 @@ export function MarginDesk() {
       totalInvested = (pos.tranches || []).reduce((sum: number, t: any) => sum + (t.qty * t.price), 0);
       const avgPrice = pos.shares > 0 ? totalInvested / pos.shares : 0;
       const valSell = pos.shares * pos.pt;
-      const commSell = calculateCommission(pos.shares, valSell, rules);
+      const commSell = calculateCommission(pos.shares, valSell, brokerAssumptions);
       totalComms = pos.commBuy + commSell;
       const gross = valSell - totalInvested;
       const portfolioInvested = getTotalPortfolioInvested(state);
       const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
-      allocatedDebt = totalDebt * weight;
+      allocatedDebt = totalMarginDebt * weight;
       allocatedCushion = cushionTotal * weight;
-      totalMarginCharged = calculateMarginInterest(state.tranches || pos.tranches || [], { dailyRate, marginDebt: allocatedDebt, totalDebt });
+      totalMarginCharged = calculateMarginInterest(state.tranches || pos.tranches || [], { dailyRate, marginDebt: allocatedDebt, totalDebt: totalMarginDebt });
       const net0 = gross - totalComms - totalMarginCharged;
       const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
       totalMarketValue = pos.shares * activePrice;
@@ -86,8 +98,8 @@ export function MarginDesk() {
       marginChargedText = `$${formatUSD(totalMarginCharged)} (Position To Date)`;
       
       const positionAssets = totalMarketValue + allocatedCushion;
-      const positionEquity = positionAssets - allocatedDebt;
-      equityText = `$${formatUSD(positionEquity)} (${positionAssets > 0 ? ((positionEquity / positionAssets) * 100).toFixed(2) : 0}%)`;
+      accountEquity = positionAssets - allocatedDebt;
+      equityText = `$${formatUSD(accountEquity)} (${positionAssets > 0 ? ((accountEquity / positionAssets) * 100).toFixed(2) : 0}%)`;
     }
   }
 
@@ -95,13 +107,13 @@ export function MarginDesk() {
   const globalDebt = Math.abs(state.balance || 0);
   const globalCushion = getCashCushionTotal(state);
   let globalMarketValue = 0;
-  Object.keys(state.positions || {}).forEach(t => {
-    const p = state.positions[t];
+  Object.keys(marginPositions).forEach(t => {
+    const p = marginPositions[t];
     const activePrice = getActivePrice(p.quoteDetails) || p.currentPrice;
     globalMarketValue += (p.shares * activePrice);
   });
   const globalEquity = (globalMarketValue + globalCushion) - globalDebt;
-  const maintenanceRatio = rules.maintenanceMarginRatio || 0.10;
+  const maintenanceRatio = brokerAssumptions.maintenanceMarginRatio || 0.10;
   const globalMaintenanceReq = globalMarketValue * maintenanceRatio;
   const downsideBuffer = globalEquity - globalMaintenanceReq;
   const equityRatio = globalMaintenanceReq > 0 ? (globalEquity / globalMaintenanceReq) : 999;

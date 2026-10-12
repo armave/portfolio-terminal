@@ -91,6 +91,11 @@ export default defineConfig({
       }
     })
   ],
+  server: {
+    watch: {
+      usePolling: true
+    }
+  },
   build: {
     target: 'es2022',
     emptyOutDir: true
