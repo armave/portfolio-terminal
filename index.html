@@ -448,26 +448,6 @@
             </table>
           </div>
 
-          <!-- Inline Add Holding Form -->
-          <div class="flex items-center gap-4 py-2 border-t border-gray-800 flex-wrap">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Add Holding:</span>
-            <input type="text" id="newCashTicker" placeholder="Ticker" required aria-label="Stock ticker symbol"
-              autocomplete="off" autocapitalize="characters"
-              class="bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-24 uppercase focus:outline-none focus:border-cyan-500">
-            <input type="number" id="newCashShares" placeholder="Shares" min="0.001" step="0.001" required
-              inputmode="decimal" aria-label="Number of shares"
-              class="number-input bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-24 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500">
-            <div class="relative">
-              <span class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs" aria-hidden="true">$</span>
-              <input type="number" id="newCashPrice" placeholder="Auto price" min="0.01" step="0.01"
-                inputmode="decimal" aria-label="Optional price per share in US dollars"
-                class="number-input bg-slate-950 border border-slate-700 text-xs pl-5 pr-2 py-1 rounded text-white w-28 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500">
-            </div>
-            <button type="button" onclick="addCashStockFromUI()"
-              class="bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold px-2.5 py-1 rounded transition">
-              + Add Holding
-            </button>
-          </div>
         </div>
       </div>
 
