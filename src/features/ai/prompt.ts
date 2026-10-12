@@ -36,6 +36,7 @@ Classify the user's trading-console request into exactly one JSON object matchin
 
 User request: ${JSON.stringify(context.text)}
 Active margin positions: ${positionsContext || 'None'}
+Active tickers: ${JSON.stringify(activeTickers)}
 Currently viewed asset: ${JSON.stringify(activeView)}
 Today's reference date: ${JSON.stringify(today)}
 
