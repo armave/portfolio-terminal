@@ -17,7 +17,8 @@
         <p class="text-xs text-slate-400">Enter Gateway Secret to unlock the terminal and sync data.</p>
       </div>
       <div class="flex flex-col sm:flex-row gap-2 pt-2">
-        <input type="password" id="gatewaySecretInput" placeholder="Enter Gateway Secret" autocomplete="current-password"
+        <input type="password" id="gatewaySecretInput" placeholder="Enter Gateway Secret"
+          autocomplete="current-password"
           class="flex-1 bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
         <button id="authSaveButton" type="button"
           class="bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-4 py-2 rounded transition">
@@ -103,7 +104,8 @@
           </div>
         </details>
 
-        <div class="terminal-toolbar flex flex-col lg:flex-row w-full items-center lg:divide-x divide-slate-700 gap-y-3 lg:gap-y-0 py-1">
+        <div
+          class="terminal-toolbar flex flex-col lg:flex-row w-full items-center lg:divide-x divide-slate-700 gap-y-3 lg:gap-y-0 py-1">
           <!-- Cluster 1: Cloud & Secret -->
           <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2">
             <div id="headerCredentialsFields" class="flex items-center">
@@ -178,7 +180,8 @@
       <!-- Asset View Tabs -->
       <div id="boardHeaderBanner" class="board-header-banner border-b border-slate-800 pb-3">
         <div class="flex flex-wrap items-center gap-2" id="tickerTabs"></div>
-        <div class="text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0" id="daysToBreakeven">Combined
+        <div class="text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0" id="daysToBreakeven">
+          Combined
           Breakeven: 0 days</div>
       </div>
 
@@ -222,22 +225,27 @@
         </div>
 
         <div class="portfolio-metrics-grid gap-2 text-xs text-slate-300">
-          <div class="portfolio-metric px-3 py-1.5"><span class="portfolio-metric-label text-[10px]">Tranches / Holdings</span><span
-              id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">None</span></div>
-          <div class="portfolio-metric px-3 py-1.5"><span class="portfolio-metric-label text-[10px]">Total Invested | Avg</span><span
-              id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">$0.00 | $0.00</span></div>
+          <div class="portfolio-metric px-3 py-1.5"><span class="portfolio-metric-label text-[10px]">Tranches /
+              Holdings</span><span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">None</span>
+          </div>
+          <div class="portfolio-metric px-3 py-1.5"><span class="portfolio-metric-label text-[10px]">Total Invested |
+              Avg</span><span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">$0.00 | $0.00</span>
+          </div>
           <div class="portfolio-metric px-3 py-1.5">
             <span class="portfolio-metric-label text-[10px]">Share Price | Market Value</span><span id="boardPrice"
               class="portfolio-metric-value text-xs sm:text-sm text-emerald-400">$0.00 | $0.00 – +$0.00 (+0.00%)</span>
             <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
             <span id="boardQuoteMeta" class="text-[10px] text-slate-500"></span>
           </div>
-          <div class="portfolio-metric px-3 py-1.5"><span class="portfolio-metric-label text-[10px]">Margin Debt</span><span id="boardMargin"
+          <div class="portfolio-metric px-3 py-1.5"><span class="portfolio-metric-label text-[10px]">Margin
+              Debt</span><span id="boardMargin"
               class="portfolio-metric-value text-xs sm:text-sm text-rose-300">-$0.00</span></div>
-          <div class="portfolio-metric px-3 py-1.5"><span class="portfolio-metric-label text-[10px]">Total Commissions</span><span
-              id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">$0.00</span></div>
-          <div class="portfolio-metric px-3 py-1.5"><span class="portfolio-metric-label text-[10px]">Margin Charged</span><span
-              id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">$0.00</span></div>
+          <div class="portfolio-metric px-3 py-1.5"><span class="portfolio-metric-label text-[10px]">Total
+              Commissions</span><span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">$0.00</span>
+          </div>
+          <div class="portfolio-metric px-3 py-1.5"><span class="portfolio-metric-label text-[10px]">Margin
+              Charged</span><span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">$0.00</span>
+          </div>
 
           <div class="portfolio-risk-summary flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
             <div><span class="text-slate-500">Account Equity:</span> <span id="boardEquity"
@@ -311,7 +319,8 @@
 
         <div class="desktop-workspace-grid grid grid-cols-1 lg:grid-cols-[3fr_7fr] gap-4 lg:gap-6 items-start">
           <!-- Projection Table -->
-          <div class="table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none lg:mx-0" id="projectionTableContainer">
+          <div class="table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none lg:mx-0"
+            id="projectionTableContainer">
             <table class="w-full min-w-[300px] text-xs border-collapse">
               <thead>
                 <tr class="border-b border-slate-800 text-slate-400">
@@ -327,7 +336,8 @@
           </div>
 
           <!-- Conversational Terminal Box -->
-          <div class="trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 max-w-2xl mx-auto w-full lg:max-w-none lg:mx-0">
+          <div
+            class="trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 max-w-2xl mx-auto w-full lg:max-w-none lg:mx-0">
             <div class="text-xs font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center">
               <span>Trading Console <span class="hidden sm:inline">(Deterministic Engine + Gemini AI)</span></span>
               <span id="aiStatus" class="text-slate-500 text-[8px]">READY</span>
@@ -355,17 +365,25 @@
             <!-- Quick Commands Reference -->
             <div class="pt-3 mt-3 border-t border-slate-800">
               <details class="space-y-2">
-                <summary class="text-[10px] text-slate-500 uppercase tracking-wider font-bold cursor-pointer hover:text-slate-300 transition">View Quick Commands Guide</summary>
+                <summary
+                  class="text-[10px] text-slate-500 uppercase tracking-wider font-bold cursor-pointer hover:text-slate-300 transition">
+                  View Quick Commands Guide</summary>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 pt-1 text-xs text-slate-400">
-                  <div><span class="text-emerald-400 font-bold">Buy Shares:</span> <span id="hintBuyShares"></span></div>
-                  <div><span class="text-cyan-400 font-bold">Non-Margin Holding:</span> <span id="hintCashHolding"></span></div>
+                  <div><span class="text-emerald-400 font-bold">Buy Shares:</span> <span id="hintBuyShares"></span>
+                  </div>
+                  <div><span class="text-cyan-400 font-bold">Non-Margin Holding:</span> <span
+                      id="hintCashHolding"></span></div>
                   <div><span class="text-cyan-400 font-bold">Balance / Margin Debt:</span> balance 5000 <span
                       class="text-slate-600 italic">or</span> balance -5000</div>
-                  <div><span class="text-purple-400 font-bold">Ladder Exit:</span> <span id="hintLadderExit"></span></div>
-                  <div><span class="text-cyan-400 font-bold">Exit Comparison:</span> <span id="hintExitComparison"></span></div>
-                  <div><span class="text-amber-400 font-bold">Live Market Quote:</span> <span id="hintLiveQuote"></span></div>
+                  <div><span class="text-purple-400 font-bold">Ladder Exit:</span> <span id="hintLadderExit"></span>
+                  </div>
+                  <div><span class="text-cyan-400 font-bold">Exit Comparison:</span> <span
+                      id="hintExitComparison"></span></div>
+                  <div><span class="text-amber-400 font-bold">Live Market Quote:</span> <span id="hintLiveQuote"></span>
+                  </div>
                   <div><span class="text-emerald-400 font-bold">Sync Margin Debt:</span> b: -5000</div>
-                  <div><span class="text-rose-400 font-bold">Close Position:</span> <span id="hintClosePosition"></span></div>
+                  <div><span class="text-rose-400 font-bold">Close Position:</span> <span id="hintClosePosition"></span>
+                  </div>
                 </div>
               </details>
             </div>
@@ -389,14 +407,16 @@
         <div class="space-y-2">
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 py-1">
             <div class="flex items-center gap-3">
-              <span id="cashBalanceDebtMeta" class="text-xs font-medium text-slate-300 font-mono">Balance: $0.00 | Debt: -$0.00</span>
+              <span id="cashBalanceDebtMeta" class="text-xs font-medium text-slate-300 font-mono">Balance: $0.00 | Debt:
+                -$0.00</span>
               <span class="text-slate-700">|</span>
               <span id="cashHoldingsSummary" class="text-xs text-slate-400">0 holdings · $0.00 market value</span>
             </div>
             <div class="flex items-center gap-2">
               <span class="text-[10px] uppercase tracking-wider text-slate-500 whitespace-nowrap">Signed amount:</span>
               <div class="relative">
-                <span class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs" aria-hidden="true">$</span>
+                <span class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs"
+                  aria-hidden="true">$</span>
                 <input type="number" id="freeCashInput" step="0.01" required inputmode="decimal"
                   aria-label="Signed balance or margin debt in US dollars"
                   title="Positive values are cash balance; negative values are margin debt"
@@ -413,12 +433,12 @@
             <table class="w-full min-w-0 table-fixed text-left text-xs border-collapse">
               <thead>
                 <tr class="border-b border-slate-800 text-slate-400 font-medium">
-                  <th class="w-[22%] py-2 px-2">Ticker</th>
+                  <th class="w-[15%] py-2 px-2">Ticker</th>
                   <th class="w-[15%] py-2 px-2 text-right">Shares</th>
-                  <th class="w-[25%] py-2 px-2 text-right">Price · Mkt</th>
-                  <th class="w-[20%] py-2 px-2 text-right">Market Value</th>
-                  <th class="w-[10%] py-2 px-2 text-right">Eq. Alloc</th>
-                  <th class="w-[8%] py-2 px-2 text-center">Actions</th>
+                  <th class="w-[20%] py-2 px-2 text-right">Price · Mkt</th>
+                  <th class="w-[15%] py-2 px-2 text-right">Market Value</th>
+                  <th class="w-[15%] py-2 px-2 text-right">Eq. Alloc</th>
+                  <th class="w-[15%] py-2 px-2 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody id="cashStocksTableBody" class="divide-y divide-slate-800/60 font-mono"></tbody>
@@ -426,20 +446,28 @@
               <tbody class="border-t border-slate-800 bg-slate-900/30">
                 <tr>
                   <td class="py-2 px-3">
-                    <input type="text" id="newCashTicker" placeholder="TICKER" required aria-label="Stock ticker symbol" autocomplete="off" autocapitalize="characters" class="bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-full min-w-0 uppercase focus:outline-none focus:border-cyan-500">
+                    <input type="text" id="newCashTicker" placeholder="TICKER" required aria-label="Stock ticker symbol"
+                      autocomplete="off" autocapitalize="characters"
+                      class="bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-full min-w-0 uppercase focus:outline-none focus:border-cyan-500">
                   </td>
                   <td class="py-2 px-3 text-right">
-                    <input type="number" id="newCashShares" placeholder="Shares" min="0.01" step="0.01" required inputmode="decimal" aria-label="Number of shares" class="number-input bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-full min-w-0 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500">
+                    <input type="number" id="newCashShares" placeholder="Shares" min="0.01" step="0.01" required
+                      inputmode="decimal" aria-label="Number of shares"
+                      class="number-input bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-full min-w-0 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500">
                   </td>
                   <td class="py-2 px-3 text-right">
                     <div class="w-full min-w-0 relative">
-                      <span class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs" aria-hidden="true">$</span>
-                      <input type="number" id="newCashPrice" placeholder="Auto" min="0.01" step="0.01" inputmode="decimal" aria-label="Optional price per share in US dollars" class="number-input bg-slate-950 border border-slate-700 text-xs pl-4 pr-1 py-1 rounded text-white w-full min-w-0 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500">
+                      <span class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs"
+                        aria-hidden="true">$</span>
+                      <input type="number" id="newCashPrice" placeholder="Auto" min="0.01" step="0.01"
+                        inputmode="decimal" aria-label="Optional price per share in US dollars"
+                        class="number-input bg-slate-950 border border-slate-700 text-xs pl-4 pr-1 py-1 rounded text-white w-full min-w-0 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500">
                     </div>
                   </td>
                   <td class="py-2 px-3" colspan="2"></td>
                   <td class="py-2 px-3 text-center">
-                    <button type="button" onclick="addCashStockFromUI()" class="bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold px-2 py-1 rounded transition whitespace-nowrap">
+                    <button type="button" onclick="addCashStockFromUI()"
+                      class="bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold px-2 py-1 rounded transition whitespace-nowrap">
                       + Add
                     </button>
                   </td>
