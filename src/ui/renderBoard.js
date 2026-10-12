@@ -269,8 +269,8 @@ export function renderCashCushion(state, options = {}) {
   const { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs = 60000 } = options;
   if (!state.cashCushion) state.cashCushion = { freeCash: 0.00, holdings: [] };
   const freeCash = Number(state.cashCushion.freeCash) || 0;
-  const marginDebt = Math.abs(Number(state.marginBalance) || 0);
-  const signedBalance = freeCash + (Number(state.marginBalance) || 0);
+  const marginDebt = Math.abs(Number(state.balance) || 0);
+  const signedBalance = freeCash + (Number(state.balance) || 0);
 
   const freeCashInput = document.getElementById('freeCashInput');
   if (freeCashInput) freeCashInput.value = signedBalance.toFixed(2);
@@ -403,8 +403,8 @@ export function renderSummaryCards(state, options = {}) {
     const tranchesForCombined = state.tranches || tickers.flatMap(t => state.positions[t]?.tranches || []);
     const openMarginCharged = calculateMarginInterest(tranchesForCombined, {
       dailyRate,
-      marginDebt: Math.abs(state.marginBalance),
-      totalDebt: Math.abs(state.marginBalance)
+      marginDebt: Math.abs(state.balance),
+      totalDebt: Math.abs(state.balance)
     });
     totalMarginCharged += openMarginCharged;
 
@@ -413,7 +413,7 @@ export function renderSummaryCards(state, options = {}) {
     const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
     const totalUnrealized = totalMarketValue - totalInvested;
     const unrealizedPct = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
-    const totalDebt = Math.abs(state.marginBalance);
+    const totalDebt = Math.abs(state.balance);
     const dailyAccrual = totalDebt * dailyRate;
 
     document.getElementById('boardTitle').innerText = tickers.length > 0
@@ -470,7 +470,7 @@ export function renderSummaryCards(state, options = {}) {
     const portfolioInvested = getTotalPortfolioInvested(state);
     const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
 
-    const totalAccountDebt = Math.abs(state.marginBalance);
+    const totalAccountDebt = Math.abs(state.balance);
     const allocatedDebt = totalAccountDebt * weight;
     const totalCushion = getCashCushionTotal(state);
     const allocatedCushion = totalCushion * weight;

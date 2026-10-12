@@ -29,8 +29,7 @@ export interface ClosedTrade {
 
 export interface PortfolioState {
   activeView: string;
-  marginBalance: number;
-  balance?: number;
+  balance: number;
   settings?: { marginRate?: number; [key: string]: unknown };
   realizedMarginCharged: number;
   startDate: string;
@@ -79,7 +78,7 @@ export function calculateCompoundedDebt(
 
 export interface MarginInterestState {
   marginDebt?: number;
-  marginBalance?: number;
+  balance?: number;
   totalDebt?: number;
   tranches?: Array<TradeTranche | Record<string, unknown>>;
   positions?: Record<string, MarginPosition>;
@@ -168,7 +167,7 @@ export function calculateMarginInterest(
     tranches = target;
     debtValue = options.marginDebt ?? options.totalDebt;
   } else if (isRecord(target)) {
-    if (typeof target.marginBalance === 'number' && target.marginBalance >= 0 && target.marginDebt === undefined) {
+    if (typeof target.balance === 'number' && target.balance >= 0 && target.marginDebt === undefined) {
       return 0;
     }
     if (target.marginDebt === 0 || target.totalDebt === 0) {
@@ -179,7 +178,7 @@ export function calculateMarginInterest(
     } else if (isRecord(target.positions)) {
       tranches = Object.values(target.positions).flatMap(p => (isRecord(p) && Array.isArray(p.tranches) ? p.tranches : []));
     }
-    const targetDebt = target.marginDebt ?? (typeof target.marginBalance === 'number' && target.marginBalance < 0 ? target.marginBalance : undefined) ?? target.totalDebt;
+    const targetDebt = target.marginDebt ?? (typeof target.balance === 'number' && target.balance < 0 ? target.balance : undefined) ?? target.totalDebt;
     debtValue = typeof targetDebt === 'number' ? targetDebt : (options.marginDebt ?? options.totalDebt);
   }
 
@@ -264,7 +263,6 @@ export function resolveTradeDateTimestamp(value: unknown, fallbackTimestamp = Da
 export function createBlankState(now = Date.now()): PortfolioState {
   return {
     activeView: 'COMBINED',
-    marginBalance: 0,
     balance: 0,
     realizedMarginCharged: 0,
     startDate: new Date(now).toISOString().split('T')[0],
@@ -322,7 +320,7 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
     ...blankState,
     ...candidate,
     activeView: typeof candidate.activeView === 'string' ? candidate.activeView : blankState.activeView,
-    marginBalance: finiteNumber(candidate.marginBalance, blankState.marginBalance),
+    balance: finiteNumber(candidate.balance, blankState.balance),
     realizedMarginCharged: finiteNumber(candidate.realizedMarginCharged, blankState.realizedMarginCharged),
     lastUpdated: finiteNumber(candidate.lastUpdated, blankState.lastUpdated),
     cashCushion: {
@@ -332,7 +330,6 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
       holdings: Array.isArray(sourceCashCushion.holdings) ? sourceCashCushion.holdings : []
     },
     closedTrades,
-    balance: candidate.balance !== undefined ? finiteNumber(candidate.balance, 0) : finiteNumber(candidate.marginBalance, blankState.marginBalance),
     positions: normalizedPositions,
     quoteSymbols: isRecord(candidate.quoteSymbols) ? candidate.quoteSymbols : {},
     lastRolloverTimestamp: Number.isFinite(sourceTimestamp) && sourceTimestamp > 0 ? sourceTimestamp : now,
@@ -344,7 +341,7 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
 
 export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): PortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio backup must be an object.');
-  const recognizedFields = ['positions', 'marginBalance', 'cashCushion', 'closedTrades', 'activeView', 'startDate'];
+  const recognizedFields = ['positions', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate'];
   if (!recognizedFields.some(field => Object.hasOwn(candidate, field))) {
     throw new Error('File does not contain a recognized portfolio backup.');
   }
@@ -482,10 +479,6 @@ export function processRollovers(state: any): boolean {
     return false;
   }
 
-  if (state.balance === undefined && typeof state.marginBalance === 'number') {
-    state.balance = state.marginBalance;
-  }
-
   const now = new Date();
   let lastTime = new Date(state.lastRolloverTimestamp);
   let rolloversApplied = 0;
@@ -506,9 +499,7 @@ export function processRollovers(state: any): boolean {
       const dailyFee = Math.abs(state.balance) * (marginRate / 365);
       
       state.balance -= dailyFee; // Deduct fee (compounding the negative balance)
-      if (typeof state.marginBalance === 'number') {
-        state.marginBalance = state.balance;
-      }
+      state.balance = Math.round(state.balance * 100) / 100;
       totalDeducted += dailyFee;
     }
     rolloversApplied++;

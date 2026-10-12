@@ -113,6 +113,7 @@ export function saveQuoteRefreshInterval(interval) {
 
 export function saveState(state, onPushToCloud) {
   if (!state || typeof state !== 'object') return;
+  delete state.gatewaySecret;
   state.lastUpdated = Date.now();
   delete state.marginFee;
   delete state.accruedMargin;
@@ -135,6 +136,7 @@ export function saveState(state, onPushToCloud) {
 
 export function saveStateToStorage(state) {
   if (!state || typeof state !== 'object' || typeof localStorage === 'undefined') return;
+  delete state.gatewaySecret;
   delete state.marginFee;
   delete state.accruedMargin;
   if (state.positions && typeof state.positions === 'object') {

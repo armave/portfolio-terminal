@@ -412,12 +412,12 @@ function applyOvernightRollover() {
     cursor = getRolloverTimestampForLocalDate(rolloverDate.year, rolloverDate.month, rolloverDate.day);
   }
 
-  if (elapsedCycles > 0 && Math.abs(state.marginBalance) > 0) {
-    const currentDebt = Math.abs(state.marginBalance);
+  if (elapsedCycles > 0 && Math.abs(state.balance) > 0) {
+    const currentDebt = Math.abs(state.balance);
     const compoundedDebt = calculateCompoundedDebt(currentDebt, getDailyRate(), elapsedCycles);
     const interestAccrued = calculateMarginInterest(currentDebt, getDailyRate(), elapsedCycles);
 
-    state.marginBalance = -compoundedDebt;
+    state.balance = -compoundedDebt;
 
     const tickers = Object.keys(state.positions);
     const totalInvested = getTotalPortfolioInvested(state);
@@ -522,7 +522,7 @@ function updateCombinedBreakeven() {
   if (!beEl) return;
 
   const tickers = Object.keys(state.positions);
-  const totalDebt = Math.abs(state.marginBalance);
+  const totalDebt = Math.abs(state.balance);
 
   let totalGrossTarget = 0;
   let totalInvested = 0;
@@ -1144,7 +1144,7 @@ function removeCashHolding(ticker) {
 function setCurrentBalance(value) {
   const signedBalance = Number.isFinite(Number(value)) ? Number(value) : 0;
   state.cashCushion.freeCash = Math.max(0, signedBalance);
-  state.marginBalance = Math.min(0, signedBalance);
+  state.balance = Math.min(0, signedBalance);
   return {
     balance: Math.max(0, signedBalance),
     debt: Math.max(0, -signedBalance)
@@ -1372,7 +1372,10 @@ function setQuoteRefreshInterval(interval) {
 }
 
 function exportBackupJSON() {
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+  delete state.gatewaySecret;
+  const exportState = { ...state };
+  delete exportState.gatewaySecret;
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportState, null, 2));
   const downloadAnchor = document.createElement('a');
   const filename = `margin_portfolio_backup_${new Date().toISOString().split('T')[0]}.json`;
   downloadAnchor.setAttribute("href", dataStr);
@@ -1431,11 +1434,11 @@ function runLadderSimulation(data, activeState = state) {
   const portfolioInvested = getTotalPortfolioInvested(targetState);
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
 
-  let runningDebt = Math.abs(state.marginBalance) * weight;
+  let runningDebt = Math.abs(state.balance) * weight;
   let totalAccruedMargin = calculateMarginInterest(state.tranches || pos.tranches || [], {
     dailyRate: getDailyRate(),
     marginDebt: runningDebt,
-    totalDebt: Math.abs(state.marginBalance)
+    totalDebt: Math.abs(state.balance)
   });
   let totalComms = pos.commBuy;
   let totalGrossProceeds = 0;
@@ -1507,11 +1510,11 @@ function runComparison(data, activeState = state) {
   const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + (t.qty * t.price), 0);
   const portfolioInvested = getTotalPortfolioInvested(targetState);
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
-  const debtToUse = Math.abs(state.marginBalance) * weight;
+  const debtToUse = Math.abs(state.balance) * weight;
   const marginChargedToUse = calculateMarginInterest(state.tranches || pos.tranches || [], {
     dailyRate: getDailyRate(),
     marginDebt: debtToUse,
-    totalDebt: Math.abs(state.marginBalance)
+    totalDebt: Math.abs(state.balance)
   });
 
   const computed = data.scenarios.map(s => {
@@ -1526,7 +1529,7 @@ function runComparison(data, activeState = state) {
 
     const netPnl = grossPnl - totalComms - totalMargin;
     const netPct = (netPnl / totalInvested) * 100;
-    const resultingBalance = state.marginBalance + (grossProceeds - commSell);
+    const resultingBalance = state.balance + (grossProceeds - commSell);
 
     return {
       ...s,
@@ -1609,20 +1612,20 @@ function runSimulation(simPrice, daysOffset, label, tickerTarget, activeState = 
 
   const portfolioInvested = getTotalPortfolioInvested(targetState);
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
-  const debtToUse = Math.abs(state.marginBalance) * weight;
+  const debtToUse = Math.abs(state.balance) * weight;
 
   const b_t = calculateCompoundedDebt(debtToUse, getDailyRate(), daysOffset);
   const additionalMargin = calculateMarginInterest(debtToUse, getDailyRate(), daysOffset);
   const currentMarginInterest = calculateMarginInterest(state.tranches || pos.tranches || [], {
     dailyRate: getDailyRate(),
     marginDebt: debtToUse,
-    totalDebt: Math.abs(state.marginBalance)
+    totalDebt: Math.abs(state.balance)
   });
   const totalMarginAtDate = currentMarginInterest + additionalMargin;
 
   const netPnl = grossPnl - totalComms - totalMarginAtDate;
   const netPct = totalInvested > 0 ? (netPnl / totalInvested) * 100 : 0;
-  const resultingBalance = (state.marginBalance + (grossProceeds - commSell));
+  const resultingBalance = (state.balance + (grossProceeds - commSell));
 
   const netColor = netPnl >= 0 ? "text-emerald-400" : "text-rose-400";
   const netSign = netPnl >= 0 ? "+" : "";
@@ -1697,11 +1700,11 @@ async function applyPortfolioActions(action) {
       state.cashCushion.freeCash = currentFreeCash - cashUsed;
     }
 
-    state.marginBalance = state.marginBalance - debtAdded;
+    state.balance = state.balance - debtAdded;
     state.activeView = ticker;
 
     saveState(state, pushStateToGist);
-    logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ $${formatUSD(price)}. Outlay: $${formatUSD(totalOutlay)} (Comm: $${formatUSD(buyComm)}). Funded: $${formatUSD(cashUsed)} cash | +$${formatUSD(debtAdded)} margin debt. Free Cash remaining: $${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -$${formatUSD(Math.abs(state.marginBalance))}.`);
+    logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ $${formatUSD(price)}. Outlay: $${formatUSD(totalOutlay)} (Comm: $${formatUSD(buyComm)}). Funded: $${formatUSD(cashUsed)} cash | +$${formatUSD(debtAdded)} margin debt. Free Cash remaining: $${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -$${formatUSD(Math.abs(state.balance))}.`);
     showToast(`${shares} ${ticker} bought at $${formatUSD(price)}.`, 'success');
   }
   else if (action.action === "sell") {
@@ -1747,13 +1750,13 @@ async function applyPortfolioActions(action) {
     const sellComm = calcCommission(sharesToSell, grossProceeds);
     const netCashCredited = grossProceeds - sellComm;
 
-    const currentDebt = Math.abs(state.marginBalance);
+    const currentDebt = Math.abs(state.balance);
     let debtRepaid = 0;
     let cashSurplus = 0;
 
     if (currentDebt > 0) {
       debtRepaid = Math.min(currentDebt, netCashCredited);
-      state.marginBalance = currentDebt > debtRepaid ? -(currentDebt - debtRepaid) : 0;
+      state.balance = currentDebt > debtRepaid ? -(currentDebt - debtRepaid) : 0;
       cashSurplus = netCashCredited - debtRepaid;
     } else {
       cashSurplus = netCashCredited;
@@ -1784,7 +1787,7 @@ async function applyPortfolioActions(action) {
       if (realizedTrade.position.shares <= 1e-8) {
         delete state.positions[ticker];
         state.activeView = "COMBINED";
-        logTerminal(`[Position Closed]: Sold ${sharesToSell} ${ticker} @ $${formatUSD(sellPrice)}. Net credited: +$${formatUSD(netCashCredited)} (Debt paid: $${formatUSD(debtRepaid)}, Free Cash added: $${formatUSD(cashSurplus)}). Remaining Debt: -$${formatUSD(Math.abs(state.marginBalance))}. Free Cash: $${formatUSD(state.cashCushion.freeCash)}.`);
+        logTerminal(`[Position Closed]: Sold ${sharesToSell} ${ticker} @ $${formatUSD(sellPrice)}. Net credited: +$${formatUSD(netCashCredited)} (Debt paid: $${formatUSD(debtRepaid)}, Free Cash added: $${formatUSD(cashSurplus)}). Remaining Debt: -$${formatUSD(Math.abs(state.balance))}. Free Cash: $${formatUSD(state.cashCushion.freeCash)}.`);
       } else {
         logTerminal(`[Partial Sell]: Sold ${sharesToSell} ${ticker} @ $${formatUSD(sellPrice)}. Net credited: +$${formatUSD(netCashCredited)} (Debt paid: $${formatUSD(debtRepaid)}, Free Cash added: $${formatUSD(cashSurplus)}). Remaining: ${realizedTrade.position.shares} shares.`);
       }
@@ -1817,9 +1820,9 @@ async function applyPortfolioActions(action) {
     }
   }
   else if (action.action === "set_balance") {
-    state.marginBalance = -Math.abs(Number(action.balance));
+    state.balance = -Math.abs(Number(action.balance));
     saveState(state, pushStateToGist);
-    logTerminal(`[Margin Synced]: Total margin balance explicitly set to -$${formatUSD(Math.abs(state.marginBalance))}.`);
+    logTerminal(`[Margin Synced]: Total margin balance explicitly set to -$${formatUSD(Math.abs(state.balance))}.`);
   }
   else if (action.action === "set_free_cash") {
     const { balance, debt } = setCurrentBalance(action.amount);
@@ -1927,6 +1930,17 @@ async function executeCommand(activeState = state) {
 
   if (/^(?:pull|sync cloud|cloud pull|pull cloud|load cloud)$/i.test(text)) {
     await syncCloudState();
+    return;
+  }
+
+  const balanceMatch = text.match(/^(?:b:|balance:?)\s*(-?\d+(?:\.\d+)?)$/i);
+  if (balanceMatch) {
+    const val = Number(balanceMatch[1]);
+    const { balance, debt } = setCurrentBalance(val);
+    saveState(state, pushStateToGist);
+    renderBoard();
+    logTerminal(`[Balance]: Current balance/debt updated. Balance: $${formatUSD(balance)} | Margin debt: -$${formatUSD(debt)}.`);
+    showToast(`Balance $${formatUSD(balance)} | Debt -$${formatUSD(debt)}`, 'success');
     return;
   }
 

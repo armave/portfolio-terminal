@@ -187,7 +187,9 @@ export async function pushCloudState(state, options = {}) {
   }
 
   try {
-    const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(currentState), currentSecret).toString();
+    delete currentState.gatewaySecret;
+    const { gatewaySecret: _secret, ...stateToEncrypt } = currentState;
+    const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(stateToEncrypt), currentSecret).toString();
     const payload = { encryptedPayload: ciphertext };
 
     const url = new URL('/api/state', YAHOO_PROXY_URL);
