@@ -1373,8 +1373,14 @@ function setQuoteRefreshInterval(interval) {
 
 function exportBackupJSON() {
   delete state.gatewaySecret;
+  if ('marginBalance' in state) {
+    delete state.marginBalance;
+  }
   const exportState = { ...state };
   delete exportState.gatewaySecret;
+  if ('marginBalance' in exportState) {
+    delete exportState.marginBalance;
+  }
   const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportState, null, 2));
   const downloadAnchor = document.createElement('a');
   const filename = `margin_portfolio_backup_${new Date().toISOString().split('T')[0]}.json`;
@@ -1394,6 +1400,9 @@ async function importBackupJSON(event) {
 
   try {
     const parsed = JSON.parse(await file.text());
+    if (parsed && typeof parsed === 'object' && 'marginBalance' in parsed) {
+      delete parsed.marginBalance;
+    }
     const importedState = normalizePortfolioBackup(parsed);
     if (!confirm(`Replace this browser's portfolio with "${file.name}"? If KV cloud sync is configured, the imported portfolio will replace its remote copy too.`)) {
       logTerminal('[Backup Import]: Import cancelled; the current portfolio was not changed.');

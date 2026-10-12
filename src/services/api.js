@@ -139,6 +139,10 @@ export async function pullCloudState(options = {}) {
       throw new Error('Invalid state payload from KV.');
     }
 
+    if ('marginBalance' in parsedState) {
+      delete parsedState.marginBalance;
+    }
+
     if (!parsedState.lastRolloverTimestamp) {
       parsedState.lastRolloverTimestamp = Date.now();
     }
@@ -188,7 +192,13 @@ export async function pushCloudState(state, options = {}) {
 
   try {
     delete currentState.gatewaySecret;
+    if ('marginBalance' in currentState) {
+      delete currentState.marginBalance;
+    }
     const { gatewaySecret: _secret, ...stateToEncrypt } = currentState;
+    if ('marginBalance' in stateToEncrypt) {
+      delete stateToEncrypt.marginBalance;
+    }
     const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(stateToEncrypt), currentSecret).toString();
     const payload = { encryptedPayload: ciphertext };
 

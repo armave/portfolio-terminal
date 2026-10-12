@@ -281,6 +281,10 @@ export function createBlankState(now = Date.now()): PortfolioState {
 export function normalizePortfolioState(candidate: unknown, now = Date.now()): PortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio state must be an object.');
 
+  if ('marginBalance' in candidate) {
+    delete (candidate as Record<string, unknown>).marginBalance;
+  }
+
   const blankState = createBlankState(now);
   const sourceCashCushion = isRecord(candidate.cashCushion) ? candidate.cashCushion : {};
   const positions = isRecord(candidate.positions) ? candidate.positions : {};

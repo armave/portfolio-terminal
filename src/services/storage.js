@@ -114,6 +114,9 @@ export function saveQuoteRefreshInterval(interval) {
 export function saveState(state, onPushToCloud) {
   if (!state || typeof state !== 'object') return;
   delete state.gatewaySecret;
+  if ('marginBalance' in state) {
+    delete state.marginBalance;
+  }
   state.lastUpdated = Date.now();
   delete state.marginFee;
   delete state.accruedMargin;
@@ -137,6 +140,9 @@ export function saveState(state, onPushToCloud) {
 export function saveStateToStorage(state) {
   if (!state || typeof state !== 'object' || typeof localStorage === 'undefined') return;
   delete state.gatewaySecret;
+  if ('marginBalance' in state) {
+    delete state.marginBalance;
+  }
   delete state.marginFee;
   delete state.accruedMargin;
   if (state.positions && typeof state.positions === 'object') {
@@ -169,6 +175,9 @@ export function loadSavedState(currentState = {}) {
     try {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
+        if ('marginBalance' in parsed) {
+          delete parsed.marginBalance;
+        }
         if (!parsed.lastRolloverTimestamp) {
           parsed.lastRolloverTimestamp = Date.now();
         }
