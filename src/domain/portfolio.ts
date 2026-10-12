@@ -501,8 +501,8 @@ export function processRollovers(state: any): boolean {
   // Time-travel loop: execute for every 04:00 AM passed
   while (nextBoundary <= now) {
     if (state.balance < 0) {
-      // Dynamically fetch margin rate (fallback to 0.12 if not explicitly defined in settings)
-      const marginRate = state.settings?.marginRate || 0.12; 
+      // Dynamically fetch margin rate (fallback to 0.15 if not explicitly defined in settings)
+      const marginRate = state.settings?.marginRate || 0.15; 
       const dailyFee = Math.abs(state.balance) * (marginRate / 365);
       
       state.balance -= dailyFee; // Deduct fee (compounding the negative balance)
