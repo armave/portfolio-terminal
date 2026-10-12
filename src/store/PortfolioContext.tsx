@@ -98,18 +98,31 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, []);
 
   const saveToCloud = useCallback(async () => {
-    const secret = stateRef.current.gatewaySecret || loadGatewaySecret();
-    if (!secret) {
+    const activeSecret = stateRef.current.gatewaySecret || loadGatewaySecret();
+    if (!activeSecret) {
       setCloudStatus({ status: 'idle', text: 'ADD SECRET' });
       return;
     }
     setCloudStatus({ status: 'syncing', text: 'WRITING...' });
     try {
-      const payload = {
-        ...stateRef.current,
-        brokerRules: rulesRef.current
+      // Construct the current portfolio state object from the active React state
+      const currentState = {
+        positions: stateRef.current.positions || {},
+        cashHoldings: stateRef.current.cashCushion?.holdings || [],
+        closedTrades: stateRef.current.closedTrades || [],
+        cashBalance: stateRef.current.cashCushion?.freeCash || 0,
+        brokerRules: rulesRef.current,
+        // Preserving other necessary fields for the app to function correctly
+        balance: stateRef.current.balance,
+        realizedMarginCharged: stateRef.current.realizedMarginCharged,
+        startDate: stateRef.current.startDate,
+        lastRolloverTimestamp: stateRef.current.lastRolloverTimestamp,
+        activeView: stateRef.current.activeView
       };
-      await pushCloudState(payload, secret);
+      
+      // Pass this state to the API
+      await pushCloudState(currentState, activeSecret);
+      
       setCloudStatus({ status: 'synced', text: 'UPDATED' });
     } catch (err: any) {
       logTerminal(`[KV Cloud Sync Error]: ${err.message}`);
@@ -127,33 +140,44 @@ export const PortfolioProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   }, [saveToCloud]);
 
-  const syncFromCloud = useCallback(async (secret: string) => {
-    if (!secret) return;
+  const syncFromCloud = useCallback(async (activeSecret: string) => {
+    if (!activeSecret) return;
     setCloudStatus({ status: 'syncing', text: 'PULLING...' });
     try {
-      const parsedState = await pullCloudState(secret);
-      if (parsedState) {
+      // Await the data
+      const data = await pullCloudState(activeSecret);
+      
+      if (data) {
         mutateState((draft: any) => {
           const currentView = draft.activeView;
           
-          // Explicitly set state slices from fetched data
-          draft.positions = parsedState.positions || draft.positions || {};
-          draft.cashCushion = parsedState.cashCushion || draft.cashCushion || { freeCash: 0, holdings: [] };
-          draft.closedTrades = parsedState.closedTrades || draft.closedTrades || [];
-          draft.balance = parsedState.balance ?? draft.balance ?? 0;
-          draft.realizedMarginCharged = parsedState.realizedMarginCharged ?? draft.realizedMarginCharged ?? 0;
-          draft.startDate = parsedState.startDate || draft.startDate;
-          draft.lastRolloverTimestamp = parsedState.lastRolloverTimestamp || draft.lastRolloverTimestamp;
+          // Explicitly update the React state using the mapped data
+          draft.positions = data.positions || draft.positions || {};
           
-          if (!parsedState?.activeView && currentView) draft.activeView = currentView;
+          if (!draft.cashCushion) draft.cashCushion = { freeCash: 0, holdings: [] };
+          draft.cashCushion.holdings = data.cashHoldings || data.cashCushion?.holdings || [];
+          draft.cashCushion.freeCash = data.cashBalance ?? data.cashCushion?.freeCash ?? 0;
+          
+          draft.closedTrades = data.closedTrades || draft.closedTrades || [];
+          draft.balance = data.balance ?? draft.balance ?? 0;
+          draft.realizedMarginCharged = data.realizedMarginCharged ?? draft.realizedMarginCharged ?? 0;
+          draft.startDate = data.startDate || draft.startDate;
+          draft.lastRolloverTimestamp = data.lastRolloverTimestamp || draft.lastRolloverTimestamp;
+          
+          if (!data?.activeView && currentView) draft.activeView = currentView;
         });
 
-        // Explicitly set broker assumptions if present in cloud payload
-        if (parsedState.brokerRules) {
-          setRules((prev: any) => ({ ...prev, ...parsedState.brokerRules }));
-        }
+        // Explicitly update broker assumptions
+        const defaultRules = DEFAULT_TRADERNET_RULES;
+        setRules((prev: any) => ({ 
+          ...defaultRules, 
+          ...prev, 
+          ...(data.brokerRules || data.brokerAssumptions || {}) 
+        }));
 
+        // After updating the state, call the function that saves everything to localStorage
         saveLocalState();
+        
         setCloudStatus({ status: 'synced', text: 'UPDATED' });
         showToast('KV cloud state pulled.', 'success');
         logTerminal('[KV Cloud]: Synced successfully.');

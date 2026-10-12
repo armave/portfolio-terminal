@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { usePortfolio } from '../store/PortfolioContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import { createBlankState } from '../domain/portfolio';
+import { saveGatewaySecret, loadGatewaySecret } from '../services/storage.js';
 
 export function Header({ keysHidden, onToggleKeys }: { keysHidden: boolean, onToggleKeys: () => void }) {
   const { state, mutateState, syncFromCloud, saveToCloud, refreshAllLivePrices, refreshInterval, setRefreshInterval, cloudStatus, rules: brokerAssumptions, setRules, saveLocalState } = usePortfolio();
@@ -81,6 +82,22 @@ export function Header({ keysHidden, onToggleKeys }: { keysHidden: boolean, onTo
     setShowRules(false);
   };
 
+  const handleSaveToCloud = async () => {
+    let secret = state.gatewaySecret || loadGatewaySecret();
+    if (!secret) {
+      secret = window.prompt("Enter Gateway Secret to enable cloud sync:");
+      if (secret) {
+        saveGatewaySecret(secret);
+        mutateState((draft: any) => { draft.gatewaySecret = secret; });
+        // Auto-pull after saving the key to fetch and populate the UI automatically
+        await syncFromCloud(secret);
+      } else {
+        return; // Cancelled
+      }
+    }
+    await saveToCloud();
+  };
+
   return (
     <div className="border-card p-4 sm:p-5 rounded-xl space-y-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -105,7 +122,7 @@ export function Header({ keysHidden, onToggleKeys }: { keysHidden: boolean, onTo
           <button onClick={() => syncFromCloud(state.gatewaySecret)} className="h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1">
             <span>☁↓</span> Pull
           </button>
-          <button onClick={() => saveToCloud()} className="h-8 bg-slate-800 hover:bg-slate-700 border border-emerald-600 text-emerald-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1">
+          <button onClick={handleSaveToCloud} className="h-8 bg-slate-800 hover:bg-slate-700 border border-emerald-600 text-emerald-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center gap-1">
             <span>☁↑</span> Save
           </button>
           <button onClick={handleExport} className="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition">
