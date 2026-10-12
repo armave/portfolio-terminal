@@ -228,8 +228,9 @@ export function renderPositionsTable(gross, totalComms, debtToUse, marginCharged
       let subtext = '';
       if (kind === 'today') {
         subtext = '<span class="text-xs text-sky-400 font-mono">TODAY</span>';
-      } else if (kind === 'next-trading-day') {
-        const tag = (item.label || `NTD · +${daysFromToday}d`).replace(/^\(|\)$/g, '');
+      } else if (kind === 'next-trading-day' || kind === 'week-end') {
+        const defaultTag = kind === 'week-end' ? `EOW · +${daysFromToday}d` : `NTD · +${daysFromToday}d`;
+        const tag = (item.label || defaultTag).replace(/^\(|\)$/g, '');
         subtext = `<span class="text-xs text-slate-400 font-mono">${tag}</span>`;
       } else {
         const tag = (item.label || `+${daysFromToday}d`).replace(/^\(|\)$/g, '');

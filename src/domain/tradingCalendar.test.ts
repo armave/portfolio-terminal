@@ -67,7 +67,7 @@ describe('US equity trading calendar', () => {
     ])).toEqual([
       ['2026-09-22', -14, 'entry'],
       ['2026-10-06', 0, 'today'],
-      ['2026-10-07', 1, 'next-trading-day']
+      ['2026-10-09', 3, 'week-end']
     ]);
   });
 
@@ -87,20 +87,65 @@ describe('US equity trading calendar', () => {
     expect(dateLabel(projections[1].date)).toBe('2026-10-12');
   });
 
-  it('rolls weekly milestone forward when target date lands on Juneteenth holiday', () => {
-    const projections = getUsEquityProjectionDates(localDate(2026, 6, 11));
-    expect(projections[1]).toMatchObject({
-      daysFromToday: 1,
-      kind: 'next-trading-day',
-      label: '(NTD · +1d)'
-    });
-    expect(dateLabel(projections[1].date)).toBe('2026-06-12');
+  it('generates EOW row targeting Friday on Monday Oct 12 and steps weekly intervals directly from today', () => {
+    const projections = getUsEquityProjectionDates(localDate(2026, 10, 12));
+    expect(projections.map(({ date, daysFromToday, kind, label }) => [
+      dateLabel(date),
+      daysFromToday,
+      kind,
+      label
+    ])).toEqual([
+      ['2026-10-12', 0, 'today', 'Today'],
+      ['2026-10-16', 4, 'week-end', '(EOW · +4d)'],
+      ['2026-10-19', 7, 'weekly', '(+7d)'],
+      ['2026-10-26', 14, 'weekly', '(+14d)'],
+      ['2026-11-02', 21, 'weekly', '(+21d)'],
+      ['2026-11-09', 28, 'weekly', '(+28d)'],
+      ['2026-11-16', 35, 'weekly', '(+35d)'],
+      ['2026-11-23', 42, 'weekly', '(+42d)']
+    ]);
+  });
 
-    expect(projections[2]).toMatchObject({
-      daysFromToday: 11,
-      kind: 'weekly',
-      label: '(+11d)'
+  it('omits duplicate EOW row on Friday when today is already the last trading day of the week', () => {
+    const projections = getUsEquityProjectionDates(localDate(2026, 10, 16));
+    expect(projections.map(({ date, daysFromToday, kind, label }) => [
+      dateLabel(date),
+      daysFromToday,
+      kind,
+      label
+    ])).toEqual([
+      ['2026-10-16', 0, 'today', 'Today'],
+      ['2026-10-23', 7, 'weekly', '(+7d)'],
+      ['2026-10-30', 14, 'weekly', '(+14d)'],
+      ['2026-11-06', 21, 'weekly', '(+21d)'],
+      ['2026-11-13', 28, 'weekly', '(+28d)'],
+      ['2026-11-20', 35, 'weekly', '(+35d)'],
+      ['2026-11-27', 42, 'weekly', '(+42d)']
+    ]);
+    expect(projections.some(p => p.kind === 'week-end')).toBe(false);
+    expect(projections.some(p => p.kind === 'next-trading-day')).toBe(false);
+  });
+
+  it('targets Thursday for EOW when Friday is Good Friday market holiday', () => {
+    // 2026-04-03 is Good Friday
+    const mondayBeforeEaster = localDate(2026, 3, 30);
+    const projections = getUsEquityProjectionDates(mondayBeforeEaster);
+    expect(projections[1]).toMatchObject({
+      daysFromToday: 3,
+      kind: 'week-end',
+      label: '(EOW · +3d)'
     });
-    expect(dateLabel(projections[2].date)).toBe('2026-06-22');
+    expect(dateLabel(projections[1].date)).toBe('2026-04-02');
+  });
+
+  it('rolls weekly milestone forward when target date lands on Juneteenth holiday', () => {
+    const projections = getUsEquityProjectionDates(localDate(2026, 6, 12));
+    // 2026-06-12 is Friday. Week 1 lands on 2026-06-19 (Juneteenth), which rolls forward to Monday 2026-06-22 (+10d)
+    expect(projections[1]).toMatchObject({
+      daysFromToday: 10,
+      kind: 'weekly',
+      label: '(+10d)'
+    });
+    expect(dateLabel(projections[1].date)).toBe('2026-06-22');
   });
 });

@@ -1,4 +1,4 @@
-model: gemini/gemini-flash-latest
+model: gemini/gemini-pro-latest
 
 # Fully autonomous execution
 yes-always: true

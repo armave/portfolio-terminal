@@ -3,6 +3,8 @@ import fs from 'node:fs';
 // @ts-ignore
 import path from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
+// @ts-ignore
+import react from '@vitejs/plugin-react';
 
 function findRootWithIndexHtml(startPath: string): string {
   let current = path.resolve(startPath);
@@ -52,7 +54,7 @@ function normalizeRootPlugin(): Plugin {
 export default defineConfig({
   base: '/portfolio-terminal/',
   appType: 'spa',
-  plugins: [normalizeRootPlugin()],
+  plugins: [react(), normalizeRootPlugin()],
   build: {
     target: 'es2022',
     emptyOutDir: true
