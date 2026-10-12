@@ -77,7 +77,7 @@
                     class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white">
                 </label>
                 <label class="flex flex-col gap-1 text-[10px] text-slate-400">Commission / share ($)
-                  <input id="commissionPerShareInput" type="number" min="0" step="0.001" required inputmode="decimal"
+                  <input id="commissionPerShareInput" type="number" min="0" step="0.01" required inputmode="decimal"
                     class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white">
                 </label>
                 <label class="flex flex-col gap-1 text-[10px] text-slate-400">Commission by value (%)
@@ -429,7 +429,7 @@
                     <input type="text" id="newCashTicker" placeholder="TICKER" required aria-label="Stock ticker symbol" autocomplete="off" autocapitalize="characters" class="bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-20 uppercase focus:outline-none focus:border-cyan-500">
                   </td>
                   <td class="py-2 px-3 text-right">
-                    <input type="number" id="newCashShares" placeholder="Shares" min="0.001" step="0.001" required inputmode="decimal" aria-label="Number of shares" class="number-input bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-20 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500">
+                    <input type="number" id="newCashShares" placeholder="Shares" min="0.01" step="0.01" required inputmode="decimal" aria-label="Number of shares" class="number-input bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-20 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500">
                   </td>
                   <td class="py-2 px-3 text-right">
                     <div class="relative inline-block text-left">
