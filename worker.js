@@ -124,6 +124,7 @@ export default {
             }
 
             // --- ACTION 2: Gemini AI Chat / Intent Routing ---
+            // --- ACTION 2: Gemini AI Chat / Intent Routing ---
             if (action === "gemini") {
                 const geminiKey = env.GEMINI_KEY || env.GEMINI_API_KEY || env.GOOGLE_API_KEY;
                 if (!geminiKey) {
@@ -142,13 +143,16 @@ export default {
                     });
                 }
 
-                // High-allowance Lite models (500 RPD) prioritized over 20 RPD tier models
-                const candidateModels = [
-                    body.model || "gemini-1.5-flash",
-                    "gemini-1.5-flash-8b",
+                // Deduplicate and prioritize models with healthy free limits
+                const rawCandidates = [
+                    body.model,
                     "gemini-2.0-flash",
-                    "gemini-1.5-pro"
-                ];
+                    "gemini-1.5-flash",
+                    "gemini-1.5-flash-8b",
+                    "gemini-2.5-flash"
+                ].filter(Boolean);
+
+                const candidateModels = Array.from(new Set(rawCandidates));
 
                 let lastResponse = null;
                 let lastData = null;
@@ -157,6 +161,10 @@ export default {
                     const modelName = rawModel.startsWith("models/") ? rawModel : `models/${rawModel}`;
 
                     try {
+                        // 3.5-second timeout per attempt to prevent serverless worker hang
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 3500);
+
                         const res = await fetch(
                             `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${encodeURIComponent(geminiKey.trim())}`,
                             {
@@ -164,36 +172,34 @@ export default {
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
                                     contents: [{ parts: [{ text: prompt }] }]
-                                })
+                                }),
+                                signal: controller.signal
                             }
                         );
+                        clearTimeout(timeoutId);
 
-                        const data = await res.json();
+                        const data = await res.json().catch(() => null);
 
-                        if (res.ok) {
+                        if (res.ok && data) {
                             return new Response(JSON.stringify(data), {
                                 status: 200,
                                 headers: corsHeaders
                             });
                         }
 
+                        // Save error details and proceed to the next model for ANY failure
                         lastResponse = res;
-                        lastData = data;
+                        lastData = data || { error: `Model ${modelName} returned HTTP ${res.status}` };
+                        console.warn(`[Gemini Proxy]: ${modelName} failed (HTTP ${res.status}). Trying next candidate...`);
 
-                        // Continue through the list if throttled, quota-exhausted, or under high load
-                        if (res.status === 503 || res.status === 429 || res.status === 404) {
-                            console.warn(`[Gemini Proxy]: ${modelName} returned HTTP ${res.status}. Trying next candidate...`);
-                            continue;
-                        }
-
-                        break;
                     } catch (err) {
-                        console.error(`[Gemini Proxy Error]:`, err);
+                        console.error(`[Gemini Proxy Error on ${modelName}]:`, err.message);
+                        lastData = { error: `Model ${modelName} fetch failed: ${err.message}` };
                     }
                 }
 
-                return new Response(JSON.stringify(lastData || { error: "All candidate models exhausted or rate-limited." }), {
-                    status: lastResponse ? lastResponse.status : 500,
+                return new Response(JSON.stringify(lastData || { error: "All candidate models exhausted or failed." }), {
+                    status: lastResponse ? lastResponse.status : 502,
                     headers: corsHeaders
                 });
             }
@@ -305,7 +311,7 @@ export default {
             const finalPayload = tickers.length === 1 ? resultsArray[0] : resultsArray;
 
             return new Response(JSON.stringify(finalPayload), { headers: corsHeaders });
-            
+
         } catch (err) {
             return new Response(JSON.stringify({ error: err.message }), {
                 status: 500,
