@@ -3,13 +3,105 @@ import {
   calculateCommission,
   calculateCompoundedDebt,
   calculateMarginInterest
-} from '../domain/portfolio.ts';
-import { getUsEquityProjectionDates } from '../domain/tradingCalendar.ts';
-import { sentimentLabel } from '../features/quotes/sentiment.ts';
+} from '../domain/portfolio';
+import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
+import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_NAMES = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+] as const;
 
-export function formatTrancheDate(dateStr) {
+export interface TrancheItem {
+  qty: number;
+  price: number;
+  date?: string;
+}
+
+export interface QuoteDetails {
+  change?: number;
+  changePercent?: number;
+  high?: number;
+  low?: number;
+  [key: string]: any;
+}
+
+export interface PositionRecord {
+  ticker: string;
+  shares: number;
+  currentPrice: number;
+  pt: number;
+  commBuy: number;
+  startDate?: string;
+  tranches?: TrancheItem[];
+  quoteUpdatedAt?: number;
+  quoteSource?: string;
+  quoteDetails?: QuoteDetails;
+}
+
+export interface CashStockHolding {
+  ticker: string;
+  shares: number | string;
+  price?: number | string;
+  currentPrice?: number | string;
+  quoteUpdatedAt?: number;
+  quoteSource?: string;
+  quoteDetails?: QuoteDetails;
+}
+
+export interface CashCushionState {
+  freeCash: number | string;
+  holdings: CashStockHolding[];
+}
+
+export interface BoardState {
+  positions?: Record<string, PositionRecord>;
+  cashCushion?: CashCushionState;
+  balance?: number | string;
+  realizedMarginCharged?: number;
+  tranches?: TrancheItem[];
+  startDate?: string;
+  activeView?: string;
+  closedTrades?: any[];
+}
+
+export interface BrokerRules {
+  annualRate: number;
+  dayCountBasis: number;
+  maintenanceMarginRatio: number;
+  stopOutRatio: number;
+  commissionMin?: number;
+  commissionPerShare?: number;
+  commissionRatePct?: number;
+  [key: string]: any;
+}
+
+export interface RenderCashCushionOptions {
+  onFetchLivePrice?: (ticker: string) => void;
+  onRemoveCashStock?: (index: number) => void;
+  refreshIntervalMs?: number;
+}
+
+export interface RenderSummaryCardsOptions {
+  rules: BrokerRules;
+  onRenderAnalystConsensus?: (ticker: string) => void;
+  refreshIntervalMs?: number;
+}
+
+export interface RenderBoardOptions extends RenderCashCushionOptions {
+  rules: BrokerRules;
+  onSetActiveView?: (view: string) => void;
+  onRenderClosedHistory?: () => void;
+  onRenderAnalystConsensus?: (ticker: string) => void;
+  onRenderExternalLinks?: () => void;
+  onRenderConsoleQuickActions?: () => void;
+  onUpdateCombinedBreakeven?: () => void;
+  onSyncMarketInsightsPanel?: () => void;
+  lastDeskView?: string | null;
+  onUpdateLastDeskView?: (view: string) => void;
+}
+
+export function formatTrancheDate(dateStr?: string | null): string {
   if (!dateStr || typeof dateStr !== 'string') return 'New';
   const trimmed = dateStr.trim();
   if (!trimmed || trimmed.toLowerCase() === 'new') return 'New';
@@ -23,12 +115,14 @@ export function formatTrancheDate(dateStr) {
     }
   }
 
-  const shortMatch = trimmed.match(/^(\d{1,2})\s+([A-Za-z]{3,})/i) || trimmed.match(/^([A-Za-z]{3,})\s+(\d{1,2})/i);
+  const shortMatch =
+    trimmed.match(/^(\d{1,2})\s+([A-Za-z]{3,})/i) ||
+    trimmed.match(/^([A-Za-z]{3,})\s+(\d{1,2})/i);
   if (shortMatch) {
     const isFirstNum = /^\d+$/.test(shortMatch[1]);
     const day = parseInt(isFirstNum ? shortMatch[1] : shortMatch[2], 10);
     const monStr = (isFirstNum ? shortMatch[2] : shortMatch[1]).slice(0, 3).toLowerCase();
-    const monthIdx = MONTH_NAMES.findIndex(m => m.toLowerCase() === monStr);
+    const monthIdx = MONTH_NAMES.findIndex((m) => m.toLowerCase() === monStr);
     if (monthIdx !== -1 && day >= 1 && day <= 31) {
       return `${String(day).padStart(2, '0')} ${MONTH_NAMES[monthIdx]}`;
     }
@@ -44,37 +138,44 @@ export function formatTrancheDate(dateStr) {
   return trimmed;
 }
 
-export function formatUSD(val) {
+export function formatUSD(val: number | string | undefined | null): string {
   const num = Number(val) || 0;
   return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function getTotalPortfolioInvested(state) {
+export function getTotalPortfolioInvested(state: BoardState | null | undefined): number {
   if (!state || typeof state !== 'object') return 0;
   return Object.values(state.positions || {}).reduce((acc, pos) => {
-    return acc + (pos?.tranches || []).reduce((sum, tr) => sum + (tr.qty * tr.price), 0);
+    return acc + (pos?.tranches || []).reduce((sum, tr) => sum + tr.qty * tr.price, 0);
   }, 0);
 }
 
-export function getCashCushionTotal(state) {
+export function getCashCushionTotal(state: BoardState): number {
   if (!state.cashCushion) return 0;
   const cashVal = Number(state.cashCushion.freeCash) || 0;
   const stocksVal = (state.cashCushion.holdings || []).reduce((sum, h) => {
     const price = Number(h.currentPrice ?? h.price) || 0;
-    return sum + ((Number(h.shares) || 0) * price);
+    return sum + (Number(h.shares) || 0) * price;
   }, 0);
   return cashVal + stocksVal;
 }
 
-export function createInsightElement(tagName, className = '', text = '') {
+export function createInsightElement(
+  tagName: string,
+  className = '',
+  text = ''
+): HTMLElement {
   const element = document.createElement(tagName);
   if (className) element.className = className;
   if (text) element.textContent = text;
   return element;
 }
 
-export function sentimentBadge(direction, label = sentimentLabel(direction)) {
-  const styles = {
+export function sentimentBadge(
+  direction: SentimentDirection | string,
+  label: string = sentimentLabel(direction as SentimentDirection)
+): HTMLElement {
+  const styles: Record<string, string> = {
     bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
     bearish: 'border-rose-800 bg-rose-950/50 text-rose-300',
     neutral: 'border-slate-700 bg-slate-900 text-slate-300',
@@ -82,17 +183,21 @@ export function sentimentBadge(direction, label = sentimentLabel(direction)) {
   };
   const badge = createInsightElement(
     'span',
-    `inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${styles[direction]}`,
+    `inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${styles[direction] || styles.unknown}`,
     label
   );
   badge.dataset.sentiment = direction;
-  badge.title = direction === 'unknown'
-    ? 'The selected data source did not provide a sentiment signal.'
-    : 'A directional marker based only on the provider values shown in this section.';
+  badge.title =
+    direction === 'unknown'
+      ? 'The selected data source did not provide a sentiment signal.'
+      : 'A directional marker based only on the provider values shown in this section.';
   return badge;
 }
 
-export function formatQuoteMetadata(holding, refreshIntervalMs = 60000) {
+export function formatQuoteMetadata(
+  holding: { quoteUpdatedAt?: number; quoteSource?: string },
+  refreshIntervalMs = 60000
+): string {
   if (!holding.quoteUpdatedAt) return holding.quoteSource || 'Not fetched';
 
   const updatedAt = Number(holding.quoteUpdatedAt);
@@ -102,7 +207,7 @@ export function formatQuoteMetadata(holding, refreshIntervalMs = 60000) {
   return `${isStale ? 'Stale · ' : ''}${holding.quoteSource || 'Quote'} · ${time}`;
 }
 
-export function createDailyQuoteLabel(details) {
+export function createDailyQuoteLabel(details?: QuoteDetails | null): HTMLElement | null {
   if (!details || typeof details !== 'object') return null;
   const hasChange = Number.isFinite(details.change) && Number.isFinite(details.changePercent);
   const hasRange = Number.isFinite(details.high) && Number.isFinite(details.low);
@@ -110,11 +215,19 @@ export function createDailyQuoteLabel(details) {
 
   const label = document.createElement('span');
   label.className = 'mt-0.5 block text-[9px] font-normal tabular-nums';
-  const parts = [];
-  if (hasChange) {
+  const parts: string[] = [];
+  if (hasChange && details.change !== undefined && details.changePercent !== undefined) {
     const sign = details.change >= 0 ? '+' : '−';
-    parts.push(`${sign}$${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`);
-    label.classList.add(details.change > 0 ? 'text-emerald-400' : details.change < 0 ? 'text-rose-400' : 'text-slate-400');
+    parts.push(
+      `${sign}$${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`
+    );
+    label.classList.add(
+      details.change > 0
+        ? 'text-emerald-400'
+        : details.change < 0
+          ? 'text-rose-400'
+          : 'text-slate-400'
+    );
   } else {
     label.classList.add('text-slate-400');
   }
@@ -123,7 +236,7 @@ export function createDailyQuoteLabel(details) {
   return label;
 }
 
-export function formatRiskTrigger(triggerValue, currentValue) {
+export function formatRiskTrigger(triggerValue: number, currentValue: number): string {
   if (currentValue <= 0) return `Position value $${formatUSD(triggerValue)}`;
 
   const bufferPct = ((currentValue - triggerValue) / currentValue) * 100;
@@ -133,7 +246,12 @@ export function formatRiskTrigger(triggerValue, currentValue) {
   return `Position value $${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
 }
 
-export function renderMarginRisk(debt, positionValue, collateral, rules) {
+export function renderMarginRisk(
+  debt: number,
+  positionValue: number,
+  collateral: number,
+  rules: BrokerRules
+): void {
   const marginCallRow = document.getElementById('boardMarginCallRow');
   const stopOutRow = document.getElementById('boardStopOutRow');
   const riskSummary = document.getElementById('boardMarginRisk');
@@ -152,8 +270,8 @@ export function renderMarginRisk(debt, positionValue, collateral, rules) {
   const equityRatio = assets > 0 ? (equity / assets) * 100 : -Infinity;
   const maintenanceRatio = rules.maintenanceMarginRatio * 100;
   const stopOutRatio = rules.stopOutRatio * 100;
-  let riskLevel;
-  let riskClass;
+  let riskLevel: string;
+  let riskClass: string;
 
   if (equityRatio <= stopOutRatio) {
     riskLevel = 'Stop-out level';
@@ -168,7 +286,8 @@ export function renderMarginRisk(debt, positionValue, collateral, rules) {
     riskLevel = 'Healthy';
     riskClass = 'text-emerald-400';
   }
-  riskSummary.innerText = `${riskLevel} · ${Number.isFinite(equityRatio) ? `${equityRatio.toFixed(1)}% equity` : 'negative equity'} (${maintenanceRatio.toFixed(1)}% maintenance)`;
+  riskSummary.innerText = `${riskLevel} · ${Number.isFinite(equityRatio) ? `${equityRatio.toFixed(1)}% equity` : 'negative equity'
+    } (${maintenanceRatio.toFixed(1)}% maintenance)`;
   riskSummary.className = `${riskClass} font-bold font-mono`;
 
   const marginCallAssetsRequired = debt / (1 - rules.maintenanceMarginRatio);
@@ -180,11 +299,20 @@ export function renderMarginRisk(debt, positionValue, collateral, rules) {
 
   const marginCallEl = document.getElementById('boardMarginCall');
   const stopOutEl = document.getElementById('boardStopOut');
-  if (marginCallEl && marginCallValue > 0) marginCallEl.innerText = formatRiskTrigger(marginCallValue, positionValue);
-  if (stopOutEl && collateral < stopOutAssetsRequired) stopOutEl.innerText = formatRiskTrigger(stopOutValue, positionValue);
+  if (marginCallEl && marginCallValue > 0)
+    marginCallEl.innerText = formatRiskTrigger(marginCallValue, positionValue);
+  if (stopOutEl && collateral < stopOutAssetsRequired)
+    stopOutEl.innerText = formatRiskTrigger(stopOutValue, positionValue);
 }
 
-export function renderPositionsTable(gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate) {
+export function renderPositionsTable(
+  gross: number,
+  totalComms: number,
+  debtToUse: number,
+  marginChargedToUse: number,
+  entryDate?: string,
+  dailyRate: number = 0
+): void {
   const tableBody = document.getElementById('projectionTableBody');
   if (!tableBody) return;
 
@@ -204,7 +332,7 @@ export function renderPositionsTable(gross, totalComms, debtToUse, marginCharged
   tableBody.innerHTML = '';
 
   if (debtToUse > 0 || gross > 0) {
-    getUsEquityProjectionDates(new Date(), entryDate).forEach(item => {
+    getUsEquityProjectionDates(new Date(), entryDate).forEach((item) => {
       const { date, daysFromToday, kind } = item;
       const dateFormatted = date.toLocaleDateString('en-US', {
         weekday: 'short',
@@ -230,10 +358,10 @@ export function renderPositionsTable(gross, totalComms, debtToUse, marginCharged
         subtext = '<span class="text-xs text-sky-400 font-mono">TODAY</span>';
       } else if (kind === 'next-trading-day' || kind === 'week-end') {
         const defaultTag = kind === 'week-end' ? `EOW · +${daysFromToday}d` : `NTD · +${daysFromToday}d`;
-        const tag = (item.label || defaultTag).replace(/^\(|\)$/g, '');
+        const tag = (item.label || defaultTag).replace(/^\(\vert{}\)$/g, '');
         subtext = `<span class="text-xs text-slate-400 font-mono">${tag}</span>`;
       } else {
-        const tag = (item.label || `+${daysFromToday}d`).replace(/^\(|\)$/g, '');
+        const tag = (item.label || `+${daysFromToday}d`).replace(/^\(\vert{}\)$/g, '');
         subtext = `<span class="text-xs text-slate-500 font-mono">${tag}</span>`;
       }
 
@@ -245,9 +373,9 @@ export function renderPositionsTable(gross, totalComms, debtToUse, marginCharged
       const dr = b_t * dailyRate;
 
       const tr = document.createElement('tr');
-      tr.className = kind === 'today' ? "bg-slate-900/80 font-bold" : "hover:bg-slate-900/40";
-      const netClass = net_p >= 0 ? "text-emerald-400" : "text-rose-400";
-      const netSign = net_p >= 0 ? "+" : "";
+      tr.className = kind === 'today' ? 'bg-slate-900/80 font-bold' : 'hover:bg-slate-900/40';
+      const netClass = net_p >= 0 ? 'text-emerald-400' : 'text-rose-400';
+      const netSign = net_p >= 0 ? '+' : '';
 
       tr.innerHTML = `
         <td class="py-2 px-3 text-left text-slate-300 font-semibold projection-date-cell">
@@ -266,14 +394,14 @@ export function renderPositionsTable(gross, totalComms, debtToUse, marginCharged
   }
 }
 
-export function renderCashCushion(state, options = {}) {
+export function renderCashCushion(state: BoardState, options: RenderCashCushionOptions = {}): void {
   const { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs = 60000 } = options;
-  if (!state.cashCushion) state.cashCushion = { freeCash: 0.00, holdings: [] };
+  if (!state.cashCushion) state.cashCushion = { freeCash: 0.0, holdings: [] };
   const freeCash = Number(state.cashCushion.freeCash) || 0;
   const marginDebt = Math.abs(Number(state.balance) || 0);
   const signedBalance = freeCash + (Number(state.balance) || 0);
 
-  const freeCashInput = document.getElementById('freeCashInput');
+  const freeCashInput = document.getElementById('freeCashInput') as HTMLInputElement | null;
   if (freeCashInput) freeCashInput.value = signedBalance.toFixed(2);
 
   const debtMeta = document.getElementById('cashBalanceDebtMeta');
@@ -289,7 +417,7 @@ export function renderCashCushion(state, options = {}) {
   let stocksTotal = 0;
   const holdings = state.cashCushion.holdings || [];
 
-  holdings.forEach(h => {
+  holdings.forEach((h) => {
     const price = Number(h.currentPrice ?? h.price) || 0;
     stocksTotal += (Number(h.shares) || 0) * price;
   });
@@ -302,8 +430,8 @@ export function renderCashCushion(state, options = {}) {
     const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
 
     const tr = document.createElement('tr');
-    tr.className = "hover:bg-slate-900/40";
-    const addCell = (content, className) => {
+    tr.className = 'hover:bg-slate-900/40';
+    const addCell = (content: string, className: string): HTMLElement => {
       const cell = document.createElement('td');
       cell.className = className;
       cell.textContent = content;
@@ -316,13 +444,22 @@ export function renderCashCushion(state, options = {}) {
       createInsightElement('span', '', h.ticker),
       sentimentBadge(
         Number.isFinite(h.quoteDetails?.change)
-          ? h.quoteDetails.change > 0 ? 'bullish' : h.quoteDetails.change < 0 ? 'bearish' : 'neutral'
+          ? (h.quoteDetails!.change! > 0
+            ? 'bullish'
+            : h.quoteDetails!.change! < 0
+              ? 'bearish'
+              : 'neutral')
           : 'unknown',
-        Number.isFinite(h.quoteDetails?.change) && `${h.quoteDetails.changePercent.toFixed(2)}%`
+        Number.isFinite(h.quoteDetails?.change)
+          ? `${h.quoteDetails!.changePercent!.toFixed(2)}%`
+          : undefined
       )
     );
     tickerCell.appendChild(tickerContainer);
-    addCell(shares.toLocaleString('en-US', { maximumFractionDigits: 3 }), 'py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap');
+    addCell(
+      shares.toLocaleString('en-US', { maximumFractionDigits: 3 }),
+      'py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap'
+    );
     const priceCell = document.createElement('td');
     priceCell.className = 'py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums';
     const priceLabel = document.createElement('span');
@@ -359,14 +496,15 @@ export function renderCashCushion(state, options = {}) {
   if ((state.cashCushion.holdings || []).length === 0) {
     tableBody.innerHTML = `<tr><td colspan="6" class="py-3 text-center text-slate-500 italic">No cash stocks entered. Add unleveraged stocks below (price auto-fetches).</td></tr>`;
   }
-  tableFooter.innerHTML = holdings.length > 0
-    ? `<tr>
+  tableFooter.innerHTML =
+    holdings.length > 0
+      ? `<tr>
         <td class="py-2 px-3 text-slate-300 font-bold" colspan="3">${holdings.length} holding${holdings.length === 1 ? '' : 's'}</td>
         <td class="py-2 px-3 text-right text-white font-bold">$${formatUSD(stocksTotal)}</td>
         <td class="py-2 px-3 text-right text-slate-300 font-bold">${stocksTotal > 0 ? '100.0%' : '—'}</td>
         <td></td>
       </tr>`
-    : '';
+      : '';
   const summaryEl = document.getElementById('cashHoldingsSummary');
   if (summaryEl) {
     summaryEl.textContent = `${holdings.length} holding${holdings.length === 1 ? '' : 's'} · $${formatUSD(stocksTotal)} market value`;
@@ -377,11 +515,16 @@ export function renderCashCushion(state, options = {}) {
   if (totalValEl) totalValEl.innerText = `$${formatUSD(totalCushion)}`;
 }
 
-export function renderSummaryCards(state, options = {}) {
+export function renderSummaryCards(
+  state: BoardState,
+  options: RenderSummaryCardsOptions
+): void {
   const { rules, onRenderAnalystConsensus, refreshIntervalMs = 60000 } = options;
   const dailyRate = rules.annualRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
-  const isCombined = state.activeView === "COMBINED" || tickers.length !== 1 && !state.positions[state.activeView];
+  const isCombined =
+    state.activeView === 'COMBINED' ||
+    (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
   if (isCombined) {
     let totalInvested = 0;
@@ -391,23 +534,24 @@ export function renderSummaryCards(state, options = {}) {
     let totalGrossTarget = 0;
     let totalMarginCharged = state.realizedMarginCharged || 0;
 
-    tickers.forEach(t => {
-      const pos = state.positions[t];
-      const cost = (pos.tranches || []).reduce((sum, tr) => sum + (tr.qty * tr.price), 0);
+    tickers.forEach((t) => {
+      const pos = state.positions![t];
+      const cost = (pos.tranches || []).reduce((sum, tr) => sum + tr.qty * tr.price, 0);
       totalInvested += cost;
       totalMarketValue += pos.shares * pos.currentPrice;
       totalCommBuy += pos.commBuy;
       const valSell = pos.shares * pos.pt;
-      totalCommSell += calculateCommission(pos.shares, valSell, rules);
-      totalGrossTarget += (valSell - cost);
+      totalCommSell += calculateCommission(pos.shares, valSell, rules as any);
+      totalGrossTarget += valSell - cost;
     });
 
-    const tranchesForCombined = state.tranches || tickers.flatMap(t => state.positions[t]?.tranches || []);
-    const openMarginCharged = calculateMarginInterest(tranchesForCombined, {
+    const tranchesForCombined =
+      state.tranches || tickers.flatMap((t) => state.positions![t]?.tranches || []);
+    const openMarginCharged = calculateMarginInterest(tranchesForCombined as any, {
       dailyRate,
-      marginDebt: Math.abs(state.balance),
-      totalDebt: Math.abs(state.balance)
-    });
+      marginDebt: Math.abs(Number(state.balance) || 0),
+      totalDebt: Math.abs(Number(state.balance) || 0)
+    } as any);
     totalMarginCharged += openMarginCharged;
 
     const totalComms = totalCommBuy + totalCommSell;
@@ -415,74 +559,124 @@ export function renderSummaryCards(state, options = {}) {
     const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
     const totalUnrealized = totalMarketValue - totalInvested;
     const unrealizedPct = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
-    const totalDebt = Math.abs(state.balance);
+    const totalDebt = Math.abs(Number(state.balance) || 0);
     const dailyAccrual = totalDebt * dailyRate;
 
-    document.getElementById('boardTitle').innerText = tickers.length > 0
-      ? `COMBINED PORTFOLIO (${tickers.length} Positions | ${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% Net Combined Target)`
-      : `NO ACTIVE MARGIN POSITIONS`;
+    const titleEl = document.getElementById('boardTitle');
+    if (titleEl) {
+      titleEl.innerText =
+        tickers.length > 0
+          ? `COMBINED PORTFOLIO (${tickers.length} Positions | ${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% Net Combined Target)`
+          : `NO ACTIVE MARGIN POSITIONS`;
+    }
 
-    document.getElementById('boardTranches').innerText = tickers.length > 0
-      ? tickers.map(t => `${t}: ${state.positions[t].shares}sh @ PT $${formatUSD(state.positions[t].pt)}`).join(' | ')
-      : "None";
+    const tranchesEl = document.getElementById('boardTranches');
+    if (tranchesEl) {
+      tranchesEl.innerText =
+        tickers.length > 0
+          ? tickers
+            .map((t) => `${t}: ${state.positions![t].shares}sh @ PT $${formatUSD(state.positions![t].pt)}`)
+            .join(' | ')
+          : 'None';
+    }
 
-    document.getElementById('boardInvested').innerText = `$${formatUSD(totalInvested)} | Across ${tickers.length} Assets`;
+    const investedEl = document.getElementById('boardInvested');
+    if (investedEl) {
+      investedEl.innerText = `$${formatUSD(totalInvested)} | Across ${tickers.length} Assets`;
+    }
 
     const unSign = totalUnrealized >= 0 ? '+' : '';
-    document.getElementById('boardPrice').innerHTML = `$${formatUSD(totalMarketValue)} – <span class="${totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${unSign}$${formatUSD(totalUnrealized)} (${unSign}${unrealizedPct.toFixed(2)}%)</span>`;
+    const priceEl = document.getElementById('boardPrice');
+    if (priceEl) {
+      priceEl.innerHTML = `$${formatUSD(totalMarketValue)} – <span class="${totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'
+        }">${unSign}$${formatUSD(totalUnrealized)} (${unSign}${unrealizedPct.toFixed(2)}%)</span>`;
+    }
 
-    document.getElementById('boardMargin').innerText = `-$${formatUSD(totalDebt)} ($${formatUSD(dailyAccrual)}/day @ ${(dailyRate * 100).toFixed(4)}%)`;
-    document.getElementById('boardComms').innerText = `$${formatUSD(totalComms)} ($${formatUSD(totalCommBuy)} buy / $${formatUSD(totalCommSell)} sell)`;
-    document.getElementById('boardMarginCharged').innerText = `$${formatUSD(totalMarginCharged)}`;
+    const marginEl = document.getElementById('boardMargin');
+    if (marginEl) {
+      marginEl.innerText = `-$${formatUSD(totalDebt)} ($${formatUSD(dailyAccrual)}/day @ ${(dailyRate * 100).toFixed(4)}%)`;
+    }
+
+    const commsEl = document.getElementById('boardComms');
+    if (commsEl) {
+      commsEl.innerText = `$${formatUSD(totalComms)} ($${formatUSD(totalCommBuy)} buy / $${formatUSD(totalCommSell)} sell)`;
+    }
+
+    const marginChargedEl = document.getElementById('boardMarginCharged');
+    if (marginChargedEl) {
+      marginChargedEl.innerText = `$${formatUSD(totalMarginCharged)}`;
+    }
 
     const cushionTotal = getCashCushionTotal(state);
-    document.getElementById('boardCushionLabel').innerText = 'Cash / Collateral Cushion:';
-    document.getElementById('boardCushionMetric').innerText = `+$${formatUSD(cushionTotal)}`;
+    const cushionLabelEl = document.getElementById('boardCushionLabel');
+    if (cushionLabelEl) cushionLabelEl.innerText = 'Cash / Collateral Cushion:';
+    const cushionMetricEl = document.getElementById('boardCushionMetric');
+    if (cushionMetricEl) cushionMetricEl.innerText = `+$${formatUSD(cushionTotal)}`;
 
-    const quotes = tickers.map(ticker => state.positions[ticker]).filter(position => position.quoteUpdatedAt);
-    const latestQuote = quotes.sort((a, b) => b.quoteUpdatedAt - a.quoteUpdatedAt)[0];
-    document.getElementById('boardQuoteMeta').innerText = latestQuote
-      ? `Latest portfolio quote · ${formatQuoteMetadata(latestQuote, refreshIntervalMs)}`
-      : 'No live quotes fetched for margin positions';
+    const quotes = tickers
+      .map((ticker) => state.positions![ticker])
+      .filter((position) => position.quoteUpdatedAt);
+    const latestQuote = quotes.sort(
+      (a, b) => (b.quoteUpdatedAt || 0) - (a.quoteUpdatedAt || 0)
+    )[0];
+    const quoteMetaEl = document.getElementById('boardQuoteMeta');
+    if (quoteMetaEl) {
+      quoteMetaEl.innerText = latestQuote
+        ? `Latest portfolio quote · ${formatQuoteMetadata(latestQuote, refreshIntervalMs)}`
+        : 'No live quotes fetched for margin positions';
+    }
 
     const moveEl = document.getElementById('boardDailyMove');
     if (moveEl) moveEl.classList.remove('hidden');
 
-    if (typeof onRenderAnalystConsensus === 'function') {
+    if (typeof onRenderAnalystConsensus === 'function' && tickers[0]) {
       onRenderAnalystConsensus(tickers[0]);
     }
 
-    const totalAccountEquity = (totalMarketValue + cushionTotal) - totalDebt;
+    const totalAccountEquity = totalMarketValue + cushionTotal - totalDebt;
     const totalAccountAssets = totalMarketValue + cushionTotal;
-    const equityPct = totalAccountAssets > 0 ? (totalAccountEquity / totalAccountAssets) * 100 : 0;
-    document.getElementById('boardEquity').innerText = `$${formatUSD(totalAccountEquity)} (${equityPct.toFixed(2)}%)`;
+    const equityPct =
+      totalAccountAssets > 0 ? (totalAccountEquity / totalAccountAssets) * 100 : 0;
+    const equityEl = document.getElementById('boardEquity');
+    if (equityEl) {
+      equityEl.innerText = `$${formatUSD(totalAccountEquity)} (${equityPct.toFixed(2)}%)`;
+    }
 
     renderMarginRisk(totalDebt, totalMarketValue, cushionTotal, rules);
-    renderPositionsTable(totalGrossTarget, totalComms, totalDebt, totalMarginCharged, state.startDate, dailyRate);
+    renderPositionsTable(
+      totalGrossTarget,
+      totalComms,
+      totalDebt,
+      totalMarginCharged,
+      state.startDate,
+      dailyRate
+    );
   } else {
-    const pos = state.positions[state.activeView] || state.positions[tickers[0]];
+    const pos =
+      (state.activeView ? state.positions?.[state.activeView] : undefined) ||
+      state.positions?.[tickers[0]];
     if (!pos) return;
-    const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + (t.qty * t.price), 0);
+    const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + t.qty * t.price, 0);
     const avgPrice = pos.shares > 0 ? totalInvested / pos.shares : 0;
     const valSell = pos.shares * pos.pt;
-    const commSell = calculateCommission(pos.shares, valSell, rules);
+    const commSell = calculateCommission(pos.shares, valSell, rules as any);
     const totalComms = pos.commBuy + commSell;
     const gross = valSell - totalInvested;
 
     const portfolioInvested = getTotalPortfolioInvested(state);
-    const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
+    const weight = portfolioInvested > 0 ? totalInvested / portfolioInvested : 1;
 
-    const totalAccountDebt = Math.abs(state.balance);
+    const totalAccountDebt = Math.abs(Number(state.balance) || 0);
     const allocatedDebt = totalAccountDebt * weight;
     const totalCushion = getCashCushionTotal(state);
     const allocatedCushion = totalCushion * weight;
     const allocatedDailyAccrual = allocatedDebt * dailyRate;
     const tranches = state.tranches || pos.tranches || [];
-    const posMarginCharged = calculateMarginInterest(tranches, {
+    const posMarginCharged = calculateMarginInterest(tranches as any, {
       dailyRate,
       marginDebt: allocatedDebt,
       totalDebt: totalAccountDebt
-    });
+    } as any);
 
     const net0 = gross - totalComms - posMarginCharged;
     const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
@@ -491,19 +685,40 @@ export function renderSummaryCards(state, options = {}) {
     const unrealized = currentMktVal - totalInvested;
     const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
 
-    document.getElementById('boardTitle').innerText = `${pos.ticker} (${pos.shares} Shares @ $${formatUSD(pos.pt)} PT | ${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% Net Target)`;
-    document.getElementById('boardTranches').innerText = (pos.tranches && pos.tranches.length > 0)
-      ? pos.tranches.map(t => `${t.qty} @ $${formatUSD(t.price)} (${formatTrancheDate(t.date)})`).join(' + ')
-      : "None";
-    document.getElementById('boardInvested').innerText = `$${formatUSD(totalInvested)} | $${formatUSD(avgPrice)}`;
+    const titleEl = document.getElementById('boardTitle');
+    if (titleEl) {
+      titleEl.innerText = `${pos.ticker} (${pos.shares} Shares @ $${formatUSD(pos.pt)} PT | ${netPct >= 0 ? '+' : ''
+        }${netPct.toFixed(2)}% Net Target)`;
+    }
+
+    const tranchesEl = document.getElementById('boardTranches');
+    if (tranchesEl) {
+      tranchesEl.innerText =
+        pos.tranches && pos.tranches.length > 0
+          ? pos.tranches
+            .map((t) => `${t.qty} @ $${formatUSD(t.price)} (${formatTrancheDate(t.date)})`)
+            .join(' + ')
+          : 'None';
+    }
+
+    const investedEl = document.getElementById('boardInvested');
+    if (investedEl) {
+      investedEl.innerText = `$${formatUSD(totalInvested)} | $${formatUSD(avgPrice)}`;
+    }
 
     const unSign = unrealized >= 0 ? '+' : '';
-    document.getElementById('boardPrice').innerHTML = `$${formatUSD(pos.currentPrice)} | $${formatUSD(currentMktVal)} – <span class="${unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${unSign}$${formatUSD(unrealized)} (${unSign}${unrealizedPct.toFixed(2)}%)</span>`;
+    const priceEl = document.getElementById('boardPrice');
+    if (priceEl) {
+      priceEl.innerHTML = `$${formatUSD(pos.currentPrice)} | $${formatUSD(currentMktVal)} – <span class="${unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'
+        }">${unSign}$${formatUSD(unrealized)} (${unSign}${unrealizedPct.toFixed(2)}%)</span>`;
+    }
+
     const boardDailyQuote = document.getElementById('boardDailyQuote');
     const dailyQuoteLabel = createDailyQuoteLabel(pos.quoteDetails);
     if (boardDailyQuote) {
       boardDailyQuote.textContent = dailyQuoteLabel?.textContent || '';
-      boardDailyQuote.className = dailyQuoteLabel?.className || 'block text-[10px] text-slate-500';
+      boardDailyQuote.className =
+        dailyQuoteLabel?.className || 'block text-[10px] text-slate-500';
     }
 
     if (typeof onRenderAnalystConsensus === 'function') {
@@ -511,28 +726,55 @@ export function renderSummaryCards(state, options = {}) {
     }
 
     const isFullDebt = Math.abs(allocatedDebt - totalAccountDebt) < 0.01;
-    document.getElementById('boardMargin').innerText = isFullDebt
-      ? `-$${formatUSD(allocatedDebt)} ($${formatUSD(allocatedDailyAccrual)}/day)`
-      : `-$${formatUSD(allocatedDebt)} ($${formatUSD(allocatedDailyAccrual)}/day) [${((allocatedDebt / (totalAccountDebt || 1)) * 100).toFixed(0)}% of -$${formatUSD(totalAccountDebt)} Total]`;
+    const marginEl = document.getElementById('boardMargin');
+    if (marginEl) {
+      marginEl.innerText = isFullDebt
+        ? `-$${formatUSD(allocatedDebt)} ($${formatUSD(allocatedDailyAccrual)}/day)`
+        : `-$${formatUSD(allocatedDebt)} ($${formatUSD(allocatedDailyAccrual)}/day) [${(
+          (allocatedDebt / (totalAccountDebt || 1)) *
+          100
+        ).toFixed(0)}% of -$${formatUSD(totalAccountDebt)} Total]`;
+    }
 
-    document.getElementById('boardComms').innerText = `$${formatUSD(totalComms)} ($${formatUSD(pos.commBuy)} buy / $${formatUSD(commSell)} sell)`;
-    document.getElementById('boardMarginCharged').innerText = `$${formatUSD(posMarginCharged)} (Position To Date)`;
+    const commsEl = document.getElementById('boardComms');
+    if (commsEl) {
+      commsEl.innerText = `$${formatUSD(totalComms)} ($${formatUSD(pos.commBuy)} buy / $${formatUSD(commSell)} sell)`;
+    }
 
-    document.getElementById('boardCushionLabel').innerText = 'Allocated Cash / Collateral:';
-    document.getElementById('boardCushionMetric').innerText = `+$${formatUSD(allocatedCushion)}`;
-    document.getElementById('boardQuoteMeta').innerText = formatQuoteMetadata(pos, refreshIntervalMs);
+    const marginChargedEl = document.getElementById('boardMarginCharged');
+    if (marginChargedEl) {
+      marginChargedEl.innerText = `$${formatUSD(posMarginCharged)} (Position To Date)`;
+    }
+
+    const cushionLabelEl = document.getElementById('boardCushionLabel');
+    if (cushionLabelEl) cushionLabelEl.innerText = 'Allocated Cash / Collateral:';
+    const cushionMetricEl = document.getElementById('boardCushionMetric');
+    if (cushionMetricEl) cushionMetricEl.innerText = `+$${formatUSD(allocatedCushion)}`;
+
+    const quoteMetaEl = document.getElementById('boardQuoteMeta');
+    if (quoteMetaEl) quoteMetaEl.innerText = formatQuoteMetadata(pos, refreshIntervalMs);
 
     const positionAssets = currentMktVal + allocatedCushion;
     const positionEquity = positionAssets - allocatedDebt;
     const equityPct = positionAssets > 0 ? (positionEquity / positionAssets) * 100 : 0;
-    document.getElementById('boardEquity').innerText = `$${formatUSD(positionEquity)} (${equityPct.toFixed(2)}%)`;
+    const equityEl = document.getElementById('boardEquity');
+    if (equityEl) {
+      equityEl.innerText = `$${formatUSD(positionEquity)} (${equityPct.toFixed(2)}%)`;
+    }
 
     renderMarginRisk(allocatedDebt, currentMktVal, allocatedCushion, rules);
-    renderPositionsTable(gross, totalComms, allocatedDebt, posMarginCharged, pos.startDate || state.startDate, dailyRate);
+    renderPositionsTable(
+      gross,
+      totalComms,
+      allocatedDebt,
+      posMarginCharged,
+      pos.startDate || state.startDate,
+      dailyRate
+    );
   }
 }
 
-export function renderBoard(state, options = {}) {
+export function renderBoard(state: BoardState, options: RenderBoardOptions): void {
   const {
     rules,
     onSetActiveView,
@@ -553,26 +795,33 @@ export function renderBoard(state, options = {}) {
   const tabsContainer = document.getElementById('tickerTabs');
   if (tabsContainer) tabsContainer.innerHTML = '';
 
-  const isCushionActive = state.activeView === "CASH_CUSHION" || state.activeView === "BALANCE";
-  const isClosedHistoryActive = state.activeView === "CLOSED_HISTORY";
-  const isSettingsActive = state.activeView === "SETTINGS";
+  const isCushionActive =
+    state.activeView === 'CASH_CUSHION' || state.activeView === 'BALANCE';
+  const isClosedHistoryActive = state.activeView === 'CLOSED_HISTORY';
+  const isSettingsActive = state.activeView === 'SETTINGS';
 
   const emptyPanel = document.getElementById('emptyStatePanel');
   if (emptyPanel) {
-    emptyPanel.classList.toggle('hidden', !(tickers.length === 0 && !isCushionActive && !isClosedHistoryActive));
+    emptyPanel.classList.toggle(
+      'hidden',
+      !(tickers.length === 0 && !isCushionActive && !isClosedHistoryActive)
+    );
   }
 
   if (tabsContainer) {
-
     if (tickers.length > 0) {
       const updateQuotesBtn = document.createElement('button');
-      updateQuotesBtn.title = "Update quotes"
-      updateQuotesBtn.className = 'h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1';
+      updateQuotesBtn.title = 'Update quotes';
+      updateQuotesBtn.className =
+        'h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1';
       updateQuotesBtn.id = 'refreshQuotesButton';
       updateQuotesBtn.innerHTML = `<span>↻</span>`;
       updateQuotesBtn.onclick = () => {
-        if (typeof window !== 'undefined' && typeof window.refreshAllLivePrices === 'function') {
-          window.refreshAllLivePrices();
+        if (
+          typeof window !== 'undefined' &&
+          typeof (window as any).refreshAllLivePrices === 'function'
+        ) {
+          (window as any).refreshAllLivePrices();
         }
       };
       tabsContainer.appendChild(updateQuotesBtn);
@@ -580,35 +829,55 @@ export function renderBoard(state, options = {}) {
 
     if (tickers.length === 0) {
       if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) {
-        setTimeout(() => onSetActiveView?.("COMBINED"), 0);
+        setTimeout(() => onSetActiveView?.('COMBINED'), 0);
       }
       const emptyLabel = document.createElement('span');
-      emptyLabel.className = "text-xs font-bold text-slate-500 uppercase tracking-wider";
-      emptyLabel.innerText = "NO ACTIVE TRADES";
+      emptyLabel.className = 'text-xs font-bold text-slate-500 uppercase tracking-wider';
+      emptyLabel.innerText = 'NO ACTIVE TRADES';
       tabsContainer.appendChild(emptyLabel);
     } else if (tickers.length === 1) {
-      if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive && state.activeView !== tickers[0]) {
+      if (
+        !isCushionActive &&
+        !isClosedHistoryActive &&
+        !isSettingsActive &&
+        state.activeView !== tickers[0]
+      ) {
         setTimeout(() => onSetActiveView?.(tickers[0]), 0);
       }
       const btn = document.createElement('button');
-      btn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0] ? 'bg-emerald-600 text-black' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`;
+      btn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0]
+        ? 'bg-emerald-600 text-black'
+        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+        }`;
       btn.innerText = `MARGIN: ${tickers[0]}`;
       btn.onclick = () => onSetActiveView?.(tickers[0]);
       tabsContainer.appendChild(btn);
     } else {
-      if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive && state.activeView !== "COMBINED" && !state.positions[state.activeView]) {
-        setTimeout(() => onSetActiveView?.("COMBINED"), 0);
+      if (
+        !isCushionActive &&
+        !isClosedHistoryActive &&
+        !isSettingsActive &&
+        state.activeView !== 'COMBINED' &&
+        !state.positions?.[state.activeView || '']
+      ) {
+        setTimeout(() => onSetActiveView?.('COMBINED'), 0);
       }
 
       const combinedBtn = document.createElement('button');
-      combinedBtn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === "COMBINED" ? 'bg-emerald-600 text-black' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`;
-      combinedBtn.innerText = "COMBINED PORTFOLIO";
-      combinedBtn.onclick = () => onSetActiveView?.("COMBINED");
+      combinedBtn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === 'COMBINED'
+        ? 'bg-emerald-600 text-black'
+        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+        }`;
+      combinedBtn.innerText = 'COMBINED PORTFOLIO';
+      combinedBtn.onclick = () => onSetActiveView?.('COMBINED');
       tabsContainer.appendChild(combinedBtn);
 
-      tickers.forEach(t => {
+      tickers.forEach((t) => {
         const btn = document.createElement('button');
-        btn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === t ? 'bg-emerald-600 text-black' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`;
+        btn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === t
+          ? 'bg-emerald-600 text-black'
+          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+          }`;
         btn.innerText = t;
         btn.onclick = () => onSetActiveView?.(t);
         tabsContainer.appendChild(btn);
@@ -617,20 +886,28 @@ export function renderBoard(state, options = {}) {
 
     const cushionTotal = getCashCushionTotal(state);
     const cushionBtn = document.createElement('button');
-    cushionBtn.className = `px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive ? 'bg-cyan-500 text-black' : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'}`;
-    cushionBtn.innerHTML = `<span>🛡️ BALANCE</span> <span class="text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'}">+$${cushionTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>`;
-    cushionBtn.onclick = () => onSetActiveView?.("CASH_CUSHION");
+    cushionBtn.className = `px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
+      ? 'bg-cyan-500 text-black'
+      : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
+      }`;
+    cushionBtn.innerHTML = `<span>🛡️ BALANCE</span> <span class="text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
+      }">+$${cushionTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>`;
+    cushionBtn.onclick = () => onSetActiveView?.('CASH_CUSHION');
     tabsContainer.appendChild(cushionBtn);
 
     const closedTrades = state.closedTrades || [];
     const closedHistoryBtn = document.createElement('button');
-    closedHistoryBtn.className = `px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive ? 'bg-purple-500 text-black' : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'}`;
+    closedHistoryBtn.className = `px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive
+      ? 'bg-purple-500 text-black'
+      : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
+      }`;
     closedHistoryBtn.innerText = `CLOSED HISTORY (${closedTrades.length})`;
-    closedHistoryBtn.onclick = () => onSetActiveView?.("CLOSED_HISTORY");
+    closedHistoryBtn.onclick = () => onSetActiveView?.('CLOSED_HISTORY');
     tabsContainer.appendChild(closedHistoryBtn);
     const closedTradesCount = document.getElementById('closedTradesCount');
     if (closedTradesCount) {
-      closedTradesCount.textContent = `${closedTrades.length} realized exit${closedTrades.length === 1 ? '' : 's'}`;
+      closedTradesCount.textContent = `${closedTrades.length} realized exit${closedTrades.length === 1 ? '' : 's'
+        }`;
     }
 
     const settingsBtn = document.createElement('button');
@@ -639,7 +916,7 @@ export function renderBoard(state, options = {}) {
       : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition';
     settingsBtn.id = 'settingsBtn';
     settingsBtn.innerHTML = `<span>⚙️ SETTINGS</span>`;
-    settingsBtn.onclick = () => onSetActiveView?.("SETTINGS");
+    settingsBtn.onclick = () => onSetActiveView?.('SETTINGS');
     tabsContainer.appendChild(settingsBtn);
   }
 
@@ -648,8 +925,8 @@ export function renderBoard(state, options = {}) {
   const closedHistoryDesk = document.getElementById('closedHistoryContainer');
   const settingsDesk = document.getElementById('settings');
 
-  let activeDesk;
-  let activeDeskView;
+  let activeDesk: HTMLElement | null = null;
+  let activeDeskView: string | null = null;
 
   if (isCushionActive) {
     mainDesk?.classList.add('hidden');
@@ -673,9 +950,8 @@ export function renderBoard(state, options = {}) {
     closedHistoryDesk?.classList.add('hidden');
     activeDesk = settingsDesk;
     activeDeskView = 'SETTINGS';
-    settingsDesk.classList.remove('hidden');
-  }
-  else {
+    settingsDesk?.classList.remove('hidden');
+  } else {
     mainDesk?.classList.remove('hidden');
     cushionDesk?.classList.add('hidden');
     closedHistoryDesk?.classList.add('hidden');
@@ -683,17 +959,21 @@ export function renderBoard(state, options = {}) {
 
     renderSummaryCards(state, { rules, onRenderAnalystConsensus, refreshIntervalMs });
     activeDesk = mainDesk;
-    activeDeskView = state.activeView;
+    activeDeskView = state.activeView || null;
   }
 
   onRenderExternalLinks?.();
   onRenderConsoleQuickActions?.();
 
-  if (activeDesk && activeDeskView !== lastDeskView) {
+  if (activeDesk && activeDeskView && activeDeskView !== lastDeskView) {
     activeDesk.classList.remove('ui-view-enter');
     void activeDesk.offsetWidth;
     activeDesk.classList.add('ui-view-enter');
-    activeDesk.addEventListener('animationend', () => activeDesk.classList.remove('ui-view-enter'), { once: true });
+    activeDesk.addEventListener(
+      'animationend',
+      () => activeDesk?.classList.remove('ui-view-enter'),
+      { once: true }
+    );
     onUpdateLastDeskView(activeDeskView);
   }
 

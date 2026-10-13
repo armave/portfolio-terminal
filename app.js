@@ -56,7 +56,7 @@ import {
   renderCashCushion,
   renderPositionsTable,
   renderSummaryCards
-} from './src/ui/renderBoard.js';
+} from './src/ui/renderBoard';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
