@@ -62,6 +62,8 @@ import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
 import { InsightSection, MarketInsightsPanel } from './src/components/MarketInsightsPanel';
 import { SettingsDesk } from './src/components/SettingsDesk';
 import { AuthModal } from './src/components/AuthModal';
+import { TradingConsole } from './src/components/TradingConsole';
+import { App } from './src/App';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -494,9 +496,21 @@ export function setActiveView(view: string) {
 export const switchView = setActiveView;
 
 function renderConsoleQuickActions() {
+  const pos = state.positions[state.activeView];
+  const cardContainer = document.getElementById('tradingConsoleCard');
+  if (cardContainer) {
+    render(
+      h(TradingConsole, {
+        position: pos,
+        onExecuteCommand: () => executeCommand()
+      }),
+      cardContainer
+    );
+    return;
+  }
+
   const container = document.getElementById('consoleQuickActions');
   if (!container) return;
-  const pos = state.positions[state.activeView];
   render(h(ConsoleQuickActions, { position: pos }), container);
 }
 
@@ -1940,6 +1954,11 @@ async function startApp(secret: string) {
 
 async function initApp() {
   if (appInitialized) return;
+
+  const rootEl = document.getElementById('root');
+  if (rootEl && !document.getElementById('mainTerminalView')) {
+    render(h(App, null), rootEl);
+  }
 
   const secret = loadGatewaySecret();
   if (secret) {

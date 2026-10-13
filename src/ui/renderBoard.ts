@@ -1,11 +1,10 @@
 import { render, h } from 'preact';
-import { CashCushionDesk } from '../components/CashCushionDesk';
-
 import {
   calculateCommission,
   calculateMarginInterest
 } from '../domain/portfolio';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
+import { CashCushionDesk } from '../components/CashCushionDesk';
 import { ProjectionsTable } from '../components/ProjectionsTable';
 import { TickerTabs } from '../components/TickerTab';
 import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
@@ -250,65 +249,6 @@ export function formatRiskTrigger(triggerValue: number, currentValue: number): s
   return `Position value $${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
 }
 
-export function renderMarginRisk(
-  debt: number,
-  positionValue: number,
-  collateral: number,
-  rules: BrokerRules
-): void {
-  const marginCallRow = document.getElementById('boardMarginCallRow');
-  const stopOutRow = document.getElementById('boardStopOutRow');
-  const riskSummary = document.getElementById('boardMarginRisk');
-  if (!riskSummary) return;
-
-  if (debt <= 0) {
-    riskSummary.innerText = 'No margin debt';
-    riskSummary.className = 'text-emerald-400 font-bold font-mono';
-    marginCallRow?.classList.add('hidden');
-    stopOutRow?.classList.add('hidden');
-    return;
-  }
-
-  const assets = positionValue + collateral;
-  const equity = assets - debt;
-  const equityRatio = assets > 0 ? (equity / assets) * 100 : -Infinity;
-  const maintenanceRatio = rules.maintenanceMarginRatio * 100;
-  const stopOutRatio = rules.stopOutRatio * 100;
-  let riskLevel: string;
-  let riskClass: string;
-
-  if (equityRatio <= stopOutRatio) {
-    riskLevel = 'Stop-out level';
-    riskClass = 'text-rose-400';
-  } else if (equityRatio <= maintenanceRatio) {
-    riskLevel = 'Margin-call level';
-    riskClass = 'text-rose-400';
-  } else if (equityRatio <= maintenanceRatio + 5) {
-    riskLevel = 'Elevated';
-    riskClass = 'text-amber-400';
-  } else {
-    riskLevel = 'Healthy';
-    riskClass = 'text-emerald-400';
-  }
-  riskSummary.innerText = `${riskLevel} · ${Number.isFinite(equityRatio) ? `${equityRatio.toFixed(1)}% equity` : 'negative equity'
-    } (${maintenanceRatio.toFixed(1)}% maintenance)`;
-  riskSummary.className = `${riskClass} font-bold font-mono`;
-
-  const marginCallAssetsRequired = debt / (1 - rules.maintenanceMarginRatio);
-  const stopOutAssetsRequired = debt / (1 - rules.stopOutRatio);
-  marginCallRow?.classList.toggle('hidden', collateral >= marginCallAssetsRequired);
-  stopOutRow?.classList.toggle('hidden', collateral >= stopOutAssetsRequired);
-  const marginCallValue = Math.max(0, marginCallAssetsRequired - collateral);
-  const stopOutValue = Math.max(0, stopOutAssetsRequired - collateral);
-
-  const marginCallEl = document.getElementById('boardMarginCall');
-  const stopOutEl = document.getElementById('boardStopOut');
-  if (marginCallEl && marginCallValue > 0)
-    marginCallEl.innerText = formatRiskTrigger(marginCallValue, positionValue);
-  if (stopOutEl && collateral < stopOutAssetsRequired)
-    stopOutEl.innerText = formatRiskTrigger(stopOutValue, positionValue);
-}
-
 export function renderPositionsTable(
   gross: number,
   totalComms: number,
@@ -351,7 +291,7 @@ export function renderCashCushion(state: BoardState, options: RenderCashCushionO
   if (!state.cashCushion) state.cashCushion = { freeCash: 0.0, holdings: [] };
 
   const container = document.getElementById('cashCushionContainer');
-  if (container && !document.getElementById('cashBalanceDebtMeta')) {
+  if (container) {
     render(
       h(CashCushionDesk, {
         onFetchLivePrice,
@@ -360,125 +300,7 @@ export function renderCashCushion(state: BoardState, options: RenderCashCushionO
       }),
       container
     );
-    return;
   }
-
-  const freeCash = Number(state.cashCushion.freeCash) || 0;
-  const marginDebt = Math.abs(Number(state.balance) || 0);
-  const signedBalance = freeCash + (Number(state.balance) || 0);
-
-  const freeCashInput = document.getElementById('freeCashInput') as HTMLInputElement | null;
-  if (freeCashInput) freeCashInput.value = signedBalance.toFixed(2);
-
-  const debtMeta = document.getElementById('cashBalanceDebtMeta');
-  if (debtMeta) {
-    debtMeta.textContent = `Balance: $${formatUSD(freeCash)} | Debt: -$${formatUSD(marginDebt)}`;
-  }
-
-  const tableBody = document.getElementById('cashStocksTableBody');
-  const tableFooter = document.getElementById('cashStocksTableFooter');
-  if (!tableBody || !tableFooter) return;
-  tableBody.innerHTML = '';
-
-  let stocksTotal = 0;
-  const holdings = state.cashCushion.holdings || [];
-
-  holdings.forEach((h) => {
-    const price = Number(h.currentPrice ?? h.price) || 0;
-    stocksTotal += (Number(h.shares) || 0) * price;
-  });
-
-  holdings.forEach((h, idx) => {
-    const shares = Number(h.shares) || 0;
-    const price = Number(h.currentPrice ?? h.price) || 0;
-    const val = shares * price;
-    const allocation = stocksTotal > 0 ? (val / stocksTotal) * 100 : 0;
-    const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
-
-    const tr = document.createElement('tr');
-    tr.className = 'hover:bg-slate-900/40';
-    const addCell = (content: string, className: string): HTMLElement => {
-      const cell = document.createElement('td');
-      cell.className = className;
-      cell.textContent = content;
-      tr.appendChild(cell);
-      return cell;
-    };
-    const tickerCell = addCell('', 'py-2 px-3 text-cyan-300 font-bold');
-    const tickerContainer = createInsightElement('div', 'inline-flex items-center gap-1.5');
-    tickerContainer.append(
-      createInsightElement('span', '', h.ticker),
-      sentimentBadge(
-        Number.isFinite(h.quoteDetails?.change)
-          ? (h.quoteDetails!.change! > 0
-            ? 'bullish'
-            : h.quoteDetails!.change! < 0
-              ? 'bearish'
-              : 'neutral')
-          : 'unknown',
-        Number.isFinite(h.quoteDetails?.change)
-          ? `${h.quoteDetails!.changePercent!.toFixed(2)}%`
-          : undefined
-      )
-    );
-    tickerCell.appendChild(tickerContainer);
-    addCell(
-      shares.toLocaleString('en-US', { maximumFractionDigits: 3 }),
-      'py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap'
-    );
-    const priceCell = document.createElement('td');
-    priceCell.className = 'py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums';
-    const priceLabel = document.createElement('span');
-    priceLabel.textContent = `$${formatUSD(price)}`;
-    const quoteLabel = document.createElement('span');
-    quoteLabel.className = 'mt-0.5 block text-[9px] font-normal text-slate-500';
-    quoteLabel.textContent = quoteMeta;
-    priceCell.append(priceLabel);
-    const dailyQuoteLabel = createDailyQuoteLabel(h.quoteDetails);
-    if (dailyQuoteLabel) priceCell.append(dailyQuoteLabel);
-    priceCell.append(quoteLabel);
-    tr.appendChild(priceCell);
-    addCell(`$${formatUSD(val)}`, 'py-2 px-3 text-right text-white font-semibold');
-    addCell(`${allocation.toFixed(1)}%`, 'py-2 px-3 text-right text-slate-300 tabular-nums');
-    const actionsCell = addCell('', 'py-2 px-3 text-center space-x-2');
-    const refreshButton = document.createElement('button');
-    refreshButton.className = 'text-cyan-400 hover:text-cyan-300 text-xs font-bold';
-    refreshButton.title = 'Refresh Live Price';
-    refreshButton.setAttribute('aria-label', `Refresh ${h.ticker} quote`);
-    refreshButton.textContent = '↻';
-    if (typeof onFetchLivePrice === 'function') {
-      refreshButton.addEventListener('click', () => onFetchLivePrice(h.ticker));
-    }
-    const removeButton = document.createElement('button');
-    removeButton.className = 'text-rose-400 hover:text-rose-300 text-xs font-bold';
-    removeButton.textContent = 'Remove';
-    if (typeof onRemoveCashStock === 'function') {
-      removeButton.addEventListener('click', () => onRemoveCashStock(idx));
-    }
-    actionsCell.append(refreshButton, removeButton);
-    tableBody.appendChild(tr);
-  });
-
-  if ((state.cashCushion.holdings || []).length === 0) {
-    tableBody.innerHTML = `<tr><td colspan="6" class="py-3 text-center text-slate-500 italic">No cash stocks entered. Add unleveraged stocks below (price auto-fetches).</td></tr>`;
-  }
-  tableFooter.innerHTML =
-    holdings.length > 0
-      ? `<tr>
-        <td class="py-2 px-3 text-slate-300 font-bold" colspan="3">${holdings.length} holding${holdings.length === 1 ? '' : 's'}</td>
-        <td class="py-2 px-3 text-right text-white font-bold">$${formatUSD(stocksTotal)}</td>
-        <td class="py-2 px-3 text-right text-slate-300 font-bold">${stocksTotal > 0 ? '100.0%' : '—'}</td>
-        <td></td>
-      </tr>`
-      : '';
-  const summaryEl = document.getElementById('cashHoldingsSummary');
-  if (summaryEl) {
-    summaryEl.textContent = `${holdings.length} holding${holdings.length === 1 ? '' : 's'} · $${formatUSD(stocksTotal)} market value`;
-  }
-
-  const totalCushion = freeCash + stocksTotal;
-  const totalValEl = document.getElementById('cushionTotalValue');
-  if (totalValEl) totalValEl.innerText = `$${formatUSD(totalCushion)}`;
 }
 
 export function renderSummaryCards(
@@ -492,9 +314,20 @@ export function renderSummaryCards(
     state.activeView === 'COMBINED' ||
     (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
+  const metricsGridContainer = document.getElementById('portfolioMetricsGrid');
+  if (metricsGridContainer) {
+    render(
+      h(SummaryMetricsGrid, {
+        state,
+        rules,
+        refreshIntervalMs
+      }),
+      metricsGridContainer
+    );
+  }
+
   if (isCombined) {
     let totalInvested = 0;
-    let totalMarketValue = 0;
     let totalCommBuy = 0;
     let totalCommSell = 0;
     let totalGrossTarget = 0;
@@ -504,7 +337,6 @@ export function renderSummaryCards(
       const pos = state.positions![t];
       const cost = (pos.tranches || []).reduce((sum, tr) => sum + tr.qty * tr.price, 0);
       totalInvested += cost;
-      totalMarketValue += pos.shares * pos.currentPrice;
       totalCommBuy += pos.commBuy;
       const valSell = pos.shares * pos.pt;
       totalCommSell += calculateCommission(pos.shares, valSell, rules as any);
@@ -523,10 +355,7 @@ export function renderSummaryCards(
     const totalComms = totalCommBuy + totalCommSell;
     const net0 = totalGrossTarget - totalComms - totalMarginCharged;
     const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
-    const totalUnrealized = totalMarketValue - totalInvested;
-    const unrealizedPct = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
     const totalDebt = Math.abs(Number(state.balance) || 0);
-    const dailyAccrual = totalDebt * dailyRate;
 
     const titleEl = document.getElementById('boardTitle');
     if (titleEl) {
@@ -536,62 +365,6 @@ export function renderSummaryCards(
           : `NO ACTIVE MARGIN POSITIONS`;
     }
 
-    const tranchesEl = document.getElementById('boardTranches');
-    if (tranchesEl) {
-      tranchesEl.innerText =
-        tickers.length > 0
-          ? tickers
-            .map((t) => `${t}: ${state.positions![t].shares}sh @ PT $${formatUSD(state.positions![t].pt)}`)
-            .join(' | ')
-          : 'None';
-    }
-
-    const investedEl = document.getElementById('boardInvested');
-    if (investedEl) {
-      investedEl.innerText = `$${formatUSD(totalInvested)} | Across ${tickers.length} Assets`;
-    }
-
-    const unSign = totalUnrealized >= 0 ? '+' : '';
-    const priceEl = document.getElementById('boardPrice');
-    if (priceEl) {
-      priceEl.innerHTML = `$${formatUSD(totalMarketValue)} – <span class="${totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'
-        }">${unSign}$${formatUSD(totalUnrealized)} (${unSign}${unrealizedPct.toFixed(2)}%)</span>`;
-    }
-
-    const marginEl = document.getElementById('boardMargin');
-    if (marginEl) {
-      marginEl.innerText = `-$${formatUSD(totalDebt)} ($${formatUSD(dailyAccrual)}/day @ ${(dailyRate * 100).toFixed(4)}%)`;
-    }
-
-    const commsEl = document.getElementById('boardComms');
-    if (commsEl) {
-      commsEl.innerText = `$${formatUSD(totalComms)} ($${formatUSD(totalCommBuy)} buy / $${formatUSD(totalCommSell)} sell)`;
-    }
-
-    const marginChargedEl = document.getElementById('boardMarginCharged');
-    if (marginChargedEl) {
-      marginChargedEl.innerText = `$${formatUSD(totalMarginCharged)}`;
-    }
-
-    const cushionTotal = getCashCushionTotal(state);
-    const cushionLabelEl = document.getElementById('boardCushionLabel');
-    if (cushionLabelEl) cushionLabelEl.innerText = 'Cash / Collateral Cushion:';
-    const cushionMetricEl = document.getElementById('boardCushionMetric');
-    if (cushionMetricEl) cushionMetricEl.innerText = `+$${formatUSD(cushionTotal)}`;
-
-    const quotes = tickers
-      .map((ticker) => state.positions![ticker])
-      .filter((position) => position.quoteUpdatedAt);
-    const latestQuote = quotes.sort(
-      (a, b) => (b.quoteUpdatedAt || 0) - (a.quoteUpdatedAt || 0)
-    )[0];
-    const quoteMetaEl = document.getElementById('boardQuoteMeta');
-    if (quoteMetaEl) {
-      quoteMetaEl.innerText = latestQuote
-        ? `Latest portfolio quote · ${formatQuoteMetadata(latestQuote, refreshIntervalMs)}`
-        : 'No live quotes fetched for margin positions';
-    }
-
     const moveEl = document.getElementById('boardDailyMove');
     if (moveEl) moveEl.classList.remove('hidden');
 
@@ -599,16 +372,6 @@ export function renderSummaryCards(
       onRenderAnalystConsensus(tickers[0]);
     }
 
-    const totalAccountEquity = totalMarketValue + cushionTotal - totalDebt;
-    const totalAccountAssets = totalMarketValue + cushionTotal;
-    const equityPct =
-      totalAccountAssets > 0 ? (totalAccountEquity / totalAccountAssets) * 100 : 0;
-    const equityEl = document.getElementById('boardEquity');
-    if (equityEl) {
-      equityEl.innerText = `$${formatUSD(totalAccountEquity)} (${equityPct.toFixed(2)}%)`;
-    }
-
-    renderMarginRisk(totalDebt, totalMarketValue, cushionTotal, rules);
     renderPositionsTable(
       totalGrossTarget,
       totalComms,
@@ -622,8 +385,8 @@ export function renderSummaryCards(
       (state.activeView ? state.positions?.[state.activeView] : undefined) ||
       state.positions?.[tickers[0]];
     if (!pos) return;
+
     const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + t.qty * t.price, 0);
-    const avgPrice = pos.shares > 0 ? totalInvested / pos.shares : 0;
     const valSell = pos.shares * pos.pt;
     const commSell = calculateCommission(pos.shares, valSell, rules as any);
     const totalComms = pos.commBuy + commSell;
@@ -634,9 +397,6 @@ export function renderSummaryCards(
 
     const totalAccountDebt = Math.abs(Number(state.balance) || 0);
     const allocatedDebt = totalAccountDebt * weight;
-    const totalCushion = getCashCushionTotal(state);
-    const allocatedCushion = totalCushion * weight;
-    const allocatedDailyAccrual = allocatedDebt * dailyRate;
     const tranches = state.tranches || pos.tranches || [];
     const posMarginCharged = calculateMarginInterest(tranches as any, {
       dailyRate,
@@ -647,88 +407,16 @@ export function renderSummaryCards(
     const net0 = gross - totalComms - posMarginCharged;
     const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
 
-    const currentMktVal = pos.shares * pos.currentPrice;
-    const unrealized = currentMktVal - totalInvested;
-    const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
-
     const titleEl = document.getElementById('boardTitle');
     if (titleEl) {
       titleEl.innerText = `${pos.ticker} (${pos.shares} Shares @ $${formatUSD(pos.pt)} PT | ${netPct >= 0 ? '+' : ''
         }${netPct.toFixed(2)}% Net Target)`;
     }
 
-    const tranchesEl = document.getElementById('boardTranches');
-    if (tranchesEl) {
-      tranchesEl.innerText =
-        pos.tranches && pos.tranches.length > 0
-          ? pos.tranches
-            .map((t) => `${t.qty} @ $${formatUSD(t.price)} (${formatTrancheDate(t.date)})`)
-            .join(' + ')
-          : 'None';
-    }
-
-    const investedEl = document.getElementById('boardInvested');
-    if (investedEl) {
-      investedEl.innerText = `$${formatUSD(totalInvested)} | $${formatUSD(avgPrice)}`;
-    }
-
-    const unSign = unrealized >= 0 ? '+' : '';
-    const priceEl = document.getElementById('boardPrice');
-    if (priceEl) {
-      priceEl.innerHTML = `$${formatUSD(pos.currentPrice)} | $${formatUSD(currentMktVal)} – <span class="${unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'
-        }">${unSign}$${formatUSD(unrealized)} (${unSign}${unrealizedPct.toFixed(2)}%)</span>`;
-    }
-
-    const boardDailyQuote = document.getElementById('boardDailyQuote');
-    const dailyQuoteLabel = createDailyQuoteLabel(pos.quoteDetails);
-    if (boardDailyQuote) {
-      boardDailyQuote.textContent = dailyQuoteLabel?.textContent || '';
-      boardDailyQuote.className =
-        dailyQuoteLabel?.className || 'block text-[10px] text-slate-500';
-    }
-
     if (typeof onRenderAnalystConsensus === 'function') {
       onRenderAnalystConsensus(pos.ticker);
     }
 
-    const isFullDebt = Math.abs(allocatedDebt - totalAccountDebt) < 0.01;
-    const marginEl = document.getElementById('boardMargin');
-    if (marginEl) {
-      marginEl.innerText = isFullDebt
-        ? `-$${formatUSD(allocatedDebt)} ($${formatUSD(allocatedDailyAccrual)}/day)`
-        : `-$${formatUSD(allocatedDebt)} ($${formatUSD(allocatedDailyAccrual)}/day) [${(
-          (allocatedDebt / (totalAccountDebt || 1)) *
-          100
-        ).toFixed(0)}% of -$${formatUSD(totalAccountDebt)} Total]`;
-    }
-
-    const commsEl = document.getElementById('boardComms');
-    if (commsEl) {
-      commsEl.innerText = `$${formatUSD(totalComms)} ($${formatUSD(pos.commBuy)} buy / $${formatUSD(commSell)} sell)`;
-    }
-
-    const marginChargedEl = document.getElementById('boardMarginCharged');
-    if (marginChargedEl) {
-      marginChargedEl.innerText = `$${formatUSD(posMarginCharged)} (Position To Date)`;
-    }
-
-    const cushionLabelEl = document.getElementById('boardCushionLabel');
-    if (cushionLabelEl) cushionLabelEl.innerText = 'Allocated Cash / Collateral:';
-    const cushionMetricEl = document.getElementById('boardCushionMetric');
-    if (cushionMetricEl) cushionMetricEl.innerText = `+$${formatUSD(allocatedCushion)}`;
-
-    const quoteMetaEl = document.getElementById('boardQuoteMeta');
-    if (quoteMetaEl) quoteMetaEl.innerText = formatQuoteMetadata(pos, refreshIntervalMs);
-
-    const positionAssets = currentMktVal + allocatedCushion;
-    const positionEquity = positionAssets - allocatedDebt;
-    const equityPct = positionAssets > 0 ? (positionEquity / positionAssets) * 100 : 0;
-    const equityEl = document.getElementById('boardEquity');
-    if (equityEl) {
-      equityEl.innerText = `$${formatUSD(positionEquity)} (${equityPct.toFixed(2)}%)`;
-    }
-
-    renderMarginRisk(allocatedDebt, currentMktVal, allocatedCushion, rules);
     renderPositionsTable(
       gross,
       totalComms,
@@ -737,18 +425,6 @@ export function renderSummaryCards(
       pos.startDate || state.startDate,
       dailyRate
     );
-
-    const metricsGridContainer = document.getElementById('portfolioMetricsGrid');
-    if (metricsGridContainer) {
-      render(
-        h(SummaryMetricsGrid, {
-          state,
-          rules,
-          refreshIntervalMs
-        }),
-        metricsGridContainer
-      );
-    }
   }
 }
 
@@ -779,7 +455,8 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const emptyPanel = document.getElementById('emptyStatePanel');
   if (emptyPanel) {
-    const showEmpty = tickers.length === 0 && !isCushionActive && !isClosedHistoryActive && !isSettingsActive;
+    const showEmpty =
+      tickers.length === 0 && !isCushionActive && !isClosedHistoryActive && !isSettingsActive;
     emptyPanel.classList.toggle('hidden', !showEmpty);
     render(h(EmptyStatePanel, null), emptyPanel);
   }
