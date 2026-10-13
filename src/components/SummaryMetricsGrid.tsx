@@ -210,7 +210,7 @@ export function SummaryMetricsGrid({
         <div class="portfolio-metric px-3 py-1.5">
           <span class="portfolio-metric-label text-[10px]">Share Price | Market Value</span>
           <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm text-emerald-400">
-            ${formatUSD(totalMarketValue)} –{' '}
+            ${formatUSD(totalMarketValue)} -{' '}
             <span class={totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
               {unSign}${formatUSD(totalUnrealized)} ({unSign}
               {unrealizedPct.toFixed(2)}%)
@@ -366,7 +366,7 @@ export function SummaryMetricsGrid({
       <div class="portfolio-metric px-3 py-1.5">
         <span class="portfolio-metric-label text-[10px]">Share Price | Market Value</span>
         <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm text-emerald-400">
-          ${formatUSD(pos.currentPrice)} \vert{}${formatUSD(currentMktVal)} –{' '}
+          ${formatUSD(pos.currentPrice)} | ${formatUSD(currentMktVal)} –{' '}
           <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
             {unSign}${formatUSD(unrealized)} ({unSign}
             {unrealizedPct.toFixed(2)}%)
