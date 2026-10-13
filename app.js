@@ -1262,7 +1262,7 @@ async function fetchLivePriceFromProviders(symbol) {
           current = data.price.preMarketPrice;
           change = current - data.current;
       }
-       else if (marketState === 'POST' || marketState === 'POSTPOST' || marketState === 'CLOSED') {
+       else if (marketState === 'POST' || marketState === 'CLOSED') {
           current = data.price.postMarketPrice;
           change = current - data.current;
       }

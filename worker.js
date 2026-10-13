@@ -263,7 +263,8 @@ export default {
 
                     // Session state: "PRE", "REGULAR", "POST", or "CLOSED"
                     let marketState = result.price?.marketState ?? "CLOSED";
-                    if (marketState = 'PREPRE') marketState = 'POST';
+                    if (marketState = 'PREPRE') marketState = 'PRE';
+                    else if (marketState = 'POSTPOST') marketState = 'POST';
 
                     return {
                         symbol: ticker,
