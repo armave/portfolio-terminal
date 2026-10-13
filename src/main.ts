@@ -1,6 +1,6 @@
 import '../style.css';
 import '../app.js';
-import { pullCloudState, pushCloudState } from './services/api.js';
+import { pullCloudState, pushCloudState } from './services/api';
 import { registerSW } from 'virtual:pwa-register';
 
 registerSW({ immediate: true });

@@ -16,7 +16,7 @@ import {
   getQuoteRefreshInterval,
   saveQuoteRefreshInterval,
   saveApiKeys
-} from './storage.js';
+} from './storage.ts';
 
 describe('storage service', () => {
   const storageMap = new Map<string, string>();
