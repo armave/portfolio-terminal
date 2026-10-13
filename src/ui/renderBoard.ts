@@ -2,13 +2,12 @@ import { render, h } from 'preact';
 import { CashCushionDesk } from '../components/CashCushionDesk';
 
 import {
-  calculateAccruedFees,
   calculateCommission,
-  calculateCompoundedDebt,
   calculateMarginInterest
 } from '../domain/portfolio';
-import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
+import { ProjectionsTable } from '../components/ProjectionsTable';
+import { TickerTabs } from '../components/TickerTab';
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -332,69 +331,17 @@ export function renderPositionsTable(
     }
   }
 
-  tableBody.innerHTML = '';
-
-  if (debtToUse > 0 || gross > 0) {
-    getUsEquityProjectionDates(new Date(), entryDate).forEach((item) => {
-      const { date, daysFromToday, kind } = item;
-      const dateFormatted = date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-      });
-      if (kind === 'entry') {
-        const entryRow = document.createElement('tr');
-        entryRow.className = 'border-b border-slate-800/50 text-slate-500';
-        entryRow.innerHTML = `
-          <td class="py-1.5 px-3 text-left projection-date-cell">
-            <span class="text-[10px] font-medium text-slate-400">Entry</span>
-            <span class="text-[10px] text-slate-500 font-mono">${dateFormatted}</span>
-          </td>
-          <td colspan="4" class="py-1.5 px-3 text-[10px] italic text-left">Position opened · projection values start today</td>
-        `;
-        tableBody.appendChild(entryRow);
-        return;
-      }
-
-      let subtext = '';
-      if (kind === 'today') {
-        subtext = '<span class="text-xs text-sky-400 font-mono">TODAY</span>';
-      } else if (kind === 'next-trading-day' || kind === 'week-end') {
-        const defaultTag = kind === 'week-end' ? `EOW · +${daysFromToday}d` : `NTD · +${daysFromToday}d`;
-        const tag = (item.label || defaultTag).replace(/^\(\vert{}\)$/g, '');
-        subtext = `<span class="text-xs text-slate-400 font-mono">${tag}</span>`;
-      } else {
-        const tag = (item.label || `+${daysFromToday}d`).replace(/^\(\vert{}\)$/g, '');
-        subtext = `<span class="text-xs text-slate-500 font-mono">${tag}</span>`;
-      }
-
-      const b_t = calculateCompoundedDebt(debtToUse, dailyRate, daysFromToday);
-      const additionalAccrual = calculateMarginInterest(debtToUse, dailyRate, daysFromToday);
-      const m_d = marginChargedToUse + additionalAccrual;
-      const fee_c = calculateAccruedFees(totalComms, marginChargedToUse, additionalAccrual);
-      const net_p = gross - fee_c;
-      const dr = b_t * dailyRate;
-
-      const tr = document.createElement('tr');
-      tr.className = kind === 'today' ? 'bg-slate-900/80 font-bold' : 'hover:bg-slate-900/40';
-      const netClass = net_p >= 0 ? 'text-emerald-400' : 'text-rose-400';
-      const netSign = net_p >= 0 ? '+' : '';
-
-      tr.innerHTML = `
-        <td class="py-2 px-3 text-left text-slate-300 font-semibold projection-date-cell">
-          <span>${dateFormatted}</span>
-          ${subtext}
-        </td>
-        <td class="py-2 px-3 text-right ${netClass} font-semibold">${netSign}$${formatUSD(net_p)}</td>
-        <td class="py-2 px-3 text-right text-slate-200">$${formatUSD(fee_c)}</td>
-        <td class="py-2 px-3 text-right text-slate-400">$${formatUSD(m_d)} ($${formatUSD(dr)})</td>
-        <td class="py-2 px-3 text-right text-rose-400">-$${formatUSD(b_t)}</td>
-      `;
-      tableBody.appendChild(tr);
-    });
-  } else {
-    tableBody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500 italic">No active position to project.</td></tr>`;
-  }
+  render(
+    h(ProjectionsTable, {
+      gross,
+      totalComms,
+      debtToUse,
+      marginChargedToUse,
+      entryDate,
+      dailyRate
+    }),
+    tableBody
+  );
 }
 
 export function renderCashCushion(state: BoardState, options: RenderCashCushionOptions = {}): void {
@@ -810,7 +757,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const tickers = Object.keys(state.positions || {});
   const tabsContainer = document.getElementById('tickerTabs');
-  if (tabsContainer) tabsContainer.innerHTML = '';
 
   const isCushionActive =
     state.activeView === 'CASH_CUSHION' || state.activeView === 'BALANCE';
@@ -826,115 +772,14 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (tabsContainer) {
-    if (tickers.length > 0) {
-      const updateQuotesBtn = document.createElement('button');
-      updateQuotesBtn.title = 'Update quotes';
-      updateQuotesBtn.className =
-        'h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1';
-      updateQuotesBtn.id = 'refreshQuotesButton';
-      updateQuotesBtn.innerHTML = `<span>↻</span>`;
-      updateQuotesBtn.onclick = () => {
-        if (
-          typeof window !== 'undefined' &&
-          typeof (window as any).refreshAllLivePrices === 'function'
-        ) {
-          (window as any).refreshAllLivePrices();
-        }
-      };
-      tabsContainer.appendChild(updateQuotesBtn);
-    }
+    render(h(TickerTabs, { state, onSetActiveView }), tabsContainer);
+  }
 
-    if (tickers.length === 0) {
-      if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) {
-        setTimeout(() => onSetActiveView?.('COMBINED'), 0);
-      }
-      const emptyLabel = document.createElement('span');
-      emptyLabel.className = 'text-xs font-bold text-slate-500 uppercase tracking-wider';
-      emptyLabel.innerText = 'NO ACTIVE TRADES';
-      tabsContainer.appendChild(emptyLabel);
-    } else if (tickers.length === 1) {
-      if (
-        !isCushionActive &&
-        !isClosedHistoryActive &&
-        !isSettingsActive &&
-        state.activeView !== tickers[0]
-      ) {
-        setTimeout(() => onSetActiveView?.(tickers[0]), 0);
-      }
-      const btn = document.createElement('button');
-      btn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0]
-        ? 'bg-emerald-600 text-black'
-        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-        }`;
-      btn.innerText = `MARGIN: ${tickers[0]}`;
-      btn.onclick = () => onSetActiveView?.(tickers[0]);
-      tabsContainer.appendChild(btn);
-    } else {
-      if (
-        !isCushionActive &&
-        !isClosedHistoryActive &&
-        !isSettingsActive &&
-        state.activeView !== 'COMBINED' &&
-        !state.positions?.[state.activeView || '']
-      ) {
-        setTimeout(() => onSetActiveView?.('COMBINED'), 0);
-      }
-
-      const combinedBtn = document.createElement('button');
-      combinedBtn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === 'COMBINED'
-        ? 'bg-emerald-600 text-black'
-        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-        }`;
-      combinedBtn.innerText = 'COMBINED PORTFOLIO';
-      combinedBtn.onclick = () => onSetActiveView?.('COMBINED');
-      tabsContainer.appendChild(combinedBtn);
-
-      tickers.forEach((t) => {
-        const btn = document.createElement('button');
-        btn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === t
-          ? 'bg-emerald-600 text-black'
-          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-          }`;
-        btn.innerText = t;
-        btn.onclick = () => onSetActiveView?.(t);
-        tabsContainer.appendChild(btn);
-      });
-    }
-
-    const cushionTotal = getCashCushionTotal(state);
-    const cushionBtn = document.createElement('button');
-    cushionBtn.className = `px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
-      ? 'bg-cyan-500 text-black'
-      : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
+  const closedTrades = state.closedTrades || [];
+  const closedTradesCount = document.getElementById('closedTradesCount');
+  if (closedTradesCount) {
+    closedTradesCount.textContent = `${closedTrades.length} realized exit${closedTrades.length === 1 ? '' : 's'
       }`;
-    cushionBtn.innerHTML = `<span>🛡️ BALANCE</span> <span class="text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
-      }">+$${cushionTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>`;
-    cushionBtn.onclick = () => onSetActiveView?.('CASH_CUSHION');
-    tabsContainer.appendChild(cushionBtn);
-
-    const closedTrades = state.closedTrades || [];
-    const closedHistoryBtn = document.createElement('button');
-    closedHistoryBtn.className = `px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive
-      ? 'bg-purple-500 text-black'
-      : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
-      }`;
-    closedHistoryBtn.innerText = `CLOSED HISTORY (${closedTrades.length})`;
-    closedHistoryBtn.onclick = () => onSetActiveView?.('CLOSED_HISTORY');
-    tabsContainer.appendChild(closedHistoryBtn);
-    const closedTradesCount = document.getElementById('closedTradesCount');
-    if (closedTradesCount) {
-      closedTradesCount.textContent = `${closedTrades.length} realized exit${closedTrades.length === 1 ? '' : 's'
-        }`;
-    }
-
-    const settingsBtn = document.createElement('button');
-    settingsBtn.className = isSettingsActive
-      ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
-      : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition';
-    settingsBtn.id = 'settingsBtn';
-    settingsBtn.innerHTML = `<span>⚙️ SETTINGS</span>`;
-    settingsBtn.onclick = () => onSetActiveView?.('SETTINGS');
-    tabsContainer.appendChild(settingsBtn);
   }
 
   const mainDesk = document.getElementById('mainDeskContainer');
