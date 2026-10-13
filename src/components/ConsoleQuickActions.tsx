@@ -1,132 +1,195 @@
-import { useEffect } from 'preact/hooks';
 import { formatUSD, PositionRecord } from '../ui/renderBoard';
 
 export interface ConsoleQuickActionsProps {
   position?: PositionRecord;
+  onExecuteCommand?: () => void | Promise<void>;
 }
 
 interface QuickActionItem {
   text: string;
   command: string;
   selectText?: string | null;
+  instant?: boolean;
   color: string;
+  title?: string;
 }
 
-export function ConsoleQuickActions({ position }: ConsoleQuickActionsProps) {
-  const ticker = position?.ticker || '[TICKER]';
+export function prefillTerminalInput(
+  command: string,
+  selectText?: string | null,
+  instant?: boolean,
+  onExecuteCommand?: () => void | Promise<void>
+) {
+  const input = document.getElementById('cmdInput') as HTMLInputElement | null;
+  if (!input) return;
+
+  input.value = command;
+  input.focus();
+
+  if (instant && onExecuteCommand) {
+    onExecuteCommand();
+    return;
+  }
+
+  if (selectText) {
+    const selectionStart = command.lastIndexOf(selectText);
+    if (selectionStart >= 0) {
+      input.setSelectionRange(selectionStart, selectionStart + selectText.length);
+      return;
+    }
+  }
+
+  if (command.includes('[')) {
+    const selectionStart = command.indexOf('[');
+    const selectionEnd = command.indexOf(']', selectionStart) + 1;
+    input.setSelectionRange(selectionStart, selectionEnd);
+  } else {
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+}
+
+export function ConsoleQuickActions({ position, onExecuteCommand }: ConsoleQuickActionsProps) {
   const currentPrice =
     position && Number(position.currentPrice) > 0 ? Number(position.currentPrice) : null;
-  const priceText = currentPrice === null ? '[current price]' : formatUSD(currentPrice);
+  const priceText = currentPrice === null ? '[price]' : formatUSD(currentPrice);
   const comparisonPrice =
-    currentPrice === null ? null : Number((currentPrice * 1.02).toFixed(2));
-  const comparisonPriceText = comparisonPrice === null ? '[price]' : formatUSD(comparisonPrice);
+    currentPrice === null ? null : Number((currentPrice * 1.03).toFixed(2));
+  const comparisonPriceText = comparisonPrice === null ? '[target_price]' : formatUSD(comparisonPrice);
+  const targetPrice =
+    position && Number(position.pt) > 0
+      ? formatUSD(Number(position.pt))
+      : comparisonPriceText;
 
-  // Sync dynamic placeholders and Quick Commands Guide hints
-  useEffect(() => {
-    const commandInput = document.getElementById('cmdInput') as HTMLInputElement | null;
-    if (commandInput) {
-      commandInput.placeholder = `e.g. sell today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`;
-    }
-    const hintBuy = document.getElementById('hintBuyShares');
-    if (hintBuy) hintBuy.textContent = `bought [shares] ${ticker} for ${priceText}, pt [target]`;
-    const hintCash = document.getElementById('hintCashHolding');
-    if (hintCash) {
-      hintCash.textContent = `add cash stock [shares] ${ticker} or remove cash stock ${ticker}`;
-    }
-    const hintLadder = document.getElementById('hintLadderExit');
-    if (hintLadder) {
-      hintLadder.textContent = `sell [shares] ${ticker} for ${priceText} today and [shares] for [price] in 7 days`;
-    }
-    const hintComp = document.getElementById('hintExitComparison');
-    if (hintComp) {
-      hintComp.textContent = `sell today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`;
-    }
-    const hintQuote = document.getElementById('hintLiveQuote');
-    if (hintQuote) {
-      hintQuote.textContent = `quote ${ticker} or what's the current ${ticker} price?`;
-    }
-    const hintClose = document.getElementById('hintClosePosition');
-    if (hintClose) {
-      hintClose.textContent = `sold all ${ticker} for ${priceText}`;
-    }
-  }, [ticker, priceText, comparisonPriceText]);
-
+  // Portfolio-level quick actions when on COMBINED or BALANCE tab
   if (!position) {
+    const globalActions: QuickActionItem[] = [
+      {
+        text: '↻ Refresh Quotes',
+        command: 'refresh',
+        instant: true,
+        color: 'text-amber-300 border-amber-900/70 hover:bg-amber-950/60',
+        title: 'Fetch live quotes for all tracked holdings immediately'
+      },
+      {
+        text: '+ Buy Position…',
+        command: 'bought [shares] [TICKER] for [price], pt [target]',
+        color: 'text-emerald-300 border-emerald-900/70 hover:bg-emerald-950/60',
+        title: 'Log a new margin tranche with an optional price target'
+      },
+      {
+        text: 'Set Cash…',
+        command: 'balance [amount]',
+        color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/60',
+        title: 'Set positive free cash cushion'
+      },
+      {
+        text: 'Set Debt…',
+        command: 'debt [amount]',
+        color: 'text-rose-300 border-rose-900/70 hover:bg-rose-950/60',
+        title: 'Set margin debt balance'
+      },
+      {
+        text: '+ Cash Stock…',
+        command: 'add cash stock [shares] [TICKER] at [price]',
+        color: 'text-purple-300 border-purple-900/70 hover:bg-purple-950/60',
+        title: 'Add non-margin collateral stock to Cash Cushion'
+      },
+      {
+        text: '? Help',
+        command: 'help',
+        instant: true,
+        color: 'text-slate-300 border-slate-700 hover:bg-slate-800',
+        title: 'Print all local CLI commands'
+      }
+    ];
+
     return (
       <>
-        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-          Quick actions
+        <span class="text-[10px] font-bold font-mono uppercase tracking-wider text-slate-400 bg-slate-900/90 border border-slate-800 px-2 py-0.5 rounded">
+          Portfolio Actions
         </span>
-        <span class="text-[10px] text-slate-500">
-          Examples use [TICKER]; select a margin holding to use its tracked price.
-        </span>
+        {globalActions.map((action) => (
+          <button
+            key={action.text}
+            type="button"
+            title={action.title}
+            onClick={() =>
+              prefillTerminalInput(action.command, action.selectText, action.instant, onExecuteCommand)
+            }
+            class={`rounded border bg-slate-900/90 px-2.5 py-1 text-[10px] font-mono font-bold transition active:scale-95 ${action.color}`}
+          >
+            {action.text}
+          </button>
+        ))}
       </>
     );
   }
 
-  const actions: QuickActionItem[] = [
+  // Ticker-specific quick actions when a position tab is selected
+  const tickerActions: QuickActionItem[] = [
     {
-      text: 'Quote',
+      text: '⚡ Quote',
       command: `quote ${position.ticker}`,
-      color: 'text-amber-300 border-amber-900/70 hover:bg-amber-950/50'
+      instant: true,
+      color: 'text-amber-300 border-amber-900/70 hover:bg-amber-950/60',
+      title: `Immediately pull latest quote for ${position.ticker}`
     },
     {
-      text: 'Buy…',
+      text: '+ Buy…',
       command: `bought [shares] ${position.ticker} for ${priceText}`,
-      color: 'text-emerald-300 border-emerald-900/70 hover:bg-emerald-950/50'
+      color: 'text-emerald-300 border-emerald-900/70 hover:bg-emerald-950/60',
+      title: `Add shares to ${position.ticker}`
     },
     {
-      text: 'Sell part…',
+      text: '− Sell Part…',
       command: `sold [shares] ${position.ticker} for ${priceText}`,
-      color: 'text-rose-300 border-rose-900/70 hover:bg-rose-950/50'
+      color: 'text-rose-300 border-rose-900/70 hover:bg-rose-950/60',
+      title: `Sell partial shares of ${position.ticker}`
     },
     {
-      text: 'Sell all…',
+      text: '× Sell All…',
       command: `sold all ${position.ticker} for ${priceText}`,
-      color: 'text-rose-300 border-rose-900/70 hover:bg-rose-950/50'
+      selectText: priceText,
+      color: 'text-rose-300 border-rose-900/70 hover:bg-rose-950/60',
+      title: `Close entire ${position.ticker} position`
     },
     {
-      text: 'Compare exits…',
-      command: `sell today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`,
+      text: '⇄ Compare Exits…',
+      command: `sell ${position.ticker} today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`,
       selectText: comparisonPriceText,
-      color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/50'
+      color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/60',
+      title: 'Compare net profit after margin carry between selling today vs waiting'
     },
     {
-      text: 'Set target…',
-      command: `set ${position.ticker} PT to [price]`,
-      color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/50'
+      text: '🪜 Ladder…',
+      command: `ladder ${position.ticker} ${priceText}, ${comparisonPriceText}`,
+      selectText: comparisonPriceText,
+      color: 'text-purple-300 border-purple-900/70 hover:bg-purple-950/60',
+      title: 'Simulate scaling out across multiple price targets'
+    },
+    {
+      text: '◎ Target…',
+      command: `target ${position.ticker} ${targetPrice}`,
+      selectText: targetPrice,
+      color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/60',
+      title: `Update ${position.ticker} price target`
     }
   ];
 
-  const handleActionClick = (action: QuickActionItem) => {
-    const input = document.getElementById('cmdInput') as HTMLInputElement | null;
-    if (!input) return;
-    input.value = action.command;
-    input.focus();
-
-    if (action.selectText) {
-      const selectionStart = action.command.lastIndexOf(action.selectText);
-      input.setSelectionRange(selectionStart, selectionStart + action.selectText.length);
-    } else if (action.command.includes('[')) {
-      const selectionStart = action.command.indexOf('[');
-      const selectionEnd = action.command.indexOf(']', selectionStart) + 1;
-      input.setSelectionRange(selectionStart, selectionEnd);
-    } else {
-      input.setSelectionRange(input.value.length, input.value.length);
-    }
-  };
-
   return (
     <>
-      <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-        {position.ticker} · {formatUSD(position.shares)} shares
+      <span class="text-[10px] font-bold font-mono uppercase tracking-wider text-emerald-400 bg-emerald-950/30 border border-emerald-900/60 px-2 py-0.5 rounded">
+        {position.ticker} · {formatUSD(position.shares)} sh
       </span>
-      {actions.map((action) => (
+      {tickerActions.map((action) => (
         <button
           key={action.text}
           type="button"
-          onClick={() => handleActionClick(action)}
-          class={`rounded border bg-slate-900 px-2.5 py-1 text-[10px] font-bold transition ${action.color}`}
+          title={action.title}
+          onClick={() =>
+            prefillTerminalInput(action.command, action.selectText, action.instant, onExecuteCommand)
+          }
+          class={`rounded border bg-slate-900/90 px-2.5 py-1 text-[10px] font-mono font-bold transition active:scale-95 ${action.color}`}
         >
           {action.text}
         </button>
