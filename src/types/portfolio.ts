@@ -2,9 +2,40 @@ export interface Tranche {
   id: string;
   shares: number;
   entryPrice: number;
-  purchaseDate: string; // YYYY-MM-DD
+  purchaseDate: string;
   targetPrice?: number;
   notes?: string;
+}
+
+export interface TrancheItem {
+  qty: number;
+  price: number;
+  date?: string;
+  acquiredAt?: number;
+  buyCommission?: number;
+}
+
+export interface QuoteDetails {
+  change?: number;
+  changePercent?: number;
+  high?: number;
+  low?: number;
+  marketState?: string;
+  price?: number;
+  [key: string]: any;
+}
+
+export interface PositionRecord {
+  ticker: string;
+  shares: number;
+  currentPrice: number;
+  pt: number;
+  commBuy: number;
+  startDate?: string;
+  tranches?: TrancheItem[];
+  quoteUpdatedAt?: number;
+  quoteSource?: string;
+  quoteDetails?: QuoteDetails;
 }
 
 export interface Holding {
@@ -27,28 +58,72 @@ export interface CashStock {
   currentPrice?: number;
 }
 
+export interface CashStockHolding {
+  ticker: string;
+  shares: number | string;
+  price?: number | string;
+  currentPrice?: number | string;
+  quoteUpdatedAt?: number;
+  quoteSource?: string;
+  quoteDetails?: QuoteDetails;
+}
+
+export interface CashCushionState {
+  freeCash: number | string;
+  holdings: CashStockHolding[];
+}
+
 export interface ClosedTrade {
-  id: string;
+  id?: string;
   ticker: string;
   shares: number;
-  entryPrice: number;
-  exitPrice: number;
-  purchaseDate: string;
-  exitDate: string;
-  netRealizedGain: number;
-  totalCommissions: number;
+  entryPrice?: number;
+  exitPrice?: number;
+  purchaseDate?: string;
+  exitDate?: string;
+  date?: number | string;
+  netProfit?: number;
+  netRealizedGain?: number;
+  feesAndCommissions?: number;
+  totalCommissions?: number;
   holdingDays?: number;
 }
 
 export interface BrokerAssumptions {
-  annualBorrowRate: number; // e.g. 0.0825
+  annualBorrowRate: number;
   dayCountBasis: 360 | 365;
-  dailyRolloverCutoffArmenia: string; // e.g. "23:00"
-  maintenanceEquityRatio: number; // e.g. 0.25
-  stopOutRatio: number; // e.g. 0.15
+  dailyRolloverCutoffArmenia: string;
+  maintenanceEquityRatio: number;
+  stopOutRatio: number;
   commissionMin: number;
   commissionPerShare: number;
   commissionRatePct: number;
+  annualRate?: number;
+  maintenanceMarginRatio?: number;
+  commPerShare?: number;
+  commVolumePct?: number;
+  minCommOrder?: number;
+}
+
+export interface BrokerRules {
+  broker?: string;
+  annualRate: number;
+  dayCountBasis: number;
+  rolloverHour?: number;
+  rolloverMinute?: number;
+  rolloverTimeZone?: string;
+  maintenanceMarginRatio: number;
+  stopOutRatio: number;
+  commPerShare?: number;
+  commVolumePct?: number;
+  minCommOrder?: number;
+  annualBorrowRate?: number;
+  dailyRolloverCutoffArmenia?: string;
+  maintenanceEquityRatio?: number;
+  commissionMin?: number;
+  commissionPerShare?: number;
+  commissionRatePct?: number;
+  [key: string]: any;
 }
 
 export interface ApiKeys {
@@ -66,17 +141,33 @@ export interface PendingMutation {
   description: string;
   payload?: unknown;
   timestamp?: number;
+  commit?: () => void;
+  rollback?: () => void;
 }
 
 export interface PortfolioState {
+  // Active runtime properties (used by app.ts & renderBoard.ts)
+  positions: Record<string, PositionRecord>;
+  cashCushion: CashCushionState;
+  balance: number;
+  realizedMarginCharged: number;
+  tranches?: TrancheItem[];
+  startDate?: string;
+  activeView: string;
+  closedTrades: ClosedTrade[];
+  brokerAssumptions: BrokerRules;
+  lastRolloverTimestamp?: number;
+  lastUpdated?: number;
+  gatewaySecret?: string;
+
+  // Store & Preact bridge properties
   cashBalance: number;
   holdings: Holding[];
   cashStocks?: CashStock[];
-  closedTrades: ClosedTrade[];
-  brokerAssumptions: BrokerAssumptions;
   apiKeys: ApiKeys;
   selectedTicker?: string | null;
   autoRefreshInterval?: number;
   pendingMutation?: PendingMutation | null;
-  lastUpdated?: number;
 }
+
+export type BoardState = Partial<PortfolioState>;

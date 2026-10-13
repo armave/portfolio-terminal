@@ -1,25 +1,47 @@
-import { PortfolioState, Tranche, BrokerAssumptions } from '../types/portfolio';
+import {
+  PortfolioState,
+  Tranche,
+  Holding,
+  BrokerRules,
+  ApiKeys,
+  PendingMutation
+} from '../types/portfolio';
 import { StorageService } from '../services/storage';
 
-export const DEFAULT_BROKER_ASSUMPTIONS: BrokerAssumptions = {
-  annualBorrowRate: 0.0825,
-  dayCountBasis: 360,
-  dailyRolloverCutoffArmenia: '23:00',
-  maintenanceEquityRatio: 0.25,
-  stopOutRatio: 0.15,
-  commissionMin: 1.0,
-  commissionPerShare: 0.005,
-  commissionRatePct: 0.001
+export const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
+  broker: 'Freedom Broker Armenia (Tradernet)',
+  annualRate: 0.15,
+  annualBorrowRate: 0.15,
+  dayCountBasis: 365,
+  rolloverHour: 4,
+  rolloverMinute: 0,
+  rolloverTimeZone: 'Asia/Yerevan',
+  dailyRolloverCutoffArmenia: '04:00',
+  maintenanceMarginRatio: 0.10,
+  maintenanceEquityRatio: 0.10,
+  stopOutRatio: 0.00,
+  commPerShare: 0.012,
+  commVolumePct: 0.0012,
+  minCommOrder: 1.20,
+  commissionMin: 1.20,
+  commissionPerShare: 0.012,
+  commissionRatePct: 0.0012
 };
 
 export const INITIAL_STATE: PortfolioState = {
+  positions: {},
+  cashCushion: { freeCash: 0, holdings: [] },
+  balance: 0,
+  realizedMarginCharged: 0,
+  activeView: 'COMBINED',
   cashBalance: 0,
   holdings: [],
   closedTrades: [],
   cashStocks: [],
   brokerAssumptions: DEFAULT_BROKER_ASSUMPTIONS,
   apiKeys: {},
-  autoRefreshInterval: 0,
+  selectedTicker: null,
+  autoRefreshInterval: 60000,
   pendingMutation: null
 };
 
@@ -30,11 +52,19 @@ class Store {
   private listeners: Set<Listener> = new Set();
 
   constructor() {
-    const loaded = StorageService.loadLocal(INITIAL_STATE) as PortfolioState;
+    const loaded = StorageService.loadLocal(INITIAL_STATE) as Partial<PortfolioState>;
     this.state = {
       ...INITIAL_STATE,
       ...loaded,
-      brokerAssumptions: { ...DEFAULT_BROKER_ASSUMPTIONS, ...(loaded.brokerAssumptions || {}) }
+      positions: loaded.positions || {},
+      cashCushion: loaded.cashCushion || { freeCash: 0, holdings: [] },
+      holdings: loaded.holdings || [],
+      closedTrades: loaded.closedTrades || [],
+      brokerAssumptions: {
+        ...DEFAULT_BROKER_ASSUMPTIONS,
+        ...(loaded.brokerAssumptions || {})
+      },
+      apiKeys: loaded.apiKeys || {}
     };
   }
 
@@ -49,18 +79,28 @@ class Store {
   }
 
   private notify(): void {
-    StorageService.saveLocal(this.state);
+    StorageService.saveLocal(this.state as any);
     for (const listener of this.listeners) {
       listener(this.state);
     }
   }
 
   public setCashBalance(cashBalance: number): void {
-    this.state = { ...this.state, cashBalance };
+    const freeCash = Math.max(0, cashBalance);
+    const balance = Math.min(0, cashBalance);
+    this.state = {
+      ...this.state,
+      cashBalance,
+      balance,
+      cashCushion: {
+        ...(this.state.cashCushion || { holdings: [] }),
+        freeCash
+      }
+    };
     this.notify();
   }
 
-  public updateAssumptions(assumptions: Partial<BrokerAssumptions>): void {
+  public updateAssumptions(assumptions: Partial<BrokerRules>): void {
     this.state = {
       ...this.state,
       brokerAssumptions: { ...this.state.brokerAssumptions, ...assumptions }
@@ -69,7 +109,11 @@ class Store {
   }
 
   public setSelectedTicker(ticker: string | null): void {
-    this.state = { ...this.state, selectedTicker: ticker };
+    this.state = {
+      ...this.state,
+      selectedTicker: ticker,
+      activeView: ticker || 'COMBINED'
+    };
     this.notify();
   }
 
@@ -80,7 +124,7 @@ class Store {
       id: Math.random().toString(36).substring(2, 9)
     };
 
-    const existingIndex = this.state.holdings.findIndex((h) => h.ticker === symbol);
+    const existingIndex = this.state.holdings.findIndex((h: Holding) => h.ticker === symbol);
     const updatedHoldings = [...this.state.holdings];
 
     if (existingIndex > -1) {
@@ -106,18 +150,18 @@ class Store {
     this.state = {
       ...this.state,
       holdings: this.state.holdings
-        .map((h) => {
+        .map((h: Holding) => {
           if (h.ticker !== symbol) return h;
-          return { ...h, tranches: h.tranches.filter((t) => t.id !== trancheId) };
+          return { ...h, tranches: h.tranches.filter((t: Tranche) => t.id !== trancheId) };
         })
-        .filter((h) => h.tranches.length > 0)
+        .filter((h: Holding) => h.tranches.length > 0)
     };
     this.notify();
   }
 
   public sellTranche(ticker: string, sharesToSell: number, exitPrice: number, exitDate: string): void {
     const symbol = ticker.toUpperCase();
-    const holding = this.state.holdings.find(h => h.ticker === symbol);
+    const holding = this.state.holdings.find((h: Holding) => h.ticker === symbol);
     if (!holding) return;
 
     let remainingToSell = sharesToSell;
@@ -159,8 +203,8 @@ class Store {
       ...this.state,
       cashBalance: this.state.cashBalance + grossProceeds,
       holdings: this.state.holdings
-        .map(h => h.ticker === symbol ? { ...h, tranches: newTranches } : h)
-        .filter(h => h.tranches.length > 0),
+        .map((h: Holding) => (h.ticker === symbol ? { ...h, tranches: newTranches } : h))
+        .filter((h: Holding) => h.tranches.length > 0),
       closedTrades: [closedRecord, ...this.state.closedTrades]
     };
     this.notify();
@@ -168,26 +212,35 @@ class Store {
 
   public updatePrice(ticker: string, price: number): void {
     const symbol = ticker.toUpperCase();
+    const nextPositions = { ...this.state.positions };
+    if (nextPositions[symbol]) {
+      nextPositions[symbol] = { ...nextPositions[symbol], currentPrice: price };
+    }
+
     this.state = {
       ...this.state,
-      holdings: this.state.holdings.map((h) =>
+      positions: nextPositions,
+      holdings: this.state.holdings.map((h: Holding) =>
         h.ticker === symbol ? { ...h, currentPrice: price } : h
       )
     };
     this.notify();
   }
 
-  public setPendingMutation(mutation: any | null): void {
+  public setPendingMutation(mutation: PendingMutation | null): void {
     this.state = { ...this.state, pendingMutation: mutation };
     this.notify();
   }
 
-  public setApiKey(provider: keyof PortfolioState['apiKeys'], key: string): void {
-    this.state = { ...this.state, apiKeys: { ...this.state.apiKeys, [provider]: key } };
+  public setApiKey(provider: keyof ApiKeys, key: string): void {
+    this.state = {
+      ...this.state,
+      apiKeys: { ...this.state.apiKeys, [provider]: key }
+    };
     this.notify();
   }
 
-  public importState(newState: PortfolioState): void {
+  public importState(newState: Partial<PortfolioState>): void {
     this.state = { ...this.state, ...newState };
     this.notify();
   }
