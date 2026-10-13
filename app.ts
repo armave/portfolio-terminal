@@ -59,6 +59,7 @@ import {
 import { portfolioStore } from './src/store/portfolioStore';
 import { BoardExternalLinks } from './src/components/BoardExternalLinks';
 import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
+import { InsightSection, MarketInsightsPanel } from './src/components/MarketInsightsPanel';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -86,7 +87,6 @@ let lastRenderedDeskView: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
 let marketInsightsOpen = false;
 let activeInsightSection = 'news';
-let loadedInsightTicker = '';
 let insightRequestId = 0;
 const boardAnalystSnapshots = new Map<string, any>();
 const boardAnalystErrors = new Map<string, any>();
@@ -618,6 +618,30 @@ export function renderBoard() {
   });
 }
 
+function renderMarketInsightsComponent() {
+  const panel = document.getElementById('marketInsightsPanel');
+  if (!panel) return;
+  const ticker = getMarketInsightsTicker();
+
+  render(
+    h(MarketInsightsPanel, {
+      ticker,
+      isOpen: marketInsightsOpen && Boolean(ticker),
+      activeSection: activeInsightSection as InsightSection,
+      refreshTrigger: insightRequestId,
+      onSelectSection: (section: InsightSection) => {
+        activeInsightSection = section;
+        renderMarketInsightsComponent();
+      },
+      onClose: () => {
+        marketInsightsOpen = false;
+        syncMarketInsightsPanel();
+      }
+    }),
+    panel
+  );
+}
+
 function getMarketInsightsTicker() {
   const currentView = state.activeView;
   if (currentView && currentView !== 'COMBINED' && currentView !== 'CASH_CUSHION') {
@@ -640,26 +664,17 @@ function syncMarketInsightsPanel() {
 
   if (!ticker) {
     marketInsightsOpen = false;
-    loadedInsightTicker = '';
     return;
   }
 
-  const tickerBadge = document.getElementById('marketInsightsTicker');
-  if (tickerBadge) tickerBadge.textContent = `· ${ticker}`;
-
-  if (marketInsightsOpen && loadedInsightTicker !== ticker) {
-    loadedInsightTicker = ticker;
-    loadMarketInsight(activeInsightSection);
-  }
+  renderMarketInsightsComponent();
 }
 
 export function toggleMarketInsights() {
   const ticker = getMarketInsightsTicker();
   if (!ticker) return;
-  const tickerWasLoaded = loadedInsightTicker === ticker;
   marketInsightsOpen = !marketInsightsOpen;
   syncMarketInsightsPanel();
-  if (marketInsightsOpen && tickerWasLoaded) loadMarketInsight(activeInsightSection);
 }
 
 export function renderCashCushionPanel() {
@@ -830,152 +845,10 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
   boardAnalystRequests.set(ticker, request);
 }
 
-export async function loadMarketInsight(section: string, _force = false) {
-  const ticker = getMarketInsightsTicker();
-  const content = document.getElementById('marketInsightsContent');
-  const tickerBadge = document.getElementById('marketInsightsTicker');
-
-  if (!content) return;
-
-  const currentRequestId = ++insightRequestId;
-
-  if (!ticker) {
-    content.innerHTML = '<div class="py-4 text-center text-xs text-slate-500">Select a margin position to load its market insights.</div>';
-    return;
-  }
-
+export async function loadMarketInsight(section: string, force = false) {
   activeInsightSection = section;
-  if (tickerBadge) tickerBadge.textContent = `· ${ticker}`;
-
-  document.querySelectorAll<HTMLElement>('[data-insight]').forEach(button => {
-    const selected = button.dataset.insight === section;
-    button.className = `insight-tab whitespace-nowrap rounded px-3 py-1.5 text-[10px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 ${selected ? 'bg-cyan-400 text-slate-950 shadow-sm shadow-cyan-950' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'}`;
-    button.setAttribute('aria-selected', String(selected));
-    button.tabIndex = selected ? 0 : -1;
-  });
-
-  content.innerHTML = '<div class="py-4 text-center text-xs text-slate-500 font-mono animate-pulse">Loading live data...</div>';
-
-  try {
-    if (section === 'news') {
-      const news = await proxyFetch('news', { symbol: ticker }, { method: 'POST' });
-
-      if (currentRequestId !== insightRequestId) return;
-
-      if (!Array.isArray(news) || news.length === 0) {
-        content.innerHTML = '<div class="py-3 text-slate-500 text-xs">No recent news found.</div>';
-        return;
-      }
-
-      content.innerHTML = '<div class="space-y-2 mt-2">' + news.slice(0, 5).map((n: any) => `
-        <a href="${n.url}" target="_blank" rel="noopener noreferrer" class="block bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition">
-          <div class="text-[10px] text-cyan-400 mb-1">${new Date(n.datetime * 1000).toLocaleDateString()} · ${n.source || 'News'}</div>
-          <div class="text-slate-200 text-xs font-semibold leading-snug">${n.headline}</div>
-        </a>
-      `).join('') + '</div>';
-      return;
-    }
-
-    const data = await proxyFetch('', { symbol: ticker }, { method: 'POST' });
-
-    if (currentRequestId !== insightRequestId) return;
-
-    if (section === 'fundamentals') {
-      const val = data.valuation || {};
-      const fh = data.financialHealth || {};
-
-      content.innerHTML = `
-        <div class="p-3 bg-slate-950/60 rounded border border-slate-800 space-y-3 font-mono text-xs mt-2">
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Trailing P/E</span>
-              <span class="text-white font-bold">${val.peTrailing ? Number(val.peTrailing).toFixed(2) : '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Forward P/E</span>
-              <span class="text-white font-bold">${val.peForward ? Number(val.peForward).toFixed(2) : '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">PEG Ratio</span>
-              <span class="text-white font-bold">${val.pegRatio ?? '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Short % Float</span>
-              <span class="text-amber-400 font-bold">${val.shortPercentOfFloat ?? '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Profit Margin</span>
-              <span class="text-white font-bold">${fh.profitMargin ?? '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">ROE</span>
-              <span class="text-white font-bold">${fh.returnOnEquity ?? '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Price to Book</span>
-              <span class="text-white font-bold">${val.priceToBook ?? '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Total Debt</span>
-              <span class="text-rose-400 font-bold">${fh.totalDebt ? '$' + (fh.totalDebt / 1e9).toFixed(2) + 'B' : '—'}</span>
-            </div>
-          </div>
-        </div>
-      `;
-    } else if (section === 'analysts') {
-      const t = data.analystTargets || {};
-      const upDown = data.upgradesDowngrades || [];
-
-      const udHtml = upDown.length > 0
-        ? upDown.slice(0, 4).map((u: any) => `
-            <div class="flex justify-between items-center border-b border-slate-800/60 py-1.5 last:border-0">
-              <span class="text-slate-300">${u.firm}</span>
-              <span class="text-[10px] font-bold ${u.action === 'up' ? 'text-emerald-400' : u.action === 'down' ? 'text-rose-400' : 'text-cyan-400'}">${(u.action || '').toUpperCase()}: ${u.fromGrade || ''} ➝ ${u.toGrade || ''}</span>
-            </div>`).join('')
-        : '<div class="text-slate-500">No recent actions</div>';
-
-      content.innerHTML = `
-        <div class="p-3 bg-slate-950/60 rounded border border-slate-800 space-y-3 font-mono text-xs mt-2">
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 border-b border-slate-800/60 pb-3">
-            <div><span class="text-slate-500 block text-[10px]">Mean Target</span><span class="text-emerald-400 font-bold">$${t.mean ? t.mean.toFixed(2) : '—'}</span></div>
-            <div><span class="text-slate-500 block text-[10px]">High Target</span><span class="text-emerald-400 font-bold">$${t.high ? t.high.toFixed(2) : '—'}</span></div>
-            <div><span class="text-slate-500 block text-[10px]">Low Target</span><span class="text-rose-400 font-bold">$${t.low ? t.low.toFixed(2) : '—'}</span></div>
-            <div><span class="text-slate-500 block text-[10px]">Consensus</span><span class="text-cyan-300 font-bold uppercase">${t.consensusRecommendation || '—'}</span></div>
-          </div>
-          <div>
-            <span class="text-[10px] text-slate-500 uppercase block mb-2">Recent Firm Actions</span>
-            ${udHtml}
-          </div>
-        </div>
-      `;
-    } else if (section === 'earnings') {
-      const cal = data.calendar || {};
-      const eh = data.earningsHistory || [];
-
-      const ehHtml = eh.length > 0
-        ? eh.map((e: any) => `
-            <div class="flex justify-between items-center border-b border-slate-800/60 py-1.5 last:border-0">
-              <span class="text-slate-300 font-bold">${e.quarter}</span>
-              <span class="text-[10px]">Est: ${e.epsEstimate} | Act: <span class="${e.epsDifference >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-bold">${e.epsActual}</span> (${e.surprisePercent})</span>
-            </div>`).join('')
-        : '<div class="text-slate-500">No recent earnings history</div>';
-
-      content.innerHTML = `
-        <div class="p-3 bg-slate-950/60 rounded border border-slate-800 space-y-3 font-mono text-xs mt-2">
-          <div class="bg-slate-900/70 p-2.5 rounded border border-slate-800/80 mb-3">
-            <span class="text-[10px] text-slate-500 uppercase block">Next Earnings Date</span>
-            <span class="text-purple-300 font-bold text-sm">${cal.earningsDate || 'TBD'}</span>
-          </div>
-          <div>
-            <span class="text-[10px] text-slate-500 uppercase block mb-2">Past Earnings Surprises</span>
-            ${ehHtml}
-          </div>
-        </div>
-      `;
-    }
-  } catch (err: any) {
-    content.innerHTML = `<div class="py-3 text-rose-400 text-xs">Failed to load insights: ${err.message}</div>`;
-  }
+  if (force) insightRequestId++;
+  renderMarketInsightsComponent();
 }
 
 export function refreshMarketInsight() {
