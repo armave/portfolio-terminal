@@ -546,7 +546,7 @@ export function renderBoard(state, options = {}) {
     onSyncMarketInsightsPanel,
     refreshIntervalMs = 60000,
     lastDeskView = null,
-    onUpdateLastDeskView = () => {}
+    onUpdateLastDeskView = () => { }
   } = options;
 
   const tickers = Object.keys(state.positions || {});
@@ -555,6 +555,8 @@ export function renderBoard(state, options = {}) {
 
   const isCushionActive = state.activeView === "CASH_CUSHION" || state.activeView === "BALANCE";
   const isClosedHistoryActive = state.activeView === "CLOSED_HISTORY";
+  const isSettingsActive = state.activeView === "SETTINGS";
+
   const emptyPanel = document.getElementById('emptyStatePanel');
   if (emptyPanel) {
     emptyPanel.classList.toggle('hidden', !(tickers.length === 0 && !isCushionActive && !isClosedHistoryActive));
@@ -562,20 +564,20 @@ export function renderBoard(state, options = {}) {
 
   if (tabsContainer) {
     if (tickers.length === 0) {
-      if (!isCushionActive && !isClosedHistoryActive) state.activeView = "COMBINED";
+      if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) state.activeView = "COMBINED";
       const emptyLabel = document.createElement('span');
       emptyLabel.className = "text-xs font-bold text-slate-500 uppercase tracking-wider";
       emptyLabel.innerText = "NO ACTIVE TRADES";
       tabsContainer.appendChild(emptyLabel);
     } else if (tickers.length === 1) {
-      if (!isCushionActive && !isClosedHistoryActive) state.activeView = tickers[0];
+      if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) state.activeView = tickers[0];
       const btn = document.createElement('button');
       btn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0] ? 'bg-emerald-600 text-black' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`;
       btn.innerText = `MARGIN: ${tickers[0]}`;
       btn.onclick = () => onSetActiveView?.(tickers[0]);
       tabsContainer.appendChild(btn);
     } else {
-      if (!isCushionActive && !isClosedHistoryActive && state.activeView !== "COMBINED" && !state.positions[state.activeView]) {
+      if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive && state.activeView !== "COMBINED" && !state.positions[state.activeView]) {
         state.activeView = "COMBINED";
       }
 
@@ -611,16 +613,28 @@ export function renderBoard(state, options = {}) {
     if (closedTradesCount) {
       closedTradesCount.textContent = `${closedTrades.length} realized exit${closedTrades.length === 1 ? '' : 's'}`;
     }
+
+    const settingsBtn = document.createElement('button');
+    settingsBtn.className = isSettingsActive
+      ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
+      : 'px-3 py-1.5 rounded text-xs font-bold bg-blue-300 text-wite-300 border border-slate-700 hover:bg-slate-800 transition';
+    settingsBtn.id = 'settingsBtn';
+    settingsBtn.innerHTML = `<span>⚙️ SETTINGS</span>`;
+    settingsBtn.onclick = () => switchView("SETTINGS");
+    tabsContainer.appendChild(settingsBtn);
   }
 
   const mainDesk = document.getElementById('mainDeskContainer');
   const cushionDesk = document.getElementById('cashCushionContainer');
   const closedHistoryDesk = document.getElementById('closedHistoryContainer');
+  const settingsDesk = document.getElementById('settings');
+
   let activeDesk;
   let activeDeskView;
 
   if (isCushionActive) {
     mainDesk?.classList.add('hidden');
+    settingsDesk?.classList.add('hidden');
     cushionDesk?.classList.remove('hidden');
     closedHistoryDesk?.classList.add('hidden');
     renderCashCushion(state, { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs });
@@ -629,14 +643,24 @@ export function renderBoard(state, options = {}) {
   } else if (isClosedHistoryActive) {
     mainDesk?.classList.add('hidden');
     cushionDesk?.classList.add('hidden');
+    settingsDesk?.classList.add('hidden');
     closedHistoryDesk?.classList.remove('hidden');
     onRenderClosedHistory?.();
     activeDesk = closedHistoryDesk;
     activeDeskView = 'CLOSED_HISTORY';
-  } else {
+  } else if (isSettingsActive) {
+    mainDesk?.classList.add('hidden');
+    cushionDesk?.classList.add('hidden');
+    closedHistoryDesk?.classList.add('hidden');
+    activeDesk = settingsDesk;
+    activeDeskView = 'SETTINGS';
+    settingsDesk.classList.remove('hidden');
+  }
+  else {
     mainDesk?.classList.remove('hidden');
     cushionDesk?.classList.add('hidden');
     closedHistoryDesk?.classList.add('hidden');
+    settingsDesk?.classList.add('hidden');
 
     renderSummaryCards(state, { rules, onRenderAnalystConsensus, refreshIntervalMs });
     activeDesk = mainDesk;
