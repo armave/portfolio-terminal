@@ -19,9 +19,9 @@
         <h2 class="text-sm font-bold text-emerald-400 tracking-wider uppercase">Gateway Authentication</h2>
         <p class="text-xs text-slate-400">Enter Gateway Secret to unlock the terminal and sync data.</p>
       </div>
-      <form class="flex flex-col sm:flex-row gap-2 pt-2">
-        <input type="password" id="gatewaySecretInput" autocomplete="off" autocapitalize="off" autocorrect="off"
-          spellcheck="false" placeholder="Enter Gateway Secret" autocomplete="current-password" required=""
+      <form class="flex flex-col sm:flex-row gap-2 pt-2" onsubmit="return false;">
+        <input type="password" id="gatewaySecretInput" autocomplete="current-password" autocapitalize="off"
+          autocorrect="off" spellcheck="false" placeholder="Enter Gateway Secret" required
           class="flex-1 bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
         <button id="authSaveButton" type="submit"
           class="bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-4 py-2 rounded transition">
@@ -30,9 +30,10 @@
       </form>
     </div>
   </div>
+
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-  <div class="max-w-6xl mx-auto">
+  <div id="root" class="max-w-6xl mx-auto">
 
     <!-- Active Position Header Panel -->
     <div id="mainTerminalView" class="border-card p-4 sm:p-6 rounded-xl space-y-2 max-w-6xl mx-auto mt-10">
@@ -55,21 +56,21 @@
               </p>
             </div>
             <div class="flex flex-wrap gap-2">
-              <button onclick="
+              <button type="button" onclick="
                   document.getElementById('cmdInput').value = 'bought [shares] [TICKER] for [price]';
                   document.getElementById('cmdInput').focus();
                 "
                 class="bg-emerald-600 hover:bg-emerald-500 text-black text-[11px] font-bold px-3 py-1.5 rounded transition">
                 Quick Buy
               </button>
-              <button onclick="
+              <button type="button" onclick="
                   document.getElementById('cmdInput').value = 'add cash stock [shares] [TICKER] for [price]';
                   document.getElementById('cmdInput').focus();
                 "
                 class="bg-cyan-700 hover:bg-cyan-600 text-white text-[11px] font-bold px-3 py-1.5 rounded transition">
                 Add Cash Stock
               </button>
-              <button onclick="document.getElementById('importFileInput').click()"
+              <button type="button" onclick="document.getElementById('importFileInput').click()"
                 class="bg-slate-800 hover:bg-slate-700 text-purple-300 text-[11px] font-bold px-3 py-1.5 rounded border border-purple-700 transition">
                 Import Backup
               </button>
@@ -250,7 +251,7 @@
                 placeholder="e.g. sell today for [current price] vs sell 14 days later for [target price]"
                 class="flex-1 bg-slate-900 border border-slate-700 text-xs px-3 py-2 rounded focus:outline-none focus:border-emerald-500 text-white"
                 onkeydown="if (event.key === 'Enter') executeCommand();" />
-              <button onclick="executeCommand()"
+              <button type="button" onclick="executeCommand()"
                 class="bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-4 py-2 rounded transition">
                 Send
               </button>
@@ -328,7 +329,7 @@
                 aria-hidden="true">
                 $
               </span>
-              <input type="number" id="freeCashInput" step="0.01" required="" inputmode="decimal"
+              <input type="number" id="freeCashInput" step="0.01" required inputmode="decimal"
                 aria-label="Signed balance or margin debt in US dollars"
                 title="Positive values are cash balance; negative values are margin debt"
                 class="number-input bg-slate-950 border border-slate-700 text-xs pl-5 pr-2 py-1 rounded w-36 text-right text-emerald-300 font-mono font-bold focus:outline-none focus:border-cyan-500" />
@@ -356,12 +357,12 @@
               <tbody class="border-t border-slate-800 bg-slate-900/30">
                 <tr>
                   <td class="py-2 px-3">
-                    <input type="text" id="newCashTicker" placeholder="TICKER" required=""
-                      aria-label="Stock ticker symbol" autocomplete="off" autocapitalize="characters"
+                    <input type="text" id="newCashTicker" placeholder="TICKER" required aria-label="Stock ticker symbol"
+                      autocomplete="off" autocapitalize="characters"
                       class="bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-full min-w-0 uppercase focus:outline-none focus:border-cyan-500" />
                   </td>
                   <td class="py-2 px-3 text-right">
-                    <input type="number" id="newCashShares" placeholder="Shares" min="0.01" step="0.01" required=""
+                    <input type="number" id="newCashShares" placeholder="Shares" min="0.01" step="0.01" required
                       inputmode="decimal" aria-label="Number of shares"
                       class="number-input bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-full min-w-0 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500" />
                   </td>
@@ -443,19 +444,20 @@
             <input id="headerGatewaySecretInput" type="password" placeholder="Gateway Secret..." autocomplete="off"
               class="w-36 h-8 bg-slate-800 text-slate-200 border border-slate-700 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500" />
           </div>
-          <button id="toggleHeaderCredentialsButton" onclick="toggleHeaderCredentialsVisibility()" aria-expanded="true"
+          <button id="toggleHeaderCredentialsButton" type="button" onclick="toggleHeaderCredentialsVisibility()"
+            aria-expanded="true"
             class="hidden h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
             title="Hide credential inputs">
             Hide keys
           </button>
           <div id="headerCredentialsActions" class="flex items-center gap-1.5">
-            <button id="saveApiKeysButton" onclick="saveApiKeys()"
+            <button id="saveApiKeysButton" type="button" onclick="saveApiKeys()"
               class="secret-action-btn h-8 bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
               title="Save keys and pull latest cloud state">
               Save
             </button>
           </div>
-          <button onclick="syncCloudState('pull')"
+          <button type="button" onclick="syncCloudState('pull')"
             class="secret-action-btn h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
             title="Force pull cloud data and rewrite local storage">
             <span>☁↓</span>
@@ -475,7 +477,7 @@
               <option value="60000">1 min</option>
             </select>
           </label>
-          <button onclick="exportBackupJSON()"
+          <button type="button" onclick="exportBackupJSON()"
             class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
             title="Export portfolio state to JSON file">
             Export
@@ -486,7 +488,7 @@
             Import
             <input type="file" id="importFileInput" class="hidden" accept=".json" onchange="importBackupJSON(event)" />
           </label>
-          <button onclick="resetToBlankState()"
+          <button type="button" onclick="resetToBlankState()"
             class="h-8 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
             title="Clear all local data and return to blank slate">
             Reset
@@ -501,7 +503,7 @@
             <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
                 Annual margin rate (%)
-                <input id="annualMarginRateInput" type="number" min="0" max="100" step="0.01" required=""
+                <input id="annualMarginRateInput" type="number" min="0" max="100" step="0.01" required
                   inputmode="decimal"
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white" />
               </label>
@@ -515,35 +517,34 @@
               </label>
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
                 Maintenance equity (%)
-                <input id="maintenanceMarginInput" type="number" min="0" max="99.99" step="0.01" required=""
+                <input id="maintenanceMarginInput" type="number" min="0" max="99.99" step="0.01" required
                   inputmode="decimal"
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white" />
               </label>
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
                 Stop-out equity (%)
-                <input id="stopOutRatioInput" type="number" min="0" max="99.99" step="0.01" required=""
-                  inputmode="decimal"
+                <input id="stopOutRatioInput" type="number" min="0" max="99.99" step="0.01" required inputmode="decimal"
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white" />
               </label>
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
                 Rollover time (ARM)
-                <input id="rolloverTimeInput" type="time" required=""
+                <input id="rolloverTimeInput" type="time" required
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white" />
               </label>
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
                 Commission / share ($)
-                <input id="commissionPerShareInput" type="number" min="0" step="0.001" required="" inputmode="decimal"
+                <input id="commissionPerShareInput" type="number" min="0" step="0.001" required inputmode="decimal"
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white" />
               </label>
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
                 Commission by value (%)
-                <input id="commissionVolumeInput" type="number" min="0" max="100" step="0.01" required=""
+                <input id="commissionVolumeInput" type="number" min="0" max="100" step="0.01" required
                   inputmode="decimal"
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white" />
               </label>
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
                 Min comm. / order ($)
-                <input id="minimumCommissionInput" type="number" min="0" step="0.01" required="" inputmode="decimal"
+                <input id="minimumCommissionInput" type="number" min="0" step="0.01" required inputmode="decimal"
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white" />
               </label>
             </div>
@@ -564,7 +565,5 @@
     </div>
   </div>
 </body>
-
-</html>
 
 </html>

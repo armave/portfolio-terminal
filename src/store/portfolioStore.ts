@@ -8,6 +8,8 @@ import {
 } from '../types/portfolio';
 import { StorageService } from '../services/storage';
 
+import { useState, useEffect } from 'preact/hooks';
+
 export const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
   broker: 'Freedom Broker Armenia (Tradernet)',
   annualRate: 0.15,
@@ -244,6 +246,18 @@ class Store {
     this.state = { ...this.state, ...newState };
     this.notify();
   }
+}
+
+export function usePortfolio(): PortfolioState {
+  const [state, setState] = useState<PortfolioState>(portfolioStore.getState());
+
+  useEffect(() => {
+    return portfolioStore.subscribe((next) => {
+      setState({ ...next });
+    });
+  }, []);
+
+  return state;
 }
 
 export const portfolioStore = new Store();

@@ -1,3 +1,6 @@
+import { render, h } from 'preact';
+import { ClosedHistoryDesk } from './src/components/ClosedHistoryDesk';
+
 import {
   calculateBreakevenDays,
   calculateCommission,
@@ -750,67 +753,9 @@ export function renderCashCushionPanel() {
 }
 
 function renderClosedHistoryPanel() {
-  const tableBody = document.getElementById('closedTradesTableBody');
-  if (!tableBody) return;
-  tableBody.innerHTML = '';
-
-  const trades = (state.closedTrades || [])
-    .map((trade: any, index: number) => ({ trade, index }))
-    .sort((a: any, b: any) => Number(b.trade.date) - Number(a.trade.date));
-  trades.forEach(({ trade, index }: any) => {
-    const row = document.createElement('tr');
-    row.className = 'border-b border-slate-800/60 text-slate-300';
-
-    const dateValue = Number(trade.date);
-    const closedDate = new Date(Number.isFinite(dateValue) ? dateValue : Date.parse(trade.date));
-    const dateText = Number.isNaN(closedDate.getTime())
-      ? 'Unknown'
-      : closedDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    const netProfit = Number(trade.netProfit) || 0;
-    const netCell = document.createElement('td');
-    netCell.className = `py-2 px-3 text-right font-bold ${netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
-    netCell.textContent = `${netProfit >= 0 ? '+' : '-'}$${formatUSD(Math.abs(netProfit))}`;
-
-    [
-      { value: trade.ticker || '—', className: 'py-2 px-3 font-bold text-white' },
-      { value: dateText, className: 'py-2 px-3 whitespace-nowrap' },
-      { value: `${formatUSD(trade.shares)} shares`, className: 'py-2 px-3 text-right whitespace-nowrap' },
-      { value: `${Math.max(0, Number(trade.holdingDays) || 0)} days`, className: 'py-2 px-3 text-right whitespace-nowrap' },
-      { value: `$${formatUSD(trade.feesAndCommissions)}`, className: 'py-2 px-3 text-right whitespace-nowrap' }
-    ].forEach(cell => {
-      const element = document.createElement('td');
-      element.className = cell.className;
-      element.textContent = cell.value;
-      row.appendChild(element);
-    });
-    row.appendChild(netCell);
-    const actionsCell = document.createElement('td');
-    actionsCell.className = 'py-2 px-3 text-right';
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'rounded border border-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-400 hover:border-rose-800 hover:text-rose-300';
-    deleteButton.textContent = 'Delete';
-    deleteButton.setAttribute('aria-label', `Delete ${trade.ticker || 'unknown'} closed trade from history`);
-    deleteButton.addEventListener('click', () => deleteClosedTrade(index));
-    actionsCell.appendChild(deleteButton);
-    row.appendChild(actionsCell);
-    tableBody.appendChild(row);
-  });
-
-  document.getElementById('closedTradesEmptyState')?.classList.toggle('hidden', trades.length > 0);
-}
-
-function deleteClosedTrade(index: number) {
-  const trade = state.closedTrades[index];
-  if (!trade) return;
-  if (!confirm(`Delete the ${trade.ticker || 'unknown'} closed trade from history? This cannot be undone.`)) return;
-
-  state.closedTrades.splice(index, 1);
-  saveState(state, pushStateToGist);
-  syncStore();
-  renderBoard();
-  logTerminal(`[History]: Removed the ${trade.ticker || 'unknown'} closed trade from history.`);
-  showToast('Closed trade removed from history.', 'info');
+  const container = document.getElementById('closedHistoryContainer');
+  if (!container) return;
+  render(h(ClosedHistoryDesk, null), container);
 }
 
 export function formatQuoteMetadata(holding: any) {
