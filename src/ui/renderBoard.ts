@@ -1,3 +1,6 @@
+import { render, h } from 'preact';
+import { CashCushionDesk } from '../components/CashCushionDesk';
+
 import {
   calculateAccruedFees,
   calculateCommission,
@@ -397,6 +400,20 @@ export function renderPositionsTable(
 export function renderCashCushion(state: BoardState, options: RenderCashCushionOptions = {}): void {
   const { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs = 60000 } = options;
   if (!state.cashCushion) state.cashCushion = { freeCash: 0.0, holdings: [] };
+
+  const container = document.getElementById('cashCushionContainer');
+  if (container && !document.getElementById('cashBalanceDebtMeta')) {
+    render(
+      h(CashCushionDesk, {
+        onFetchLivePrice,
+        onRemoveCashStock,
+        refreshIntervalMs
+      }),
+      container
+    );
+    return;
+  }
+
   const freeCash = Number(state.cashCushion.freeCash) || 0;
   const marginDebt = Math.abs(Number(state.balance) || 0);
   const signedBalance = freeCash + (Number(state.balance) || 0);
