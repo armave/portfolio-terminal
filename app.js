@@ -1260,11 +1260,11 @@ async function fetchLivePriceFromProviders(symbol) {
       const marketState = data.price?.marketState;
       if (marketState === 'PRE') {
         current = data.price.preMarketPrice ?? data.price.postMarketPrice;
-        change = current - data.current;
+        change = current - data.price.current;
       }
-       else if (marketState === 'POST' || marketState === 'CLOSED') {
+      else if (marketState === 'POST' || marketState === 'CLOSED') {
         current = data.price.postMarketPrice;
-        change = current - data.current;
+        change = current - data.price.current;
       }
 
       quoteDetails = {
@@ -1335,7 +1335,7 @@ async function refreshAllLivePrices() {
       }
 
       const ticker = data.symbol;
-      
+
       let current = data.price.current ?? data.regularMarketPrice ?? data.price;
       let previous = data.price.previousClose ?? data.regularMarketPreviousClose;
       let change = data.price.change ?? data.regularMarketChange ?? (current - previous);
@@ -1343,12 +1343,12 @@ async function refreshAllLivePrices() {
       // "PRE", "REGULAR", "POST", or "CLOSED"
       const marketState = data.price?.marketState;
       if (marketState === 'PRE') {
-          current = data.price.preMarketPrice ?? data.price.postMarketPrice;
-          change = current - data.current;
+        current = data.price.preMarketPrice ?? data.price.postMarketPrice;
+        change = current - data.price.current;
       }
-       else if (marketState === 'POST' || marketState === 'CLOSED') {
-          current = data.price.postMarketPrice;
-          change = current - data.current;
+      else if (marketState === 'POST' || marketState === 'CLOSED') {
+        current = data.price.postMarketPrice;
+        change = current - data.price.current;
       }
 
       const quoteDetails = {
