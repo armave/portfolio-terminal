@@ -19,15 +19,15 @@
         <h2 class="text-sm font-bold text-emerald-400 tracking-wider uppercase">Gateway Authentication</h2>
         <p class="text-xs text-slate-400">Enter Gateway Secret to unlock the terminal and sync data.</p>
       </div>
-      <div class="flex flex-col sm:flex-row gap-2 pt-2">
+      <form class="flex flex-col sm:flex-row gap-2 pt-2">
         <input type="password" id="gatewaySecretInput" placeholder="Enter Gateway Secret"
-          autocomplete="current-password"
+          autocomplete="current-password" required
           class="flex-1 bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
-        <button id="authSaveButton" type="button"
+        <button id="authSaveButton" type="submit"
           class="bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-4 py-2 rounded transition">
           Save
         </button>
-      </div>
+      </form>
     </div>
   </div>
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
@@ -39,15 +39,15 @@
         <div>
           <div class="flex items-center gap-2 flex-wrap">
             <h1 class="text-xl font-bold text-emerald-400 tracking-wider">MARGIN DESK TERMINAL</h1>
-            <span
-              class="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-black px-2 py-0.5 rounded tracking-wide">
-              BROKER MODEL
-            </span>
+            <button title="Update quotes" id="refreshQuotesButton" onclick="refreshAllLivePrices()"
+              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1">
+              <span>↻</span>
+            </button>
           </div>
         </div>
       </div>
 
-      <div class="space-y-3">
+      <div class="space-y-3" id="headerSettings">
         <details class="rounded border border-slate-800 bg-slate-950/40 p-3">
           <summary class="cursor-pointer text-xs font-bold text-slate-300 hover:text-cyan-300">Broker Rules</summary>
           <div class="mt-3">
@@ -135,14 +135,10 @@
             </div>
           </div>
 
-          <!-- Cluster 2: Quotes -->
+          <!-- Cluster 2: Data -->
           <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2">
-            <button id="refreshQuotesButton" onclick="refreshAllLivePrices()"
-              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1">
-              <span>↻</span> Quotes
-            </button>
             <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
-              Auto
+              Data Update Interval
               <select id="quoteRefreshInterval"
                 class="h-8 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
                 aria-label="Automatic quote refresh interval">
@@ -152,10 +148,6 @@
                 <option value="60000">1 min</option>
               </select>
             </label>
-          </div>
-
-          <!-- Cluster 3: Data -->
-          <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2">
             <button onclick="exportBackupJSON()"
               class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
               title="Export portfolio state to JSON file">

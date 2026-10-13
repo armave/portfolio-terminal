@@ -1262,7 +1262,7 @@ async function fetchLivePriceFromProviders(symbol) {
           current = data.price.preMarketPrice;
           change = current - data.current;
       }
-       else if (marketState === 'POST' || marketState === 'CLOSED') {
+       else if (marketState === 'POST' || marketState === 'POSTPOST' || marketState === 'CLOSED') {
           current = data.price.postMarketPrice;
           change = current - data.current;
       }
@@ -1346,7 +1346,7 @@ async function refreshAllLivePrices() {
           current = data.price.preMarketPrice;
           change = current - data.current;
       }
-       else if (marketState === 'POST' || marketState === 'CLOSED') {
+       else if (marketState === 'POST' || marketState === 'POSTPOST' || marketState === 'CLOSED') {
           current = data.price.postMarketPrice;
           change = current - data.current;
       }
@@ -2106,16 +2106,6 @@ async function startApp(secret) {
     }
   }, 100);
   await refreshAllLivePrices();
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      refreshAllLivePrices();
-    }
-  });
-
-  window.addEventListener('online', () => {
-    refreshAllLivePrices();
-  });
 }
 
 async function initApp() {
