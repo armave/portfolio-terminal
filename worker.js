@@ -264,6 +264,7 @@ export default {
                     // Session state: "PRE", "REGULAR", "POST", or "CLOSED"
                     let marketState = result.price?.marketState ?? "CLOSED";
                     if (marketState = 'PREPRE') marketState = 'PRE';
+                    if (marketState = 'PRE') marketState = 'REGULAR';
                     else if (marketState = 'POSTPOST') marketState = 'POST';
 
                     return {
