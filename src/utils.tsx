@@ -1,4 +1,3 @@
-import React from 'react';
 import { sentimentLabel } from './features/quotes/sentiment';
 
 export function formatUSD(val: any): string {

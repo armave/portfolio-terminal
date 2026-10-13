@@ -1,10 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  AlphaVantageError,
   clearAlphaVantageCache,
   fetchAlphaVantageAnalysts,
   fetchAlphaVantageNews,
-  fetchAlphaVantageQuote,
   parseAlphaVantageOverview,
   parseAlphaVantageQuote
 } from './alphaVantageAnalysts';

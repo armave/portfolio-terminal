@@ -8,7 +8,6 @@ export interface ProjectionDate {
 }
 
 export function getProjectionMilestoneLabel(
-  date: Date,
   daysFromToday: number,
   kind: ProjectionKind
 ): string {
@@ -146,8 +145,6 @@ function calendarDayDifference(from: Date, to: Date): number {
 
 export function getUsEquityProjectionDates(today = new Date(), entryDate?: string): ProjectionDate[] {
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const weekday = start.getDay();
-  const isWeekend = weekday === 0 || weekday === 6;
 
   const projections: ProjectionDate[] = [];
   if (entryDate && /^\d{4}-\d{2}-\d{2}$/.test(entryDate)) {
@@ -162,7 +159,7 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
         date: entry,
         daysFromToday,
         kind: 'entry',
-        label: getProjectionMilestoneLabel(entry, daysFromToday, 'entry')
+        label: getProjectionMilestoneLabel(daysFromToday, 'entry')
       });
     }
   }
@@ -171,7 +168,7 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
     date: start,
     daysFromToday: 0,
     kind: 'today',
-    label: getProjectionMilestoneLabel(start, 0, 'today')
+    label: getProjectionMilestoneLabel(0, 'today')
   });
 
   const isWorkingDay = isTradingDay(start);
@@ -184,7 +181,7 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
         date: eowDate,
         daysFromToday: eowDays,
         kind: 'week-end',
-        label: getProjectionMilestoneLabel(eowDate, eowDays, 'week-end')
+        label: getProjectionMilestoneLabel(eowDays, 'week-end')
       });
     }
   } else {
@@ -194,7 +191,7 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
       date: nextTradingDay,
       daysFromToday: nextTradingDays,
       kind: 'next-trading-day',
-      label: getProjectionMilestoneLabel(nextTradingDay, nextTradingDays, 'next-trading-day')
+      label: getProjectionMilestoneLabel(nextTradingDays, 'next-trading-day')
     });
   }
 
