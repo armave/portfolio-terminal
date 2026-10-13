@@ -267,6 +267,10 @@ export default {
                     if (marketState = 'PRE') marketState = 'REGULAR';
                     else if (marketState = 'POSTPOST') marketState = 'POST';
 
+                    if (marketState = 'REGULAR' && result.price?.postMarketPrice?.raw) {
+                        marketState = 'POST';
+                    }
+
                     return {
                         symbol: ticker,
                         price: {
