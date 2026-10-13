@@ -261,6 +261,10 @@ export default {
                     const raw = await response.json();
                     const result = raw.quoteSummary?.result?.[0] || {};
 
+                    // Session state: "PRE", "REGULAR", "POST", or "CLOSED"
+                    let marketState = result.price?.marketState ?? "CLOSED";
+                    if (marketState = 'PREPRE') marketState = 'POST';
+
                     return {
                         symbol: ticker,
                         price: {
@@ -280,8 +284,7 @@ export default {
                             postMarketChange: result.price?.postMarketChange?.raw ?? null,
                             postMarketChangePercent: result.price?.postMarketChangePercent?.raw ?? null,
 
-                            // Session state: "PRE", "REGULAR", "POST", or "CLOSED"
-                            marketState: result.price?.marketState ?? "CLOSED"
+                            marketState
                         },
                         valuation: {
                             peTrailing: result.summaryDetail?.trailingPE?.raw ?? null,
