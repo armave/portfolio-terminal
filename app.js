@@ -1257,14 +1257,14 @@ async function fetchLivePriceFromProviders(symbol) {
       let current = price ?? data.regularMarketPrice ?? data.price;
 
       // "PRE", "REGULAR", "POST", or "CLOSED"
-      const marketState = data.price?.marketState || '';
+      const marketState = data.price?.marketState;
       if (marketState === 'PRE') {
-          current = data.price.preMarketPrice;
-          change = current - data.current;
+        current = data.price.preMarketPrice ?? data.price.postMarketPrice;
+        change = current - data.current;
       }
        else if (marketState === 'POST' || marketState === 'CLOSED') {
-          current = data.price.postMarketPrice;
-          change = current - data.current;
+        current = data.price.postMarketPrice;
+        change = current - data.current;
       }
 
       quoteDetails = {
@@ -1341,12 +1341,12 @@ async function refreshAllLivePrices() {
       let change = data.price.change ?? data.regularMarketChange ?? (current - previous);
 
       // "PRE", "REGULAR", "POST", or "CLOSED"
-      const marketState = data.price?.marketState || '';
+      const marketState = data.price?.marketState;
       if (marketState === 'PRE') {
-          current = data.price.preMarketPrice;
+          current = data.price.preMarketPrice ?? data.price.postMarketPrice;
           change = current - data.current;
       }
-       else if (marketState === 'POST' || marketState === 'POSTPOST' || marketState === 'CLOSED') {
+       else if (marketState === 'POST' || marketState === 'CLOSED') {
           current = data.price.postMarketPrice;
           change = current - data.current;
       }

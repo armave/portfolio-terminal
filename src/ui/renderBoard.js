@@ -617,7 +617,7 @@ export function renderBoard(state, options = {}) {
     const settingsBtn = document.createElement('button');
     settingsBtn.className = isSettingsActive
       ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
-      : 'px-3 py-1.5 rounded text-xs font-bold bg-blue-300 text-wite-300 border border-slate-700 hover:bg-slate-800 transition';
+      : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition';
     settingsBtn.id = 'settingsBtn';
     settingsBtn.innerHTML = `<span>⚙️ SETTINGS</span>`;
     settingsBtn.onclick = () => switchView("SETTINGS");
