@@ -57,6 +57,8 @@ import {
   renderSummaryCards
 } from './src/ui/renderBoard';
 import { portfolioStore } from './src/store/portfolioStore';
+import { BoardExternalLinks } from './src/components/BoardExternalLinks';
+import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -492,84 +494,8 @@ export const switchView = setActiveView;
 function renderConsoleQuickActions() {
   const container = document.getElementById('consoleQuickActions');
   if (!container) return;
-  container.innerHTML = '';
-
   const pos = state.positions[state.activeView];
-  const ticker = pos?.ticker || '[TICKER]';
-  const currentPrice = pos && Number(pos.currentPrice) > 0 ? Number(pos.currentPrice) : null;
-  const priceText = currentPrice === null ? '[current price]' : formatUSD(currentPrice);
-  const comparisonPrice = currentPrice === null ? null : Number((currentPrice * 1.02).toFixed(2));
-  const comparisonPriceText = comparisonPrice === null ? '[price]' : formatUSD(comparisonPrice);
-  const commandInput = document.getElementById('cmdInput') as HTMLInputElement | null;
-  if (commandInput) {
-    commandInput.placeholder = `e.g. sell today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`;
-  }
-  const hintBuy = document.getElementById('hintBuyShares');
-  if (hintBuy) hintBuy.textContent = `bought [shares] ${ticker} for ${priceText}, pt [target]`;
-  const hintCash = document.getElementById('hintCashHolding');
-  if (hintCash) hintCash.textContent = `add cash stock [shares] ${ticker} or remove cash stock ${ticker}`;
-  const hintLadder = document.getElementById('hintLadderExit');
-  if (hintLadder) hintLadder.textContent = `sell [shares] ${ticker} for ${priceText} today and [shares] for [price] in 7 days`;
-  const hintComp = document.getElementById('hintExitComparison');
-  if (hintComp) hintComp.textContent = `sell today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`;
-  const hintQuote = document.getElementById('hintLiveQuote');
-  if (hintQuote) hintQuote.textContent = `quote ${ticker} or what's the current ${ticker} price?`;
-  const hintClose = document.getElementById('hintClosePosition');
-  if (hintClose) hintClose.textContent = `sold all ${ticker} for ${priceText}`;
-
-  const label = document.createElement('span');
-  label.className = 'text-[10px] font-bold uppercase tracking-wider text-slate-500';
-
-  if (!pos) {
-    label.textContent = 'Quick actions';
-    const hint = document.createElement('span');
-    hint.className = 'text-[10px] text-slate-500';
-    hint.textContent = 'Examples use [TICKER]; select a margin holding to use its tracked price.';
-    container.append(label, hint);
-    return;
-  }
-
-  label.className = 'text-[10px] font-bold uppercase tracking-wider text-slate-500';
-  label.textContent = `${pos.ticker} · ${formatUSD(pos.shares)} shares`;
-  container.appendChild(label);
-
-  const actions = [
-    { text: 'Quote', command: `quote ${pos.ticker}`, color: 'text-amber-300 border-amber-900/70 hover:bg-amber-950/50' },
-    { text: 'Buy…', command: `bought [shares] ${pos.ticker} for ${priceText}`, color: 'text-emerald-300 border-emerald-900/70 hover:bg-emerald-950/50' },
-    { text: 'Sell part…', command: `sold [shares] ${pos.ticker} for ${priceText}`, color: 'text-rose-300 border-rose-900/70 hover:bg-rose-950/50' },
-    { text: 'Sell all…', command: `sold all ${pos.ticker} for ${priceText}`, color: 'text-rose-300 border-rose-900/70 hover:bg-rose-950/50' },
-    {
-      text: 'Compare exits…',
-      command: `sell today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`,
-      selectText: comparisonPriceText,
-      color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/50'
-    },
-    { text: 'Set target…', command: `set ${pos.ticker} PT to [price]`, color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/50' }
-  ];
-
-  actions.forEach(action => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `rounded border bg-slate-900 px-2.5 py-1 text-[10px] font-bold transition ${action.color}`;
-    button.textContent = action.text;
-    button.addEventListener('click', () => {
-      const input = document.getElementById('cmdInput') as HTMLInputElement | null;
-      if (!input) return;
-      input.value = action.command;
-      input.focus();
-      if (action.selectText) {
-        const selectionStart = action.command.lastIndexOf(action.selectText);
-        input.setSelectionRange(selectionStart, selectionStart + action.selectText.length);
-      } else if (action.command.includes('[')) {
-        const selectionStart = action.command.indexOf('[');
-        const selectionEnd = action.command.indexOf(']', selectionStart) + 1;
-        input.setSelectionRange(selectionStart, selectionEnd);
-      } else {
-        input.setSelectionRange(input.value.length, input.value.length);
-      }
-    });
-    container.appendChild(button);
-  });
+  render(h(ConsoleQuickActions, { position: pos }), container);
 }
 
 function updateCombinedBreakeven() {
@@ -671,15 +597,7 @@ export function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
   const stockPageLinks = document.getElementById('boardExternalLinks');
   if (!stockPageLinks) return;
-  stockPageLinks.replaceChildren();
-  if (activeTicker) {
-    stockPageLinks.append(
-      createStockPageLink(activeTicker, 'Finviz'),
-      createStockPageLink(activeTicker, 'Stocktwits'),
-      createStockPageLink(activeTicker, 'TV Chart'),
-      createStockPageLink(activeTicker, 'TV Ideas')
-    );
-  }
+  render(h(BoardExternalLinks, { ticker: activeTicker }), stockPageLinks);
 }
 
 export function renderBoard() {
