@@ -10,22 +10,20 @@ import {
   realizeClosedTrade,
   resolveSaleQuantity,
   resolveTradeDateTimestamp
-} from './src/domain/portfolio.ts';
-import { evaluateIntent, parseAiIntent } from './src/features/ai/intent.ts';
-import { buildIntentPrompt } from './src/features/ai/prompt.ts';
-
+} from './src/domain/portfolio';
+import { evaluateIntent, parseAiIntent } from './src/features/ai/intent';
+import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
   calculateTargetUpsidePercent,
-  sentimentLabel
-} from './src/features/quotes/sentiment.ts';
-
+  sentimentLabel,
+  SentimentDirection
+} from './src/features/quotes/sentiment';
 import {
   fetchYahooStockData,
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService
-} from './src/services/api.js';
-
+} from './src/services/api';
 import {
   areHeaderCredentialsConfigured,
   clearBrokerRules,
@@ -41,13 +39,11 @@ import {
   saveQuoteRefreshInterval,
   saveState,
   saveStateToStorage
-} from './src/services/storage.js';
-
+} from './src/services/storage';
 import {
   logTerminal,
   showToast
-} from './src/ui/notifications.js';
-
+} from './src/ui/notifications';
 import {
   formatUSD,
   getCashCushionTotal,
@@ -57,6 +53,7 @@ import {
   renderPositionsTable,
   renderSummaryCards
 } from './src/ui/renderBoard';
+import { portfolioStore } from './src/store/portfolioStore';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -77,30 +74,36 @@ const DEFAULT_TRADERNET_RULES = {
 
 const TRADERNET_RULES = { ...DEFAULT_TRADERNET_RULES };
 
-let state = createBlankState();
-let gistSyncTimeout = null;
-let quoteRefreshTimer = null;
-let lastRenderedDeskView = null;
-const livePriceRequests = new Map();
+let state: any = createBlankState();
+let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
+let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let lastRenderedDeskView: string | null = null;
+const livePriceRequests = new Map<string, Promise<any>>();
 let marketInsightsOpen = false;
 let activeInsightSection = 'news';
 let loadedInsightTicker = '';
 let insightRequestId = 0;
-const boardAnalystSnapshots = new Map();
-const boardAnalystErrors = new Map();
-const boardAnalystRequests = new Map();
+const boardAnalystSnapshots = new Map<string, any>();
+const boardAnalystErrors = new Map<string, any>();
+const boardAnalystRequests = new Map<string, Promise<void>>();
 const BOARD_ANALYST_CACHE_TTL_MS = 5 * 60 * 1000;
 const BOARD_ANALYST_RETRY_MS = 60 * 1000;
 
-const QUOTE_REFRESH_INTERVAL_KEY = 'quote_refresh_interval_ms';
+export const QUOTE_REFRESH_INTERVAL_KEY = 'quote_refresh_interval_ms';
 const DEFAULT_QUOTE_REFRESH_INTERVAL_MS = 60 * 1000;
 const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
 
+/**
+ * Syncs the active runtime state into the reactive portfolioStore
+ */
+function syncStore() {
+  portfolioStore.importState(state as any);
+}
 
 // ==========================================
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
 // ==========================================
-function setCloudStatus(status, text) {
+function setCloudStatus(status: string, text: string) {
   const dot = document.getElementById('cloudStatusDot');
   const label = document.getElementById('cloudStatusText');
   if (!dot || !label) return;
@@ -126,6 +129,7 @@ async function pushStateToCloud(forceImmediate = false) {
   }
 
   state.lastUpdated = Date.now();
+  syncStore();
 
   const doPush = async () => {
     setCloudStatus('syncing', 'WRITING...');
@@ -136,7 +140,7 @@ async function pushStateToCloud(forceImmediate = false) {
       } else {
         setCloudStatus('error', 'FAIL');
       }
-    } catch (err) {
+    } catch (err: any) {
       logTerminal(`[KV Cloud Sync Error]: ${err.message}`);
       setCloudStatus('error', 'FAIL');
     }
@@ -153,13 +157,14 @@ async function pushStateToCloud(forceImmediate = false) {
 
 const pushStateToGist = pushStateToCloud;
 
-function pullCloudAndRewriteLocal(parsedState) {
+function pullCloudAndRewriteLocal(parsedState: any) {
   const currentView = state.activeView;
   state = { ...state, ...parsedState };
   if (!parsedState?.activeView && currentView) {
     state.activeView = currentView;
   }
   state = loadSavedState(state);
+  syncStore();
   switchView(state.activeView);
   console.log("[Sync]: Cloud state ingested and UI re-rendered successfully", state);
   setTimeout(() => {
@@ -175,7 +180,7 @@ async function syncCloudState(mode = 'push') {
     state,
     getState: () => state,
     pullCloudAndRewriteLocal,
-    showToast,
+    showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logTerminal
   });
 }
@@ -187,6 +192,8 @@ function updateHeaderCredentialsVisibility() {
   const fieldsContainer = document.getElementById('headerCredentialsFields');
   const actionsContainer = document.getElementById('headerCredentialsActions');
   const toggleBtn = document.getElementById('toggleHeaderCredentialsButton');
+
+  if (!toggleBtn || !fieldsContainer) return;
 
   if (isConfigured) {
     toggleBtn.classList.remove('hidden');
@@ -216,6 +223,7 @@ function resetToBlankState() {
   if (confirm("Reset the entire terminal to a blank slate? This will clear all holdings, balances, and history locally and on KV cloud.")) {
     state = createBlankState();
     saveState(state, pushStateToGist);
+    syncStore();
     pushStateToGist(true);
     renderBoard();
     logTerminal("[System]: Portfolio reset to a clean blank slate.");
@@ -223,16 +231,16 @@ function resetToBlankState() {
   }
 }
 
-function calcCommission(shares, totalVal) {
-  return calculateCommission(shares, totalVal, TRADERNET_RULES);
+function calcCommission(shares: number, totalVal: number) {
+  return calculateCommission(shares, totalVal, TRADERNET_RULES as any);
 }
 
 function getDailyRate() {
   return TRADERNET_RULES.annualRate / TRADERNET_RULES.dayCountBasis;
 }
 
-function loadTradernetRules() {
-  const savedRules = loadBrokerRules();
+export function loadTradernetRules() {
+  const savedRules = loadBrokerRules<any>({});
   if (!savedRules || Object.keys(savedRules).length === 0) return;
 
   try {
@@ -258,56 +266,73 @@ function loadTradernetRules() {
       Number.isFinite(candidates.minCommOrder) && candidates.minCommOrder >= 0;
     if (!valid) throw new Error('Saved broker assumptions are outside the supported range.');
     Object.assign(TRADERNET_RULES, candidates);
-  } catch (error) {
+    portfolioStore.updateAssumptions(TRADERNET_RULES as any);
+  } catch (error: any) {
     logTerminal(`[Settings Error]: Could not load saved broker assumptions (${error.message}). Using defaults.`);
   }
 }
 
 function setBrokerRuleInputs() {
-  document.getElementById('annualMarginRateInput').value = (TRADERNET_RULES.annualRate * 100).toFixed(2);
-  document.getElementById('interestDayCountInput').value = String(TRADERNET_RULES.dayCountBasis);
-  document.getElementById('maintenanceMarginInput').value = (TRADERNET_RULES.maintenanceMarginRatio * 100).toFixed(2);
-  document.getElementById('stopOutRatioInput').value = (TRADERNET_RULES.stopOutRatio * 100).toFixed(2);
-  document.getElementById('rolloverTimeInput').value =
-    `${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')}`;
-  document.getElementById('commissionPerShareInput').value = TRADERNET_RULES.commPerShare;
-  document.getElementById('commissionVolumeInput').value = (TRADERNET_RULES.commVolumePct * 100).toFixed(2);
-  document.getElementById('minimumCommissionInput').value = TRADERNET_RULES.minCommOrder.toFixed(2);
-  document.getElementById('stopOutRatioInput').setCustomValidity('');
+  const annualInput = document.getElementById('annualMarginRateInput') as HTMLInputElement | null;
+  const dayCountInput = document.getElementById('interestDayCountInput') as HTMLInputElement | null;
+  const maintInput = document.getElementById('maintenanceMarginInput') as HTMLInputElement | null;
+  const stopOutInput = document.getElementById('stopOutRatioInput') as HTMLInputElement | null;
+  const rolloverInput = document.getElementById('rolloverTimeInput') as HTMLInputElement | null;
+  const commShareInput = document.getElementById('commissionPerShareInput') as HTMLInputElement | null;
+  const commVolInput = document.getElementById('commissionVolumeInput') as HTMLInputElement | null;
+  const minCommInput = document.getElementById('minimumCommissionInput') as HTMLInputElement | null;
+
+  if (annualInput) annualInput.value = (TRADERNET_RULES.annualRate * 100).toFixed(2);
+  if (dayCountInput) dayCountInput.value = String(TRADERNET_RULES.dayCountBasis);
+  if (maintInput) maintInput.value = (TRADERNET_RULES.maintenanceMarginRatio * 100).toFixed(2);
+  if (stopOutInput) {
+    stopOutInput.value = (TRADERNET_RULES.stopOutRatio * 100).toFixed(2);
+    stopOutInput.setCustomValidity('');
+  }
+  if (rolloverInput) {
+    rolloverInput.value = `${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')}`;
+  }
+  if (commShareInput) commShareInput.value = String(TRADERNET_RULES.commPerShare);
+  if (commVolInput) commVolInput.value = (TRADERNET_RULES.commVolumePct * 100).toFixed(2);
+  if (minCommInput) minCommInput.value = TRADERNET_RULES.minCommOrder.toFixed(2);
 }
 
-function saveBrokerRuleInputs(event) {
+function saveBrokerRuleInputs(event: Event) {
   event.preventDefault();
-  const form = event.currentTarget;
-  document.getElementById('stopOutRatioInput').setCustomValidity('');
+  const form = event.currentTarget as HTMLFormElement;
+  const stopOutInput = document.getElementById('stopOutRatioInput') as HTMLInputElement;
+  stopOutInput.setCustomValidity('');
   if (!form.reportValidity()) return;
 
-  const [rolloverHour, rolloverMinute] = document.getElementById('rolloverTimeInput').value.split(':').map(Number);
+  const rolloverInput = document.getElementById('rolloverTimeInput') as HTMLInputElement;
+  const [rolloverHour, rolloverMinute] = rolloverInput.value.split(':').map(Number);
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   const updatedRules = {
     ...TRADERNET_RULES,
-    annualRate: Number(document.getElementById('annualMarginRateInput').value) / 100,
-    dayCountBasis: Number(document.getElementById('interestDayCountInput').value),
-    maintenanceMarginRatio: Number(document.getElementById('maintenanceMarginInput').value) / 100,
-    stopOutRatio: Number(document.getElementById('stopOutRatioInput').value) / 100,
+    annualRate: Number((document.getElementById('annualMarginRateInput') as HTMLInputElement).value) / 100,
+    dayCountBasis: Number((document.getElementById('interestDayCountInput') as HTMLInputElement).value),
+    maintenanceMarginRatio: Number((document.getElementById('maintenanceMarginInput') as HTMLInputElement).value) / 100,
+    stopOutRatio: Number(stopOutInput.value) / 100,
     rolloverHour,
     rolloverMinute,
-    commPerShare: Number(document.getElementById('commissionPerShareInput').value),
-    commVolumePct: Number(document.getElementById('commissionVolumeInput').value) / 100,
-    minCommOrder: Number(document.getElementById('minimumCommissionInput').value)
+    commPerShare: Number((document.getElementById('commissionPerShareInput') as HTMLInputElement).value),
+    commVolumePct: Number((document.getElementById('commissionVolumeInput') as HTMLInputElement).value) / 100,
+    minCommOrder: Number((document.getElementById('minimumCommissionInput') as HTMLInputElement).value)
   };
   if (updatedRules.stopOutRatio > updatedRules.maintenanceMarginRatio) {
-    document.getElementById('stopOutRatioInput').setCustomValidity('Stop-out equity must not exceed maintenance equity.');
-    document.getElementById('stopOutRatioInput').reportValidity();
+    stopOutInput.setCustomValidity('Stop-out equity must not exceed maintenance equity.');
+    stopOutInput.reportValidity();
     return;
   }
-  document.getElementById('stopOutRatioInput').setCustomValidity('');
+  stopOutInput.setCustomValidity('');
   Object.assign(TRADERNET_RULES, updatedRules);
+  portfolioStore.updateAssumptions(updatedRules as any);
   saveBrokerRules(updatedRules);
   const nextRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   if (previousRollover !== nextRollover) {
     state.lastRolloverTimestamp = getLatestRolloverTimestamp();
     saveState(state, pushStateToGist);
+    syncStore();
   }
   verifyTradernetRulesOnload();
   renderBoard();
@@ -317,11 +342,13 @@ function saveBrokerRuleInputs(event) {
 function resetBrokerRules() {
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   Object.assign(TRADERNET_RULES, DEFAULT_TRADERNET_RULES);
+  portfolioStore.updateAssumptions(DEFAULT_TRADERNET_RULES as any);
   clearBrokerRules();
   setBrokerRuleInputs();
   if (previousRollover !== `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`) {
     state.lastRolloverTimestamp = getLatestRolloverTimestamp();
     saveState(state, pushStateToGist);
+    syncStore();
   }
   verifyTradernetRulesOnload();
   renderBoard();
@@ -341,13 +368,19 @@ function verifyTradernetRulesOnload() {
 }
 
 function updateRiskAssumptionTitles() {
-  document.getElementById('boardStopOutRow').title =
-    `Estimate assumes the configured ${(TRADERNET_RULES.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
-  document.getElementById('boardMarginRisk').parentElement.title =
-    `Estimated from portfolio equity and configured thresholds: ${(TRADERNET_RULES.maintenanceMarginRatio * 100).toFixed(2)}% maintenance equity and ${(TRADERNET_RULES.stopOutRatio * 100).toFixed(2)}% stop-out equity. Not a live broker risk indicator.`;
+  const stopOutRow = document.getElementById('boardStopOutRow');
+  if (stopOutRow) {
+    stopOutRow.title =
+      `Estimate assumes the configured ${(TRADERNET_RULES.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
+  }
+  const marginRiskEl = document.getElementById('boardMarginRisk');
+  if (marginRiskEl && marginRiskEl.parentElement) {
+    marginRiskEl.parentElement.title =
+      `Estimated from portfolio equity and configured thresholds: ${(TRADERNET_RULES.maintenanceMarginRatio * 100).toFixed(2)}% maintenance equity and ${(TRADERNET_RULES.stopOutRatio * 100).toFixed(2)}% stop-out equity. Not a live broker risk indicator.`;
+  }
 }
 
-function getZonedDateParts(date, timeZone = TRADERNET_RULES.rolloverTimeZone) {
+function getZonedDateParts(date: Date, timeZone = TRADERNET_RULES.rolloverTimeZone): Record<string, number> {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,
     year: 'numeric',
@@ -361,7 +394,7 @@ function getZonedDateParts(date, timeZone = TRADERNET_RULES.rolloverTimeZone) {
   return Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, Number(part.value)]));
 }
 
-function zonedLocalTimeToTimestamp(year, month, day, hour, minute, timeZone = TRADERNET_RULES.rolloverTimeZone) {
+function zonedLocalTimeToTimestamp(year: number, month: number, day: number, hour: number, minute: number, timeZone = TRADERNET_RULES.rolloverTimeZone) {
   const targetUtc = Date.UTC(year, month - 1, day, hour, minute);
   let timestamp = targetUtc;
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -374,12 +407,12 @@ function zonedLocalTimeToTimestamp(year, month, day, hour, minute, timeZone = TR
   return timestamp;
 }
 
-function shiftCalendarDate(year, month, day, offset) {
+function shiftCalendarDate(year: number, month: number, day: number, offset: number) {
   const shifted = new Date(Date.UTC(year, month - 1, day + offset));
   return { year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() + 1, day: shifted.getUTCDate() };
 }
 
-function getRolloverTimestampForLocalDate(year, month, day) {
+function getRolloverTimestampForLocalDate(year: number, month: number, day: number) {
   return zonedLocalTimeToTimestamp(
     year, month, day, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute
   );
@@ -395,11 +428,12 @@ function getLatestRolloverTimestamp(now = new Date()) {
   return rollover;
 }
 
-function applyOvernightRollover() {
+export function applyOvernightRollover() {
   const now = new Date();
   if (!Number.isFinite(Number(state.lastRolloverTimestamp)) || Number(state.lastRolloverTimestamp) <= 0) {
     state.lastRolloverTimestamp = getLatestRolloverTimestamp(now);
     saveState(state, pushStateToGist);
+    syncStore();
     return;
   }
 
@@ -433,17 +467,20 @@ function applyOvernightRollover() {
 
     state.lastRolloverTimestamp = now.getTime();
     saveState(state, pushStateToGist);
+    syncStore();
     logTerminal(`[Broker ${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')} Armenia rollover]: Processed ${elapsedCycles} cycle(s). Accrued interest: +$${formatUSD(interestAccrued)}. Margin Debt: -$${formatUSD(compoundedDebt)}.`);
   } else if (elapsedCycles > 0) {
     state.lastRolloverTimestamp = now.getTime();
     saveState(state, pushStateToGist);
+    syncStore();
   }
 }
 
-export function setActiveView(view) {
+export function setActiveView(view: string) {
   const normalizedView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED');
   state.activeView = normalizedView;
   saveState(state, pushStateToGist);
+  syncStore();
   renderBoard();
 }
 
@@ -451,6 +488,7 @@ export const switchView = setActiveView;
 
 function renderConsoleQuickActions() {
   const container = document.getElementById('consoleQuickActions');
+  if (!container) return;
   container.innerHTML = '';
 
   const pos = state.positions[state.activeView];
@@ -459,19 +497,22 @@ function renderConsoleQuickActions() {
   const priceText = currentPrice === null ? '[current price]' : formatUSD(currentPrice);
   const comparisonPrice = currentPrice === null ? null : Number((currentPrice * 1.02).toFixed(2));
   const comparisonPriceText = comparisonPrice === null ? '[price]' : formatUSD(comparisonPrice);
-  const commandInput = document.getElementById('cmdInput');
-  commandInput.placeholder = `e.g. sell today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`;
-  document.getElementById('hintBuyShares').textContent = `bought [shares] ${ticker} for ${priceText}, pt [target]`;
-  document.getElementById('hintCashHolding').textContent =
-    `add cash stock [shares] ${ticker} or remove cash stock ${ticker}`;
-  document.getElementById('hintLadderExit').textContent =
-    `sell [shares] ${ticker} for ${priceText} today and [shares] for [price] in 7 days`;
-  document.getElementById('hintExitComparison').textContent =
-    `sell today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`;
-  document.getElementById('hintLiveQuote').textContent =
-    `quote ${ticker} or what's the current ${ticker} price?`;
-  document.getElementById('hintClosePosition').textContent =
-    `sold all ${ticker} for ${priceText}`;
+  const commandInput = document.getElementById('cmdInput') as HTMLInputElement | null;
+  if (commandInput) {
+    commandInput.placeholder = `e.g. sell today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`;
+  }
+  const hintBuy = document.getElementById('hintBuyShares');
+  if (hintBuy) hintBuy.textContent = `bought [shares] ${ticker} for ${priceText}, pt [target]`;
+  const hintCash = document.getElementById('hintCashHolding');
+  if (hintCash) hintCash.textContent = `add cash stock [shares] ${ticker} or remove cash stock ${ticker}`;
+  const hintLadder = document.getElementById('hintLadderExit');
+  if (hintLadder) hintLadder.textContent = `sell [shares] ${ticker} for ${priceText} today and [shares] for [price] in 7 days`;
+  const hintComp = document.getElementById('hintExitComparison');
+  if (hintComp) hintComp.textContent = `sell today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`;
+  const hintQuote = document.getElementById('hintLiveQuote');
+  if (hintQuote) hintQuote.textContent = `quote ${ticker} or what's the current ${ticker} price?`;
+  const hintClose = document.getElementById('hintClosePosition');
+  if (hintClose) hintClose.textContent = `sold all ${ticker} for ${priceText}`;
 
   const label = document.createElement('span');
   label.className = 'text-[10px] font-bold uppercase tracking-wider text-slate-500';
@@ -509,7 +550,8 @@ function renderConsoleQuickActions() {
     button.className = `rounded border bg-slate-900 px-2.5 py-1 text-[10px] font-bold transition ${action.color}`;
     button.textContent = action.text;
     button.addEventListener('click', () => {
-      const input = document.getElementById('cmdInput');
+      const input = document.getElementById('cmdInput') as HTMLInputElement | null;
+      if (!input) return;
       input.value = action.command;
       input.focus();
       if (action.selectText) {
@@ -542,7 +584,7 @@ function updateCombinedBreakeven() {
   tickers.forEach(t => {
     const pos = state.positions[t];
     if (pos && pos.shares > 0) {
-      const cost = (pos.tranches || []).reduce((sum, tr) => sum + (tr.qty * tr.price), 0);
+      const cost = (pos.tranches || []).reduce((sum: number, tr: any) => sum + (tr.qty * tr.price), 0);
       totalInvested += cost;
       const valSell = pos.shares * pos.pt;
       const commSell = calcCommission(pos.shares, valSell);
@@ -581,7 +623,7 @@ function updateCombinedBreakeven() {
     return;
   }
 
-  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate());
+  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate()) || 0;
 
   const beDate = new Date();
   beDate.setDate(beDate.getDate() + beDays);
@@ -590,7 +632,7 @@ function updateCombinedBreakeven() {
   beEl.innerText = `Combined Breakeven: ${beDays} days (${beDateStr})`;
 }
 
-export function createStockPageLink(ticker, provider) {
+export function createStockPageLink(ticker: string, provider: string) {
   const link = document.createElement('a');
   const symbol = encodeURIComponent(ticker);
   let href = '';
@@ -637,9 +679,9 @@ export function renderBoardExternalLinks() {
   }
 }
 
-function renderBoard() {
+export function renderBoard() {
   renderBoardUI(state, {
-    rules: TRADERNET_RULES,
+    rules: TRADERNET_RULES as any,
     onSetActiveView: setActiveView,
     onRenderClosedHistory: renderClosedHistoryPanel,
     onRenderAnalystConsensus: renderBoardAnalystConsensus,
@@ -651,7 +693,7 @@ function renderBoard() {
     onSyncMarketInsightsPanel: syncMarketInsightsPanel,
     refreshIntervalMs: getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS),
     lastDeskView: lastRenderedDeskView,
-    onUpdateLastDeskView: view => { lastRenderedDeskView = view; }
+    onUpdateLastDeskView: (view: string) => { lastRenderedDeskView = view; }
   });
 }
 
@@ -690,7 +732,7 @@ function syncMarketInsightsPanel() {
   }
 }
 
-function toggleMarketInsights() {
+export function toggleMarketInsights() {
   const ticker = getMarketInsightsTicker();
   if (!ticker) return;
   const tickerWasLoaded = loadedInsightTicker === ticker;
@@ -699,7 +741,7 @@ function toggleMarketInsights() {
   if (marketInsightsOpen && tickerWasLoaded) loadMarketInsight(activeInsightSection);
 }
 
-function renderCashCushionPanel() {
+export function renderCashCushionPanel() {
   renderCashCushion(state, {
     onFetchLivePrice: fetchLivePrice,
     onRemoveCashStock: removeCashStock,
@@ -709,12 +751,13 @@ function renderCashCushionPanel() {
 
 function renderClosedHistoryPanel() {
   const tableBody = document.getElementById('closedTradesTableBody');
+  if (!tableBody) return;
   tableBody.innerHTML = '';
 
-  const trades = state.closedTrades
-    .map((trade, index) => ({ trade, index }))
-    .sort((a, b) => Number(b.trade.date) - Number(a.trade.date));
-  trades.forEach(({ trade, index }) => {
+  const trades = (state.closedTrades || [])
+    .map((trade: any, index: number) => ({ trade, index }))
+    .sort((a: any, b: any) => Number(b.trade.date) - Number(a.trade.date));
+  trades.forEach(({ trade, index }: any) => {
     const row = document.createElement('tr');
     row.className = 'border-b border-slate-800/60 text-slate-300';
 
@@ -754,22 +797,23 @@ function renderClosedHistoryPanel() {
     tableBody.appendChild(row);
   });
 
-  document.getElementById('closedTradesEmptyState').classList.toggle('hidden', trades.length > 0);
+  document.getElementById('closedTradesEmptyState')?.classList.toggle('hidden', trades.length > 0);
 }
 
-function deleteClosedTrade(index) {
+function deleteClosedTrade(index: number) {
   const trade = state.closedTrades[index];
   if (!trade) return;
   if (!confirm(`Delete the ${trade.ticker || 'unknown'} closed trade from history? This cannot be undone.`)) return;
 
   state.closedTrades.splice(index, 1);
   saveState(state, pushStateToGist);
+  syncStore();
   renderBoard();
   logTerminal(`[History]: Removed the ${trade.ticker || 'unknown'} closed trade from history.`);
   showToast('Closed trade removed from history.', 'info');
 }
 
-function formatQuoteMetadata(holding) {
+export function formatQuoteMetadata(holding: any) {
   if (!holding.quoteUpdatedAt) return holding.quoteSource || 'Not fetched';
 
   const updatedAt = Number(holding.quoteUpdatedAt);
@@ -780,7 +824,7 @@ function formatQuoteMetadata(holding) {
   return `${isStale ? 'Stale · ' : ''}${holding.quoteSource || 'Quote'} · ${time}`;
 }
 
-function createDailyQuoteLabel(details) {
+export function createDailyQuoteLabel(details: any) {
   if (!details || typeof details !== 'object') return null;
   const hasChange = Number.isFinite(details.change) && Number.isFinite(details.changePercent);
   const hasRange = Number.isFinite(details.high) && Number.isFinite(details.low);
@@ -788,7 +832,7 @@ function createDailyQuoteLabel(details) {
 
   const label = document.createElement('span');
   label.className = 'mt-0.5 block text-[9px] font-normal tabular-nums';
-  const parts = [];
+  const parts: string[] = [];
   if (hasChange) {
     const sign = details.change >= 0 ? '+' : '−';
     parts.push(`${sign}$${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`);
@@ -801,15 +845,15 @@ function createDailyQuoteLabel(details) {
   return label;
 }
 
-function createInsightElement(tagName, className = '', text = '') {
+export function createInsightElement(tagName: string, className = '', text = '') {
   const element = document.createElement(tagName);
   if (className) element.className = className;
   if (text) element.textContent = text;
   return element;
 }
 
-function sentimentBadge(direction, label = sentimentLabel(direction)) {
-  const styles = {
+export function sentimentBadge(direction: SentimentDirection, label = sentimentLabel(direction)) {
+  const styles: Record<string, string> = {
     bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
     bearish: 'border-rose-800 bg-rose-950/50 text-rose-300',
     neutral: 'border-slate-700 bg-slate-900 text-slate-300',
@@ -827,7 +871,7 @@ function sentimentBadge(direction, label = sentimentLabel(direction)) {
   return badge;
 }
 
-async function fetchBoardAnalystTarget(ticker) {
+async function fetchBoardAnalystTarget(ticker: string) {
   if (!ticker) return null;
   const cleanTicker = ticker.trim().toUpperCase();
 
@@ -851,14 +895,14 @@ async function fetchBoardAnalystTarget(ticker) {
         profile: data.profile
       };
     }
-  } catch (err) {
+  } catch (err: any) {
     console.warn(`[Yahoo Worker Error for ${cleanTicker}]:`, err.message);
   }
 
   throw new Error(`Analyst price target unavailable via proxy for ${cleanTicker}.`);
 }
 
-function renderBoardAnalystConsensus(ticker, force = false) {
+function renderBoardAnalystConsensus(ticker: string, force = false) {
   const container = document.getElementById('boardAnalystConsensus');
   if (!container) return;
   const hideConsensus = () => {
@@ -923,7 +967,7 @@ function renderBoardAnalystConsensus(ticker, force = false) {
   boardAnalystRequests.set(ticker, request);
 }
 
-async function loadMarketInsight(section, force = false) {
+export async function loadMarketInsight(section: string, _force = false) {
   const ticker = getMarketInsightsTicker();
   const content = document.getElementById('marketInsightsContent');
   const tickerBadge = document.getElementById('marketInsightsTicker');
@@ -940,7 +984,7 @@ async function loadMarketInsight(section, force = false) {
   activeInsightSection = section;
   if (tickerBadge) tickerBadge.textContent = `· ${ticker}`;
 
-  document.querySelectorAll('[data-insight]').forEach(button => {
+  document.querySelectorAll<HTMLElement>('[data-insight]').forEach(button => {
     const selected = button.dataset.insight === section;
     button.className = `insight-tab whitespace-nowrap rounded px-3 py-1.5 text-[10px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 ${selected ? 'bg-cyan-400 text-slate-950 shadow-sm shadow-cyan-950' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'}`;
     button.setAttribute('aria-selected', String(selected));
@@ -960,7 +1004,7 @@ async function loadMarketInsight(section, force = false) {
         return;
       }
 
-      content.innerHTML = '<div class="space-y-2 mt-2">' + news.slice(0, 5).map(n => `
+      content.innerHTML = '<div class="space-y-2 mt-2">' + news.slice(0, 5).map((n: any) => `
         <a href="${n.url}" target="_blank" rel="noopener noreferrer" class="block bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition">
           <div class="text-[10px] text-cyan-400 mb-1">${new Date(n.datetime * 1000).toLocaleDateString()} · ${n.source || 'News'}</div>
           <div class="text-slate-200 text-xs font-semibold leading-snug">${n.headline}</div>
@@ -1019,8 +1063,8 @@ async function loadMarketInsight(section, force = false) {
       const t = data.analystTargets || {};
       const upDown = data.upgradesDowngrades || [];
 
-      let udHtml = upDown.length > 0
-        ? upDown.slice(0, 4).map(u => `
+      const udHtml = upDown.length > 0
+        ? upDown.slice(0, 4).map((u: any) => `
             <div class="flex justify-between items-center border-b border-slate-800/60 py-1.5 last:border-0">
               <span class="text-slate-300">${u.firm}</span>
               <span class="text-[10px] font-bold ${u.action === 'up' ? 'text-emerald-400' : u.action === 'down' ? 'text-rose-400' : 'text-cyan-400'}">${(u.action || '').toUpperCase()}: ${u.fromGrade || ''} ➝ ${u.toGrade || ''}</span>
@@ -1045,8 +1089,8 @@ async function loadMarketInsight(section, force = false) {
       const cal = data.calendar || {};
       const eh = data.earningsHistory || [];
 
-      let ehHtml = eh.length > 0
-        ? eh.map(e => `
+      const ehHtml = eh.length > 0
+        ? eh.map((e: any) => `
             <div class="flex justify-between items-center border-b border-slate-800/60 py-1.5 last:border-0">
               <span class="text-slate-300 font-bold">${e.quarter}</span>
               <span class="text-[10px]">Est: ${e.epsEstimate} | Act: <span class="${e.epsDifference >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-bold">${e.epsActual}</span> (${e.surprisePercent})</span>
@@ -1066,19 +1110,19 @@ async function loadMarketInsight(section, force = false) {
         </div>
       `;
     }
-  } catch (err) {
+  } catch (err: any) {
     content.innerHTML = `<div class="py-3 text-rose-400 text-xs">Failed to load insights: ${err.message}</div>`;
   }
 }
 
-function refreshMarketInsight() {
+export function refreshMarketInsight() {
   return loadMarketInsight(activeInsightSection, true);
 }
 
-function handleMarketInsightsTabKeydown(event) {
+function handleMarketInsightsTabKeydown(event: KeyboardEvent) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-  const tabs = Array.from(document.querySelectorAll('#marketInsightsTabs [role="tab"]'));
-  const currentIndex = tabs.indexOf(event.target);
+  const tabs = Array.from(document.querySelectorAll<HTMLElement>('#marketInsightsTabs [role="tab"]'));
+  const currentIndex = tabs.indexOf(event.target as HTMLElement);
   if (currentIndex < 0 || tabs.length === 0) return;
   event.preventDefault();
   const nextIndex = event.key === 'Home'
@@ -1088,13 +1132,15 @@ function handleMarketInsightsTabKeydown(event) {
       : (currentIndex + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
   const nextTab = tabs[nextIndex];
   nextTab.focus();
-  loadMarketInsight(nextTab.dataset.insight);
+  if (nextTab.dataset.insight) {
+    loadMarketInsight(nextTab.dataset.insight);
+  }
 }
 
-function recordTrackedPrice(ticker, price, sourceName, updatedAt = null, quoteDetails = null) {
+function recordTrackedPrice(ticker: string, price: number, sourceName: string, updatedAt: number | null = null, quoteDetails: any = null) {
   const symbol = ticker.toUpperCase();
   let matched = false;
-  const updateQuoteMetadata = holding => {
+  const updateQuoteMetadata = (holding: any) => {
     holding.quoteSource = sourceName;
     if (updatedAt === null) delete holding.quoteUpdatedAt;
     else holding.quoteUpdatedAt = updatedAt;
@@ -1107,17 +1153,18 @@ function recordTrackedPrice(ticker, price, sourceName, updatedAt = null, quoteDe
     updateQuoteMetadata(state.positions[symbol]);
     matched = true;
   }
-  const cashHolding = state.cashCushion?.holdings?.find(holding => holding.ticker === symbol);
+  const cashHolding = state.cashCushion?.holdings?.find((holding: any) => holding.ticker === symbol);
   if (cashHolding) {
     cashHolding.price = price;
     cashHolding.currentPrice = price;
     updateQuoteMetadata(cashHolding);
     matched = true;
   }
+  if (matched) syncStore();
   return matched;
 }
 
-function addCashHolding(ticker, shares, givenPrice = 0) {
+function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
   const symbol = ticker.trim().toUpperCase();
   const quantity = Number(shares);
   const manualPrice = Number(givenPrice);
@@ -1127,7 +1174,7 @@ function addCashHolding(ticker, shares, givenPrice = 0) {
 
   if (!state.cashCushion) state.cashCushion = { freeCash: 0, holdings: [] };
   if (!Array.isArray(state.cashCushion.holdings)) state.cashCushion.holdings = [];
-  const existing = state.cashCushion.holdings.find(holding => holding.ticker === symbol);
+  const existing = state.cashCushion.holdings.find((holding: any) => holding.ticker === symbol);
   const currentPrice = Number.isFinite(manualPrice) && manualPrice > 0
     ? manualPrice
     : (Number(existing?.price) || 0);
@@ -1140,30 +1187,34 @@ function addCashHolding(ticker, shares, givenPrice = 0) {
   if (Number.isFinite(manualPrice) && manualPrice > 0) {
     recordTrackedPrice(symbol, manualPrice, 'Manual');
   }
+  syncStore();
   return { ticker: symbol, shares: quantity, price: currentPrice };
 }
 
-function removeCashHolding(ticker) {
+function removeCashHolding(ticker: string) {
   const holdings = state.cashCushion?.holdings;
   if (!Array.isArray(holdings)) return null;
   const symbol = ticker.trim().toUpperCase();
-  const index = holdings.findIndex(holding => holding.ticker === symbol);
-  return index < 0 ? null : holdings.splice(index, 1)[0];
+  const index = holdings.findIndex((holding: any) => holding.ticker === symbol);
+  const removed = index < 0 ? null : holdings.splice(index, 1)[0];
+  if (removed) syncStore();
+  return removed;
 }
 
-function setCurrentBalance(value) {
+function setCurrentBalance(value: number) {
   const signedBalance = Number.isFinite(Number(value)) ? Number(value) : 0;
   state.cashCushion.freeCash = Math.max(0, signedBalance);
   state.balance = Math.min(0, signedBalance);
+  syncStore();
   return {
     balance: Math.max(0, signedBalance),
     debt: Math.max(0, -signedBalance)
   };
 }
 
-function saveCurrentBalanceFromInput() {
-  const input = document.getElementById('freeCashInput');
-  if (!input.reportValidity()) return;
+export function saveCurrentBalanceFromInput() {
+  const input = document.getElementById('freeCashInput') as HTMLInputElement | null;
+  if (!input || !input.reportValidity()) return;
 
   const inputValue = input.valueAsNumber;
   const { balance, debt } = setCurrentBalance(inputValue);
@@ -1173,10 +1224,10 @@ function saveCurrentBalanceFromInput() {
   showToast(`Balance $${formatUSD(balance)} | Debt -$${formatUSD(debt)}`, 'success');
 }
 
-async function addCashStockFromUI() {
-  const tickerInput = document.getElementById('newCashTicker');
-  const sharesInput = document.getElementById('newCashShares');
-  const priceInput = document.getElementById('newCashPrice');
+export async function addCashStockFromUI() {
+  const tickerInput = document.getElementById('newCashTicker') as HTMLInputElement;
+  const sharesInput = document.getElementById('newCashShares') as HTMLInputElement;
+  const priceInput = document.getElementById('newCashPrice') as HTMLInputElement;
 
   const ticker = tickerInput.value.trim().toUpperCase();
   const shares = sharesInput.valueAsNumber;
@@ -1204,7 +1255,7 @@ async function addCashStockFromUI() {
   await fetchLivePrice(ticker);
 }
 
-function removeCashStock(index) {
+function removeCashStock(index: number) {
   const holding = state.cashCushion?.holdings?.[index];
   if (!holding) return;
   const removed = removeCashHolding(holding.ticker);
@@ -1214,14 +1265,13 @@ function removeCashStock(index) {
   showToast(`${removed.ticker} removed from cash holdings.`, 'info');
 }
 
-
-function updateEmptyStateVisibility(isEmpty) {
+export function updateEmptyStateVisibility(isEmpty: boolean) {
   const panel = document.getElementById('emptyStatePanel');
   if (!panel) return;
   panel.classList.toggle('hidden', !isEmpty);
 }
 
-async function requestLivePrice(symbol) {
+async function requestLivePrice(symbol: string) {
   const existingRequest = livePriceRequests.get(symbol);
   if (existingRequest) return existingRequest;
 
@@ -1239,11 +1289,11 @@ async function requestLivePrice(symbol) {
   }
 }
 
-async function fetchLivePriceFromProviders(symbol) {
+async function fetchLivePriceFromProviders(symbol: string) {
   symbol = symbol.toUpperCase();
-  let price = null;
+  let price: number | null = null;
   let sourceName = "";
-  let quoteDetails = null;
+  let quoteDetails: any = null;
 
   try {
     const data = await fetchYahooStockData(symbol);
@@ -1253,7 +1303,7 @@ async function fetchLivePriceFromProviders(symbol) {
       sourceName = "Yahoo Proxy";
 
       const prevClose = data.price.previousClose ?? data.price.regularMarketPreviousClose;
-      let change = data.price.change ?? data.price.regularMarketChange ?? (price - prevClose);
+      let change = data.price.change ?? data.price.regularMarketChange ?? (price! - prevClose);
       let current = price ?? data.regularMarketPrice ?? data.price;
 
       // "PRE", "REGULAR", "POST", or "CLOSED"
@@ -1274,7 +1324,7 @@ async function fetchLivePriceFromProviders(symbol) {
         changePercent: prevClose ? (change / prevClose) * 100 : 0
       };
     }
-  } catch (e) {
+  } catch (e: any) {
     console.warn(`[Proxy Quote Error for ${symbol}]:`, e.message);
   }
 
@@ -1289,7 +1339,7 @@ async function fetchLivePriceFromProviders(symbol) {
   };
 }
 
-async function fetchLivePrice(ticker, silent = false) {
+async function fetchLivePrice(ticker: string, silent = false) {
   const symbol = ticker.toUpperCase();
   const result = await requestLivePrice(symbol);
 
@@ -1302,19 +1352,19 @@ async function fetchLivePrice(ticker, silent = false) {
     return result.price;
   }
 
-  const tracked = state.positions[symbol]?.currentPrice || (state.cashCushion?.holdings?.find(h => h.ticker === symbol)?.price) || 0;
+  const tracked = state.positions[symbol]?.currentPrice || (state.cashCushion?.holdings?.find((h: any) => h.ticker === symbol)?.price) || 0;
   if (!silent) {
     logTerminal(`[Market Data Error]: Could not fetch ${symbol}. ${result.error}. Retained tracked price: $${formatUSD(tracked)}. Set manually via: price ${symbol} <number>.`);
   }
   return null;
 }
 
-async function refreshAllLivePrices() {
+export async function refreshAllLivePrices() {
   const cashHoldings = state.cashCushion && state.cashCushion.holdings;
 
-  const allTickers = new Set([
+  const allTickers = new Set<string>([
     ...Object.keys(state.positions || {}),
-    ...(cashHoldings || []).map(h => h.ticker)
+    ...(cashHoldings || []).map((h: any) => h.ticker)
   ]);
 
   const tickersArray = Array.from(allTickers);
@@ -1337,7 +1387,7 @@ async function refreshAllLivePrices() {
       const ticker = data.symbol;
 
       let current = data.price.current ?? data.regularMarketPrice ?? data.price;
-      let previous = data.price.previousClose ?? data.regularMarketPreviousClose;
+      const previous = data.price.previousClose ?? data.regularMarketPreviousClose;
       let change = data.price.change ?? data.regularMarketChange ?? (current - previous);
 
       // "PRE", "REGULAR", "POST", or "CLOSED"
@@ -1366,7 +1416,7 @@ async function refreshAllLivePrices() {
       }
 
       if (Array.isArray(cashHoldings)) {
-        const cashPos = cashHoldings.find(h => h.ticker === ticker);
+        const cashPos = cashHoldings.find((h: any) => h.ticker === ticker);
         if (cashPos) {
           cashPos.price = current;
           cashPos.currentPrice = current;
@@ -1379,18 +1429,19 @@ async function refreshAllLivePrices() {
 
     if (updatedCount > 0) {
       saveState(state, pushStateToGist);
+      syncStore();
       renderBoard();
       logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
     } else {
       logTerminal(`[Market Data Warning]: No quotes updated during batch fetch.`);
     }
-  } catch (err) {
+  } catch (err: any) {
     console.error('Batch quote fetch failed:', err);
     logTerminal(`[Market Data Error]: Batch fetch failed - ${err.message}`);
   }
 }
 
-function setQuoteRefreshInterval(interval) {
+export function setQuoteRefreshInterval(interval: number | string) {
   const intervalMs = Number(interval);
   if (!QUOTE_REFRESH_INTERVALS.has(intervalMs)) {
     throw new Error(`Unsupported quote refresh interval: ${interval}`);
@@ -1402,12 +1453,12 @@ function setQuoteRefreshInterval(interval) {
 
   if (intervalMs > 0) {
     quoteRefreshTimer = setInterval(() => {
-      if (!document.hidden) document.getElementById('refreshQuotesButton').click();
+      if (!document.hidden) document.getElementById('refreshQuotesButton')?.click();
     }, intervalMs);
   }
 }
 
-function exportBackupJSON() {
+export function exportBackupJSON() {
   delete state.gatewaySecret;
   if ('marginBalance' in state) {
     delete state.marginBalance;
@@ -1428,9 +1479,9 @@ function exportBackupJSON() {
   logTerminal(`[Backup]: Exported state to ${filename}.`);
 }
 
-async function importBackupJSON(event) {
-  const input = event.target;
-  const file = input.files[0];
+export async function importBackupJSON(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
   if (!file) return;
   input.value = '';
 
@@ -1439,7 +1490,7 @@ async function importBackupJSON(event) {
     if (parsed && typeof parsed === 'object' && 'marginBalance' in parsed) {
       delete parsed.marginBalance;
     }
-    const importedState = normalizePortfolioBackup(parsed);
+    const importedState: any = normalizePortfolioBackup(parsed);
     if (!confirm(`Replace this browser's portfolio with "${file.name}"? If KV cloud sync is configured, the imported portfolio will replace its remote copy too.`)) {
       logTerminal('[Backup Import]: Import cancelled; the current portfolio was not changed.');
       return;
@@ -1450,8 +1501,10 @@ async function importBackupJSON(event) {
     state = importedState;
     try {
       saveState(state, pushStateToGist);
+      syncStore();
     } catch (error) {
       state = previousState;
+      syncStore();
       throw error;
     }
     await pushStateToGist(true);
@@ -1465,7 +1518,7 @@ async function importBackupJSON(event) {
   }
 }
 
-function runLadderSimulation(data, activeState = state) {
+export function runLadderSimulation(data: any, activeState = state) {
   const targetState = activeState || state;
   const positions = targetState?.positions || {};
   const ticker = data.ticker || (targetState.activeView !== "COMBINED" && targetState.activeView !== "CASH_CUSHION" && targetState.activeView !== "CLOSED_HISTORY" ? targetState.activeView : Object.keys(positions)[0]);
@@ -1475,7 +1528,7 @@ function runLadderSimulation(data, activeState = state) {
     return;
   }
 
-  const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + (t.qty * t.price), 0);
+  const totalInvested = (pos.tranches || []).reduce((sum: number, t: any) => sum + (t.qty * t.price), 0);
   const portfolioInvested = getTotalPortfolioInvested(targetState);
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
 
@@ -1489,9 +1542,9 @@ function runLadderSimulation(data, activeState = state) {
   let totalGrossProceeds = 0;
   let currentDay = 0;
 
-  const stepsRender = [];
+  const stepsRender: string[] = [];
 
-  data.steps.forEach((step, idx) => {
+  data.steps.forEach((step: any, idx: number) => {
     const stepDays = Math.max(0, step.days - currentDay);
     if (stepDays > 0 && runningDebt > 0) {
       const compounded = calculateCompoundedDebt(runningDebt, getDailyRate(), stepDays);
@@ -1542,7 +1595,7 @@ function runLadderSimulation(data, activeState = state) {
   logTerminal(html, false, true);
 }
 
-function runComparison(data, activeState = state) {
+export function runComparison(data: any, activeState = state) {
   const targetState = activeState || state;
   const positions = targetState?.positions || {};
   const ticker = data.ticker || (targetState.activeView !== "COMBINED" && targetState.activeView !== "CASH_CUSHION" && targetState.activeView !== "CLOSED_HISTORY" ? targetState.activeView : Object.keys(positions)[0]);
@@ -1552,7 +1605,7 @@ function runComparison(data, activeState = state) {
     return;
   }
 
-  const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + (t.qty * t.price), 0);
+  const totalInvested = (pos.tranches || []).reduce((sum: number, t: any) => sum + (t.qty * t.price), 0);
   const portfolioInvested = getTotalPortfolioInvested(targetState);
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
   const debtToUse = Math.abs(state.balance) * weight;
@@ -1562,13 +1615,12 @@ function runComparison(data, activeState = state) {
     totalDebt: Math.abs(state.balance)
   });
 
-  const computed = data.scenarios.map(s => {
+  const computed = data.scenarios.map((s: any) => {
     const grossProceeds = pos.shares * s.price;
     const grossPnl = grossProceeds - totalInvested;
     const commSell = calcCommission(pos.shares, grossProceeds);
     const totalComms = pos.commBuy + commSell;
 
-    const b_t = calculateCompoundedDebt(debtToUse, getDailyRate(), s.days);
     const additionalMargin = calculateMarginInterest(debtToUse, getDailyRate(), s.days);
     const totalMargin = marginChargedToUse + additionalMargin;
 
@@ -1639,7 +1691,7 @@ function runComparison(data, activeState = state) {
   logTerminal(html, false, true);
 }
 
-function runSimulation(simPrice, daysOffset, label, tickerTarget, activeState = state) {
+export function runSimulation(simPrice: number, daysOffset: number, label: string, tickerTarget: string, activeState = state) {
   const targetState = activeState || state;
   const positions = targetState?.positions || {};
   const ticker = tickerTarget || (targetState.activeView !== "COMBINED" && targetState.activeView !== "CASH_CUSHION" && targetState.activeView !== "CLOSED_HISTORY" ? targetState.activeView : Object.keys(positions)[0]);
@@ -1649,7 +1701,7 @@ function runSimulation(simPrice, daysOffset, label, tickerTarget, activeState = 
     return;
   }
 
-  const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + (t.qty * t.price), 0);
+  const totalInvested = (pos.tranches || []).reduce((sum: number, t: any) => sum + (t.qty * t.price), 0);
   const grossProceeds = pos.shares * simPrice;
   const grossPnl = grossProceeds - totalInvested;
   const commSell = calcCommission(pos.shares, grossProceeds);
@@ -1659,7 +1711,6 @@ function runSimulation(simPrice, daysOffset, label, tickerTarget, activeState = 
   const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
   const debtToUse = Math.abs(state.balance) * weight;
 
-  const b_t = calculateCompoundedDebt(debtToUse, getDailyRate(), daysOffset);
   const additionalMargin = calculateMarginInterest(debtToUse, getDailyRate(), daysOffset);
   const currentMarginInterest = calculateMarginInterest(state.tranches || pos.tranches || [], {
     dailyRate: getDailyRate(),
@@ -1697,7 +1748,7 @@ function runSimulation(simPrice, daysOffset, label, tickerTarget, activeState = 
 // ==========================================
 // PORTFOLIO ACTIONS (CASH-FIRST ORDER FLOW)
 // ==========================================
-async function applyPortfolioActions(action) {
+async function applyPortfolioActions(action: any) {
   const todayDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 
   if (action.action === "buy") {
@@ -1749,6 +1800,7 @@ async function applyPortfolioActions(action) {
     state.activeView = ticker;
 
     saveState(state, pushStateToGist);
+    syncStore();
     logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ $${formatUSD(price)}. Outlay: $${formatUSD(totalOutlay)} (Comm: $${formatUSD(buyComm)}). Funded: $${formatUSD(cashUsed)} cash | +$${formatUSD(debtAdded)} margin debt. Free Cash remaining: $${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -$${formatUSD(Math.abs(state.balance))}.`);
     showToast(`${shares} ${ticker} bought at $${formatUSD(price)}.`, 'success');
   }
@@ -1759,7 +1811,7 @@ async function applyPortfolioActions(action) {
     let cashHoldingIdx = -1;
 
     if (!pos && state.cashCushion && state.cashCushion.holdings) {
-      cashHoldingIdx = state.cashCushion.holdings.findIndex(h => h.ticker === ticker);
+      cashHoldingIdx = state.cashCushion.holdings.findIndex((h: any) => h.ticker === ticker);
       if (cashHoldingIdx !== -1) {
         isCashHolding = true;
         pos = state.cashCushion.holdings[cashHoldingIdx];
@@ -1772,7 +1824,7 @@ async function applyPortfolioActions(action) {
     }
 
     const hasRequestedShares = action.shares !== null && action.shares !== undefined;
-    let sharesToSell;
+    let sharesToSell: number;
     try {
       sharesToSell = resolveSaleQuantity(
         Number(pos.shares),
@@ -1824,7 +1876,7 @@ async function applyPortfolioActions(action) {
       }
     } else {
       const realizedTrade = realizeClosedTrade(pos, ticker, sharesToSell, sellPrice, sellComm, Date.now());
-      delete realizedTrade.position.marginCharged;
+      delete (realizedTrade.position as any).marginCharged;
       state.positions[ticker] = realizedTrade.position;
       if (realizedTrade.trade) state.closedTrades.push(realizedTrade.trade);
       state.realizedMarginCharged = (state.realizedMarginCharged || 0) + realizedTrade.marginFee;
@@ -1839,6 +1891,7 @@ async function applyPortfolioActions(action) {
     }
 
     saveState(state, pushStateToGist);
+    syncStore();
     showToast(resultMessage, 'success');
   }
   else if (action.action === "set_pt") {
@@ -1846,6 +1899,7 @@ async function applyPortfolioActions(action) {
     if (state.positions[ticker] && Number(action.pt) > 0) {
       state.positions[ticker].pt = Number(action.pt);
       saveState(state, pushStateToGist);
+      syncStore();
       logTerminal(`[Target Updated]: ${ticker} PT updated to $${formatUSD(action.pt)}.`);
     }
   }
@@ -1867,6 +1921,7 @@ async function applyPortfolioActions(action) {
   else if (action.action === "set_balance") {
     state.balance = -Math.abs(Number(action.balance));
     saveState(state, pushStateToGist);
+    syncStore();
     logTerminal(`[Margin Synced]: Total margin balance explicitly set to -$${formatUSD(Math.abs(state.balance))}.`);
   }
   else if (action.action === "set_free_cash") {
@@ -1898,14 +1953,14 @@ async function applyPortfolioActions(action) {
   renderBoard();
 }
 
-function confirmAiPortfolioAction(action) {
+export function confirmAiPortfolioAction(action: any) {
   let ticker = typeof action.ticker === 'string' ? action.ticker.trim().toUpperCase() : '';
   if (!ticker && ['set_pt', 'set_price'].includes(action.action)) {
     ticker = state.positions[state.activeView] ? state.activeView : Object.keys(state.positions)[0] || '';
   }
   const validTicker = /^[A-Z0-9._:-]+$/.test(ticker);
-  const isPositiveFinite = value => Number.isFinite(Number(value)) && Number(value) > 0;
-  const isFiniteNumber = value =>
+  const isPositiveFinite = (value: any) => Number.isFinite(Number(value)) && Number(value) > 0;
+  const isFiniteNumber = (value: any) =>
     value !== null &&
     value !== undefined &&
     !(typeof value === 'string' && value.trim() === '') &&
@@ -1946,7 +2001,7 @@ function confirmAiPortfolioAction(action) {
     return false;
   }
 
-  const details = {
+  const details: Record<string, string> = {
     buy: `Buy ${action.shares} ${ticker} at $${action.price}?`,
     sell: `Sell ${action.shares == null ? 'all' : action.shares} ${ticker} at $${action.price}?`,
     set_pt: `Set ${ticker}'s target price to $${action.pt}?`,
@@ -1964,9 +2019,10 @@ function confirmAiPortfolioAction(action) {
   return confirm(`Gemini interpreted your input as this portfolio change:\n\n${message}\n\nApply it?`);
 }
 
-async function executeCommand(activeState = state) {
+export async function executeCommand(activeState = state) {
   const targetState = activeState || state;
-  const input = document.getElementById("cmdInput");
+  const input = document.getElementById("cmdInput") as HTMLInputElement | null;
+  if (!input) return;
   const text = input.value.trim();
   if (!text) return;
 
@@ -1995,8 +2051,11 @@ async function executeCommand(activeState = state) {
     return;
   }
 
-  document.getElementById("aiStatus").innerText = "CONNECTING...";
-  document.getElementById("aiStatus").className = "text-amber-400 text-[10px]";
+  const aiStatus = document.getElementById("aiStatus");
+  if (aiStatus) {
+    aiStatus.innerText = "CONNECTING...";
+    aiStatus.className = "text-amber-400 text-[10px]";
+  }
 
   try {
     const prompt = buildIntentPrompt({
@@ -2007,7 +2066,7 @@ async function executeCommand(activeState = state) {
       today: new Date().toISOString().split("T")[0]
     });
 
-    document.getElementById("aiStatus").innerText = "PARSING...";
+    if (aiStatus) aiStatus.innerText = "PARSING...";
 
     const data = await proxyFetch('gemini', {}, {
       method: "POST",
@@ -2016,7 +2075,7 @@ async function executeCommand(activeState = state) {
     const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!rawText) throw new Error("No response content generated by Gemini.");
 
-    const parsed = evaluateIntent(parseAiIntent(rawText, targetState), targetState);
+    const parsed: any = evaluateIntent(parseAiIntent(rawText) as any);
 
     if (parsed.intent === "ladder") {
       runLadderSimulation(parsed, targetState);
@@ -2038,12 +2097,16 @@ async function executeCommand(activeState = state) {
       logTerminal(`[AI Advisor]: ${parsed.response}`);
     }
 
-    document.getElementById("aiStatus").innerText = "READY";
-    document.getElementById("aiStatus").className = "text-slate-500 text-[10px]";
-  } catch (err) {
+    if (aiStatus) {
+      aiStatus.innerText = "READY";
+      aiStatus.className = "text-slate-500 text-[10px]";
+    }
+  } catch (err: any) {
     logTerminal(`[Error]: ${err.message}`);
-    document.getElementById("aiStatus").innerText = "ERROR";
-    document.getElementById("aiStatus").className = "text-rose-400 text-[10px]";
+    if (aiStatus) {
+      aiStatus.innerText = "ERROR";
+      aiStatus.className = "text-rose-400 text-[10px]";
+    }
   }
 }
 
@@ -2055,7 +2118,7 @@ function showAuthContainer() {
   const container = document.getElementById('auth-container');
   if (container) {
     container.style.display = 'flex';
-    const input = document.getElementById('gatewaySecretInput');
+    const input = document.getElementById('gatewaySecretInput') as HTMLInputElement | null;
     input?.focus();
   }
 }
@@ -2067,11 +2130,14 @@ function hideAuthContainer() {
   }
 }
 
-async function startApp(secret) {
+async function startApp(secret: string) {
+  loadTradernetRules();
   state.gatewaySecret = secret;
   state = loadSavedState(state);
+  applyOvernightRollover();
+  syncStore();
 
-  const headerGatewayInput = document.getElementById('headerGatewaySecretInput');
+  const headerGatewayInput = document.getElementById('headerGatewaySecretInput') as HTMLInputElement | null;
   if (headerGatewayInput) headerGatewayInput.value = secret;
 
   if (secret) await syncCloudState('pull');
@@ -2082,7 +2148,7 @@ async function startApp(secret) {
 
   headerCredentialsHidden = areHeaderCredentialsConfigured();
 
-  const quoteRefreshInterval = document.getElementById('quoteRefreshInterval');
+  const quoteRefreshInterval = document.getElementById('quoteRefreshInterval') as HTMLSelectElement | null;
   const initialQuoteRefreshInterval = getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS);
 
   if (quoteRefreshInterval) {
@@ -2094,7 +2160,7 @@ async function startApp(secret) {
   setBrokerRuleInputs();
   document.getElementById('brokerRulesForm')?.addEventListener('submit', saveBrokerRuleInputs);
   document.getElementById('resetBrokerRulesButton')?.addEventListener('click', resetBrokerRules);
-  document.getElementById('marketInsightsTabs')?.addEventListener('keydown', handleMarketInsightsTabKeydown);
+  document.getElementById('marketInsightsTabs')?.addEventListener('keydown', handleMarketInsightsTabKeydown as EventListener);
 
   updateHeaderCredentialsVisibility();
 
@@ -2112,7 +2178,7 @@ async function initApp() {
   if (appInitialized) return;
 
   const authSaveBtn = document.getElementById('authSaveButton');
-  const authInput = document.getElementById('gatewaySecretInput');
+  const authInput = document.getElementById('gatewaySecretInput') as HTMLInputElement | null;
 
   if (authSaveBtn) {
     authSaveBtn.onclick = async () => {
@@ -2147,7 +2213,10 @@ async function initApp() {
     hideAuthContainer();
     await startApp(secret);
   } else {
+    loadTradernetRules();
     state = loadSavedState(state);
+    applyOvernightRollover();
+    syncStore();
     switchView(state.activeView);
     showAuthContainer();
   }
@@ -2159,21 +2228,31 @@ if (document.readyState === 'loading') {
   initApp();
 }
 
-Object.assign(window, {
+Object.assign(window as any, {
   addCashStockFromUI,
+  applyOvernightRollover,
   clearLocalData,
+  createDailyQuoteLabel,
+  createInsightElement,
   createStockPageLink,
   executeCommand,
   exportBackupJSON,
+  formatQuoteMetadata,
+  getCashCushionTotal,
   importBackupJSON,
   loadMarketInsight,
+  loadTradernetRules,
   logTerminal,
+  normalizePortfolioState,
   processRollovers,
   renderBoard,
   renderBoardExternalLinks,
   renderCashCushion,
+  renderCashCushionPanel,
   renderPositionsTable,
   renderSummaryCards,
+  saveStateToStorage,
+  sentimentBadge,
   syncCloudState,
   pullCloudState: () => syncCloudState('pull'),
   pushCloudState: () => syncCloudState('push'),
@@ -2183,8 +2262,10 @@ Object.assign(window, {
   saveApiKeys,
   saveCurrentBalanceFromInput,
   setActiveView,
+  setQuoteRefreshInterval,
   showToast,
   switchView,
   toggleMarketInsights,
-  toggleHeaderCredentialsVisibility
+  toggleHeaderCredentialsVisibility,
+  updateEmptyStateVisibility
 });

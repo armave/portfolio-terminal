@@ -1,5 +1,5 @@
 import '../style.css';
-import '../app.js';
+import '../app';
 import { pullCloudState, pushCloudState } from './services/api';
 import { registerSW } from 'virtual:pwa-register';
 
