@@ -9,6 +9,7 @@ import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment
 import { ProjectionsTable } from '../components/ProjectionsTable';
 import { TickerTabs } from '../components/TickerTab';
 import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
+import { EmptyStatePanel } from '../components/EmptyStatePanel';
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -778,10 +779,9 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const emptyPanel = document.getElementById('emptyStatePanel');
   if (emptyPanel) {
-    emptyPanel.classList.toggle(
-      'hidden',
-      !(tickers.length === 0 && !isCushionActive && !isClosedHistoryActive)
-    );
+    const showEmpty = tickers.length === 0 && !isCushionActive && !isClosedHistoryActive && !isSettingsActive;
+    emptyPanel.classList.toggle('hidden', !showEmpty);
+    render(h(EmptyStatePanel, null), emptyPanel);
   }
 
   if (tabsContainer) {

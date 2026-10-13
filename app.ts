@@ -60,6 +60,8 @@ import { portfolioStore } from './src/store/portfolioStore';
 import { BoardExternalLinks } from './src/components/BoardExternalLinks';
 import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
 import { InsightSection, MarketInsightsPanel } from './src/components/MarketInsightsPanel';
+import { SettingsDesk } from './src/components/SettingsDesk';
+import { AuthModal } from './src/components/AuthModal';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -616,6 +618,8 @@ export function renderBoard() {
     lastDeskView: lastRenderedDeskView,
     onUpdateLastDeskView: (view: string) => { lastRenderedDeskView = view; }
   });
+
+  renderSettingsPanel();
 }
 
 function renderMarketInsightsComponent() {
@@ -853,24 +857,6 @@ export async function loadMarketInsight(section: string, force = false) {
 
 export function refreshMarketInsight() {
   return loadMarketInsight(activeInsightSection, true);
-}
-
-function handleMarketInsightsTabKeydown(event: KeyboardEvent) {
-  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-  const tabs = Array.from(document.querySelectorAll<HTMLElement>('#marketInsightsTabs [role="tab"]'));
-  const currentIndex = tabs.indexOf(event.target as HTMLElement);
-  if (currentIndex < 0 || tabs.length === 0) return;
-  event.preventDefault();
-  const nextIndex = event.key === 'Home'
-    ? 0
-    : event.key === 'End'
-      ? tabs.length - 1
-      : (currentIndex + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
-  const nextTab = tabs[nextIndex];
-  nextTab.focus();
-  if (nextTab.dataset.insight) {
-    loadMarketInsight(nextTab.dataset.insight);
-  }
 }
 
 function recordTrackedPrice(ticker: string, price: number, sourceName: string, updatedAt: number | null = null, quoteDetails: any = null) {
@@ -1846,24 +1832,69 @@ export async function executeCommand(activeState = state) {
   }
 }
 
+function renderSettingsPanel() {
+  const container = document.getElementById('settings');
+  if (!container) return;
+
+  render(
+    h(SettingsDesk, {
+      rules: { ...TRADERNET_RULES },
+      defaultRefreshIntervalMs: DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
+      onSaveBrokerRules: saveBrokerRuleInputs,
+      onResetBrokerRules: () => {
+        resetBrokerRules();
+        renderSettingsPanel();
+      },
+      onSaveApiKeys: () => saveApiKeys({}),
+      onPullCloudState: () => syncCloudState('pull'),
+      onChangeRefreshInterval: (val: string) => setQuoteRefreshInterval(val),
+      onExportBackup: exportBackupJSON,
+      onImportBackup: importBackupJSON,
+      onResetToBlankState: resetToBlankState
+    }),
+    container
+  );
+}
+
 let appInitialized = false;
 
 setSecretGetter(() => state.gatewaySecret || getGatewaySecret());
 
-function showAuthContainer() {
-  const container = document.getElementById('auth-container');
-  if (container) {
-    container.style.display = 'flex';
-    const input = document.getElementById('gatewaySecretInput') as HTMLInputElement | null;
-    input?.focus();
+async function handleSaveGatewaySecret(secret: string) {
+  if (!secret) {
+    showToast('Please enter the Gateway Secret.', 'error');
+    return;
+  }
+  saveGatewaySecret(secret);
+  hideAuthContainer();
+  if (!appInitialized) {
+    appInitialized = true;
+    await startApp(secret);
+  } else {
+    state.gatewaySecret = secret;
+    await syncCloudState('pull');
   }
 }
 
-function hideAuthContainer() {
+function renderAuthModal(isOpen: boolean) {
   const container = document.getElementById('auth-container');
-  if (container) {
-    container.style.display = 'none';
-  }
+  if (!container) return;
+  container.style.display = isOpen ? 'flex' : 'none';
+  render(
+    h(AuthModal, {
+      isOpen,
+      onSaveSecret: handleSaveGatewaySecret
+    }),
+    container
+  );
+}
+
+function showAuthContainer() {
+  renderAuthModal(true);
+}
+
+function hideAuthContainer() {
+  renderAuthModal(false);
 }
 
 async function startApp(secret: string) {
@@ -1894,9 +1925,6 @@ async function startApp(secret: string) {
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
 
   setBrokerRuleInputs();
-  document.getElementById('brokerRulesForm')?.addEventListener('submit', saveBrokerRuleInputs);
-  document.getElementById('resetBrokerRulesButton')?.addEventListener('click', resetBrokerRules);
-  document.getElementById('marketInsightsTabs')?.addEventListener('keydown', handleMarketInsightsTabKeydown as EventListener);
 
   updateHeaderCredentialsVisibility();
 
@@ -1912,36 +1940,6 @@ async function startApp(secret: string) {
 
 async function initApp() {
   if (appInitialized) return;
-
-  const authSaveBtn = document.getElementById('authSaveButton');
-  const authInput = document.getElementById('gatewaySecretInput') as HTMLInputElement | null;
-
-  if (authSaveBtn) {
-    authSaveBtn.onclick = async () => {
-      const secret = authInput?.value?.trim() || '';
-      if (!secret) {
-        showToast('Please enter the Gateway Secret.', 'error');
-        return;
-      }
-      saveGatewaySecret(secret);
-      hideAuthContainer();
-      if (!appInitialized) {
-        appInitialized = true;
-        await startApp(secret);
-      } else {
-        state.gatewaySecret = secret;
-        await syncCloudState('pull');
-      }
-    };
-  }
-
-  if (authInput) {
-    authInput.onkeydown = e => {
-      if (e.key === 'Enter') {
-        authSaveBtn?.click();
-      }
-    };
-  }
 
   const secret = loadGatewaySecret();
   if (secret) {
