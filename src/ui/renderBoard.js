@@ -570,18 +570,26 @@ export function renderBoard(state, options = {}) {
       updateQuotesBtn.className = 'h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1';
       updateQuotesBtn.id = 'refreshQuotesButton';
       updateQuotesBtn.innerHTML = `<span>↻</span>`;
-      updateQuotesBtn.onclick = () => refreshAllLivePrices();
+      updateQuotesBtn.onclick = () => {
+        if (typeof window !== 'undefined' && typeof window.refreshAllLivePrices === 'function') {
+          window.refreshAllLivePrices();
+        }
+      };
       tabsContainer.appendChild(updateQuotesBtn);
     }
 
     if (tickers.length === 0) {
-      if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) state.activeView = "COMBINED";
+      if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) {
+        setTimeout(() => onSetActiveView?.("COMBINED"), 0);
+      }
       const emptyLabel = document.createElement('span');
       emptyLabel.className = "text-xs font-bold text-slate-500 uppercase tracking-wider";
       emptyLabel.innerText = "NO ACTIVE TRADES";
       tabsContainer.appendChild(emptyLabel);
     } else if (tickers.length === 1) {
-      if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) state.activeView = tickers[0];
+      if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive && state.activeView !== tickers[0]) {
+        setTimeout(() => onSetActiveView?.(tickers[0]), 0);
+      }
       const btn = document.createElement('button');
       btn.className = `px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0] ? 'bg-emerald-600 text-black' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`;
       btn.innerText = `MARGIN: ${tickers[0]}`;
@@ -589,7 +597,7 @@ export function renderBoard(state, options = {}) {
       tabsContainer.appendChild(btn);
     } else {
       if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive && state.activeView !== "COMBINED" && !state.positions[state.activeView]) {
-        state.activeView = "COMBINED";
+        setTimeout(() => onSetActiveView?.("COMBINED"), 0);
       }
 
       const combinedBtn = document.createElement('button');
@@ -631,7 +639,7 @@ export function renderBoard(state, options = {}) {
       : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition';
     settingsBtn.id = 'settingsBtn';
     settingsBtn.innerHTML = `<span>⚙️ SETTINGS</span>`;
-    settingsBtn.onclick = () => switchView("SETTINGS");
+    settingsBtn.onclick = () => onSetActiveView?.("SETTINGS");
     tabsContainer.appendChild(settingsBtn);
   }
 
