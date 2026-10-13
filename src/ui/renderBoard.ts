@@ -8,6 +8,7 @@ import {
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import { ProjectionsTable } from '../components/ProjectionsTable';
 import { TickerTabs } from '../components/TickerTab';
+import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -735,6 +736,18 @@ export function renderSummaryCards(
       pos.startDate || state.startDate,
       dailyRate
     );
+
+    const metricsGridContainer = document.getElementById('portfolioMetricsGrid');
+    if (metricsGridContainer) {
+      render(
+        h(SummaryMetricsGrid, {
+          state,
+          rules,
+          refreshIntervalMs
+        }),
+        metricsGridContainer
+      );
+    }
   }
 }
 
