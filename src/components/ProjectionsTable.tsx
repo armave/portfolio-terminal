@@ -71,7 +71,7 @@ export function ProjectionsTable({
         const netSign = net_p >= 0 ? '+' : '';
 
         let badgeClass = 'text-xs text-slate-500 font-mono';
-        let badgeText = (item.label || `+${daysFromToday}d`).replace(/^\(\vert{}\)$/g, '');
+        let badgeText = (item.label || `+${daysFromToday}d`).replace(/^\(|\)$/g, '');
 
         if (kind === 'today') {
           badgeClass = 'text-xs text-sky-400 font-mono';
@@ -80,7 +80,7 @@ export function ProjectionsTable({
           badgeClass = 'text-xs text-slate-400 font-mono';
           const defaultTag =
             kind === 'week-end' ? `EOW · +${daysFromToday}d` : `NTD · +${daysFromToday}d`;
-          badgeText = (item.label || defaultTag).replace(/^\(\vert{}\)$/g, '');
+          badgeText = (item.label || defaultTag).replace(/^\(|\)$/g, '');
         }
 
         return (

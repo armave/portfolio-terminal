@@ -111,7 +111,7 @@ export class CommandDispatcher {
 
       // 4. SINGLE SIMULATION: "sim AAPL 200 in 14 days" or "sell in 10 days for 195"
       const simMatch =
-        raw.match(/^(?:sim|simulate)\s+(?:([a-zA-Z]+)\s+)?([$0-9.,]+)(?:\s+(?:in\vert{}after)\s+(\d+)\s*d(?:ays?)?)?$/i) ||
+        raw.match(/^(?:sim|simulate)\s+(?:([a-zA-Z]+)\s+)?([$0-9.,]+)(?:\s+(?:in|after)\s+(\d+)\s*d(?:ays?)?)?$/i) ||
         raw.match(/^sell\s+(?:([a-zA-Z]+)\s+)?in\s+(\d+)\s*d(?:ays?)?\s+(?:for|at|@)\s*([$0-9.,]+)$/i);
       if (simMatch) {
         const isSellSyntax = raw.toLowerCase().startsWith('sell');
