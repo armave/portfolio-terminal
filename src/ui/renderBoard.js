@@ -563,6 +563,17 @@ export function renderBoard(state, options = {}) {
   }
 
   if (tabsContainer) {
+
+    if (tickers.length > 0) {
+      const updateQuotesBtn = document.createElement('button');
+      updateQuotesBtn.title = "Update quotes"
+      updateQuotesBtn.className = 'h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1';
+      updateQuotesBtn.id = 'refreshQuotesButton';
+      updateQuotesBtn.innerHTML = `<span>↻</span>`;
+      updateQuotesBtn.onclick = () => refreshAllLivePrices();
+      tabsContainer.appendChild(updateQuotesBtn);
+    }
+
     if (tickers.length === 0) {
       if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) state.activeView = "COMBINED";
       const emptyLabel = document.createElement('span');
