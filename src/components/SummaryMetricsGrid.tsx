@@ -32,7 +32,7 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
   if (hasChange && details.change !== undefined && details.changePercent !== undefined) {
     const sign = details.change >= 0 ? '+' : '−';
     parts.push(
-      `${sign}$${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(
+      `${sign}${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(
         details.changePercent
       ).toFixed(2)}%)`
     );
@@ -45,7 +45,7 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
   }
 
   if (hasRange) {
-    parts.push(`H $${formatUSD(details.high)} / L $${formatUSD(details.low)}`);
+    parts.push(`H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`);
   }
 
   return {
@@ -160,19 +160,19 @@ export function SummaryMetricsGrid({
     const tranchesText =
       tickers.length > 0
         ? tickers
-            .map((t) => `${t}: ${state.positions![t].shares}sh @ PT $${formatUSD(state.positions![t].pt)}`)
+            .map((t) => `${t}: ${state.positions![t].shares}sh @ PT ${formatUSD(state.positions![t].pt)}`)
             .join(' | ')
         : 'None';
 
-    const investedText = `$${formatUSD(totalInvested)} | Across ${tickers.length} Assets`;
+    const investedText = `${formatUSD(totalInvested)} | Across ${tickers.length} Assets`;
     const unSign = totalUnrealized >= 0 ? '+' : '';
-    const marginText = `-$${formatUSD(totalDebt)} ($${formatUSD(dailyAccrual)}/day @ ${(
+    const marginText = `-${formatUSD(totalDebt)} (${formatUSD(dailyAccrual)}/day @ ${(
       dailyRate * 100
     ).toFixed(4)}%)`;
-    const commsText = `$${formatUSD(totalComms)} ($${formatUSD(totalCommBuy)} buy / $${formatUSD(
+    const commsText = `${formatUSD(totalComms)} (${formatUSD(totalCommBuy)} buy / ${formatUSD(
       totalCommSell
     )} sell)`;
-    const marginChargedText = `$${formatUSD(totalMarginCharged)}`;
+    const marginChargedText = `${formatUSD(totalMarginCharged)}`;
 
     const cushionTotal = getCashCushionTotal(state);
     const quotes = tickers
@@ -189,7 +189,7 @@ export function SummaryMetricsGrid({
     const totalAccountAssets = totalMarketValue + cushionTotal;
     const equityPct =
       totalAccountAssets > 0 ? (totalAccountEquity / totalAccountAssets) * 100 : 0;
-    const equityText = `$${formatUSD(totalAccountEquity)} (${equityPct.toFixed(2)}%)`;
+    const equityText = `${formatUSD(totalAccountEquity)} (${equityPct.toFixed(2)}%)`;
 
     const risk = computeMarginRiskDisplay(totalDebt, totalMarketValue, cushionTotal, rules);
 
@@ -210,9 +210,9 @@ export function SummaryMetricsGrid({
         <div class="portfolio-metric px-3 py-1.5">
           <span class="portfolio-metric-label text-[10px]">Share Price | Market Value</span>
           <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm text-emerald-400">
-            ${formatUSD(totalMarketValue)} -{' '}
+            {formatUSD(totalMarketValue)} -{' '}
             <span class={totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-              {unSign}${formatUSD(totalUnrealized)} ({unSign}
+              {unSign}{formatUSD(totalUnrealized)} ({unSign}
               {unrealizedPct.toFixed(2)}%)
             </span>
           </span>
@@ -248,11 +248,11 @@ export function SummaryMetricsGrid({
             </span>
           </div>
           <div>
-            <span id="boardCushionLabel" class="text-slate-500">
+            <span class="text-slate-500">
               Cash / Collateral Cushion:
             </span>{' '}
             <span id="boardCushionMetric" class="text-cyan-400 font-bold font-mono">
-              +${formatUSD(cushionTotal)}
+              +{formatUSD(cushionTotal)}
             </span>
           </div>
           <div title="Estimated from portfolio equity and configured margin thresholds; not a live broker risk indicator.">
@@ -320,32 +320,32 @@ export function SummaryMetricsGrid({
   const tranchesText =
     pos.tranches && pos.tranches.length > 0
       ? pos.tranches
-          .map((t) => `${t.qty} @ $${formatUSD(t.price)} (${formatTrancheDate(t.date)})`)
+          .map((t) => `${t.qty} @ ${formatUSD(t.price)} (${formatTrancheDate(t.date)})`)
           .join(' + ')
       : 'None';
 
-  const investedText = `$${formatUSD(totalInvested)} | $${formatUSD(avgPrice)}`;
+  const investedText = `${formatUSD(totalInvested)} | ${formatUSD(avgPrice)}`;
   const unSign = unrealized >= 0 ? '+' : '';
   const dailyQuoteMeta = getDailyQuoteMeta(pos.quoteDetails);
 
   const isFullDebt = Math.abs(allocatedDebt - totalAccountDebt) < 0.01;
   const marginText = isFullDebt
-    ? `-$${formatUSD(allocatedDebt)} ($${formatUSD(allocatedDailyAccrual)}/day)`
-    : `-$${formatUSD(allocatedDebt)} ($${formatUSD(allocatedDailyAccrual)}/day) [${(
+    ? `-${formatUSD(allocatedDebt)} (${formatUSD(allocatedDailyAccrual)}/day)`
+    : `-${formatUSD(allocatedDebt)} (${formatUSD(allocatedDailyAccrual)}/day) [${(
         (allocatedDebt / (totalAccountDebt || 1)) *
         100
-      ).toFixed(0)}% of -$${formatUSD(totalAccountDebt)} Total]`;
+      ).toFixed(0)}% of -${formatUSD(totalAccountDebt)} Total]`;
 
-  const commsText = `$${formatUSD(totalComms)} ($${formatUSD(pos.commBuy)} buy / $${formatUSD(
+  const commsText = `${formatUSD(totalComms)} (${formatUSD(pos.commBuy)} buy / ${formatUSD(
     commSell
   )} sell)`;
-  const marginChargedText = `$${formatUSD(posMarginCharged)} (Position To Date)`;
+  const marginChargedText = `${formatUSD(posMarginCharged)} (Position To Date)`;
   const quoteMetaText = formatQuoteMetadata(pos, refreshIntervalMs);
 
   const positionAssets = currentMktVal + allocatedCushion;
   const positionEquity = positionAssets - allocatedDebt;
   const equityPct = positionAssets > 0 ? (positionEquity / positionAssets) * 100 : 0;
-  const equityText = `$${formatUSD(positionEquity)} (${equityPct.toFixed(2)}%)`;
+  const equityText = `${formatUSD(positionEquity)} (${equityPct.toFixed(2)}%)`;
 
   const risk = computeMarginRiskDisplay(allocatedDebt, currentMktVal, allocatedCushion, rules);
 
@@ -366,9 +366,9 @@ export function SummaryMetricsGrid({
       <div class="portfolio-metric px-3 py-1.5">
         <span class="portfolio-metric-label text-[10px]">Share Price | Market Value</span>
         <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm text-emerald-400">
-          ${formatUSD(pos.currentPrice)} | ${formatUSD(currentMktVal)} –{' '}
+          {formatUSD(pos.currentPrice)} | {formatUSD(currentMktVal)} –{' '}
           <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-            {unSign}${formatUSD(unrealized)} ({unSign}
+            {unSign}{formatUSD(unrealized)} ({unSign}
             {unrealizedPct.toFixed(2)}%)
           </span>
         </span>
@@ -409,11 +409,11 @@ export function SummaryMetricsGrid({
           </span>
         </div>
         <div>
-          <span id="boardCushionLabel" class="text-slate-500">
+          <span class="text-slate-500">
             Allocated Cash / Collateral:
           </span>{' '}
           <span id="boardCushionMetric" class="text-cyan-400 font-bold font-mono">
-            +${formatUSD(allocatedCushion)}
+            +{formatUSD(allocatedCushion)}
           </span>
         </div>
         <div title="Estimated from portfolio equity and configured margin thresholds; not a live broker risk indicator.">

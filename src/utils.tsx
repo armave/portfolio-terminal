@@ -96,11 +96,11 @@ export function DailyQuoteLabel({ details }: { details: any }) {
   let colorClass = 'text-slate-400';
   if (hasChange) {
     const sign = details.change >= 0 ? '+' : '−';
-    parts.push(`${sign}$${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`);
+    parts.push(`${sign}${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`);
     if (details.change > 0) colorClass = 'text-emerald-400';
     else if (details.change < 0) colorClass = 'text-rose-400';
   }
-  if (hasRange) parts.push(`H $${formatUSD(details.high)} / L $${formatUSD(details.low)}`);
+  if (hasRange) parts.push(`H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`);
 
   return <span className={`mt-0.5 block text-[9px] font-normal tabular-nums ${colorClass}`}>Day: {parts.join(' · ')}</span>;
 }

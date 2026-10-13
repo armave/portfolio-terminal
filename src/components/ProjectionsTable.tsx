@@ -90,13 +90,13 @@ export function ProjectionsTable({
               <span class={badgeClass}>{badgeText}</span>
             </td>
             <td class={`py-2 px-3 text-right ${netClass} font-semibold`}>
-              {netSign}${formatUSD(net_p)}
+              {netSign}{formatUSD(net_p)}
             </td>
-            <td class="py-2 px-3 text-right text-slate-200">${formatUSD(fee_c)}</td>
+            <td class="py-2 px-3 text-right text-slate-200">{formatUSD(fee_c)}</td>
             <td class="py-2 px-3 text-right text-slate-400">
-              ${formatUSD(m_d)} (${formatUSD(dr)})
+              {formatUSD(m_d)} ({formatUSD(dr)})
             </td>
-            <td class="py-2 px-3 text-right text-rose-400">-${formatUSD(b_t)}</td>
+            <td class="py-2 px-3 text-right text-rose-400">-{formatUSD(b_t)}</td>
           </tr>
         );
       })}

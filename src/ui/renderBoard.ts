@@ -143,7 +143,12 @@ export function formatTrancheDate(dateStr?: string | null): string {
 
 export function formatUSD(val: number | string | undefined | null): string {
   const num = Number(val) || 0;
-  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 2
+  }).format(num);
 }
 
 export function getTotalPortfolioInvested(state: BoardState | null | undefined): number {
@@ -222,7 +227,7 @@ export function createDailyQuoteLabel(details?: QuoteDetails | null): HTMLElemen
   if (hasChange && details.change !== undefined && details.changePercent !== undefined) {
     const sign = details.change >= 0 ? '+' : '−';
     parts.push(
-      `${sign}$${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`
+      `${sign}${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`
     );
     label.classList.add(
       details.change > 0
@@ -234,19 +239,19 @@ export function createDailyQuoteLabel(details?: QuoteDetails | null): HTMLElemen
   } else {
     label.classList.add('text-slate-400');
   }
-  if (hasRange) parts.push(`H $${formatUSD(details.high)} / L $${formatUSD(details.low)}`);
+  if (hasRange) parts.push(`H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`);
   label.textContent = `Day: ${parts.join(' · ')}`;
   return label;
 }
 
 export function formatRiskTrigger(triggerValue: number, currentValue: number): string {
-  if (currentValue <= 0) return `Position value $${formatUSD(triggerValue)}`;
+  if (currentValue <= 0) return `Position value {formatUSD(triggerValue)}`;
 
   const bufferPct = ((currentValue - triggerValue) / currentValue) * 100;
   if (bufferPct < 0) {
-    return `Position value $${formatUSD(triggerValue)} (already ${Math.abs(bufferPct).toFixed(1)}% below trigger)`;
+    return `Position value ${formatUSD(triggerValue)} (already ${Math.abs(bufferPct).toFixed(1)}% below trigger)`;
   }
-  return `Position value $${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
+  return `Position value ${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
 }
 
 export function renderPositionsTable(
@@ -409,7 +414,7 @@ export function renderSummaryCards(
 
     const titleEl = document.getElementById('boardTitle');
     if (titleEl) {
-      titleEl.innerText = `${pos.ticker} (${pos.shares} Shares @ $${formatUSD(pos.pt)} PT | ${netPct >= 0 ? '+' : ''
+      titleEl.innerText = `${pos.ticker} (${pos.shares} Shares @ ${formatUSD(pos.pt)} PT | ${netPct >= 0 ? '+' : ''
         }${netPct.toFixed(2)}% Net Target)`;
     }
 

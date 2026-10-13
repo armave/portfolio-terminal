@@ -31,7 +31,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   if (hasChange && details.change !== undefined && details.changePercent !== undefined) {
     const sign = details.change >= 0 ? '+' : '−';
     parts.push(
-      `${sign}$${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(
+      `${sign}${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(
         details.changePercent
       ).toFixed(2)}%)`
     );
@@ -44,7 +44,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   }
 
   if (hasRange) {
-    parts.push(`H $${formatUSD(details.high)} / L $${formatUSD(details.low)}`);
+    parts.push(`H {formatUSD(details.high)} / L {formatUSD(details.low)}`);
   }
 
   return (
@@ -101,7 +101,7 @@ export function CashCushionDesk({
         <div class="text-right">
           <span class="text-xs text-slate-500 block">Cash + Holdings</span>
           <span class="text-xl font-bold text-cyan-300 font-mono" id="cushionTotalValue">
-            ${formatUSD(totalCushion)}
+            {formatUSD(totalCushion)}
           </span>
         </div>
       </div>
@@ -200,14 +200,14 @@ export function CashCushionDesk({
                         {shares.toLocaleString('en-US', { maximumFractionDigits: 3 })}
                       </td>
                       <td class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums">
-                        <span>${formatUSD(price)}</span>
+                        <span>{formatUSD(price)}</span>
                         {renderDailyQuoteSubtext(h.quoteDetails)}
                         <span class="mt-0.5 block text-[9px] font-normal text-slate-500">
                           {quoteMeta}
                         </span>
                       </td>
                       <td class="py-2 px-3 text-right text-white font-semibold">
-                        ${formatUSD(val)}
+                        {formatUSD(val)}
                       </td>
                       <td class="py-2 px-3 text-right text-slate-300 tabular-nums">
                         {allocation.toFixed(1)}%
@@ -242,7 +242,7 @@ export function CashCushionDesk({
                     {holdings.length} holding{holdings.length === 1 ? '' : 's'}
                   </td>
                   <td class="py-2 px-3 text-right text-white font-bold">
-                    ${formatUSD(stocksTotal)}
+                    {formatUSD(stocksTotal)}
                   </td>
                   <td class="py-2 px-3 text-right text-slate-300 font-bold">
                     {stocksTotal > 0 ? '100.0%' : '—'}

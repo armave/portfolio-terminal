@@ -478,7 +478,7 @@ export function applyOvernightRollover() {
     state.lastRolloverTimestamp = now.getTime();
     saveState(state, pushStateToGist);
     syncStore();
-    logTerminal(`[Broker ${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')} Armenia rollover]: Processed ${elapsedCycles} cycle(s). Accrued interest: +$${formatUSD(interestAccrued)}. Margin Debt: -$${formatUSD(compoundedDebt)}.`);
+    logTerminal(`[Broker ${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')} Armenia rollover]: Processed ${elapsedCycles} cycle(s). Accrued interest: +${formatUSD(interestAccrued)}. Margin Debt: -${formatUSD(compoundedDebt)}.`);
   } else if (elapsedCycles > 0) {
     state.lastRolloverTimestamp = now.getTime();
     saveState(state, pushStateToGist);
@@ -732,12 +732,12 @@ export function createDailyQuoteLabel(details: any) {
   const parts: string[] = [];
   if (hasChange) {
     const sign = details.change >= 0 ? '+' : '−';
-    parts.push(`${sign}$${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`);
+    parts.push(`${sign}${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`);
     label.classList.add('text-slate-400');
   } else {
     label.classList.add('text-slate-400');
   }
-  if (hasRange) parts.push(`H $${formatUSD(details.high)} / L $${formatUSD(details.low)}`);
+  if (hasRange) parts.push(`H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`);
   label.textContent = `Day: ${parts.join(' · ')}`;
   return label;
 }
@@ -825,11 +825,11 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
         : upside < 0
           ? 'border-rose-800 bg-rose-950/40 text-rose-300'
           : 'border-slate-700 bg-slate-900 text-slate-300';
-      container.textContent = `${snapshot.source} · $${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`;
-      container.title = `Target from ${snapshot.source}: $${formatUSD(snapshot.targetPrice)} versus current price $${formatUSD(currentPrice)}.`;
+      container.textContent = `${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`;
+      container.title = `Target from ${snapshot.source}: ${formatUSD(snapshot.targetPrice)} versus current price ${formatUSD(currentPrice)}.`;
       container.className = `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`;
     } else {
-      container.textContent = `${snapshot.source} price target · $${formatUSD(snapshot.targetPrice)} · current price unavailable`;
+      container.textContent = `${snapshot.source} price target · ${formatUSD(snapshot.targetPrice)} · current price unavailable`;
       container.title = `Price target from ${snapshot.source}.`;
       container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300';
     }
@@ -957,8 +957,8 @@ export function saveCurrentBalanceFromInput() {
   const { balance, debt } = setCurrentBalance(inputValue);
   saveState(state, pushStateToGist);
   renderBoard();
-  logTerminal(`[Balance]: Current balance/debt updated. Balance: $${formatUSD(balance)} | Margin debt: -$${formatUSD(debt)}.`);
-  showToast(`Balance $${formatUSD(balance)} | Debt -$${formatUSD(debt)}`, 'success');
+  logTerminal(`[Balance]: Current balance/debt updated. Balance: ${formatUSD(balance)} | Margin debt: -${formatUSD(debt)}.`);
+  showToast(`Balance ${formatUSD(balance)} | Debt -${formatUSD(debt)}`, 'success');
 }
 
 export async function addCashStockFromUI() {
@@ -1084,14 +1084,14 @@ async function fetchLivePrice(ticker: string, silent = false) {
     saveState(state, pushStateToGist);
     renderBoard();
     if (!silent) {
-      logTerminal(`[${result.sourceName}]: ${symbol} updated to $${formatUSD(result.price)}${result.matched ? '' : ' (quote only)'}.`);
+      logTerminal(`[${result.sourceName}]: ${symbol} updated to ${formatUSD(result.price)}${result.matched ? '' : ' (quote only)'}.`);
     }
     return result.price;
   }
 
   const tracked = state.positions[symbol]?.currentPrice || (state.cashCushion?.holdings?.find((h: any) => h.ticker === symbol)?.price) || 0;
   if (!silent) {
-    logTerminal(`[Market Data Error]: Could not fetch ${symbol}. ${result.error}. Retained tracked price: $${formatUSD(tracked)}. Set manually via: price ${symbol} <number>.`);
+    logTerminal(`[Market Data Error]: Could not fetch ${symbol}. ${result.error}. Retained tracked price: ${formatUSD(tracked)}. Set manually via: price ${symbol} <number>.`);
   }
   return null;
 }
@@ -1300,8 +1300,8 @@ export function runLadderSimulation(data: any, activeState = state) {
 
     stepsRender.push(`
       <div class="border-l-2 border-cyan-500/50 pl-2 space-y-0.5">
-        <div class="text-slate-200 font-semibold">Stage ${idx + 1} (${step.label || '+' + step.days + 'd'}): Sell ${step.shares} @ $${formatUSD(step.price)}</div>
-        <div class="text-slate-400">Proceeds: $${formatUSD(proceeds)} | Comm: $${formatUSD(commSell)} | Remaining Debt: <span class="text-rose-400 font-mono">-$${formatUSD(runningDebt)}</span></div>
+        <div class="text-slate-200 font-semibold">Stage ${idx + 1} (${step.label || '+' + step.days + 'd'}): Sell ${step.shares} @ ${formatUSD(step.price)}</div>
+        <div class="text-slate-400">Proceeds: ${formatUSD(proceeds)} | Comm: ${formatUSD(commSell)} | Remaining Debt: <span class="text-rose-400 font-mono">-${formatUSD(runningDebt)}</span></div>
       </div>
     `);
   });
@@ -1316,15 +1316,15 @@ export function runLadderSimulation(data: any, activeState = state) {
     <div class="border border-purple-800/80 bg-purple-950/20 p-3 rounded my-2 text-xs space-y-2">
       <div class="font-bold text-purple-300 border-b border-purple-800/60 pb-1 flex justify-between items-center">
         <span>[LADDERED SCALE-OUT SIMULATION]: ${ticker}</span>
-        <span class="${netColor} font-black text-sm">${netSign}$${formatUSD(netPnl)} (${netSign}${netPct.toFixed(2)}% Net)</span>
+        <span class="${netColor} font-black text-sm">${netSign}${formatUSD(netPnl)} (${netSign}${netPct.toFixed(2)}% Net)</span>
       </div>
       <div class="space-y-1.5 py-1">
         ${stepsRender.join('')}
       </div>
       <div class="border-t border-purple-800/60 pt-1.5 grid grid-cols-2 gap-2 text-slate-300">
-        <div><span class="text-slate-500">Gross Proceeds:</span> $${formatUSD(totalGrossProceeds)} (Gross: ${grossPnl >= 0 ? '+' : ''}$${formatUSD(grossPnl)})</div>
-        <div><span class="text-slate-500">Total Comms:</span> $${formatUSD(totalComms)}</div>
-        <div><span class="text-slate-500">Accrued Margin Drag:</span> <span class="text-rose-400">$${formatUSD(totalAccruedMargin)}</span></div>
+        <div><span class="text-slate-500">Gross Proceeds:</span> ${formatUSD(totalGrossProceeds)} (Gross: ${grossPnl >= 0 ? '+' : ''}${formatUSD(grossPnl)})</div>
+        <div><span class="text-slate-500">Total Comms:</span> ${formatUSD(totalComms)}</div>
+        <div><span class="text-slate-500">Accrued Margin Drag:</span> <span class="text-rose-400">${formatUSD(totalAccruedMargin)}</span></div>
         <div><span class="text-slate-500">Debt Reduction Benefit:</span> <span class="text-emerald-400 font-semibold">Reduced Bleed Applied</span></div>
       </div>
     </div>
@@ -1391,36 +1391,36 @@ export function runComparison(data: any, activeState = state) {
     <div class="border border-cyan-800 bg-cyan-950/20 p-3 rounded my-2 text-xs space-y-3">
       <div class="font-bold text-cyan-300 border-b border-cyan-800/60 pb-1 flex justify-between items-center">
         <span>[COMPARISON]: ${pos.shares} ${ticker} — ${sA.label} VS ${sB.label}</span>
-        <span class="${diffColor}">Diff: ${diffSign}$${formatUSD(diffNet)} Net</span>
+        <span class="${diffColor}">Diff: ${diffSign}${formatUSD(diffNet)} Net</span>
       </div>
 
       <div class="grid grid-cols-2 gap-4">
         <div class="bg-slate-900/60 p-2.5 rounded border border-slate-800 space-y-1">
           <div class="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between">
             <span>${sA.label}</span>
-            <span class="${sA.netPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sA.netPnl >= 0 ? '+' : ''}$${formatUSD(sA.netPnl)} (${sA.netPct.toFixed(2)}%)</span>
+            <span class="${sA.netPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sA.netPnl >= 0 ? '+' : ''}${formatUSD(sA.netPnl)} (${sA.netPct.toFixed(2)}%)</span>
           </div>
-          <div><span class="text-slate-500">Gross Proceeds:</span> $${formatUSD(sA.grossProceeds)}</div>
-          <div><span class="text-slate-500">Commissions:</span> $${formatUSD(sA.totalComms)}</div>
-          <div><span class="text-slate-500">Margin Accrued:</span> $${formatUSD(sA.totalMargin)}</div>
-          <div><span class="text-slate-500">Resulting Balance:</span> <span class="${sA.resultingBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sA.resultingBalance >= 0 ? '+' : '-'}$${formatUSD(Math.abs(sA.resultingBalance))}</span></div>
+          <div><span class="text-slate-500">Gross Proceeds:</span> ${formatUSD(sA.grossProceeds)}</div>
+          <div><span class="text-slate-500">Commissions:</span> ${formatUSD(sA.totalComms)}</div>
+          <div><span class="text-slate-500">Margin Accrued:</span> ${formatUSD(sA.totalMargin)}</div>
+          <div><span class="text-slate-500">Resulting Balance:</span> <span class="${sA.resultingBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sA.resultingBalance >= 0 ? '+' : '-'}${formatUSD(Math.abs(sA.resultingBalance))}</span></div>
         </div>
 
         <div class="bg-slate-900/60 p-2.5 rounded border border-slate-800 space-y-1">
           <div class="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between">
             <span>${sB.label}</span>
-            <span class="${sB.netPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sB.netPnl >= 0 ? '+' : ''}$${formatUSD(sB.netPnl)} (${sB.netPct.toFixed(2)}%)</span>
+            <span class="${sB.netPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sB.netPnl >= 0 ? '+' : ''}${formatUSD(sB.netPnl)} (${sB.netPct.toFixed(2)}%)</span>
           </div>
-          <div><span class="text-slate-500">Gross Proceeds:</span> $${formatUSD(sB.grossProceeds)}</div>
-          <div><span class="text-slate-500">Commissions:</span> $${formatUSD(sB.totalComms)}</div>
-          <div><span class="text-slate-500">Margin Accrued:</span> $${formatUSD(sB.totalMargin)} (+${formatUSD(sB.additionalMargin)})</div>
-          <div><span class="text-slate-500">Resulting Balance:</span> <span class="${sB.resultingBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sB.resultingBalance >= 0 ? '+' : '-'}$${formatUSD(Math.abs(sB.resultingBalance))}</span></div>
+          <div><span class="text-slate-500">Gross Proceeds:</span> ${formatUSD(sB.grossProceeds)}</div>
+          <div><span class="text-slate-500">Commissions:</span> ${formatUSD(sB.totalComms)}</div>
+          <div><span class="text-slate-500">Margin Accrued:</span> ${formatUSD(sB.totalMargin)} (+${formatUSD(sB.additionalMargin)})</div>
+          <div><span class="text-slate-500">Resulting Balance:</span> <span class="${sB.resultingBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sB.resultingBalance >= 0 ? '+' : '-'}${formatUSD(Math.abs(sB.resultingBalance))}</span></div>
         </div>
       </div>
 
       <div class="text-[11px] text-slate-400 border-t border-slate-800 pt-1.5 flex justify-between">
-        <span>Tradernet margin penalty for waiting: <strong class="text-rose-400">+$${formatUSD(diffMargin)}</strong></span>
-        <span>Net advantage: <strong class="${diffColor}">${diffSign}$${formatUSD(diffNet)}</strong></span>
+        <span>Tradernet margin penalty for waiting: <strong class="text-rose-400">+${formatUSD(diffMargin)}</strong></span>
+        <span>Net advantage: <strong class="${diffColor}">${diffSign}${formatUSD(diffNet)}</strong></span>
       </div>
     </div>
   `;
@@ -1468,14 +1468,14 @@ export function runSimulation(simPrice: number, daysOffset: number, label: strin
   const html = `
     <div class="border border-cyan-800/80 bg-cyan-950/20 p-3 rounded my-2 text-xs space-y-1">
       <div class="font-bold text-cyan-300 flex justify-between border-b border-cyan-800/50 pb-1">
-        <span>[SIMULATION]: Sell ${pos.shares} ${ticker} @ $${formatUSD(simPrice)} (${label})</span>
-        <span class="${netColor} font-black">${netSign}$${formatUSD(netPnl)} (${netSign}${netPct.toFixed(2)}%)</span>
+        <span>[SIMULATION]: Sell ${pos.shares} ${ticker} @ ${formatUSD(simPrice)} (${label})</span>
+        <span class="${netColor} font-black">${netSign}${formatUSD(netPnl)} (${netSign}${netPct.toFixed(2)}%)</span>
       </div>
       <div class="grid grid-cols-2 gap-2 text-slate-300 pt-1">
-        <div><span class="text-slate-500">Gross Proceeds:</span> $${formatUSD(grossProceeds)} (Gross: ${grossPnl >= 0 ? '+' : ''}$${formatUSD(grossPnl)})</div>
-        <div><span class="text-slate-500">Commissions:</span> $${formatUSD(totalComms)} ($${formatUSD(pos.commBuy)} buy / $${formatUSD(commSell)} sell)</div>
-        <div><span class="text-slate-500">Margin Accrued:</span> $${formatUSD(totalMarginAtDate)} (+$${formatUSD(additionalMargin)} over ${daysOffset}d)</div>
-        <div><span class="text-slate-500">Resulting Balance:</span> <span class="${balColor} font-semibold">${balSign}$${formatUSD(Math.abs(resultingBalance))}</span></div>
+        <div><span class="text-slate-500">Gross Proceeds:</span> ${formatUSD(grossProceeds)} (Gross: ${grossPnl >= 0 ? '+' : ''}${formatUSD(grossPnl)})</div>
+        <div><span class="text-slate-500">Commissions:</span> ${formatUSD(totalComms)} (${formatUSD(pos.commBuy)} buy / ${formatUSD(commSell)} sell)</div>
+        <div><span class="text-slate-500">Margin Accrued:</span> ${formatUSD(totalMarginAtDate)} (+${formatUSD(additionalMargin)} over ${daysOffset}d)</div>
+        <div><span class="text-slate-500">Resulting Balance:</span> <span class="${balColor} font-semibold">${balSign}${formatUSD(Math.abs(resultingBalance))}</span></div>
       </div>
     </div>
   `;
@@ -1538,8 +1538,8 @@ async function applyPortfolioActions(action: any) {
 
     saveState(state, pushStateToGist);
     syncStore();
-    logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ $${formatUSD(price)}. Outlay: $${formatUSD(totalOutlay)} (Comm: $${formatUSD(buyComm)}). Funded: $${formatUSD(cashUsed)} cash | +$${formatUSD(debtAdded)} margin debt. Free Cash remaining: $${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -$${formatUSD(Math.abs(state.balance))}.`);
-    showToast(`${shares} ${ticker} bought at $${formatUSD(price)}.`, 'success');
+    logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Funded: ${formatUSD(cashUsed)} cash | +${formatUSD(debtAdded)} margin debt. Free Cash remaining: ${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(state.balance))}.`);
+    showToast(`${shares} ${ticker} bought at ${formatUSD(price)}.`, 'success');
   }
   else if (action.action === "sell") {
     const ticker = action.ticker.toUpperCase();
@@ -1601,15 +1601,15 @@ async function applyPortfolioActions(action: any) {
       state.cashCushion.freeCash = (Number(state.cashCushion.freeCash) || 0) + cashSurplus;
     }
 
-    const resultMessage = `${sharesToSell} ${ticker} sold at $${formatUSD(sellPrice)}.`;
+    const resultMessage = `${sharesToSell} ${ticker} sold at ${formatUSD(sellPrice)}.`;
 
     if (isCashHolding) {
       if (sharesToSell >= pos.shares) {
         state.cashCushion.holdings.splice(cashHoldingIdx, 1);
-        logTerminal(`[Cash Holding Closed]: Sold ${sharesToSell} ${ticker} @ $${formatUSD(sellPrice)}. Net credited: +$${formatUSD(netCashCredited)} (Debt paid: $${formatUSD(debtRepaid)}, Free Cash added: $${formatUSD(cashSurplus)}).`);
+        logTerminal(`[Cash Holding Closed]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(netCashCredited)} (Debt paid: ${formatUSD(debtRepaid)}, Free Cash added: ${formatUSD(cashSurplus)}).`);
       } else {
         pos.shares -= sharesToSell;
-        logTerminal(`[Cash Holding Partial Sell]: Sold ${sharesToSell} ${ticker} @ $${formatUSD(sellPrice)}. Remaining: ${pos.shares} shares.`);
+        logTerminal(`[Cash Holding Partial Sell]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Remaining: ${pos.shares} shares.`);
       }
     } else {
       const realizedTrade = realizeClosedTrade(pos, ticker, sharesToSell, sellPrice, sellComm, Date.now());
@@ -1621,9 +1621,9 @@ async function applyPortfolioActions(action: any) {
       if (realizedTrade.position.shares <= 1e-8) {
         delete state.positions[ticker];
         state.activeView = "COMBINED";
-        logTerminal(`[Position Closed]: Sold ${sharesToSell} ${ticker} @ $${formatUSD(sellPrice)}. Net credited: +$${formatUSD(netCashCredited)} (Debt paid: $${formatUSD(debtRepaid)}, Free Cash added: $${formatUSD(cashSurplus)}). Remaining Debt: -$${formatUSD(Math.abs(state.balance))}. Free Cash: $${formatUSD(state.cashCushion.freeCash)}.`);
+        logTerminal(`[Position Closed]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(netCashCredited)} (Debt paid: ${formatUSD(debtRepaid)}, Free Cash added: ${formatUSD(cashSurplus)}). Remaining Debt: -${formatUSD(Math.abs(state.balance))}. Free Cash: ${formatUSD(state.cashCushion.freeCash)}.`);
       } else {
-        logTerminal(`[Partial Sell]: Sold ${sharesToSell} ${ticker} @ $${formatUSD(sellPrice)}. Net credited: +$${formatUSD(netCashCredited)} (Debt paid: $${formatUSD(debtRepaid)}, Free Cash added: $${formatUSD(cashSurplus)}). Remaining: ${realizedTrade.position.shares} shares.`);
+        logTerminal(`[Partial Sell]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(netCashCredited)} (Debt paid: ${formatUSD(debtRepaid)}, Free Cash added: ${formatUSD(cashSurplus)}). Remaining: ${realizedTrade.position.shares} shares.`);
       }
     }
 
@@ -1637,7 +1637,7 @@ async function applyPortfolioActions(action: any) {
       state.positions[ticker].pt = Number(action.pt);
       saveState(state, pushStateToGist);
       syncStore();
-      logTerminal(`[Target Updated]: ${ticker} PT updated to $${formatUSD(action.pt)}.`);
+      logTerminal(`[Target Updated]: ${ticker} PT updated to ${formatUSD(action.pt)}.`);
     }
   }
   else if (action.action === "set_price") {
@@ -1652,19 +1652,19 @@ async function applyPortfolioActions(action: any) {
     const updated = recordTrackedPrice(ticker, newP, 'Manual');
     if (updated) {
       saveState(state, pushStateToGist);
-      logTerminal(`[Price Updated]: ${ticker} market price set to $${formatUSD(newP)}.`);
+      logTerminal(`[Price Updated]: ${ticker} market price set to ${formatUSD(newP)}.`);
     }
   }
   else if (action.action === "set_balance") {
     state.balance = -Math.abs(Number(action.balance));
     saveState(state, pushStateToGist);
     syncStore();
-    logTerminal(`[Margin Synced]: Total margin balance explicitly set to -$${formatUSD(Math.abs(state.balance))}.`);
+    logTerminal(`[Margin Synced]: Total margin balance explicitly set to -${formatUSD(Math.abs(state.balance))}.`);
   }
   else if (action.action === "set_free_cash") {
     const { balance, debt } = setCurrentBalance(action.amount);
     saveState(state, pushStateToGist);
-    logTerminal(`[Balance]: Current balance/debt updated. Balance: $${formatUSD(balance)} | Margin debt: -$${formatUSD(debt)}.`);
+    logTerminal(`[Balance]: Current balance/debt updated. Balance: ${formatUSD(balance)} | Margin debt: -${formatUSD(debt)}.`);
   }
   else if (action.action === "add_cash_stock") {
     const ticker = action.ticker.toUpperCase();

@@ -88,19 +88,19 @@ export function ClosedHistoryDesk() {
                     <td class="py-2 px-3 font-bold text-white">{trade.ticker || '—'}</td>
                     <td class="py-2 px-3 whitespace-nowrap">{dateText}</td>
                     <td class="py-2 px-3 text-right whitespace-nowrap">
-                      {formatUSD(trade.shares)} shares
+                      {trade.shares}
                     </td>
                     <td class="py-2 px-3 text-right whitespace-nowrap">
                       {Math.max(0, Number(trade.holdingDays) || 0)} days
                     </td>
                     <td class="py-2 px-3 text-right whitespace-nowrap">
-                      ${formatUSD(trade.feesAndCommissions)}
+                      {formatUSD(trade.feesAndCommissions)}
                     </td>
                     <td
                       class={`py-2 px-3 text-right font-bold ${netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'
                         }`}
                     >
-                      {netProfit >= 0 ? '+' : '-'}${formatUSD(Math.abs(netProfit))}
+                      {netProfit >= 0 ? '+' : '-'}{formatUSD(Math.abs(netProfit))}
                     </td>
                     <td class="py-2 px-3 text-right">
                       <button
