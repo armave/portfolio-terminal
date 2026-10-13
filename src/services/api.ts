@@ -111,7 +111,7 @@ export async function pullCloudState(options: SyncOptions | ((state: any) => voi
     return loadSavedState(state || {});
   }
 
-  showToast('Pulling portfolio from KV cloud...', 'info');
+  // showToast('Pulling portfolio from KV cloud...', 'info');
 
   try {
     const url = new URL('/api/state', YAHOO_PROXY_URL);
@@ -194,7 +194,7 @@ export async function pullCloudState(options: SyncOptions | ((state: any) => voi
     }
 
     console.log('[Sync]: Cloud state ingested and UI re-rendered successfully', parsedState);
-    showToast('KV cloud state pulled.', 'success');
+    // showToast('KV cloud state pulled.', 'success');
     logTerminal('[KV Cloud]: Synced successfully.');
     return parsedState;
   } catch (err: any) {
