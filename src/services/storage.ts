@@ -13,7 +13,10 @@ let inMemoryGatewaySecret = '';
 export function obfuscateSecret(plain: string): string {
   if (!plain || typeof plain !== 'string') return '';
   try {
-    return btoa(plain);
+    if (typeof btoa === 'function') {
+      return btoa(plain);
+    }
+    return Buffer.from(plain, 'utf-8').toString('base64');
   } catch {
     return '';
   }
@@ -22,10 +25,22 @@ export function obfuscateSecret(plain: string): string {
 /**
  * Decodes an obfuscated base64 secret string defensively.
  */
-export function deobfuscateSecret(obfuscated: string): string {
-  if (!obfuscated || typeof obfuscated !== 'string') return '';
+export function deobfuscateSecret(encoded: string): string {
+  if (!encoded || typeof encoded !== 'string') return '';
+  const clean = encoded.startsWith('b64:') ? encoded.slice(4) : encoded;
+  if (!clean || /[^A-Za-z0-9+/=]/.test(clean) || clean.length % 4 !== 0) {
+    return '';
+  }
   try {
-    return atob(obfuscated);
+    const decoded =
+      typeof atob === 'function'
+        ? atob(clean)
+        : Buffer.from(clean, 'base64').toString('utf-8');
+    // Verify round-trip and printable ASCII to avoid corrupting non-encoded strings
+    if (!decoded || !/^[\x20-\x7E]+$/.test(decoded)) {
+      return '';
+    }
+    return decoded;
   } catch {
     return '';
   }
@@ -57,17 +72,20 @@ export function areHeaderCredentialsConfigured(): boolean {
  * purging any legacy plaintext `gateway_secret` key.
  */
 export function saveGatewaySecret(secret: string): void {
-  setGatewaySecret(secret);
-  if (typeof localStorage === 'undefined' || !localStorage) return;
+  const trimmed = typeof secret === 'string' ? secret.trim() : '';
+  setGatewaySecret(trimmed);
+
   try {
-    localStorage.removeItem(STORAGE_KEY_LEGACY_GW);
-    if (secret) {
-      localStorage.setItem(STORAGE_KEY_GW_AUTH, obfuscateSecret(secret));
-    } else {
+    if (!trimmed) {
       localStorage.removeItem(STORAGE_KEY_GW_AUTH);
+      return;
+    }
+    const obfuscated = obfuscateSecret(trimmed);
+    if (obfuscated) {
+      localStorage.setItem(STORAGE_KEY_GW_AUTH, `b64:${obfuscated}`);
     }
   } catch (err) {
-    console.error('Failed to save gateway secret:', err);
+    console.warn('Failed to save gateway secret:', err);
   }
 }
 
@@ -76,26 +94,23 @@ export function saveGatewaySecret(secret: string): void {
  * then falling back to legacy plaintext `gateway_secret`.
  */
 export function loadGatewaySecret(): string {
-  if (typeof localStorage === 'undefined' || !localStorage) {
-    return inMemoryGatewaySecret;
-  }
+
   try {
     const raw = localStorage.getItem(STORAGE_KEY_GW_AUTH);
     if (raw) {
-      const recovered = deobfuscateSecret(raw);
+      const recovered = raw.startsWith('b64:')
+        ? deobfuscateSecret(raw)
+        : deobfuscateSecret(raw) || raw;
       if (recovered) {
-        setGatewaySecret(recovered);
-        return recovered;
+        inMemoryGatewaySecret = recovered.trim();
+        return inMemoryGatewaySecret;
       }
     }
-    const legacy = localStorage.getItem(STORAGE_KEY_LEGACY_GW);
-    if (legacy) {
-      setGatewaySecret(legacy);
-      return legacy;
-    }
-  } catch (err) {
-    console.error('Failed to load gateway secret:', err);
+
+  } catch {
+    // Fallback to in-memory secret
   }
+
   return inMemoryGatewaySecret;
 }
 
