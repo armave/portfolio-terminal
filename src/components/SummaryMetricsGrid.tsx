@@ -40,8 +40,8 @@ function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; class
       details.change > 0
         ? 'text-emerald-400'
         : details.change < 0
-        ? 'text-rose-400'
-        : 'text-slate-400';
+          ? 'text-rose-400'
+          : 'text-slate-400';
   }
 
   if (hasRange) {
@@ -91,9 +91,8 @@ function computeMarginRiskDisplay(
     riskClass = 'text-amber-400';
   }
 
-  const summaryText = `${riskLevel} · ${
-    Number.isFinite(equityRatio) ? `${equityRatio.toFixed(1)}% equity` : 'negative equity'
-  } (${maintenanceRatio.toFixed(1)}% maintenance)`;
+  const summaryText = `${riskLevel} · ${Number.isFinite(equityRatio) ? `${equityRatio.toFixed(1)}% equity` : 'negative equity'
+    } (${maintenanceRatio.toFixed(1)}% maintenance)`;
 
   const marginCallAssetsRequired = debt / (1 - rules.maintenanceMarginRatio);
   const stopOutAssetsRequired = debt / (1 - rules.stopOutRatio);
@@ -160,8 +159,8 @@ export function SummaryMetricsGrid({
     const tranchesText =
       tickers.length > 0
         ? tickers
-            .map((t) => `${t}: ${state.positions![t].shares}sh @ PT ${formatUSD(state.positions![t].pt)}`)
-            .join(' | ')
+          .map((t) => `${t}: ${state.positions![t].shares}sh @ PT ${formatUSD(state.positions![t].pt)}`)
+          .join(' | ')
         : 'None';
 
     const investedText = `${formatUSD(totalInvested)} | Across ${tickers.length} Assets`;
@@ -299,7 +298,7 @@ export function SummaryMetricsGrid({
   const totalComms = pos.commBuy + commSell;
 
   const portfolioInvested = getTotalPortfolioInvested(state);
-  const weight = portfolioInvested > 0 ? totalInvested / portfolioInvested : 1;
+  const weight = portfolioInvested > 0 ? totalInvested / portfolioInvested : 0;
 
   const totalAccountDebt = Math.abs(Number(state.balance) || 0);
   const allocatedDebt = totalAccountDebt * weight;
@@ -320,8 +319,8 @@ export function SummaryMetricsGrid({
   const tranchesText =
     pos.tranches && pos.tranches.length > 0
       ? pos.tranches
-          .map((t) => `${t.qty} @ ${formatUSD(t.price)} (${formatTrancheDate(t.date)})`)
-          .join(' + ')
+        .map((t) => `${t.qty} @ ${formatUSD(t.price)} (${formatTrancheDate(t.date)})`)
+        .join(' + ')
       : 'None';
 
   const investedText = `${formatUSD(totalInvested)} | ${formatUSD(avgPrice)}`;
@@ -332,9 +331,9 @@ export function SummaryMetricsGrid({
   const marginText = isFullDebt
     ? `-${formatUSD(allocatedDebt)} (${formatUSD(allocatedDailyAccrual)}/day)`
     : `-${formatUSD(allocatedDebt)} (${formatUSD(allocatedDailyAccrual)}/day) [${(
-        (allocatedDebt / (totalAccountDebt || 1)) *
-        100
-      ).toFixed(0)}% of -${formatUSD(totalAccountDebt)} Total]`;
+      (allocatedDebt / (totalAccountDebt || 1)) *
+      100
+    ).toFixed(0)}% of -${formatUSD(totalAccountDebt)} Total]`;
 
   const commsText = `${formatUSD(totalComms)} (${formatUSD(pos.commBuy)} buy / ${formatUSD(
     commSell
