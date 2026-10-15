@@ -1,5 +1,4 @@
-import { useEffect } from 'preact/hooks';
-import { getCashCushionTotal, BoardState } from '../ui/renderBoard';
+import { BoardState, getCashCushionTotal } from '../ui/renderBoard';
 
 export interface TickerTabsProps {
   state: BoardState;
@@ -12,42 +11,11 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
     state.activeView === 'CASH_CUSHION' || state.activeView === 'BALANCE';
   const isClosedHistoryActive = state.activeView === 'CLOSED_HISTORY';
   const isSettingsActive = state.activeView === 'SETTINGS';
+  const isMarginDeskActive =
+    !isCushionActive && !isClosedHistoryActive && !isSettingsActive;
 
   const cushionTotal = getCashCushionTotal(state);
-  const closedTradesCount = (state.closedTrades || []).length;
-
-  useEffect(() => {
-    if (isCushionActive || isClosedHistoryActive || isSettingsActive) {
-      return undefined;
-    }
-
-    if (tickers.length === 0 && state.activeView !== 'COMBINED') {
-      const timer = setTimeout(() => onSetActiveView?.('COMBINED'), 0);
-      return () => clearTimeout(timer);
-    }
-
-    if (tickers.length === 1 && state.activeView !== tickers[0]) {
-      const timer = setTimeout(() => onSetActiveView?.(tickers[0]), 0);
-      return () => clearTimeout(timer);
-    }
-
-    if (
-      tickers.length > 1 &&
-      state.activeView !== 'COMBINED' &&
-      !state.positions?.[state.activeView || '']
-    ) {
-      const timer = setTimeout(() => onSetActiveView?.('COMBINED'), 0);
-      return () => clearTimeout(timer);
-    }
-
-    return undefined;
-  }, [
-    tickers.length,
-    state.activeView,
-    isCushionActive,
-    isClosedHistoryActive,
-    isSettingsActive
-  ]);
+  const closedTrades = state.closedTrades || [];
 
   const handleRefreshQuotes = () => {
     if (
@@ -73,16 +41,23 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
       )}
 
       {tickers.length === 0 && (
-        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">
-          NO ACTIVE TRADES
-        </span>
+        <button
+          type="button"
+          onClick={() => onSetActiveView?.('COMBINED')}
+          class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
+            ? 'bg-emerald-600 text-black'
+            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            }`}
+        >
+          MARGIN DESK
+        </button>
       )}
 
       {tickers.length === 1 && (
         <button
           type="button"
           onClick={() => onSetActiveView?.(tickers[0])}
-          class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0]
+          class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0] && isMarginDeskActive
             ? 'bg-emerald-600 text-black'
             : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
             }`}
@@ -96,19 +71,20 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
           <button
             type="button"
             onClick={() => onSetActiveView?.('COMBINED')}
-            class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === 'COMBINED'
+            class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === 'COMBINED' && isMarginDeskActive
               ? 'bg-emerald-600 text-black'
               : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
               }`}
           >
             COMBINED PORTFOLIO
           </button>
+
           {tickers.map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => onSetActiveView?.(t)}
-              class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === t
+              class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === t && isMarginDeskActive
                 ? 'bg-emerald-600 text-black'
                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                 }`}
@@ -144,7 +120,7 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
           : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
           }`}
       >
-        CLOSED HISTORY ({closedTradesCount})
+        CLOSED HISTORY ({closedTrades.length})
       </button>
 
       <button

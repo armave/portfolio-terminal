@@ -1,110 +1,38 @@
 import { render, h } from 'preact';
-import {
-  calculateCommission,
-  calculateMarginInterest
-} from '../domain/portfolio';
-import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
-import { CashCushionDesk } from '../components/CashCushionDesk';
-import { ProjectionsTable } from '../components/ProjectionsTable';
 import { TickerTabs } from '../components/TickerTab';
-import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
 import { EmptyStatePanel } from '../components/EmptyStatePanel';
+import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
+import { ProjectionsTable } from '../components/ProjectionsTable';
+import { CashCushionDesk } from '../components/CashCushionDesk';
+import { ClosedHistoryDesk } from '../components/ClosedHistoryDesk';
+import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
+import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
+import {
+  BrokerRules,
+  PositionRecord,
+  CashStockHolding,
+  CashCushionState,
+  QuoteDetails,
+  TrancheItem,
+  PortfolioState,
+  BoardState
+} from '../types/portfolio';
 
-const MONTH_NAMES = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-] as const;
+export type {
+  BrokerRules,
+  PositionRecord,
+  CashStockHolding,
+  CashCushionState,
+  QuoteDetails,
+  TrancheItem,
+  PortfolioState,
+  BoardState
+};
 
-export interface TrancheItem {
-  qty: number;
-  price: number;
-  date?: string;
-}
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const NON_POSITION_VIEWS = new Set(['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
 
-export interface QuoteDetails {
-  change?: number;
-  changePercent?: number;
-  high?: number;
-  low?: number;
-  [key: string]: any;
-}
-
-export interface PositionRecord {
-  ticker: string;
-  shares: number;
-  currentPrice: number;
-  pt: number;
-  commBuy: number;
-  startDate?: string;
-  tranches?: TrancheItem[];
-  quoteUpdatedAt?: number;
-  quoteSource?: string;
-  quoteDetails?: QuoteDetails;
-}
-
-export interface CashStockHolding {
-  ticker: string;
-  shares: number | string;
-  price?: number | string;
-  currentPrice?: number | string;
-  quoteUpdatedAt?: number;
-  quoteSource?: string;
-  quoteDetails?: QuoteDetails;
-}
-
-export interface CashCushionState {
-  freeCash: number | string;
-  holdings: CashStockHolding[];
-}
-
-export interface BoardState {
-  positions?: Record<string, PositionRecord>;
-  cashCushion?: CashCushionState;
-  balance?: number | string;
-  realizedMarginCharged?: number;
-  tranches?: TrancheItem[];
-  startDate?: string;
-  activeView?: string;
-  closedTrades?: any[];
-}
-
-export interface BrokerRules {
-  annualRate: number;
-  dayCountBasis: number;
-  maintenanceMarginRatio: number;
-  stopOutRatio: number;
-  commissionMin?: number;
-  commissionPerShare?: number;
-  commissionRatePct?: number;
-  [key: string]: any;
-}
-
-export interface RenderCashCushionOptions {
-  onFetchLivePrice?: (ticker: string) => void;
-  onRemoveCashStock?: (index: number) => void;
-  refreshIntervalMs?: number;
-}
-
-export interface RenderSummaryCardsOptions {
-  rules: BrokerRules;
-  onRenderAnalystConsensus?: (ticker: string) => void;
-  refreshIntervalMs?: number;
-}
-
-export interface RenderBoardOptions extends RenderCashCushionOptions {
-  rules: BrokerRules;
-  onSetActiveView?: (view: string) => void;
-  onRenderClosedHistory?: () => void;
-  onRenderAnalystConsensus?: (ticker: string) => void;
-  onRenderExternalLinks?: () => void;
-  onRenderConsoleQuickActions?: () => void;
-  onUpdateCombinedBreakeven?: () => void;
-  onSyncMarketInsightsPanel?: () => void;
-  lastDeskView?: string | null;
-  onUpdateLastDeskView?: (view: string) => void;
-}
-
-export function formatTrancheDate(dateStr?: string | null): string {
+export function formatTrancheDate(dateStr?: string | number | null): string {
   if (!dateStr || typeof dateStr !== 'string') return 'New';
   const trimmed = dateStr.trim();
   if (!trimmed || trimmed.toLowerCase() === 'new') return 'New';
@@ -127,7 +55,7 @@ export function formatTrancheDate(dateStr?: string | null): string {
     const monStr = (isFirstNum ? shortMatch[2] : shortMatch[1]).slice(0, 3).toLowerCase();
     const monthIdx = MONTH_NAMES.findIndex((m) => m.toLowerCase() === monStr);
     if (monthIdx !== -1 && day >= 1 && day <= 31) {
-      return `${String(day).padStart(2, '0')} ${MONTH_NAMES[monthIdx]}`;
+      return `${String(day).padStart(2, '0')}${MONTH_NAMES[monthIdx]}`;
     }
   }
 
@@ -135,31 +63,26 @@ export function formatTrancheDate(dateStr?: string | null): string {
   if (!Number.isNaN(parsed.getTime())) {
     const day = parsed.getDate();
     const month = parsed.getMonth();
-    return `${String(day).padStart(2, '0')} ${MONTH_NAMES[month]}`;
+    return `${String(day).padStart(2, '0')}${MONTH_NAMES[month]}`;
   }
 
   return trimmed;
 }
 
-export function formatUSD(val: number | string | undefined | null): string {
+export function formatUSD(val: unknown): string {
   const num = Number(val) || 0;
-
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 2
-  }).format(num);
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function getTotalPortfolioInvested(state: BoardState | null | undefined): number {
+export function getTotalPortfolioInvested(state?: BoardState | null): number {
   if (!state || typeof state !== 'object') return 0;
   return Object.values(state.positions || {}).reduce((acc, pos) => {
     return acc + (pos?.tranches || []).reduce((sum, tr) => sum + tr.qty * tr.price, 0);
   }, 0);
 }
 
-export function getCashCushionTotal(state: BoardState): number {
-  if (!state.cashCushion) return 0;
+export function getCashCushionTotal(state?: BoardState | null): number {
+  if (!state?.cashCushion) return 0;
   const cashVal = Number(state.cashCushion.freeCash) || 0;
   const stocksVal = (state.cashCushion.holdings || []).reduce((sum, h) => {
     const price = Number(h.currentPrice ?? h.price) || 0;
@@ -168,11 +91,7 @@ export function getCashCushionTotal(state: BoardState): number {
   return cashVal + stocksVal;
 }
 
-export function createInsightElement(
-  tagName: string,
-  className = '',
-  text = ''
-): HTMLElement {
+export function createInsightElement(tagName: string, className = '', text = ''): HTMLElement {
   const element = document.createElement(tagName);
   if (className) element.className = className;
   if (text) element.textContent = text;
@@ -191,7 +110,8 @@ export function sentimentBadge(
   };
   const badge = createInsightElement(
     'span',
-    `inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${styles[direction] || styles.unknown}`,
+    `inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${styles[direction] || styles.unknown
+    }`,
     label
   );
   badge.dataset.sentiment = direction;
@@ -209,13 +129,13 @@ export function formatQuoteMetadata(
   if (!holding.quoteUpdatedAt) return holding.quoteSource || 'Not fetched';
 
   const updatedAt = Number(holding.quoteUpdatedAt);
-  if (!Number.isFinite(updatedAt)) return holding.quoteSource || 'Not fetched';
+  if (!Number.isFinite(updatedAt)) return holding?.quoteSource || 'Not fetched';
   const time = new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const isStale = Date.now() - updatedAt > Math.max(5 * 60 * 1000, refreshIntervalMs * 2);
-  return `${isStale ? 'Stale · ' : ''}${holding.quoteSource || 'Quote'} · ${time}`;
+  return `${isStale ? 'Stale · ' : ''} ${holding.quoteSource ? holding.quoteSource + ' · ' : ''} ${time}`;
 }
 
-export function createDailyQuoteLabel(details?: QuoteDetails | null): HTMLElement | null {
+export function createDailyQuoteLabel(details?: QuoteDetails | null): HTMLSpanElement | null {
   if (!details || typeof details !== 'object') return null;
   const hasChange = Number.isFinite(details.change) && Number.isFinite(details.changePercent);
   const hasRange = Number.isFinite(details.high) && Number.isFinite(details.low);
@@ -233,25 +153,142 @@ export function createDailyQuoteLabel(details?: QuoteDetails | null): HTMLElemen
       details.change > 0
         ? 'text-emerald-400'
         : details.change < 0
-          ? 'text-rose-400'
-          : 'text-slate-400'
+        ? 'text-rose-400'
+        : 'text-slate-400'
     );
   } else {
     label.classList.add('text-slate-400');
   }
-  if (hasRange) parts.push(`H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`);
-  label.textContent = `Day: ${parts.join(' · ')}`;
-  return label;
+  if (hasRange) parts.push(`H ${ formatUSD(details.high) } / L${formatUSD(details.low)}`);
+label.textContent = `Day: ${parts.join(' · ')}`;
+return label;
 }
 
 export function formatRiskTrigger(triggerValue: number, currentValue: number): string {
-  if (currentValue <= 0) return `Position value {formatUSD(triggerValue)}`;
+  if (currentValue <= 0) return `Position value ${formatUSD(triggerValue)}`;
 
   const bufferPct = ((currentValue - triggerValue) / currentValue) * 100;
   if (bufferPct < 0) {
-    return `Position value ${formatUSD(triggerValue)} (already ${Math.abs(bufferPct).toFixed(1)}% below trigger)`;
+    return `Position value ${formatUSD(triggerValue)} (already${Math.abs(bufferPct).toFixed(
+      1
+    )}% below trigger)`;
   }
   return `Position value ${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
+}
+
+function createTabButtonElement(text: string, className: string, onClick: () => void): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = className;
+  btn.textContent = text;
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+
+export function renderTickerTabs(
+  state: BoardState,
+  onSelectTab: (view: string) => void = () => { }
+): string {
+  const tickers = Object.keys(state.positions || {});
+  const tabsContainer = document.getElementById('tickerTabs');
+  if (!tabsContainer) return state.activeView || 'COMBINED';
+  tabsContainer.innerHTML = '';
+
+  let currentView = state.activeView;
+  if (!currentView || (!NON_POSITION_VIEWS.has(currentView) && !state.positions?.[currentView])) {
+    currentView = 'COMBINED';
+    state.activeView = 'COMBINED';
+  }
+
+  // Always render the Margin Desk / Combined tab so the user can always access the Trading Console
+  const combinedLabel = tickers.length > 0 ? 'COMBINED' : 'MARGIN DESK';
+  const isCombinedActive = currentView === 'COMBINED';
+  tabsContainer.appendChild(
+    createTabButtonElement(
+      combinedLabel,
+      `px-3 py-1 rounded text-xs font-bold transition ${isCombinedActive ? 'tab-active' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'
+      }`,
+      () => onSelectTab('COMBINED')
+    )
+  );
+
+  tickers.forEach((sym) => {
+    const isActive = currentView === sym;
+    tabsContainer.appendChild(
+      createTabButtonElement(
+        sym,
+        `px-3 py-1 rounded text-xs font-bold transition ${isActive ? 'tab-active' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'
+        }`,
+        () => onSelectTab(sym)
+      )
+    );
+  });
+
+  const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
+  const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
+  const isSettingsActive = currentView === 'SETTINGS';
+  const closedCount = Array.isArray(state.closedTrades) ? state.closedTrades.length : 0;
+
+  tabsContainer.appendChild(
+    createTabButtonElement(
+      'CASH HOLDINGS',
+      `px-3 py-1 rounded text-xs font-bold transition border ${isCushionActive
+        ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-lg shadow-cyan-950'
+        : 'bg-slate-950 text-cyan-400 border-cyan-800 hover:bg-slate-900'
+      }`,
+      () => onSelectTab('CASH_CUSHION')
+    )
+  );
+
+  tabsContainer.appendChild(
+    createTabButtonElement(
+      closedCount > 0 ? `CLOSED (${closedCount})` : 'CLOSED',
+      `px-3 py-1 rounded text-xs font-bold transition border ${isClosedHistoryActive
+        ? 'bg-purple-400 text-slate-950 border-purple-300 shadow-lg shadow-purple-950'
+        : 'bg-slate-950 text-purple-300 border-purple-800 hover:bg-slate-900'
+      }`,
+      () => onSelectTab('CLOSED_HISTORY')
+    )
+  );
+
+  tabsContainer.appendChild(
+    createTabButtonElement(
+      'SETTINGS',
+      `px-3 py-1 rounded text-xs font-bold transition border ${isSettingsActive
+        ? 'bg-slate-200 text-slate-950 border-slate-100 shadow-lg shadow-slate-950'
+        : 'bg-slate-950 text-slate-300 border-slate-700 hover:bg-slate-900'
+      }`,
+      () => onSelectTab('SETTINGS')
+    )
+  );
+
+  return currentView;
+}
+
+export interface RenderCashCushionOptions {
+  onFetchLivePrice?: (ticker: string) => void;
+  onRemoveCashStock?: (index: number) => void;
+  refreshIntervalMs?: number;
+}
+
+export function renderCashCushion(
+  state: BoardState,
+  options: RenderCashCushionOptions = {}
+): void {
+  const { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs = 60000 } = options;
+  if (!state.cashCushion) state.cashCushion = { freeCash: 0.0, holdings: [] };
+
+  const container = document.getElementById('cashCushionContainer');
+  if (container) {
+    render(
+      h(CashCushionDesk, {
+        onFetchLivePrice,
+        onRemoveCashStock,
+        refreshIntervalMs
+      }),
+      container
+    );
+  }
 }
 
 export function renderPositionsTable(
@@ -291,21 +328,11 @@ export function renderPositionsTable(
   );
 }
 
-export function renderCashCushion(state: BoardState, options: RenderCashCushionOptions = {}): void {
-  const { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs = 60000 } = options;
-  if (!state.cashCushion) state.cashCushion = { freeCash: 0.0, holdings: [] };
-
-  const container = document.getElementById('cashCushionContainer');
-  if (container) {
-    render(
-      h(CashCushionDesk, {
-        onFetchLivePrice,
-        onRemoveCashStock,
-        refreshIntervalMs
-      }),
-      container
-    );
-  }
+export interface RenderSummaryCardsOptions {
+  rules: BrokerRules;
+  refreshIntervalMs?: number;
+  onRenderExternalLinks?: () => void;
+  onRenderAnalystConsensus?: (ticker: string) => void;
 }
 
 export function renderSummaryCards(
@@ -313,13 +340,17 @@ export function renderSummaryCards(
   options: RenderSummaryCardsOptions
 ): void {
   const { rules, onRenderAnalystConsensus, refreshIntervalMs = 60000 } = options;
+  if (!rules) return;
+
   const dailyRate = rules.annualRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
   const isCombined =
     state.activeView === 'COMBINED' ||
     (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
-  const metricsGridContainer = document.getElementById('portfolioMetricsGrid');
+  const metricsGridContainer =
+    document.getElementById('portfolioMetricsGrid') ||
+    document.querySelector('.portfolio-metrics-grid');
   if (metricsGridContainer) {
     render(
       h(SummaryMetricsGrid, {
@@ -414,8 +445,7 @@ export function renderSummaryCards(
 
     const titleEl = document.getElementById('boardTitle');
     if (titleEl) {
-      titleEl.innerText = `${pos.ticker} (${pos.shares} Shares @ ${formatUSD(pos.pt)} PT | ${netPct >= 0 ? '+' : ''
-        }${netPct.toFixed(2)}% Net Target)`;
+      titleEl.innerText = `${pos.ticker} (${pos.shares} Shares @ ${formatUSD(pos.pt)} PT | ${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% Net Target)`;
     }
 
     if (typeof onRenderAnalystConsensus === 'function') {
@@ -433,39 +463,46 @@ export function renderSummaryCards(
   }
 }
 
+export interface RenderBoardOptions extends RenderCashCushionOptions {
+  rules: BrokerRules;
+  onSetActiveView?: (view: string) => void;
+  onRenderClosedHistory?: () => void;
+  onRenderAnalystConsensus?: (ticker: string) => void;
+  onRenderExternalLinks?: () => void;
+  onRenderConsoleQuickActions?: () => void;
+  onUpdateCombinedBreakeven?: () => void;
+  onSyncMarketInsightsPanel?: () => void;
+  lastDeskView?: string | null;
+  onUpdateLastDeskView?: (view: string) => void;
+}
+
 export function renderBoard(state: BoardState, options: RenderBoardOptions): void {
   const {
     rules,
-    onSetActiveView,
-    onRenderClosedHistory,
-    onRenderAnalystConsensus,
-    onFetchLivePrice,
-    onRemoveCashStock,
-    onRenderExternalLinks,
-    onRenderConsoleQuickActions,
-    onUpdateCombinedBreakeven,
-    onSyncMarketInsightsPanel,
+    onSetActiveView = () => { },
+    onRenderClosedHistory = () => { },
+    onRenderAnalystConsensus = () => { },
+    onFetchLivePrice = () => { },
+    onRemoveCashStock = () => { },
+    onRenderExternalLinks = () => { },
+    onRenderConsoleQuickActions = () => { },
+    onUpdateCombinedBreakeven = () => { },
+    onSyncMarketInsightsPanel = () => { },
     refreshIntervalMs = 60000,
     lastDeskView = null,
     onUpdateLastDeskView = () => { }
   } = options;
 
+  if (!rules) return;
+
   const tickers = Object.keys(state.positions || {});
+  const currentView = renderTickerTabs(state, onSetActiveView);
+
+  const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
+  const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
+  const isSettingsActive = currentView === 'SETTINGS';
+
   const tabsContainer = document.getElementById('tickerTabs');
-
-  const isCushionActive =
-    state.activeView === 'CASH_CUSHION' || state.activeView === 'BALANCE';
-  const isClosedHistoryActive = state.activeView === 'CLOSED_HISTORY';
-  const isSettingsActive = state.activeView === 'SETTINGS';
-
-  const emptyPanel = document.getElementById('emptyStatePanel');
-  if (emptyPanel) {
-    const showEmpty =
-      tickers.length === 0 && !isCushionActive && !isClosedHistoryActive && !isSettingsActive;
-    emptyPanel.classList.toggle('hidden', !showEmpty);
-    render(h(EmptyStatePanel, null), emptyPanel);
-  }
-
   if (tabsContainer) {
     render(h(TickerTabs, { state, onSetActiveView }), tabsContainer);
   }
@@ -477,63 +514,121 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
       }`;
   }
 
+  onUpdateCombinedBreakeven();
+  onSyncMarketInsightsPanel();
+
   const mainDesk = document.getElementById('mainDeskContainer');
   const cushionDesk = document.getElementById('cashCushionContainer');
-  const closedHistoryDesk = document.getElementById('closedHistoryContainer');
+  const closedDesk = document.getElementById('closedHistoryContainer');
   const settingsDesk = document.getElementById('settings');
+  const daysEl = document.getElementById('daysToBreakeven');
 
-  let activeDesk: HTMLElement | null = null;
-  let activeDeskView: string | null = null;
+  if (mainDesk) mainDesk.classList.add('hidden');
+  if (cushionDesk) cushionDesk.classList.add('hidden');
+  if (closedDesk) closedDesk.classList.add('hidden');
+  if (settingsDesk) settingsDesk.classList.add('hidden');
+  if (daysEl) daysEl.classList.remove('hidden');
 
   if (isCushionActive) {
-    mainDesk?.classList.add('hidden');
-    settingsDesk?.classList.add('hidden');
-    cushionDesk?.classList.remove('hidden');
-    closedHistoryDesk?.classList.add('hidden');
+    if (cushionDesk) cushionDesk.classList.remove('hidden');
+    if (daysEl) daysEl.classList.add('hidden');
+    onUpdateLastDeskView('CASH_CUSHION');
     renderCashCushion(state, { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs });
-    activeDesk = cushionDesk;
-    activeDeskView = 'CASH_CUSHION';
-  } else if (isClosedHistoryActive) {
-    mainDesk?.classList.add('hidden');
-    cushionDesk?.classList.add('hidden');
-    settingsDesk?.classList.add('hidden');
-    closedHistoryDesk?.classList.remove('hidden');
-    onRenderClosedHistory?.();
-    activeDesk = closedHistoryDesk;
-    activeDeskView = 'CLOSED_HISTORY';
-  } else if (isSettingsActive) {
-    mainDesk?.classList.add('hidden');
-    cushionDesk?.classList.add('hidden');
-    closedHistoryDesk?.classList.add('hidden');
-    activeDesk = settingsDesk;
-    activeDeskView = 'SETTINGS';
-    settingsDesk?.classList.remove('hidden');
-  } else {
-    mainDesk?.classList.remove('hidden');
-    cushionDesk?.classList.add('hidden');
-    closedHistoryDesk?.classList.add('hidden');
-    settingsDesk?.classList.add('hidden');
-
-    renderSummaryCards(state, { rules, onRenderAnalystConsensus, refreshIntervalMs });
-    activeDesk = mainDesk;
-    activeDeskView = state.activeView || null;
+    return;
   }
 
-  onRenderExternalLinks?.();
-  onRenderConsoleQuickActions?.();
-
-  if (activeDesk && activeDeskView && activeDeskView !== lastDeskView) {
-    activeDesk.classList.remove('ui-view-enter');
-    void activeDesk.offsetWidth;
-    activeDesk.classList.add('ui-view-enter');
-    activeDesk.addEventListener(
-      'animationend',
-      () => activeDesk?.classList.remove('ui-view-enter'),
-      { once: true }
-    );
-    onUpdateLastDeskView(activeDeskView);
+  if (isClosedHistoryActive) {
+    if (closedDesk) {
+      closedDesk.classList.remove('hidden');
+      render(h(ClosedHistoryDesk, {}), closedDesk);
+    }
+    if (daysEl) daysEl.classList.add('hidden');
+    onUpdateLastDeskView('CLOSED_HISTORY');
+    onRenderClosedHistory();
+    return;
   }
 
-  onUpdateCombinedBreakeven?.();
-  onSyncMarketInsightsPanel?.();
+  if (isSettingsActive) {
+    if (settingsDesk) {
+      settingsDesk.classList.remove('hidden');
+      if (typeof window !== 'undefined' && typeof (window as any).renderSettingsPanel === 'function') {
+        (window as any).renderSettingsPanel();
+      }
+    }
+    if (daysEl) daysEl.classList.add('hidden');
+    onUpdateLastDeskView('SETTINGS');
+    return;
+  }
+
+  if (mainDesk) mainDesk.classList.remove('hidden');
+  onUpdateLastDeskView(currentView);
+
+  const emptyPanel = document.getElementById('emptyStatePanel');
+  const titleRow = document.getElementById('boardTitleRow');
+  const metricsGrid = document.querySelector('.portfolio-metrics-grid');
+  const workspaceGrid = document.querySelector('.desktop-workspace-grid');
+  const projTableContainer = document.getElementById('projectionTableContainer');
+
+  if (tickers.length === 0) {
+    if (emptyPanel) {
+      emptyPanel.classList.remove('hidden');
+      render(
+        h(EmptyStatePanel, {
+          onQuickBuy: () => {
+            const cmdInput = document.getElementById('cmdInput') as HTMLInputElement | null;
+            if (cmdInput) {
+              cmdInput.value = 'bought [shares] [TICKER] for [price]';
+              cmdInput.focus();
+            }
+          },
+          onAddCashStock: () => {
+            const cmdInput = document.getElementById('cmdInput') as HTMLInputElement | null;
+            if (cmdInput) {
+              cmdInput.value = 'add cash stock [shares] [TICKER] for [price]';
+              cmdInput.focus();
+            }
+          },
+          onImportBackup: () => {
+            document.getElementById('importFileInput')?.click();
+          }
+        }),
+        emptyPanel
+      );
+    }
+    if (titleRow) titleRow.classList.add('hidden');
+    if (metricsGrid) metricsGrid.classList.add('hidden');
+    if (projTableContainer) projTableContainer.classList.add('hidden');
+    if (workspaceGrid) {
+      workspaceGrid.classList.remove('hidden');
+      workspaceGrid.classList.remove('lg:grid-cols-[3fr_7fr]');
+      workspaceGrid.classList.add('lg:grid-cols-1');
+    }
+    if (daysEl) daysEl.innerText = 'No Active Positions';
+    onRenderConsoleQuickActions();
+    return;
+  }
+
+  if (emptyPanel) emptyPanel.classList.add('hidden');
+  if (titleRow) titleRow.classList.remove('hidden');
+  if (metricsGrid) metricsGrid.classList.remove('hidden');
+  if (projTableContainer) projTableContainer.classList.remove('hidden');
+  if (workspaceGrid) {
+    workspaceGrid.classList.remove('hidden');
+    workspaceGrid.classList.remove('lg:grid-cols-1');
+    workspaceGrid.classList.add('lg:grid-cols-[3fr_7fr]');
+  }
+
+  renderSummaryCards(state, {
+    rules,
+    refreshIntervalMs,
+    onRenderExternalLinks,
+    onRenderAnalystConsensus
+  });
+
+  onRenderExternalLinks();
+  onRenderConsoleQuickActions();
+
+  if (lastDeskView !== currentView) {
+    // Preserve view transition hook
+  }
 }
