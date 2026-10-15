@@ -77,15 +77,22 @@ export interface ClosedTrade {
   id?: string;
   ticker: string;
   shares: number;
+  avgBuyPrice?: number;
   entryPrice?: number;
+  sellPrice?: number;
   exitPrice?: number;
+  buyDate?: string;
   purchaseDate?: string;
+  sellDate?: string;
   exitDate?: string;
   date?: number | string;
-  netProfit?: number;
-  netRealizedGain?: number;
+  grossProfit?: number;
+  commissions?: number;
   feesAndCommissions?: number;
   totalCommissions?: number;
+  marginInterest?: number;
+  netProfit?: number;
+  netRealizedGain?: number;
   holdingDays?: number;
 }
 
@@ -155,6 +162,7 @@ export interface PortfolioState {
   startDate?: string;
   activeView: string;
   closedTrades: ClosedTrade[];
+  closedHistory?: ClosedTrade[];
   brokerAssumptions: BrokerRules;
   lastRolloverTimestamp?: number;
   lastUpdated?: number;

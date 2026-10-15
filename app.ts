@@ -24,6 +24,7 @@ import {
 import {
   fetchYahooStockData,
   proxyFetch,
+  pushCloudState,
   setSecretGetter,
   syncCloudState as syncCloudStateService
 } from './src/services/api';
@@ -131,6 +132,10 @@ function setCloudStatus(status: string, text: string) {
     dot.classList.add('bg-slate-500');
   }
 }
+
+portfolioStore.subscribe((nextStoreState) => {
+  state = nextStoreState as any;
+});
 
 async function pushStateToCloud(forceImmediate = false) {
   if (!areHeaderCredentialsConfigured()) {
@@ -1757,34 +1762,47 @@ export function confirmAiPortfolioAction(action: any) {
 }
 
 export async function executeCommand() {
-  const input = document.getElementById("cmdInput") as HTMLInputElement;
-  const text = input.value.trim();
+  const input = document.getElementById('cmdInput') as HTMLInputElement | null;
+  const text = input?.value?.trim() || '';
   if (!text) return;
 
   logTerminal(text, true);
-  input.value = "";
+  if (input) input.value = '';
 
-  // 1. Handle everything possible on the Frontend first
+  // Ensure portfolioStore has the latest in-memory state from app.ts before executing
+  portfolioStore.importState(state);
+
   const localResult = CommandDispatcher.execute(text);
+
+  // Pull mutated state back from portfolioStore and update UI
+  state = portfolioStore.getState() as any;
 
   if (localResult.sideEffect) {
     const effect = localResult.sideEffect;
-    if (effect.type === 'FETCH_QUOTE') {
+    if (effect.type === 'SYNC_CLOUD') {
+      saveState(state); // Persists to localStorage AND triggers cloud push callback
+      renderBoard();
+      await pushCloudState(state); // Pushes new state to KV / Gist API
+    } else if (effect.type === 'FETCH_QUOTE') {
+      saveState(state);
+      renderBoard();
       await fetchLivePrice(effect.ticker);
+      await pushCloudState(state);
     } else if (effect.type === 'REFRESH_ALL') {
       await refreshAllLivePrices();
     } else if (effect.type === 'SWITCH_VIEW') {
       setActiveView(effect.view);
-    } else if (effect.type === 'SYNC_CLOUD') {
-      pushStateToGist();
     } else if (effect.type === 'CLEAR_TERMINAL') {
-      const logEl = document.getElementById('terminalOutput');
+      const logEl = document.getElementById('terminalLog') || document.getElementById('terminalOutput');
       if (logEl) logEl.innerHTML = '';
     }
   }
 
   if (localResult.type === 'res' || localResult.type === 'cmd') {
-    if (localResult.text) logTerminal(`[CLI]: ${localResult.text}`);
+    if (localResult.text) {
+      logTerminal(`[CLI]: ${localResult.text}`);
+      showToast(localResult.text, 'success');
+    }
     return;
   }
 

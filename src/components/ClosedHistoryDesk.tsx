@@ -11,6 +11,41 @@ export function ClosedHistoryDesk() {
     .map((trade: any, index: number) => ({ trade, index }))
     .sort((a, b) => Number(b.trade.date) - Number(a.trade.date));
 
+  interface ParsedDateResult {
+    fixedDate: string;
+    numericValue: number;
+  }
+
+  function normalizeAndConvertDate(dateInput: string): ParsedDateResult {
+    // 1. Check if a 4-digit year is already present in the string
+    const hasYear = /\b\d{4}\b/.test(dateInput);
+
+    let targetString = dateInput;
+
+    // 2. If missing, append the current year (or a default year)
+    if (!hasYear) {
+      const currentYear = new Date().getFullYear(); // 2026
+      targetString = `${dateInput} ${currentYear}`;
+    }
+
+    const dateObj = new Date(targetString);
+
+    // 3. Return a fixed date format (ISO format: YYYY-MM-DD)
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const fixedDate = `${year}-${month}-${day}`;
+
+    // 4. Convert to a Number
+    // Standard JS timestamp in milliseconds (e.g., Number(dateObj) or dateObj.getTime())
+    const numericValue = dateObj.getTime();
+
+    // Alternative: If you need an integer like 20261006 instead of a timestamp, use:
+    // const numericValue = Number(`${year}${month}${day}`);
+
+    return { fixedDate, numericValue };
+  }
+
   const handleDelete = (index: number) => {
     const trade: any = state.closedTrades?.[index];
     if (!trade) return;
@@ -70,9 +105,10 @@ export function ClosedHistoryDesk() {
             </thead>
             <tbody id="closedTradesTableBody" class="divide-y divide-slate-800/60 font-mono">
               {trades.map(({ trade, index }) => {
-                const dateValue = Number(trade.date);
+                const buyDate = Number(trade.date) || normalizeAndConvertDate(trade.buyDate)?.numericValue;
+
                 const closedDate = new Date(
-                  Number.isFinite(dateValue) ? dateValue : Date.parse(trade.date)
+                  Date.parse(trade.date || trade.sellDate)
                 );
                 const dateText = Number.isNaN(closedDate.getTime())
                   ? 'Unknown'
@@ -81,6 +117,9 @@ export function ClosedHistoryDesk() {
                     month: 'short',
                     year: 'numeric'
                   });
+
+                const holdingDays = Math.max(Number(trade.holdingDays) || (Number(trade.sellingDate) - buyDate) || 0);
+
                 const netProfit = Number(trade.netProfit) || 0;
 
                 return (
@@ -91,7 +130,7 @@ export function ClosedHistoryDesk() {
                       {trade.shares}
                     </td>
                     <td class="py-2 px-3 text-right whitespace-nowrap">
-                      {Math.max(0, Number(trade.holdingDays) || 0)} days
+                      {holdingDays} days
                     </td>
                     <td class="py-2 px-3 text-right whitespace-nowrap">
                       {formatUSD(trade.feesAndCommissions)}

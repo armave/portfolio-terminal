@@ -22,36 +22,36 @@ function cleanNumber(val: string | undefined): number {
 export class CommandDispatcher {
 
   private static evaluateScheduledLadder(
-  tickerArg: string | undefined,
-  legsInput: Array<{ qty: number; price: number; days: number }>
-): CommandOutput {
-  const { sym, pos, state } = this.resolveActivePosition(tickerArg);
-  const rules = this.getRules(state);
-  const totalShares = Number(pos.shares);
-  const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
-  const avgEntry = costBasis / (totalShares || 1);
-  const totalDebt = Math.abs(Number(state.balance) || 0);
+    tickerArg: string | undefined,
+    legsInput: Array<{ qty: number; price: number; days: number }>
+  ): CommandOutput {
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+    const avgEntry = costBasis / (totalShares || 1);
+    const totalDebt = Math.abs(Number(state.balance) || 0);
 
-  let totalNet = 0;
-  const summaries: string[] = [];
+    let totalNet = 0;
+    const summaries: string[] = [];
 
-  legsInput.forEach((leg, i) => {
-    const gross = leg.qty * leg.price;
-    const legCost = leg.qty * avgEntry;
-    const sellComm = calculateCommission(leg.qty, gross, rules as any);
-    const extraCarry = totalDebt * rules.dailyRate * leg.days * (leg.qty / (totalShares || 1));
-    const legNet = gross - legCost - sellComm - extraCarry;
-    totalNet += legNet;
-    summaries.push(
-      `Leg ${i + 1} (${leg.days === 0 ? 'Today' : `+${leg.days}d`}): ${leg.qty} sh @ $${leg.price.toFixed(2)} → ${legNet >= 0 ? '+' : '-'}$${Math.abs(legNet).toFixed(2)}`
-    );
-  });
+    legsInput.forEach((leg, i) => {
+      const gross = leg.qty * leg.price;
+      const legCost = leg.qty * avgEntry;
+      const sellComm = calculateCommission(leg.qty, gross, rules as any);
+      const extraCarry = totalDebt * rules.dailyRate * leg.days * (leg.qty / (totalShares || 1));
+      const legNet = gross - legCost - sellComm - extraCarry;
+      totalNet += legNet;
+      summaries.push(
+        `Leg ${i + 1} (${leg.days === 0 ? 'Today' : `+${leg.days}d`}): ${leg.qty} sh @ $${leg.price.toFixed(2)} → ${legNet >= 0 ? '+' : '-'}$${Math.abs(legNet).toFixed(2)}`
+      );
+    });
 
-  return {
-    type: 'res',
-    text: `[Sim ${sym} Staged Exit]: ${summaries.join(' | ')} → Combined Net P&L: ${totalNet >= 0 ? '+' : '-'}$${Math.abs(totalNet).toFixed(2)}`
-  };
-}
+    return {
+      type: 'res',
+      text: `[Sim ${sym} Staged Exit]: ${summaries.join(' | ')} → Combined Net P&L: ${totalNet >= 0 ? '+' : '-'}$${Math.abs(totalNet).toFixed(2)}`
+    };
+  }
 
   static execute(input: string): CommandOutput {
     const raw = input.trim();
@@ -147,7 +147,9 @@ export class CommandDispatcher {
         const state: any = portfolioStore.getState();
         const pos = state.positions?.[sym];
         const holding = (state.holdings || []).find((h: any) => h.ticker === sym);
-        const availableShares = Number(pos?.shares) ||
+        const availableShares =
+          Number(pos?.shares) ||
+          (pos?.tranches || []).reduce((sum: number, t: any) => sum + Number(t.qty ?? t.shares ?? 0), 0) ||
           (holding?.tranches || []).reduce((sum: number, t: any) => sum + Number(t.shares || 0), 0);
 
         if (availableShares <= 0) {
@@ -155,13 +157,7 @@ export class CommandDispatcher {
         }
 
         const qty = qtyRaw === 'all' ? availableShares : cleanNumber(qtyRaw);
-        if (isNaN(qty) || qty <= 0 || qty > availableShares) {
-          throw new Error(`Invalid share quantity. Open ${sym} shares: ${availableShares}`);
-        }
-
-        if (typeof (portfolioStore as any).sellTranche === 'function') {
-          (portfolioStore as any).sellTranche(sym, qty, price, new Date().toISOString().split('T')[0]);
-        }
+        portfolioStore.sellTranche(sym, qty, price, new Date().toISOString().split('T')[0]);
 
         return {
           text: `Sold ${qty} ${sym} @ $${price.toFixed(2)}`,
@@ -209,7 +205,7 @@ export class CommandDispatcher {
         ]);
       }
 
-      // B. CASH CUSHION STOCKS (supports "add cash stock 10 MSFT at 420" AND "cash add 10 MSFT 420")
+      // 6. CASH CUSHION STOCKS: "cash add 10 MSFT for 420" / "add cash stock 10 MSFT at 420"
       const cashAddMatch = raw.match(
         /^(?:cash\s+(?:add|buy|bought)|add\s+cash(?:\s+stock)?)\s+([0-9.,]+)\s+([a-zA-Z]+)(?:\s+(?:for|at|@)?\s*([$0-9.,]+))?$/i
       );
@@ -218,7 +214,7 @@ export class CommandDispatcher {
         const sym = cashAddMatch[2].toUpperCase();
         const price = cleanNumber(cashAddMatch[3]) || 0;
         if (isNaN(qty) || qty <= 0) throw new Error('Usage: add cash stock <shares> <ticker> [price]');
-        this.mutateCashHolding(sym, qty, price);
+        portfolioStore.addCashStock(sym, qty, price);
         return {
           text: `Added ${qty} ${sym} to cash holdings${price > 0 ? ` @ $${price.toFixed(2)}` : ''}.`,
           type: 'res',
@@ -231,19 +227,19 @@ export class CommandDispatcher {
       );
       if (cashRemMatch) {
         const sym = cashRemMatch[1].toUpperCase();
-        const removed = this.removeCashHolding(sym);
+        const removed = portfolioStore.removeCashStock(sym);
         if (!removed) throw new Error(`${sym} not found in cash holdings.`);
         return { text: `Removed ${sym} from cash holdings.`, type: 'res', sideEffect: { type: 'SYNC_CLOUD' } };
       }
 
-      // C. BALANCE / FREE CASH / DEBT (supports "balance 5000", "debt 1500", and shorthand "b: -5000")
+      // 7. BALANCE / FREE CASH / DEBT: "balance 5000", "debt 1500", "b: -5000"
       const balMatch = raw.match(/^(balance|b:|cash|free\s*cash|debt|margin\s*debt)\s*([$-0-9.,]+)$/i);
       if (balMatch) {
         const kind = balMatch[1].toLowerCase();
         const rawAmt = cleanNumber(balMatch[2]);
         if (isNaN(rawAmt)) throw new Error('Usage: balance <amount> or debt <amount>');
         const signed = kind.includes('debt') ? -Math.abs(rawAmt) : rawAmt;
-        this.mutateSignedBalance(signed);
+        portfolioStore.setCashBalance(signed);
         return {
           text: signed >= 0
             ? `Free cash set to $${signed.toFixed(2)} | Margin Debt: $0.00`
@@ -253,13 +249,13 @@ export class CommandDispatcher {
         };
       }
 
-      // D. BUY POSITION WITH OPTIONAL PT: "bought 10 AAPL for $185.50, pt $205"
+      // 8. BUY POSITION WITH OPTIONAL PT: "bought 10 AAPL for $185.50, pt $205"
       const buyMatch = raw.match(
         /^(?:bought|buy|add)\s+([0-9.,]+)\s+([a-zA-Z]+)\s+(?:for|at|@)\s*([$0-9.,]+)(?:\s*,?\s*(?:pt|target)\s+([$0-9.,]+))?(?:\s+on\s+(\S+))?$/i
       );
       if (buyMatch) {
         const qty = cleanNumber(buyMatch[1]);
-        const sym = buyMatch[2];
+        const sym = buyMatch[2].toUpperCase();
         const price = cleanNumber(buyMatch[3]);
         const pt = cleanNumber(buyMatch[4]);
         const dateStr = buyMatch[5] || new Date().toISOString().split('T')[0];
@@ -275,14 +271,6 @@ export class CommandDispatcher {
           ...(Number.isFinite(pt) && pt > 0 ? { targetPrice: pt } : {})
         });
 
-        if (Number.isFinite(pt) && pt > 0) {
-          const state: any = { ...portfolioStore.getState() };
-          if (state.positions?.[sym]) {
-            state.positions[sym].pt = pt;
-            portfolioStore.importState(state);
-          }
-        }
-
         return {
           text: `Bought ${qty} ${sym} @ $${price.toFixed(2)}${Number.isFinite(pt) && pt > 0 ? ` | Target PT: $${pt.toFixed(2)}` : ''}`,
           type: 'res',
@@ -290,21 +278,20 @@ export class CommandDispatcher {
         };
       }
 
-      // E. TARGET PRICE: supports both "target AAPL 210" AND "set AAPL PT to 210"
+      // 10. TARGET PRICE / PT: "target AAPL 210" or "set AAPL PT to 210"
       const ptMatch =
         raw.match(/^(?:target|pt)\s+(?:([a-zA-Z]+)\s+)?([$0-9.,]+)$/i) ||
         raw.match(/^set\s+([a-zA-Z]+)\s+(?:pt|target(?:\s+price)?)\s+(?:to\s+)?([$0-9.,]+)$/i);
       if (ptMatch) {
-        const state: any = { ...portfolioStore.getState() };
-        const sym = (ptMatch[1] || state.activeView || '');
+        const state: any = portfolioStore.getState();
+        const sym = (ptMatch[1] || state.activeView || '').toUpperCase();
         const pt = cleanNumber(ptMatch[2]);
 
-        if (!sym || !state.positions?.[sym] || isNaN(pt) || pt <= 0) {
+        if (!sym || isNaN(pt) || pt <= 0) {
           throw new Error('Usage: target <ticker> <price> (for an open margin position)');
         }
 
-        state.positions[sym].pt = pt;
-        portfolioStore.importState(state);
+        portfolioStore.setTargetPrice(sym, pt);
         return {
           text: `${sym} price target updated → $${pt.toFixed(2)}`,
           type: 'res',
@@ -439,42 +426,5 @@ export class CommandDispatcher {
       type: 'res',
       text: `[${sym} Ladder Exit (${legs.join(' | ')})]: Avg Exit $${avgExit.toFixed(2)} | Sell Comms -$${totalSellComm.toFixed(2)} | Net (ex-margin): $${netBeforeMargin.toFixed(2)}`
     };
-  }
-
-  private static mutateSignedBalance(signedBalance: number) {
-    const state: any = { ...portfolioStore.getState() };
-    if (!state.cashCushion) state.cashCushion = { freeCash: 0, holdings: [] };
-    state.cashCushion.freeCash = Math.max(0, signedBalance);
-    state.balance = Math.min(0, signedBalance);
-    portfolioStore.setCashBalance(signedBalance);
-    portfolioStore.importState(state);
-  }
-
-  private static mutateCashHolding(symbol: string, shares: number, givenPrice: number) {
-    const state: any = { ...portfolioStore.getState() };
-    if (!state.cashCushion) state.cashCushion = { freeCash: 0, holdings: [] };
-    if (!Array.isArray(state.cashCushion.holdings)) state.cashCushion.holdings = [];
-
-    const existing = state.cashCushion.holdings.find((h: any) => h.ticker === symbol);
-    const price = givenPrice > 0 ? givenPrice : Number(existing?.price) || 0;
-
-    if (existing) {
-      existing.shares = (Number(existing.shares) || 0) + shares;
-      if (givenPrice > 0) existing.price = givenPrice;
-    } else {
-      state.cashCushion.holdings.push({ ticker: symbol, shares, price });
-    }
-    portfolioStore.importState(state);
-  }
-
-  private static removeCashHolding(symbol: string) {
-    const state: any = { ...portfolioStore.getState() };
-    const holdings = state.cashCushion?.holdings;
-    if (!Array.isArray(holdings)) return null;
-    const idx = holdings.findIndex((h: any) => h.ticker === symbol);
-    if (idx < 0) return null;
-    const [removed] = holdings.splice(idx, 1);
-    portfolioStore.importState(state);
-    return removed;
   }
 }
