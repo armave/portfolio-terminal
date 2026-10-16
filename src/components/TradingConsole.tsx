@@ -35,7 +35,20 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
 
   const handleKeyDown = (e: KeyboardEvent) => {
     const input = e.currentTarget as HTMLInputElement;
-    if (e.key === 'Enter') {
+    if (e.key === 'Tab') {
+      const value = input.value;
+      const tokens = [...value.matchAll(/\[[^\]]+\]/g)];
+      if (tokens.length > 0) {
+        e.preventDefault();
+        const cursor = input.selectionEnd ?? input.selectionStart ?? 0;
+        const next = e.shiftKey
+          ? [...tokens].reverse().find((match) => (match.index ?? 0) < cursor) ?? tokens[tokens.length - 1]
+          : tokens.find((match) => (match.index ?? 0) >= cursor) ?? tokens[0];
+        const start = next.index ?? 0;
+        input.focus();
+        input.setSelectionRange(start, start + next[0].length);
+      }
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       triggerExecute();
     } else if (e.key === 'ArrowUp') {
