@@ -609,7 +609,7 @@ export class Store {
       const position = positions[clean];
       if (position) {
         // Do not let a quote request overwrite a newer manual trade entry.
-        if (position.quoteSource === 'Trade input' && Number((position as any).lastTradeAt || 0) > Number(quote.requestStartedAt || 0)) {
+        if (quote.requestStartedAt !== undefined && Number((position as any).lastTradeAt || 0) > quote.requestStartedAt) {
           return latestState;
         }
         positions[clean] = {
