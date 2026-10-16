@@ -594,7 +594,9 @@ export class PortfolioStore {
       const totalCommissions = Number((buyCommAllocated + sellComm).toFixed(2));
       const grossProfit = Number((sellProceeds - soldCostBasis).toFixed(2));
       const netProfit = Number((grossProfit - totalCommissions - marginInterestAllocated).toFixed(2));
-      const netCashProceeds = Number((sellProceeds - sellComm - marginInterestAllocated).toFixed(2));
+      // Rollover interest is already reflected in state.balance before a sale.
+      // Keep it in realized P&L, but do not subtract it a second time from cash proceeds.
+      const netCashProceeds = Number((sellProceeds - sellComm).toFixed(2));
 
       let currentDebt = totalDebt;
       let freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
