@@ -44,6 +44,7 @@ import {
   saveStateToStorage
 } from './src/services/storage';
 import {
+  clearTerminalLog,
   logTerminal,
   showToast
 } from './src/ui/notifications';
@@ -1476,8 +1477,7 @@ async function executeCommand(commandText?: string) {
     } else if (effect.type === 'SWITCH_VIEW') {
       setActiveView(effect.view);
     } else if (effect.type === 'CLEAR_TERMINAL') {
-      const logEl = document.getElementById('terminalLog') || document.getElementById('terminalOutput');
-      if (logEl) logEl.innerHTML = '';
+      clearTerminalLog();
     }
   }
 
