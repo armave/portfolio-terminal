@@ -98,6 +98,16 @@ describe('portfolio domain', () => {
     expect(accrued).toBeCloseTo(26.71, 1);
   });
 
+  it('uses allocated position debt instead of charging total portfolio debt to each position', () => {
+    const interest = calculateMarginInterest(
+      [{ qty: 10, price: 100, date: '2026-10-15' }],
+      { dailyRate: 0.01, marginDebt: 200, totalDebt: 1000, days: 1 }
+    );
+
+    // $200 allocated debt at 1% for one cycle = $2, not $10 on the full $1,000 position.
+    expect(interest).toBeCloseTo(2, 8);
+  });
+
   it('calculates interest scaling with margin utilization ratio', () => {
     const state = {
       marginDebt: 5_000,
