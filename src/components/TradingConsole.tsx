@@ -1,5 +1,5 @@
 import { useRef, useState } from 'preact/hooks';
-import { ConsoleQuickActions, prefillTerminalInput } from './ConsoleQuickActions';
+import { ConsoleQuickActions } from './ConsoleQuickActions';
 import { formatUSD, PositionRecord } from '../ui/renderBoard';
 
 export interface TradingConsoleProps {
@@ -77,7 +77,6 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       const nextIdx = Math.min(historyIdx + 1, history.length - 1);
       setHistoryIdx(nextIdx);
       setCommand(history[nextIdx]);
-      requestAnimationFrame(() => input.setSelectionRange(input.value.length, input.value.length));
       requestAnimationFrame(() => input.setSelectionRange(input.value.length, input.value.length));
     } else if (e.key === 'ArrowDown') {
       if (historyIdx < 0) return;
