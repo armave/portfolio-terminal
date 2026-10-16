@@ -123,6 +123,54 @@ export function buildHoldingsProjection(
   });
 }
 
+
+/**
+ * Upgrade a legacy-only cloud snapshot without letting stale holdings override
+ * canonical local positions or resurrect a ticker closed locally after its
+ * latest legacy purchase.
+ */
+export function migrateLegacyCloudHoldingsToPositions(
+  cloudState: Partial<PortfolioState>,
+  localState: Partial<PortfolioState>,
+  fallbackDate = todayIso()
+): Partial<PortfolioState> {
+  if (Object.prototype.hasOwnProperty.call(cloudState, 'positions')) return cloudState;
+
+  const localPositions = (localState.positions || {}) as Record<string, PositionRecord>;
+  const localClosedTrades = Array.isArray(localState.closedTrades) ? localState.closedTrades : [];
+  const legacyHoldings = Array.isArray(cloudState.holdings) ? cloudState.holdings : [];
+
+  const safeHoldings = legacyHoldings.filter((holding) => {
+    const ticker = String(holding?.ticker || '').trim().toUpperCase();
+    if (!ticker || localPositions[ticker]) return false;
+
+    const latestClose = localClosedTrades
+      .filter((trade) => String(trade?.ticker || '').trim().toUpperCase() === ticker)
+      .map((trade) => {
+        const value = trade.closedAt ?? trade.exitDate ?? trade.sellDate ?? trade.date;
+        const timestamp = typeof value === 'number' ? value : Date.parse(String(value || ''));
+        return Number.isFinite(timestamp) ? timestamp : 0;
+      })
+      .reduce((latest, timestamp) => Math.max(latest, timestamp), 0);
+
+    if (!latestClose) return true;
+
+    const latestLegacyPurchase = (Array.isArray(holding.tranches) ? holding.tranches : [])
+      .map((tranche) => Date.parse(String(tranche.purchaseDate || '')))
+      .filter(Number.isFinite)
+      .reduce((latest, timestamp) => Math.max(latest, timestamp), 0);
+
+    // A legacy holding is only considered reopened if it has a purchase date
+    // strictly later than the most recent locally recorded exit.
+    return latestLegacyPurchase > latestClose;
+  });
+
+  return {
+    ...cloudState,
+    positions: migrateLegacyHoldingsToPositions(localPositions, safeHoldings, fallbackDate)
+  };
+}
+
 export class PortfolioStore {
   private state: PortfolioState;
   private listeners: Set<(state: PortfolioState) => void> = new Set();
