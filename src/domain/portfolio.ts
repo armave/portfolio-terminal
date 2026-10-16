@@ -151,7 +151,7 @@ export function getAccruedRolloverCycles(purchaseDateStr?: string, now: Date = n
 }
 
 /**
- * Calculates accrued margin interest.
+ * Calculates accrued margin interest using daily compounding.
  * Supports:
  * 1. calculateMarginInterest(debt: number, dailyRate: number, days: number): number
  * 2. calculateMarginInterest(principal: number, options: MarginInterestOptions, days?: number): number
@@ -200,7 +200,7 @@ export function calculateMarginInterest(
       days = Number(maybeDays ?? opts.days ?? opts.daysHeld ?? opts.holdingDays) || 0;
     }
 
-    return principal * marginRatio * dailyRate * days;
+    return principal * marginRatio * (Math.pow(1 + dailyRate, days) - 1);
   }
 
   // Signature 2: Tranches array or state/holding/position object
@@ -314,7 +314,7 @@ export function calculateMarginInterest(
       days = Math.max(0, diffDays);
     }
 
-    totalInterest += trancheCost * marginRatio * dailyRate * days;
+    totalInterest += trancheCost * marginRatio * (Math.pow(1 + dailyRate, days) - 1);
   }
 
   return totalInterest;

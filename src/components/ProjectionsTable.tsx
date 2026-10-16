@@ -1,7 +1,6 @@
 import {
   calculateAccruedFees,
-  calculateCompoundedDebt,
-  calculateMarginInterest
+  calculateCompoundedDebt
 } from '../domain/portfolio';
 import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { formatUSD } from '../ui/renderBoard';
@@ -59,8 +58,10 @@ export function ProjectionsTable({
           );
         }
 
+        // Calculate exact compounded debt and derive the interest to prevent rounding mismatches
         const b_t = calculateCompoundedDebt(debtToUse, dailyRate, daysFromToday);
-        const additionalAccrual = calculateMarginInterest(debtToUse, dailyRate, daysFromToday);
+        const additionalAccrual = b_t - Math.abs(debtToUse);
+        
         const m_d = marginChargedToUse + additionalAccrual;
         const fee_c = calculateAccruedFees(totalComms, marginChargedToUse, additionalAccrual);
         const net_p = gross - fee_c;
