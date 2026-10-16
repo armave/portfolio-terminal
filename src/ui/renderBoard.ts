@@ -364,6 +364,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     onUpdateCombinedBreakeven = () => { },
     onSyncMarketInsightsPanel = () => { },
     refreshIntervalMs = 60000,
+    lastDeskView = null,
     onUpdateLastDeskView = () => { }
   } = options;
 
@@ -375,6 +376,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
   const isSettingsActive = currentView === 'SETTINGS';
+  const viewChanged = currentView !== lastDeskView;
 
   const tabsContainer = document.getElementById('tickerTabs');
   if (tabsContainer) {
@@ -391,10 +393,10 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   onSyncMarketInsightsPanel();
 
   const daysEl = document.getElementById('daysToBreakeven');
-  hideAllDesks();
+  if (viewChanged) hideAllDesks();
 
   if (isCushionActive) {
-    showDesk('cashCushionContainer');
+    if (viewChanged) showDesk('cashCushionContainer');
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('CASH_CUSHION');
     renderCashCushion(state, { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs });
@@ -402,7 +404,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isClosedHistoryActive) {
-    showDesk('closedHistoryContainer');
+    if (viewChanged) showDesk('closedHistoryContainer');
     const closedDesk = document.getElementById('closedHistoryContainer');
     if (closedDesk) render(h(ClosedHistoryDesk, {}), closedDesk);
     if (daysEl) daysEl.classList.add('hidden');
@@ -412,7 +414,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isSettingsActive) {
-    showDesk('settings');
+    if (viewChanged) showDesk('settings');
     if (typeof window !== 'undefined' && typeof (window as any).renderSettingsPanel === 'function') {
       (window as any).renderSettingsPanel();
     }
@@ -421,7 +423,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     return;
   }
 
-  showDesk('mainDeskContainer');
+  if (viewChanged) showDesk('mainDeskContainer');
   if (daysEl) daysEl.classList.remove('hidden');
   onUpdateLastDeskView(currentView);
 
