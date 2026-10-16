@@ -15,15 +15,38 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
     }
   }, [isOpen]);
 
+  const handleDialogKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setSecret('');
+      inputRef.current?.focus();
+      return;
+    }
+
+    if (event.key !== 'Tab') return;
+    const form = inputRef.current?.form;
+    const saveButton = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+    const input = inputRef.current;
+    if (!input || !saveButton) return;
+
+    if (event.shiftKey && document.activeElement === input) {
+      event.preventDefault();
+      saveButton.focus();
+    } else if (!event.shiftKey && document.activeElement === saveButton) {
+      event.preventDefault();
+      input.focus();
+    }
+  };
+
   const handleSubmit = (e: Event) => {
     e.preventDefault();
     onSaveSecret(secret.trim());
   };
 
   return (
-    <div class="auth-card border-card">
+    <div class="auth-card border-card" role="dialog" aria-modal="true" aria-labelledby="authModalTitle" onKeyDown={handleDialogKeyDown}>
       <div class="space-y-1">
-        <h2 class="text-sm font-bold text-emerald-400 tracking-wider uppercase">
+        <h2 id="authModalTitle" class="text-sm font-bold text-emerald-400 tracking-wider uppercase">
           Gateway Authentication
         </h2>
         <p class="text-xs text-slate-400">
