@@ -90,60 +90,72 @@ class Store {
     return this.normalizeState(raw);
   }
 
+  /**
+   * Positions are the canonical active-trade structure. Legacy `holdings`
+   * entries are imported only for tickers missing from positions, then rebuilt
+   * as a compatibility projection from the canonical positions map.
+   */
   private normalizeState(raw: PortfolioState): PortfolioState {
     const positions: Record<string, PositionRecord> = { ...(raw.positions || {}) };
-    let holdings: Holding[] = Array.isArray(raw.holdings) ? [...raw.holdings] : [];
+    const legacyHoldings: Holding[] = Array.isArray(raw.holdings) ? raw.holdings : [];
 
-    const posKeys = Object.keys(positions);
-    if (posKeys.length > 0) {
-      holdings = posKeys.map((sym) => {
-        const p = positions[sym];
-        const existingHolding = holdings.find((h) => h.ticker === sym);
-        const tranches: Tranche[] = (p.tranches || []).map((t: TrancheItem, idx: number) => ({
-          id: `${sym}-${idx}`,
-          shares: Number((t as any).qty ?? (t as any).shares) || 0,
-          entryPrice: Number((t as any).price ?? (t as any).entryPrice) || 0,
-          purchaseDate: t.date || p.startDate || todayIso(),
-          targetPrice: p.pt
-        }));
-        return {
-          ...existingHolding,
-          ticker: sym,
-          isMargin: true,
-          tranches,
-          currentPrice: p.currentPrice,
-          analystTarget: p.pt
-        };
-      });
-    } else if (holdings.length > 0) {
-      holdings.forEach((h) => {
-        const sym = h.ticker.toUpperCase();
-        const tranches: TrancheItem[] = (h.tranches || []).map((t) => ({
-          qty: Number(t.shares) || 0,
-          price: Number(t.entryPrice) || 0,
-          date: t.purchaseDate || todayIso()
-        }));
-        const shares = tranches.reduce((s, t) => s + t.qty, 0);
-        if (shares > 0) {
-          const avgPrice =
-            tranches.reduce((s, t) => s + t.qty * t.price, 0) / shares;
-          const earliest =
-            tranches
-              .map((t) => t.date)
-              .filter((d): d is string => Boolean(d))
-              .sort()[0] || todayIso();
-          positions[sym] = {
-            ticker: sym,
-            shares,
-            currentPrice: Number(h.currentPrice) || avgPrice,
-            pt: Number(h.analystTarget) || avgPrice * 1.1,
-            commBuy: 0,
-            startDate: earliest,
-            tranches
-          };
-        }
-      });
+    for (const holding of legacyHoldings) {
+      const ticker = String(holding.ticker || '').trim().toUpperCase();
+      if (!ticker || positions[ticker]) continue;
+
+      const tranches: TrancheItem[] = (Array.isArray(holding.tranches) ? holding.tranches : [])
+        .map((tranche) => ({
+          qty: Number(tranche.shares) || 0,
+          price: Number(tranche.entryPrice) || 0,
+          date: tranche.purchaseDate || todayIso()
+        }))
+        .filter((tranche) => tranche.qty > 0 && tranche.price > 0);
+
+      const shares = tranches.reduce((sum, tranche) => sum + tranche.qty, 0);
+      if (shares <= 0) continue;
+
+      const averagePrice = tranches.reduce(
+        (sum, tranche) => sum + tranche.qty * tranche.price,
+        0
+      ) / shares;
+      const earliestDate = tranches
+        .map((tranche) => tranche.date)
+        .filter((date): date is string => Boolean(date))
+        .sort()[0] || todayIso();
+
+      positions[ticker] = {
+        ticker,
+        shares,
+        currentPrice: Number(holding.currentPrice) || averagePrice,
+        pt: Number(holding.analystTarget) || Number((averagePrice * 1.1).toFixed(2)),
+        commBuy: 0,
+        startDate: earliestDate,
+        tranches
+      };
     }
+
+    const holdings: Holding[] = Object.keys(positions).map((ticker) => {
+      const position = positions[ticker];
+      const legacy = legacyHoldings.find(
+        (holding) => String(holding.ticker || '').trim().toUpperCase() === ticker
+      );
+      const tranches: Tranche[] = (position.tranches || []).map((tranche, index) => ({
+        id: `${ticker}-${index}`,
+        shares: Number(tranche.qty) || 0,
+        entryPrice: Number(tranche.price) || 0,
+        purchaseDate: tranche.date || position.startDate || todayIso(),
+        targetPrice: position.pt
+      }));
+
+      return {
+        ...legacy,
+        ticker,
+        isMargin: true,
+        tranches,
+        currentPrice: position.currentPrice,
+        analystTarget: position.pt
+      };
+    });
 
     const freeCash = Math.max(0, Number(raw.cashCushion?.freeCash ?? raw.cashBalance) || 0);
     const cashHoldings = Array.isArray(raw.cashCushion?.holdings)
