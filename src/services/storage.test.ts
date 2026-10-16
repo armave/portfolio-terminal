@@ -218,8 +218,8 @@ describe('storage service', () => {
 
       expect(result).toBe(true);
       expect(getGatewaySecret()).toBe('test-gateway-secret');
-      expect(logTerminal).toHaveBeenCalledWith(expect.stringContaining('Gateway Secret saved'));
-      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Gateway unlocked'), 'success');
+      expect(logTerminal).toHaveBeenCalledWith(expect.stringContaining('Remote access has not been verified'));
+      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Remote access has not been verified'), 'success');
     });
 
     it('saveApiKeys rejects empty secret', async () => {
