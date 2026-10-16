@@ -595,37 +595,62 @@ export function processRollovers(state: any): boolean {
     return false;
   }
 
+  const rules = state.brokerAssumptions || {};
+  const annualRate = Number(
+    rules.annualRate ?? rules.annualBorrowRate ?? state.settings?.marginRate ?? 0.15
+  );
+  const dayCountBasis = Number(rules.dayCountBasis ?? 365) || 365;
+  const dailyRate = Math.max(0, annualRate / dayCountBasis);
+  const rolloverHour = Number.isInteger(rules.rolloverHour) ? rules.rolloverHour : 4;
+  const rolloverMinute = Number.isInteger(rules.rolloverMinute) ? rules.rolloverMinute : 0;
   const now = new Date();
-  let lastTime = new Date(state.lastRolloverTimestamp);
+  const lastTimestamp = Number(state.lastRolloverTimestamp);
+  if (!Number.isFinite(lastTimestamp) || lastTimestamp <= 0) {
+    state.lastRolloverTimestamp = now.getTime();
+    return false;
+  }
+
+  const lastParts = getArmeniaClockParts(new Date(lastTimestamp));
+  // Armenia uses UTC+04:00 and currently has no daylight-saving transitions.
+  const boundaryFor = (year: number, month: number, day: number) =>
+    Date.UTC(year, month - 1, day, rolloverHour, rolloverMinute) - 4 * 60 * 60 * 1000;
+  let boundary = boundaryFor(lastParts.year, lastParts.month, lastParts.day);
+
+  // If the stored timestamp is at or after today's cutoff, start tomorrow.
+  if (boundary <= lastTimestamp) {
+    const nextDay = new Date(Date.UTC(lastParts.year, lastParts.month - 1, lastParts.day + 1));
+    boundary = boundaryFor(nextDay.getUTCFullYear(), nextDay.getUTCMonth() + 1, nextDay.getUTCDate());
+  }
+
   let rolloversApplied = 0;
   let totalDeducted = 0;
+  let lastProcessedBoundary = lastTimestamp;
 
-  // Find the very next 04:00 AM boundary after the last recorded timestamp
-  let nextBoundary = new Date(lastTime);
-  // The stored timestamp marks the last rollover-processing date. Start with
-  // the following day's cutoff so we don't charge an extra rollover on that
-  // same calendar day when the timestamp happens to be before 04:00.
-  nextBoundary.setDate(nextBoundary.getDate() + 1);
-  nextBoundary.setHours(4, 0, 0, 0);
-
-  // Time-travel loop: execute for every 04:00 AM passed
-  while (nextBoundary <= now) {
-    if (state.balance < 0) {
-      // Dynamically fetch margin rate (fallback to 0.15 if not explicitly defined in settings)
-      const marginRate = state.settings?.marginRate || 0.15;
-      const dailyFee = Math.abs(state.balance) * (marginRate / 365);
-
-      state.balance -= dailyFee; // Deduct fee (compounding the negative balance)
-      state.balance = Math.round(state.balance * 100) / 100;
-      totalDeducted += dailyFee;
+  while (boundary <= now.getTime()) {
+    if (state.balance < 0 && dailyRate > 0) {
+      const before = Math.abs(Number(state.balance) || 0);
+      const after = Number((before * (1 + dailyRate)).toFixed(2));
+      state.balance = -after;
+      totalDeducted += after - before;
     }
     rolloversApplied++;
-    nextBoundary.setDate(nextBoundary.getDate() + 1); // Advance to next day's 04:00 AM
+    lastProcessedBoundary = boundary;
+
+    const boundaryDate = new Date(boundary + 4 * 60 * 60 * 1000);
+    boundary = boundaryFor(
+      boundaryDate.getUTCFullYear(),
+      boundaryDate.getUTCMonth() + 1,
+      boundaryDate.getUTCDate() + 1
+    );
   }
 
   if (rolloversApplied > 0) {
-    state.lastRolloverTimestamp = Date.now();
-    console.log(`[System]: Applied ${rolloversApplied} missed 04:00 AM rollovers. Deducted $${totalDeducted.toFixed(2)} total margin.`);
+    // Persist the actual last cutoff, not the time of this sync, so later
+    // pulls cannot skip or double-count a rollover.
+    state.lastRolloverTimestamp = lastProcessedBoundary;
+    console.log(
+      `[System]: Applied ${rolloversApplied} missed ${String(rolloverHour).padStart(2, '0')}:${String(rolloverMinute).padStart(2, '0')} Asia/Yerevan rollovers. Deducted $${totalDeducted.toFixed(2)} total margin.`
+    );
     return true;
   }
   return false;
