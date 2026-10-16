@@ -1850,7 +1850,17 @@ function renderSettingsPanel() {
       onSaveApiKeys: async (secret: string) => {
         const saved = await saveApiKeys({
           secret,
-          showToast,
+          showToast: (message, type) => {
+            const variant =
+              type === 'success' ||
+                type === 'error' ||
+                type === 'warning' ||
+                type === 'info'
+                ? type
+                : 'info';
+
+            showToast(message, variant);
+          },
           logTerminal
         });
         if (!saved) return;

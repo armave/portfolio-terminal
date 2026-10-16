@@ -138,15 +138,27 @@ export function SettingsDesk({
             style={{ display: isConfigured && credentialsHidden ? 'none' : 'flex' }}
             class="flex items-center"
           >
-            <input
-              id="headerGatewaySecretInput"
-              type={secretVisible ? 'text' : 'password'}
-              value={secretValue}
-              onInput={handleSecretInput}
-              placeholder="Gateway Secret..."
-              autoComplete="off"
-              class="w-36 h-8 bg-slate-800 text-slate-200 border border-slate-700 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500"
-            />
+            {secretVisible ? (
+              <input
+                id="headerGatewaySecretInput"
+                type={'text' as any}
+                value={secretValue}
+                onInput={handleSecretInput}
+                placeholder="Gateway Secret..."
+                autoComplete="off"
+                class="w-36 h-8 bg-slate-800 text-slate-200 border border-slate-700 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500"
+              />
+            ) : (
+              <input
+                id="headerGatewaySecretInput"
+                type="password"
+                value={secretValue}
+                onInput={handleSecretInput}
+                placeholder="Gateway Secret..."
+                autoComplete="off"
+                class="w-36 h-8 bg-slate-800 text-slate-200 border border-slate-700 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500"
+              />
+            )}
           </div>
           <button
             id="toggleHeaderCredentialsButton"
