@@ -426,7 +426,7 @@ export class PortfolioStore {
         positions,
         startDate: earliestPortfolioDate,
         activeView: clean,
-        balance: -currentDebt,
+        balance: currentDebt > 0 ? -currentDebt : 0,
         cashBalance: freeCash,
         cashCushion: {
           ...(state.cashCushion || { freeCash: 0, holdings: [] }),
