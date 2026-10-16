@@ -232,6 +232,24 @@ describe('canonical trade lifecycle and persistence', () => {
     vi.unstubAllGlobals();
   });
 
+  it('clears prior margin debt when a positive cash balance is entered', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    store.setMarginDebt(250);
+    expect(store.getState().balance).toBe(-250);
+
+    store.setCashBalance(500);
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().cashCushion.freeCash).toBe(500);
+    expect(store.getState().cashBalance).toBe(500);
+
+    store.setCashBalance(-125);
+    expect(store.getState().balance).toBe(-125);
+    expect(store.getState().cashCushion.freeCash).toBe(0);
+    expect(store.getState().cashBalance).toBe(0);
+  });
+
   it('persists buys, partial sells, and full exits without resurrecting closed positions on reload', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
