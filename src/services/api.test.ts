@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CryptoJS from 'crypto-js';
-import { pushCloudState } from './api';
+import { pushCloudState, syncCloudState } from './api';
 
 describe('cloud state sync', () => {
   afterEach(() => {
@@ -37,5 +37,20 @@ describe('cloud state sync', () => {
       activeView: 'AAPL',
       balance: 1250
     });
+  });
+  it('returns false when a failed cloud pull falls back to a truthy local state', async () => {
+    const localState = { activeView: 'AAPL', balance: 1250 };
+    const fetchMock = vi.fn().mockRejectedValue(new Error('Network unavailable'));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await syncCloudState('pull', {
+      state: localState,
+      secret: 'cloud-encryption-secret',
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    });
+
+    expect(result).toBe(false);
   });
 });
