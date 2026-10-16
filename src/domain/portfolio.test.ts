@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   calculateMarginInterest,
   createBlankState,
@@ -7,6 +7,13 @@ import {
   realizeClosedTrade,
   resolveSaleQuantity,
   resolveTradeDateTimestamp,
+  calculateProjectedDebt,
+  calculateCompoundedDebt,
+  calculateAccruedFees,
+  calculateBreakevenDays,
+  processRollovers,
+  calculateCommission,
+  getAccruedRolloverCycles,
   type MarginPosition,
   type TradeTranche
 } from './portfolio';
@@ -142,5 +149,67 @@ describe('portfolio domain', () => {
     expect(() => realizeClosedTrade(basePosition, 'TEST', 11, 12, 1, 10_000)).toThrow();
     expect(() => realizeClosedTrade(basePosition, 'TEST', 1, Number.NaN, 1, 10_000)).toThrow();
     expect(basePosition).toEqual(original);
+  });
+
+  it('calculates projected debt correctly and aliases compounded debt', () => {
+    // 1000 * (1 + 0.01 * 5) = 1050
+    expect(calculateProjectedDebt(1000, 0.01, 5)).toBe(1050);
+    expect(calculateCompoundedDebt(1000, 0.01, 5)).toBe(1050);
+    // Should handle negative principal by taking absolute value
+    expect(calculateProjectedDebt(-1000, 0.01, 5)).toBe(1050);
+  });
+
+  it('calculates accrued fees correctly', () => {
+    expect(calculateAccruedFees(10.5, 5.25, 2.25)).toBe(18);
+    expect(calculateAccruedFees(0, 0, 0)).toBe(0);
+  });
+
+  it('calculates breakeven days correctly', () => {
+    // netTargetProfit = 100, totalDebt = 1000, dailyRate = 0.01
+    // days = 100 / (1000 * 0.01) = 100 / 10 = 10
+    expect(calculateBreakevenDays(100, 1000, 0.01)).toBe(10);
+    expect(calculateBreakevenDays(-10, 1000, 0.01)).toBe(0); // <= 0 profit
+    expect(calculateBreakevenDays(100, 0, 0.01)).toBe(0); // 0 debt
+  });
+
+  it('calculates commission based on rules', () => {
+    const rules = { commPerShare: 0.01, commVolumePct: 0.001, minCommOrder: 1.5 };
+    expect(calculateCommission(100, 1000, rules)).toBe(2); // 100*0.01 + 1000*0.001 = 1 + 1 = 2
+    expect(calculateCommission(10, 100, rules)).toBe(1.5); // 0.1 + 0.1 = 0.2 -> min 1.5
+    expect(calculateCommission(0, 100, rules)).toBe(0); // 0 shares
+  });
+
+  it('calculates accrued rollover cycles correctly based on 04:00 AM cutoff', () => {
+    const purchaseDate = '2026-10-01';
+    // Same day before cutoff
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-01T03:00:00'))).toBe(0);
+    // Same day after cutoff
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-01T05:00:00'))).toBe(0);
+    // Next day before cutoff
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-02T03:00:00'))).toBe(0);
+    // Next day after cutoff
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-02T05:00:00'))).toBe(1);
+  });
+
+  it('processes rollovers and deducts margin from balance', () => {
+    vi.useFakeTimers();
+    
+    const state = {
+      balance: -1000,
+      lastRolloverTimestamp: new Date('2026-01-01T00:00:00Z').getTime(),
+      settings: { marginRate: 0.365 } // 0.365 / 365 = 0.001 daily
+    };
+    
+    // Fast forward past 2 cutoffs (Jan 2 04:00, Jan 3 04:00)
+    vi.setSystemTime(new Date('2026-01-03T05:00:00Z'));
+    
+    const applied = processRollovers(state);
+    expect(applied).toBe(true);
+    
+    // Day 1: -1000 - 1 = -1001
+    // Day 2: -1001 - 1.001 = -1002.001 -> rounded to -1002
+    expect(state.balance).toBe(-1002);
+    
+    vi.useRealTimers();
   });
 });

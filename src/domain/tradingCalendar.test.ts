@@ -4,7 +4,8 @@ import {
   getUsEquityProjectionDates,
   isStockHoliday,
   isTradingDay,
-  isUsEquityTradingDay
+  isUsEquityTradingDay,
+  getClosestTradingDay
 } from './tradingCalendar';
 
 function localDate(year: number, month: number, day: number): Date {
@@ -77,6 +78,11 @@ describe('US equity trading calendar', () => {
     expect(projections.filter(({ kind }) => kind === 'entry')).toHaveLength(0);
   });
 
+  it('ignores invalid entry dates in projections', () => {
+    const projections = getUsEquityProjectionDates(localDate(2026, 10, 6), 'invalid-date');
+    expect(projections.some(p => p.kind === 'entry')).toBe(false);
+  });
+
   it('resolves NTD for Saturday Oct 10 to Monday (+2d)', () => {
     const projections = getUsEquityProjectionDates(localDate(2026, 10, 10));
     expect(projections[1]).toMatchObject({
@@ -147,5 +153,19 @@ describe('US equity trading calendar', () => {
       label: '(+10d)'
     });
     expect(dateLabel(projections[1].date)).toBe('2026-06-22');
+  });
+
+  it('finds the closest trading day correctly', () => {
+    // 2026-10-10 is Saturday. Closest is Friday 10-09 (1 day diff) vs Monday 10-12 (2 days diff)
+    const saturday = localDate(2026, 10, 10);
+    expect(dateLabel(getClosestTradingDay(saturday))).toBe('2026-10-09');
+    
+    // 2026-10-11 is Sunday. Closest is Monday 10-12 (1 day diff) vs Friday 10-09 (2 days diff)
+    const sunday = localDate(2026, 10, 11);
+    expect(dateLabel(getClosestTradingDay(sunday))).toBe('2026-10-12');
+
+    // 2026-10-12 is Monday (Trading Day). Should return itself.
+    const monday = localDate(2026, 10, 12);
+    expect(dateLabel(getClosestTradingDay(monday))).toBe('2026-10-12');
   });
 });
