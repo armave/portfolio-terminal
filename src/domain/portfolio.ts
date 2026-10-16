@@ -212,7 +212,8 @@ export function calculateMarginInterest(
       days = Number(maybeDays ?? opts.days ?? opts.daysHeld ?? opts.holdingDays) || 0;
     }
 
-    return principal * marginRatio * dailyRate * days;
+    if (principal <= 0 || dailyRate <= 0 || days <= 0) return 0;
+    return principal * marginRatio * (Math.pow(1 + dailyRate, days) - 1);
   }
 
   // Signature 2: Tranches array or state/holding/position object
@@ -317,14 +318,19 @@ export function calculateMarginInterest(
         trancheTs = Date.parse(String(rawDate)) || now.getTime();
       }
 
-      const trancheDate = new Date(trancheTs);
-      const dTranche = new Date(trancheDate.getFullYear(), trancheDate.getMonth(), trancheDate.getDate());
-      const dNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const diffDays = Math.round((dNow.getTime() - dTranche.getTime()) / (1000 * 60 * 60 * 24));
-      days = Math.max(0, diffDays);
+      // Tradernet rollover is evaluated at 04:00 in Asia/Yerevan (UTC+4).
+      // Shift timestamps by four hours, then compare calendar dates in that zone.
+      const offsetMs = 4 * 60 * 60 * 1000;
+      const localTranche = new Date(trancheTs + offsetMs);
+      const localNow = new Date(now.getTime() + offsetMs);
+      const trancheDay = Date.UTC(localTranche.getUTCFullYear(), localTranche.getUTCMonth(), localTranche.getUTCDate());
+      const nowDay = Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate());
+      const elapsedCalendarDays = Math.max(0, Math.round((nowDay - trancheDay) / 86400000));
+      const localMinutes = localNow.getUTCHours() * 60 + localNow.getUTCMinutes();
+      days = Math.max(0, elapsedCalendarDays - (localMinutes < 240 ? 1 : 0));
     }
 
-    totalInterest += trancheCost * marginRatio * dailyRate * days;
+    totalInterest += trancheCost * marginRatio * (Math.pow(1 + dailyRate, days) - 1);
   }
 
   return totalInterest;
