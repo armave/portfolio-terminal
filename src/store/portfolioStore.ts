@@ -591,37 +591,62 @@ export class Store {
     });
   }
 
-  public updatePrice(ticker: string, price: number): void {
+  /**
+   * Applies a completed quote request to the latest store snapshot.
+   * This avoids applying a stale state object captured before an async request.
+   */
+  public updateLiveQuote(
+    ticker: string,
+    quote: { price?: number; currentPrice?: number; quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: Record<string, unknown> }
+  ): void {
     const clean = ticker.trim().toUpperCase();
-    if (!clean || price <= 0) return;
+    const price = Number(quote.currentPrice ?? quote.price);
+    if (!clean || !Number.isFinite(price) || price <= 0) return;
 
-    this.update((state) => {
-      const positions = { ...(state.positions || {}) };
-      if (positions[clean]) {
+    this.update((latestState) => {
+      const positions = { ...(latestState.positions || {}) };
+      const position = positions[clean];
+      if (position) {
+        // Do not let a quote request overwrite a newer manual trade entry.
+        if (position.quoteSource === 'Trade input' && Number(position.lastTradeAt || 0) > Number(quote.quoteUpdatedAt || 0)) {
+          return latestState;
+        }
         positions[clean] = {
-          ...positions[clean],
-          currentPrice: price
+          ...position,
+          currentPrice: price,
+          quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
+          quoteSource: quote.quoteSource ?? 'Live quote',
+          ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {})
         };
       }
 
-      const cashHoldings = (state.cashCushion?.holdings || []).map((h) =>
-        h.ticker.toUpperCase() === clean ? { ...h, currentPrice: price, price } : h
+      const cashHoldings = (latestState.cashCushion?.holdings || []).map((holding) =>
+        holding.ticker.toUpperCase() === clean
+          ? { ...holding, currentPrice: price, price, quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
+              quoteSource: quote.quoteSource ?? 'Live quote',
+              ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {}) }
+          : holding
       );
-
-      const cashStocks = (state.cashStocks || []).map((cs) =>
-        cs.ticker.toUpperCase() === clean ? { ...cs, currentPrice: price } : cs
+      const cashStocks = (latestState.cashStocks || []).map((holding) =>
+        holding.ticker.toUpperCase() === clean
+          ? { ...holding, currentPrice: price }
+          : holding
       );
 
       return {
-        ...state,
+        ...latestState,
         positions,
         cashStocks,
         cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          ...(latestState.cashCushion || { freeCash: 0, holdings: [] }),
           holdings: cashHoldings
         }
       };
     });
+  }
+
+  public updatePrice(ticker: string, price: number): void {
+    this.updateLiveQuote(ticker, { price });
   }
 
   public updateTargetPrice(ticker: string, pt: number): void {
