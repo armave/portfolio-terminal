@@ -90,6 +90,7 @@ const TRADERNET_RULES = { ...DEFAULT_TRADERNET_RULES };
 let state: any = createBlankState();
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
 let marketInsightsOpen = false;
@@ -1637,6 +1638,14 @@ async function startApp(secret: string) {
     quoteRefreshInterval.addEventListener('change', () => setQuoteRefreshInterval(quoteRefreshInterval.value));
   }
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
+
+  if (rolloverTimer !== null) clearInterval(rolloverTimer);
+  rolloverTimer = setInterval(() => {
+    if (!document.hidden) applyOvernightRollover();
+  }, 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) applyOvernightRollover();
+  });
 
   setBrokerRuleInputs();
 
