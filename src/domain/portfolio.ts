@@ -399,7 +399,43 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
 
   const blankState = createBlankState(now);
   const sourceCashCushion = isRecord(candidate.cashCushion) ? candidate.cashCushion : {};
-  const positions = isRecord(candidate.positions) ? candidate.positions : {};
+  const hasCanonicalPositions = Object.prototype.hasOwnProperty.call(candidate, 'positions');
+  const positions: Record<string, unknown> = isRecord(candidate.positions) ? candidate.positions : {};
+  // Explicitly importing a legacy-only backup is a user-requested replacement,
+  // so migrate its old holdings schema only when no canonical positions field exists.
+  if (!hasCanonicalPositions && Array.isArray(candidate.holdings)) {
+    candidate.holdings.filter(isRecord).forEach((holding) => {
+      const ticker = String(holding.ticker || '').trim().toUpperCase();
+      if (!ticker || Object.prototype.hasOwnProperty.call(positions, ticker)) return;
+
+      const tranches = (Array.isArray(holding.tranches) ? holding.tranches : [])
+        .filter(isRecord)
+        .map((tranche) => ({
+          ...tranche,
+          qty: finiteNumber(tranche.qty ?? tranche.shares, 0),
+          price: finiteNumber(tranche.price ?? tranche.entryPrice, 0),
+          date: typeof (tranche.date ?? tranche.purchaseDate) === 'string'
+            ? String(tranche.date ?? tranche.purchaseDate)
+            : undefined
+        }))
+        .filter((tranche) => tranche.qty > 0 && tranche.price > 0);
+      const shares = tranches.reduce((total, tranche) => total + tranche.qty, 0);
+      if (shares <= 0) return;
+
+      const costBasis = tranches.reduce((total, tranche) => total + tranche.qty * tranche.price, 0);
+      const averagePrice = costBasis / shares;
+      const startDate = tranches.map((tranche) => tranche.date).filter(Boolean).sort()[0];
+      positions[ticker] = {
+        ticker,
+        shares,
+        currentPrice: finiteNumber(holding.currentPrice, averagePrice),
+        pt: finiteNumber(holding.analystTarget, Number((averagePrice * 1.1).toFixed(2))),
+        commBuy: finiteNumber(holding.commBuy, 0),
+        startDate,
+        tranches
+      };
+    });
+  }
   const normalizedPositions: Record<string, MarginPosition> = {};
 
   Object.entries(positions).forEach(([ticker, position]) => {
@@ -457,7 +493,7 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
 
 export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): PortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio backup must be an object.');
-  const recognizedFields = ['positions', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate'];
+  const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate'];
   if (!recognizedFields.some(field => Object.hasOwn(candidate, field))) {
     throw new Error('File does not contain a recognized portfolio backup.');
   }
