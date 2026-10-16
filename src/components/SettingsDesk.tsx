@@ -11,7 +11,7 @@ export interface SettingsDeskProps {
   defaultRefreshIntervalMs?: number;
   onSaveBrokerRules: (event: Event) => void;
   onResetBrokerRules: () => void;
-  onSaveApiKeys: () => void;
+  onSaveApiKeys: (secret: string) => void;
   onPullCloudState: () => void;
   onChangeRefreshInterval: (intervalMs: string) => void;
   onExportBackup: () => void;
@@ -38,6 +38,7 @@ export function SettingsDesk({
   const [credentialsHidden, setCredentialsHidden] = useState<boolean>(() =>
     areHeaderCredentialsConfigured()
   );
+  const [secretVisible, setSecretVisible] = useState<boolean>(false);
   const [refreshInterval, setRefreshInterval] = useState<string>(() =>
     String(getQuoteRefreshInterval(defaultRefreshIntervalMs))
   );
@@ -100,18 +101,15 @@ export function SettingsDesk({
   const handleSecretInput = (e: Event) => {
     const val = (e.target as HTMLInputElement).value;
     setSecretValue(val);
-    const configured = Boolean(val.trim()) || areHeaderCredentialsConfigured();
-    setIsConfigured(configured);
-    if (!configured) {
-      setCredentialsHidden(false);
-    }
+    setIsConfigured(Boolean(val.trim()) || areHeaderCredentialsConfigured());
   };
 
   const handleSaveKeysClick = () => {
-    onSaveApiKeys();
-    const configured = areHeaderCredentialsConfigured();
+    onSaveApiKeys(secretValue);
+    const configured = Boolean(secretValue.trim()) || areHeaderCredentialsConfigured();
     setIsConfigured(configured);
     setCredentialsHidden(configured);
+    setSecretVisible(false);
   };
 
   const handleIntervalChange = (e: Event) => {
@@ -142,7 +140,7 @@ export function SettingsDesk({
           >
             <input
               id="headerGatewaySecretInput"
-              type="password"
+              type={secretVisible ? 'text' : 'password'}
               value={secretValue}
               onInput={handleSecretInput}
               placeholder="Gateway Secret..."
@@ -155,11 +153,21 @@ export function SettingsDesk({
             type="button"
             onClick={() => setCredentialsHidden((prev) => !prev)}
             aria-expanded={!credentialsHidden}
-            title="Hide credential inputs"
+            title={credentialsHidden ? 'Show credential inputs' : 'Hide credential inputs'}
+            aria-label={credentialsHidden ? 'Show credential inputs' : 'Hide credential inputs'}
             class={`${isConfigured ? '' : 'hidden '
               }h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center`}
           >
             {credentialsHidden ? 'Show keys' : 'Hide keys'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSecretVisible((visible) => !visible)}
+            aria-label={secretVisible ? 'Hide gateway secret value' : 'Show gateway secret value'}
+            title={secretVisible ? 'Hide secret value' : 'Show secret value'}
+            class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition"
+          >
+            {secretVisible ? 'Mask' : 'View'}
           </button>
           <div
             id="headerCredentialsActions"
