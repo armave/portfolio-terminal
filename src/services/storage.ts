@@ -176,41 +176,41 @@ export function saveState(
  * the DOM gateway secret input element if present.
  */
 export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
-  if (typeof localStorage === 'undefined' || !localStorage) {
-    return fallback;
-  }
-
-  // Hydrate DOM input element if present in DOM
-  if (typeof document !== 'undefined' && document && typeof document.getElementById === 'function') {
-    const input = document.getElementById('gatewaySecretInput') as HTMLInputElement | null;
-    if (input) {
-      const secret = localStorage.getItem(STORAGE_KEY_GW_AUTH)
-        ? deobfuscateSecret(localStorage.getItem(STORAGE_KEY_GW_AUTH) || '')
-        : (localStorage.getItem(STORAGE_KEY_LEGACY_GW) || '');
-      if (secret) {
-        input.value = secret;
-      }
-    }
-  }
-
-  // Load payload: check dynamic v2 key first, then fallback to legacy key
-  let raw = localStorage.getItem(STORAGE_KEY_STATE);
-  if (raw === null || raw === undefined) {
-    raw = localStorage.getItem(STORAGE_KEY_LEGACY_STATE);
-  }
-
-  if (!raw || !raw.trim()) {
-    return fallback;
-  }
-
+  // Storage can throw in strict privacy modes, even when the API exists.
   try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') {
-      return { ...fallback, ...parsed };
+    if (typeof localStorage === 'undefined' || !localStorage) return fallback;
+
+    // Keep legacy DOM hydration best-effort; state loading must not depend on it.
+    try {
+      if (typeof document !== 'undefined' && typeof document.getElementById === 'function') {
+        const input = document.getElementById('gatewaySecretInput') as HTMLInputElement | null;
+        if (input) {
+          const current = localStorage.getItem(STORAGE_KEY_GW_AUTH);
+          const secret = current
+            ? deobfuscateSecret(current)
+            : (localStorage.getItem(STORAGE_KEY_LEGACY_GW) || '');
+          if (secret) input.value = secret;
+        }
+      }
+    } catch {
+      // DOM and storage hydration are optional.
     }
-    return fallback;
+
+    const raw = localStorage.getItem(STORAGE_KEY_STATE)
+      ?? localStorage.getItem(STORAGE_KEY_LEGACY_STATE);
+    if (!raw || !raw.trim()) return fallback;
+
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? { ...fallback, ...parsed }
+        : fallback;
+    } catch (err) {
+      console.warn('Failed to parse saved state:', err);
+      return fallback;
+    }
   } catch (err) {
-    console.warn('Failed to parse saved state:', err);
+    console.warn('Storage unavailable; using in-memory portfolio state:', err);
     return fallback;
   }
 }
