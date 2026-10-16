@@ -47,6 +47,82 @@ function todayIso(): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Import legacy active holdings only when a canonical position for that ticker
+ * does not already exist. Existing canonical records always win.
+ */
+export function migrateLegacyHoldingsToPositions(
+  sourcePositions: Record<string, PositionRecord>,
+  legacyHoldings: Holding[],
+  fallbackDate = todayIso()
+): Record<string, PositionRecord> {
+  const positions: Record<string, PositionRecord> = { ...(sourcePositions || {}) };
+
+  for (const holding of Array.isArray(legacyHoldings) ? legacyHoldings : []) {
+    const ticker = String(holding?.ticker || '').trim().toUpperCase();
+    if (!ticker || positions[ticker]) continue;
+
+    const tranches: TrancheItem[] = (Array.isArray(holding.tranches) ? holding.tranches : [])
+      .map((tranche) => ({
+        qty: Number(tranche.shares) || 0,
+        price: Number(tranche.entryPrice) || 0,
+        date: tranche.purchaseDate || fallbackDate
+      }))
+      .filter((tranche) => tranche.qty > 0 && tranche.price > 0);
+
+    const shares = tranches.reduce((sum, tranche) => sum + tranche.qty, 0);
+    if (shares <= 0) continue;
+
+    const averagePrice = tranches.reduce((sum, tranche) => sum + tranche.qty * tranche.price, 0) / shares;
+    const earliestDate = tranches
+      .map((tranche) => tranche.date)
+      .filter((date): date is string => Boolean(date))
+      .sort()[0] || fallbackDate;
+
+    positions[ticker] = {
+      ticker,
+      shares,
+      currentPrice: Number(holding.currentPrice) || averagePrice,
+      pt: Number(holding.analystTarget) || Number((averagePrice * 1.1).toFixed(2)),
+      commBuy: 0,
+      startDate: earliestDate,
+      tranches
+    };
+  }
+
+  return positions;
+}
+
+/** Build the read-only legacy holdings view from canonical positions. */
+export function buildHoldingsProjection(
+  positions: Record<string, PositionRecord>,
+  legacyHoldings: Holding[],
+  fallbackDate = todayIso()
+): Holding[] {
+  return Object.keys(positions).map((ticker) => {
+    const position = positions[ticker];
+    const legacy = (Array.isArray(legacyHoldings) ? legacyHoldings : []).find(
+      (holding) => String(holding?.ticker || '').trim().toUpperCase() === ticker
+    );
+    const tranches: Tranche[] = (position.tranches || []).map((tranche, index) => ({
+      id: `${ticker}-${index}`,
+      shares: Number(tranche.qty) || 0,
+      entryPrice: Number(tranche.price) || 0,
+      purchaseDate: tranche.date || position.startDate || fallbackDate,
+      targetPrice: position.pt
+    }));
+
+    return {
+      ...legacy,
+      ticker,
+      isMargin: true,
+      tranches,
+      currentPrice: position.currentPrice,
+      analystTarget: position.pt
+    };
+  });
+}
+
 class Store {
   private state: PortfolioState;
   private listeners: Set<(state: PortfolioState) => void> = new Set();
@@ -96,66 +172,9 @@ class Store {
    * as a compatibility projection from the canonical positions map.
    */
   private normalizeState(raw: PortfolioState): PortfolioState {
-    const positions: Record<string, PositionRecord> = { ...(raw.positions || {}) };
     const legacyHoldings: Holding[] = Array.isArray(raw.holdings) ? raw.holdings : [];
-
-    for (const holding of legacyHoldings) {
-      const ticker = String(holding.ticker || '').trim().toUpperCase();
-      if (!ticker || positions[ticker]) continue;
-
-      const tranches: TrancheItem[] = (Array.isArray(holding.tranches) ? holding.tranches : [])
-        .map((tranche) => ({
-          qty: Number(tranche.shares) || 0,
-          price: Number(tranche.entryPrice) || 0,
-          date: tranche.purchaseDate || todayIso()
-        }))
-        .filter((tranche) => tranche.qty > 0 && tranche.price > 0);
-
-      const shares = tranches.reduce((sum, tranche) => sum + tranche.qty, 0);
-      if (shares <= 0) continue;
-
-      const averagePrice = tranches.reduce(
-        (sum, tranche) => sum + tranche.qty * tranche.price,
-        0
-      ) / shares;
-      const earliestDate = tranches
-        .map((tranche) => tranche.date)
-        .filter((date): date is string => Boolean(date))
-        .sort()[0] || todayIso();
-
-      positions[ticker] = {
-        ticker,
-        shares,
-        currentPrice: Number(holding.currentPrice) || averagePrice,
-        pt: Number(holding.analystTarget) || Number((averagePrice * 1.1).toFixed(2)),
-        commBuy: 0,
-        startDate: earliestDate,
-        tranches
-      };
-    }
-
-    const holdings: Holding[] = Object.keys(positions).map((ticker) => {
-      const position = positions[ticker];
-      const legacy = legacyHoldings.find(
-        (holding) => String(holding.ticker || '').trim().toUpperCase() === ticker
-      );
-      const tranches: Tranche[] = (position.tranches || []).map((tranche, index) => ({
-        id: `${ticker}-${index}`,
-        shares: Number(tranche.qty) || 0,
-        entryPrice: Number(tranche.price) || 0,
-        purchaseDate: tranche.date || position.startDate || todayIso(),
-        targetPrice: position.pt
-      }));
-
-      return {
-        ...legacy,
-        ticker,
-        isMargin: true,
-        tranches,
-        currentPrice: position.currentPrice,
-        analystTarget: position.pt
-      };
-    });
+    const positions = migrateLegacyHoldingsToPositions(raw.positions || {}, legacyHoldings);
+    const holdings = buildHoldingsProjection(positions, legacyHoldings);
 
     const freeCash = Math.max(0, Number(raw.cashCushion?.freeCash ?? raw.cashBalance) || 0);
     const cashHoldings = Array.isArray(raw.cashCushion?.holdings)
