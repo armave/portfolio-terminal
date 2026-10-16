@@ -19,10 +19,11 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    const currentButton = event.currentTarget as HTMLButtonElement;
     const buttons = Array.from(
-      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button[data-nav-tab="true"]') || []
+      currentButton.parentElement?.querySelectorAll<HTMLButtonElement>('button[data-nav-tab="true"]') || []
     );
-    const currentIndex = buttons.indexOf(event.currentTarget as HTMLButtonElement);
+    const currentIndex = buttons.indexOf(currentButton);
     if (currentIndex < 0 || buttons.length < 2) return;
     event.preventDefault();
     const delta = event.key === 'ArrowRight' ? 1 : -1;
