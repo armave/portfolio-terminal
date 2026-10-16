@@ -164,5 +164,26 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(afterFullExitReload.positions.AAPL).toBeUndefined();
     expect(afterFullExitReload.holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
     expect(afterFullExitReload.closedTrades).toHaveLength(2);
+
+    // Repeated app/cloud synchronization may still pass a stale compatibility
+    // snapshot. It must never turn that snapshot back into an active position.
+    const reloadedStore = new PortfolioStore();
+    reloadedStore.importState({
+      holdings: [{
+        ticker: 'AAPL',
+        isMargin: true,
+        currentPrice: 130,
+        analystTarget: 110,
+        tranches: [{
+          id: 'stale-aapl',
+          shares: 5,
+          entryPrice: 100,
+          purchaseDate: '2026-10-01'
+        }]
+      }]
+    });
+    expect(reloadedStore.getState().positions.AAPL).toBeUndefined();
+    expect(reloadedStore.getState().holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
+    expect(reloadedStore.getState().closedTrades).toHaveLength(2);
   });
 });
