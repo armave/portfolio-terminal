@@ -265,6 +265,21 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().cashBalance).toBe(0);
   });
 
+  it('credits sale proceeds without deducting already-accrued margin interest twice', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    store.buyStock('AAPL', 1, 100, '2026-10-15');
+    store.setMarginDebt(110);
+    store.sellStock('AAPL', 'ALL', 120, '2026-10-16');
+
+    // $120 proceeds - $1.20 sell commission - $110 debt = $8.80 free cash.
+    // Accrued interest remains in the realized P&L record, not deducted twice.
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().cashCushion.freeCash).toBeCloseTo(8.8, 2);
+    expect(store.getState().closedTrades[0].marginInterest).toBeGreaterThan(0);
+  });
+
   it('ignores stale quote responses after a trade and never recreates a fully closed position', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
