@@ -8,6 +8,15 @@ export interface TradeTranche {
   [key: string]: unknown;
 }
 
+/** Collect active tranches from the canonical positions map. */
+export function collectOpenPositionTranches<T extends { qty: number; price: number }>(
+  positions: Record<string, { tranches?: T[] } | null | undefined>
+): T[] {
+  return Object.values(positions || {}).flatMap((position) =>
+    Array.isArray(position?.tranches) ? position.tranches : []
+  );
+}
+
 export interface MarginPosition {
   ticker: string;
   shares: number;
