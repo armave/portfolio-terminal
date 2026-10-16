@@ -1310,7 +1310,24 @@ async function applyPortfolioActions(action: any) {
         logTerminal(`[Cash Holding Partial Sell]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Remaining: ${pos.shares} shares.`);
       }
     } else {
-      const realizedTrade = realizeClosedTrade(pos, ticker, sharesToSell, sellPrice, sellComm, Date.now());
+      const totalPortfolioInvested = getTotalPortfolioInvested(state);
+      const positionInvested = (pos.tranches || []).reduce(
+        (sum: number, tranche: any) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0),
+        0
+      );
+      const allocatedDebt = totalPortfolioInvested > 0
+        ? currentDebt * (positionInvested / totalPortfolioInvested)
+        : currentDebt;
+      const accruedMarginInterest = calculateMarginInterest(pos.tranches || [], {
+        dailyRate: getDailyRate(),
+        marginDebt: allocatedDebt,
+        totalDebt: currentDebt
+      });
+      const positionForClose = {
+        ...pos,
+        marginCharged: Math.max(Number(pos.marginCharged) || 0, accruedMarginInterest)
+      };
+      const realizedTrade = realizeClosedTrade(positionForClose, ticker, sharesToSell, sellPrice, sellComm, Date.now());
       delete (realizedTrade.position as any).marginCharged;
       state.positions[ticker] = realizedTrade.position;
       if (realizedTrade.trade) state.closedTrades.push(realizedTrade.trade);
