@@ -1,15 +1,17 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { ConsoleQuickActions, prefillTerminalInput } from './ConsoleQuickActions';
 import { formatUSD, PositionRecord } from '../ui/renderBoard';
 
 export interface TradingConsoleProps {
   position?: PositionRecord;
-  onExecuteCommand: () => void | Promise<void>;
+  onExecuteCommand: (command?: string) => void | Promise<void>;
 }
 
 export function TradingConsole({ position, onExecuteCommand }: TradingConsoleProps) {
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState<number>(-1);
+  const [command, setCommand] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const ticker = position?.ticker || 'AAPL';
   const hasPosition = Boolean(position);
@@ -24,13 +26,31 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       : '5';
 
   const triggerExecute = () => {
-    const input = document.getElementById('cmdInput') as HTMLInputElement | null;
-    const val = input?.value?.trim();
-    if (val) {
-      setHistory((prev) => (prev[0] === val ? prev : [val, ...prev.slice(0, 49)]));
+    const value = command.trim();
+    if (!value) return;
+    setHistory((prev) => (prev[0] === value ? prev : [value, ...prev.slice(0, 49)]));
+    setHistoryIdx(-1);
+    setCommand('');
+    onExecuteCommand(value);
+  };
+
+  const prefillCommand = (value: string, selectText?: string | null, instant?: boolean) => {
+    setCommand(value);
+    if (instant) {
+      setHistory((prev) => (prev[0] === value ? prev : [value, ...prev.slice(0, 49)]));
       setHistoryIdx(-1);
+      setCommand('');
+      onExecuteCommand(value);
+      return;
     }
-    onExecuteCommand();
+    inputRef.current?.focus();
+    const placeholderStart = value.indexOf('[');
+    const selectionText = selectText || (placeholderStart >= 0
+      ? value.slice(placeholderStart, value.indexOf(']', placeholderStart) + 1)
+      : null);
+    const selectionStart = selectionText ? value.lastIndexOf(selectionText) : value.length;
+    const selectionEnd = selectionText ? selectionStart + selectionText.length : value.length;
+    requestAnimationFrame(() => inputRef.current?.setSelectionRange(selectionStart, selectionEnd));
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -56,16 +76,17 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       e.preventDefault();
       const nextIdx = Math.min(historyIdx + 1, history.length - 1);
       setHistoryIdx(nextIdx);
-      input.value = history[nextIdx];
-      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+      setCommand(history[nextIdx]);
+      requestAnimationFrame(() => input.setSelectionRange(input.value.length, input.value.length));
+      requestAnimationFrame(() => input.setSelectionRange(input.value.length, input.value.length));
     } else if (e.key === 'ArrowDown') {
       if (historyIdx < 0) return;
       e.preventDefault();
       const nextIdx = historyIdx - 1;
       setHistoryIdx(nextIdx);
-      input.value = nextIdx >= 0 ? history[nextIdx] : '';
+      setCommand(nextIdx >= 0 ? history[nextIdx] : '');
     } else if (e.key === 'Escape') {
-      input.value = '';
+      setCommand('');
       setHistoryIdx(-1);
     }
   };
@@ -153,7 +174,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
         <div class="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => prefillTerminalInput('help', null, true, onExecuteCommand)}
+            onClick={() => prefillCommand('help', null, true)}
             class="rounded border border-slate-800 bg-slate-900/80 px-2 py-0.5 text-[10px] font-mono text-slate-400 hover:border-slate-700 hover:text-slate-200 transition"
             title="Show CLI command reference in terminal"
           >
@@ -196,6 +217,9 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
         <span class="text-emerald-400 font-mono font-bold text-sm select-none">❯</span>
         <input
           id="cmdInput"
+          ref={inputRef}
+          value={command}
+          onInput={(event) => setCommand((event.currentTarget as HTMLInputElement).value)}
           type="text"
           autocomplete="off"
           spellcheck={false}
@@ -221,7 +245,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
         class="flex flex-wrap items-center gap-1.5 pt-0.5"
         aria-label="Quick actions for the selected stock"
       >
-        <ConsoleQuickActions position={position} onExecuteCommand={triggerExecute} />
+        <ConsoleQuickActions position={position} onExecuteCommand={onExecuteCommand} onPrefillCommand={prefillCommand} />
       </div>
 
       {/* Interactive Quick Commands Guide */}
@@ -242,7 +266,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
               <button
                 key={item.category}
                 type="button"
-                onClick={() => prefillTerminalInput(item.command)}
+                onClick={() => prefillCommand(item.command)}
                 class="group/card flex flex-col items-start text-left rounded-lg border border-slate-800/90 bg-slate-950/70 hover:bg-slate-900/90 hover:border-slate-700 p-2 transition"
               >
                 <div class="flex items-center justify-between w-full mb-1">
