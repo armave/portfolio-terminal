@@ -388,10 +388,10 @@ export class CommandDispatcher {
 
         const isToday = dateStr === toLocalIsoDate(new Date());
         return {
-          text: `Bought ${qty} ${sym} @ $${price.toFixed(2)}${!isToday ? ` (Date: ${dateStr})` : ''
-            }${Number.isFinite(pt) && pt > 0 ? ` | Target PT: $${pt.toFixed(2)}` : ''}`,
+          text: `Bought ${qty} ${sym} @ ${price.toFixed(2)}${!isToday ? ` (Date: ${dateStr})` : ''
+            }${Number.isFinite(pt) && pt > 0 ? ` | Target PT: ${pt.toFixed(2)}` : ''}`,
           type: 'res',
-          sideEffect: { type: 'SYNC_CLOUD' }
+          sideEffect: { type: 'FETCH_QUOTE', ticker: sym }
         };
       }
 
