@@ -1,19 +1,13 @@
-import { usePortfolio } from './store/portfolioStore';
-
 interface AppProps {
   onToggleMarketInsights: () => void;
 }
 
 export function App({ onToggleMarketInsights }: AppProps) {
-  const portfolio = usePortfolio();
-
   return (
     <>
       {/* Active Position Header Panel */}
       <div
         id="mainTerminalView"
-        data-active-view={portfolio.activeView}
-        data-position-count={Object.keys(portfolio.positions || {}).length}
         class="border-card p-4 sm:p-6 rounded-xl space-y-2 max-w-6xl mx-auto mt-10"
       >
         {/* Asset View Tabs */}
