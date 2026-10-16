@@ -579,6 +579,7 @@ export class Store {
         positions,
         holdings: nextHoldings,
         activeView: nextActiveView,
+        selectedTicker: nextActiveView === 'COMBINED' ? null : state.selectedTicker,
         balance: -currentDebt,
         cashBalance: freeCash,
         cashCushion: {

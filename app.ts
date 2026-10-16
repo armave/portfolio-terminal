@@ -910,13 +910,12 @@ function removeCashHolding(ticker: string) {
 }
 
 function setCurrentBalance(value: number) {
-  const signedBalance = Number.isFinite(Number(value)) ? Number(value) : 0;
-  state.cashCushion.freeCash = Math.max(0, signedBalance);
-  state.balance = Math.min(0, signedBalance);
-  syncStore();
+  portfolioStore.setCashBalance(value);
+
+  const state: any = portfolioStore.getState();
   return {
-    balance: Math.max(0, signedBalance),
-    debt: Math.max(0, -signedBalance)
+    balance: state.cashCushion?.freeCash || 0,
+    debt: Math.abs(state.balance || 0)
   };
 }
 
@@ -1728,32 +1727,26 @@ export function confirmAiPortfolioAction(action: any) {
 }
 
 export async function executeCommand() {
-  const input = document.getElementById('cmdInput') as HTMLInputElement | null;
-  const text = input?.value?.trim() || '';
+  const input = document.getElementById("cmdInput") as HTMLInputElement;
+  const text = input.value.trim();
   if (!text) return;
 
   logTerminal(text, true);
-  if (input) input.value = '';
+  input.value = "";
 
-  // Ensure portfolioStore has the latest in-memory state from app.ts before executing
-  portfolioStore.importState(state);
-
+  // 1. Execute via the deterministic dispatcher
   const localResult = CommandDispatcher.execute(text);
 
-  // Pull mutated state back from portfolioStore and update UI
-  state = portfolioStore.getState() as any;
-
+  // 2. Handle side-effects (e.g. fetching quotes after buying)
   if (localResult.sideEffect) {
     const effect = localResult.sideEffect;
     if (effect.type === 'SYNC_CLOUD') {
-      saveState(state); // Persists to localStorage AND triggers cloud push callback
       renderBoard();
-      await pushCloudState(state); // Pushes new state to KV / Gist API
+      await pushStateToGist();
     } else if (effect.type === 'FETCH_QUOTE') {
-      saveState(state);
       renderBoard();
-      await fetchLivePrice(effect.ticker);
-      await pushCloudState(state);
+      await fetchLivePrice(effect.ticker); // Pulls the fresh quote
+      await pushStateToGist();
     } else if (effect.type === 'REFRESH_ALL') {
       await refreshAllLivePrices();
     } else if (effect.type === 'SWITCH_VIEW') {
@@ -1764,6 +1757,7 @@ export async function executeCommand() {
     }
   }
 
+  // 3. Return if a command was matched and executed locally
   if (localResult.type === 'res' || localResult.type === 'cmd') {
     if (localResult.text) {
       logTerminal(`[CLI]: ${localResult.text}`);
@@ -1772,13 +1766,7 @@ export async function executeCommand() {
     return;
   }
 
-  if (localResult.type === 'err') {
-    logTerminal(`[CLI Error]: ${localResult.text}`, false, true);
-    showToast(localResult.text, 'error');
-    return;
-  }
-
-  // 2. Only hit the Gemini API if explicitly prefixed with "ai " or "ask "
+  // Only hit the Gemini API if explicitly prefixed with "ai " or "ask "
   //    (Or delete this block entirely to make the terminal 100% offline/frontend)
   if (!/^(ai|ask)\b/i.test(text)) {
     logTerminal(`[CLI]: Unrecognized command. Type "help" for local commands, or prefix with "ask ..." for AI advisor.`);

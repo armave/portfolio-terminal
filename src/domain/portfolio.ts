@@ -256,11 +256,9 @@ export function calculateMarginInterest(
 
   if (typeof ratioCandidate === 'number') {
     marginRatio = ratioCandidate;
-  } else if (options.marginDebt !== undefined || (typeof options.balance === 'number' && options.balance < 0)) {
-    const debt = Math.abs(Number(options.marginDebt ?? options.balance) || 0);
-    if (typeof options.totalDebt === 'number' && options.totalDebt > 0) {
-      marginRatio = debt / options.totalDebt;
-    } else if (totalInvested > 0) {
+  } else if (options.marginDebt !== undefined || options.totalDebt !== undefined || (typeof options.balance === 'number' && options.balance < 0)) {
+    const debt = Math.abs(Number(options.totalDebt ?? options.marginDebt ?? options.balance) || 0);
+    if (totalInvested > 0) {
       marginRatio = debt / totalInvested;
     }
   }
