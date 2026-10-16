@@ -1450,13 +1450,13 @@ function confirmAiPortfolioAction(action: any) {
   return confirm(`Gemini interpreted your input as this portfolio change:\n\n${message}\n\nApply it?`);
 }
 
-async function executeCommand() {
-  const input = document.getElementById("cmdInput") as HTMLInputElement;
-  const text = input.value.trim();
+async function executeCommand(commandText?: string) {
+  const input = document.getElementById("cmdInput") as HTMLInputElement | null;
+  const text = (commandText ?? input?.value ?? '').trim();
   if (!text) return;
 
   logTerminal(text, true);
-  input.value = "";
+  if (input && commandText === undefined) input.value = "";
 
   // 1. Execute via the deterministic dispatcher
   const localResult = CommandDispatcher.execute(text);
