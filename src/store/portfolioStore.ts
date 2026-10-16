@@ -400,14 +400,9 @@ class Store {
         };
       }
 
-      const nextHoldings = (state.holdings || []).filter(
-        (h) => h.ticker.toUpperCase() !== clean || Boolean(positions[clean])
-      );
-
       return {
         ...state,
-        positions,
-        holdings: nextHoldings
+        positions
       };
     });
   }
@@ -553,10 +548,6 @@ class Store {
         };
       }
 
-      const nextHoldings = (state.holdings || []).filter(
-        (h) => h.ticker.toUpperCase() !== clean || Boolean(positions[clean])
-      );
-
       const exitDateStr = date || todayIso();
       const buyTimestamp = new Date(earliestBuyDate).getTime();
       const exitTimestamp = new Date(exitDateStr).getTime();
@@ -595,7 +586,6 @@ class Store {
       return {
         ...state,
         positions,
-        holdings: nextHoldings,
         activeView: nextActiveView,
         selectedTicker: nextActiveView === 'COMBINED' ? null : state.selectedTicker,
         balance: -currentDebt,
