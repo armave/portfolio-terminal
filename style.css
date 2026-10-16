@@ -318,8 +318,6 @@ summary:hover {
 }
 
 #boardQuoteMeta {
-  display: block;
-  margin: 0.25rem 0 0;
   color: var(--text-muted);
 }
 

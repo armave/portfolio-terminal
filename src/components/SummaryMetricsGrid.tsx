@@ -381,9 +381,9 @@ export function SummaryMetricsGrid({
           class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}
         >
           {dailyQuoteMeta?.text || ''}
-        </span>
-        <span id="boardQuoteMeta" class="text-[10px] text-slate-500">
-          {quoteMetaText}
+          <span id="boardQuoteMeta" class="text-[10px] text-slate-500">
+            {' ' + quoteMetaText}
+          </span>
         </span>
       </div>
       <div class="portfolio-metric px-3 py-1.5">
