@@ -382,7 +382,7 @@ export function SummaryMetricsGrid({
         >
           {dailyQuoteMeta?.text || ''}
           <span id="boardQuoteMeta" class="text-[10px] text-slate-500">
-            {' ' + quoteMetaText}
+            {' · ' + quoteMetaText}
           </span>
         </span>
       </div>
