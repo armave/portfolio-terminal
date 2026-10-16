@@ -211,7 +211,10 @@ export class PortfolioStore {
       pendingMutation: null
     };
 
-    return this.normalizeState(raw, true);
+    // Only migrate legacy holdings when the persisted snapshot truly predates the
+    // canonical positions field. An explicitly empty positions map is authoritative.
+    const allowLegacyMigration = !Object.prototype.hasOwnProperty.call(saved || {}, 'positions');
+    return this.normalizeState(raw, allowLegacyMigration);
   }
 
   /**
