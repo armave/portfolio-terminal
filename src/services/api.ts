@@ -223,14 +223,10 @@ export async function pushCloudState(state?: any, options: SyncOptions = {}): Pr
   }
 
   try {
-    delete currentState.gatewaySecret;
-    if ('marginBalance' in currentState) {
-      delete currentState.marginBalance;
-    }
-    const { gatewaySecret: _secret, ...stateToEncrypt } = currentState;
-    if ('marginBalance' in stateToEncrypt) {
-      delete stateToEncrypt.marginBalance;
-    }
+    // Sanitize a shallow copy so syncing never deletes fields from live app state.
+    const stateToEncrypt = { ...currentState };
+    delete stateToEncrypt.gatewaySecret;
+    delete stateToEncrypt.marginBalance;
     const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(stateToEncrypt), currentSecret).toString();
     const payload = { encryptedPayload: ciphertext };
 
