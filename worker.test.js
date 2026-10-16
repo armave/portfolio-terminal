@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { normalizeMarketState } from './worker.js';
+import worker, { normalizeMarketState } from './worker.js';
 
 describe('normalizeMarketState', () => {
   it.each([
