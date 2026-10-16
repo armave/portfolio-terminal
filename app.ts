@@ -1237,6 +1237,7 @@ async function applyPortfolioActions(action: any) {
     syncStore();
     logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Funded: ${formatUSD(cashUsed)} cash | +${formatUSD(debtAdded)} margin debt. Free Cash remaining: ${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(state.balance))}.`);
     showToast(`${shares} ${ticker} bought at ${formatUSD(price)}.`, 'success');
+    await fetchLivePrice(ticker);
   }
   else if (action.action === "sell") {
     const ticker = action.ticker.toUpperCase();
@@ -1544,7 +1545,13 @@ function renderSettingsPanel() {
         resetBrokerRules();
         renderSettingsPanel();
       },
-      onSaveApiKeys: () => saveApiKeys({}),
+      onSaveApiKeys: async (secret: string) => {
+        const saved = await saveApiKeys({ secret, showToast, logTerminal });
+        if (saved) {
+          state.gatewaySecret = secret.trim();
+          await syncCloudState('pull');
+        }
+      },
       onPullCloudState: () => syncCloudState('pull'),
       onChangeRefreshInterval: (val: string) => setQuoteRefreshInterval(val),
       onExportBackup: exportBackupJSON,
