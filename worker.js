@@ -214,18 +214,57 @@ export default {
             // --- ACTION 3: Fallback Provider Quote (Finnhub / TwelveData) ---
             if (action === "provider-quote") {
                 const provider = url.searchParams.get("provider");
+                if (!symbol) {
+                    return new Response(JSON.stringify({ error: "Missing required 'symbol' parameter." }), {
+                        status: 400,
+                        headers: corsHeaders
+                    });
+                }
+
+                let endpoint;
+                let providerName;
                 if (provider === "finnhub") {
                     const finnhubKey = env.FINNHUB_KEY || env.FINNHUB_API_KEY;
-                    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${finnhubKey}`);
-                    const data = await res.json();
-                    return new Response(JSON.stringify(data), { headers: corsHeaders });
-                }
-                if (provider === "twelvedata") {
+                    if (!finnhubKey) {
+                        return new Response(JSON.stringify({ error: "Finnhub provider key is not configured." }), {
+                            status: 500,
+                            headers: corsHeaders
+                        });
+                    }
+                    providerName = "Finnhub";
+                    endpoint = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${encodeURIComponent(finnhubKey)}`;
+                } else if (provider === "twelvedata") {
                     const tdKey = env.TWELVE_KEY || env.TWELVEDATA_KEY;
-                    const res = await fetch(`https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${tdKey}`);
-                    const data = await res.json();
-                    return new Response(JSON.stringify(data), { headers: corsHeaders });
+                    if (!tdKey) {
+                        return new Response(JSON.stringify({ error: "Twelve Data provider key is not configured." }), {
+                            status: 500,
+                            headers: corsHeaders
+                        });
+                    }
+                    providerName = "Twelve Data";
+                    endpoint = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${encodeURIComponent(tdKey)}`;
+                } else {
+                    return new Response(JSON.stringify({ error: "Unsupported quote provider." }), {
+                        status: 400,
+                        headers: corsHeaders
+                    });
                 }
+
+                const res = await fetch(endpoint);
+                const data = await res.json().catch(() => null);
+                if (!res.ok) {
+                    return new Response(JSON.stringify(data || { error: `${providerName} returned HTTP ${res.status}.` }), {
+                        status: res.status,
+                        headers: corsHeaders
+                    });
+                }
+                if (!data || typeof data !== "object") {
+                    return new Response(JSON.stringify({ error: `${providerName} returned an invalid response.` }), {
+                        status: 502,
+                        headers: corsHeaders
+                    });
+                }
+                return new Response(JSON.stringify(data), { headers: corsHeaders });
             }
 
             // --- DEFAULT ACTION: Yahoo Deep Stock Data & Live Quotes (Group Fetch) ---
