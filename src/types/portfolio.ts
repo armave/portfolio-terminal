@@ -171,8 +171,10 @@ export interface PortfolioState {
   lastUpdated?: number;
   gatewaySecret?: string;
 
-  // Store & Preact bridge properties
+  // Compatibility projections. Active positions are canonical; holdings is
+  // regenerated from positions during normalization and must not be mutated directly.
   cashBalance: number;
+  /** @deprecated Legacy bridge; derive from positions instead of treating as source data. */
   holdings: Holding[];
   cashStocks?: CashStock[];
   apiKeys: ApiKeys;
