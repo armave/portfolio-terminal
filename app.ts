@@ -1183,6 +1183,7 @@ async function importBackupJSON(event: Event) {
 // PORTFOLIO ACTIONS (CASH-FIRST ORDER FLOW)
 // ==========================================
 async function applyPortfolioActions(action: any) {
+  applyOvernightRollover();
   const todayDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 
   if (action.action === "buy") {
@@ -1479,6 +1480,9 @@ async function executeCommand(commandText?: string) {
 
   logTerminal(text, true);
   if (input && commandText === undefined) input.value = "";
+
+  // Ensure any due rollover is reflected in debt before a buy/sell command mutates it.
+  applyOvernightRollover();
 
   // 1. Execute via the deterministic dispatcher
   const localResult = CommandDispatcher.execute(text);
