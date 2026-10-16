@@ -129,25 +129,30 @@ export function logTerminal(message: string, isUser = false, isError = false): v
 }
 
 export function showToast(message: string, variant: ToastVariant = 'info'): void {
+  // Toasts are reserved for errors; routine success and status feedback belongs in the terminal.
+  if (variant !== 'error') return;
+
   const container = document.getElementById('toastContainer');
   if (!container) return;
 
   const toast = document.createElement('div');
-  const colorMap: Record<ToastVariant, string> = {
-    info: 'border-cyan-800 bg-slate-900/95 text-cyan-200',
-    success: 'border-emerald-800 bg-slate-900/95 text-emerald-200',
-    warning: 'border-amber-800 bg-slate-900/95 text-amber-200',
-    error: 'border-rose-800 bg-slate-900/95 text-rose-200'
-  };
+  const conciseMessage = message
+    .replace(/\\s+/g, ' ')
+    .replace(/^(?:Error|Failed|Failure):\\s*/i, '')
+    .trim();
+  const maxToastLength = 90;
+  const displayMessage = conciseMessage.length > maxToastLength
+    ? `${conciseMessage.slice(0, maxToastLength - 1).trimEnd()}…`
+    : conciseMessage;
 
-  toast.className = `pointer-events-auto rounded-lg border px-3.5 py-2 text-xs font-mono font-semibold shadow-lg backdrop-blur transition-all ${colorMap[variant]}`;
-  toast.textContent = message;
+  toast.className = 'pointer-events-auto rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all';
+  toast.textContent = displayMessage || 'Something went wrong.';
   container.appendChild(toast);
 
   setTimeout(() => {
     toast.classList.add('opacity-0', 'translate-x-2');
     setTimeout(() => toast.remove(), 250);
-  }, 3200);
+  }, 2800);
 }
 
 /** Clears terminal output through the notification layer so UI components don't mutate the log DOM directly. */
