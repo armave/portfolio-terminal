@@ -558,7 +558,7 @@ export class CommandDispatcher {
         'NET ADVANTAGE (B - A): ' + signedMoney(diff),
         winner,
         'Estimate only; assumes shares, cost basis, and margin debt stay unchanged until exit.'
-      ].join('\\n')
+      ].join('\n')
     };
   }
 
@@ -652,7 +652,7 @@ export class CommandDispatcher {
         `NET ADVANTAGE (B − A): ${signedMoney(diff)}`,
         winner,
         'Estimate only; assumes the position size, cost basis, and margin debt remain unchanged until exit.'
-      ].join('\\n')
+      ].join('\n')
     };
   }
 
