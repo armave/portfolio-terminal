@@ -607,9 +607,10 @@ export function processRollovers(state: any): boolean {
 
   // Find the very next 04:00 AM boundary after the last recorded timestamp
   let nextBoundary = new Date(lastTime);
-  if (nextBoundary.getHours() >= 4) {
-    nextBoundary.setDate(nextBoundary.getDate() + 1);
-  }
+  // The stored timestamp marks the last rollover-processing date. Start with
+  // the following day's cutoff so we don't charge an extra rollover on that
+  // same calendar day when the timestamp happens to be before 04:00.
+  nextBoundary.setDate(nextBoundary.getDate() + 1);
   nextBoundary.setHours(4, 0, 0, 0);
 
   // Time-travel loop: execute for every 04:00 AM passed
