@@ -188,11 +188,11 @@ describe('portfolio domain', () => {
     expect(basePosition).toEqual(original);
   });
 
-  it('calculates projected debt correctly', () => {
-    // 1000 * (1 + 0.01 * 5) = 1050
-    expect(calculateProjectedDebt(1000, 0.01, 5)).toBe(1050);
-    // Should handle negative principal by taking absolute value
-    expect(calculateProjectedDebt(-1000, 0.01, 5)).toBe(1050);
+  it('projects debt with the same daily compounding model as accrued margin interest', () => {
+    // 1000 * (1 + 0.01)^5 = 1051.01005, rounded to cents.
+    expect(calculateProjectedDebt(1000, 0.01, 5)).toBe(1051.01);
+    expect(calculateProjectedDebt(-1000, 0.01, 5)).toBe(1051.01);
+    expect(calculateProjectedDebt(1000, 0.01, 0)).toBe(1000);
   });
 
   it('calculates accrued fees correctly', () => {
