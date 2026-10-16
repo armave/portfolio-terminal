@@ -172,29 +172,13 @@ export function saveState(
 }
 
 /**
- * Loads application state from localStorage, merges with fallback, and hydrates
- * the DOM gateway secret input element if present.
+ * Loads application state from localStorage, merging it with the supplied
+ * fallback. This service is deliberately UI-agnostic: it never reads or mutates
+ * DOM elements, so it can safely run before the application is mounted.
  */
 export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
-  // Storage can throw in strict privacy modes, even when the API exists.
   try {
     if (typeof localStorage === 'undefined' || !localStorage) return fallback;
-
-    // Keep legacy DOM hydration best-effort; state loading must not depend on it.
-    try {
-      if (typeof document !== 'undefined' && typeof document.getElementById === 'function') {
-        const input = document.getElementById('gatewaySecretInput') as HTMLInputElement | null;
-        if (input) {
-          const current = localStorage.getItem(STORAGE_KEY_GW_AUTH);
-          const secret = current
-            ? deobfuscateSecret(current)
-            : (localStorage.getItem(STORAGE_KEY_LEGACY_GW) || '');
-          if (secret) input.value = secret;
-        }
-      }
-    } catch {
-      // DOM and storage hydration are optional.
-    }
 
     const raw = localStorage.getItem(STORAGE_KEY_STATE)
       ?? localStorage.getItem(STORAGE_KEY_LEGACY_STATE);
