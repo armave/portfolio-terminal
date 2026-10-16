@@ -487,35 +487,142 @@ export class CommandDispatcher {
   }
 
   private static evaluateComparison(tickerArg: string | undefined, p1: number, days: number, p2: number): CommandOutput {
+    if (!Number.isFinite(p1) || p1 <= 0 || !Number.isFinite(p2) || p2 <= 0) {
+      throw new Error('Enter valid positive prices for both exit scenarios.');
+    }
+    if (!Number.isInteger(days) || days < 0) {
+      throw new Error('Waiting period must be a whole number of days (zero or more).');
+    }
+
     const { sym, pos, state } = this.resolveActivePosition(tickerArg);
     const rules = this.getRules(state);
-
     const shares = Number(pos.shares);
-    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+    if (!Number.isFinite(shares) || shares <= 0) {
+      throw new Error(`No valid open shares found for ${sym}.`);
+    }
+
+    const costBasis = (pos.tranches || []).reduce((sum: number, tranche: any) =>
+      sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0);
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
     const totalDebt = Math.abs(Number(state.balance) || 0);
-    const baseMargin = calculateMarginInterest(pos.tranches || [], {
+    const currentMargin = calculateMarginInterest(pos.tranches || [], {
       dailyRate: rules.dailyRate,
       marginDebt: totalDebt,
       totalDebt
     } as any);
-
-    const gross1 = shares * p1;
-    const comm1 = (Number(pos.commBuy) || 0) + calculateCommission(shares, gross1, rules as any);
-    const net1 = gross1 - costBasis - comm1 - baseMargin;
-
     const extraCarry = totalDebt * rules.dailyRate * days;
-    const gross2 = shares * p2;
-    const comm2 = (Number(pos.commBuy) || 0) + calculateCommission(shares, gross2, rules as any);
-    const net2 = gross2 - costBasis - comm2 - (baseMargin + extraCarry);
 
-    const diff = net2 - net1;
-    const verdict = diff > 0
-      ? `Waiting ${days}d yields +$${diff.toFixed(2)} MORE net profit (beats $${extraCarry.toFixed(2)} carry cost).`
-      : `Selling today yields +$${Math.abs(diff).toFixed(2)} MORE net profit (waiting doesn't beat $${extraCarry.toFixed(2)} carry cost).`;
+    const today = {
+      label: 'SELL TODAY',
+      price: p1,
+      gross: shares * p1,
+      sellCommission: calculateCommission(shares, shares * p1, rules as any),
+      margin: currentMargin
+    };
+    const later = {
+      label: `WAIT ${days} DAY${days === 1 ? '' : 'S'}`,
+      price: p2,
+      gross: shares * p2,
+      sellCommission: calculateCommission(shares, shares * p2, rules as any),
+      margin: currentMargin + extraCarry
+    };
+    const netToday = today.gross - costBasis - buyCommission - today.sellCommission - today.margin;
+    const netLater = later.gross - costBasis - buyCommission - later.sellCommission - later.margin;
+    const diff = netLater - netToday;
+    const priceChange = ((p2 - p1) / p1) * 100;
+    const money = (value: number) => `${value < 0 ? '-
+
+  private static evaluateLadder(tickerArg: string | undefined, prices: number[]): CommandOutput {
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const netBeforeMargin = totalGross - costBasis - (Number(pos.commBuy) || 0) - totalSellComm;
 
     return {
       type: 'res',
-      text: `[${sym} Comparison]: Today @ $${p1.toFixed(2)} (Net: $${net1.toFixed(2)}) vs +${days}d @ $${p2.toFixed(2)} (Net: $${net2.toFixed(2)}, Extra Carry: -$${extraCarry.toFixed(2)}). ${verdict}`
+      text: `[${sym} Ladder Exit (${legs.join(' | ')})]: Avg Exit $${avgExit.toFixed(2)} | Sell Comms -$${totalSellComm.toFixed(2)} | Net (ex-margin): $${netBeforeMargin.toFixed(2)}`
+    };
+  }
+} : '
+
+  private static evaluateLadder(tickerArg: string | undefined, prices: number[]): CommandOutput {
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const netBeforeMargin = totalGross - costBasis - (Number(pos.commBuy) || 0) - totalSellComm;
+
+    return {
+      type: 'res',
+      text: `[${sym} Ladder Exit (${legs.join(' | ')})]: Avg Exit $${avgExit.toFixed(2)} | Sell Comms -$${totalSellComm.toFixed(2)} | Net (ex-margin): $${netBeforeMargin.toFixed(2)}`
+    };
+  }
+}}${Math.abs(value).toFixed(2)}`;
+    const signedMoney = (value: number) => `${value > 0 ? '+' : value < 0 ? '-': ''}${Math.abs(value).toFixed(2)}`;
+    const percent = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+    const winner = Math.abs(diff) < 0.005
+      ? 'RESULT: Effectively tied after estimated costs.'
+      : diff > 0
+        ? `RESULT: WAITING wins by ${money(diff)} net.`
+        : `RESULT: SELLING TODAY wins by ${money(-diff)} net.`;
+
+    return {
+      type: 'res',
+      text: [
+        `[EXIT COMPARISON · ${sym}] ${shares.toLocaleString()} shares | Cost basis: ${money(costBasis)}`,
+        `ASSUMPTIONS  Buy commissions: ${money(buyCommission)} | Margin now: ${money(currentMargin)} | Borrowed balance: ${money(totalDebt)}`,
+        '',
+        `A · SELL TODAY @ ${money(p1)}`,
+        `  Gross proceeds       ${money(today.gross)}`,
+        `  Cost basis          -${money(costBasis).replace(/^\$/, '')}`,
+        `  Buy commission      -${money(buyCommission).replace(/^\$/, '')}`,
+        `  Sell commission     -${money(today.sellCommission).replace(/^\$/, '')}`,
+        `  Margin interest     -${money(today.margin).replace(/^\$/, '')}`,
+        `  NET P&L              ${signedMoney(netToday)}`,
+        '',
+        `B · WAIT ${days} DAY${days === 1 ? '' : 'S'} @ ${money(p2)} (${percent(priceChange)} vs today)`,
+        `  Gross proceeds       ${money(later.gross)}`,
+        `  Cost basis          -${money(costBasis).replace(/^\$/, '')}`,
+        `  Buy commission      -${money(buyCommission).replace(/^\$/, '')}`,
+        `  Sell commission     -${money(later.sellCommission).replace(/^\$/, '')}`,
+        `  Margin interest     -${money(later.margin).replace(/^\$/, '')} (extra carry: ${money(extraCarry)})`,
+        `  NET P&L              ${signedMoney(netLater)}`,
+        '',
+        `NET ADVANTAGE (B − A): ${signedMoney(diff)}`,
+        winner,
+        'Estimate only; assumes the position size, cost basis, and margin debt remain unchanged until exit.'
+      ].join('\\n')
     };
   }
 
