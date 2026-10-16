@@ -311,8 +311,9 @@ export class Store {
             : existingPos?.pt || Number((price * 1.1).toFixed(2)),
         commBuy: nextCommBuy,
         startDate: earliestPosDate,
-        tranches: nextTranches
-      };
+        tranches: nextTranches,
+        lastTradeAt: Date.now()
+      } as PositionRecord;
 
       const allDates = Object.values(positions)
         .flatMap((p) => (p.tranches || []).map((t) => t.date))
@@ -597,7 +598,7 @@ export class Store {
    */
   public updateLiveQuote(
     ticker: string,
-    quote: { price?: number; currentPrice?: number; quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: Record<string, unknown> }
+    quote: { price?: number; currentPrice?: number; quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: Record<string, unknown>; requestStartedAt?: number }
   ): void {
     const clean = ticker.trim().toUpperCase();
     const price = Number(quote.currentPrice ?? quote.price);
@@ -608,7 +609,7 @@ export class Store {
       const position = positions[clean];
       if (position) {
         // Do not let a quote request overwrite a newer manual trade entry.
-        if (position.quoteSource === 'Trade input' && Number(position.lastTradeAt || 0) > Number(quote.quoteUpdatedAt || 0)) {
+        if (position.quoteSource === 'Trade input' && Number((position as any).lastTradeAt || 0) > Number(quote.requestStartedAt || 0)) {
           return latestState;
         }
         positions[clean] = {
