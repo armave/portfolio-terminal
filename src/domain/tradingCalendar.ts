@@ -171,24 +171,21 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
     label: getProjectionMilestoneLabel(0, 'today')
   });
 
-  // Always push the next trading day (NTD) for better short-term visibility
-  const nextTradingDay = getNextTradingDay(start);
-  const nextTradingDays = calendarDayDifference(start, nextTradingDay);
-
-  projections.push({
-    date: nextTradingDay,
-    daysFromToday: nextTradingDays,
-    kind: 'next-trading-day',
-    label: getProjectionMilestoneLabel(nextTradingDays, 'next-trading-day')
-  });
-
   const isWorkingDay = isTradingDay(start);
 
-  if (isWorkingDay) {
+  if (!isWorkingDay) {
+    const nextTradingDay = getNextTradingDay(start);
+    const nextTradingDays = calendarDayDifference(start, nextTradingDay);
+    projections.push({
+      date: nextTradingDay,
+      daysFromToday: nextTradingDays,
+      kind: 'next-trading-day',
+      label: getProjectionMilestoneLabel(nextTradingDays, 'next-trading-day')
+    });
+  } else {
     const eowDate = getLastTradingDayOfWeek(start);
     const eowDays = calendarDayDifference(start, eowDate);
-    // Only add EOW if it's strictly after the next trading day
-    if (eowDays > nextTradingDays) {
+    if (eowDays > 0) {
       projections.push({
         date: eowDate,
         daysFromToday: eowDays,

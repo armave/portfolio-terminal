@@ -151,7 +151,7 @@ export function getAccruedRolloverCycles(purchaseDateStr?: string, now: Date = n
 }
 
 /**
- * Calculates accrued margin interest using daily compounding.
+ * Calculates accrued margin interest using simple daily interest.
  * Supports:
  * 1. calculateMarginInterest(debt: number, dailyRate: number, days: number): number
  * 2. calculateMarginInterest(principal: number, options: MarginInterestOptions, days?: number): number
@@ -200,7 +200,7 @@ export function calculateMarginInterest(
       days = Number(maybeDays ?? opts.days ?? opts.daysHeld ?? opts.holdingDays) || 0;
     }
 
-    return principal * marginRatio * (Math.pow(1 + dailyRate, days) - 1);
+    return principal * marginRatio * dailyRate * days;
   }
 
   // Signature 2: Tranches array or state/holding/position object
@@ -314,17 +314,17 @@ export function calculateMarginInterest(
       days = Math.max(0, diffDays);
     }
 
-    totalInterest += trancheCost * marginRatio * (Math.pow(1 + dailyRate, days) - 1);
+    totalInterest += trancheCost * marginRatio * dailyRate * days;
   }
 
   return totalInterest;
 }
 
-export function calculateCompoundedDebt(principal: number, dailyRate: number, days: number): number {
+export function calculateProjectedDebt(principal: number, dailyRate: number, days: number): number {
   const p = Math.abs(Number(principal) || 0);
   const r = Number(dailyRate) || 0;
   const d = Number(days) || 0;
-  return Number((p * Math.pow(1 + r, d)).toFixed(2));
+  return Number((p * (1 + r * d)).toFixed(2));
 }
 
 export function calculateAccruedFees(
@@ -344,7 +344,7 @@ export function calculateBreakevenDays(
   dailyRate: number
 ): number | null {
   if (totalDebt <= 0 || netTargetProfit <= 0 || dailyRate <= 0) return 0;
-  const days = Math.log(1 + (netTargetProfit / totalDebt)) / Math.log(1 + dailyRate);
+  const days = netTargetProfit / (totalDebt * dailyRate);
   return Number.isFinite(days) ? Math.ceil(days) : null;
 }
 
