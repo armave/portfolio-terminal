@@ -1,4 +1,8 @@
-export function App() {
+interface AppProps {
+  onToggleMarketInsights: () => void;
+}
+
+export function App({ onToggleMarketInsights }: AppProps) {
   return (
     <>
       {/* Active Position Header Panel */}
@@ -44,14 +48,7 @@ export function App() {
               <button
                 id="marketInsightsToggle"
                 type="button"
-                onClick={() => {
-                  if (
-                    typeof window !== 'undefined' &&
-                    typeof (window as any).toggleMarketInsights === 'function'
-                  ) {
-                    (window as any).toggleMarketInsights();
-                  }
-                }}
+                onClick={onToggleMarketInsights}
                 aria-expanded="false"
                 aria-controls="marketInsightsPanel"
                 class="hidden rounded border border-cyan-800/70 bg-cyan-950/30 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300 transition hover:bg-cyan-900/50"
