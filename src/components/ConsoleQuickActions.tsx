@@ -15,7 +15,7 @@ interface QuickActionItem {
   title?: string;
 }
 
-export function prefillTerminalInput(
+function prefillTerminalInput(
   command: string,
   selectText?: string | null,
   instant?: boolean,
