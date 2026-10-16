@@ -5,7 +5,11 @@ import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
 import { ProjectionsTable } from '../components/ProjectionsTable';
 import { CashCushionDesk } from '../components/CashCushionDesk';
 import { ClosedHistoryDesk } from '../components/ClosedHistoryDesk';
-import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
+import {
+  allocateRealizedMarginCharge,
+  calculateCommission,
+  calculateMarginInterest
+} from '../domain/portfolio';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import {
   BrokerRules,
@@ -297,11 +301,17 @@ function calculatePositionMetrics(state: BoardState, pos: PositionRecord, rules:
     ? pos.tranches
     : (state.tranches && state.tranches.length > 0 ? state.tranches : []);
     
-  const posMarginCharged = calculateMarginInterest(tranches as any, {
+  const openMarginCharged = calculateMarginInterest(tranches as any, {
     dailyRate,
     marginDebt: allocatedDebt,
     totalDebt: totalAccountDebt
   } as any);
+  const realizedMarginAllocated = allocateRealizedMarginCharge(
+    Number(state.realizedMarginCharged) || 0,
+    totalInvested,
+    portfolioInvested
+  );
+  const posMarginCharged = openMarginCharged + realizedMarginAllocated;
 
   const net0 = gross - totalComms - posMarginCharged;
   const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
