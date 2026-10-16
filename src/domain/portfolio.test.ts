@@ -8,7 +8,6 @@ import {
   resolveSaleQuantity,
   resolveTradeDateTimestamp,
   calculateProjectedDebt,
-  calculateCompoundedDebt,
   calculateAccruedFees,
   calculateBreakevenDays,
   processRollovers,
@@ -151,10 +150,9 @@ describe('portfolio domain', () => {
     expect(basePosition).toEqual(original);
   });
 
-  it('calculates projected debt correctly and aliases compounded debt', () => {
+  it('calculates projected debt correctly', () => {
     // 1000 * (1 + 0.01 * 5) = 1050
     expect(calculateProjectedDebt(1000, 0.01, 5)).toBe(1050);
-    expect(calculateCompoundedDebt(1000, 0.01, 5)).toBe(1050);
     // Should handle negative principal by taking absolute value
     expect(calculateProjectedDebt(-1000, 0.01, 5)).toBe(1050);
   });
