@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildHoldingsProjection,
   migrateLegacyHoldingsToPositions,
+  migrateLegacyCloudHoldingsToPositions,
   PortfolioStore
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
@@ -110,6 +111,110 @@ describe('canonical portfolio-state migration', () => {
 
   it('does not create compatibility holdings for an empty canonical positions map', () => {
     expect(buildHoldingsProjection({}, [], '2026-10-16')).toEqual([]);
+  });
+});
+
+
+describe('legacy cloud snapshot migration safety', () => {
+  const legacyHolding: Holding = {
+    ticker: 'AAPL',
+    isMargin: true,
+    currentPrice: 130,
+    analystTarget: 145,
+    tranches: [{
+      id: 'legacy-aapl',
+      shares: 5,
+      entryPrice: 100,
+      purchaseDate: '2026-10-01'
+    }]
+  };
+
+  it('migrates a legacy-only cloud snapshot when no canonical local position conflicts', () => {
+    const result = migrateLegacyCloudHoldingsToPositions(
+      { holdings: [legacyHolding] },
+      { positions: {}, closedTrades: [] },
+      '2026-10-16'
+    );
+
+    expect(result.positions?.AAPL).toMatchObject({
+      ticker: 'AAPL',
+      shares: 5,
+      currentPrice: 130,
+      tranches: [{ qty: 5, price: 100, date: '2026-10-01' }]
+    });
+  });
+
+  it('preserves canonical local positions over legacy cloud holdings', () => {
+    const localPosition: PositionRecord = {
+      ticker: 'AAPL',
+      shares: 2,
+      currentPrice: 120,
+      pt: 140,
+      commBuy: 1,
+      tranches: [{ qty: 2, price: 110, date: '2026-10-12' }]
+    };
+    const result = migrateLegacyCloudHoldingsToPositions(
+      { holdings: [legacyHolding] },
+      { positions: { AAPL: localPosition }, closedTrades: [] },
+      '2026-10-16'
+    );
+
+    expect(result.positions?.AAPL).toEqual(localPosition);
+  });
+
+  it('does not resurrect a locally closed ticker from a stale legacy cloud snapshot', () => {
+    const result = migrateLegacyCloudHoldingsToPositions(
+      { holdings: [legacyHolding] },
+      {
+        positions: {},
+        closedTrades: [{
+          ticker: 'AAPL',
+          shares: 5,
+          exitDate: '2026-10-10',
+          netProfit: 100
+        }]
+      },
+      '2026-10-16'
+    );
+
+    expect(result.positions?.AAPL).toBeUndefined();
+  });
+
+  it('does not run legacy migration when the cloud explicitly contains canonical positions', () => {
+    const result = migrateLegacyCloudHoldingsToPositions(
+      { positions: {}, holdings: [legacyHolding] },
+      { positions: {}, closedTrades: [] },
+      '2026-10-16'
+    );
+
+    expect(result.positions).toEqual({});
+  });
+
+  it('allows a legacy holding purchased after the latest local exit', () => {
+    const reopened = {
+      ...legacyHolding,
+      tranches: [{
+        id: 'legacy-rebuy',
+        shares: 3,
+        entryPrice: 115,
+        purchaseDate: '2026-10-12'
+      }]
+    };
+    const result = migrateLegacyCloudHoldingsToPositions(
+      { holdings: [reopened] },
+      {
+        positions: {},
+        closedTrades: [{
+          ticker: 'AAPL',
+          shares: 5,
+          exitDate: '2026-10-10',
+          netProfit: 100
+        }]
+      },
+      '2026-10-16'
+    );
+
+    expect(result.positions?.AAPL?.shares).toBe(3);
   });
 });
 
