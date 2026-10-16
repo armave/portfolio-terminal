@@ -17,6 +17,20 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
   const cushionTotal = getCashCushionTotal(state);
   const closedTrades = state.closedTrades || [];
 
+  const handleTabKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    const buttons = Array.from(
+      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('button[data-nav-tab="true"]') || []
+    );
+    const currentIndex = buttons.indexOf(event.currentTarget as HTMLButtonElement);
+    if (currentIndex < 0 || buttons.length < 2) return;
+    event.preventDefault();
+    const delta = event.key === 'ArrowRight' ? 1 : -1;
+    const next = buttons[(currentIndex + delta + buttons.length) % buttons.length];
+    next.focus();
+    next.click();
+  };
+
   const handleRefreshQuotes = () => {
     if (
       typeof window !== 'undefined' &&
@@ -43,6 +57,8 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
       {tickers.length === 0 && (
         <button
           type="button"
+          data-nav-tab="true"
+          onKeyDown={handleTabKeyDown}
           onClick={() => onSetActiveView?.('COMBINED')}
           class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
             ? 'bg-emerald-600 text-black'
