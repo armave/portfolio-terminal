@@ -110,8 +110,7 @@ export function sentimentBadge(
   };
   const badge = createInsightElement(
     'span',
-    `inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${styles[direction] || styles.unknown
-    }`,
+    `inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${styles[direction] || styles.unknown}`,
     label
   );
   badge.dataset.sentiment = direction;
@@ -169,99 +168,17 @@ export function formatRiskTrigger(triggerValue: number, currentValue: number): s
 
   const bufferPct = ((currentValue - triggerValue) / currentValue) * 100;
   if (bufferPct < 0) {
-    return `Position value ${formatUSD(triggerValue)} (already${Math.abs(bufferPct).toFixed(
-      1
-    )}% below trigger)`;
+    return `Position value ${formatUSD(triggerValue)} (already${Math.abs(bufferPct).toFixed(1)}% below trigger)`;
   }
   return `Position value ${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
 }
 
-function createTabButtonElement(text: string, className: string, onClick: () => void): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = className;
-  btn.textContent = text;
-  btn.addEventListener('click', onClick);
-  return btn;
-}
-
-export function renderTickerTabs(
-  state: BoardState,
-  onSelectTab: (view: string) => void = () => { }
-): string {
-  const tickers = Object.keys(state.positions || {});
-  const tabsContainer = document.getElementById('tickerTabs');
-  if (!tabsContainer) return state.activeView || 'COMBINED';
-  tabsContainer.innerHTML = '';
-
+export function resolveActiveView(state: BoardState): string {
   let currentView = state.activeView;
   if (!currentView || (!NON_POSITION_VIEWS.has(currentView) && !state.positions?.[currentView])) {
     currentView = 'COMBINED';
     state.activeView = 'COMBINED';
   }
-
-  // Always render the Margin Desk / Combined tab so the user can always access the Trading Console
-  const combinedLabel = tickers.length > 0 ? 'COMBINED' : 'MARGIN DESK';
-  const isCombinedActive = currentView === 'COMBINED';
-  tabsContainer.appendChild(
-    createTabButtonElement(
-      combinedLabel,
-      `px-3 py-1 rounded text-xs font-bold transition ${isCombinedActive ? 'tab-active' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'
-      }`,
-      () => onSelectTab('COMBINED')
-    )
-  );
-
-  tickers.forEach((sym) => {
-    const isActive = currentView === sym;
-    tabsContainer.appendChild(
-      createTabButtonElement(
-        sym,
-        `px-3 py-1 rounded text-xs font-bold transition ${isActive ? 'tab-active' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'
-        }`,
-        () => onSelectTab(sym)
-      )
-    );
-  });
-
-  const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
-  const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
-  const isSettingsActive = currentView === 'SETTINGS';
-  const closedCount = Array.isArray(state.closedTrades) ? state.closedTrades.length : 0;
-
-  tabsContainer.appendChild(
-    createTabButtonElement(
-      'CASH HOLDINGS',
-      `px-3 py-1 rounded text-xs font-bold transition border ${isCushionActive
-        ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-lg shadow-cyan-950'
-        : 'bg-slate-950 text-cyan-400 border-cyan-800 hover:bg-slate-900'
-      }`,
-      () => onSelectTab('CASH_CUSHION')
-    )
-  );
-
-  tabsContainer.appendChild(
-    createTabButtonElement(
-      closedCount > 0 ? `CLOSED (${closedCount})` : 'CLOSED',
-      `px-3 py-1 rounded text-xs font-bold transition border ${isClosedHistoryActive
-        ? 'bg-purple-400 text-slate-950 border-purple-300 shadow-lg shadow-purple-950'
-        : 'bg-slate-950 text-purple-300 border-purple-800 hover:bg-slate-900'
-      }`,
-      () => onSelectTab('CLOSED_HISTORY')
-    )
-  );
-
-  tabsContainer.appendChild(
-    createTabButtonElement(
-      'SETTINGS',
-      `px-3 py-1 rounded text-xs font-bold transition border ${isSettingsActive
-        ? 'bg-slate-200 text-slate-950 border-slate-100 shadow-lg shadow-slate-950'
-        : 'bg-slate-950 text-slate-300 border-slate-700 hover:bg-slate-900'
-      }`,
-      () => onSelectTab('SETTINGS')
-    )
-  );
-
   return currentView;
 }
 
@@ -328,6 +245,70 @@ export function renderPositionsTable(
   );
 }
 
+function calculateCombinedMetrics(state: BoardState, rules: BrokerRules, tickers: string[], dailyRate: number) {
+  let totalInvested = 0;
+  let totalCommBuy = 0;
+  let totalCommSell = 0;
+  let totalGrossTarget = 0;
+
+  tickers.forEach((t) => {
+    const pos = state.positions![t];
+    const cost = (pos.tranches || []).reduce((sum, tr) => sum + tr.qty * tr.price, 0);
+    totalInvested += cost;
+    totalCommBuy += pos.commBuy;
+    const valSell = pos.shares * pos.pt;
+    totalCommSell += calculateCommission(pos.shares, valSell, rules as any);
+    totalGrossTarget += valSell - cost;
+  });
+
+  const tranchesForCombined = state.tranches && state.tranches.length > 0
+    ? state.tranches
+    : tickers.flatMap((t) => state.positions![t]?.tranches || []);
+    
+  const totalDebt = Math.abs(Number(state.balance) || 0);
+  const openMarginCharged = calculateMarginInterest(tranchesForCombined as any, {
+    dailyRate,
+    marginDebt: totalDebt,
+    totalDebt: totalDebt
+  } as any);
+
+  const totalMarginCharged = (state.realizedMarginCharged || 0) + openMarginCharged;
+  const totalComms = totalCommBuy + totalCommSell;
+  const net0 = totalGrossTarget - totalComms - totalMarginCharged;
+  const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
+
+  return { totalInvested, totalGrossTarget, totalComms, totalMarginCharged, totalDebt, netPct };
+}
+
+function calculatePositionMetrics(state: BoardState, pos: PositionRecord, rules: BrokerRules, dailyRate: number) {
+  const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + t.qty * t.price, 0);
+  const valSell = pos.shares * pos.pt;
+  const commSell = calculateCommission(pos.shares, valSell, rules as any);
+  const totalComms = pos.commBuy + commSell;
+  const gross = valSell - totalInvested;
+
+  const portfolioInvested = getTotalPortfolioInvested(state);
+  const weight = portfolioInvested > 0 ? totalInvested / portfolioInvested : 1;
+
+  const totalAccountDebt = Math.abs(Number(state.balance) || 0);
+  const allocatedDebt = totalAccountDebt * weight;
+  
+  const tranches = pos.tranches && pos.tranches.length > 0
+    ? pos.tranches
+    : (state.tranches && state.tranches.length > 0 ? state.tranches : []);
+    
+  const posMarginCharged = calculateMarginInterest(tranches as any, {
+    dailyRate,
+    marginDebt: allocatedDebt,
+    totalDebt: totalAccountDebt
+  } as any);
+
+  const net0 = gross - totalComms - posMarginCharged;
+  const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
+
+  return { gross, totalComms, allocatedDebt, posMarginCharged, netPct };
+}
+
 export interface RenderSummaryCardsOptions {
   rules: BrokerRules;
   refreshIntervalMs?: number;
@@ -344,66 +325,27 @@ export function renderSummaryCards(
 
   const dailyRate = rules.annualRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
-  const isCombined =
-    state.activeView === 'COMBINED' ||
-    (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
+  const isCombined = state.activeView === 'COMBINED' || (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
-  const metricsGridContainer =
-    document.getElementById('portfolioMetricsGrid') ||
-    document.querySelector('.portfolio-metrics-grid');
+  const metricsGridContainer = document.querySelector('.portfolio-metrics-grid');
   if (metricsGridContainer) {
     render(
-      h(SummaryMetricsGrid, {
-        state,
-        rules,
-        refreshIntervalMs
-      }),
+      h(SummaryMetricsGrid, { state, rules, refreshIntervalMs }),
       metricsGridContainer
     );
   }
 
+  const titleEl = document.getElementById('boardTitle');
+  const moveEl = document.getElementById('boardDailyMove');
+
   if (isCombined) {
-    let totalInvested = 0;
-    let totalCommBuy = 0;
-    let totalCommSell = 0;
-    let totalGrossTarget = 0;
-    let totalMarginCharged = state.realizedMarginCharged || 0;
+    const metrics = calculateCombinedMetrics(state, rules, tickers, dailyRate);
 
-    tickers.forEach((t) => {
-      const pos = state.positions![t];
-      const cost = (pos.tranches || []).reduce((sum, tr) => sum + tr.qty * tr.price, 0);
-      totalInvested += cost;
-      totalCommBuy += pos.commBuy;
-      const valSell = pos.shares * pos.pt;
-      totalCommSell += calculateCommission(pos.shares, valSell, rules as any);
-      totalGrossTarget += valSell - cost;
-    });
-
-    const tranchesForCombined =
-      state.tranches && state.tranches.length > 0
-        ? state.tranches
-        : tickers.flatMap((t) => state.positions![t]?.tranches || []);
-    const openMarginCharged = calculateMarginInterest(tranchesForCombined as any, {
-      dailyRate,
-      marginDebt: Math.abs(Number(state.balance) || 0),
-      totalDebt: Math.abs(Number(state.balance) || 0)
-    } as any);
-    totalMarginCharged += openMarginCharged;
-
-    const totalComms = totalCommBuy + totalCommSell;
-    const net0 = totalGrossTarget - totalComms - totalMarginCharged;
-    const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
-    const totalDebt = Math.abs(Number(state.balance) || 0);
-
-    const titleEl = document.getElementById('boardTitle');
     if (titleEl) {
-      titleEl.innerText =
-        tickers.length > 0
-          ? `COMBINED PORTFOLIO (${tickers.length} Positions | ${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% Net Combined Target)`
-          : `NO ACTIVE MARGIN POSITIONS`;
+      titleEl.innerText = tickers.length > 0
+        ? `COMBINED PORTFOLIO (${tickers.length} Positions | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`
+        : `NO ACTIVE MARGIN POSITIONS`;
     }
-
-    const moveEl = document.getElementById('boardDailyMove');
     if (moveEl) moveEl.classList.remove('hidden');
 
     if (typeof onRenderAnalystConsensus === 'function' && tickers[0]) {
@@ -411,46 +353,21 @@ export function renderSummaryCards(
     }
 
     renderPositionsTable(
-      totalGrossTarget,
-      totalComms,
-      totalDebt,
-      totalMarginCharged,
+      metrics.totalGrossTarget,
+      metrics.totalComms,
+      metrics.totalDebt,
+      metrics.totalMarginCharged,
       state.startDate,
       dailyRate
     );
   } else {
-    const pos =
-      (state.activeView ? state.positions?.[state.activeView] : undefined) ||
-      state.positions?.[tickers[0]];
+    const pos = (state.activeView ? state.positions?.[state.activeView] : undefined) || state.positions?.[tickers[0]];
     if (!pos) return;
 
-    const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + t.qty * t.price, 0);
-    const valSell = pos.shares * pos.pt;
-    const commSell = calculateCommission(pos.shares, valSell, rules as any);
-    const totalComms = pos.commBuy + commSell;
-    const gross = valSell - totalInvested;
+    const metrics = calculatePositionMetrics(state, pos, rules, dailyRate);
 
-    const portfolioInvested = getTotalPortfolioInvested(state);
-    const weight = portfolioInvested > 0 ? totalInvested / portfolioInvested : 1;
-
-    const totalAccountDebt = Math.abs(Number(state.balance) || 0);
-    const allocatedDebt = totalAccountDebt * weight;
-    const tranches =
-      pos.tranches && pos.tranches.length > 0
-        ? pos.tranches
-        : (state.tranches && state.tranches.length > 0 ? state.tranches : []);
-    const posMarginCharged = calculateMarginInterest(tranches as any, {
-      dailyRate,
-      marginDebt: allocatedDebt,
-      totalDebt: totalAccountDebt
-    } as any);
-
-    const net0 = gross - totalComms - posMarginCharged;
-    const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
-
-    const titleEl = document.getElementById('boardTitle');
     if (titleEl) {
-      titleEl.innerText = `${pos.ticker} (${pos.shares} Shares @ ${formatUSD(pos.pt)} PT | ${netPct >= 0 ? '+' : ''}${netPct.toFixed(2)}% Net Target)`;
+      titleEl.innerText = `${pos.ticker} (${pos.shares} Shares @ ${formatUSD(pos.pt)} PT | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`;
     }
 
     if (typeof onRenderAnalystConsensus === 'function') {
@@ -458,13 +375,34 @@ export function renderSummaryCards(
     }
 
     renderPositionsTable(
-      gross,
-      totalComms,
-      allocatedDebt,
-      posMarginCharged,
+      metrics.gross,
+      metrics.totalComms,
+      metrics.allocatedDebt,
+      metrics.posMarginCharged,
       pos.startDate || state.startDate,
       dailyRate
     );
+  }
+}
+
+function hideAllDesks() {
+  const desks = ['mainDeskContainer', 'cashCushionContainer', 'closedHistoryContainer', 'settings'];
+  desks.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.add('hidden');
+      el.classList.remove('ui-view-enter');
+    }
+  });
+}
+
+function showDesk(id: string) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.classList.remove('hidden');
+    // Trigger reflow to restart animation
+    void el.offsetWidth;
+    el.classList.add('ui-view-enter');
   }
 }
 
@@ -501,7 +439,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   if (!rules) return;
 
   const tickers = Object.keys(state.positions || {});
-  const currentView = renderTickerTabs(state, onSetActiveView);
+  const currentView = resolveActiveView(state);
 
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
@@ -515,27 +453,17 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const closedTrades = state.closedTrades || [];
   const closedTradesCount = document.getElementById('closedTradesCount');
   if (closedTradesCount) {
-    closedTradesCount.textContent = `${closedTrades.length} realized exit${closedTrades.length === 1 ? '' : 's'
-      }`;
+    closedTradesCount.textContent = `${closedTrades.length} realized exit${closedTrades.length === 1 ? '' : 's'}`;
   }
 
   onUpdateCombinedBreakeven();
   onSyncMarketInsightsPanel();
 
-  const mainDesk = document.getElementById('mainDeskContainer');
-  const cushionDesk = document.getElementById('cashCushionContainer');
-  const closedDesk = document.getElementById('closedHistoryContainer');
-  const settingsDesk = document.getElementById('settings');
   const daysEl = document.getElementById('daysToBreakeven');
-
-  if (mainDesk) mainDesk.classList.add('hidden');
-  if (cushionDesk) cushionDesk.classList.add('hidden');
-  if (closedDesk) closedDesk.classList.add('hidden');
-  if (settingsDesk) settingsDesk.classList.add('hidden');
-  if (daysEl) daysEl.classList.remove('hidden');
+  hideAllDesks();
 
   if (isCushionActive) {
-    if (cushionDesk) cushionDesk.classList.remove('hidden');
+    showDesk('cashCushionContainer');
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('CASH_CUSHION');
     renderCashCushion(state, { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs });
@@ -543,10 +471,9 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isClosedHistoryActive) {
-    if (closedDesk) {
-      closedDesk.classList.remove('hidden');
-      render(h(ClosedHistoryDesk, {}), closedDesk);
-    }
+    showDesk('closedHistoryContainer');
+    const closedDesk = document.getElementById('closedHistoryContainer');
+    if (closedDesk) render(h(ClosedHistoryDesk, {}), closedDesk);
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('CLOSED_HISTORY');
     onRenderClosedHistory();
@@ -554,18 +481,17 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isSettingsActive) {
-    if (settingsDesk) {
-      settingsDesk.classList.remove('hidden');
-      if (typeof window !== 'undefined' && typeof (window as any).renderSettingsPanel === 'function') {
-        (window as any).renderSettingsPanel();
-      }
+    showDesk('settings');
+    if (typeof window !== 'undefined' && typeof (window as any).renderSettingsPanel === 'function') {
+      (window as any).renderSettingsPanel();
     }
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('SETTINGS');
     return;
   }
 
-  if (mainDesk) mainDesk.classList.remove('hidden');
+  showDesk('mainDeskContainer');
+  if (daysEl) daysEl.classList.remove('hidden');
   onUpdateLastDeskView(currentView);
 
   const emptyPanel = document.getElementById('emptyStatePanel');
@@ -605,7 +531,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     if (metricsGrid) metricsGrid.classList.add('hidden');
     if (projTableContainer) projTableContainer.classList.add('hidden');
     if (workspaceGrid) {
-      workspaceGrid.classList.remove('hidden');
       workspaceGrid.classList.remove('lg:grid-cols-[3fr_7fr]');
       workspaceGrid.classList.add('lg:grid-cols-1');
     }
@@ -619,7 +544,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   if (metricsGrid) metricsGrid.classList.remove('hidden');
   if (projTableContainer) projTableContainer.classList.remove('hidden');
   if (workspaceGrid) {
-    workspaceGrid.classList.remove('hidden');
     workspaceGrid.classList.remove('lg:grid-cols-1');
     workspaceGrid.classList.add('lg:grid-cols-[3fr_7fr]');
   }
@@ -633,8 +557,4 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   onRenderExternalLinks();
   onRenderConsoleQuickActions();
-
-  if (lastDeskView !== currentView) {
-    // Preserve view transition hook
-  }
 }
