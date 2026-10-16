@@ -339,7 +339,11 @@ export function calculateBreakevenDays(
   dailyRate: number
 ): number | null {
   if (totalDebt <= 0 || netTargetProfit <= 0 || dailyRate <= 0) return 0;
-  const days = netTargetProfit / (totalDebt * dailyRate);
+  if (![netTargetProfit, totalDebt, dailyRate].every(Number.isFinite)) return null;
+
+  // Match calculateProjectedDebt's daily compounding model:
+  // debt * ((1 + dailyRate) ** days - 1) >= netTargetProfit.
+  const days = Math.log1p(netTargetProfit / totalDebt) / Math.log1p(dailyRate);
   return Number.isFinite(days) ? Math.ceil(days) : null;
 }
 
