@@ -1,5 +1,6 @@
 import { useRef, useState } from 'preact/hooks';
 import { ConsoleQuickActions } from './ConsoleQuickActions';
+import { clearTerminalLog } from '../ui/notifications';
 import { formatUSD, PositionRecord } from '../ui/renderBoard';
 
 export interface TradingConsoleProps {
@@ -90,12 +91,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
     }
   };
 
-  const clearTerminal = () => {
-    const logEl = document.getElementById('terminalLog');
-    if (logEl) {
-      logEl.innerHTML = '';
-    }
-  };
+  const clearTerminal = () => clearTerminalLog();
 
   const guideItems = [
     {
