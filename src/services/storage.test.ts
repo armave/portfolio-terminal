@@ -53,7 +53,7 @@ describe('storage service', () => {
       const state = { activeView: 'AAPL', balance: 1200, lastUpdated: Date.now() };
       const beforeTime = Date.now();
 
-      saveState(state);
+      expect(saveState(state)).toBe(true);
 
       const afterTime = Date.now();
       expect(state.lastUpdated).toBeGreaterThanOrEqual(beforeTime);
@@ -89,6 +89,19 @@ describe('storage service', () => {
       expect(() => saveState('non-object' as unknown as Record<string, unknown>)).not.toThrow();
       expect(() => saveState(123 as unknown as Record<string, unknown>)).not.toThrow();
       expect(localStorageMock.setItem).not.toHaveBeenCalled();
+    });
+
+    it('returns false when persistence fails and does not trigger a sync callback', () => {
+      const onPushToGist = vi.fn();
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      localStorageMock.setItem.mockImplementationOnce(() => {
+        throw new Error('quota exceeded');
+      });
+
+      expect(saveState({ activeView: 'AAPL' }, onPushToGist)).toBe(false);
+      expect(onPushToGist).not.toHaveBeenCalled();
+
+      errorSpy.mockRestore();
     });
 
     it('does not throw when localStorage is undefined', () => {
