@@ -246,7 +246,10 @@ export function calculateMarginInterest(
   if (typeof ratioCandidate === 'number') {
     marginRatio = ratioCandidate;
   } else if (options.marginDebt !== undefined || options.totalDebt !== undefined || (typeof options.balance === 'number' && options.balance < 0)) {
-    const debt = Math.abs(Number(options.totalDebt ?? options.marginDebt ?? options.balance) || 0);
+    // marginDebt may be a position's allocated share of portfolio debt. Prefer
+    // it over totalDebt so a position-level calculation doesn't charge the
+    // entire portfolio debt against every position.
+    const debt = Math.abs(Number(options.marginDebt ?? options.totalDebt ?? options.balance) || 0);
     if (totalInvested > 0) {
       marginRatio = debt / totalInvested;
     }
