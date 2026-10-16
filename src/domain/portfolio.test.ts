@@ -73,6 +73,33 @@ describe('portfolio domain', () => {
     expect(() => normalizePortfolioState([])).toThrow('Portfolio state must be an object.');
   });
 
+  it('migrates a legacy-only JSON backup into canonical positions', () => {
+    const backup = normalizePortfolioBackup({
+      balance: -250,
+      holdings: [{
+        ticker: 'wdc',
+        isMargin: true,
+        currentPrice: 11.5,
+        analystTarget: 12.07,
+        tranches: [{
+          id: 'legacy-wdc',
+          shares: 30,
+          entryPrice: 11.5,
+          purchaseDate: '2026-10-15'
+        }]
+      }]
+    }, 1_792_000_000_000);
+
+    expect(backup.positions.WDC).toMatchObject({
+      ticker: 'WDC',
+      shares: 30,
+      currentPrice: 11.5,
+      pt: 12.07,
+      tranches: [{ qty: 30, price: 11.5, date: '2026-10-15' }]
+    });
+    expect(backup.balance).toBe(-250);
+  });
+
   it('accepts recognized portfolio backups and rejects unrelated JSON objects', () => {
     expect(normalizePortfolioBackup({ positions: {} }, 10_000).positions).toEqual({});
     expect(() => normalizePortfolioBackup({ settings: {} }, 10_000)).toThrow('recognized portfolio backup');
