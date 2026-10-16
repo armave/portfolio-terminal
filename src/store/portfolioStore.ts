@@ -319,7 +319,8 @@ export class PortfolioStore {
     const num = Number(amount) || 0;
     this.update((state) => {
       const freeCash = Math.max(0, num);
-      const balance = num < 0 ? num : state.balance;
+      // A positive balance entry represents available cash and clears any old margin debt.
+      const balance = num < 0 ? num : 0;
       return {
         ...state,
         balance,
