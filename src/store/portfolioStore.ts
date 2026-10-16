@@ -163,7 +163,7 @@ export class PortfolioStore {
       pendingMutation: null
     };
 
-    return this.normalizeState(raw);
+    return this.normalizeState(raw, true);
   }
 
   /**
@@ -171,9 +171,12 @@ export class PortfolioStore {
    * entries are imported only for tickers missing from positions, then rebuilt
    * as a compatibility projection from the canonical positions map.
    */
-  private normalizeState(raw: PortfolioState): PortfolioState {
+  private normalizeState(raw: PortfolioState, allowLegacyMigration = false): PortfolioState {
     const legacyHoldings: Holding[] = Array.isArray(raw.holdings) ? raw.holdings : [];
-    const positions = migrateLegacyHoldingsToPositions(raw.positions || {}, legacyHoldings);
+    const sourcePositions = raw.positions || {};
+    const positions = allowLegacyMigration
+      ? migrateLegacyHoldingsToPositions(sourcePositions, legacyHoldings)
+      : { ...sourcePositions };
     const holdings = buildHoldingsProjection(positions, legacyHoldings);
 
     const freeCash = Math.max(0, Number(raw.cashCushion?.freeCash ?? raw.cashBalance) || 0);
