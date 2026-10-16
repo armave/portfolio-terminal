@@ -24,7 +24,6 @@ import {
 import {
   fetchYahooStockData,
   proxyFetch,
-  pushCloudState,
   setSecretGetter,
   syncCloudState as syncCloudStateService
 } from './src/services/api';
