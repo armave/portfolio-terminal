@@ -67,6 +67,18 @@ export function calculateCommission(
   return Math.max(rules.minCommOrder, (rules.commPerShare * shares) + (rules.commVolumePct * totalVal));
 }
 
+/** Calculate execution commissions independently so each tranche retains its ticket minimum. */
+export function calculateTrancheCommissions(
+  tranches: Array<{ qty?: number; shares?: number; price: number }>,
+  rules: CommissionConfig
+): number {
+  return tranches.reduce((total, tranche) => {
+    const shares = Number(tranche.qty ?? tranche.shares) || 0;
+    const price = Number(tranche.price) || 0;
+    return total + calculateCommission(shares, shares * price, rules);
+  }, 0);
+}
+
 export interface MarginInterestState {
   marginDebt?: number;
   balance?: number;
