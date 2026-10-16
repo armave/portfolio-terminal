@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   calculateMarginInterest,
+  collectOpenPositionTranches,
   createBlankState,
   normalizePortfolioBackup,
   normalizePortfolioState,
@@ -27,6 +28,25 @@ const basePosition: MarginPosition = {
 };
 
 describe('portfolio domain', () => {
+  it('collects active tranches from canonical positions, ignoring empty or missing entries', () => {
+    const positions = {
+      AAPL: { tranches: [{ qty: 10, price: 100 }, { qty: 5, price: 110 }] },
+      MSFT: { tranches: [{ qty: 2, price: 400 }] },
+      CLOSED: { tranches: [] },
+      MISSING: null
+    };
+
+    expect(collectOpenPositionTranches(positions)).toEqual([
+      { qty: 10, price: 100 },
+      { qty: 5, price: 110 },
+      { qty: 2, price: 400 }
+    ]);
+  });
+
+  it('returns no tranches when the canonical positions map is empty', () => {
+    expect(collectOpenPositionTranches({})).toEqual([]);
+  });
+
   it('creates a stable blank state from the supplied clock', () => {
     expect(createBlankState(1_700_000_000_000)).toMatchObject({
       activeView: 'COMBINED',
