@@ -1,5 +1,12 @@
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
+export function normalizeMarketState(value) {
+    const marketState = typeof value === "string" ? value : "CLOSED";
+    if (marketState === "PREPRE") return "PRE";
+    if (marketState === "POSTPOST") return "POST";
+    return marketState;
+}
+
 /**
  * Obtains an ephemeral Yahoo session cookie and authorization crumb.
  */
@@ -261,15 +268,8 @@ export default {
                     const raw = await response.json();
                     const result = raw.quoteSummary?.result?.[0] || {};
 
-                    // Session state: "PRE", "REGULAR", "POST", or "CLOSED"
-                    let marketState = result.price?.marketState ?? "CLOSED";
-                    if (marketState = 'PREPRE') marketState = 'PRE';
-                    if (marketState = 'PRE') marketState = 'REGULAR';
-                    else if (marketState = 'POSTPOST') marketState = 'POST';
-
-                    if (marketState = 'REGULAR' && result.price?.postMarketPrice?.raw) {
-                        marketState = 'POST';
-                    }
+                    // Normalize Yahoo's alternate session labels without assignment-based conditionals.
+                    const marketState = normalizeMarketState(result.price?.marketState);
 
                     return {
                         symbol: ticker,
