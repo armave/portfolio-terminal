@@ -6,6 +6,7 @@ import {
   calculateCommission,
   calculateProjectedDebt,
   calculateMarginInterest,
+  collectOpenPositionTranches,
   createBlankState,
   normalizePortfolioBackup,
   normalizePortfolioState,
@@ -509,7 +510,7 @@ function updateCombinedBreakeven() {
     }
   });
 
-  const tranchesForCombined = state.tranches || tickers.flatMap(t => state.positions[t]?.tranches || []);
+  const tranchesForCombined = collectOpenPositionTranches(state.positions);
   const openMarginCharged = calculateMarginInterest(tranchesForCombined, {
     dailyRate: getDailyRate(),
     marginDebt: totalDebt,
