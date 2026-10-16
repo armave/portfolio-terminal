@@ -695,6 +695,9 @@ export class PortfolioStore {
           currentPrice: price,
           quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
           quoteSource: quote.quoteSource ?? 'Live quote',
+          ...(quote.requestStartedAt === undefined && quote.quoteSource === 'Manual'
+            ? { lastTradeAt: Date.now() }
+            : {}),
           ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {})
         };
       }
@@ -725,7 +728,7 @@ export class PortfolioStore {
   }
 
   public updatePrice(ticker: string, price: number): void {
-    this.updateLiveQuote(ticker, { price });
+    this.updateLiveQuote(ticker, { price, quoteSource: 'Manual' });
   }
 
   public updateTargetPrice(ticker: string, pt: number): void {
