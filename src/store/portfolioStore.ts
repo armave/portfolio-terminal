@@ -149,10 +149,13 @@ export class Store {
     const cashHoldings = Array.isArray(raw.cashCushion?.holdings)
       ? raw.cashCushion.holdings
       : [];
+    // Keep the legacy aggregate tranche list aligned with the actual open positions.
+    const activeTranches = Object.values(positions).flatMap((position) => position.tranches || []);
 
     return {
       ...raw,
       positions,
+      tranches: activeTranches,
       holdings,
       cashBalance: freeCash,
       cashCushion: {
@@ -234,13 +237,16 @@ export class Store {
   }
 
   public setCashBalance(amount: number): void {
-    const num = Number(amount) || 0;
+    const parsed = Number(amount);
+    const num = Number.isFinite(parsed) ? parsed : 0;
     this.update((state) => {
       const freeCash = Math.max(0, num);
-      const balance = num < 0 ? num : state.balance;
       return {
         ...state,
-        balance,
+        // A newly entered positive balance represents available cash and clears
+        // any previously configured margin debt; zero clears both values.
+        balance: Math.min(0, num),
+        lastRolloverTimestamp: Date.now(),
         cashBalance: freeCash,
         cashCushion: {
           ...(state.cashCushion || { freeCash: 0, holdings: [] }),
@@ -251,10 +257,12 @@ export class Store {
   }
 
   public setMarginDebt(debtAmount: number): void {
-    const debt = Math.abs(Number(debtAmount) || 0);
+    const parsed = Number(debtAmount);
+    const debt = Number.isFinite(parsed) ? Math.abs(parsed) : 0;
     this.update((state) => ({
       ...state,
-      balance: -debt
+      balance: -debt,
+      lastRolloverTimestamp: Date.now()
     }));
   }
 
@@ -288,7 +296,7 @@ export class Store {
 
       const nextTranches: TrancheItem[] = [
         ...(existingPos?.tranches || []),
-        { qty: shares, price, date: purchaseDate }
+        { qty: shares, price, date: purchaseDate, buyCommission: buyComm }
       ];
 
       const nextShares = (Number(existingPos?.shares) || 0) + shares;
