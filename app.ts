@@ -109,6 +109,9 @@ const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
  */
 function syncStore() {
   portfolioStore.importState(state as any);
+  // Keep the legacy runtime object aligned with the store's normalized state,
+  // including active tranches after a full sale.
+  state = portfolioStore.getState() as any;
 }
 
 // ==========================================
@@ -926,6 +929,7 @@ function setCurrentBalance(value: number) {
   const signedBalance = Number.isFinite(Number(value)) ? Number(value) : 0;
   state.cashCushion.freeCash = Math.max(0, signedBalance);
   state.balance = Math.min(0, signedBalance);
+  state.lastRolloverTimestamp = Date.now();
   syncStore();
   return {
     balance: Math.max(0, signedBalance),
