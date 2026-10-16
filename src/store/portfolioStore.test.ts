@@ -247,6 +247,63 @@ describe('canonical trade lifecycle and persistence', () => {
     });
   });
 
+  it('does not migrate stale holdings when persisted canonical positions are explicitly empty', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    stored.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+      positions: {},
+      holdings: [{
+        ticker: 'AAPL',
+        isMargin: true,
+        currentPrice: 120,
+        analystTarget: 130,
+        tranches: [{
+          id: 'stale-aapl',
+          shares: 5,
+          entryPrice: 100,
+          purchaseDate: '2026-10-01'
+        }]
+      }],
+      closedTrades: [{
+        ticker: 'AAPL',
+        shares: 5,
+        exitDate: '2026-10-10',
+        netProfit: 100
+      }],
+      balance: 0,
+      cashCushion: { freeCash: 0, holdings: [] }
+    }));
+
+    const store = new PortfolioStore();
+    expect(store.getState().positions.AAPL).toBeUndefined();
+    expect(store.getState().holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
+  });
+
+  it('migrates persisted legacy holdings when the positions field is genuinely absent', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    stored.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+      holdings: [{
+        ticker: 'MSFT',
+        isMargin: true,
+        currentPrice: 420,
+        analystTarget: 460,
+        tranches: [{
+          id: 'legacy-msft',
+          shares: 2,
+          entryPrice: 400,
+          purchaseDate: '2026-10-01'
+        }]
+      }],
+      balance: -800,
+      cashCushion: { freeCash: 0, holdings: [] }
+    }));
+
+    const store = new PortfolioStore();
+    expect(store.getState().positions.MSFT).toMatchObject({
+      shares: 2,
+      tranches: [{ qty: 2, price: 400, date: '2026-10-01' }]
+    });
+  });
+
   it('clears prior margin debt when a positive cash balance is entered', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
