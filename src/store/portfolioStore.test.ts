@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildHoldingsProjection,
-  migrateLegacyHoldingsToPositions
+  migrateLegacyHoldingsToPositions,
+  PortfolioStore
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
 
@@ -109,5 +110,59 @@ describe('canonical portfolio-state migration', () => {
 
   it('does not create compatibility holdings for an empty canonical positions map', () => {
     expect(buildHoldingsProjection({}, [], '2026-10-16')).toEqual([]);
+  });
+});
+
+
+describe('canonical trade lifecycle and persistence', () => {
+  const stored = new Map<string, string>();
+  const localStorageMock = {
+    getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => { stored.set(key, String(value)); },
+    removeItem: (key: string) => { stored.delete(key); }
+  };
+
+  afterEach(() => {
+    stored.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it('persists buys, partial sells, and full exits without resurrecting closed positions on reload', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    store.buyStock('aapl', 5, 100, '2026-10-01');
+    const afterBuy = store.getState();
+    expect(afterBuy.positions.AAPL.shares).toBe(5);
+    expect(afterBuy.holdings.find((holding) => holding.ticker === 'AAPL')?.tranches)
+      .toHaveLength(1);
+
+    const afterBuyReload = new PortfolioStore().getState();
+    expect(afterBuyReload.positions.AAPL.shares).toBe(5);
+    expect(afterBuyReload.holdings.find((holding) => holding.ticker === 'AAPL')?.tranches)
+      .toHaveLength(1);
+
+    store.sellStock('AAPL', 2, 120, '2026-10-10');
+    expect(store.getState().positions.AAPL.shares).toBe(3);
+    expect(store.getState().positions.AAPL.tranches).toEqual([
+      expect.objectContaining({ qty: 3, price: 100 })
+    ]);
+    expect(store.getState().closedTrades).toHaveLength(1);
+
+    const afterPartialReload = new PortfolioStore().getState();
+    expect(afterPartialReload.positions.AAPL.shares).toBe(3);
+    expect(afterPartialReload.holdings.find((holding) => holding.ticker === 'AAPL')?.tranches)
+      .toEqual([expect.objectContaining({ shares: 3, entryPrice: 100 })]);
+    expect(afterPartialReload.closedTrades).toHaveLength(1);
+
+    store.sellStock('AAPL', 'ALL', 130, '2026-10-16');
+    expect(store.getState().positions.AAPL).toBeUndefined();
+    expect(store.getState().holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
+    expect(store.getState().closedTrades).toHaveLength(2);
+
+    const afterFullExitReload = new PortfolioStore().getState();
+    expect(afterFullExitReload.positions.AAPL).toBeUndefined();
+    expect(afterFullExitReload.holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
+    expect(afterFullExitReload.closedTrades).toHaveLength(2);
   });
 });
