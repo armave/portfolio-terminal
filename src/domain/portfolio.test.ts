@@ -12,6 +12,7 @@ import {
   calculateBreakevenDays,
   processRollovers,
   calculateCommission,
+  allocateRealizedMarginCharge,
   getAccruedRolloverCycles,
   type MarginPosition,
   type TradeTranche
@@ -148,6 +149,26 @@ describe('portfolio domain', () => {
     expect(() => realizeClosedTrade(basePosition, 'TEST', 11, 12, 1, 10_000)).toThrow();
     expect(() => realizeClosedTrade(basePosition, 'TEST', 1, Number.NaN, 1, 10_000)).toThrow();
     expect(basePosition).toEqual(original);
+  });
+
+  it('includes financed buy commissions in accrued margin interest', () => {
+    const withoutCommission = calculateMarginInterest(
+      [{ qty: 30, price: 345, date: '2026-10-15' }],
+      { now: new Date(2026, 9, 16, 12, 0, 0), annualRate: 0.15 }
+    );
+    const withCommission = calculateMarginInterest(
+      [{ qty: 30, price: 345, buyCommission: 1.2, date: '2026-10-15' }],
+      { now: new Date(2026, 9, 16, 12, 0, 0), annualRate: 0.15 }
+    );
+
+    expect(withCommission).toBeGreaterThan(withoutCommission);
+    expect(withCommission - withoutCommission).toBeCloseTo(1.2 * (0.15 / 365), 8);
+  });
+
+  it('allocates realized margin charges to active positions by invested cost', () => {
+    expect(allocateRealizedMarginCharge(4.5, 30_000, 60_000)).toBe(2.25);
+    expect(allocateRealizedMarginCharge(4.5, 60_000, 60_000)).toBe(4.5);
+    expect(allocateRealizedMarginCharge(4.5, 0, 60_000)).toBe(0);
   });
 
   it('calculates projected debt correctly', () => {
