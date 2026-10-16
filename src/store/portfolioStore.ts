@@ -20,23 +20,23 @@ import {
 import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
 
 const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
-  broker: 'Tradernet',
-  annualRate: 0.16,
-  annualBorrowRate: 0.16,
+  broker: 'Freedom Broker Armenia (Tradernet)',
+  annualRate: 0.15,
+  annualBorrowRate: 0.15,
   dayCountBasis: 365,
-  rolloverHour: 23,
-  rolloverMinute: 59,
+  rolloverHour: 4,
+  rolloverMinute: 0,
   rolloverTimeZone: 'Asia/Yerevan',
-  dailyRolloverCutoffArmenia: '23:59',
-  maintenanceMarginRatio: 0.25,
-  maintenanceEquityRatio: 0.25,
-  stopOutRatio: 0.2,
-  commPerShare: 0.02,
-  commissionPerShare: 0.02,
-  commVolumePct: 0.0005,
-  commissionRatePct: 0.0005,
-  minCommOrder: 1.5,
-  commissionMin: 1.5
+  dailyRolloverCutoffArmenia: '04:00',
+  maintenanceMarginRatio: 0.1,
+  maintenanceEquityRatio: 0.1,
+  stopOutRatio: 0,
+  commPerShare: 0.012,
+  commissionPerShare: 0.012,
+  commVolumePct: 0.0012,
+  commissionRatePct: 0.0012,
+  minCommOrder: 1.2,
+  commissionMin: 1.2
 };
 
 function todayIso(): string {
