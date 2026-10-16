@@ -152,22 +152,30 @@ export const saveStateToStorage = saveState;
 export function saveState(
   state?: Record<string, any> | null,
   onPushToGist?: (forcePrompt?: boolean) => void
-): void {
+): boolean {
   if (!state || typeof state !== 'object' || Array.isArray(state)) {
-    return;
+    return false;
   }
   if (typeof localStorage === 'undefined' || !localStorage) {
-    return;
+    return false;
   }
+
   try {
     state.lastUpdated = Date.now();
     localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(state));
-    if (typeof onPushToGist === 'function') {
-      onPushToGist(false);
-    }
   } catch (err) {
     console.error('Failed to save state:', err);
+    return false;
   }
+
+  if (typeof onPushToGist === 'function') {
+    try {
+      onPushToGist(false);
+    } catch (err) {
+      console.error('Failed to trigger Gist sync:', err);
+    }
+  }
+  return true;
 }
 
 /**
