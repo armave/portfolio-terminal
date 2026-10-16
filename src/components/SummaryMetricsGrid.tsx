@@ -142,7 +142,9 @@ export function SummaryMetricsGrid({
     });
 
     const tranchesForCombined =
-      state.tranches || tickers.flatMap((t) => state.positions![t]?.tranches || []);
+      state.tranches && state.tranches.length > 0
+        ? state.tranches
+        : tickers.flatMap((t) => state.positions![t]?.tranches || []);
     const openMarginCharged = calculateMarginInterest(tranchesForCombined as any, {
       dailyRate,
       marginDebt: Math.abs(Number(state.balance) || 0),
@@ -305,7 +307,10 @@ export function SummaryMetricsGrid({
   const totalCushion = getCashCushionTotal(state);
   const allocatedCushion = totalCushion * weight;
   const allocatedDailyAccrual = allocatedDebt * dailyRate;
-  const tranches = state.tranches || pos.tranches || [];
+  const tranches =
+    pos.tranches && pos.tranches.length > 0
+      ? pos.tranches
+      : (state.tranches && state.tranches.length > 0 ? state.tranches : []);
   const posMarginCharged = calculateMarginInterest(tranches as any, {
     dailyRate,
     marginDebt: allocatedDebt,

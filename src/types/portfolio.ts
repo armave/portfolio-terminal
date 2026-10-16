@@ -86,6 +86,7 @@ export interface ClosedTrade {
   sellDate?: string;
   exitDate?: string;
   date?: number | string;
+  closedAt?: number | string;
   grossProfit?: number;
   commissions?: number;
   feesAndCommissions?: number;

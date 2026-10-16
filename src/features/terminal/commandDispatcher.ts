@@ -19,6 +19,87 @@ function cleanNumber(val: string | undefined): number {
   return parseFloat(val.replace(/[$,]/g, ''));
 }
 
+const MONTH_LOOKUP: Record<string, number> = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+};
+
+export function toLocalIsoDate(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function parsePurchaseDate(rawDate?: string): string {
+  const today = new Date();
+  if (!rawDate) return toLocalIsoDate(today);
+
+  const cleaned = rawDate
+    .trim()
+    .replace(/^on\s+/i, '')
+    .replace(/^\[\vert{}\]$/g, '')
+    .trim();
+
+  if (!cleaned || /^today$/i.test(cleaned)) {
+    return toLocalIsoDate(today);
+  }
+
+  if (/^yesterday$/i.test(cleaned)) {
+    const y = new Date(today);
+    y.setDate(y.getDate() - 1);
+    return toLocalIsoDate(y);
+  }
+
+  const daysAgoMatch = cleaned.match(/^(\d+)\s*d(?:ays?)?\s+ago$/i);
+  if (daysAgoMatch) {
+    const days = parseInt(daysAgoMatch[1], 10);
+    const d = new Date(today);
+    d.setDate(d.getDate() - days);
+    return toLocalIsoDate(d);
+  }
+
+  // YYYY-MM-DD or YYYY/MM/DD
+  const ymdMatch = cleaned.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const month = parseInt(ymdMatch[2], 10);
+    const day = parseInt(ymdMatch[3], 10);
+    const check = new Date(year, month - 1, day);
+    if (
+      check.getFullYear() === year &&
+      check.getMonth() === month - 1 &&
+      check.getDate() === day
+    ) {
+      return toLocalIsoDate(check);
+    }
+    throw new Error(`Invalid calendar date "${cleaned}". Use YYYY-MM-DD or "Mar 25".`);
+  }
+
+  // "Mar 25", "March 25 2026", "25 Mar", "25 Mar 2026"
+  const monFirst = cleaned.match(/^([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:[,\s]+(\d{4}))?$/);
+  const dayFirst = cleaned.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\.?(?:[,\s]+(\d{4}))?$/);
+  if (monFirst || dayFirst) {
+    const monStr = (monFirst ? monFirst[1] : dayFirst![2]).slice(0, 3).toLowerCase();
+    const day = parseInt(monFirst ? monFirst[2] : dayFirst![1], 10);
+    const yearStr = monFirst ? monFirst[3] : dayFirst![3];
+    const year = yearStr ? parseInt(yearStr, 10) : today.getFullYear();
+    const monthIdx = MONTH_LOOKUP[monStr];
+
+    if (monthIdx !== undefined && day >= 1 && day <= 31) {
+      const check = new Date(year, monthIdx, day);
+      if (check.getMonth() === monthIdx && check.getDate() === day) {
+        return toLocalIsoDate(check);
+      }
+    }
+    throw new Error(`Invalid date "${cleaned}". Use YYYY-MM-DD or "Mar 25".`);
+  }
+
+  throw new Error(
+    `Unrecognized date "${cleaned}". Try "on YYYY-MM-DD", "on Mar 25", "yesterday", or "3 days ago".`
+  );
+}
+
 export class CommandDispatcher {
 
   private static evaluateScheduledLadder(
@@ -157,7 +238,7 @@ export class CommandDispatcher {
         }
 
         const qty = qtyRaw === 'all' ? availableShares : cleanNumber(qtyRaw);
-        portfolioStore.sellTranche(sym, qty, price, new Date().toISOString().split('T')[0]);
+        portfolioStore.sellStock(sym, qty, price, new Date().toISOString().split('T')[0]);
 
         return {
           text: `Sold ${qty} ${sym} @ $${price.toFixed(2)}`,
@@ -227,8 +308,7 @@ export class CommandDispatcher {
       );
       if (cashRemMatch) {
         const sym = cashRemMatch[1].toUpperCase();
-        const removed = portfolioStore.removeCashStock(sym);
-        if (!removed) throw new Error(`${sym} not found in cash holdings.`);
+        portfolioStore.removeCashStock(sym);
         return { text: `Removed ${sym} from cash holdings.`, type: 'res', sideEffect: { type: 'SYNC_CLOUD' } };
       }
 
@@ -249,30 +329,60 @@ export class CommandDispatcher {
         };
       }
 
-      // 8. BUY POSITION WITH OPTIONAL PT: "bought 10 AAPL for $185.50, pt $205"
+      // BUY POSITION WITH OPTIONAL PT AND PURCHASE DATE
       const buyMatch = raw.match(
-        /^(?:bought|buy|add)\s+([0-9.,]+)\s+([a-zA-Z]+)\s+(?:for|at|@)\s*([$0-9.,]+)(?:\s*,?\s*(?:pt|target)\s+([$0-9.,]+))?(?:\s+on\s+(\S+))?$/i
+        /^(?:bought|buy|add)\s+([0-9.,]+)\s+([a-zA-Z]+)\s+(?:for|at|@)\s*([$0-9.,]+)(.*)$/i
       );
       if (buyMatch) {
         const qty = cleanNumber(buyMatch[1]);
         const sym = buyMatch[2].toUpperCase();
         const price = cleanNumber(buyMatch[3]);
-        const pt = cleanNumber(buyMatch[4]);
-        const dateStr = buyMatch[5] || new Date().toISOString().split('T')[0];
+        let tail = (buyMatch[4] || '').trim();
 
         if (isNaN(qty) || qty <= 0 || !sym || isNaN(price) || price <= 0) {
-          throw new Error('Usage: bought <shares> <ticker> for <price> [, pt <target>]');
+          throw new Error(
+            'Usage: bought <shares> <ticker> for <price> [, pt <target>] [on <date>]'
+          );
         }
 
-        portfolioStore.addTranche(sym, {
-          shares: qty,
-          entryPrice: price,
-          purchaseDate: dateStr,
-          ...(Number.isFinite(pt) && pt > 0 ? { targetPrice: pt } : {})
-        });
+        let pt = NaN;
+        const ptExtract = tail.match(/(?:^|,|\s)(?:pt|target)\s+([$0-9.,]+)/i);
+        if (ptExtract) {
+          pt = cleanNumber(ptExtract[1]);
+          tail = tail.replace(ptExtract[0], ' ').trim();
+        }
 
+        tail = tail.replace(/^[,\s]+|[,\s]+$/g, '');
+        let dateStr = toLocalIsoDate(new Date());
+
+        if (tail) {
+          const dateExtract = tail.match(/^(?:on\s+)?(.+)$/i);
+          if (dateExtract) {
+            dateStr = parsePurchaseDate(dateExtract[1]);
+          }
+        }
+
+        if (typeof (portfolioStore as any).buyStock === 'function') {
+          portfolioStore.buyStock(
+            sym,
+            qty,
+            price,
+            dateStr,
+            Number.isFinite(pt) && pt > 0 ? pt : undefined
+          );
+        } else if (typeof (portfolioStore as any).addTranche === 'function') {
+          (portfolioStore as any).addTranche(sym, {
+            shares: qty,
+            entryPrice: price,
+            purchaseDate: dateStr,
+            ...(Number.isFinite(pt) && pt > 0 ? { targetPrice: pt } : {})
+          });
+        }
+
+        const isToday = dateStr === toLocalIsoDate(new Date());
         return {
-          text: `Bought ${qty} ${sym} @ $${price.toFixed(2)}${Number.isFinite(pt) && pt > 0 ? ` | Target PT: $${pt.toFixed(2)}` : ''}`,
+          text: `Bought ${qty} ${sym} @ $${price.toFixed(2)}${!isToday ? ` (Date: ${dateStr})` : ''
+            }${Number.isFinite(pt) && pt > 0 ? ` | Target PT: $${pt.toFixed(2)}` : ''}`,
           type: 'res',
           sideEffect: { type: 'SYNC_CLOUD' }
         };
@@ -291,7 +401,7 @@ export class CommandDispatcher {
           throw new Error('Usage: target <ticker> <price> (for an open margin position)');
         }
 
-        portfolioStore.setTargetPrice(sym, pt);
+        portfolioStore.updateTargetPrice(sym, pt);
         return {
           text: `${sym} price target updated → $${pt.toFixed(2)}`,
           type: 'res',

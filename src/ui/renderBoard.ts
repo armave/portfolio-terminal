@@ -153,15 +153,15 @@ export function createDailyQuoteLabel(details?: QuoteDetails | null): HTMLSpanEl
       details.change > 0
         ? 'text-emerald-400'
         : details.change < 0
-        ? 'text-rose-400'
-        : 'text-slate-400'
+          ? 'text-rose-400'
+          : 'text-slate-400'
     );
   } else {
     label.classList.add('text-slate-400');
   }
-  if (hasRange) parts.push(`H ${ formatUSD(details.high) } / L${formatUSD(details.low)}`);
-label.textContent = `Day: ${parts.join(' · ')}`;
-return label;
+  if (hasRange) parts.push(`H ${formatUSD(details.high)} / L${formatUSD(details.low)}`);
+  label.textContent = `Day: ${parts.join(' · ')}`;
+  return label;
 }
 
 export function formatRiskTrigger(triggerValue: number, currentValue: number): string {
@@ -380,7 +380,9 @@ export function renderSummaryCards(
     });
 
     const tranchesForCombined =
-      state.tranches || tickers.flatMap((t) => state.positions![t]?.tranches || []);
+      state.tranches && state.tranches.length > 0
+        ? state.tranches
+        : tickers.flatMap((t) => state.positions![t]?.tranches || []);
     const openMarginCharged = calculateMarginInterest(tranchesForCombined as any, {
       dailyRate,
       marginDebt: Math.abs(Number(state.balance) || 0),
@@ -433,7 +435,10 @@ export function renderSummaryCards(
 
     const totalAccountDebt = Math.abs(Number(state.balance) || 0);
     const allocatedDebt = totalAccountDebt * weight;
-    const tranches = state.tranches || pos.tranches || [];
+    const tranches =
+      pos.tranches && pos.tranches.length > 0
+        ? pos.tranches
+        : (state.tranches && state.tranches.length > 0 ? state.tranches : []);
     const posMarginCharged = calculateMarginInterest(tranches as any, {
       dailyRate,
       marginDebt: allocatedDebt,
@@ -577,7 +582,8 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
           onQuickBuy: () => {
             const cmdInput = document.getElementById('cmdInput') as HTMLInputElement | null;
             if (cmdInput) {
-              cmdInput.value = 'bought [shares] [TICKER] for [price]';
+              const todayIso = new Date().toISOString().split('T')[0];
+              cmdInput.value = `bought [shares] [TICKER] for [price] on [${todayIso}]`;
               cmdInput.focus();
             }
           },

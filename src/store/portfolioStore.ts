@@ -1,61 +1,164 @@
-import { PortfolioState, Holding, Tranche, BrokerAssumptions, PendingMutation, BrokerRules } from '../types/portfolio';
-import { StorageService } from '../services/storage';
+import { useState, useEffect } from 'preact/hooks';
+import {
+  PortfolioState,
+  PositionRecord,
+  Holding,
+  Tranche,
+  TrancheItem,
+  BrokerRules,
+  BrokerAssumptions,
+  PendingMutation,
+  ClosedTrade
+} from '../types/portfolio';
+import {
+  loadSavedState,
+  saveState,
+  loadBrokerRules,
+  saveBrokerRules,
+  getQuoteRefreshInterval
+} from '../services/storage';
 import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
-import { useEffect, useState } from 'react';
 
 export const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
-  broker: 'Freedom Broker Armenia (Tradernet)',
-  annualRate: 0.15,
-  annualBorrowRate: 0.15,
+  broker: 'Tradernet',
+  annualRate: 0.16,
+  annualBorrowRate: 0.16,
   dayCountBasis: 365,
-  rolloverHour: 4,
-  rolloverMinute: 0,
+  rolloverHour: 23,
+  rolloverMinute: 59,
   rolloverTimeZone: 'Asia/Yerevan',
-  dailyRolloverCutoffArmenia: '04:00',
-  maintenanceMarginRatio: 0.10,
-  maintenanceEquityRatio: 0.10,
-  stopOutRatio: 0.00,
-  commPerShare: 0.012,
-  commVolumePct: 0.0012,
-  minCommOrder: 1.20,
-  commissionMin: 1.20,
-  commissionPerShare: 0.012,
-  commissionRatePct: 0.0012
+  dailyRolloverCutoffArmenia: '23:59',
+  maintenanceMarginRatio: 0.25,
+  maintenanceEquityRatio: 0.25,
+  stopOutRatio: 0.2,
+  commPerShare: 0.02,
+  commissionPerShare: 0.02,
+  commVolumePct: 0.0005,
+  commissionRatePct: 0.0005,
+  minCommOrder: 1.5,
+  commissionMin: 1.5
 };
 
-export const INITIAL_STATE: PortfolioState = {
-  positions: {},
-  cashCushion: { freeCash: 0, holdings: [] },
-  balance: 0,
-  realizedMarginCharged: 0,
-  activeView: 'COMBINED',
-  cashBalance: 0,
-  holdings: [],
-  closedTrades: [],
-  cashStocks: [],
-  brokerAssumptions: DEFAULT_BROKER_ASSUMPTIONS,
-  apiKeys: {},
-  selectedTicker: null,
-  autoRefreshInterval: 60000,
-  pendingMutation: null
-};
+function todayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
-type Listener = (state: PortfolioState) => void;
-
-class Store {
+export class Store {
   private state: PortfolioState;
-  private listeners: Set<Listener> = new Set();
+  private listeners: Set<(state: PortfolioState) => void> = new Set();
 
   constructor() {
-    const loaded = StorageService.loadLocal(INITIAL_STATE) as PortfolioState;
-    this.state = {
-      ...INITIAL_STATE,
-      ...loaded,
+    this.state = this.initializeState();
+  }
+
+  private initializeState(): PortfolioState {
+    const saved = loadSavedState(this.state) as Partial<PortfolioState> | null;
+    const savedRules = loadBrokerRules(DEFAULT_BROKER_ASSUMPTIONS) as Partial<BrokerRules> | null;
+    const refreshInterval = getQuoteRefreshInterval();
+
+    const raw: PortfolioState = {
+      positions: saved?.positions || {},
+      cashCushion: saved?.cashCushion || { freeCash: 0, holdings: [] },
+      balance: Number(saved?.balance) || 0,
+      realizedMarginCharged: Number(saved?.realizedMarginCharged) || 0,
+      tranches: saved?.tranches || [],
+      startDate: saved?.startDate || todayIso(),
+      activeView: saved?.activeView || 'COMBINED',
+      closedTrades: Array.isArray(saved?.closedTrades) ? saved!.closedTrades : [],
       brokerAssumptions: {
         ...DEFAULT_BROKER_ASSUMPTIONS,
-        ...(loaded.brokerAssumptions || {})
+        ...(saved?.brokerAssumptions || {}),
+        ...(savedRules || {})
       },
-      apiKeys: loaded.apiKeys || {}
+      lastRolloverTimestamp: saved?.lastRolloverTimestamp,
+      lastUpdated: saved?.lastUpdated || Date.now(),
+      gatewaySecret: saved?.gatewaySecret,
+      cashBalance: Number(saved?.cashBalance ?? saved?.cashCushion?.freeCash) || 0,
+      holdings: Array.isArray(saved?.holdings) ? saved!.holdings : [],
+      cashStocks: Array.isArray(saved?.cashStocks) ? saved!.cashStocks : [],
+      apiKeys: saved?.apiKeys || {},
+      selectedTicker: saved?.selectedTicker ?? null,
+      autoRefreshInterval:
+        typeof refreshInterval === 'number' ? refreshInterval : saved?.autoRefreshInterval ?? 60000,
+      pendingMutation: null
+    };
+
+    return this.normalizeState(raw);
+  }
+
+  private normalizeState(raw: PortfolioState): PortfolioState {
+    const positions: Record<string, PositionRecord> = { ...(raw.positions || {}) };
+    let holdings: Holding[] = Array.isArray(raw.holdings) ? [...raw.holdings] : [];
+
+    const posKeys = Object.keys(positions);
+    if (posKeys.length > 0) {
+      holdings = posKeys.map((sym) => {
+        const p = positions[sym];
+        const existingHolding = holdings.find((h) => h.ticker === sym);
+        const tranches: Tranche[] = (p.tranches || []).map((t: TrancheItem, idx: number) => ({
+          id: `${sym}-${idx}`,
+          shares: Number((t as any).qty ?? (t as any).shares) || 0,
+          entryPrice: Number((t as any).price ?? (t as any).entryPrice) || 0,
+          purchaseDate: t.date || p.startDate || todayIso(),
+          targetPrice: p.pt
+        }));
+        return {
+          ...existingHolding,
+          ticker: sym,
+          isMargin: true,
+          tranches,
+          currentPrice: p.currentPrice,
+          analystTarget: p.pt
+        };
+      });
+    } else if (holdings.length > 0) {
+      holdings.forEach((h) => {
+        const sym = h.ticker.toUpperCase();
+        const tranches: TrancheItem[] = (h.tranches || []).map((t) => ({
+          qty: Number(t.shares) || 0,
+          price: Number(t.entryPrice) || 0,
+          date: t.purchaseDate || todayIso()
+        }));
+        const shares = tranches.reduce((s, t) => s + t.qty, 0);
+        if (shares > 0) {
+          const avgPrice =
+            tranches.reduce((s, t) => s + t.qty * t.price, 0) / shares;
+          const earliest =
+            tranches
+              .map((t) => t.date)
+              .filter((d): d is string => Boolean(d))
+              .sort()[0] || todayIso();
+          positions[sym] = {
+            ticker: sym,
+            shares,
+            currentPrice: Number(h.currentPrice) || avgPrice,
+            pt: Number(h.analystTarget) || avgPrice * 1.1,
+            commBuy: 0,
+            startDate: earliest,
+            tranches
+          };
+        }
+      });
+    }
+
+    const freeCash = Math.max(0, Number(raw.cashCushion?.freeCash ?? raw.cashBalance) || 0);
+    const cashHoldings = Array.isArray(raw.cashCushion?.holdings)
+      ? raw.cashCushion.holdings
+      : [];
+
+    return {
+      ...raw,
+      positions,
+      holdings,
+      cashBalance: freeCash,
+      cashCushion: {
+        freeCash,
+        holdings: cashHoldings
+      }
     };
   }
 
@@ -63,428 +166,555 @@ class Store {
     return this.state;
   }
 
-  public subscribe(listener: Listener): () => void {
+  public subscribe(listener: (state: PortfolioState) => void): () => void {
     this.listeners.add(listener);
-    listener(this.state);
-    return () => this.listeners.delete(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
   private notify(): void {
-    StorageService.saveLocal(this.state);
-    for (const listener of this.listeners) {
-      listener(this.state);
-    }
+    saveState(this.state as any);
+    this.listeners.forEach((listener) => listener(this.state));
   }
 
-  private getRules() {
-    const a: any = this.state.brokerAssumptions || {};
-    const annualRate = Number(a.annualRate ?? a.annualBorrowRate ?? 0.15);
-    const dayCountBasis = Number(a.dayCountBasis ?? 365);
-    return {
-      annualRate,
-      dayCountBasis,
-      dailyRate: annualRate / dayCountBasis,
-      commPerShare: Number(a.commPerShare ?? a.commissionPerShare ?? 0.012),
-      commVolumePct: Number(a.commVolumePct ?? a.commissionRatePct ?? 0.0012),
-      minCommOrder: Number(a.minCommOrder ?? a.commissionMin ?? 1.2)
-    };
-  }
-
-  public setCashBalance(signedBalance: number): void {
-    const s: any = { ...this.state };
-    if (!s.cashCushion) s.cashCushion = { freeCash: 0, holdings: [] };
-    s.cashCushion = {
-      ...s.cashCushion,
-      freeCash: Math.max(0, signedBalance)
-    };
-    s.balance = Math.min(0, signedBalance);
-    s.cashBalance = signedBalance;
-    this.state = s;
+  public update(updater: (state: PortfolioState) => PortfolioState): void {
+    const next = updater(this.state);
+    this.state = this.normalizeState({
+      ...next,
+      lastUpdated: Date.now()
+    });
     this.notify();
   }
 
-  public updateAssumptions(assumptions: Partial<BrokerAssumptions>): void {
-    this.state = {
-      ...this.state,
-      brokerAssumptions: { ...this.state.brokerAssumptions, ...assumptions }
-    };
-    this.notify();
+  public setState(partial: Partial<PortfolioState>): void {
+    this.update((state) => ({
+      ...state,
+      ...partial
+    }));
   }
 
-  public setSelectedTicker(ticker: string | null): void {
-    const s: any = { ...this.state, selectedTicker: ticker };
-    if (ticker) s.activeView = ticker;
-    this.state = s;
-    this.notify();
+  public importState(newState: Partial<PortfolioState>): void {
+    this.update((state) => ({
+      ...state,
+      ...newState
+    }));
   }
 
-  public setPendingMutation(mutation: PendingMutation | null): void {
-    this.state = { ...this.state, pendingMutation: mutation };
-    this.notify();
+  public setActiveView(view: string): void {
+    this.setState({ activeView: view, selectedTicker: view });
+  }
+
+  public selectTicker(ticker: string | null): void {
+    this.setState({
+      selectedTicker: ticker,
+      activeView: ticker || 'COMBINED'
+    });
+  }
+
+  public updateAssumptions(rules: Partial<BrokerRules & BrokerAssumptions>): void {
+    this.update((state) => {
+      const merged: BrokerRules = {
+        ...DEFAULT_BROKER_ASSUMPTIONS,
+        ...state.brokerAssumptions,
+        ...rules,
+        annualRate: Number(rules.annualRate ?? rules.annualBorrowRate ?? state.brokerAssumptions.annualRate) || 0.16,
+        annualBorrowRate: Number(rules.annualBorrowRate ?? rules.annualRate ?? state.brokerAssumptions.annualRate) || 0.16,
+        maintenanceMarginRatio:
+          Number(rules.maintenanceMarginRatio ?? rules.maintenanceEquityRatio ?? state.brokerAssumptions.maintenanceMarginRatio) || 0.25,
+        maintenanceEquityRatio:
+          Number(rules.maintenanceEquityRatio ?? rules.maintenanceMarginRatio ?? state.brokerAssumptions.maintenanceMarginRatio) || 0.25
+      };
+      saveBrokerRules(merged as any);
+      return {
+        ...state,
+        brokerAssumptions: merged
+      };
+    });
+  }
+
+  public setCashBalance(amount: number): void {
+    const num = Number(amount) || 0;
+    this.update((state) => {
+      const freeCash = Math.max(0, num);
+      const balance = num < 0 ? num : state.balance;
+      return {
+        ...state,
+        balance,
+        cashBalance: freeCash,
+        cashCushion: {
+          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          freeCash
+        }
+      };
+    });
+  }
+
+  public setMarginDebt(debtAmount: number): void {
+    const debt = Math.abs(Number(debtAmount) || 0);
+    this.update((state) => ({
+      ...state,
+      balance: -debt
+    }));
+  }
+
+  public buyStock(
+    ticker: string,
+    shares: number,
+    price: number,
+    date?: string,
+    pt?: number
+  ): void {
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || shares <= 0 || price <= 0) return;
+
+    const purchaseDate = date || todayIso();
+
+    this.update((state) => {
+
+      const totalVal = shares * price;
+
+      // Extract broker commission rules with safe fallbacks
+      const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
+      const commPerShare = Number(rules.commPerShare ?? rules.commissionPerShare ?? 0.02);
+      const commVolumePct = Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0005);
+      const minCommOrder = Number(rules.minCommOrder ?? rules.commissionMin ?? 1.50);
+
+      const rawBuyComm = shares * commPerShare + totalVal * commVolumePct;
+      let buyComm = Number(Math.max(minCommOrder, rawBuyComm).toFixed(2));
+
+      const positions = { ...(state.positions || {}) };
+      const existingPos = positions[clean];
+
+      const nextTranches: TrancheItem[] = [
+        ...(existingPos?.tranches || []),
+        { qty: shares, price, date: purchaseDate }
+      ];
+
+      const nextShares = (Number(existingPos?.shares) || 0) + shares;
+      const nextCommBuy = (Number(existingPos?.commBuy) || 0) + buyComm;
+
+      const earliestPosDate =
+        nextTranches
+          .map((t) => t.date)
+          .filter((d): d is string => Boolean(d))
+          .sort()[0] || purchaseDate;
+
+      positions[clean] = {
+        ...existingPos,
+        ticker: clean,
+        shares: nextShares,
+        currentPrice: existingPos?.currentPrice || price,
+        pt:
+          pt !== undefined && Number.isFinite(pt) && pt > 0
+            ? pt
+            : existingPos?.pt || Number((price * 1.1).toFixed(2)),
+        commBuy: nextCommBuy,
+        startDate: earliestPosDate,
+        tranches: nextTranches
+      };
+
+      const allDates = Object.values(positions)
+        .flatMap((p) => (p.tranches || []).map((t) => t.date))
+        .filter((d): d is string => Boolean(d))
+        .sort();
+      const earliestPortfolioDate = allDates[0] || state.startDate || purchaseDate;
+
+      let freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+      let currentDebt = Math.abs(Number(state.balance) || 0);
+      const totalOrderCost = totalVal + buyComm;
+
+      if (freeCash >= totalOrderCost) {
+        freeCash -= totalOrderCost;
+      } else {
+        const remainingCost = totalOrderCost - freeCash;
+        freeCash = 0;
+        currentDebt += remainingCost;
+      }
+
+      return {
+        ...state,
+        positions,
+        startDate: earliestPortfolioDate,
+        activeView: clean,
+        balance: -currentDebt,
+        cashBalance: freeCash,
+        cashCushion: {
+          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          freeCash
+        }
+      };
+    });
   }
 
   public addTranche(
     ticker: string,
-    trancheData: Omit<Tranche, 'id'> & { targetPrice?: number },
-    isMargin = true
+    tranche: { shares: number; entryPrice: number; purchaseDate?: string; targetPrice?: number }
   ): void {
-    const symbol = ticker.toUpperCase();
-    const id = Math.random().toString(36).substring(2, 9);
-    const qty = Number(trancheData.shares);
-    const price = Number(trancheData.entryPrice);
-    const date = trancheData.purchaseDate || new Date().toISOString().split('T')[0];
-
-    const tranche: Tranche = {
-      ...trancheData,
-      id
-    };
-
-    const s: any = { ...this.state };
-
-    // 1. Update holdings[] array
-    const existingIndex = (s.holdings || []).findIndex((h: Holding) => h.ticker === symbol);
-    const updatedHoldings = [...(s.holdings || [])];
-    if (existingIndex > -1) {
-      const current = updatedHoldings[existingIndex];
-      updatedHoldings[existingIndex] = {
-        ...current,
-        currentPrice: price,
-        tranches: [...(current.tranches || []), tranche]
-      };
-    } else {
-      updatedHoldings.push({
-        ticker: symbol,
-        isMargin,
-        currentPrice: price,
-        tranches: [tranche]
-      });
-    }
-    s.holdings = updatedHoldings;
-
-    // 2. Update positions{} map (used by app.ts & renderBoard.ts)
-    const rules = this.getRules();
-    const buyComm = calculateCommission(qty, qty * price, rules as any);
-    const positions = { ...(s.positions || {}) };
-    const existingPos = positions[symbol];
-
-    const posTranche = { id, qty, price, date };
-    if (existingPos) {
-      const nextTranches = [...(existingPos.tranches || []), posTranche];
-      const nextShares = nextTranches.reduce((sum: number, t: any) => sum + Number(t.qty ?? t.shares ?? 0), 0);
-      positions[symbol] = {
-        ...existingPos,
-        shares: nextShares,
-        currentPrice: existingPos.currentPrice || price,
-        commBuy: (Number(existingPos.commBuy) || 0) + buyComm,
-        ...(trancheData.targetPrice ? { pt: trancheData.targetPrice } : {}),
-        tranches: nextTranches
-      };
-    } else {
-      positions[symbol] = {
-        ticker: symbol,
-        shares: qty,
-        currentPrice: price,
-        pt: trancheData.targetPrice || Number((price * 1.1).toFixed(2)),
-        commBuy: buyComm,
-        tranches: [posTranche]
-      };
-    }
-    s.positions = positions;
-
-    // 3. Adjust cash / margin balance for purchase cost + commission
-    const totalCost = qty * price + buyComm;
-    const freeCash = Number(s.cashCushion?.freeCash) || 0;
-    const currentDebt = Number(s.balance) || 0; // negative or 0
-    if (freeCash >= totalCost) {
-      s.cashCushion = { ...(s.cashCushion || {}), freeCash: freeCash - totalCost };
-      s.cashBalance = s.cashCushion.freeCash + currentDebt;
-    } else {
-      const remainingCost = totalCost - freeCash;
-      if (s.cashCushion) s.cashCushion = { ...s.cashCushion, freeCash: 0 };
-      s.balance = currentDebt - remainingCost;
-      s.cashBalance = s.balance;
-    }
-
-    s.activeView = symbol;
-    s.selectedTicker = symbol;
-    this.state = s;
-    this.notify();
-  }
-
-  public sellTranche(ticker: string, sharesToSell: number, exitPrice: number, exitDate: string): void {
-    const symbol = ticker.toUpperCase();
-    const s: any = { ...this.state };
-    const rules = this.getRules();
-
-    const pos = s.positions?.[symbol];
-    const holding = (s.holdings || []).find((h: Holding) => h.ticker === symbol);
-    if (!pos && !holding) {
-      throw new Error(`No open position found for ${symbol}.`);
-    }
-
-    // Determine available shares
-    const availablePosShares = pos
-      ? Number(pos.shares) || (pos.tranches || []).reduce((sum: number, t: any) => sum + Number(t.qty ?? t.shares ?? 0), 0)
-      : 0;
-    const availableHoldingShares = holding
-      ? (holding.tranches || []).reduce((sum: number, t: Tranche) => sum + Number(t.shares || 0), 0)
-      : 0;
-    const availableShares = Math.max(availablePosShares, availableHoldingShares);
-
-    if (sharesToSell <= 0 || sharesToSell > availableShares) {
-      throw new Error(`Invalid share quantity. Open ${symbol} shares: ${availableShares}`);
-    }
-
-    // 1. FIFO deduction on positions[symbol]
-    let totalCostBasis = 0;
-    let earliestDate = exitDate;
-    let allocatedBuyComm = 0;
-    let allocatedMarginInterest = 0;
-
-    if (pos) {
-      let rem = sharesToSell;
-      const nextPosTranches: any[] = [];
-      const origTranches = pos.tranches || [];
-      if (origTranches[0]?.date) earliestDate = origTranches[0].date;
-
-      const totalDebt = Math.abs(Number(s.balance) || 0);
-      const totalMargin = calculateMarginInterest(origTranches, {
-        dailyRate: rules.dailyRate,
-        marginDebt: totalDebt,
-        totalDebt
-      } as any);
-      const sellRatio = availableShares > 0 ? sharesToSell / availableShares : 1;
-      allocatedBuyComm = (Number(pos.commBuy) || 0) * sellRatio;
-      allocatedMarginInterest = totalMargin * sellRatio;
-
-      for (const tr of origTranches) {
-        const trQty = Number(tr.qty ?? tr.shares ?? 0);
-        const trPrice = Number(tr.price ?? tr.entryPrice ?? 0);
-        if (rem <= 0) {
-          nextPosTranches.push({ ...tr });
-          continue;
-        }
-        if (trQty <= rem) {
-          rem -= trQty;
-          totalCostBasis += trQty * trPrice;
-        } else {
-          totalCostBasis += rem * trPrice;
-          nextPosTranches.push({ ...tr, qty: trQty - rem, shares: trQty - rem });
-          rem = 0;
-        }
-      }
-
-      const nextPositions = { ...(s.positions || {}) };
-      const remainingShares = nextPosTranches.reduce((sum, t) => sum + Number(t.qty ?? t.shares ?? 0), 0);
-
-      if (remainingShares > 0) {
-        nextPositions[symbol] = {
-          ...pos,
-          shares: remainingShares,
-          commBuy: Math.max(0, (Number(pos.commBuy) || 0) - allocatedBuyComm),
-          tranches: nextPosTranches
-        };
-      } else {
-        delete nextPositions[symbol];
-        if (s.activeView === symbol) {
-          const remainingKeys = Object.keys(nextPositions);
-          s.activeView = remainingKeys.length > 0 ? remainingKeys[0] : 'COMBINED';
-        }
-      }
-      s.positions = nextPositions;
-    }
-
-    // 2. FIFO deduction on holdings[] array
-    if (holding) {
-      let rem = sharesToSell;
-      let holdingCostBasis = 0;
-      const nextHoldingTranches: Tranche[] = [];
-      if (holding.tranches?.[0]?.purchaseDate) earliestDate = holding.tranches[0].purchaseDate;
-
-      for (const t of holding.tranches || []) {
-        if (rem <= 0) {
-          nextHoldingTranches.push(t);
-          continue;
-        }
-        if (t.shares <= rem) {
-          rem -= t.shares;
-          holdingCostBasis += t.shares * t.entryPrice;
-        } else {
-          holdingCostBasis += rem * t.entryPrice;
-          nextHoldingTranches.push({ ...t, shares: t.shares - rem });
-          rem = 0;
-        }
-      }
-      if (totalCostBasis === 0) totalCostBasis = holdingCostBasis;
-
-      s.holdings = (s.holdings || [])
-        .map((h: Holding) => (h.ticker === symbol ? { ...h, tranches: nextHoldingTranches } : h))
-        .filter((h: Holding) => (h.tranches || []).length > 0);
-    }
-
-    // 3. Calculate Proceeds, Commissions, and Closed Trade Record
-    const grossProceeds = sharesToSell * exitPrice;
-    const sellComm = calculateCommission(sharesToSell, grossProceeds, rules as any);
-    const totalCommissions = allocatedBuyComm + sellComm;
-    const netProceeds = grossProceeds - sellComm;
-    const netGain = grossProceeds - totalCostBasis - totalCommissions - allocatedMarginInterest;
-
-    const closedRecord = {
-      id: Math.random().toString(36).slice(2, 9),
-      ticker: symbol,
-      shares: sharesToSell,
-      avgBuyPrice: totalCostBasis / sharesToSell,
-      entryPrice: totalCostBasis / sharesToSell,
-      sellPrice: exitPrice,
-      exitPrice,
-      buyDate: earliestDate,
-      purchaseDate: earliestDate,
-      sellDate: exitDate,
-      exitDate,
-      grossProfit: grossProceeds - totalCostBasis,
-      commissions: totalCommissions,
-      totalCommissions,
-      marginInterest: allocatedMarginInterest,
-      netProfit: netGain,
-      netRealizedGain: netGain
-    };
-
-    s.closedTrades = [closedRecord, ...(s.closedTrades || [])];
-    s.closedHistory = [closedRecord, ...(s.closedHistory || [])];
-
-    // 4. Apply Net Proceeds to Margin Debt first, then Free Cash
-    const currentDebt = Number(s.balance) || 0; // negative or 0
-    const currentFreeCash = Number(s.cashCushion?.freeCash) || 0;
-    const nextSignedBalance = currentDebt + currentFreeCash + netProceeds;
-
-    if (nextSignedBalance >= 0) {
-      s.balance = 0;
-      s.cashCushion = { ...(s.cashCushion || { holdings: [] }), freeCash: nextSignedBalance };
-    } else {
-      s.balance = nextSignedBalance;
-      s.cashCushion = { ...(s.cashCushion || { holdings: [] }), freeCash: 0 };
-    }
-    s.cashBalance = nextSignedBalance;
-
-    this.state = s;
-    this.notify();
+    this.buyStock(
+      ticker,
+      Number(tranche.shares) || 0,
+      Number(tranche.entryPrice) || 0,
+      tranche.purchaseDate,
+      tranche.targetPrice
+    );
   }
 
   public removeTranche(ticker: string, trancheId: string): void {
-    const symbol = ticker.toUpperCase();
-    const s: any = { ...this.state };
+    const clean = ticker.trim().toUpperCase();
+    this.update((state) => {
+      const positions = { ...(state.positions || {}) };
+      const pos = positions[clean];
+      if (!pos) return state;
 
-    s.holdings = (s.holdings || [])
-      .map((h: Holding) => {
-        if (h.ticker !== symbol) return h;
-        return { ...h, tranches: h.tranches.filter((t) => t.id !== trancheId) };
-      })
-      .filter((h: Holding) => h.tranches.length > 0);
+      const idxMatch = trancheId.match(/-(\d+)$/);
+      const idxToRemove = idxMatch ? parseInt(idxMatch[1], 10) : -1;
+      const nextTranches = (pos.tranches || []).filter((_, i) => i !== idxToRemove);
 
-    if (s.positions?.[symbol]) {
-      const nextTranches = (s.positions[symbol].tranches || []).filter((t: any) => t.id !== trancheId);
-      const nextPositions = { ...s.positions };
-      if (nextTranches.length > 0) {
-        nextPositions[symbol] = {
-          ...nextPositions[symbol],
-          shares: nextTranches.reduce((sum: number, t: any) => sum + Number(t.qty ?? t.shares ?? 0), 0),
+      if (nextTranches.length === 0) {
+        delete positions[clean];
+      } else {
+        const nextShares = nextTranches.reduce((s, t) => s + t.qty, 0);
+        positions[clean] = {
+          ...pos,
+          shares: nextShares,
           tranches: nextTranches
         };
-      } else {
-        delete nextPositions[symbol];
       }
-      s.positions = nextPositions;
-    }
 
-    this.state = s;
-    this.notify();
+      const nextHoldings = (state.holdings || []).filter(
+        (h) => h.ticker.toUpperCase() !== clean || Boolean(positions[clean])
+      );
+
+      return {
+        ...state,
+        positions,
+        holdings: nextHoldings
+      };
+    });
+  }
+
+  public sellStock(
+    ticker: string,
+    sharesToSell: number | 'ALL',
+    sellPrice: number,
+    date?: string
+  ): void {
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || sellPrice <= 0) return;
+
+    this.update((state) => {
+      const positions = { ...(state.positions || {}) };
+      const pos = positions[clean];
+      if (!pos || pos.shares <= 0) return state;
+
+      const actualSold =
+        sharesToSell === 'ALL'
+          ? pos.shares
+          : Math.min(pos.shares, Math.max(0, Number(sharesToSell) || 0));
+      if (actualSold <= 0) return state;
+
+      const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
+      const dailyRate =
+        (Number(rules.annualRate ?? rules.annualBorrowRate) || 0.16) /
+        (Number(rules.dayCountBasis) || 365);
+
+      let remainingToSell = actualSold;
+      let soldCostBasis = 0;
+      const updatedTranches: TrancheItem[] = [];
+      const origTranches = pos.tranches || [
+        { qty: pos.shares, price: pos.currentPrice, date: pos.startDate }
+      ];
+      const earliestBuyDate =
+        origTranches[0]?.date || pos.startDate || state.startDate || todayIso();
+
+      for (const tr of origTranches) {
+        const trQty = Number((tr as any).qty ?? (tr as any).shares) || 0;
+        const trPrice = Number((tr as any).price ?? (tr as any).entryPrice) || 0;
+
+        if (remainingToSell <= 0) {
+          updatedTranches.push({ ...tr });
+          continue;
+        }
+
+        const take = Math.min(trQty, remainingToSell);
+        soldCostBasis += take * trPrice;
+        remainingToSell -= take;
+
+        if (trQty - take > 0) {
+          updatedTranches.push({ ...tr, qty: trQty - take });
+        }
+      }
+
+      if (soldCostBasis <= 0 && pos.currentPrice > 0) {
+        soldCostBasis = actualSold * pos.currentPrice;
+      }
+
+      const sellRatio = pos.shares > 0 ? actualSold / pos.shares : 1;
+      const buyCommAllocated = Number(((Number(pos.commBuy) || 0) * sellRatio).toFixed(2));
+      const sellProceeds = actualSold * sellPrice;
+
+      // Calculate sell commissions
+      const commPerShare = Number((rules as any).commPerShare ?? (rules as any).commissionPerShare ?? 0.02);
+      const commVolumePct = Number((rules as any).commVolumePct ?? (rules as any).commissionRatePct ?? 0.0005);
+      const minCommOrder = Number((rules as any).minCommOrder ?? (rules as any).commissionMin ?? 1.50);
+
+      const rawSellComm = actualSold * commPerShare + sellProceeds * commVolumePct;
+      let sellComm = Number(Math.max(minCommOrder, rawSellComm).toFixed(2));
+
+      try {
+        const calculated = calculateCommission(actualSold, sellProceeds, rules as any);
+        if (Number.isFinite(calculated) && calculated > 0) {
+          sellComm = Number(calculated.toFixed(2));
+        }
+      } catch {
+        // Fallback to rawSellComm
+      }
+
+      // Debt and margin interest calculation
+      const totalPortfolioInvested = Object.values(positions).reduce(
+        (acc, p) =>
+          acc +
+          (p.tranches || []).reduce(
+            (s, t) =>
+              s +
+              (Number((t as any).qty ?? (t as any).shares) || 0) *
+              (Number((t as any).price ?? (t as any).entryPrice) || 0),
+            0
+          ),
+        0
+      );
+      const posInvested = origTranches.reduce(
+        (s, t) =>
+          s +
+          (Number((t as any).qty ?? (t as any).shares) || 0) *
+          (Number((t as any).price ?? (t as any).entryPrice) || 0),
+        0
+      );
+      const weight = totalPortfolioInvested > 0 ? posInvested / totalPortfolioInvested : 1;
+      const totalDebt = Math.abs(Number(state.balance) || 0);
+      const allocatedDebt = totalDebt * weight;
+
+      let posMarginInterest = 0;
+      try {
+        posMarginInterest = calculateMarginInterest(origTranches as any, {
+          dailyRate,
+          marginDebt: allocatedDebt,
+          totalDebt
+        } as any);
+      } catch {
+        posMarginInterest = 0;
+      }
+      const marginInterestAllocated = Number((posMarginInterest * sellRatio).toFixed(2));
+
+      const totalCommissions = Number((buyCommAllocated + sellComm).toFixed(2));
+      const grossProfit = Number((sellProceeds - soldCostBasis).toFixed(2));
+      const netProfit = Number((grossProfit - totalCommissions - marginInterestAllocated).toFixed(2));
+      const netCashProceeds = Number((sellProceeds - sellComm - marginInterestAllocated).toFixed(2));
+
+      let currentDebt = totalDebt;
+      let freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+
+      if (currentDebt >= netCashProceeds) {
+        currentDebt -= netCashProceeds;
+      } else {
+        const surplus = netCashProceeds - currentDebt;
+        currentDebt = 0;
+        freeCash += surplus;
+      }
+
+      const remainingShares = pos.shares - actualSold;
+      if (remainingShares <= 0 || updatedTranches.length === 0) {
+        delete positions[clean];
+      } else {
+        positions[clean] = {
+          ...pos,
+          shares: remainingShares,
+          commBuy: Math.max(0, (Number(pos.commBuy) || 0) - buyCommAllocated),
+          tranches: updatedTranches
+        };
+      }
+
+      const nextHoldings = (state.holdings || []).filter(
+        (h) => h.ticker.toUpperCase() !== clean || Boolean(positions[clean])
+      );
+
+      const exitDateStr = date || todayIso();
+      const buyTimestamp = new Date(earliestBuyDate).getTime();
+      const exitTimestamp = new Date(exitDateStr).getTime();
+      const holdingDays = Math.max(
+        0,
+        Math.round(Math.abs(exitTimestamp - buyTimestamp) / 86400000)
+      );
+      const closedTimestamp = Number.isFinite(exitTimestamp) ? exitTimestamp : Date.now();
+
+      const closedRecord: ClosedTrade = {
+        id: `${clean}-${Date.now()}`,
+        ticker: clean,
+        shares: actualSold,
+        avgBuyPrice: soldCostBasis / actualSold,
+        entryPrice: soldCostBasis / actualSold,
+        sellPrice,
+        exitPrice: sellPrice,
+        buyDate: earliestBuyDate,
+        purchaseDate: earliestBuyDate,
+        sellDate: exitDateStr,
+        exitDate: exitDateStr,
+        date: closedTimestamp,
+        closedAt: new Date(closedTimestamp).toISOString(),
+        grossProfit,
+        commissions: totalCommissions,
+        feesAndCommissions: totalCommissions,
+        totalCommissions,
+        marginInterest: marginInterestAllocated,
+        netProfit,
+        netRealizedGain: netProfit,
+        holdingDays
+      };
+
+      const nextActiveView = positions[clean] ? clean : 'COMBINED';
+
+      return {
+        ...state,
+        positions,
+        holdings: nextHoldings,
+        activeView: nextActiveView,
+        balance: -currentDebt,
+        cashBalance: freeCash,
+        cashCushion: {
+          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          freeCash
+        },
+        closedTrades: [closedRecord, ...(state.closedTrades || [])]
+      };
+    });
   }
 
   public updatePrice(ticker: string, price: number): void {
-    const symbol = ticker.toUpperCase();
-    const s: any = { ...this.state };
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || price <= 0) return;
 
-    s.holdings = (s.holdings || []).map((h: Holding) =>
-      h.ticker === symbol ? { ...h, currentPrice: price } : h
-    );
+    this.update((state) => {
+      const positions = { ...(state.positions || {}) };
+      if (positions[clean]) {
+        positions[clean] = {
+          ...positions[clean],
+          currentPrice: price
+        };
+      }
 
-    if (s.positions?.[symbol]) {
-      s.positions = {
-        ...s.positions,
-        [symbol]: { ...s.positions[symbol], currentPrice: price }
+      const cashHoldings = (state.cashCushion?.holdings || []).map((h) =>
+        h.ticker.toUpperCase() === clean ? { ...h, currentPrice: price, price } : h
+      );
+
+      const cashStocks = (state.cashStocks || []).map((cs) =>
+        cs.ticker.toUpperCase() === clean ? { ...cs, currentPrice: price } : cs
+      );
+
+      return {
+        ...state,
+        positions,
+        cashStocks,
+        cashCushion: {
+          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          holdings: cashHoldings
+        }
       };
-    }
+    });
+  }
 
-    if (Array.isArray(s.cashCushion?.holdings)) {
-      s.cashCushion = {
-        ...s.cashCushion,
-        holdings: s.cashCushion.holdings.map((h: any) =>
-          h.ticker === symbol ? { ...h, price, currentPrice: price } : h
-        )
+  public updateTargetPrice(ticker: string, pt: number): void {
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || pt <= 0) return;
+
+    this.update((state) => {
+      const positions = { ...(state.positions || {}) };
+      if (!positions[clean]) return state;
+      positions[clean] = {
+        ...positions[clean],
+        pt
       };
-    }
-
-    this.state = s;
-    this.notify();
-  }
-
-  public setTargetPrice(ticker: string, pt: number): void {
-    const symbol = ticker.toUpperCase();
-    const s: any = { ...this.state };
-    if (!s.positions?.[symbol]) {
-      throw new Error(`No open position found for ${symbol}.`);
-    }
-    s.positions = {
-      ...s.positions,
-      [symbol]: { ...s.positions[symbol], pt }
-    };
-    this.state = s;
-    this.notify();
-  }
-
-  public addCashStock(ticker: string, shares: number, givenPrice = 0): void {
-    const symbol = ticker.toUpperCase();
-    const s: any = { ...this.state };
-    if (!s.cashCushion) s.cashCushion = { freeCash: 0, holdings: [] };
-    const holdings = Array.isArray(s.cashCushion.holdings) ? [...s.cashCushion.holdings] : [];
-
-    const idx = holdings.findIndex((h: any) => h.ticker === symbol);
-    if (idx > -1) {
-      const existing = holdings[idx];
-      holdings[idx] = {
-        ...existing,
-        shares: (Number(existing.shares) || 0) + shares,
-        price: givenPrice > 0 ? givenPrice : Number(existing.price) || 0
+      return {
+        ...state,
+        positions
       };
-    } else {
-      holdings.push({ ticker: symbol, shares, price: givenPrice });
-    }
-
-    s.cashCushion = { ...s.cashCushion, holdings };
-    this.state = s;
-    this.notify();
+    });
   }
 
-  public removeCashStock(ticker: string): boolean {
-    const symbol = ticker.toUpperCase();
-    const s: any = { ...this.state };
-    const holdings = s.cashCushion?.holdings;
-    if (!Array.isArray(holdings)) return false;
+  public addCashStock(ticker: string, shares: number, price: number): void {
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || shares <= 0 || price <= 0) return;
 
-    const idx = holdings.findIndex((h: any) => h.ticker === symbol);
-    if (idx < 0) return false;
+    this.update((state) => {
+      const holdings = [...(state.cashCushion?.holdings || [])];
+      const existingIdx = holdings.findIndex((h) => h.ticker.toUpperCase() === clean);
+      if (existingIdx >= 0) {
+        const prev = holdings[existingIdx];
+        holdings[existingIdx] = {
+          ...prev,
+          shares: (Number(prev.shares) || 0) + shares,
+          price,
+          currentPrice: price
+        };
+      } else {
+        holdings.push({
+          ticker: clean,
+          shares,
+          price,
+          currentPrice: price
+        });
+      }
 
-    const nextHoldings = [...holdings];
-    nextHoldings.splice(idx, 1);
-    s.cashCushion = { ...s.cashCushion, holdings: nextHoldings };
-    this.state = s;
-    this.notify();
-    return true;
+      return {
+        ...state,
+        cashCushion: {
+          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          holdings
+        }
+      };
+    });
   }
 
-  public importState(newState: Partial<PortfolioState> | Record<string, unknown>): void {
-    this.state = { ...this.state, ...(newState as PortfolioState) };
-    this.notify();
+  public removeCashStock(indexOrTicker: number | string): void {
+    this.update((state) => {
+      const holdings = [...(state.cashCushion?.holdings || [])];
+      const nextHoldings =
+        typeof indexOrTicker === 'number'
+          ? holdings.filter((_, idx) => idx !== indexOrTicker)
+          : holdings.filter((h) => h.ticker.toUpperCase() !== indexOrTicker.toUpperCase());
+
+      return {
+        ...state,
+        cashCushion: {
+          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          holdings: nextHoldings
+        }
+      };
+    });
+  }
+
+  public deleteClosedTrade(index: number): void {
+    this.update((state) => {
+      const nextClosed = (state.closedTrades || []).filter((_, idx) => idx !== index);
+      return {
+        ...state,
+        closedTrades: nextClosed
+      };
+    });
+  }
+
+  public setPendingMutation(mutation: PendingMutation | null): void {
+    this.setState({ pendingMutation: mutation });
+  }
+
+  public setApiKey(provider: keyof PortfolioState['apiKeys'], key: string): void {
+    this.update((state) => ({
+      ...state,
+      apiKeys: {
+        ...(state.apiKeys || {}),
+        [provider]: key
+      }
+    }));
   }
 }
 

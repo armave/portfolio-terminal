@@ -30,7 +30,7 @@ export interface ClosedTrade {
 export interface PortfolioState {
   activeView: string;
   balance: number;
-  settings?: { marginRate?: number; [key: string]: unknown };
+  settings?: { marginRate?: number;[key: string]: unknown };
   realizedMarginCharged: number;
   startDate: string;
   lastRolloverTimestamp: number;
@@ -65,15 +65,6 @@ export function calculateCommission(
 ): number {
   if (shares <= 0) return 0;
   return Math.max(rules.minCommOrder, (rules.commPerShare * shares) + (rules.commVolumePct * totalVal));
-}
-
-export function calculateCompoundedDebt(
-  principal: number,
-  dailyRate: number,
-  days: number
-): number {
-  if (principal <= 0 || days <= 0 || dailyRate <= 0) return principal;
-  return principal * Math.pow(1 + dailyRate, days);
 }
 
 export interface MarginInterestState {
@@ -124,101 +115,227 @@ export function getDaysPassed(startDate: Date, endDate: Date = new Date()): numb
   return Math.floor((end.getTime() - start.getTime()) / 86400000);
 }
 
+/**
+ * Broker cutoff: 04:00 AM local Armenia time (UTC+4)
+ */
+export function getRolloverCutoff(date: Date = new Date()): Date {
+  const cutoff = new Date(date);
+  cutoff.setHours(4, 0, 0, 0);
+  return cutoff;
+}
+
+/**
+ * Calculates overnight rollover cycles between a past purchase date and current time.
+ */
+export function getAccruedRolloverCycles(purchaseDateStr?: string, now: Date = new Date()): number {
+  if (!purchaseDateStr) return 0;
+
+  const parts = purchaseDateStr.split(/[-/]/);
+  if (parts.length < 3) return 0;
+
+  const pYear = parseInt(parts[0], 10);
+  const pMonth = parseInt(parts[1], 10) - 1;
+  const pDay = parseInt(parts[2], 10);
+
+  const purchaseMidnight = new Date(pYear, pMonth, pDay, 0, 0, 0, 0);
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+  const diffDays = Math.round((todayMidnight.getTime() - purchaseMidnight.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays <= 0) return 0;
+
+  // If purchase date was yesterday or earlier, check if today's 04:00 AM cutoff has passed
+  const todayCutoff = getRolloverCutoff(now);
+  const hasPassedTodayCutoff = now.getTime() >= todayCutoff.getTime();
+
+  return hasPassedTodayCutoff ? diffDays : Math.max(0, diffDays - 1);
+}
+
+/**
+ * Calculates accrued margin interest.
+ * Supports:
+ * 1. calculateMarginInterest(debt: number, dailyRate: number, days: number): number
+ * 2. calculateMarginInterest(principal: number, options: MarginInterestOptions, days?: number): number
+ * 3. calculateMarginInterest(stateOrTranches: any, options: MarginInterestOptions, days?: number): number
+ */
 export function calculateMarginInterest(
-  principal: number,
-  dailyRate: number,
-  days: number
-): number;
-export function calculateMarginInterest(
-  stateOrTranches: MarginInterestState | Array<TradeTranche | Record<string, unknown>>,
-  optionsOrRate?: number | MarginInterestOptions,
-  maybeOptions?: MarginInterestOptions
-): number;
-export function calculateMarginInterest(
-  target: number | MarginInterestState | Array<TradeTranche | Record<string, unknown>>,
-  arg2?: number | MarginInterestOptions,
-  arg3?: number | MarginInterestOptions
+  tranchesOrDebt: any,
+  paramsOrDailyRate?: any,
+  maybeDays?: number
 ): number {
-  if (typeof target === 'number') {
-    const dailyRate = typeof arg2 === 'number' ? arg2 : 0;
-    const days = typeof arg3 === 'number' ? arg3 : 0;
-    return Math.max(0, calculateCompoundedDebt(target, dailyRate, days) - target);
-  }
+  // Signature 1: Direct number principal
+  if (typeof tranchesOrDebt === 'number') {
+    const principal = tranchesOrDebt;
+    let dailyRate = 0;
+    let marginRatio = 1;
+    let days = 0;
 
-  const options: MarginInterestOptions = {
-    ...(typeof arg2 === 'object' && arg2 !== null ? arg2 : {}),
-    ...(typeof arg3 === 'object' && arg3 !== null ? arg3 : {})
-  };
+    if (typeof paramsOrDailyRate === 'number') {
+      dailyRate = paramsOrDailyRate;
+      days = Number(maybeDays) || 0;
+    } else if (paramsOrDailyRate && typeof paramsOrDailyRate === 'object') {
+      const opts = paramsOrDailyRate;
+      if (typeof opts.dailyRate === 'number') {
+        dailyRate = opts.dailyRate;
+      } else if (typeof opts.annualRate === 'number') {
+        dailyRate = opts.annualRate / (Number(opts.dayCountBasis) || 365);
+      } else if (typeof opts.annualBorrowRate === 'number') {
+        dailyRate = opts.annualBorrowRate / (Number(opts.dayCountBasis) || 365);
+      }
 
-  const annualRate = typeof arg2 === 'number'
-    ? arg2
-    : typeof arg3 === 'number'
-      ? arg3
-      : (options.annualRate ?? 0.15);
+      if (typeof opts.marginUtilizationRatio === 'number') {
+        marginRatio = opts.marginUtilizationRatio;
+      } else if (typeof opts.marginRatio === 'number') {
+        marginRatio = opts.marginRatio;
+      } else if (typeof opts.utilizationRatio === 'number') {
+        marginRatio = opts.utilizationRatio;
+      } else if (typeof opts.marginDebt === 'number') {
+        const debt = Math.abs(opts.marginDebt);
+        if (typeof opts.totalDebt === 'number' && opts.totalDebt > 0) {
+          marginRatio = debt / opts.totalDebt;
+        } else if (principal > 0) {
+          marginRatio = debt / principal;
+        }
+      }
 
-  const endDate = options.now instanceof Date
-    ? options.now
-    : (options.now ? new Date(options.now) : new Date());
-
-  let tranches: Array<TradeTranche | Record<string, unknown>> = [];
-  let debtValue: number | undefined;
-
-  if (Array.isArray(target)) {
-    tranches = target;
-    debtValue = options.marginDebt ?? options.totalDebt;
-  } else if (isRecord(target)) {
-    if (typeof target.balance === 'number' && target.balance >= 0 && target.marginDebt === undefined) {
-      return 0;
+      days = Number(maybeDays ?? opts.days ?? opts.daysHeld ?? opts.holdingDays) || 0;
     }
-    if (target.marginDebt === 0 || target.totalDebt === 0) {
-      return 0;
+
+    return principal * marginRatio * dailyRate * days;
+  }
+
+  // Signature 2: Tranches array or state/holding/position object
+  let tranches: any[] = [];
+  const stateObj =
+    typeof tranchesOrDebt === 'object' && tranchesOrDebt !== null && !Array.isArray(tranchesOrDebt)
+      ? tranchesOrDebt
+      : {};
+
+  if (Array.isArray(tranchesOrDebt)) {
+    tranches = tranchesOrDebt;
+  } else if (stateObj) {
+    if (Array.isArray(stateObj.tranches)) {
+      tranches = stateObj.tranches;
+    } else if (stateObj.shares || stateObj.qty) {
+      tranches = [stateObj];
     }
-    if (Array.isArray(target.tranches)) {
-      tranches = target.tranches as Array<TradeTranche | Record<string, unknown>>;
-    } else if (isRecord(target.positions)) {
-      tranches = Object.values(target.positions).flatMap(p => (isRecord(p) && Array.isArray(p.tranches) ? p.tranches : []));
+  }
+
+  if (tranches.length === 0) return 0;
+
+  // Merge options: parameters passed in 2nd argument take precedence over properties on state object
+  const passedOpts =
+    typeof paramsOrDailyRate === 'object' && paramsOrDailyRate !== null
+      ? paramsOrDailyRate
+      : {};
+  const options = { ...stateObj, ...passedOpts };
+
+  let dailyRate = 0;
+  if (typeof paramsOrDailyRate === 'number') {
+    dailyRate = paramsOrDailyRate;
+  } else if (typeof options.dailyRate === 'number' && options.dailyRate > 0) {
+    dailyRate = options.dailyRate;
+  } else if (typeof options.annualRate === 'number' && options.annualRate > 0) {
+    const basis = Number(options.dayCountBasis) || 365;
+    dailyRate = options.annualRate / basis;
+  } else if (typeof options.annualBorrowRate === 'number' && options.annualBorrowRate > 0) {
+    const basis = Number(options.dayCountBasis) || 365;
+    dailyRate = options.annualBorrowRate / basis;
+  }
+
+  if (dailyRate <= 0) return 0;
+
+  const totalInvested = tranches.reduce((sum: number, tr: any) => {
+    const q = Number(tr.qty ?? tr.shares ?? 0) || 0;
+    const p = Number(tr.price ?? tr.entryPrice ?? 0) || 0;
+    return sum + q * p;
+  }, 0);
+
+  let marginRatio = 1;
+  const ratioCandidate =
+    options.marginUtilizationRatio ?? options.marginRatio ?? options.utilizationRatio;
+
+  if (typeof ratioCandidate === 'number') {
+    marginRatio = ratioCandidate;
+  } else if (options.marginDebt !== undefined || (typeof options.balance === 'number' && options.balance < 0)) {
+    const debt = Math.abs(Number(options.marginDebt ?? options.balance) || 0);
+    if (typeof options.totalDebt === 'number' && options.totalDebt > 0) {
+      marginRatio = debt / options.totalDebt;
+    } else if (totalInvested > 0) {
+      marginRatio = debt / totalInvested;
     }
-    const targetDebt = target.marginDebt ?? (typeof target.balance === 'number' && target.balance < 0 ? target.balance : undefined) ?? target.totalDebt;
-    debtValue = typeof targetDebt === 'number' ? targetDebt : (options.marginDebt ?? options.totalDebt);
   }
 
-  if (!tranches || tranches.length === 0) return 0;
+  const explicitDays =
+    maybeDays !== undefined
+      ? Number(maybeDays)
+      : passedOpts.days !== undefined
+        ? Number(passedOpts.days)
+        : passedOpts.daysHeld !== undefined
+          ? Number(passedOpts.daysHeld)
+          : passedOpts.holdingDays !== undefined
+            ? Number(passedOpts.holdingDays)
+            : null;
 
-  let totalInvested = 0;
-  for (const tranche of tranches) {
-    if (!isRecord(tranche)) continue;
-    const shares = Number(tranche.shares ?? tranche.qty) || 0;
-    const price = Number(tranche.price) || 0;
-    totalInvested += shares * price;
+  const now = options.now ? new Date(options.now) : new Date();
+
+  let totalInterest = 0;
+  for (const tr of tranches) {
+    const q = Number(tr.qty ?? tr.shares ?? 0) || 0;
+    const p = Number(tr.price ?? tr.entryPrice ?? 0) || 0;
+    const trancheCost = q * p;
+    if (trancheCost <= 0) continue;
+
+    let days = 0;
+    if (explicitDays !== null && Number.isFinite(explicitDays)) {
+      days = Math.max(0, explicitDays);
+    } else if (typeof tr.days === 'number') {
+      days = Math.max(0, tr.days);
+    } else if (typeof tr.daysHeld === 'number') {
+      days = Math.max(0, tr.daysHeld);
+    } else if (typeof tr.holdingDays === 'number') {
+      days = Math.max(0, tr.holdingDays);
+    } else {
+      const rawDate = tr.date ?? tr.purchaseDate ?? tr.entryDate;
+      let trancheTs: number;
+      if (typeof resolveTradeDateTimestamp === 'function') {
+        trancheTs = resolveTradeDateTimestamp(rawDate, now.getTime());
+      } else if (rawDate instanceof Date) {
+        trancheTs = rawDate.getTime();
+      } else if (typeof rawDate === 'number') {
+        trancheTs = rawDate;
+      } else {
+        trancheTs = Date.parse(String(rawDate)) || now.getTime();
+      }
+
+      const trancheDate = new Date(trancheTs);
+      const dTranche = new Date(trancheDate.getFullYear(), trancheDate.getMonth(), trancheDate.getDate());
+      const dNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const diffDays = Math.round((dNow.getTime() - dTranche.getTime()) / (1000 * 60 * 60 * 24));
+      days = Math.max(0, diffDays);
+    }
+
+    totalInterest += trancheCost * marginRatio * dailyRate * days;
   }
 
-  if (!Number.isFinite(totalInvested) || totalInvested <= 0) return 0;
+  return totalInterest;
+}
 
-  const marginDebt = typeof debtValue === 'number' ? Math.abs(debtValue) : totalInvested;
-  if (marginDebt <= 0) return 0;
-  const marginRatio = Math.min(1, marginDebt / totalInvested);
-
-  let totalAccruedInterest = 0;
-  for (const tranche of tranches) {
-    if (!isRecord(tranche)) continue;
-    const shares = Number(tranche.shares ?? tranche.qty) || 0;
-    const price = Number(tranche.price) || 0;
-    const trancheCost = shares * price;
-    const rawDate = tranche.date ?? tranche.acquiredAt;
-    const days = getDaysPassed(parseTrancheDate(rawDate, endDate.getFullYear()), endDate);
-    const trancheInterest = trancheCost * marginRatio * (annualRate / 365) * Math.max(0, days);
-    totalAccruedInterest += trancheInterest;
-  }
-
-  return Math.max(0, totalAccruedInterest);
+export function calculateCompoundedDebt(principal: number, dailyRate: number, days: number): number {
+  const p = Math.abs(Number(principal) || 0);
+  const r = Number(dailyRate) || 0;
+  const d = Number(days) || 0;
+  return Number((p * Math.pow(1 + r, d)).toFixed(2));
 }
 
 export function calculateAccruedFees(
   totalComms: number,
   marginCharged: number,
-  additionalAccrual = 0
+  additionalMargin: number
 ): number {
-  return totalComms + marginCharged + additionalAccrual;
+  const comms = Number(totalComms) || 0;
+  const charged = Number(marginCharged) || 0;
+  const addl = Number(additionalMargin) || 0;
+  return Number((comms + charged + addl).toFixed(2));
 }
 
 export function calculateBreakevenDays(
@@ -294,10 +411,10 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
     if (!isRecord(position)) return;
     const tranches = Array.isArray(position.tranches)
       ? position.tranches.filter(isRecord).map(tranche => ({
-          ...tranche,
-          qty: finiteNumber(tranche.qty, 0),
-          price: finiteNumber(tranche.price, 0)
-        }))
+        ...tranche,
+        qty: finiteNumber(tranche.qty, 0),
+        price: finiteNumber(tranche.price, 0)
+      }))
       : [];
     normalizedPositions[ticker] = {
       ...position,
@@ -312,13 +429,13 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
   const sourceTimestamp = Number(candidate.lastRolloverTimestamp);
   const closedTrades = Array.isArray(candidate.closedTrades)
     ? candidate.closedTrades.filter(isRecord).map(trade => ({
-        ticker: typeof trade.ticker === 'string' ? trade.ticker : '',
-        date: finiteNumber(trade.date, now),
-        shares: finiteNumber(trade.shares, 0),
-        holdingDays: finiteNumber(trade.holdingDays, 0),
-        feesAndCommissions: finiteNumber(trade.feesAndCommissions, 0),
-        netProfit: finiteNumber(trade.netProfit, 0)
-      }))
+      ticker: typeof trade.ticker === 'string' ? trade.ticker : '',
+      date: finiteNumber(trade.date, now),
+      shares: finiteNumber(trade.shares, 0),
+      holdingDays: finiteNumber(trade.holdingDays, 0),
+      feesAndCommissions: finiteNumber(trade.feesAndCommissions, 0),
+      netProfit: finiteNumber(trade.netProfit, 0)
+    }))
     : [];
   return {
     ...blankState,
@@ -453,13 +570,13 @@ export function realizeClosedTrade(
   const feesAndCommissions = buyCommission + sellCommission + marginFee;
   const trade = closedShares > 0
     ? {
-        ticker,
-        date: closedAt,
-        shares: closedShares,
-        holdingDays,
-        feesAndCommissions,
-        netProfit: (closedShares * sellPrice) - costBasis - feesAndCommissions
-      }
+      ticker,
+      date: closedAt,
+      shares: closedShares,
+      holdingDays,
+      feesAndCommissions,
+      netProfit: (closedShares * sellPrice) - costBasis - feesAndCommissions
+    }
     : null;
 
   return {
@@ -499,9 +616,9 @@ export function processRollovers(state: any): boolean {
   while (nextBoundary <= now) {
     if (state.balance < 0) {
       // Dynamically fetch margin rate (fallback to 0.15 if not explicitly defined in settings)
-      const marginRate = state.settings?.marginRate || 0.15; 
+      const marginRate = state.settings?.marginRate || 0.15;
       const dailyFee = Math.abs(state.balance) * (marginRate / 365);
-      
+
       state.balance -= dailyFee; // Deduct fee (compounding the negative balance)
       state.balance = Math.round(state.balance * 100) / 100;
       totalDeducted += dailyFee;
