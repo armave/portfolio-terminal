@@ -236,11 +236,9 @@ export class CommandDispatcher {
 
         const state: any = portfolioStore.getState();
         const pos = state.positions?.[sym];
-        const holding = (state.holdings || []).find((h: any) => h.ticker === sym);
         const availableShares =
           Number(pos?.shares) ||
-          (pos?.tranches || []).reduce((sum: number, t: any) => sum + Number(t.qty ?? t.shares ?? 0), 0) ||
-          (holding?.tranches || []).reduce((sum: number, t: any) => sum + Number(t.shares || 0), 0);
+          (pos?.tranches || []).reduce((sum: number, t: any) => sum + Number(t.qty ?? t.shares ?? 0), 0);
 
         if (availableShares <= 0) {
           throw new Error(`No open position found for ${sym}.`);
