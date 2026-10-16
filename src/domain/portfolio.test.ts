@@ -195,16 +195,16 @@ describe('portfolio domain', () => {
     expect(calculateCommission(0, 100, rules)).toBe(0); // 0 shares
   });
 
-  it('calculates accrued rollover cycles correctly based on 04:00 AM cutoff', () => {
+  it('calculates rollover cycles at 04:00 in Asia/Yerevan independent of host timezone', () => {
     const purchaseDate = '2026-10-01';
-    // Same day before cutoff
-    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-01T03:00:00'))).toBe(0);
-    // Same day after cutoff
-    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-01T05:00:00'))).toBe(0);
-    // Next day before cutoff
-    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-02T03:00:00'))).toBe(0);
-    // Next day after cutoff
-    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-02T05:00:00'))).toBe(1);
+    // 03:00 Armenia time on purchase day (23:00Z previous day).
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-09-30T23:00:00Z'))).toBe(0);
+    // 05:00 Armenia time on purchase day.
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-01T01:00:00Z'))).toBe(0);
+    // 03:00 Armenia time the next day, before the cutoff.
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-01T23:00:00Z'))).toBe(0);
+    // 05:00 Armenia time the next day, after the cutoff.
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-02T01:00:00Z'))).toBe(1);
   });
 
   it('processes rollovers and deducts margin from balance', () => {
