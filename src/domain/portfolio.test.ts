@@ -69,6 +69,20 @@ describe('portfolio domain', () => {
     expect(normalized.closedTrades).toEqual([]);
   });
 
+  it('omits legacy marginBalance without mutating the source state', () => {
+    const source = {
+      activeView: 'AAPL',
+      balance: -100,
+      marginBalance: 500
+    };
+    const original = { ...source };
+
+    const normalized = normalizePortfolioState(source, 10_000);
+
+    expect(source).toEqual(original);
+    expect(normalized).not.toHaveProperty('marginBalance');
+  });
+
   it('rejects non-object imported state', () => {
     expect(() => normalizePortfolioState([])).toThrow('Portfolio state must be an object.');
   });
