@@ -232,6 +232,21 @@ describe('canonical trade lifecycle and persistence', () => {
     vi.unstubAllGlobals();
   });
 
+  it('uses the same default broker assumptions as the application settings', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    expect(store.getState().brokerAssumptions).toMatchObject({
+      annualRate: 0.15,
+      annualBorrowRate: 0.15,
+      dayCountBasis: 365,
+      rolloverHour: 4,
+      rolloverMinute: 0,
+      commPerShare: 0.012,
+      commVolumePct: 0.0012,
+      minCommOrder: 1.2
+    });
+  });
+
   it('clears prior margin debt when a positive cash balance is entered', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
