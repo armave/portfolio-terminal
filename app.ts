@@ -1687,6 +1687,5 @@ Object.assign(window as any, {
   setQuoteRefreshInterval,
   showToast,
   switchView,
-  toggleMarketInsights,
   updateEmptyStateVisibility
 });
