@@ -1,4 +1,4 @@
-export interface GeminiModel {
+interface GeminiModel {
   name: string;
   supportedGenerationMethods?: string[];
 }

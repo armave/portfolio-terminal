@@ -52,13 +52,13 @@ export interface Holding {
   };
 }
 
-export interface CashStock {
+interface CashStock {
   ticker: string;
   shares: number;
   currentPrice?: number;
 }
 
-export interface CashStockHolding {
+interface CashStockHolding {
   ticker: string;
   shares: number | string;
   price?: number | string;
@@ -68,7 +68,7 @@ export interface CashStockHolding {
   quoteDetails?: QuoteDetails;
 }
 
-export interface CashCushionState {
+interface CashCushionState {
   freeCash: number | string;
   holdings: CashStockHolding[];
 }
@@ -134,7 +134,7 @@ export interface BrokerRules {
   [key: string]: any;
 }
 
-export interface ApiKeys {
+interface ApiKeys {
   finnhub?: string;
   twelveData?: string;
   alphaVantage?: string;

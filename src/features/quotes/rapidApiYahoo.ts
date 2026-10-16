@@ -27,7 +27,7 @@ export interface RapidApiYahooQuote {
   preMarketChangePercent?: number;
 }
 
-export class RapidApiYahooError extends Error {
+class RapidApiYahooError extends Error {
   constructor(message: string, readonly status?: number) {
     super(message);
     this.name = 'RapidApiYahooError';

@@ -3,12 +3,11 @@ import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedState, saveState } from './storage';
 import { PortfolioState } from '../types/portfolio';
 
-export const YAHOO_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
-export { processRollovers };
+const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
 export function setSecretGetter(_getter: () => string): void { }
 
-export function getActiveGatewaySecret(state?: Record<string, any> | PortfolioState): string {
+function getActiveGatewaySecret(state?: Record<string, any> | PortfolioState): string {
   if (state && 'gatewaySecret' in state && (state as any).gatewaySecret) {
     return (state as any).gatewaySecret;
   }
@@ -33,7 +32,7 @@ export async function proxyFetch(
   queryParams: Record<string, string | number | boolean | undefined | null> = {},
   fetchOptions: ProxyFetchOptions = {}
 ): Promise<any> {
-  const url = new URL(YAHOO_PROXY_URL);
+  const url = new URL(WORKER_PROXY_URL);
   if (action) {
     if (action.startsWith('/')) {
       url.pathname = action;
@@ -114,7 +113,7 @@ export async function pullCloudState(options: SyncOptions | ((state: any) => voi
   // showToast('Pulling portfolio from KV cloud...', 'info');
 
   try {
-    const url = new URL('/api/state', YAHOO_PROXY_URL);
+    const url = new URL('/api/state', WORKER_PROXY_URL);
     const res = await fetch(url.toString(), {
       method: 'GET',
       headers: {
@@ -235,7 +234,7 @@ export async function pushCloudState(state?: any, options: SyncOptions = {}): Pr
     const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(stateToEncrypt), currentSecret).toString();
     const payload = { encryptedPayload: ciphertext };
 
-    const url = new URL('/api/state', YAHOO_PROXY_URL);
+    const url = new URL('/api/state', WORKER_PROXY_URL);
     const res = await fetch(url.toString(), {
       method: 'POST',
       headers: {

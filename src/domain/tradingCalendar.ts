@@ -1,13 +1,13 @@
-export type ProjectionKind = 'entry' | 'today' | 'next-trading-day' | 'week-end' | 'weekly';
+type ProjectionKind = 'entry' | 'today' | 'next-trading-day' | 'week-end' | 'weekly';
 
-export interface ProjectionDate {
+interface ProjectionDate {
   date: Date;
   daysFromToday: number;
   kind: ProjectionKind;
   label?: string;
 }
 
-export function getProjectionMilestoneLabel(
+function getProjectionMilestoneLabel(
   daysFromToday: number,
   kind: ProjectionKind
 ): string {

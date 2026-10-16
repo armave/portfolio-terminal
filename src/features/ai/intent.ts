@@ -1,16 +1,16 @@
-export interface LadderIntent {
+interface LadderIntent {
   intent: 'ladder';
   ticker: string | null;
   steps: Array<{ shares: number; price: number; days: number; label?: string }>;
 }
 
-export interface ComparisonIntent {
+interface ComparisonIntent {
   intent: 'comparison';
   ticker: string | null;
   scenarios: Array<{ label: string; price: number; days: number }>;
 }
 
-export interface SimulationIntent {
+interface SimulationIntent {
   intent: 'simulation';
   ticker: string | null;
   simPrice: number;
@@ -18,12 +18,12 @@ export interface SimulationIntent {
   label: string;
 }
 
-export interface FetchQuoteIntent {
+interface FetchQuoteIntent {
   intent: 'fetch_quote';
   ticker: string | null;
 }
 
-export type PortfolioActionIntent =
+type PortfolioActionIntent =
   | { intent: 'action'; action: 'buy'; ticker: string; shares: number; price: number; pt: number | null; date: string | null }
   | { intent: 'action'; action: 'sell'; ticker: string; shares: number | null; price: number }
   | { intent: 'action'; action: 'set_pt'; ticker: string | null; pt: number }
@@ -33,7 +33,7 @@ export type PortfolioActionIntent =
   | { intent: 'action'; action: 'add_cash_stock'; ticker: string; shares: number; price: number | null }
   | { intent: 'action'; action: 'remove_cash_stock'; ticker: string };
 
-export interface ChatIntent {
+interface ChatIntent {
   intent: 'chat';
   response: string;
 }

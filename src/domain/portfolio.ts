@@ -18,7 +18,7 @@ export interface MarginPosition {
   [key: string]: unknown;
 }
 
-export interface ClosedTrade {
+interface ClosedTrade {
   ticker: string;
   date: number;
   shares: number;
@@ -79,58 +79,10 @@ export function calculateTrancheCommissions(
   }, 0);
 }
 
-export interface MarginInterestState {
-  marginDebt?: number;
-  balance?: number;
-  totalDebt?: number;
-  tranches?: Array<TradeTranche | Record<string, unknown>>;
-  positions?: Record<string, MarginPosition>;
-  [key: string]: unknown;
-}
-
-export interface MarginInterestOptions {
-  marginDebt?: number;
-  totalDebt?: number;
-  annualRate?: number;
-  dailyRate?: number;
-  now?: Date | number | string;
-  [key: string]: unknown;
-}
-
-export function parseTrancheDate(
-  dateStr: unknown,
-  fallbackYear = new Date().getFullYear()
-): Date {
-  if (dateStr instanceof Date) return dateStr;
-  if (typeof dateStr === 'number' && Number.isFinite(dateStr)) return new Date(dateStr);
-  if (typeof dateStr !== 'string') return new Date();
-
-  const trimmed = dateStr.trim();
-  if (/^\d{1,2}\s+[A-Za-z]{3,}$/i.test(trimmed)) {
-    return new Date(`${trimmed} ${fallbackYear}`);
-  }
-
-  const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (ymdMatch) {
-    return new Date(Number(ymdMatch[1]), Number(ymdMatch[2]) - 1, Number(ymdMatch[3]));
-  }
-
-  const parsed = new Date(trimmed);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-}
-
-export function getDaysPassed(startDate: Date, endDate: Date = new Date()): number {
-  const start = new Date(startDate);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(endDate);
-  end.setHours(0, 0, 0, 0);
-  return Math.floor((end.getTime() - start.getTime()) / 86400000);
-}
-
 /**
  * Broker cutoff: 04:00 AM local Armenia time (UTC+4)
  */
-export function getRolloverCutoff(date: Date = new Date()): Date {
+function getRolloverCutoff(date: Date = new Date()): Date {
   const cutoff = new Date(date);
   cutoff.setHours(4, 0, 0, 0);
   return cutoff;

@@ -3,7 +3,7 @@ const INSIGHT_CACHE_TTL_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 20 * 1000;
 const cache = new Map<string, { expiresAt: number; value: unknown }>();
 
-export class FinnhubInsightError extends Error {
+class FinnhubInsightError extends Error {
   constructor(message: string, readonly status?: number) {
     super(message);
     this.name = 'FinnhubInsightError';

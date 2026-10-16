@@ -44,7 +44,7 @@ export interface AlphaVantageNewsItem {
   sentimentScore?: number;
 }
 
-export class AlphaVantageError extends Error {
+class AlphaVantageError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'AlphaVantageError';
@@ -117,7 +117,7 @@ export function parseAlphaVantageQuote(value: unknown): AlphaVantageQuote {
   };
 }
 
-export function parseAlphaVantageNews(value: unknown): AlphaVantageNewsItem[] {
+function parseAlphaVantageNews(value: unknown): AlphaVantageNewsItem[] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new AlphaVantageError('Alpha Vantage returned invalid news data.');
   }
@@ -212,28 +212,6 @@ export async function fetchAlphaVantageAnalysts(
   return fetchAlphaVantageFunction(apiKey, symbol, 'OVERVIEW', options, parseAlphaVantageOverview);
 }
 
-export function fetchAlphaVantageQuote(
-  apiKey: string,
-  symbol: string,
-  options: AlphaVantageRequestOptions = {}
-): Promise<AlphaVantageQuote> {
-  return fetchAlphaVantageFunction(apiKey, symbol, 'GLOBAL_QUOTE', options, parseAlphaVantageQuote);
-}
-
-export function fetchAlphaVantageOverview(
-  apiKey: string,
-  symbol: string,
-  options: AlphaVantageRequestOptions = {}
-): Promise<Record<string, unknown>> {
-  return fetchAlphaVantageFunction(apiKey, symbol, 'OVERVIEW', options, value => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new AlphaVantageError('Alpha Vantage returned an invalid company overview.');
-    const data = value as Record<string, unknown>;
-    const message = data['Error Message'] ?? data.Information ?? data.Note;
-    if (typeof message === 'string') throw new AlphaVantageError(message);
-    return data;
-  });
-}
-
 export function fetchAlphaVantageNews(
   apiKey: string,
   symbol: string,
@@ -242,20 +220,6 @@ export function fetchAlphaVantageNews(
   return fetchAlphaVantageFunction(apiKey, symbol, 'NEWS_SENTIMENT', options, parseAlphaVantageNews, {
     sort: 'LATEST',
     limit: '50'
-  });
-}
-
-export function fetchAlphaVantageEarnings(
-  apiKey: string,
-  symbol: string,
-  options: AlphaVantageRequestOptions = {}
-): Promise<Record<string, unknown>> {
-  return fetchAlphaVantageFunction(apiKey, symbol, 'EARNINGS', options, value => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new AlphaVantageError('Alpha Vantage returned invalid earnings data.');
-    const data = value as Record<string, unknown>;
-    const message = data['Error Message'] ?? data.Information ?? data.Note;
-    if (typeof message === 'string') throw new AlphaVantageError(message);
-    return data;
   });
 }
 

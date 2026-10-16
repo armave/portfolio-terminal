@@ -19,7 +19,7 @@ import {
 } from '../services/storage';
 import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
 
-export const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
+const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
   broker: 'Tradernet',
   annualRate: 0.16,
   annualBorrowRate: 0.16,
@@ -47,7 +47,7 @@ function todayIso(): string {
   return `${y}-${m}-${day}`;
 }
 
-export class Store {
+class Store {
   private state: PortfolioState;
   private listeners: Set<(state: PortfolioState) => void> = new Set();
 
