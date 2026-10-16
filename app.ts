@@ -844,31 +844,29 @@ export function refreshMarketInsight() {
   return loadMarketInsight(activeInsightSection, true);
 }
 
-function recordTrackedPrice(ticker: string, price: number, sourceName: string, updatedAt: number | null = null, quoteDetails: any = null) {
+function recordTrackedPrice(
+  ticker: string,
+  price: number,
+  sourceName: string,
+  updatedAt: number | null = null,
+  quoteDetails: any = null,
+  requestStartedAt?: number
+) {
   const symbol = ticker.toUpperCase();
-  let matched = false;
-  const updateQuoteMetadata = (holding: any) => {
-    holding.quoteSource = sourceName;
-    if (updatedAt === null) delete holding.quoteUpdatedAt;
-    else holding.quoteUpdatedAt = updatedAt;
-    if (quoteDetails) holding.quoteDetails = quoteDetails;
-    else delete holding.quoteDetails;
-  };
+  const matched = Boolean(
+    state.positions[symbol] ||
+    state.cashCushion?.holdings?.some((holding: any) => holding.ticker === symbol)
+  );
+  if (!matched) return false;
 
-  if (state.positions[symbol]) {
-    state.positions[symbol].currentPrice = price;
-    updateQuoteMetadata(state.positions[symbol]);
-    matched = true;
-  }
-  const cashHolding = state.cashCushion?.holdings?.find((holding: any) => holding.ticker === symbol);
-  if (cashHolding) {
-    cashHolding.price = price;
-    cashHolding.currentPrice = price;
-    updateQuoteMetadata(cashHolding);
-    matched = true;
-  }
-  if (matched) syncStore();
-  return matched;
+  portfolioStore.updateLiveQuote(symbol, {
+    price,
+    quoteSource: sourceName,
+    ...(updatedAt === null ? {} : { quoteUpdatedAt: updatedAt }),
+    ...(quoteDetails ? { quoteDetails } : {}),
+    ...(requestStartedAt === undefined ? {} : { requestStartedAt })
+  });
+  return true;
 }
 
 function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
@@ -981,10 +979,11 @@ async function requestLivePrice(symbol: string) {
   const existingRequest = livePriceRequests.get(symbol);
   if (existingRequest) return existingRequest;
 
+  const requestStartedAt = Date.now();
   const request = fetchLivePriceFromProviders(symbol).then(result => ({
     ...result,
     matched: result.price !== null
-      ? recordTrackedPrice(symbol, result.price, result.sourceName, result.updatedAt, result.quoteDetails)
+      ? recordTrackedPrice(symbol, result.price, result.sourceName, result.updatedAt, result.quoteDetails, requestStartedAt)
       : false
   }));
   livePriceRequests.set(symbol, request);
@@ -1077,6 +1076,7 @@ export async function refreshAllLivePrices() {
   if (tickersArray.length === 0) return;
 
   const queryStr = tickersArray.join(',');
+  const requestStartedAt = Date.now();
   logTerminal(`[System]: Polling batch live quotes for ${queryStr}...`);
 
   try {
@@ -1114,23 +1114,15 @@ export async function refreshAllLivePrices() {
         changePercent: previous ? (change / previous) * 100 : 0
       };
 
-      if (state.positions[ticker]) {
-        state.positions[ticker].currentPrice = current;
-        state.positions[ticker].quoteDetails = quoteDetails;
-        state.positions[ticker].quoteUpdatedAt = Date.now();
-        updatedCount++;
-      }
-
-      if (Array.isArray(cashHoldings)) {
-        const cashPos = cashHoldings.find((h: any) => h.ticker === ticker);
-        if (cashPos) {
-          cashPos.price = current;
-          cashPos.currentPrice = current;
-          cashPos.quoteDetails = quoteDetails;
-          cashPos.quoteUpdatedAt = Date.now();
-          updatedCount++;
-        }
-      }
+      const matched = recordTrackedPrice(
+        ticker,
+        Number(current),
+        'Yahoo Proxy',
+        Date.now(),
+        quoteDetails,
+        requestStartedAt
+      );
+      if (matched) updatedCount++;
     }
 
     if (updatedCount > 0) {
@@ -1489,6 +1481,7 @@ async function applyPortfolioActions(action: any) {
     });
     pos.commBuy += buyComm;
     pos.currentPrice = price;
+    pos.lastTradeAt = Date.now();
     pos.quoteSource = 'Trade input';
     delete pos.quoteUpdatedAt;
     delete pos.quoteDetails;
