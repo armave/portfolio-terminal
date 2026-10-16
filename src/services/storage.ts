@@ -136,10 +136,10 @@ export async function saveApiKeys(options: SaveApiKeysOptions): Promise<boolean>
   saveGatewaySecret(cleanSecret);
 
   if (typeof logTerminal === 'function') {
-    logTerminal('Gateway Secret saved successfully.');
+    logTerminal('Gateway Secret saved. Remote access has not been verified yet.');
   }
   if (typeof showToast === 'function') {
-    showToast('Gateway unlocked successfully', 'success');
+    showToast('Gateway Secret saved. Remote access has not been verified yet.', 'success');
   }
   return true;
 }
