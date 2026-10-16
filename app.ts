@@ -58,7 +58,7 @@ import {
   renderPositionsTable,
   renderSummaryCards
 } from './src/ui/renderBoard';
-import { portfolioStore } from './src/store/portfolioStore';
+import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { BoardExternalLinks } from './src/components/BoardExternalLinks';
 import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
 import { InsightSection, MarketInsightsPanel } from './src/components/MarketInsightsPanel';
@@ -174,7 +174,8 @@ const pushStateToGist = pushStateToCloud;
 
 function pullCloudAndRewriteLocal(parsedState: any) {
   const currentView = state.activeView;
-  state = { ...state, ...parsedState };
+  const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(parsedState, state);
+  state = { ...state, ...compatibleCloudState };
   if (!parsedState?.activeView && currentView) {
     state.activeView = currentView;
   }
