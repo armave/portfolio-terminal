@@ -36,6 +36,8 @@ export interface PositionRecord {
   quoteUpdatedAt?: number;
   quoteSource?: string;
   quoteDetails?: QuoteDetails;
+  /** Timestamp of the most recent manual trade; protects it from older quote responses. */
+  lastTradeAt?: number;
 }
 
 export interface Holding {
