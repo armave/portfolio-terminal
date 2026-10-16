@@ -237,6 +237,23 @@ describe('portfolio domain', () => {
     expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-02T01:00:00Z'))).toBe(1);
   });
 
+  it('processes a same-day rollover when the stored baseline is before the 04:00 Armenia cutoff', () => {
+    vi.useFakeTimers();
+    const state = {
+      balance: -1000,
+      lastRolloverTimestamp: new Date('2026-01-02T23:00:00Z').getTime(),
+      brokerAssumptions: { annualRate: 0.365, dayCountBasis: 365, rolloverHour: 4, rolloverMinute: 0 }
+    };
+
+    // 05:00 Armenia time on Jan 3, one hour after the cutoff.
+    vi.setSystemTime(new Date('2026-01-03T01:00:00Z'));
+    expect(processRollovers(state)).toBe(true);
+    expect(state.balance).toBe(-1001);
+    expect(state.lastRolloverTimestamp).toBe(new Date('2026-01-03T00:00:00Z').getTime());
+
+    vi.useRealTimers();
+  });
+
   it('processes rollovers and deducts margin from balance', () => {
     vi.useFakeTimers();
     
