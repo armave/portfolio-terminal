@@ -123,7 +123,7 @@ export function buildHoldingsProjection(
   });
 }
 
-class Store {
+export class PortfolioStore {
   private state: PortfolioState;
   private listeners: Set<(state: PortfolioState) => void> = new Set();
 
@@ -771,7 +771,7 @@ class Store {
   }
 }
 
-export const portfolioStore = new Store();
+export const portfolioStore = new PortfolioStore();
 
 export function usePortfolio(): PortfolioState {
   const [state, setState] = useState<PortfolioState>(() => portfolioStore.getState());
