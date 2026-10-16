@@ -237,12 +237,17 @@ describe('portfolio domain', () => {
     expect(calculateAccruedFees(0, 0, 0)).toBe(0);
   });
 
-  it('calculates breakeven days correctly', () => {
-    // netTargetProfit = 100, totalDebt = 1000, dailyRate = 0.01
-    // days = 100 / (1000 * 0.01) = 100 / 10 = 10
+  it('calculates breakeven days using the same daily compounding model as projected debt', () => {
+    // After 10 days, $1,000 of debt at 1% daily accrues $104.62, enough to cover $100.
     expect(calculateBreakevenDays(100, 1000, 0.01)).toBe(10);
+    // At 0.5% daily, 19 days accrue less than $100 and 20 days exceed it.
+    expect(calculateBreakevenDays(100, 1000, 0.005)).toBe(20);
+    expect(calculateProjectedDebt(1000, 0.005, 19) - 1000).toBeLessThan(100);
+    expect(calculateProjectedDebt(1000, 0.005, 20) - 1000).toBeGreaterThanOrEqual(100);
     expect(calculateBreakevenDays(-10, 1000, 0.01)).toBe(0); // <= 0 profit
     expect(calculateBreakevenDays(100, 0, 0.01)).toBe(0); // 0 debt
+    expect(calculateBreakevenDays(100, 1000, 0)).toBe(0); // no ongoing interest
+    expect(calculateBreakevenDays(Number.POSITIVE_INFINITY, 1000, 0.01)).toBeNull();
   });
 
   it('calculates commission based on rules', () => {
