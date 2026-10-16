@@ -1161,7 +1161,9 @@ async function importBackupJSON(event: Event) {
     const previousState = state;
     state = importedState;
     try {
-      saveState(state, pushStateToGist);
+      if (!saveState(state, pushStateToGist)) {
+        throw new Error('Could not persist the imported backup to browser storage.');
+      }
       syncStore();
     } catch (error) {
       state = previousState;
