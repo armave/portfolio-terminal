@@ -61,7 +61,7 @@ export default defineConfig({
     normalizeRootPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico'],
+      includeAssets: ['ico.svg'],
       manifest: {
         name: 'Portfolio Terminal',
         short_name: 'Portfolio',
@@ -74,16 +74,10 @@ export default defineConfig({
         scope: '/portfolio-terminal/',
         icons: [
           {
-            src: 'pwa-192x192.png',
+            src: 'ico.svg',
             sizes: '192x192',
             type: 'image/png'
           },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable'
-          }
         ]
       },
       workbox: {
