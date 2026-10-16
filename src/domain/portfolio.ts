@@ -339,7 +339,11 @@ export function calculateBreakevenDays(
   dailyRate: number
 ): number | null {
   if (totalDebt <= 0 || netTargetProfit <= 0 || dailyRate <= 0) return 0;
-  const days = netTargetProfit / (totalDebt * dailyRate);
+  if (![netTargetProfit, totalDebt, dailyRate].every(Number.isFinite)) return null;
+
+  // Match calculateProjectedDebt's daily compounding model:
+  // debt * ((1 + dailyRate) ** days - 1) >= netTargetProfit.
+  const days = Math.log1p(netTargetProfit / totalDebt) / Math.log1p(dailyRate);
   return Number.isFinite(days) ? Math.ceil(days) : null;
 }
 
@@ -393,9 +397,8 @@ export function createBlankState(now = Date.now()): PortfolioState {
 export function normalizePortfolioState(candidate: unknown, now = Date.now()): PortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio state must be an object.');
 
-  if ('marginBalance' in candidate) {
-    delete (candidate as Record<string, unknown>).marginBalance;
-  }
+  // Omit the legacy field from the normalized result without mutating the caller's object.
+  const { marginBalance: _legacyMarginBalance, ...candidateState } = candidate;
 
   const blankState = createBlankState(now);
   const sourceCashCushion = isRecord(candidate.cashCushion) ? candidate.cashCushion : {};
@@ -470,7 +473,7 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
     : [];
   return {
     ...blankState,
-    ...candidate,
+    ...candidateState,
     activeView: typeof candidate.activeView === 'string' ? candidate.activeView : blankState.activeView,
     balance: finiteNumber(candidate.balance, blankState.balance),
     realizedMarginCharged: finiteNumber(candidate.realizedMarginCharged, blankState.realizedMarginCharged),

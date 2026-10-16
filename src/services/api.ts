@@ -88,7 +88,10 @@ export interface SyncOptions {
   logTerminal?: (msg: string) => void;
 }
 
-export async function pullCloudState(options: SyncOptions | ((state: any) => void) = {}): Promise<any> {
+export async function pullCloudState(
+  options: SyncOptions | ((state: any) => void) = {},
+  reportResult?: (success: boolean) => void
+): Promise<any> {
   const handlers: SyncOptions = typeof options === 'function' ? { pullCloudAndRewriteLocal: options } : options;
   const {
     state,
@@ -106,6 +109,7 @@ export async function pullCloudState(options: SyncOptions | ((state: any) => voi
   const currentSecret = handlers.secret || getActiveGatewaySecret(state);
 
   if (!currentSecret) {
+    reportResult?.(false);
     showToast('Gateway Secret required to access cloud state.', 'error');
     return loadSavedState(state || {});
   }
@@ -124,6 +128,7 @@ export async function pullCloudState(options: SyncOptions | ((state: any) => voi
     });
 
     if (res.status === 404) {
+      reportResult?.(false);
       showToast('No KV cloud state found. Retaining local state.', 'info');
       logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
       return loadSavedState(state || {});
@@ -192,11 +197,13 @@ export async function pullCloudState(options: SyncOptions | ((state: any) => voi
       (window as any).renderBoard();
     }
 
+    reportResult?.(true);
     console.log('[Sync]: Cloud state ingested and UI re-rendered successfully', parsedState);
     // showToast('KV cloud state pulled.', 'success');
     logTerminal('[KV Cloud]: Synced successfully.');
     return parsedState;
   } catch (err: any) {
+    reportResult?.(false);
     console.error('Failed to pull KV cloud state:', err);
     showToast(`Cloud pull failed: ${err.message}`, 'error');
     logTerminal(`[KV Cloud Error]: ${err.message}. Retaining local state.`);
@@ -223,14 +230,10 @@ export async function pushCloudState(state?: any, options: SyncOptions = {}): Pr
   }
 
   try {
-    delete currentState.gatewaySecret;
-    if ('marginBalance' in currentState) {
-      delete currentState.marginBalance;
-    }
-    const { gatewaySecret: _secret, ...stateToEncrypt } = currentState;
-    if ('marginBalance' in stateToEncrypt) {
-      delete stateToEncrypt.marginBalance;
-    }
+    // Sanitize a shallow copy so syncing never deletes fields from live app state.
+    const stateToEncrypt = { ...currentState };
+    delete stateToEncrypt.gatewaySecret;
+    delete stateToEncrypt.marginBalance;
     const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(stateToEncrypt), currentSecret).toString();
     const payload = { encryptedPayload: ciphertext };
 
@@ -275,8 +278,11 @@ export async function syncCloudState(mode = 'push', options: SyncOptions = {}): 
     return pushCloudState(currentState, handlers);
   }
   if (mode === 'pull') {
-    const result = await pullCloudState(handlers);
-    return Boolean(result);
+    let succeeded = false;
+    await pullCloudState(handlers, (success) => {
+      succeeded = success;
+    });
+    return succeeded;
   }
   return false;
 }

@@ -136,10 +136,10 @@ export async function saveApiKeys(options: SaveApiKeysOptions): Promise<boolean>
   saveGatewaySecret(cleanSecret);
 
   if (typeof logTerminal === 'function') {
-    logTerminal('Gateway Secret saved successfully.');
+    logTerminal('Gateway Secret saved. Remote access has not been verified yet.');
   }
   if (typeof showToast === 'function') {
-    showToast('Gateway unlocked successfully', 'success');
+    showToast('Gateway Secret saved. Remote access has not been verified yet.', 'success');
   }
   return true;
 }
@@ -152,22 +152,30 @@ export const saveStateToStorage = saveState;
 export function saveState(
   state?: Record<string, any> | null,
   onPushToGist?: (forcePrompt?: boolean) => void
-): void {
+): boolean {
   if (!state || typeof state !== 'object' || Array.isArray(state)) {
-    return;
+    return false;
   }
   if (typeof localStorage === 'undefined' || !localStorage) {
-    return;
+    return false;
   }
+
   try {
     state.lastUpdated = Date.now();
     localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(state));
-    if (typeof onPushToGist === 'function') {
-      onPushToGist(false);
-    }
   } catch (err) {
     console.error('Failed to save state:', err);
+    return false;
   }
+
+  if (typeof onPushToGist === 'function') {
+    try {
+      onPushToGist(false);
+    } catch (err) {
+      console.error('Failed to trigger Gist sync:', err);
+    }
+  }
+  return true;
 }
 
 /**
