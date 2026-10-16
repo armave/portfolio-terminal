@@ -4,7 +4,7 @@ import { ClosedHistoryDesk } from './src/components/ClosedHistoryDesk';
 import {
   calculateBreakevenDays,
   calculateCommission,
-  calculateCompoundedDebt,
+  calculateProjectedDebt,
   calculateMarginInterest,
   createBlankState,
   normalizePortfolioBackup,
@@ -469,7 +469,7 @@ export function applyOvernightRollover() {
 
   if (elapsedCycles > 0 && Math.abs(state.balance) > 0) {
     const currentDebt = Math.abs(state.balance);
-    const compoundedDebt = calculateCompoundedDebt(currentDebt, getDailyRate(), elapsedCycles);
+    const compoundedDebt = calculateProjectedDebt(currentDebt, getDailyRate(), elapsedCycles);
     const interestAccrued = calculateMarginInterest(currentDebt, getDailyRate(), elapsedCycles);
 
     state.balance = -compoundedDebt;
@@ -1289,7 +1289,7 @@ export function runLadderSimulation(data: any, activeState = state) {
   data.steps.forEach((step: any, idx: number) => {
     const stepDays = Math.max(0, step.days - currentDay);
     if (stepDays > 0 && runningDebt > 0) {
-      const compounded = calculateCompoundedDebt(runningDebt, getDailyRate(), stepDays);
+      const compounded = calculateProjectedDebt(runningDebt, getDailyRate(), stepDays);
       totalAccruedMargin += calculateMarginInterest(runningDebt, getDailyRate(), stepDays);
       runningDebt = compounded;
     }
