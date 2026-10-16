@@ -265,6 +265,32 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().cashBalance).toBe(0);
   });
 
+  it('ignores stale quote responses after a trade and never recreates a fully closed position', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    store.buyStock('AAPL', 5, 100, '2026-10-15');
+    const lastTradeAt = store.getState().positions.AAPL.lastTradeAt || Date.now();
+
+    store.updateLiveQuote('AAPL', {
+      price: 90,
+      requestStartedAt: lastTradeAt - 1
+    });
+    expect(store.getState().positions.AAPL.currentPrice).toBe(100);
+
+    store.updateLiveQuote('AAPL', {
+      price: 101,
+      requestStartedAt: lastTradeAt + 1
+    });
+    expect(store.getState().positions.AAPL.currentPrice).toBe(101);
+
+    store.sellStock('AAPL', 'ALL', 101, '2026-10-16');
+    store.updateLiveQuote('AAPL', { price: 99 });
+
+    expect(store.getState().positions.AAPL).toBeUndefined();
+    expect(store.getState().holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
+  });
+
   it('persists buys, partial sells, and full exits without resurrecting closed positions on reload', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
