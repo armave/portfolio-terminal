@@ -472,7 +472,7 @@ function renderConsoleQuickActions() {
     render(
       h(TradingConsole, {
         position: pos,
-        onExecuteCommand: () => executeCommand()
+        onExecuteCommand: (command?: string) => executeCommand(command)
       }),
       cardContainer
     );
