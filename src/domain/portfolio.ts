@@ -314,9 +314,9 @@ export function calculateMarginInterest(
 
 export function calculateProjectedDebt(principal: number, dailyRate: number, days: number): number {
   const p = Math.abs(Number(principal) || 0);
-  const r = Number(dailyRate) || 0;
-  const d = Number(days) || 0;
-  return Number((p * (1 + r * d)).toFixed(2));
+  const r = Math.max(0, Number(dailyRate) || 0);
+  const d = Math.max(0, Number(days) || 0);
+  return Number((p * Math.pow(1 + r, d)).toFixed(2));
 }
 
 export function calculateAccruedFees(
