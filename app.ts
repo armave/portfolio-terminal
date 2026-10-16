@@ -1601,9 +1601,6 @@ async function startApp(secret: string) {
   applyOvernightRollover();
   syncStore();
 
-  const headerGatewayInput = document.getElementById('headerGatewaySecretInput') as HTMLInputElement | null;
-  if (headerGatewayInput) headerGatewayInput.value = secret;
-
   if (secret) await syncCloudState('pull');
 
   const quoteRefreshInterval = document.getElementById('quoteRefreshInterval') as HTMLSelectElement | null;
