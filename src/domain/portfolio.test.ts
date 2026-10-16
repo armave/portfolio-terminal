@@ -12,6 +12,7 @@ import {
   calculateBreakevenDays,
   processRollovers,
   calculateCommission,
+  calculateTrancheCommissions,
   getAccruedRolloverCycles,
   type MarginPosition,
   type TradeTranche
@@ -87,8 +88,25 @@ describe('portfolio domain', () => {
     const now = new Date(2026, 9, 5, 12, 0, 0);
     const interest = calculateMarginInterest(state, { now, annualRate: 0.15 });
 
-    const expected = 10_000 * 0.5 * (0.15 / 365) * 4;
+    const expected = 10_000 * 0.5 * (Math.pow(1 + 0.15 / 365, 4) - 1);
     expect(interest).toBeCloseTo(expected, 4);
+  });
+
+  it('compounds margin interest across each accrued rollover cycle', () => {
+    const principal = 10_000;
+    const dailyRate = 0.15 / 365;
+    const interest = calculateMarginInterest(principal, dailyRate, 4);
+    expect(interest).toBeCloseTo(principal * (Math.pow(1 + dailyRate, 4) - 1), 8);
+    expect(interest).toBeGreaterThan(principal * dailyRate * 4);
+  });
+
+  it('applies minimum commissions separately to each execution tranche', () => {
+    const rules = { commPerShare: 0.01, commVolumePct: 0, minCommOrder: 1.5 };
+    expect(calculateCommission(100, 1_000, rules)).toBe(1.5);
+    expect(calculateTrancheCommissions([
+      { qty: 10, price: 10 },
+      { qty: 10, price: 10 }
+    ], rules)).toBe(3);
   });
 
   it('parses short buy dates and falls back for invalid dates', () => {
