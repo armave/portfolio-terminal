@@ -280,15 +280,20 @@ class Store {
       const commVolumePct = Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0005);
       const minCommOrder = Number(rules.minCommOrder ?? rules.commissionMin ?? 1.50);
 
-      const rawBuyComm = shares * commPerShare + totalVal * commVolumePct;
-      let buyComm = Number(Math.max(minCommOrder, rawBuyComm).toFixed(2));
+      // A buyStock call represents one broker execution, so enforce the minimum
+      // ticket commission here rather than recalculating across the combined position.
+      const buyComm = Number(calculateCommission(shares, totalVal, {
+        commPerShare,
+        commVolumePct,
+        minCommOrder
+      }).toFixed(2));
 
       const positions = { ...(state.positions || {}) };
       const existingPos = positions[clean];
 
       const nextTranches: TrancheItem[] = [
         ...(existingPos?.tranches || []),
-        { qty: shares, price, date: purchaseDate }
+        { qty: shares, price, date: purchaseDate, buyCommission: buyComm }
       ];
 
       const nextShares = (Number(existingPos?.shares) || 0) + shares;
