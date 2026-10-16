@@ -1629,7 +1629,7 @@ async function initApp() {
 
   const rootEl = document.getElementById('root');
   if (rootEl && !document.getElementById('mainTerminalView')) {
-    render(h(App, null), rootEl);
+    render(h(App, { onToggleMarketInsights: toggleMarketInsights }), rootEl);
   }
 
   const secret = loadGatewaySecret();
