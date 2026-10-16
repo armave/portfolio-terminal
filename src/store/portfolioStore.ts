@@ -661,7 +661,7 @@ export class PortfolioStore {
         positions,
         activeView: nextActiveView,
         selectedTicker: nextActiveView === 'COMBINED' ? null : state.selectedTicker,
-        balance: -currentDebt,
+        balance: currentDebt > 0 ? -currentDebt : 0,
         cashBalance: freeCash,
         cashCushion: {
           ...(state.cashCushion || { freeCash: 0, holdings: [] }),
