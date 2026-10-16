@@ -247,7 +247,8 @@ export function calculateMarginInterest(
   const totalInvested = tranches.reduce((sum: number, tr: any) => {
     const q = Number(tr.qty ?? tr.shares ?? 0) || 0;
     const p = Number(tr.price ?? tr.entryPrice ?? 0) || 0;
-    return sum + q * p;
+    const buyCommission = Math.max(0, Number(tr.buyCommission) || 0);
+    return sum + (q * p) + buyCommission;
   }, 0);
 
   let marginRatio = 1;
@@ -282,7 +283,8 @@ export function calculateMarginInterest(
   for (const tr of tranches) {
     const q = Number(tr.qty ?? tr.shares ?? 0) || 0;
     const p = Number(tr.price ?? tr.entryPrice ?? 0) || 0;
-    const trancheCost = q * p;
+    const buyCommission = Math.max(0, Number(tr.buyCommission) || 0);
+    const trancheCost = (q * p) + buyCommission;
     if (trancheCost <= 0) continue;
 
     let days = 0;
@@ -336,6 +338,32 @@ export function calculateAccruedFees(
   const charged = Number(marginCharged) || 0;
   const addl = Number(additionalMargin) || 0;
   return Number((comms + charged + addl).toFixed(2));
+}
+
+/**
+ * Allocates previously accrued margin charges to an open position in proportion
+ * to its share of the portfolio's invested cost basis.
+ */
+export function allocateRealizedMarginCharge(
+  realizedCharge: number,
+  positionInvested: number,
+  portfolioInvested: number
+): number {
+  const charge = Number(realizedCharge);
+  const positionCost = Number(positionInvested);
+  const portfolioCost = Number(portfolioInvested);
+
+  if (
+    !Number.isFinite(charge) ||
+    !Number.isFinite(positionCost) ||
+    !Number.isFinite(portfolioCost) ||
+    positionCost <= 0 ||
+    portfolioCost <= 0
+  ) {
+    return 0;
+  }
+
+  return charge * Math.min(1, positionCost / portfolioCost);
 }
 
 export function calculateBreakevenDays(
