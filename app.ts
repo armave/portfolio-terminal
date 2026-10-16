@@ -937,9 +937,9 @@ function updateEmptyStateVisibility(isEmpty: boolean) {
   panel.classList.toggle('hidden', !isEmpty);
 }
 
-async function requestLivePrice(symbol: string) {
+async function requestLivePrice(symbol: string, force = false) {
   const existingRequest = livePriceRequests.get(symbol);
-  if (existingRequest) return existingRequest;
+  if (existingRequest && !force) return existingRequest;
 
   const requestStartedAt = Date.now();
   const request = fetchLivePriceFromProviders(symbol).then(result => ({
@@ -1006,9 +1006,9 @@ async function fetchLivePriceFromProviders(symbol: string) {
   };
 }
 
-async function fetchLivePrice(ticker: string, silent = false) {
+async function fetchLivePrice(ticker: string, silent = false, force = false) {
   const symbol = ticker.toUpperCase();
-  const result = await requestLivePrice(symbol);
+  const result = await requestLivePrice(symbol, force);
 
   if (result.price !== null) {
     saveState(state, pushStateToGist);
@@ -1237,7 +1237,7 @@ async function applyPortfolioActions(action: any) {
     syncStore();
     logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Funded: ${formatUSD(cashUsed)} cash | +${formatUSD(debtAdded)} margin debt. Free Cash remaining: ${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(state.balance))}.`);
     showToast(`${shares} ${ticker} bought at ${formatUSD(price)}.`, 'success');
-    await fetchLivePrice(ticker);
+    await fetchLivePrice(ticker, false, true);
   }
   else if (action.action === "sell") {
     const ticker = action.ticker.toUpperCase();
@@ -1490,7 +1490,7 @@ async function executeCommand(commandText?: string) {
       await pushStateToGist();
     } else if (effect.type === 'FETCH_QUOTE') {
       renderBoard();
-      await fetchLivePrice(effect.ticker); // Pulls the fresh quote
+      await fetchLivePrice(effect.ticker, false, true); // Force a request started after the trade.
       await pushStateToGist();
     } else if (effect.type === 'REFRESH_ALL') {
       await refreshAllLivePrices();
