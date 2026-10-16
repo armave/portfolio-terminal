@@ -36,6 +36,8 @@ export interface PositionRecord {
   quoteUpdatedAt?: number;
   quoteSource?: string;
   quoteDetails?: QuoteDetails;
+  /** Timestamp of the most recent manual trade; protects it from older quote responses. */
+  lastTradeAt?: number;
 }
 
 export interface Holding {
@@ -52,13 +54,13 @@ export interface Holding {
   };
 }
 
-export interface CashStock {
+interface CashStock {
   ticker: string;
   shares: number;
   currentPrice?: number;
 }
 
-export interface CashStockHolding {
+interface CashStockHolding {
   ticker: string;
   shares: number | string;
   price?: number | string;
@@ -68,7 +70,7 @@ export interface CashStockHolding {
   quoteDetails?: QuoteDetails;
 }
 
-export interface CashCushionState {
+interface CashCushionState {
   freeCash: number | string;
   holdings: CashStockHolding[];
 }
@@ -134,7 +136,7 @@ export interface BrokerRules {
   [key: string]: any;
 }
 
-export interface ApiKeys {
+interface ApiKeys {
   finnhub?: string;
   twelveData?: string;
   alphaVantage?: string;
@@ -169,8 +171,10 @@ export interface PortfolioState {
   lastUpdated?: number;
   gatewaySecret?: string;
 
-  // Store & Preact bridge properties
+  // Compatibility projections. Active positions are canonical; holdings is
+  // regenerated from positions during normalization and must not be mutated directly.
   cashBalance: number;
+  /** @deprecated Legacy bridge; derive from positions instead of treating as source data. */
   holdings: Holding[];
   cashStocks?: CashStock[];
   apiKeys: ApiKeys;

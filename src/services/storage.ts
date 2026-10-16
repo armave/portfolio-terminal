@@ -1,7 +1,6 @@
 const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
 const STORAGE_KEY_LEGACY_STATE = 'portfolio_state';
 const STORAGE_KEY_GW_AUTH = '_gw_auth';
-const STORAGE_KEY_LEGACY_GW = 'gateway_secret';
 const STORAGE_KEY_RULES = 'tradernet_rules_v1';
 const STORAGE_KEY_REFRESH_INTERVAL = 'quote_refresh_interval';
 
@@ -172,45 +171,29 @@ export function saveState(
 }
 
 /**
- * Loads application state from localStorage, merges with fallback, and hydrates
- * the DOM gateway secret input element if present.
+ * Loads application state from localStorage, merging it with the supplied
+ * fallback. This service is deliberately UI-agnostic: it never reads or mutates
+ * DOM elements, so it can safely run before the application is mounted.
  */
 export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
-  if (typeof localStorage === 'undefined' || !localStorage) {
-    return fallback;
-  }
-
-  // Hydrate DOM input element if present in DOM
-  if (typeof document !== 'undefined' && document && typeof document.getElementById === 'function') {
-    const input = document.getElementById('gatewaySecretInput') as HTMLInputElement | null;
-    if (input) {
-      const secret = localStorage.getItem(STORAGE_KEY_GW_AUTH)
-        ? deobfuscateSecret(localStorage.getItem(STORAGE_KEY_GW_AUTH) || '')
-        : (localStorage.getItem(STORAGE_KEY_LEGACY_GW) || '');
-      if (secret) {
-        input.value = secret;
-      }
-    }
-  }
-
-  // Load payload: check dynamic v2 key first, then fallback to legacy key
-  let raw = localStorage.getItem(STORAGE_KEY_STATE);
-  if (raw === null || raw === undefined) {
-    raw = localStorage.getItem(STORAGE_KEY_LEGACY_STATE);
-  }
-
-  if (!raw || !raw.trim()) {
-    return fallback;
-  }
-
   try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') {
-      return { ...fallback, ...parsed };
+    if (typeof localStorage === 'undefined' || !localStorage) return fallback;
+
+    const raw = localStorage.getItem(STORAGE_KEY_STATE)
+      ?? localStorage.getItem(STORAGE_KEY_LEGACY_STATE);
+    if (!raw || !raw.trim()) return fallback;
+
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? { ...fallback, ...parsed }
+        : fallback;
+    } catch (err) {
+      console.warn('Failed to parse saved state:', err);
+      return fallback;
     }
-    return fallback;
   } catch (err) {
-    console.warn('Failed to parse saved state:', err);
+    console.warn('Storage unavailable; using in-memory portfolio state:', err);
     return fallback;
   }
 }
@@ -298,63 +281,3 @@ export function clearLocalData(): void {
     console.error('Failed to clear local data:', err);
   }
 }
-
-/**
- * Composite service object providing namespace compatibility for consumer files.
- */
-export const StorageService = {
-  loadLocal: loadSavedState,
-  saveLocal: saveState,
-  clearLocalData,
-  getGatewaySecret,
-  setGatewaySecret,
-  saveGatewaySecret,
-  loadGatewaySecret,
-  obfuscateSecret,
-  deobfuscateSecret,
-  areHeaderCredentialsConfigured,
-  loadBrokerRules,
-  saveBrokerRules,
-  clearBrokerRules,
-  getQuoteRefreshInterval,
-  saveQuoteRefreshInterval,
-  saveApiKeys,
-  syncToGist: async (state: any): Promise<string> => {
-    const gistToken = state?.apiKeys?.gistToken;
-    const gistId = state?.apiKeys?.gistId;
-    if (!gistToken) throw new Error('Missing GitHub PAT for Gist sync');
-
-    const cleanData = {
-      cashBalance: state.cashBalance,
-      holdings: state.holdings,
-      cashStocks: state.cashStocks,
-      closedTrades: state.closedTrades,
-      brokerAssumptions: state.brokerAssumptions
-    };
-
-    const files: Record<string, { content: string }> = {
-      'portfolio_state.json': { content: JSON.stringify(cleanData, null, 2) }
-    };
-
-    const method = gistId ? 'PATCH' : 'POST';
-    const url = gistId ? `https://api.github.com/gists/${gistId}` : 'https://api.github.com/gists';
-
-    const res = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Bearer ${gistToken}`,
-        Accept: 'application/vnd.github.v3+json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        description: 'Portfolio Terminal Snapshot',
-        public: false,
-        files
-      })
-    });
-
-    if (!res.ok) throw new Error(`Gist sync failed: ${res.statusText}`);
-    const resData = await res.json();
-    return resData.id;
-  }
-};

@@ -8,7 +8,10 @@
     "prebuild": "npm install",
     "build": "tsc --noEmit && node scripts/build.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "knip": "npx --yes knip",
+    "ts-prune": "npx --yes ts-prune",
+    "validate:dead-code": "npm run knip && npm run ts-prune"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",
@@ -26,11 +29,9 @@
     "vitest": "^5.0.3"
   },
   "dependencies": {
-    "@preact/signals": "^2.11.3",
     "crypto-js": "^4.2.0",
     "preact": "^11.0.1",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "wrangler": "^4.149.0"
+    "react-dom": "^19.3.0"
   }
 }

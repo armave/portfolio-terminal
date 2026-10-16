@@ -150,23 +150,19 @@ describe('storage service', () => {
       expect(loadSavedState(fallback)).toBe(fallback);
     });
 
-    it('populates gateway secret into input element if present in DOM', () => {
+    it('does not access or mutate DOM elements while loading saved state', () => {
       storageMap.set('gateway_secret', 'secret-token-xyz');
-
-      const inputElement = { value: '' };
-      const getElementByIdMock = vi.fn((id: string) => {
-        return id === 'gatewaySecretInput' ? (inputElement as unknown as HTMLElement) : null;
-      });
+      const getElementById = vi.fn();
 
       if (typeof document !== 'undefined') {
-        vi.spyOn(document, 'getElementById').mockImplementation(getElementByIdMock);
+        vi.spyOn(document, 'getElementById').mockImplementation(getElementById);
       } else {
-        vi.stubGlobal('document', { getElementById: getElementByIdMock });
+        vi.stubGlobal('document', { getElementById });
       }
 
-      loadSavedState({});
-
-      expect(inputElement.value).toBe('secret-token-xyz');
+      const fallback = { activeView: 'COMBINED' };
+      expect(loadSavedState(fallback)).toBe(fallback);
+      expect(getElementById).not.toHaveBeenCalled();
     });
   });
 

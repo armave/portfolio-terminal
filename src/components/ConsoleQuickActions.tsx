@@ -2,7 +2,8 @@ import { formatUSD, PositionRecord } from '../ui/renderBoard';
 
 export interface ConsoleQuickActionsProps {
   position?: PositionRecord;
-  onExecuteCommand?: () => void | Promise<void>;
+  onExecuteCommand?: (command?: string) => void | Promise<void>;
+  onPrefillCommand?: (command: string, selectText?: string | null, instant?: boolean) => void;
 }
 
 interface QuickActionItem {
@@ -14,41 +15,21 @@ interface QuickActionItem {
   title?: string;
 }
 
-export function prefillTerminalInput(
+function prefillTerminalInput(
   command: string,
   selectText?: string | null,
   instant?: boolean,
-  onExecuteCommand?: () => void | Promise<void>
+  onExecuteCommand?: (command?: string) => void | Promise<void>,
+  onPrefillCommand?: (command: string, selectText?: string | null, instant?: boolean) => void
 ) {
-  const input = document.getElementById('cmdInput') as HTMLInputElement | null;
-  if (!input) return;
-
-  input.value = command;
-  input.focus();
-
-  if (instant && onExecuteCommand) {
-    onExecuteCommand();
+  if (onPrefillCommand) {
+    onPrefillCommand(command, selectText, instant);
     return;
   }
-
-  if (selectText) {
-    const selectionStart = command.lastIndexOf(selectText);
-    if (selectionStart >= 0) {
-      input.setSelectionRange(selectionStart, selectionStart + selectText.length);
-      return;
-    }
-  }
-
-  if (command.includes('[')) {
-    const selectionStart = command.indexOf('[');
-    const selectionEnd = command.indexOf(']', selectionStart) + 1;
-    input.setSelectionRange(selectionStart, selectionEnd);
-  } else {
-    input.setSelectionRange(input.value.length, input.value.length);
-  }
+  if (instant && onExecuteCommand) onExecuteCommand(command);
 }
 
-export function ConsoleQuickActions({ position, onExecuteCommand }: ConsoleQuickActionsProps) {
+export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillCommand }: ConsoleQuickActionsProps) {
   const currentPrice =
     position && Number(position.currentPrice) > 0 ? Number(position.currentPrice) : null;
   const priceText = currentPrice === null ? '[price]' : formatUSD(currentPrice);
@@ -114,7 +95,7 @@ export function ConsoleQuickActions({ position, onExecuteCommand }: ConsoleQuick
             type="button"
             title={action.title}
             onClick={() =>
-              prefillTerminalInput(action.command, action.selectText, action.instant, onExecuteCommand)
+              prefillTerminalInput(action.command, action.selectText, action.instant, onExecuteCommand, onPrefillCommand)
             }
             class={`rounded border bg-slate-900/90 px-2.5 py-1 text-[10px] font-mono font-bold transition active:scale-95 ${action.color}`}
           >
@@ -187,7 +168,7 @@ export function ConsoleQuickActions({ position, onExecuteCommand }: ConsoleQuick
           type="button"
           title={action.title}
           onClick={() =>
-            prefillTerminalInput(action.command, action.selectText, action.instant, onExecuteCommand)
+            prefillTerminalInput(action.command, action.selectText, action.instant, onExecuteCommand, onPrefillCommand)
           }
           class={`rounded border bg-slate-900/90 px-2.5 py-1 text-[10px] font-mono font-bold transition active:scale-95 ${action.color}`}
         >

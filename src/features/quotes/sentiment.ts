@@ -1,11 +1,6 @@
 export type SentimentDirection = 'bullish' | 'bearish' | 'neutral' | 'unknown';
 
-export interface SentimentBadge {
-  direction: SentimentDirection;
-  label: string;
-}
-
-export interface DailyQuoteHolding {
+interface DailyQuoteHolding {
   shares?: number | string;
   currentPrice?: number;
   previousClose?: number;

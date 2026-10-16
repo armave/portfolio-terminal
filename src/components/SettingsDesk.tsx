@@ -11,7 +11,7 @@ export interface SettingsDeskProps {
   defaultRefreshIntervalMs?: number;
   onSaveBrokerRules: (event: Event) => void;
   onResetBrokerRules: () => void;
-  onSaveApiKeys: () => void;
+  onSaveApiKeys: (secret: string) => void | Promise<void>;
   onPullCloudState: () => void;
   onChangeRefreshInterval: (intervalMs: string) => void;
   onExportBackup: () => void;
@@ -107,8 +107,8 @@ export function SettingsDesk({
     }
   };
 
-  const handleSaveKeysClick = () => {
-    onSaveApiKeys();
+  const handleSaveKeysClick = async () => {
+    await onSaveApiKeys(secretValue);
     const configured = areHeaderCredentialsConfigured();
     setIsConfigured(configured);
     setCredentialsHidden(configured);
@@ -155,11 +155,11 @@ export function SettingsDesk({
             type="button"
             onClick={() => setCredentialsHidden((prev) => !prev)}
             aria-expanded={!credentialsHidden}
-            title="Hide credential inputs"
+            title={credentialsHidden ? 'Show credential inputs' : 'Hide credential inputs'}
             class={`${isConfigured ? '' : 'hidden '
               }h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center`}
           >
-            {credentialsHidden ? 'Show keys' : 'Hide keys'}
+            {credentialsHidden ? 'Show inputs' : 'Hide inputs'}
           </button>
           <div
             id="headerCredentialsActions"

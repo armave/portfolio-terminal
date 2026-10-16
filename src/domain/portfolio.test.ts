@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   calculateMarginInterest,
+  collectOpenPositionTranches,
   createBlankState,
   normalizePortfolioBackup,
   normalizePortfolioState,
@@ -12,6 +13,7 @@ import {
   calculateBreakevenDays,
   processRollovers,
   calculateCommission,
+  calculateTrancheCommissions,
   getAccruedRolloverCycles,
   type MarginPosition,
   type TradeTranche
@@ -26,6 +28,25 @@ const basePosition: MarginPosition = {
 };
 
 describe('portfolio domain', () => {
+  it('collects active tranches from canonical positions, ignoring empty or missing entries', () => {
+    const positions = {
+      AAPL: { tranches: [{ qty: 10, price: 100 }, { qty: 5, price: 110 }] },
+      MSFT: { tranches: [{ qty: 2, price: 400 }] },
+      CLOSED: { tranches: [] },
+      MISSING: null
+    };
+
+    expect(collectOpenPositionTranches(positions)).toEqual([
+      { qty: 10, price: 100 },
+      { qty: 5, price: 110 },
+      { qty: 2, price: 400 }
+    ]);
+  });
+
+  it('returns no tranches when the canonical positions map is empty', () => {
+    expect(collectOpenPositionTranches({})).toEqual([]);
+  });
+
   it('creates a stable blank state from the supplied clock', () => {
     expect(createBlankState(1_700_000_000_000)).toMatchObject({
       activeView: 'COMBINED',
@@ -50,6 +71,33 @@ describe('portfolio domain', () => {
 
   it('rejects non-object imported state', () => {
     expect(() => normalizePortfolioState([])).toThrow('Portfolio state must be an object.');
+  });
+
+  it('migrates a legacy-only JSON backup into canonical positions', () => {
+    const backup = normalizePortfolioBackup({
+      balance: -250,
+      holdings: [{
+        ticker: 'wdc',
+        isMargin: true,
+        currentPrice: 11.5,
+        analystTarget: 12.07,
+        tranches: [{
+          id: 'legacy-wdc',
+          shares: 30,
+          entryPrice: 11.5,
+          purchaseDate: '2026-10-15'
+        }]
+      }]
+    }, 1_792_000_000_000);
+
+    expect(backup.positions.WDC).toMatchObject({
+      ticker: 'WDC',
+      shares: 30,
+      currentPrice: 11.5,
+      pt: 12.07,
+      tranches: [{ qty: 30, price: 11.5, date: '2026-10-15' }]
+    });
+    expect(backup.balance).toBe(-250);
   });
 
   it('accepts recognized portfolio backups and rejects unrelated JSON objects', () => {
@@ -77,6 +125,16 @@ describe('portfolio domain', () => {
     expect(accrued).toBeCloseTo(26.71, 1);
   });
 
+  it('uses allocated position debt instead of charging total portfolio debt to each position', () => {
+    const interest = calculateMarginInterest(
+      [{ qty: 10, price: 100, date: '2026-10-15' }],
+      { dailyRate: 0.01, marginDebt: 200, totalDebt: 1000, days: 1 }
+    );
+
+    // $200 allocated debt at 1% for one cycle = $2, not $10 on the full $1,000 position.
+    expect(interest).toBeCloseTo(2, 8);
+  });
+
   it('calculates interest scaling with margin utilization ratio', () => {
     const state = {
       marginDebt: 5_000,
@@ -87,8 +145,25 @@ describe('portfolio domain', () => {
     const now = new Date(2026, 9, 5, 12, 0, 0);
     const interest = calculateMarginInterest(state, { now, annualRate: 0.15 });
 
-    const expected = 10_000 * 0.5 * (0.15 / 365) * 4;
+    const expected = 10_000 * 0.5 * (Math.pow(1 + 0.15 / 365, 4) - 1);
     expect(interest).toBeCloseTo(expected, 4);
+  });
+
+  it('compounds margin interest across each accrued rollover cycle', () => {
+    const principal = 10_000;
+    const dailyRate = 0.15 / 365;
+    const interest = calculateMarginInterest(principal, dailyRate, 4);
+    expect(interest).toBeCloseTo(principal * (Math.pow(1 + dailyRate, 4) - 1), 8);
+    expect(interest).toBeGreaterThan(principal * dailyRate * 4);
+  });
+
+  it('applies minimum commissions separately to each execution tranche', () => {
+    const rules = { commPerShare: 0.01, commVolumePct: 0, minCommOrder: 1.5 };
+    expect(calculateCommission(100, 1_000, rules)).toBe(1.5);
+    expect(calculateTrancheCommissions([
+      { qty: 10, price: 10 },
+      { qty: 10, price: 10 }
+    ], rules)).toBe(3);
   });
 
   it('parses short buy dates and falls back for invalid dates', () => {
@@ -150,11 +225,11 @@ describe('portfolio domain', () => {
     expect(basePosition).toEqual(original);
   });
 
-  it('calculates projected debt correctly', () => {
-    // 1000 * (1 + 0.01 * 5) = 1050
-    expect(calculateProjectedDebt(1000, 0.01, 5)).toBe(1050);
-    // Should handle negative principal by taking absolute value
-    expect(calculateProjectedDebt(-1000, 0.01, 5)).toBe(1050);
+  it('projects debt with the same daily compounding model as accrued margin interest', () => {
+    // 1000 * (1 + 0.01)^5 = 1051.01005, rounded to cents.
+    expect(calculateProjectedDebt(1000, 0.01, 5)).toBe(1051.01);
+    expect(calculateProjectedDebt(-1000, 0.01, 5)).toBe(1051.01);
+    expect(calculateProjectedDebt(1000, 0.01, 0)).toBe(1000);
   });
 
   it('calculates accrued fees correctly', () => {
@@ -177,16 +252,33 @@ describe('portfolio domain', () => {
     expect(calculateCommission(0, 100, rules)).toBe(0); // 0 shares
   });
 
-  it('calculates accrued rollover cycles correctly based on 04:00 AM cutoff', () => {
+  it('calculates rollover cycles at 04:00 in Asia/Yerevan independent of host timezone', () => {
     const purchaseDate = '2026-10-01';
-    // Same day before cutoff
-    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-01T03:00:00'))).toBe(0);
-    // Same day after cutoff
-    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-01T05:00:00'))).toBe(0);
-    // Next day before cutoff
-    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-02T03:00:00'))).toBe(0);
-    // Next day after cutoff
-    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-02T05:00:00'))).toBe(1);
+    // 03:00 Armenia time on purchase day (23:00Z previous day).
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-09-30T23:00:00Z'))).toBe(0);
+    // 05:00 Armenia time on purchase day.
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-01T01:00:00Z'))).toBe(0);
+    // 03:00 Armenia time the next day, before the cutoff.
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-01T23:00:00Z'))).toBe(0);
+    // 05:00 Armenia time the next day, after the cutoff.
+    expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-02T01:00:00Z'))).toBe(1);
+  });
+
+  it('processes a same-day rollover when the stored baseline is before the 04:00 Armenia cutoff', () => {
+    vi.useFakeTimers();
+    const state = {
+      balance: -1000,
+      lastRolloverTimestamp: new Date('2026-01-02T23:00:00Z').getTime(),
+      brokerAssumptions: { annualRate: 0.365, dayCountBasis: 365, rolloverHour: 4, rolloverMinute: 0 }
+    };
+
+    // 05:00 Armenia time on Jan 3, one hour after the cutoff.
+    vi.setSystemTime(new Date('2026-01-03T01:00:00Z'));
+    expect(processRollovers(state)).toBe(true);
+    expect(state.balance).toBe(-1001);
+    expect(state.lastRolloverTimestamp).toBe(new Date('2026-01-03T00:00:00Z').getTime());
+
+    vi.useRealTimers();
   });
 
   it('processes rollovers and deducts margin from balance', () => {

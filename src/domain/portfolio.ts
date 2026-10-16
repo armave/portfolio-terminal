@@ -8,6 +8,15 @@ export interface TradeTranche {
   [key: string]: unknown;
 }
 
+/** Collect active tranches from the canonical positions map. */
+export function collectOpenPositionTranches<T extends { qty: number; price: number }>(
+  positions: Record<string, { tranches?: T[] } | null | undefined>
+): T[] {
+  return Object.values(positions || {}).flatMap((position) =>
+    Array.isArray(position?.tranches) ? position.tranches : []
+  );
+}
+
 export interface MarginPosition {
   ticker: string;
   shares: number;
@@ -18,7 +27,7 @@ export interface MarginPosition {
   [key: string]: unknown;
 }
 
-export interface ClosedTrade {
+interface ClosedTrade {
   ticker: string;
   date: number;
   shares: number;
@@ -67,61 +76,40 @@ export function calculateCommission(
   return Math.max(rules.minCommOrder, (rules.commPerShare * shares) + (rules.commVolumePct * totalVal));
 }
 
-export interface MarginInterestState {
-  marginDebt?: number;
-  balance?: number;
-  totalDebt?: number;
-  tranches?: Array<TradeTranche | Record<string, unknown>>;
-  positions?: Record<string, MarginPosition>;
-  [key: string]: unknown;
-}
-
-export interface MarginInterestOptions {
-  marginDebt?: number;
-  totalDebt?: number;
-  annualRate?: number;
-  dailyRate?: number;
-  now?: Date | number | string;
-  [key: string]: unknown;
-}
-
-export function parseTrancheDate(
-  dateStr: unknown,
-  fallbackYear = new Date().getFullYear()
-): Date {
-  if (dateStr instanceof Date) return dateStr;
-  if (typeof dateStr === 'number' && Number.isFinite(dateStr)) return new Date(dateStr);
-  if (typeof dateStr !== 'string') return new Date();
-
-  const trimmed = dateStr.trim();
-  if (/^\d{1,2}\s+[A-Za-z]{3,}$/i.test(trimmed)) {
-    return new Date(`${trimmed} ${fallbackYear}`);
-  }
-
-  const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (ymdMatch) {
-    return new Date(Number(ymdMatch[1]), Number(ymdMatch[2]) - 1, Number(ymdMatch[3]));
-  }
-
-  const parsed = new Date(trimmed);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-}
-
-export function getDaysPassed(startDate: Date, endDate: Date = new Date()): number {
-  const start = new Date(startDate);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(endDate);
-  end.setHours(0, 0, 0, 0);
-  return Math.floor((end.getTime() - start.getTime()) / 86400000);
+/** Calculate execution commissions independently so each tranche retains its ticket minimum. */
+export function calculateTrancheCommissions(
+  tranches: Array<{ qty?: number; shares?: number; price: number }>,
+  rules: CommissionConfig
+): number {
+  return tranches.reduce((total, tranche) => {
+    const shares = Number(tranche.qty ?? tranche.shares) || 0;
+    const price = Number(tranche.price) || 0;
+    return total + calculateCommission(shares, shares * price, rules);
+  }, 0);
 }
 
 /**
- * Broker cutoff: 04:00 AM local Armenia time (UTC+4)
+ * Returns Armenia's local date and time parts regardless of the host machine's timezone.
+ * Armenia is UTC+04:00 and does not currently observe daylight saving time.
  */
-export function getRolloverCutoff(date: Date = new Date()): Date {
-  const cutoff = new Date(date);
-  cutoff.setHours(4, 0, 0, 0);
-  return cutoff;
+function getArmeniaClockParts(date: Date): { year: number; month: number; day: number; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Yerevan',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date);
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0);
+  return {
+    year: value('year'),
+    month: value('month'),
+    day: value('day'),
+    hour: value('hour'),
+    minute: value('minute')
+  };
 }
 
 /**
@@ -137,16 +125,16 @@ export function getAccruedRolloverCycles(purchaseDateStr?: string, now: Date = n
   const pMonth = parseInt(parts[1], 10) - 1;
   const pDay = parseInt(parts[2], 10);
 
-  const purchaseMidnight = new Date(pYear, pMonth, pDay, 0, 0, 0, 0);
-  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  if (![pYear, pMonth, pDay].every(Number.isFinite) || pMonth < 0 || pMonth > 11 || pDay < 1 || pDay > 31) return 0;
 
-  const diffDays = Math.round((todayMidnight.getTime() - purchaseMidnight.getTime()) / (1000 * 60 * 60 * 24));
+  const localNow = getArmeniaClockParts(now);
+  const purchaseDay = Date.UTC(pYear, pMonth, pDay);
+  const currentDay = Date.UTC(localNow.year, localNow.month - 1, localNow.day);
+  const diffDays = Math.round((currentDay - purchaseDay) / 86_400_000);
   if (diffDays <= 0) return 0;
 
-  // If purchase date was yesterday or earlier, check if today's 04:00 AM cutoff has passed
-  const todayCutoff = getRolloverCutoff(now);
-  const hasPassedTodayCutoff = now.getTime() >= todayCutoff.getTime();
-
+  // Count today's cycle only after 04:00 in Asia/Yerevan, independent of host timezone.
+  const hasPassedTodayCutoff = localNow.hour > 4 || (localNow.hour === 4 && localNow.minute >= 0);
   return hasPassedTodayCutoff ? diffDays : Math.max(0, diffDays - 1);
 }
 
@@ -200,7 +188,8 @@ export function calculateMarginInterest(
       days = Number(maybeDays ?? opts.days ?? opts.daysHeld ?? opts.holdingDays) || 0;
     }
 
-    return principal * marginRatio * dailyRate * days;
+    if (principal <= 0 || dailyRate <= 0 || days <= 0) return 0;
+    return principal * marginRatio * (Math.pow(1 + dailyRate, days) - 1);
   }
 
   // Signature 2: Tranches array or state/holding/position object
@@ -257,7 +246,10 @@ export function calculateMarginInterest(
   if (typeof ratioCandidate === 'number') {
     marginRatio = ratioCandidate;
   } else if (options.marginDebt !== undefined || options.totalDebt !== undefined || (typeof options.balance === 'number' && options.balance < 0)) {
-    const debt = Math.abs(Number(options.totalDebt ?? options.marginDebt ?? options.balance) || 0);
+    // marginDebt may be a position's allocated share of portfolio debt. Prefer
+    // it over totalDebt so a position-level calculation doesn't charge the
+    // entire portfolio debt against every position.
+    const debt = Math.abs(Number(options.marginDebt ?? options.totalDebt ?? options.balance) || 0);
     if (totalInvested > 0) {
       marginRatio = debt / totalInvested;
     }
@@ -305,14 +297,19 @@ export function calculateMarginInterest(
         trancheTs = Date.parse(String(rawDate)) || now.getTime();
       }
 
-      const trancheDate = new Date(trancheTs);
-      const dTranche = new Date(trancheDate.getFullYear(), trancheDate.getMonth(), trancheDate.getDate());
-      const dNow = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const diffDays = Math.round((dNow.getTime() - dTranche.getTime()) / (1000 * 60 * 60 * 24));
-      days = Math.max(0, diffDays);
+      // Tradernet rollover is evaluated at 04:00 in Asia/Yerevan (UTC+4).
+      // Shift timestamps by four hours, then compare calendar dates in that zone.
+      const offsetMs = 4 * 60 * 60 * 1000;
+      const localTranche = new Date(trancheTs + offsetMs);
+      const localNow = new Date(now.getTime() + offsetMs);
+      const trancheDay = Date.UTC(localTranche.getUTCFullYear(), localTranche.getUTCMonth(), localTranche.getUTCDate());
+      const nowDay = Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate());
+      const elapsedCalendarDays = Math.max(0, Math.round((nowDay - trancheDay) / 86400000));
+      const localMinutes = localNow.getUTCHours() * 60 + localNow.getUTCMinutes();
+      days = Math.max(0, elapsedCalendarDays - (localMinutes < 240 ? 1 : 0));
     }
 
-    totalInterest += trancheCost * marginRatio * dailyRate * days;
+    totalInterest += trancheCost * marginRatio * (Math.pow(1 + dailyRate, days) - 1);
   }
 
   return totalInterest;
@@ -320,9 +317,9 @@ export function calculateMarginInterest(
 
 export function calculateProjectedDebt(principal: number, dailyRate: number, days: number): number {
   const p = Math.abs(Number(principal) || 0);
-  const r = Number(dailyRate) || 0;
-  const d = Number(days) || 0;
-  return Number((p * (1 + r * d)).toFixed(2));
+  const r = Math.max(0, Number(dailyRate) || 0);
+  const d = Math.max(0, Number(days) || 0);
+  return Number((p * Math.pow(1 + r, d)).toFixed(2));
 }
 
 export function calculateAccruedFees(
@@ -402,7 +399,43 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
 
   const blankState = createBlankState(now);
   const sourceCashCushion = isRecord(candidate.cashCushion) ? candidate.cashCushion : {};
-  const positions = isRecord(candidate.positions) ? candidate.positions : {};
+  const hasCanonicalPositions = Object.prototype.hasOwnProperty.call(candidate, 'positions');
+  const positions: Record<string, unknown> = isRecord(candidate.positions) ? candidate.positions : {};
+  // Explicitly importing a legacy-only backup is a user-requested replacement,
+  // so migrate its old holdings schema only when no canonical positions field exists.
+  if (!hasCanonicalPositions && Array.isArray(candidate.holdings)) {
+    candidate.holdings.filter(isRecord).forEach((holding) => {
+      const ticker = String(holding.ticker || '').trim().toUpperCase();
+      if (!ticker || Object.prototype.hasOwnProperty.call(positions, ticker)) return;
+
+      const tranches = (Array.isArray(holding.tranches) ? holding.tranches : [])
+        .filter(isRecord)
+        .map((tranche) => ({
+          ...tranche,
+          qty: finiteNumber(tranche.qty ?? tranche.shares, 0),
+          price: finiteNumber(tranche.price ?? tranche.entryPrice, 0),
+          date: typeof (tranche.date ?? tranche.purchaseDate) === 'string'
+            ? String(tranche.date ?? tranche.purchaseDate)
+            : undefined
+        }))
+        .filter((tranche) => tranche.qty > 0 && tranche.price > 0);
+      const shares = tranches.reduce((total, tranche) => total + tranche.qty, 0);
+      if (shares <= 0) return;
+
+      const costBasis = tranches.reduce((total, tranche) => total + tranche.qty * tranche.price, 0);
+      const averagePrice = costBasis / shares;
+      const startDate = tranches.map((tranche) => tranche.date).filter(Boolean).sort()[0];
+      positions[ticker] = {
+        ticker,
+        shares,
+        currentPrice: finiteNumber(holding.currentPrice, averagePrice),
+        pt: finiteNumber(holding.analystTarget, Number((averagePrice * 1.1).toFixed(2))),
+        commBuy: finiteNumber(holding.commBuy, 0),
+        startDate,
+        tranches
+      };
+    });
+  }
   const normalizedPositions: Record<string, MarginPosition> = {};
 
   Object.entries(positions).forEach(([ticker, position]) => {
@@ -460,7 +493,7 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
 
 export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): PortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio backup must be an object.');
-  const recognizedFields = ['positions', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate'];
+  const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate'];
   if (!recognizedFields.some(field => Object.hasOwn(candidate, field))) {
     throw new Error('File does not contain a recognized portfolio backup.');
   }
@@ -598,37 +631,62 @@ export function processRollovers(state: any): boolean {
     return false;
   }
 
+  const rules = state.brokerAssumptions || {};
+  const annualRate = Number(
+    rules.annualRate ?? rules.annualBorrowRate ?? state.settings?.marginRate ?? 0.15
+  );
+  const dayCountBasis = Number(rules.dayCountBasis ?? 365) || 365;
+  const dailyRate = Math.max(0, annualRate / dayCountBasis);
+  const rolloverHour = Number.isInteger(rules.rolloverHour) ? rules.rolloverHour : 4;
+  const rolloverMinute = Number.isInteger(rules.rolloverMinute) ? rules.rolloverMinute : 0;
   const now = new Date();
-  let lastTime = new Date(state.lastRolloverTimestamp);
+  const lastTimestamp = Number(state.lastRolloverTimestamp);
+  if (!Number.isFinite(lastTimestamp) || lastTimestamp <= 0) {
+    state.lastRolloverTimestamp = now.getTime();
+    return false;
+  }
+
+  const lastParts = getArmeniaClockParts(new Date(lastTimestamp));
+  // Armenia uses UTC+04:00 and currently has no daylight-saving transitions.
+  const boundaryFor = (year: number, month: number, day: number) =>
+    Date.UTC(year, month - 1, day, rolloverHour, rolloverMinute) - 4 * 60 * 60 * 1000;
+  let boundary = boundaryFor(lastParts.year, lastParts.month, lastParts.day);
+
+  // If the stored timestamp is at or after today's cutoff, start tomorrow.
+  if (boundary <= lastTimestamp) {
+    const nextDay = new Date(Date.UTC(lastParts.year, lastParts.month - 1, lastParts.day + 1));
+    boundary = boundaryFor(nextDay.getUTCFullYear(), nextDay.getUTCMonth() + 1, nextDay.getUTCDate());
+  }
+
   let rolloversApplied = 0;
   let totalDeducted = 0;
+  let lastProcessedBoundary = lastTimestamp;
 
-  // Find the very next 04:00 AM boundary after the last recorded timestamp
-  let nextBoundary = new Date(lastTime);
-  // The stored timestamp marks the last rollover-processing date. Start with
-  // the following day's cutoff so we don't charge an extra rollover on that
-  // same calendar day when the timestamp happens to be before 04:00.
-  nextBoundary.setDate(nextBoundary.getDate() + 1);
-  nextBoundary.setHours(4, 0, 0, 0);
-
-  // Time-travel loop: execute for every 04:00 AM passed
-  while (nextBoundary <= now) {
-    if (state.balance < 0) {
-      // Dynamically fetch margin rate (fallback to 0.15 if not explicitly defined in settings)
-      const marginRate = state.settings?.marginRate || 0.15;
-      const dailyFee = Math.abs(state.balance) * (marginRate / 365);
-
-      state.balance -= dailyFee; // Deduct fee (compounding the negative balance)
-      state.balance = Math.round(state.balance * 100) / 100;
-      totalDeducted += dailyFee;
+  while (boundary <= now.getTime()) {
+    if (state.balance < 0 && dailyRate > 0) {
+      const before = Math.abs(Number(state.balance) || 0);
+      const after = Number((before * (1 + dailyRate)).toFixed(2));
+      state.balance = -after;
+      totalDeducted += after - before;
     }
     rolloversApplied++;
-    nextBoundary.setDate(nextBoundary.getDate() + 1); // Advance to next day's 04:00 AM
+    lastProcessedBoundary = boundary;
+
+    const boundaryDate = new Date(boundary + 4 * 60 * 60 * 1000);
+    boundary = boundaryFor(
+      boundaryDate.getUTCFullYear(),
+      boundaryDate.getUTCMonth() + 1,
+      boundaryDate.getUTCDate() + 1
+    );
   }
 
   if (rolloversApplied > 0) {
-    state.lastRolloverTimestamp = Date.now();
-    console.log(`[System]: Applied ${rolloversApplied} missed 04:00 AM rollovers. Deducted $${totalDeducted.toFixed(2)} total margin.`);
+    // Persist the actual last cutoff, not the time of this sync, so later
+    // pulls cannot skip or double-count a rollover.
+    state.lastRolloverTimestamp = lastProcessedBoundary;
+    console.log(
+      `[System]: Applied ${rolloversApplied} missed ${String(rolloverHour).padStart(2, '0')}:${String(rolloverMinute).padStart(2, '0')} Asia/Yerevan rollovers. Deducted $${totalDeducted.toFixed(2)} total margin.`
+    );
     return true;
   }
   return false;

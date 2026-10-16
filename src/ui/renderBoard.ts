@@ -5,32 +5,23 @@ import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
 import { ProjectionsTable } from '../components/ProjectionsTable';
 import { CashCushionDesk } from '../components/CashCushionDesk';
 import { ClosedHistoryDesk } from '../components/ClosedHistoryDesk';
-import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
-import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
+import { calculateCommission, calculateMarginInterest, collectOpenPositionTranches } from '../domain/portfolio';
 import {
   BrokerRules,
   PositionRecord,
-  CashStockHolding,
-  CashCushionState,
   QuoteDetails,
-  TrancheItem,
-  PortfolioState,
   BoardState
 } from '../types/portfolio';
 
 export type {
   BrokerRules,
   PositionRecord,
-  CashStockHolding,
-  CashCushionState,
   QuoteDetails,
-  TrancheItem,
-  PortfolioState,
   BoardState
 };
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const NON_POSITION_VIEWS = new Set(['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
+const NON_POSITION_VIEWS = new Set(['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
 
 export function formatTrancheDate(dateStr?: string | number | null): string {
   if (!dateStr || typeof dateStr !== 'string') return 'New';
@@ -91,36 +82,6 @@ export function getCashCushionTotal(state?: BoardState | null): number {
   return cashVal + stocksVal;
 }
 
-export function createInsightElement(tagName: string, className = '', text = ''): HTMLElement {
-  const element = document.createElement(tagName);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
-}
-
-export function sentimentBadge(
-  direction: SentimentDirection | string,
-  label: string = sentimentLabel(direction as SentimentDirection)
-): HTMLElement {
-  const styles: Record<string, string> = {
-    bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
-    bearish: 'border-rose-800 bg-rose-950/50 text-rose-300',
-    neutral: 'border-slate-700 bg-slate-900 text-slate-300',
-    unknown: 'border-slate-800 bg-slate-950 text-slate-500'
-  };
-  const badge = createInsightElement(
-    'span',
-    `inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${styles[direction] || styles.unknown}`,
-    label
-  );
-  badge.dataset.sentiment = direction;
-  badge.title =
-    direction === 'unknown'
-      ? 'The selected data source did not provide a sentiment signal.'
-      : 'A directional marker based only on the provider values shown in this section.';
-  return badge;
-}
-
 export function formatQuoteMetadata(
   holding: { quoteUpdatedAt?: number; quoteSource?: string },
   refreshIntervalMs = 60000
@@ -134,35 +95,6 @@ export function formatQuoteMetadata(
   return `${isStale ? 'Stale · ' : ''} ${holding.quoteSource ? holding.quoteSource + ' · ' : ''} ${time}`;
 }
 
-export function createDailyQuoteLabel(details?: QuoteDetails | null): HTMLSpanElement | null {
-  if (!details || typeof details !== 'object') return null;
-  const hasChange = Number.isFinite(details.change) && Number.isFinite(details.changePercent);
-  const hasRange = Number.isFinite(details.high) && Number.isFinite(details.low);
-  if (!hasChange && !hasRange) return null;
-
-  const label = document.createElement('span');
-  label.className = 'mt-0.5 block text-[9px] font-normal tabular-nums';
-  const parts: string[] = [];
-  if (hasChange && details.change !== undefined && details.changePercent !== undefined) {
-    const sign = details.change >= 0 ? '+' : '−';
-    parts.push(
-      `${sign}${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`
-    );
-    label.classList.add(
-      details.change > 0
-        ? 'text-emerald-400'
-        : details.change < 0
-          ? 'text-rose-400'
-          : 'text-slate-400'
-    );
-  } else {
-    label.classList.add('text-slate-400');
-  }
-  if (hasRange) parts.push(`H ${formatUSD(details.high)} / L${formatUSD(details.low)}`);
-  label.textContent = `Day: ${parts.join(' · ')}`;
-  return label;
-}
-
 export function formatRiskTrigger(triggerValue: number, currentValue: number): string {
   if (currentValue <= 0) return `Position value ${formatUSD(triggerValue)}`;
 
@@ -173,7 +105,7 @@ export function formatRiskTrigger(triggerValue: number, currentValue: number): s
   return `Position value ${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
 }
 
-export function resolveActiveView(state: BoardState): string {
+function resolveActiveView(state: BoardState): string {
   let currentView = state.activeView;
   if (!currentView || (!NON_POSITION_VIEWS.has(currentView) && !state.positions?.[currentView])) {
     currentView = 'COMBINED';
@@ -261,9 +193,7 @@ function calculateCombinedMetrics(state: BoardState, rules: BrokerRules, tickers
     totalGrossTarget += valSell - cost;
   });
 
-  const tranchesForCombined = state.tranches && state.tranches.length > 0
-    ? state.tranches
-    : tickers.flatMap((t) => state.positions![t]?.tranches || []);
+  const tranchesForCombined = collectOpenPositionTranches(state.positions || {});
     
   const totalDebt = Math.abs(Number(state.balance) || 0);
   const openMarginCharged = calculateMarginInterest(tranchesForCombined as any, {
@@ -293,9 +223,7 @@ function calculatePositionMetrics(state: BoardState, pos: PositionRecord, rules:
   const totalAccountDebt = Math.abs(Number(state.balance) || 0);
   const allocatedDebt = totalAccountDebt * weight;
   
-  const tranches = pos.tranches && pos.tranches.length > 0
-    ? pos.tranches
-    : (state.tranches && state.tranches.length > 0 ? state.tranches : []);
+  const tranches = pos.tranches || [];
     
   const posMarginCharged = calculateMarginInterest(tranches as any, {
     dailyRate,
@@ -432,6 +360,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     onUpdateCombinedBreakeven = () => { },
     onSyncMarketInsightsPanel = () => { },
     refreshIntervalMs = 60000,
+    lastDeskView = null,
     onUpdateLastDeskView = () => { }
   } = options;
 
@@ -443,6 +372,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
   const isSettingsActive = currentView === 'SETTINGS';
+  const viewChanged = currentView !== lastDeskView;
 
   const tabsContainer = document.getElementById('tickerTabs');
   if (tabsContainer) {
@@ -459,10 +389,10 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   onSyncMarketInsightsPanel();
 
   const daysEl = document.getElementById('daysToBreakeven');
-  hideAllDesks();
+  if (viewChanged) hideAllDesks();
 
   if (isCushionActive) {
-    showDesk('cashCushionContainer');
+    if (viewChanged) showDesk('cashCushionContainer');
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('CASH_CUSHION');
     renderCashCushion(state, { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs });
@@ -470,7 +400,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isClosedHistoryActive) {
-    showDesk('closedHistoryContainer');
+    if (viewChanged) showDesk('closedHistoryContainer');
     const closedDesk = document.getElementById('closedHistoryContainer');
     if (closedDesk) render(h(ClosedHistoryDesk, {}), closedDesk);
     if (daysEl) daysEl.classList.add('hidden');
@@ -480,7 +410,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isSettingsActive) {
-    showDesk('settings');
+    if (viewChanged) showDesk('settings');
     if (typeof window !== 'undefined' && typeof (window as any).renderSettingsPanel === 'function') {
       (window as any).renderSettingsPanel();
     }
@@ -489,7 +419,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     return;
   }
 
-  showDesk('mainDeskContainer');
+  if (viewChanged) showDesk('mainDeskContainer');
   if (daysEl) daysEl.classList.remove('hidden');
   onUpdateLastDeskView(currentView);
 

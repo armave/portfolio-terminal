@@ -1,7 +1,7 @@
 import { portfolioStore } from '../../store/portfolioStore';
 import { calculateCommission, calculateMarginInterest } from '../../domain/portfolio';
 
-export type SideEffectAction =
+type SideEffectAction =
   | { type: 'FETCH_QUOTE'; ticker: string }
   | { type: 'REFRESH_ALL' }
   | { type: 'SWITCH_VIEW'; view: string }
@@ -24,14 +24,14 @@ const MONTH_LOOKUP: Record<string, number> = {
   jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
 };
 
-export function toLocalIsoDate(d: Date = new Date()): string {
+function toLocalIsoDate(d: Date = new Date()): string {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
-export function parsePurchaseDate(rawDate?: string): string {
+function parsePurchaseDate(rawDate?: string): string {
   const today = new Date();
   if (!rawDate) return toLocalIsoDate(today);
 
@@ -135,8 +135,17 @@ export class CommandDispatcher {
   }
 
   static execute(input: string): CommandOutput {
-    const raw = input.trim();
+    // An untouched optional target-price placeholder means "use the default".
+    let raw = input.trim().replace(/,\s*(?:pt|target)\s+\[[^\]]+\]/gi, '').trim();
     if (!raw) return { text: '', type: 'res' };
+
+    const unresolved = raw.match(/\[([^\]]+)\]/);
+    if (unresolved) {
+      return {
+        text: `Please replace [${unresolved[1]}] with a value before running this command.`,
+        type: 'err'
+      };
+    }
 
     const lower = raw.toLowerCase();
 
@@ -227,11 +236,9 @@ export class CommandDispatcher {
 
         const state: any = portfolioStore.getState();
         const pos = state.positions?.[sym];
-        const holding = (state.holdings || []).find((h: any) => h.ticker === sym);
         const availableShares =
           Number(pos?.shares) ||
-          (pos?.tranches || []).reduce((sum: number, t: any) => sum + Number(t.qty ?? t.shares ?? 0), 0) ||
-          (holding?.tranches || []).reduce((sum: number, t: any) => sum + Number(t.shares || 0), 0);
+          (pos?.tranches || []).reduce((sum: number, t: any) => sum + Number(t.qty ?? t.shares ?? 0), 0);
 
         if (availableShares <= 0) {
           throw new Error(`No open position found for ${sym}.`);
@@ -381,10 +388,10 @@ export class CommandDispatcher {
 
         const isToday = dateStr === toLocalIsoDate(new Date());
         return {
-          text: `Bought ${qty} ${sym} @ $${price.toFixed(2)}${!isToday ? ` (Date: ${dateStr})` : ''
-            }${Number.isFinite(pt) && pt > 0 ? ` | Target PT: $${pt.toFixed(2)}` : ''}`,
+          text: `Bought ${qty} ${sym} @ ${price.toFixed(2)}${!isToday ? ` (Date: ${dateStr})` : ''
+            }${Number.isFinite(pt) && pt > 0 ? ` | Target PT: ${pt.toFixed(2)}` : ''}`,
           type: 'res',
-          sideEffect: { type: 'SYNC_CLOUD' }
+          sideEffect: { type: 'FETCH_QUOTE', ticker: sym }
         };
       }
 
@@ -478,35 +485,78 @@ export class CommandDispatcher {
   }
 
   private static evaluateComparison(tickerArg: string | undefined, p1: number, days: number, p2: number): CommandOutput {
+    if (!Number.isFinite(p1) || p1 <= 0 || !Number.isFinite(p2) || p2 <= 0) {
+      throw new Error('Enter valid positive prices for both exit scenarios.');
+    }
+    if (!Number.isInteger(days) || days < 0) {
+      throw new Error('Waiting period must be a whole number of days (zero or more).');
+    }
+
     const { sym, pos, state } = this.resolveActivePosition(tickerArg);
     const rules = this.getRules(state);
-
     const shares = Number(pos.shares);
-    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+    if (!Number.isFinite(shares) || shares <= 0) {
+      throw new Error('No valid open shares found for ' + sym + '.');
+    }
+
+    const costBasis = (pos.tranches || []).reduce((sum: number, tranche: any) =>
+      sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0);
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
     const totalDebt = Math.abs(Number(state.balance) || 0);
-    const baseMargin = calculateMarginInterest(pos.tranches || [], {
+    const currentMargin = calculateMarginInterest(pos.tranches || [], {
       dailyRate: rules.dailyRate,
       marginDebt: totalDebt,
       totalDebt
     } as any);
-
-    const gross1 = shares * p1;
-    const comm1 = (Number(pos.commBuy) || 0) + calculateCommission(shares, gross1, rules as any);
-    const net1 = gross1 - costBasis - comm1 - baseMargin;
-
     const extraCarry = totalDebt * rules.dailyRate * days;
-    const gross2 = shares * p2;
-    const comm2 = (Number(pos.commBuy) || 0) + calculateCommission(shares, gross2, rules as any);
-    const net2 = gross2 - costBasis - comm2 - (baseMargin + extraCarry);
 
-    const diff = net2 - net1;
-    const verdict = diff > 0
-      ? `Waiting ${days}d yields +$${diff.toFixed(2)} MORE net profit (beats $${extraCarry.toFixed(2)} carry cost).`
-      : `Selling today yields +$${Math.abs(diff).toFixed(2)} MORE net profit (waiting doesn't beat $${extraCarry.toFixed(2)} carry cost).`;
+    const grossToday = shares * p1;
+    const sellCommToday = calculateCommission(shares, grossToday, rules as any);
+    const marginToday = currentMargin;
+    const netToday = grossToday - costBasis - buyCommission - sellCommToday - marginToday;
+
+    const grossLater = shares * p2;
+    const sellCommLater = calculateCommission(shares, grossLater, rules as any);
+    const marginLater = currentMargin + extraCarry;
+    const netLater = grossLater - costBasis - buyCommission - sellCommLater - marginLater;
+
+    const diff = netLater - netToday;
+    const priceChange = ((p2 - p1) / p1) * 100;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+    const winner = Math.abs(diff) < 0.005
+      ? 'RESULT: Effectively tied after estimated costs.'
+      : diff > 0
+        ? 'RESULT: Waiting wins by ' + money(diff) + ' net.'
+        : 'RESULT: Selling today wins by ' + money(-diff) + ' net.';
 
     return {
       type: 'res',
-      text: `[${sym} Comparison]: Today @ $${p1.toFixed(2)} (Net: $${net1.toFixed(2)}) vs +${days}d @ $${p2.toFixed(2)} (Net: $${net2.toFixed(2)}, Extra Carry: -$${extraCarry.toFixed(2)}). ${verdict}`
+      text: [
+        '[EXIT COMPARISON: ' + sym + '] ' + shares.toLocaleString() + ' shares | Cost basis: ' + money(costBasis),
+        'Assumptions: buy commissions ' + money(buyCommission) + ' | current margin interest ' + money(currentMargin) + ' | margin debt ' + money(totalDebt),
+        '',
+        'A) SELL TODAY @ ' + money(p1),
+        '  Gross proceeds:     ' + money(grossToday),
+        '  Cost basis:        -' + money(costBasis),
+        '  Buy commission:    -' + money(buyCommission),
+        '  Sell commission:   -' + money(sellCommToday),
+        '  Margin interest:   -' + money(marginToday),
+        '  NET P&L:            ' + signedMoney(netToday),
+        '',
+        'B) WAIT ' + days + ' DAY' + (days === 1 ? '' : 'S') + ' @ ' + money(p2) + ' (' + signedPercent(priceChange) + ' vs today)',
+        '  Gross proceeds:     ' + money(grossLater),
+        '  Cost basis:        -' + money(costBasis),
+        '  Buy commission:    -' + money(buyCommission),
+        '  Sell commission:   -' + money(sellCommLater),
+        '  Margin interest:   -' + money(marginLater) + ' (extra carry ' + money(extraCarry) + ')',
+        '  NET P&L:            ' + signedMoney(netLater),
+        '',
+        'NET ADVANTAGE (B - A): ' + signedMoney(diff),
+        winner,
+        'Estimate only; assumes shares, cost basis, and margin debt stay unchanged until exit.'
+      ].join('\n')
     };
   }
 

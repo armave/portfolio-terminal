@@ -19,24 +19,24 @@ import {
 } from '../services/storage';
 import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
 
-export const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
-  broker: 'Tradernet',
-  annualRate: 0.16,
-  annualBorrowRate: 0.16,
+const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
+  broker: 'Freedom Broker Armenia (Tradernet)',
+  annualRate: 0.15,
+  annualBorrowRate: 0.15,
   dayCountBasis: 365,
-  rolloverHour: 23,
-  rolloverMinute: 59,
+  rolloverHour: 4,
+  rolloverMinute: 0,
   rolloverTimeZone: 'Asia/Yerevan',
-  dailyRolloverCutoffArmenia: '23:59',
-  maintenanceMarginRatio: 0.25,
-  maintenanceEquityRatio: 0.25,
-  stopOutRatio: 0.2,
-  commPerShare: 0.02,
-  commissionPerShare: 0.02,
-  commVolumePct: 0.0005,
-  commissionRatePct: 0.0005,
-  minCommOrder: 1.5,
-  commissionMin: 1.5
+  dailyRolloverCutoffArmenia: '04:00',
+  maintenanceMarginRatio: 0.1,
+  maintenanceEquityRatio: 0.1,
+  stopOutRatio: 0,
+  commPerShare: 0.012,
+  commissionPerShare: 0.012,
+  commVolumePct: 0.0012,
+  commissionRatePct: 0.0012,
+  minCommOrder: 1.2,
+  commissionMin: 1.2
 };
 
 function todayIso(): string {
@@ -47,7 +47,131 @@ function todayIso(): string {
   return `${y}-${m}-${day}`;
 }
 
-export class Store {
+/**
+ * Import legacy active holdings only when a canonical position for that ticker
+ * does not already exist. Existing canonical records always win.
+ */
+export function migrateLegacyHoldingsToPositions(
+  sourcePositions: Record<string, PositionRecord>,
+  legacyHoldings: Holding[],
+  fallbackDate = todayIso()
+): Record<string, PositionRecord> {
+  const positions: Record<string, PositionRecord> = { ...(sourcePositions || {}) };
+
+  for (const holding of Array.isArray(legacyHoldings) ? legacyHoldings : []) {
+    const ticker = String(holding?.ticker || '').trim().toUpperCase();
+    if (!ticker || positions[ticker]) continue;
+
+    const tranches: TrancheItem[] = (Array.isArray(holding.tranches) ? holding.tranches : [])
+      .map((tranche) => ({
+        qty: Number(tranche.shares) || 0,
+        price: Number(tranche.entryPrice) || 0,
+        date: tranche.purchaseDate || fallbackDate
+      }))
+      .filter((tranche) => tranche.qty > 0 && tranche.price > 0);
+
+    const shares = tranches.reduce((sum, tranche) => sum + tranche.qty, 0);
+    if (shares <= 0) continue;
+
+    const averagePrice = tranches.reduce((sum, tranche) => sum + tranche.qty * tranche.price, 0) / shares;
+    const earliestDate = tranches
+      .map((tranche) => tranche.date)
+      .filter((date): date is string => Boolean(date))
+      .sort()[0] || fallbackDate;
+
+    positions[ticker] = {
+      ticker,
+      shares,
+      currentPrice: Number(holding.currentPrice) || averagePrice,
+      pt: Number(holding.analystTarget) || Number((averagePrice * 1.1).toFixed(2)),
+      commBuy: 0,
+      startDate: earliestDate,
+      tranches
+    };
+  }
+
+  return positions;
+}
+
+/** Build the read-only legacy holdings view from canonical positions. */
+export function buildHoldingsProjection(
+  positions: Record<string, PositionRecord>,
+  legacyHoldings: Holding[],
+  fallbackDate = todayIso()
+): Holding[] {
+  return Object.keys(positions).map((ticker) => {
+    const position = positions[ticker];
+    const legacy = (Array.isArray(legacyHoldings) ? legacyHoldings : []).find(
+      (holding) => String(holding?.ticker || '').trim().toUpperCase() === ticker
+    );
+    const tranches: Tranche[] = (position.tranches || []).map((tranche, index) => ({
+      id: `${ticker}-${index}`,
+      shares: Number(tranche.qty) || 0,
+      entryPrice: Number(tranche.price) || 0,
+      purchaseDate: tranche.date || position.startDate || fallbackDate,
+      targetPrice: position.pt
+    }));
+
+    return {
+      ...legacy,
+      ticker,
+      isMargin: true,
+      tranches,
+      currentPrice: position.currentPrice,
+      analystTarget: position.pt
+    };
+  });
+}
+
+
+/**
+ * Upgrade a legacy-only cloud snapshot without letting stale holdings override
+ * canonical local positions or resurrect a ticker closed locally after its
+ * latest legacy purchase.
+ */
+export function migrateLegacyCloudHoldingsToPositions(
+  cloudState: Partial<PortfolioState>,
+  localState: Partial<PortfolioState>,
+  fallbackDate = todayIso()
+): Partial<PortfolioState> {
+  if (Object.prototype.hasOwnProperty.call(cloudState, 'positions')) return cloudState;
+
+  const localPositions = (localState.positions || {}) as Record<string, PositionRecord>;
+  const localClosedTrades = Array.isArray(localState.closedTrades) ? localState.closedTrades : [];
+  const legacyHoldings = Array.isArray(cloudState.holdings) ? cloudState.holdings : [];
+
+  const safeHoldings = legacyHoldings.filter((holding) => {
+    const ticker = String(holding?.ticker || '').trim().toUpperCase();
+    if (!ticker || localPositions[ticker]) return false;
+
+    const latestClose = localClosedTrades
+      .filter((trade) => String(trade?.ticker || '').trim().toUpperCase() === ticker)
+      .map((trade) => {
+        const value = trade.closedAt ?? trade.exitDate ?? trade.sellDate ?? trade.date;
+        const timestamp = typeof value === 'number' ? value : Date.parse(String(value || ''));
+        return Number.isFinite(timestamp) ? timestamp : 0;
+      })
+      .reduce((latest, timestamp) => Math.max(latest, timestamp), 0);
+
+    if (!latestClose) return true;
+
+    const latestLegacyPurchase = (Array.isArray(holding.tranches) ? holding.tranches : [])
+      .map((tranche) => Date.parse(String(tranche.purchaseDate || '')))
+      .filter(Number.isFinite)
+      .reduce((latest, timestamp) => Math.max(latest, timestamp), 0);
+
+    // A legacy holding is only considered reopened if it has a purchase date
+    // strictly later than the most recent locally recorded exit.
+    return latestLegacyPurchase > latestClose;
+  });
+
+  return {
+    ...cloudState,
+    positions: migrateLegacyHoldingsToPositions(localPositions, safeHoldings, fallbackDate)
+  };
+}
+
+export class PortfolioStore {
   private state: PortfolioState;
   private listeners: Set<(state: PortfolioState) => void> = new Set();
 
@@ -87,63 +211,24 @@ export class Store {
       pendingMutation: null
     };
 
-    return this.normalizeState(raw);
+    // Only migrate legacy holdings when the persisted snapshot truly predates the
+    // canonical positions field. An explicitly empty positions map is authoritative.
+    const allowLegacyMigration = !Object.prototype.hasOwnProperty.call(saved || {}, 'positions');
+    return this.normalizeState(raw, allowLegacyMigration);
   }
 
-  private normalizeState(raw: PortfolioState): PortfolioState {
-    const positions: Record<string, PositionRecord> = { ...(raw.positions || {}) };
-    let holdings: Holding[] = Array.isArray(raw.holdings) ? [...raw.holdings] : [];
-
-    const posKeys = Object.keys(positions);
-    if (posKeys.length > 0) {
-      holdings = posKeys.map((sym) => {
-        const p = positions[sym];
-        const existingHolding = holdings.find((h) => h.ticker === sym);
-        const tranches: Tranche[] = (p.tranches || []).map((t: TrancheItem, idx: number) => ({
-          id: `${sym}-${idx}`,
-          shares: Number((t as any).qty ?? (t as any).shares) || 0,
-          entryPrice: Number((t as any).price ?? (t as any).entryPrice) || 0,
-          purchaseDate: t.date || p.startDate || todayIso(),
-          targetPrice: p.pt
-        }));
-        return {
-          ...existingHolding,
-          ticker: sym,
-          isMargin: true,
-          tranches,
-          currentPrice: p.currentPrice,
-          analystTarget: p.pt
-        };
-      });
-    } else if (holdings.length > 0) {
-      holdings.forEach((h) => {
-        const sym = h.ticker.toUpperCase();
-        const tranches: TrancheItem[] = (h.tranches || []).map((t) => ({
-          qty: Number(t.shares) || 0,
-          price: Number(t.entryPrice) || 0,
-          date: t.purchaseDate || todayIso()
-        }));
-        const shares = tranches.reduce((s, t) => s + t.qty, 0);
-        if (shares > 0) {
-          const avgPrice =
-            tranches.reduce((s, t) => s + t.qty * t.price, 0) / shares;
-          const earliest =
-            tranches
-              .map((t) => t.date)
-              .filter((d): d is string => Boolean(d))
-              .sort()[0] || todayIso();
-          positions[sym] = {
-            ticker: sym,
-            shares,
-            currentPrice: Number(h.currentPrice) || avgPrice,
-            pt: Number(h.analystTarget) || avgPrice * 1.1,
-            commBuy: 0,
-            startDate: earliest,
-            tranches
-          };
-        }
-      });
-    }
+  /**
+   * Positions are the canonical active-trade structure. Legacy `holdings`
+   * entries are imported only for tickers missing from positions, then rebuilt
+   * as a compatibility projection from the canonical positions map.
+   */
+  private normalizeState(raw: PortfolioState, allowLegacyMigration = false): PortfolioState {
+    const legacyHoldings: Holding[] = Array.isArray(raw.holdings) ? raw.holdings : [];
+    const sourcePositions = raw.positions || {};
+    const positions = allowLegacyMigration
+      ? migrateLegacyHoldingsToPositions(sourcePositions, legacyHoldings)
+      : { ...sourcePositions };
+    const holdings = buildHoldingsProjection(positions, legacyHoldings);
 
     const freeCash = Math.max(0, Number(raw.cashCushion?.freeCash ?? raw.cashBalance) || 0);
     const cashHoldings = Array.isArray(raw.cashCushion?.holdings)
@@ -237,7 +322,8 @@ export class Store {
     const num = Number(amount) || 0;
     this.update((state) => {
       const freeCash = Math.max(0, num);
-      const balance = num < 0 ? num : state.balance;
+      // A positive balance entry represents available cash and clears any old margin debt.
+      const balance = num < 0 ? num : 0;
       return {
         ...state,
         balance,
@@ -280,15 +366,20 @@ export class Store {
       const commVolumePct = Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0005);
       const minCommOrder = Number(rules.minCommOrder ?? rules.commissionMin ?? 1.50);
 
-      const rawBuyComm = shares * commPerShare + totalVal * commVolumePct;
-      let buyComm = Number(Math.max(minCommOrder, rawBuyComm).toFixed(2));
+      // A buyStock call represents one broker execution, so enforce the minimum
+      // ticket commission here rather than recalculating across the combined position.
+      const buyComm = Number(calculateCommission(shares, totalVal, {
+        commPerShare,
+        commVolumePct,
+        minCommOrder
+      }).toFixed(2));
 
       const positions = { ...(state.positions || {}) };
       const existingPos = positions[clean];
 
       const nextTranches: TrancheItem[] = [
         ...(existingPos?.tranches || []),
-        { qty: shares, price, date: purchaseDate }
+        { qty: shares, price, date: purchaseDate, buyCommission: buyComm }
       ];
 
       const nextShares = (Number(existingPos?.shares) || 0) + shares;
@@ -311,8 +402,9 @@ export class Store {
             : existingPos?.pt || Number((price * 1.1).toFixed(2)),
         commBuy: nextCommBuy,
         startDate: earliestPosDate,
-        tranches: nextTranches
-      };
+        tranches: nextTranches,
+        lastTradeAt: Date.now()
+      } as PositionRecord;
 
       const allDates = Object.values(positions)
         .flatMap((p) => (p.tranches || []).map((t) => t.date))
@@ -337,7 +429,7 @@ export class Store {
         positions,
         startDate: earliestPortfolioDate,
         activeView: clean,
-        balance: -currentDebt,
+        balance: currentDebt > 0 ? -currentDebt : 0,
         cashBalance: freeCash,
         cashCushion: {
           ...(state.cashCushion || { freeCash: 0, holdings: [] }),
@@ -382,14 +474,9 @@ export class Store {
         };
       }
 
-      const nextHoldings = (state.holdings || []).filter(
-        (h) => h.ticker.toUpperCase() !== clean || Boolean(positions[clean])
-      );
-
       return {
         ...state,
-        positions,
-        holdings: nextHoldings
+        positions
       };
     });
   }
@@ -510,7 +597,9 @@ export class Store {
       const totalCommissions = Number((buyCommAllocated + sellComm).toFixed(2));
       const grossProfit = Number((sellProceeds - soldCostBasis).toFixed(2));
       const netProfit = Number((grossProfit - totalCommissions - marginInterestAllocated).toFixed(2));
-      const netCashProceeds = Number((sellProceeds - sellComm - marginInterestAllocated).toFixed(2));
+      // Rollover interest is already reflected in state.balance before a sale.
+      // Keep it in realized P&L, but do not subtract it a second time from cash proceeds.
+      const netCashProceeds = Number((sellProceeds - sellComm).toFixed(2));
 
       let currentDebt = totalDebt;
       let freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
@@ -534,10 +623,6 @@ export class Store {
           tranches: updatedTranches
         };
       }
-
-      const nextHoldings = (state.holdings || []).filter(
-        (h) => h.ticker.toUpperCase() !== clean || Boolean(positions[clean])
-      );
 
       const exitDateStr = date || todayIso();
       const buyTimestamp = new Date(earliestBuyDate).getTime();
@@ -577,10 +662,9 @@ export class Store {
       return {
         ...state,
         positions,
-        holdings: nextHoldings,
         activeView: nextActiveView,
         selectedTicker: nextActiveView === 'COMBINED' ? null : state.selectedTicker,
-        balance: -currentDebt,
+        balance: currentDebt > 0 ? -currentDebt : 0,
         cashBalance: freeCash,
         cashCushion: {
           ...(state.cashCushion || { freeCash: 0, holdings: [] }),
@@ -591,37 +675,65 @@ export class Store {
     });
   }
 
-  public updatePrice(ticker: string, price: number): void {
+  /**
+   * Applies a completed quote request to the latest store snapshot.
+   * This avoids applying a stale state object captured before an async request.
+   */
+  public updateLiveQuote(
+    ticker: string,
+    quote: { price?: number; currentPrice?: number; quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: Record<string, unknown>; requestStartedAt?: number }
+  ): void {
     const clean = ticker.trim().toUpperCase();
-    if (!clean || price <= 0) return;
+    const price = Number(quote.currentPrice ?? quote.price);
+    if (!clean || !Number.isFinite(price) || price <= 0) return;
 
-    this.update((state) => {
-      const positions = { ...(state.positions || {}) };
-      if (positions[clean]) {
+    this.update((latestState) => {
+      const positions = { ...(latestState.positions || {}) };
+      const position = positions[clean];
+      if (position) {
+        // Do not let a quote request overwrite a newer manual trade entry.
+        if (quote.requestStartedAt !== undefined && Number((position as any).lastTradeAt || 0) > quote.requestStartedAt) {
+          return latestState;
+        }
         positions[clean] = {
-          ...positions[clean],
-          currentPrice: price
+          ...position,
+          currentPrice: price,
+          quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
+          quoteSource: quote.quoteSource ?? 'Live quote',
+          ...(quote.requestStartedAt === undefined && quote.quoteSource === 'Manual'
+            ? { lastTradeAt: Date.now() }
+            : {}),
+          ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {})
         };
       }
 
-      const cashHoldings = (state.cashCushion?.holdings || []).map((h) =>
-        h.ticker.toUpperCase() === clean ? { ...h, currentPrice: price, price } : h
+      const cashHoldings = (latestState.cashCushion?.holdings || []).map((holding) =>
+        holding.ticker.toUpperCase() === clean
+          ? { ...holding, currentPrice: price, price, quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
+              quoteSource: quote.quoteSource ?? 'Live quote',
+              ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {}) }
+          : holding
       );
-
-      const cashStocks = (state.cashStocks || []).map((cs) =>
-        cs.ticker.toUpperCase() === clean ? { ...cs, currentPrice: price } : cs
+      const cashStocks = (latestState.cashStocks || []).map((holding) =>
+        holding.ticker.toUpperCase() === clean
+          ? { ...holding, currentPrice: price }
+          : holding
       );
 
       return {
-        ...state,
+        ...latestState,
         positions,
         cashStocks,
         cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          ...(latestState.cashCushion || { freeCash: 0, holdings: [] }),
           holdings: cashHoldings
         }
       };
     });
+  }
+
+  public updatePrice(ticker: string, price: number): void {
+    this.updateLiveQuote(ticker, { price, quoteSource: 'Manual' });
   }
 
   public updateTargetPrice(ticker: string, pt: number): void {
@@ -719,7 +831,7 @@ export class Store {
   }
 }
 
-export const portfolioStore = new Store();
+export const portfolioStore = new PortfolioStore();
 
 export function usePortfolio(): PortfolioState {
   const [state, setState] = useState<PortfolioState>(() => portfolioStore.getState());

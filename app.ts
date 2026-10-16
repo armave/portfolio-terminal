@@ -6,6 +6,7 @@ import {
   calculateCommission,
   calculateProjectedDebt,
   calculateMarginInterest,
+  collectOpenPositionTranches,
   createBlankState,
   normalizePortfolioBackup,
   normalizePortfolioState,
@@ -44,6 +45,7 @@ import {
   saveStateToStorage
 } from './src/services/storage';
 import {
+  clearTerminalLog,
   logTerminal,
   showToast
 } from './src/ui/notifications';
@@ -56,7 +58,7 @@ import {
   renderPositionsTable,
   renderSummaryCards
 } from './src/ui/renderBoard';
-import { portfolioStore } from './src/store/portfolioStore';
+import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { BoardExternalLinks } from './src/components/BoardExternalLinks';
 import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
 import { InsightSection, MarketInsightsPanel } from './src/components/MarketInsightsPanel';
@@ -88,6 +90,7 @@ const TRADERNET_RULES = { ...DEFAULT_TRADERNET_RULES };
 let state: any = createBlankState();
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
 let marketInsightsOpen = false;
@@ -99,7 +102,6 @@ const boardAnalystRequests = new Map<string, Promise<void>>();
 const BOARD_ANALYST_CACHE_TTL_MS = 5 * 60 * 1000;
 const BOARD_ANALYST_RETRY_MS = 60 * 1000;
 
-export const QUOTE_REFRESH_INTERVAL_KEY = 'quote_refresh_interval_ms';
 const DEFAULT_QUOTE_REFRESH_INTERVAL_MS = 60 * 1000;
 const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
 
@@ -173,7 +175,8 @@ const pushStateToGist = pushStateToCloud;
 
 function pullCloudAndRewriteLocal(parsedState: any) {
   const currentView = state.activeView;
-  state = { ...state, ...parsedState };
+  const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(parsedState, state);
+  state = { ...state, ...compatibleCloudState };
   if (!parsedState?.activeView && currentView) {
     state.activeView = currentView;
   }
@@ -219,7 +222,7 @@ function getDailyRate() {
   return TRADERNET_RULES.annualRate / TRADERNET_RULES.dayCountBasis;
 }
 
-export function loadTradernetRules() {
+function loadTradernetRules() {
   const savedRules = loadBrokerRules<any>({});
   if (!savedRules || Object.keys(savedRules).length === 0) return;
 
@@ -408,7 +411,7 @@ function getLatestRolloverTimestamp(now = new Date()) {
   return rollover;
 }
 
-export function applyOvernightRollover() {
+function applyOvernightRollover() {
   const now = new Date();
   if (!Number.isFinite(Number(state.lastRolloverTimestamp)) || Number(state.lastRolloverTimestamp) <= 0) {
     state.lastRolloverTimestamp = getLatestRolloverTimestamp(now);
@@ -456,7 +459,7 @@ export function applyOvernightRollover() {
   }
 }
 
-export function setActiveView(view: string) {
+function setActiveView(view: string) {
   const normalizedView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED');
   state.activeView = normalizedView;
   saveState(state, pushStateToGist);
@@ -464,7 +467,7 @@ export function setActiveView(view: string) {
   renderBoard();
 }
 
-export const switchView = setActiveView;
+const switchView = setActiveView;
 
 function renderConsoleQuickActions() {
   const pos = state.positions[state.activeView];
@@ -473,7 +476,7 @@ function renderConsoleQuickActions() {
     render(
       h(TradingConsole, {
         position: pos,
-        onExecuteCommand: () => executeCommand()
+        onExecuteCommand: (command?: string) => executeCommand(command)
       }),
       cardContainer
     );
@@ -509,7 +512,7 @@ function updateCombinedBreakeven() {
     }
   });
 
-  const tranchesForCombined = state.tranches || tickers.flatMap(t => state.positions[t]?.tranches || []);
+  const tranchesForCombined = collectOpenPositionTranches(state.positions);
   const openMarginCharged = calculateMarginInterest(tranchesForCombined, {
     dailyRate: getDailyRate(),
     marginDebt: totalDebt,
@@ -548,7 +551,7 @@ function updateCombinedBreakeven() {
   beEl.innerText = `Combined Breakeven: ${beDays} days (${beDateStr})`;
 }
 
-export function createStockPageLink(ticker: string, provider: string) {
+function createStockPageLink(ticker: string, provider: string) {
   const link = document.createElement('a');
   const symbol = encodeURIComponent(ticker);
   let href = '';
@@ -580,14 +583,14 @@ export function createStockPageLink(ticker: string, provider: string) {
   return link;
 }
 
-export function renderBoardExternalLinks() {
+function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
   const stockPageLinks = document.getElementById('boardExternalLinks');
   if (!stockPageLinks) return;
   render(h(BoardExternalLinks, { ticker: activeTicker }), stockPageLinks);
 }
 
-export function renderBoard() {
+function renderBoard() {
   renderBoardUI(state, {
     rules: TRADERNET_RULES as any,
     onSetActiveView: setActiveView,
@@ -659,19 +662,11 @@ function syncMarketInsightsPanel() {
   renderMarketInsightsComponent();
 }
 
-export function toggleMarketInsights() {
+function toggleMarketInsights() {
   const ticker = getMarketInsightsTicker();
   if (!ticker) return;
   marketInsightsOpen = !marketInsightsOpen;
   syncMarketInsightsPanel();
-}
-
-export function renderCashCushionPanel() {
-  renderCashCushion(state, {
-    onFetchLivePrice: fetchLivePrice,
-    onRemoveCashStock: removeCashStock,
-    refreshIntervalMs: getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS)
-  });
 }
 
 function renderClosedHistoryPanel() {
@@ -680,46 +675,14 @@ function renderClosedHistoryPanel() {
   render(h(ClosedHistoryDesk, null), container);
 }
 
-export function formatQuoteMetadata(holding: any) {
-  if (!holding.quoteUpdatedAt) return holding.quoteSource || 'Not fetched';
-
-  const updatedAt = Number(holding.quoteUpdatedAt);
-  if (!Number.isFinite(updatedAt)) return holding.quoteSource || 'Not fetched';
-  const time = new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const refreshInterval = getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS);
-  const isStale = Date.now() - updatedAt > Math.max(5 * 60 * 1000, refreshInterval * 2);
-  return `${isStale ? 'Stale · ' : ''}${holding.quoteSource || 'Quote'} · ${time}`;
-}
-
-export function createDailyQuoteLabel(details: any) {
-  if (!details || typeof details !== 'object') return null;
-  const hasChange = Number.isFinite(details.change) && Number.isFinite(details.changePercent);
-  const hasRange = Number.isFinite(details.high) && Number.isFinite(details.low);
-  if (!hasChange && !hasRange) return null;
-
-  const label = document.createElement('span');
-  label.className = 'mt-0.5 block text-[9px] font-normal tabular-nums';
-  const parts: string[] = [];
-  if (hasChange) {
-    const sign = details.change >= 0 ? '+' : '−';
-    parts.push(`${sign}${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(details.changePercent).toFixed(2)}%)`);
-    label.classList.add('text-slate-400');
-  } else {
-    label.classList.add('text-slate-400');
-  }
-  if (hasRange) parts.push(`H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`);
-  label.textContent = `Day: ${parts.join(' · ')}`;
-  return label;
-}
-
-export function createInsightElement(tagName: string, className = '', text = '') {
+function createInsightElement(tagName: string, className = '', text = '') {
   const element = document.createElement(tagName);
   if (className) element.className = className;
   if (text) element.textContent = text;
   return element;
 }
 
-export function sentimentBadge(direction: SentimentDirection, label = sentimentLabel(direction)) {
+function sentimentBadge(direction: SentimentDirection, label = sentimentLabel(direction)) {
   const styles: Record<string, string> = {
     bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
     bearish: 'border-rose-800 bg-rose-950/50 text-rose-300',
@@ -834,41 +797,39 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
   boardAnalystRequests.set(ticker, request);
 }
 
-export async function loadMarketInsight(section: string, force = false) {
+async function loadMarketInsight(section: string, force = false) {
   activeInsightSection = section;
   if (force) insightRequestId++;
   renderMarketInsightsComponent();
 }
 
-export function refreshMarketInsight() {
+function refreshMarketInsight() {
   return loadMarketInsight(activeInsightSection, true);
 }
 
-function recordTrackedPrice(ticker: string, price: number, sourceName: string, updatedAt: number | null = null, quoteDetails: any = null) {
+function recordTrackedPrice(
+  ticker: string,
+  price: number,
+  sourceName: string,
+  updatedAt: number | null = null,
+  quoteDetails: any = null,
+  requestStartedAt?: number
+) {
   const symbol = ticker.toUpperCase();
-  let matched = false;
-  const updateQuoteMetadata = (holding: any) => {
-    holding.quoteSource = sourceName;
-    if (updatedAt === null) delete holding.quoteUpdatedAt;
-    else holding.quoteUpdatedAt = updatedAt;
-    if (quoteDetails) holding.quoteDetails = quoteDetails;
-    else delete holding.quoteDetails;
-  };
+  const matched = Boolean(
+    state.positions[symbol] ||
+    state.cashCushion?.holdings?.some((holding: any) => holding.ticker === symbol)
+  );
+  if (!matched) return false;
 
-  if (state.positions[symbol]) {
-    state.positions[symbol].currentPrice = price;
-    updateQuoteMetadata(state.positions[symbol]);
-    matched = true;
-  }
-  const cashHolding = state.cashCushion?.holdings?.find((holding: any) => holding.ticker === symbol);
-  if (cashHolding) {
-    cashHolding.price = price;
-    cashHolding.currentPrice = price;
-    updateQuoteMetadata(cashHolding);
-    matched = true;
-  }
-  if (matched) syncStore();
-  return matched;
+  portfolioStore.updateLiveQuote(symbol, {
+    price,
+    quoteSource: sourceName,
+    ...(updatedAt === null ? {} : { quoteUpdatedAt: updatedAt }),
+    ...(quoteDetails ? { quoteDetails } : {}),
+    ...(requestStartedAt === undefined ? {} : { requestStartedAt })
+  });
+  return true;
 }
 
 function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
@@ -918,7 +879,7 @@ function setCurrentBalance(value: number) {
   };
 }
 
-export function saveCurrentBalanceFromInput() {
+function saveCurrentBalanceFromInput() {
   const input = document.getElementById('freeCashInput') as HTMLInputElement | null;
   if (!input || !input.reportValidity()) return;
 
@@ -930,7 +891,7 @@ export function saveCurrentBalanceFromInput() {
   showToast(`Balance ${formatUSD(balance)} | Debt -${formatUSD(debt)}`, 'success');
 }
 
-export async function addCashStockFromUI() {
+async function addCashStockFromUI() {
   const tickerInput = document.getElementById('newCashTicker') as HTMLInputElement;
   const sharesInput = document.getElementById('newCashShares') as HTMLInputElement;
   const priceInput = document.getElementById('newCashPrice') as HTMLInputElement;
@@ -971,20 +932,21 @@ function removeCashStock(index: number) {
   showToast(`${removed.ticker} removed from cash holdings.`, 'info');
 }
 
-export function updateEmptyStateVisibility(isEmpty: boolean) {
+function updateEmptyStateVisibility(isEmpty: boolean) {
   const panel = document.getElementById('emptyStatePanel');
   if (!panel) return;
   panel.classList.toggle('hidden', !isEmpty);
 }
 
-async function requestLivePrice(symbol: string) {
+async function requestLivePrice(symbol: string, force = false) {
   const existingRequest = livePriceRequests.get(symbol);
-  if (existingRequest) return existingRequest;
+  if (existingRequest && !force) return existingRequest;
 
+  const requestStartedAt = Date.now();
   const request = fetchLivePriceFromProviders(symbol).then(result => ({
     ...result,
     matched: result.price !== null
-      ? recordTrackedPrice(symbol, result.price, result.sourceName, result.updatedAt, result.quoteDetails)
+      ? recordTrackedPrice(symbol, result.price, result.sourceName, result.updatedAt, result.quoteDetails, requestStartedAt)
       : false
   }));
   livePriceRequests.set(symbol, request);
@@ -1045,9 +1007,9 @@ async function fetchLivePriceFromProviders(symbol: string) {
   };
 }
 
-async function fetchLivePrice(ticker: string, silent = false) {
+async function fetchLivePrice(ticker: string, silent = false, force = false) {
   const symbol = ticker.toUpperCase();
-  const result = await requestLivePrice(symbol);
+  const result = await requestLivePrice(symbol, force);
 
   if (result.price !== null) {
     saveState(state, pushStateToGist);
@@ -1065,7 +1027,7 @@ async function fetchLivePrice(ticker: string, silent = false) {
   return null;
 }
 
-export async function refreshAllLivePrices() {
+async function refreshAllLivePrices() {
   const cashHoldings = state.cashCushion && state.cashCushion.holdings;
 
   const allTickers = new Set<string>([
@@ -1077,6 +1039,7 @@ export async function refreshAllLivePrices() {
   if (tickersArray.length === 0) return;
 
   const queryStr = tickersArray.join(',');
+  const requestStartedAt = Date.now();
   logTerminal(`[System]: Polling batch live quotes for ${queryStr}...`);
 
   try {
@@ -1114,23 +1077,15 @@ export async function refreshAllLivePrices() {
         changePercent: previous ? (change / previous) * 100 : 0
       };
 
-      if (state.positions[ticker]) {
-        state.positions[ticker].currentPrice = current;
-        state.positions[ticker].quoteDetails = quoteDetails;
-        state.positions[ticker].quoteUpdatedAt = Date.now();
-        updatedCount++;
-      }
-
-      if (Array.isArray(cashHoldings)) {
-        const cashPos = cashHoldings.find((h: any) => h.ticker === ticker);
-        if (cashPos) {
-          cashPos.price = current;
-          cashPos.currentPrice = current;
-          cashPos.quoteDetails = quoteDetails;
-          cashPos.quoteUpdatedAt = Date.now();
-          updatedCount++;
-        }
-      }
+      const matched = recordTrackedPrice(
+        ticker,
+        Number(current),
+        'Yahoo Proxy',
+        Date.now(),
+        quoteDetails,
+        requestStartedAt
+      );
+      if (matched) updatedCount++;
     }
 
     if (updatedCount > 0) {
@@ -1147,7 +1102,7 @@ export async function refreshAllLivePrices() {
   }
 }
 
-export function setQuoteRefreshInterval(interval: number | string) {
+function setQuoteRefreshInterval(interval: number | string) {
   const intervalMs = Number(interval);
   if (!QUOTE_REFRESH_INTERVALS.has(intervalMs)) {
     throw new Error(`Unsupported quote refresh interval: ${interval}`);
@@ -1164,7 +1119,7 @@ export function setQuoteRefreshInterval(interval: number | string) {
   }
 }
 
-export function exportBackupJSON() {
+function exportBackupJSON() {
   delete state.gatewaySecret;
   if ('marginBalance' in state) {
     delete state.marginBalance;
@@ -1185,7 +1140,7 @@ export function exportBackupJSON() {
   logTerminal(`[Backup]: Exported state to ${filename}.`);
 }
 
-export async function importBackupJSON(event: Event) {
+async function importBackupJSON(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
@@ -1224,237 +1179,11 @@ export async function importBackupJSON(event: Event) {
   }
 }
 
-export function runLadderSimulation(data: any, activeState = state) {
-  const targetState = activeState || state;
-  const positions = targetState?.positions || {};
-  const ticker = data.ticker || (targetState.activeView !== "COMBINED" && targetState.activeView !== "CASH_CUSHION" && targetState.activeView !== "CLOSED_HISTORY" ? targetState.activeView : Object.keys(positions)[0]);
-  const pos = positions[ticker];
-  if (!pos || pos.shares <= 0) {
-    logTerminal(`[Ladder Error]: No active position found for ${ticker}.`);
-    return;
-  }
-
-  const totalInvested = (pos.tranches || []).reduce((sum: number, t: any) => sum + (t.qty * t.price), 0);
-  const portfolioInvested = getTotalPortfolioInvested(targetState);
-  const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
-
-  let runningDebt = Math.abs(state.balance) * weight;
-  let totalAccruedMargin = calculateMarginInterest(state.tranches || pos.tranches || [], {
-    dailyRate: getDailyRate(),
-    marginDebt: runningDebt,
-    totalDebt: Math.abs(state.balance)
-  });
-  let totalComms = pos.commBuy;
-  let totalGrossProceeds = 0;
-  let currentDay = 0;
-
-  const stepsRender: string[] = [];
-
-  data.steps.forEach((step: any, idx: number) => {
-    const stepDays = Math.max(0, step.days - currentDay);
-    if (stepDays > 0 && runningDebt > 0) {
-      const compounded = calculateProjectedDebt(runningDebt, getDailyRate(), stepDays);
-      totalAccruedMargin += calculateMarginInterest(runningDebt, getDailyRate(), stepDays);
-      runningDebt = compounded;
-    }
-    currentDay = step.days;
-
-    const proceeds = step.shares * step.price;
-    totalGrossProceeds += proceeds;
-    const commSell = calcCommission(step.shares, proceeds);
-    totalComms += commSell;
-
-    const netCashCredited = proceeds - commSell;
-    runningDebt = Math.max(0, runningDebt - netCashCredited);
-
-    stepsRender.push(`
-      <div class="border-l-2 border-cyan-500/50 pl-2 space-y-0.5">
-        <div class="text-slate-200 font-semibold">Stage ${idx + 1} (${step.label || '+' + step.days + 'd'}): Sell ${step.shares} @ ${formatUSD(step.price)}</div>
-        <div class="text-slate-400">Proceeds: ${formatUSD(proceeds)} | Comm: ${formatUSD(commSell)} | Remaining Debt: <span class="text-rose-400 font-mono">-${formatUSD(runningDebt)}</span></div>
-      </div>
-    `);
-  });
-
-  const grossPnl = totalGrossProceeds - totalInvested;
-  const netPnl = grossPnl - totalComms - totalAccruedMargin;
-  const netPct = totalInvested > 0 ? (netPnl / totalInvested) * 100 : 0;
-  const netColor = netPnl >= 0 ? "text-emerald-400" : "text-rose-400";
-  const netSign = netPnl >= 0 ? "+" : "";
-
-  const html = `
-    <div class="border border-purple-800/80 bg-purple-950/20 p-3 rounded my-2 text-xs space-y-2">
-      <div class="font-bold text-purple-300 border-b border-purple-800/60 pb-1 flex justify-between items-center">
-        <span>[LADDERED SCALE-OUT SIMULATION]: ${ticker}</span>
-        <span class="${netColor} font-black text-sm">${netSign}${formatUSD(netPnl)} (${netSign}${netPct.toFixed(2)}% Net)</span>
-      </div>
-      <div class="space-y-1.5 py-1">
-        ${stepsRender.join('')}
-      </div>
-      <div class="border-t border-purple-800/60 pt-1.5 grid grid-cols-2 gap-2 text-slate-300">
-        <div><span class="text-slate-500">Gross Proceeds:</span> ${formatUSD(totalGrossProceeds)} (Gross: ${grossPnl >= 0 ? '+' : ''}${formatUSD(grossPnl)})</div>
-        <div><span class="text-slate-500">Total Comms:</span> ${formatUSD(totalComms)}</div>
-        <div><span class="text-slate-500">Accrued Margin Drag:</span> <span class="text-rose-400">${formatUSD(totalAccruedMargin)}</span></div>
-        <div><span class="text-slate-500">Debt Reduction Benefit:</span> <span class="text-emerald-400 font-semibold">Reduced Bleed Applied</span></div>
-      </div>
-    </div>
-  `;
-  logTerminal(html, false, true);
-}
-
-export function runComparison(data: any, activeState = state) {
-  const targetState = activeState || state;
-  const positions = targetState?.positions || {};
-  const ticker = data.ticker || (targetState.activeView !== "COMBINED" && targetState.activeView !== "CASH_CUSHION" && targetState.activeView !== "CLOSED_HISTORY" ? targetState.activeView : Object.keys(positions)[0]);
-  const pos = positions[ticker];
-  if (!pos || pos.shares <= 0) {
-    logTerminal(`[Comparison Error]: No active position found for ${ticker}.`);
-    return;
-  }
-
-  const totalInvested = (pos.tranches || []).reduce((sum: number, t: any) => sum + (t.qty * t.price), 0);
-  const portfolioInvested = getTotalPortfolioInvested(targetState);
-  const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
-  const debtToUse = Math.abs(state.balance) * weight;
-  const marginChargedToUse = calculateMarginInterest(state.tranches || pos.tranches || [], {
-    dailyRate: getDailyRate(),
-    marginDebt: debtToUse,
-    totalDebt: Math.abs(state.balance)
-  });
-
-  const computed = data.scenarios.map((s: any) => {
-    const grossProceeds = pos.shares * s.price;
-    const grossPnl = grossProceeds - totalInvested;
-    const commSell = calcCommission(pos.shares, grossProceeds);
-    const totalComms = pos.commBuy + commSell;
-
-    const additionalMargin = calculateMarginInterest(debtToUse, getDailyRate(), s.days);
-    const totalMargin = marginChargedToUse + additionalMargin;
-
-    const netPnl = grossPnl - totalComms - totalMargin;
-    const netPct = (netPnl / totalInvested) * 100;
-    const resultingBalance = state.balance + (grossProceeds - commSell);
-
-    return {
-      ...s,
-      grossProceeds,
-      grossPnl,
-      commSell,
-      totalComms,
-      totalMargin,
-      additionalMargin,
-      netPnl,
-      netPct,
-      resultingBalance
-    };
-  });
-
-  const sA = computed[0];
-  const sB = computed[1];
-  const diffNet = sB.netPnl - sA.netPnl;
-  const diffMargin = sB.totalMargin - sA.totalMargin;
-
-  const diffColor = diffNet >= 0 ? "text-emerald-400 font-black" : "text-rose-400 font-black";
-  const diffSign = diffNet >= 0 ? "+" : "";
-
-  const html = `
-    <div class="border border-cyan-800 bg-cyan-950/20 p-3 rounded my-2 text-xs space-y-3">
-      <div class="font-bold text-cyan-300 border-b border-cyan-800/60 pb-1 flex justify-between items-center">
-        <span>[COMPARISON]: ${pos.shares} ${ticker} — ${sA.label} VS ${sB.label}</span>
-        <span class="${diffColor}">Diff: ${diffSign}${formatUSD(diffNet)} Net</span>
-      </div>
-
-      <div class="grid grid-cols-2 gap-4">
-        <div class="bg-slate-900/60 p-2.5 rounded border border-slate-800 space-y-1">
-          <div class="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between">
-            <span>${sA.label}</span>
-            <span class="${sA.netPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sA.netPnl >= 0 ? '+' : ''}${formatUSD(sA.netPnl)} (${sA.netPct.toFixed(2)}%)</span>
-          </div>
-          <div><span class="text-slate-500">Gross Proceeds:</span> ${formatUSD(sA.grossProceeds)}</div>
-          <div><span class="text-slate-500">Commissions:</span> ${formatUSD(sA.totalComms)}</div>
-          <div><span class="text-slate-500">Margin Accrued:</span> ${formatUSD(sA.totalMargin)}</div>
-          <div><span class="text-slate-500">Resulting Balance:</span> <span class="${sA.resultingBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sA.resultingBalance >= 0 ? '+' : '-'}${formatUSD(Math.abs(sA.resultingBalance))}</span></div>
-        </div>
-
-        <div class="bg-slate-900/60 p-2.5 rounded border border-slate-800 space-y-1">
-          <div class="font-bold text-slate-200 border-b border-slate-800 pb-1 flex justify-between">
-            <span>${sB.label}</span>
-            <span class="${sB.netPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sB.netPnl >= 0 ? '+' : ''}${formatUSD(sB.netPnl)} (${sB.netPct.toFixed(2)}%)</span>
-          </div>
-          <div><span class="text-slate-500">Gross Proceeds:</span> ${formatUSD(sB.grossProceeds)}</div>
-          <div><span class="text-slate-500">Commissions:</span> ${formatUSD(sB.totalComms)}</div>
-          <div><span class="text-slate-500">Margin Accrued:</span> ${formatUSD(sB.totalMargin)} (+${formatUSD(sB.additionalMargin)})</div>
-          <div><span class="text-slate-500">Resulting Balance:</span> <span class="${sB.resultingBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${sB.resultingBalance >= 0 ? '+' : '-'}${formatUSD(Math.abs(sB.resultingBalance))}</span></div>
-        </div>
-      </div>
-
-      <div class="text-[11px] text-slate-400 border-t border-slate-800 pt-1.5 flex justify-between">
-        <span>Tradernet margin penalty for waiting: <strong class="text-rose-400">+${formatUSD(diffMargin)}</strong></span>
-        <span>Net advantage: <strong class="${diffColor}">${diffSign}${formatUSD(diffNet)}</strong></span>
-      </div>
-    </div>
-  `;
-
-  logTerminal(html, false, true);
-}
-
-export function runSimulation(simPrice: number, daysOffset: number, label: string, tickerTarget: string, activeState = state) {
-  const targetState = activeState || state;
-  const positions = targetState?.positions || {};
-  const ticker = tickerTarget || (targetState.activeView !== "COMBINED" && targetState.activeView !== "CASH_CUSHION" && targetState.activeView !== "CLOSED_HISTORY" ? targetState.activeView : Object.keys(positions)[0]);
-  const pos = positions[ticker];
-  if (!pos || pos.shares <= 0) {
-    logTerminal(`[Simulation Error]: No active position open for ${ticker}.`);
-    return;
-  }
-
-  const totalInvested = (pos.tranches || []).reduce((sum: number, t: any) => sum + (t.qty * t.price), 0);
-  const grossProceeds = pos.shares * simPrice;
-  const grossPnl = grossProceeds - totalInvested;
-  const commSell = calcCommission(pos.shares, grossProceeds);
-  const totalComms = pos.commBuy + commSell;
-
-  const portfolioInvested = getTotalPortfolioInvested(targetState);
-  const weight = portfolioInvested > 0 ? (totalInvested / portfolioInvested) : 1;
-  const debtToUse = Math.abs(state.balance) * weight;
-
-  const additionalMargin = calculateMarginInterest(debtToUse, getDailyRate(), daysOffset);
-  const currentMarginInterest = calculateMarginInterest(state.tranches || pos.tranches || [], {
-    dailyRate: getDailyRate(),
-    marginDebt: debtToUse,
-    totalDebt: Math.abs(state.balance)
-  });
-  const totalMarginAtDate = currentMarginInterest + additionalMargin;
-
-  const netPnl = grossPnl - totalComms - totalMarginAtDate;
-  const netPct = totalInvested > 0 ? (netPnl / totalInvested) * 100 : 0;
-  const resultingBalance = (state.balance + (grossProceeds - commSell));
-
-  const netColor = netPnl >= 0 ? "text-emerald-400" : "text-rose-400";
-  const netSign = netPnl >= 0 ? "+" : "";
-  const balColor = resultingBalance >= 0 ? "text-emerald-400" : "text-rose-400";
-  const balSign = resultingBalance >= 0 ? "+" : "-";
-
-  const html = `
-    <div class="border border-cyan-800/80 bg-cyan-950/20 p-3 rounded my-2 text-xs space-y-1">
-      <div class="font-bold text-cyan-300 flex justify-between border-b border-cyan-800/50 pb-1">
-        <span>[SIMULATION]: Sell ${pos.shares} ${ticker} @ ${formatUSD(simPrice)} (${label})</span>
-        <span class="${netColor} font-black">${netSign}${formatUSD(netPnl)} (${netSign}${netPct.toFixed(2)}%)</span>
-      </div>
-      <div class="grid grid-cols-2 gap-2 text-slate-300 pt-1">
-        <div><span class="text-slate-500">Gross Proceeds:</span> ${formatUSD(grossProceeds)} (Gross: ${grossPnl >= 0 ? '+' : ''}${formatUSD(grossPnl)})</div>
-        <div><span class="text-slate-500">Commissions:</span> ${formatUSD(totalComms)} (${formatUSD(pos.commBuy)} buy / ${formatUSD(commSell)} sell)</div>
-        <div><span class="text-slate-500">Margin Accrued:</span> ${formatUSD(totalMarginAtDate)} (+${formatUSD(additionalMargin)} over ${daysOffset}d)</div>
-        <div><span class="text-slate-500">Resulting Balance:</span> <span class="${balColor} font-semibold">${balSign}${formatUSD(Math.abs(resultingBalance))}</span></div>
-      </div>
-    </div>
-  `;
-  logTerminal(html, false, true);
-}
-
 // ==========================================
 // PORTFOLIO ACTIONS (CASH-FIRST ORDER FLOW)
 // ==========================================
 async function applyPortfolioActions(action: any) {
+  applyOvernightRollover();
   const todayDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 
   if (action.action === "buy") {
@@ -1489,6 +1218,7 @@ async function applyPortfolioActions(action: any) {
     });
     pos.commBuy += buyComm;
     pos.currentPrice = price;
+    pos.lastTradeAt = Date.now();
     pos.quoteSource = 'Trade input';
     delete pos.quoteUpdatedAt;
     delete pos.quoteDetails;
@@ -1509,6 +1239,7 @@ async function applyPortfolioActions(action: any) {
     syncStore();
     logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Funded: ${formatUSD(cashUsed)} cash | +${formatUSD(debtAdded)} margin debt. Free Cash remaining: ${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(state.balance))}.`);
     showToast(`${shares} ${ticker} bought at ${formatUSD(price)}.`, 'success');
+    await fetchLivePrice(ticker, false, true);
   }
   else if (action.action === "sell") {
     const ticker = action.ticker.toUpperCase();
@@ -1581,7 +1312,24 @@ async function applyPortfolioActions(action: any) {
         logTerminal(`[Cash Holding Partial Sell]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Remaining: ${pos.shares} shares.`);
       }
     } else {
-      const realizedTrade = realizeClosedTrade(pos, ticker, sharesToSell, sellPrice, sellComm, Date.now());
+      const totalPortfolioInvested = getTotalPortfolioInvested(state);
+      const positionInvested = (pos.tranches || []).reduce(
+        (sum: number, tranche: any) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0),
+        0
+      );
+      const allocatedDebt = totalPortfolioInvested > 0
+        ? currentDebt * (positionInvested / totalPortfolioInvested)
+        : currentDebt;
+      const accruedMarginInterest = calculateMarginInterest(pos.tranches || [], {
+        dailyRate: getDailyRate(),
+        marginDebt: allocatedDebt,
+        totalDebt: currentDebt
+      });
+      const positionForClose = {
+        ...pos,
+        marginCharged: Math.max(Number(pos.marginCharged) || 0, accruedMarginInterest)
+      };
+      const realizedTrade = realizeClosedTrade(positionForClose, ticker, sharesToSell, sellPrice, sellComm, Date.now());
       delete (realizedTrade.position as any).marginCharged;
       state.positions[ticker] = realizedTrade.position;
       if (realizedTrade.trade) state.closedTrades.push(realizedTrade.trade);
@@ -1659,7 +1407,7 @@ async function applyPortfolioActions(action: any) {
   renderBoard();
 }
 
-export function confirmAiPortfolioAction(action: any) {
+function confirmAiPortfolioAction(action: any) {
   let ticker = typeof action.ticker === 'string' ? action.ticker.trim().toUpperCase() : '';
   if (!ticker && ['set_pt', 'set_price'].includes(action.action)) {
     ticker = state.positions[state.activeView] ? state.activeView : Object.keys(state.positions)[0] || '';
@@ -1725,13 +1473,16 @@ export function confirmAiPortfolioAction(action: any) {
   return confirm(`Gemini interpreted your input as this portfolio change:\n\n${message}\n\nApply it?`);
 }
 
-export async function executeCommand() {
-  const input = document.getElementById("cmdInput") as HTMLInputElement;
-  const text = input.value.trim();
+async function executeCommand(commandText?: string) {
+  const input = document.getElementById("cmdInput") as HTMLInputElement | null;
+  const text = (commandText ?? input?.value ?? '').trim();
   if (!text) return;
 
   logTerminal(text, true);
-  input.value = "";
+  if (input && commandText === undefined) input.value = "";
+
+  // Ensure any due rollover is reflected in debt before a buy/sell command mutates it.
+  applyOvernightRollover();
 
   // 1. Execute via the deterministic dispatcher
   const localResult = CommandDispatcher.execute(text);
@@ -1744,15 +1495,14 @@ export async function executeCommand() {
       await pushStateToGist();
     } else if (effect.type === 'FETCH_QUOTE') {
       renderBoard();
-      await fetchLivePrice(effect.ticker); // Pulls the fresh quote
+      await fetchLivePrice(effect.ticker, false, true); // Force a request started after the trade.
       await pushStateToGist();
     } else if (effect.type === 'REFRESH_ALL') {
       await refreshAllLivePrices();
     } else if (effect.type === 'SWITCH_VIEW') {
       setActiveView(effect.view);
     } else if (effect.type === 'CLEAR_TERMINAL') {
-      const logEl = document.getElementById('terminalLog') || document.getElementById('terminalOutput');
-      if (logEl) logEl.innerHTML = '';
+      clearTerminalLog();
     }
   }
 
@@ -1817,7 +1567,13 @@ function renderSettingsPanel() {
         resetBrokerRules();
         renderSettingsPanel();
       },
-      onSaveApiKeys: () => saveApiKeys({}),
+      onSaveApiKeys: async (secret: string) => {
+        const saved = await saveApiKeys({ secret, showToast: (message, type) => showToast(message, type as any), logTerminal });
+        if (saved) {
+          state.gatewaySecret = secret.trim();
+          await syncCloudState('pull');
+        }
+      },
       onPullCloudState: () => syncCloudState('pull'),
       onChangeRefreshInterval: (val: string) => setQuoteRefreshInterval(val),
       onExportBackup: exportBackupJSON,
@@ -1876,9 +1632,6 @@ async function startApp(secret: string) {
   applyOvernightRollover();
   syncStore();
 
-  const headerGatewayInput = document.getElementById('headerGatewaySecretInput') as HTMLInputElement | null;
-  if (headerGatewayInput) headerGatewayInput.value = secret;
-
   if (secret) await syncCloudState('pull');
 
   const quoteRefreshInterval = document.getElementById('quoteRefreshInterval') as HTMLSelectElement | null;
@@ -1889,6 +1642,14 @@ async function startApp(secret: string) {
     quoteRefreshInterval.addEventListener('change', () => setQuoteRefreshInterval(quoteRefreshInterval.value));
   }
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
+
+  if (rolloverTimer !== null) clearInterval(rolloverTimer);
+  rolloverTimer = setInterval(() => {
+    if (!document.hidden) applyOvernightRollover();
+  }, 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) applyOvernightRollover();
+  });
 
   setBrokerRuleInputs();
 
@@ -1907,7 +1668,7 @@ async function initApp() {
 
   const rootEl = document.getElementById('root');
   if (rootEl && !document.getElementById('mainTerminalView')) {
-    render(h(App, null), rootEl);
+    render(h(App, { onToggleMarketInsights: toggleMarketInsights }), rootEl);
   }
 
   const secret = loadGatewaySecret();
@@ -1935,12 +1696,10 @@ Object.assign(window as any, {
   addCashStockFromUI,
   applyOvernightRollover,
   clearLocalData,
-  createDailyQuoteLabel,
   createInsightElement,
   createStockPageLink,
   executeCommand,
   exportBackupJSON,
-  formatQuoteMetadata,
   getCashCushionTotal,
   importBackupJSON,
   loadMarketInsight,
@@ -1951,7 +1710,6 @@ Object.assign(window as any, {
   renderBoard,
   renderBoardExternalLinks,
   renderCashCushion,
-  renderCashCushionPanel,
   renderPositionsTable,
   renderSummaryCards,
   saveStateToStorage,
@@ -1968,6 +1726,5 @@ Object.assign(window as any, {
   setQuoteRefreshInterval,
   showToast,
   switchView,
-  toggleMarketInsights,
   updateEmptyStateVisibility
 });
