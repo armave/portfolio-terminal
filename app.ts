@@ -1546,7 +1546,7 @@ function renderSettingsPanel() {
         renderSettingsPanel();
       },
       onSaveApiKeys: async (secret: string) => {
-        const saved = await saveApiKeys({ secret, showToast, logTerminal });
+        const saved = await saveApiKeys({ secret, showToast: (message, type) => showToast(message, type as any), logTerminal });
         if (saved) {
           state.gatewaySecret = secret.trim();
           await syncCloudState('pull');
