@@ -80,12 +80,27 @@ export function calculateTrancheCommissions(
 }
 
 /**
- * Broker cutoff: 04:00 AM local Armenia time (UTC+4)
+ * Returns Armenia's local date and time parts regardless of the host machine's timezone.
+ * Armenia is UTC+04:00 and does not currently observe daylight saving time.
  */
-function getRolloverCutoff(date: Date = new Date()): Date {
-  const cutoff = new Date(date);
-  cutoff.setHours(4, 0, 0, 0);
-  return cutoff;
+function getArmeniaClockParts(date: Date): { year: number; month: number; day: number; hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Yerevan',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date);
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0);
+  return {
+    year: value('year'),
+    month: value('month'),
+    day: value('day'),
+    hour: value('hour'),
+    minute: value('minute')
+  };
 }
 
 /**
@@ -101,16 +116,16 @@ export function getAccruedRolloverCycles(purchaseDateStr?: string, now: Date = n
   const pMonth = parseInt(parts[1], 10) - 1;
   const pDay = parseInt(parts[2], 10);
 
-  const purchaseMidnight = new Date(pYear, pMonth, pDay, 0, 0, 0, 0);
-  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  if (![pYear, pMonth, pDay].every(Number.isFinite) || pMonth < 0 || pMonth > 11 || pDay < 1 || pDay > 31) return 0;
 
-  const diffDays = Math.round((todayMidnight.getTime() - purchaseMidnight.getTime()) / (1000 * 60 * 60 * 24));
+  const localNow = getArmeniaClockParts(now);
+  const purchaseDay = Date.UTC(pYear, pMonth, pDay);
+  const currentDay = Date.UTC(localNow.year, localNow.month - 1, localNow.day);
+  const diffDays = Math.round((currentDay - purchaseDay) / 86_400_000);
   if (diffDays <= 0) return 0;
 
-  // If purchase date was yesterday or earlier, check if today's 04:00 AM cutoff has passed
-  const todayCutoff = getRolloverCutoff(now);
-  const hasPassedTodayCutoff = now.getTime() >= todayCutoff.getTime();
-
+  // Count today's cycle only after 04:00 in Asia/Yerevan, independent of host timezone.
+  const hasPassedTodayCutoff = localNow.hour > 4 || (localNow.hour === 4 && localNow.minute >= 0);
   return hasPassedTodayCutoff ? diffDays : Math.max(0, diffDays - 1);
 }
 
