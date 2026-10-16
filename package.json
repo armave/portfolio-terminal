@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "npm install",
     "build": "tsc --noEmit && node scripts/build.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
