@@ -149,3 +149,9 @@ export function showToast(message: string, variant: ToastVariant = 'info'): void
     setTimeout(() => toast.remove(), 250);
   }, 3200);
 }
+
+/** Clears terminal output through the notification layer so UI components don't mutate the log DOM directly. */
+export function clearTerminalLog(): void {
+  const logEl = document.getElementById('terminalLog') || document.getElementById('terminalOutput');
+  logEl?.replaceChildren();
+}
