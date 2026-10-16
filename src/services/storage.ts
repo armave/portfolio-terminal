@@ -1,7 +1,6 @@
 const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
 const STORAGE_KEY_LEGACY_STATE = 'portfolio_state';
 const STORAGE_KEY_GW_AUTH = '_gw_auth';
-const STORAGE_KEY_LEGACY_GW = 'gateway_secret';
 const STORAGE_KEY_RULES = 'tradernet_rules_v1';
 const STORAGE_KEY_REFRESH_INTERVAL = 'quote_refresh_interval';
 
