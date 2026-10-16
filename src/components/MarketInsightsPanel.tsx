@@ -346,6 +346,7 @@ export function MarketInsightsPanel({
               id={tab.domId}
               data-insight={tab.id}
               onClick={() => onSelectSection(tab.id)}
+              onKeyDown={handleTabKeyDown}
               role="tab"
               aria-controls="marketInsightsContent"
               aria-selected={selected}
