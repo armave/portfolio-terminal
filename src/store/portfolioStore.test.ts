@@ -284,6 +284,14 @@ describe('canonical trade lifecycle and persistence', () => {
     });
     expect(store.getState().positions.AAPL.currentPrice).toBe(101);
 
+    store.updatePrice('AAPL', 105);
+    const manualPriceAt = store.getState().positions.AAPL.lastTradeAt || Date.now();
+    store.updateLiveQuote('AAPL', {
+      price: 92,
+      requestStartedAt: manualPriceAt - 1
+    });
+    expect(store.getState().positions.AAPL.currentPrice).toBe(105);
+
     store.sellStock('AAPL', 'ALL', 101, '2026-10-16');
     store.updateLiveQuote('AAPL', { price: 99 });
 
