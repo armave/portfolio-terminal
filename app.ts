@@ -200,38 +200,17 @@ async function syncCloudState(mode = 'push') {
   });
 }
 
-let headerCredentialsHidden = false;
-
 function updateHeaderCredentialsVisibility() {
-  const isConfigured = areHeaderCredentialsConfigured();
-  const fieldsContainer = document.getElementById('headerCredentialsFields');
-  const actionsContainer = document.getElementById('headerCredentialsActions');
+  // Credential field visibility is owned by SettingsDesk's component state.
+  // Keep this legacy hook harmless for older cached UI code.
+  const configured = areHeaderCredentialsConfigured();
   const toggleBtn = document.getElementById('toggleHeaderCredentialsButton');
-
-  if (!toggleBtn || !fieldsContainer) return;
-
-  if (isConfigured) {
-    toggleBtn.classList.remove('hidden');
-    fieldsContainer.style.display = headerCredentialsHidden ? 'none' : 'flex';
-    if (actionsContainer) {
-      actionsContainer.style.display = headerCredentialsHidden ? 'none' : 'flex';
-    }
-    toggleBtn.textContent = headerCredentialsHidden ? 'Show keys' : 'Hide keys';
-    toggleBtn.setAttribute('aria-expanded', String(!headerCredentialsHidden));
-  } else {
-    toggleBtn.classList.add('hidden');
-    fieldsContainer.style.display = 'flex';
-    if (actionsContainer) {
-      actionsContainer.style.display = 'flex';
-    }
-    headerCredentialsHidden = false;
-    toggleBtn.setAttribute('aria-expanded', 'true');
-  }
+  if (toggleBtn) toggleBtn.classList.toggle('hidden', !configured);
 }
 
 function toggleHeaderCredentialsVisibility() {
-  headerCredentialsHidden = !headerCredentialsHidden;
-  updateHeaderCredentialsVisibility();
+  const toggleBtn = document.getElementById('toggleHeaderCredentialsButton');
+  toggleBtn?.click();
 }
 
 function resetToBlankState() {
@@ -1864,7 +1843,21 @@ function renderSettingsPanel() {
         resetBrokerRules();
         renderSettingsPanel();
       },
-      onSaveApiKeys: () => saveApiKeys({}),
+      onSaveApiKeys: async (secret: string) => {
+        const saved = await saveApiKeys({
+          secret,
+          showToast,
+          logTerminal
+        });
+        if (!saved) return;
+        state.gatewaySecret = getGatewaySecret();
+        if (!appInitialized) {
+          await handleSaveGatewaySecret(getGatewaySecret());
+        } else {
+          await syncCloudState('pull');
+        }
+        renderBoard();
+      },
       onPullCloudState: () => syncCloudState('pull'),
       onChangeRefreshInterval: (val: string) => setQuoteRefreshInterval(val),
       onExportBackup: exportBackupJSON,
@@ -1928,12 +1921,6 @@ async function startApp(secret: string) {
 
   if (secret) await syncCloudState('pull');
 
-  ['gatewaySecretInput', 'headerGatewaySecretInput'].forEach(id => {
-    document.getElementById(id)?.addEventListener('input', updateHeaderCredentialsVisibility);
-  });
-
-  headerCredentialsHidden = areHeaderCredentialsConfigured();
-
   const quoteRefreshInterval = document.getElementById('quoteRefreshInterval') as HTMLSelectElement | null;
   const initialQuoteRefreshInterval = getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS);
 
@@ -1944,8 +1931,6 @@ async function startApp(secret: string) {
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
 
   setBrokerRuleInputs();
-
-  updateHeaderCredentialsVisibility();
 
   switchView(state.activeView);
   setTimeout(() => {
@@ -2025,5 +2010,6 @@ Object.assign(window as any, {
   switchView,
   toggleMarketInsights,
   toggleHeaderCredentialsVisibility,
+  updateHeaderCredentialsVisibility,
   updateEmptyStateVisibility
 });
