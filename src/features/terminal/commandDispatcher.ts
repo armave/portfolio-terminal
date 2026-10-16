@@ -135,8 +135,17 @@ export class CommandDispatcher {
   }
 
   static execute(input: string): CommandOutput {
-    const raw = input.trim();
+    // An untouched optional target-price placeholder means "use the default".
+    let raw = input.trim().replace(/,\\s*(?:pt|target)\\s+\\[[^\\]]+\\]/gi, '').trim();
     if (!raw) return { text: '', type: 'res' };
+
+    const unresolved = raw.match(/\\[([^\\]]+)\\]/);
+    if (unresolved) {
+      return {
+        text: `Please replace [${unresolved[1]}] with a value before running this command.`,
+        type: 'err'
+      };
+    }
 
     const lower = raw.toLowerCase();
 
