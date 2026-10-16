@@ -5,7 +5,7 @@ import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
 import { ProjectionsTable } from '../components/ProjectionsTable';
 import { CashCushionDesk } from '../components/CashCushionDesk';
 import { ClosedHistoryDesk } from '../components/ClosedHistoryDesk';
-import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
+import { calculateCommission, calculateMarginInterest, collectOpenPositionTranches } from '../domain/portfolio';
 import {
   BrokerRules,
   PositionRecord,
@@ -193,9 +193,7 @@ function calculateCombinedMetrics(state: BoardState, rules: BrokerRules, tickers
     totalGrossTarget += valSell - cost;
   });
 
-  const tranchesForCombined = state.tranches && state.tranches.length > 0
-    ? state.tranches
-    : tickers.flatMap((t) => state.positions![t]?.tranches || []);
+  const tranchesForCombined = collectOpenPositionTranches(state.positions || {});
     
   const totalDebt = Math.abs(Number(state.balance) || 0);
   const openMarginCharged = calculateMarginInterest(tranchesForCombined as any, {
@@ -225,9 +223,7 @@ function calculatePositionMetrics(state: BoardState, pos: PositionRecord, rules:
   const totalAccountDebt = Math.abs(Number(state.balance) || 0);
   const allocatedDebt = totalAccountDebt * weight;
   
-  const tranches = pos.tranches && pos.tranches.length > 0
-    ? pos.tranches
-    : (state.tranches && state.tranches.length > 0 ? state.tranches : []);
+  const tranches = pos.tranches || [];
     
   const posMarginCharged = calculateMarginInterest(tranches as any, {
     dailyRate,
