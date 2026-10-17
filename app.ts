@@ -37,7 +37,8 @@ import {
   getGatewaySecret,
   getQuoteRefreshInterval,
   loadBrokerRules,
-  loadGatewaySecret,
+  restoreGatewaySecret,
+  persistGatewaySecret,
   loadSavedState,
   saveApiKeys,
   saveBrokerRules,
@@ -1593,10 +1594,12 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
 
   const previousSecret = getGatewaySecret();
   saveGatewaySecret(submittedSecret);
+  await persistGatewaySecret();
   state.gatewaySecret = submittedSecret;
   const authenticated = await validateGatewaySecret(submittedSecret);
   if (!authenticated) {
     saveGatewaySecret(previousSecret);
+    await persistGatewaySecret();
     state.gatewaySecret = previousSecret;
     return false;
   }
@@ -1677,7 +1680,7 @@ async function initApp() {
     render(h(App, { onToggleMarketInsights: toggleMarketInsights }), rootEl);
   }
 
-  const secret = loadGatewaySecret();
+  const secret = await restoreGatewaySecret();
   if (secret) {
     appInitialized = true;
     hideAuthContainer();
