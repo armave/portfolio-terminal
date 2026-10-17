@@ -200,7 +200,8 @@ export function saveState(
 
   try {
     state.lastUpdated = Date.now();
-    const { gatewaySecret: _runtimeOnlySecret, ...stateToPersist } = state;
+    const stateToPersist = { ...state };
+    delete stateToPersist.gatewaySecret;
     localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(stateToPersist));
   } catch (err) {
     console.error('Failed to save state:', err);
