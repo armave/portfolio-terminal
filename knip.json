@@ -1,15 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
   "entry": [
-    "src/main.tsx",
+    "src/main.ts",
     "src/**/*.test.{ts,tsx}",
     "worker.js",
     "worker.test.js"
   ],
   "project": [
     "src/**/*.{ts,tsx}",
-    "worker.js",
-    "state-store.js",
-    "worker.test.js"
+    "app.ts",
+    "state-store.js"
   ]
 }
