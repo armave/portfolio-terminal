@@ -1592,16 +1592,18 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
     return false;
   }
 
-  const previousSecret = getGatewaySecret();
-  saveGatewaySecret(submittedSecret);
-  await persistGatewaySecret();
-  state.gatewaySecret = submittedSecret;
+  // Validate first so a wrong or unverified secret is never written to device storage.
   const authenticated = await validateGatewaySecret(submittedSecret);
-  if (!authenticated) {
-    saveGatewaySecret(previousSecret);
-    await persistGatewaySecret();
-    state.gatewaySecret = previousSecret;
-    return false;
+  if (!authenticated) return false;
+
+  saveGatewaySecret(submittedSecret);
+  const persisted = await persistGatewaySecret();
+  state.gatewaySecret = submittedSecret;
+  if (!persisted) {
+    showToast(
+      'Gateway Secret is valid for this session, but secure device storage failed. You may be asked again after refresh.',
+      'warning'
+    );
   }
 
   window.dispatchEvent(new CustomEvent('gateway-secret-authenticated', { detail: { secret: submittedSecret } }));

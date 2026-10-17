@@ -220,8 +220,9 @@ describe('storage service', () => {
       const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
       vi.stubGlobal('indexedDB', undefined);
       saveGatewaySecret('private-device-secret');
-      await persistGatewaySecret();
+      const persisted = await persistGatewaySecret();
 
+      expect(persisted).toBe(false);
       expect(getGatewaySecret()).toBe('private-device-secret');
       expect(storageMap.has('_gw_auth')).toBe(false);
       expect(storageMap.has('gateway_secret')).toBe(false);
