@@ -73,6 +73,14 @@ describe('storage service', () => {
       expect(parsed.lastUpdated).toBe(state.lastUpdated);
     });
 
+    it('never persists gatewaySecret from the runtime state', () => {
+      const state = { activeView: 'AAPL', gatewaySecret: 'plaintext-sensitive-secret' };
+      expect(saveState(state)).toBe(true);
+      const persisted = JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2')!);
+      expect(persisted).not.toHaveProperty('gatewaySecret');
+      expect(state.gatewaySecret).toBe('plaintext-sensitive-secret');
+    });
+
     it('triggers onPushToGist callback with false when provided', () => {
       const onPushToGist = vi.fn();
       const state = { activeView: 'NVDA' };
@@ -193,30 +201,24 @@ describe('storage service', () => {
       expect(areHeaderCredentialsConfigured()).toBe(false);
     });
 
-    it('obfuscates secret before writing to localStorage and recovers it on load', () => {
+    it('keeps gateway secret in memory and purges persisted legacy credentials', () => {
       const secret = 'super-secret-token-123';
+      storageMap.set('_gw_auth', 'b64:c3VwZXItc2VjcmV0LXRva2VuLTEyMw==');
+      storageMap.set('gateway_secret', secret);
+
       saveGatewaySecret(secret);
 
-      const storedRaw = storageMap.get('_gw_auth');
-      expect(storedRaw).toBeDefined();
-      expect(storedRaw).not.toBe(secret);
-      expect(storedRaw).not.toContain(secret);
+      expect(getGatewaySecret()).toBe(secret);
+      expect(storageMap.has('_gw_auth')).toBe(false);
       expect(storageMap.has('gateway_secret')).toBe(false);
-
-      const recovered = loadGatewaySecret();
-      expect(recovered).toBe(secret);
+      expect(loadGatewaySecret()).toBe(secret);
     });
 
-    it('handles obfuscation helpers defensively without exposing plaintext', () => {
-      const plain = 'my-gateway-password';
-      const obfuscated = obfuscateSecret(plain);
-      expect(obfuscated).not.toBe(plain);
-      expect(obfuscated).not.toContain(plain);
-      expect(deobfuscateSecret(obfuscated)).toBe(plain);
-
+    it('does not create reversible client-side secret encodings', () => {
+      expect(obfuscateSecret('my-gateway-password')).toBe('');
+      expect(deobfuscateSecret('b64:bXktZ2F0ZXdheS1wYXNzd29yZA==')).toBe('');
       expect(obfuscateSecret('')).toBe('');
       expect(deobfuscateSecret('')).toBe('');
-      expect(deobfuscateSecret('invalid-base-64-!!!')).toBe('');
     });
 
     it('saveApiKeys saves gateway secret and logs status', async () => {
