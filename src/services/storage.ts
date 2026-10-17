@@ -233,13 +233,14 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
 
     try {
       const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? (() => {
-          const merged = { ...fallback, ...parsed };
-          delete merged.gatewaySecret;
-          return merged;
-        })()
-        : fallback;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return fallback;
+      }
+      // Never restore a secret from the serialized state, but preserve the
+      // runtime secret supplied by the caller in the fallback state.
+      const persistedState = { ...parsed };
+      delete persistedState.gatewaySecret;
+      return { ...fallback, ...persistedState };
     } catch (err) {
       console.warn('Failed to parse saved state:', err);
       return fallback;
