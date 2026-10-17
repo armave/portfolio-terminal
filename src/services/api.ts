@@ -87,10 +87,12 @@ export async function proxyFetch(
   const res = await fetch(url.toString(), {
     ...fetchOptions,
     headers: {
+      ...(fetchOptions.headers || {}),
       'Content-Type': 'application/json',
+      // Authentication headers are authoritative and cannot be overridden by
+      // per-request headers supplied by a caller.
       'X-App-Auth': authSecret,
-      Authorization: `Bearer ${authSecret}`,
-      ...(fetchOptions.headers || {})
+      Authorization: `Bearer ${authSecret}`
     }
   });
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CryptoJS from 'crypto-js';
-import { pullCloudState, pushCloudState, syncCloudState } from './api';
+import { pullCloudState, pushCloudState, syncCloudState, proxyFetch } from './api';
 import * as storage from './storage';
 
 describe('cloud state sync', () => {
@@ -166,5 +166,35 @@ describe('Gateway Secret validation', () => {
     vi.stubGlobal('fetch', fetchMock);
     await expect((await import('./api')).validateGatewaySecret('  ')).resolves.toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('proxy request authentication', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('does not allow request-specific headers to override Gateway authentication', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => ({ ok: true })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await proxyFetch('news', {}, {
+      secret: 'trusted-secret',
+      headers: {
+        'X-App-Auth': 'attacker-controlled-secret',
+        Authorization: 'Bearer attacker-controlled-secret',
+        'X-Custom-Header': 'preserved'
+      }
+    });
+
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers['X-App-Auth']).toBe('trusted-secret');
+    expect(headers.Authorization).toBe('Bearer trusted-secret');
+    expect(headers['X-Custom-Header']).toBe('preserved');
   });
 });
