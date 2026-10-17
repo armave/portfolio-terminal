@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CryptoJS from 'crypto-js';
-import { pushCloudState, syncCloudState } from './api';
+import { pullCloudState, pushCloudState, syncCloudState } from './api';
+import * as storage from './storage';
 
 describe('cloud state sync', () => {
   afterEach(() => {
@@ -82,6 +83,49 @@ describe('cloud revision conflict handling', () => {
     expect(result).toBe(false);
     expect(showToast).toHaveBeenCalledWith(
       'Cloud push failed: Cloud portfolio changed since this device last synced.',
+      'error'
+    );
+  });
+});
+
+
+describe('cloud pull persistence failures', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('does not report success or rewrite the UI when local persistence fails', async () => {
+    const secret = 'cloud-encryption-secret';
+    const encryptedPayload = CryptoJS.AES.encrypt(
+      JSON.stringify({ activeView: 'AAPL', balance: 1250, lastRolloverTimestamp: Date.now() }),
+      secret
+    ).toString();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ ETag: '"4"' }),
+      json: async () => ({ encryptedPayload })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(storage, 'saveState').mockReturnValue(false);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const rewriteLocal = vi.fn();
+    const showToast = vi.fn();
+    const reportResult = vi.fn();
+
+    await pullCloudState({
+      state: { activeView: 'MSFT', balance: 1000 },
+      secret,
+      pullCloudAndRewriteLocal: rewriteLocal,
+      showToast,
+      logTerminal: vi.fn()
+    }, reportResult);
+
+    expect(reportResult).toHaveBeenCalledWith(false);
+    expect(rewriteLocal).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('could not be saved to this device'),
       'error'
     );
   });
