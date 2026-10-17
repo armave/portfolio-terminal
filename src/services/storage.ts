@@ -5,7 +5,7 @@ const STORAGE_KEY_GW_AUTH_ENCRYPTED = 'gateway_secret_encrypted_v1';
 const GW_KEY_DB = 'portfolio-terminal-secure-storage';
 const GW_KEY_STORE = 'keys';
 const GW_KEY_ID = 'gateway-secret-aes-key';
-let pendingSecretPersistence: Promise<void> = Promise.resolve();
+let pendingSecretPersistence: Promise<boolean> = Promise.resolve(true);
 const STORAGE_KEY_RULES = 'tradernet_rules_v1';
 const STORAGE_KEY_REFRESH_INTERVAL = 'quote_refresh_interval';
 
@@ -122,16 +122,18 @@ export function saveGatewaySecret(secret: string): void {
     console.warn('Failed to purge persisted gateway credentials:', err);
   }
   pendingSecretPersistence = pendingSecretPersistence
-    .catch(() => undefined)
+    .catch(() => false)
     .then(() => persistEncryptedGatewaySecret(cleanSecret))
+    .then(() => true)
     .catch((err) => {
       console.warn('Could not persist encrypted Gateway Secret; it will be requested again after refresh:', err);
+      return false;
     });
 }
 
-/** Waits until the latest encrypted secret write has completed. */
-export async function persistGatewaySecret(): Promise<void> {
-  await pendingSecretPersistence;
+/** Waits until the latest encrypted secret write has completed and reports persistence success. */
+export async function persistGatewaySecret(): Promise<boolean> {
+  return pendingSecretPersistence;
 }
 
 /**
