@@ -1611,10 +1611,11 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
     return false;
   }
 
+  hideAuthContainer();
   try {
     if (!appInitialized) {
-      await startApp(cleanSecret);
       appInitialized = true;
+      await startApp(cleanSecret);
     } else {
       state.gatewaySecret = cleanSecret;
       const synced = await syncCloudState('pull');
@@ -1622,9 +1623,10 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
         showToast('Secret verified, but cloud sync did not complete. Retaining local portfolio.', 'warning');
       }
     }
-    hideAuthContainer();
     return true;
   } catch (err: any) {
+    appInitialized = false;
+    showAuthContainer();
     showToast(err?.message || 'Could not initialize the portfolio. Please try again.', 'error');
     return false;
   }
