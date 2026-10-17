@@ -7,109 +7,51 @@ const STORAGE_KEY_REFRESH_INTERVAL = 'quote_refresh_interval';
 let inMemoryGatewaySecret = '';
 
 /**
- * Obfuscates a secret string into base64 without exposing plaintext.
+ * Secrets are intentionally kept in memory only. Browser-side encryption with
+ * a key stored beside the ciphertext would not protect credentials from scripts
+ * running in this origin. Existing plaintext/base64 storage is purged on access.
  */
-export function obfuscateSecret(plain: string): string {
-  if (!plain || typeof plain !== 'string') return '';
-  try {
-    if (typeof btoa === 'function') {
-      return btoa(plain);
-    }
-    return Buffer.from(plain, 'utf-8').toString('base64');
-  } catch {
-    return '';
-  }
+export function obfuscateSecret(_plain: string): string {
+  return '';
 }
 
-/**
- * Decodes an obfuscated base64 secret string defensively.
- */
-export function deobfuscateSecret(encoded: string): string {
-  if (!encoded || typeof encoded !== 'string') return '';
-  const clean = encoded.startsWith('b64:') ? encoded.slice(4) : encoded;
-  if (!clean || /[^A-Za-z0-9+/=]/.test(clean) || clean.length % 4 !== 0) {
-    return '';
-  }
-  try {
-    const decoded =
-      typeof atob === 'function'
-        ? atob(clean)
-        : Buffer.from(clean, 'base64').toString('utf-8');
-    // Verify round-trip and printable ASCII to avoid corrupting non-encoded strings
-    if (!decoded || !/^[\x20-\x7E]+$/.test(decoded)) {
-      return '';
-    }
-    return decoded;
-  } catch {
-    return '';
-  }
+/** Legacy compatibility helper; no new secret encoding is performed. */
+export function deobfuscateSecret(_encoded: string): string {
+  return '';
 }
 
-/**
- * In-memory gateway secret getter.
- */
 export function getGatewaySecret(): string {
   return inMemoryGatewaySecret;
 }
 
-/**
- * In-memory gateway secret setter.
- */
 export function setGatewaySecret(secret: string): void {
   inMemoryGatewaySecret = secret ? String(secret) : '';
 }
 
-/**
- * Returns true if the in-memory gateway secret is non-empty.
- */
 export function areHeaderCredentialsConfigured(): boolean {
   return Boolean(inMemoryGatewaySecret && inMemoryGatewaySecret.trim().length > 0);
 }
 
-/**
- * Obfuscates and persists gateway secret to localStorage under `_gw_auth`,
- * purging any legacy plaintext `gateway_secret` key.
- */
-export function saveGatewaySecret(secret: string): void {
-  const trimmed = typeof secret === 'string' ? secret.trim() : '';
-  setGatewaySecret(trimmed);
-
+function purgePersistedGatewaySecrets(): void {
   try {
-    if (!trimmed) {
+    if (typeof localStorage !== 'undefined' && localStorage) {
       localStorage.removeItem(STORAGE_KEY_GW_AUTH);
-      return;
-    }
-    const obfuscated = obfuscateSecret(trimmed);
-    if (obfuscated) {
-      localStorage.setItem(STORAGE_KEY_GW_AUTH, `b64:${obfuscated}`);
+      localStorage.removeItem('gateway_secret');
     }
   } catch (err) {
-    console.warn('Failed to save gateway secret:', err);
+    console.warn('Failed to purge persisted gateway credentials:', err);
   }
 }
 
-/**
- * Loads gateway secret from localStorage, checking `_gw_auth` first,
- * then falling back to legacy plaintext `gateway_secret`.
- */
+/** Keep the gateway secret in memory only; never persist it to browser storage. */
+export function saveGatewaySecret(secret: string): void {
+  setGatewaySecret(typeof secret === 'string' ? secret.trim() : '');
+  purgePersistedGatewaySecrets();
+}
+
+/** Purge legacy persisted credentials and return only the current session value. */
 export function loadGatewaySecret(): string {
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_GW_AUTH);
-    if (raw) {
-      const recovered = raw.startsWith('b64:')
-        ? deobfuscateSecret(raw)
-        : deobfuscateSecret(raw) || raw;
-      if (recovered) {
-        inMemoryGatewaySecret = recovered.trim();
-        return inMemoryGatewaySecret;
-      }
-    }
-
-  } catch {
-    // Fallback to in-memory secret
-  }
-
+  purgePersistedGatewaySecrets();
   return inMemoryGatewaySecret;
 }
 
@@ -162,7 +104,13 @@ export function saveState(
 
   try {
     state.lastUpdated = Date.now();
-    localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(state));
+    // Never serialize the runtime credential into the persisted portfolio.
+    const persistedState = { ...state };
+    delete persistedState.gatewaySecret;
+    localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(persistedState));
+    // Remove credentials left by older app versions.
+    localStorage.removeItem('gateway_secret');
+    localStorage.removeItem(STORAGE_KEY_GW_AUTH);
   } catch (err) {
     console.error('Failed to save state:', err);
     return false;
