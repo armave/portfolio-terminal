@@ -70,9 +70,22 @@ export class PortfolioStateDO {
       return jsonResponse({ error: "Invalid If-Match revision." }, 400);
     }
 
+    const contentLength = Number(request.headers.get("Content-Length") || 0);
+    if (Number.isFinite(contentLength) && contentLength > 64 * 1024) {
+      return jsonResponse({ error: "Cloud state payload exceeds the 64 KB limit." }, 413);
+    }
+    const rawBody = await request.clone().arrayBuffer();
+    if (rawBody.byteLength > 64 * 1024) {
+      return jsonResponse({ error: "Cloud state payload exceeds the 64 KB limit." }, 413);
+    }
+
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return jsonResponse({ error: "Missing or invalid JSON body." }, 400);
+    }
+
+    if (typeof body.encryptedPayload !== "string" || !body.encryptedPayload.trim()) {
+      return jsonResponse({ error: "Cloud state must contain a non-empty encryptedPayload string." }, 400);
     }
 
     const result = await this.ctx.storage.transaction(async (txn) => {
