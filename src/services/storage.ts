@@ -162,7 +162,10 @@ export function saveState(
 
   try {
     state.lastUpdated = Date.now();
-    localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(state));
+    // Secrets are runtime credentials, never part of the serialized portfolio snapshot.
+    const persistedState = { ...state };
+    delete persistedState.gatewaySecret;
+    localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(persistedState));
   } catch (err) {
     console.error('Failed to save state:', err);
     return false;
@@ -193,9 +196,12 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
 
     try {
       const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? { ...fallback, ...parsed }
-        : fallback;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return fallback;
+      }
+      const persistedState = { ...parsed };
+      delete persistedState.gatewaySecret;
+      return { ...fallback, ...persistedState };
     } catch (err) {
       console.warn('Failed to parse saved state:', err);
       return fallback;
