@@ -44,7 +44,7 @@ export function MarketInsightsPanel({
     const fetchInsight = async () => {
       try {
         if (activeSection === 'news') {
-          const news = await proxyFetch('news', { symbol: ticker }, { method: 'POST' });
+          const news = await proxyFetch('news', { symbol: ticker });
           if (currentRequestId !== requestIdRef.current) return;
           setNewsData(Array.isArray(news) ? news : []);
         } else {
