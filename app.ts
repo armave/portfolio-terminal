@@ -26,7 +26,8 @@ import {
   fetchYahooStockData,
   proxyFetch,
   setSecretGetter,
-  syncCloudState as syncCloudStateService
+  syncCloudState as syncCloudStateService,
+  verifyGatewaySecret
 } from './src/services/api';
 import {
   areHeaderCredentialsConfigured,
@@ -1591,16 +1592,31 @@ let appInitialized = false;
 setSecretGetter(() => state.gatewaySecret || getGatewaySecret());
 
 async function handleSaveGatewaySecret(secret: string) {
-  if (!secret) {
+  const cleanSecret = typeof secret === 'string' ? secret.trim() : '';
+  if (!cleanSecret) {
     showToast('Please enter the Gateway Secret.', 'error');
     return;
   }
-  try {\n    await saveGatewaySecret(secret);\n  } catch (err: any) {\n    showToast(err?.message || 'Could not securely save Gateway Secret.', 'error');\n    return;\n  }\n  hideAuthContainer();
+
+  const valid = await verifyGatewaySecret(cleanSecret);
+  if (!valid) {
+    showToast('Gateway Secret is invalid or the cloud service is unavailable. Please check it and try again.', 'error');
+    return;
+  }
+
+  try {
+    await saveGatewaySecret(cleanSecret);
+  } catch (err: any) {
+    showToast(err?.message || 'Could not securely save Gateway Secret.', 'error');
+    return;
+  }
+
+  hideAuthContainer();
   if (!appInitialized) {
     appInitialized = true;
-    await startApp(secret);
+    await startApp(cleanSecret);
   } else {
-    state.gatewaySecret = secret;
+    state.gatewaySecret = cleanSecret;
     await syncCloudState('pull');
   }
 }
