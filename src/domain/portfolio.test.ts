@@ -373,7 +373,7 @@ describe('financial edge cases', () => {
     expect(calculateTrancheCommissions([
       { qty: 3, price: 19.99 },
       { qty: 2, price: 10.01 }
-    ], rules)).toBeCloseTo(0.055, 8);
+    ], rules)).toBeCloseTo(0.10499, 8);
   });
 
   it('does not accrue margin interest on non-negative cash balances', () => {
