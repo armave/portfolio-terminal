@@ -5,6 +5,42 @@ import { PortfolioState } from '../types/portfolio';
 
 const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
+// Persist each browser's last-seen cloud revision so a reload cannot reset it to zero.
+const CLOUD_REVISION_STORAGE_KEY = 'portfolio_cloud_revision_v1';
+
+function loadCloudRevision(): number {
+  try {
+    const raw = typeof localStorage !== 'undefined'
+      ? localStorage.getItem(CLOUD_REVISION_STORAGE_KEY)
+      : null;
+    const revision = raw === null ? 0 : Number(raw);
+    return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
+  } catch {
+    return 0;
+  }
+}
+
+let cloudRevision = loadCloudRevision();
+let cloudPushQueue: Promise<void> = Promise.resolve();
+
+function setCloudRevision(revision: number): void {
+  cloudRevision = revision;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(CLOUD_REVISION_STORAGE_KEY, String(revision));
+    }
+  } catch {
+    // The in-memory revision still protects this running app instance.
+  }
+}
+
+function readCloudRevision(headers?: Headers | null): number | null {
+  const etag = headers?.get('ETag');
+  if (!etag) return null;
+  const revision = Number(etag.replace(/^W\//, '').replace(/^"|"$/g, ''));
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
+}
+
 export function setSecretGetter(_getter: () => string): void { }
 
 function getActiveGatewaySecret(state?: Record<string, any> | PortfolioState): string {
@@ -127,6 +163,9 @@ export async function pullCloudState(
       }
     });
 
+    const pulledRevision = readCloudRevision(res.headers);
+    if (pulledRevision !== null) setCloudRevision(pulledRevision);
+
     if (res.status === 404) {
       reportResult?.(false);
       showToast('No KV cloud state found. Retaining local state.', 'info');
@@ -211,7 +250,13 @@ export async function pullCloudState(
   }
 }
 
-export async function pushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
+export function pushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
+  const operation = cloudPushQueue.then(() => performPushCloudState(state, options));
+  cloudPushQueue = operation.then(() => undefined, () => undefined);
+  return operation;
+}
+
+async function performPushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
   const handlers: SyncOptions = typeof options === 'function' ? {} : options;
   const {
     getState,
@@ -243,7 +288,8 @@ export async function pushCloudState(state?: any, options: SyncOptions = {}): Pr
       headers: {
         'Content-Type': 'application/json',
         'X-App-Auth': currentSecret,
-        Authorization: `Bearer ${currentSecret}`
+        Authorization: `Bearer ${currentSecret}`,
+        'If-Match': `"${cloudRevision}"`
       },
       body: JSON.stringify(payload)
     });
@@ -252,6 +298,9 @@ export async function pushCloudState(state?: any, options: SyncOptions = {}): Pr
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.error || `HTTP ${res.status}`);
     }
+
+    const savedRevision = readCloudRevision(res.headers);
+    if (savedRevision !== null) setCloudRevision(savedRevision);
 
     const syncEl = typeof document !== 'undefined' ? document.getElementById('cloudSyncStatus') : null;
     if (syncEl) {
