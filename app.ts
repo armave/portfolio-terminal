@@ -37,7 +37,6 @@ import {
   getGatewaySecret,
   getQuoteRefreshInterval,
   loadBrokerRules,
-  loadGatewaySecret,
   restoreGatewaySecret,
   persistGatewaySecret,
   loadSavedState,
