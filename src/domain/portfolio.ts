@@ -72,8 +72,11 @@ export function calculateCommission(
   totalVal: number,
   rules: CommissionConfig
 ): number {
-  if (shares <= 0) return 0;
-  return Math.max(rules.minCommOrder, (rules.commPerShare * shares) + (rules.commVolumePct * totalVal));
+  if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(totalVal) || totalVal < 0) return 0;
+  const { commPerShare, commVolumePct, minCommOrder } = rules;
+  if (![commPerShare, commVolumePct, minCommOrder].every(Number.isFinite) ||
+      commPerShare < 0 || commVolumePct < 0 || minCommOrder < 0) return 0;
+  return Math.max(minCommOrder, (commPerShare * shares) + (commVolumePct * totalVal));
 }
 
 /** Calculate execution commissions independently so each tranche retains its ticket minimum. */
@@ -316,10 +319,14 @@ export function calculateMarginInterest(
 }
 
 export function calculateProjectedDebt(principal: number, dailyRate: number, days: number): number {
-  const p = Math.abs(Number(principal) || 0);
-  const r = Math.max(0, Number(dailyRate) || 0);
-  const d = Math.max(0, Number(days) || 0);
-  return Number((p * Math.pow(1 + r, d)).toFixed(2));
+  const inputs = [principal, dailyRate, days].map(Number);
+  if (!inputs.every(Number.isFinite)) return 0;
+  const [rawPrincipal, rawRate, rawDays] = inputs;
+  const p = Math.abs(rawPrincipal);
+  const r = Math.max(0, rawRate);
+  const d = Math.max(0, rawDays);
+  const projected = p * Math.pow(1 + r, d);
+  return Number.isFinite(projected) ? Number(projected.toFixed(2)) : 0;
 }
 
 export function calculateAccruedFees(
@@ -327,10 +334,12 @@ export function calculateAccruedFees(
   marginCharged: number,
   additionalMargin: number
 ): number {
-  const comms = Number(totalComms) || 0;
-  const charged = Number(marginCharged) || 0;
-  const addl = Number(additionalMargin) || 0;
-  return Number((comms + charged + addl).toFixed(2));
+  const finiteOrZero = (value: number) => Number.isFinite(Number(value)) ? Number(value) : 0;
+  const comms = finiteOrZero(totalComms);
+  const charged = finiteOrZero(marginCharged);
+  const addl = finiteOrZero(additionalMargin);
+  const total = comms + charged + addl;
+  return Number.isFinite(total) ? Number(total.toFixed(2)) : 0;
 }
 
 export function calculateBreakevenDays(
