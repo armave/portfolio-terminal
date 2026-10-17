@@ -226,3 +226,9 @@ npm run build
 ```
 
 Deployment to GitHub Pages is handled via `.github/workflows/deploy.yml` upon pushing commits to `main`.
+
+## Gateway and cloud-sync safety notes
+
+The Cloudflare Worker requires the Gateway Secret and accepts only its documented quote/news, Gemini, and cloud-state actions. Requests are bounded to 64 KB; ticker batches are limited to 10 symbols, Gemini prompts to 12,000 characters, and Gemini model selection is allowlisted. Upstream requests have bounded timeouts. Cloud-state writes require an `If-Match` revision and a non-empty encrypted payload; stale writes return HTTP 409 rather than overwriting newer state.
+
+For recovery, keep a current JSON export in a trusted location before major changes. Verify that export/import works before relying on it as your only backup. Cloud sync is a separate copy and may reject stale writes; pull the latest state and resolve the conflict rather than repeatedly forcing a write. The Gateway Secret is device-profile bound: clearing browser site data or losing the browser's IndexedDB key can require re-entering it. The app cannot restore a lost secret from the encrypted ciphertext alone.
