@@ -238,3 +238,46 @@ describe('Worker request hardening', () => {
     expect(unknown.status).toBe(400);
   });
 });
+
+
+describe('PortfolioStateDO payload validation', () => {
+  function makeStore() {
+    const values = new Map();
+    const storage = {
+      get: async (key) => values.get(key),
+      put: async (key, value) => values.set(key, value),
+      transaction: async (callback) => callback({
+        get: async (key) => values.get(key),
+        put: async (key, value) => values.set(key, value)
+      })
+    };
+    return new PortfolioStateDO({ storage }, {});
+  }
+
+  it('rejects missing or empty encrypted payloads without creating a revision', async () => {
+    const store = makeStore();
+    for (const body of [{}, { encryptedPayload: '   ' }, { encryptedPayload: 123 }]) {
+      const response = await store.fetch(new Request('https://worker.test/api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+        body: JSON.stringify(body)
+      }));
+      expect(response.status).toBe(400);
+    }
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(latest.status).toBe(404);
+    expect(latest.headers.get('ETag')).toBe('"0"');
+  });
+
+  it('rejects oversized cloud payloads before writing', async () => {
+    const store = makeStore();
+    const response = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload: 'x'.repeat(70_000) })
+    }));
+    expect(response.status).toBe(413);
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(latest.status).toBe(404);
+  });
+});
