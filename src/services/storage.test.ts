@@ -188,59 +188,42 @@ describe('storage service', () => {
   });
 
   describe('gateway secret & header credentials', () => {
-    it('gets, sets and clears gateway secret', () => {
+    it('gets, sets and clears gateway secret in memory', () => {
       expect(getGatewaySecret()).toBe('');
       expect(areHeaderCredentialsConfigured()).toBe(false);
-
       setGatewaySecret('my-secret-key');
       expect(getGatewaySecret()).toBe('my-secret-key');
       expect(areHeaderCredentialsConfigured()).toBe(true);
-
       setGatewaySecret('');
       expect(getGatewaySecret()).toBe('');
       expect(areHeaderCredentialsConfigured()).toBe(false);
     });
 
-    it('keeps gateway secret in memory and purges persisted legacy credentials', () => {
-      const secret = 'super-secret-token-123';
-      storageMap.set('_gw_auth', 'b64:c3VwZXItc2VjcmV0LXRva2VuLTEyMw==');
-      storageMap.set('gateway_secret', secret);
-
-      saveGatewaySecret(secret);
-
-      expect(getGatewaySecret()).toBe(secret);
-      expect(storageMap.has('_gw_auth')).toBe(false);
-      expect(storageMap.has('gateway_secret')).toBe(false);
-      expect(loadGatewaySecret()).toBe(secret);
-    });
-
-    it('does not create reversible client-side secret encodings', () => {
+    it('rejects legacy reversible encodings', () => {
       expect(obfuscateSecret('my-gateway-password')).toBe('');
       expect(deobfuscateSecret('b64:bXktZ2F0ZXdheS1wYXNzd29yZA==')).toBe('');
-      expect(obfuscateSecret('')).toBe('');
-      expect(deobfuscateSecret('')).toBe('');
     });
 
-    it('saveApiKeys saves gateway secret and logs status', async () => {
+    it('removes legacy plaintext and Base64 credentials instead of loading them', async () => {
+      storageMap.set('_gw_auth', 'b64:c2VjcmV0LXRva2Vu');
+      storageMap.set('gateway_secret', 'plaintext-secret');
+      expect(await loadGatewaySecret()).toBe('');
+      expect(storageMap.has('_gw_auth')).toBe(false);
+      expect(storageMap.has('gateway_secret')).toBe(false);
+    });
+
+    it('fails safely when encrypted storage is unavailable', async () => {
+      vi.stubGlobal('indexedDB', undefined);
       const showToast = vi.fn();
-      const logTerminal = vi.fn();
-
-      const result = await saveApiKeys({
-        secret: 'test-gateway-secret',
-        showToast,
-        logTerminal
-      });
-
-      expect(result).toBe(true);
-      expect(getGatewaySecret()).toBe('test-gateway-secret');
-      expect(logTerminal).toHaveBeenCalledWith(expect.stringContaining('Remote access has not been verified'));
-      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Remote access has not been verified'), 'success');
+      const result = await saveApiKeys({ secret: 'test-gateway-secret', showToast });
+      expect(result).toBe(false);
+      expect(getGatewaySecret()).toBe('');
+      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('secure browser storage'), 'error');
     });
 
-    it('saveApiKeys rejects empty secret', async () => {
+    it('rejects empty secret', async () => {
       const showToast = vi.fn();
       const result = await saveApiKeys({ secret: '   ', showToast });
-
       expect(result).toBe(false);
       expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Please enter'), 'error');
     });
