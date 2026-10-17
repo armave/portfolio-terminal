@@ -281,3 +281,39 @@ describe('PortfolioStateDO payload validation', () => {
     expect(latest.status).toBe(404);
   });
 });
+
+
+describe('legacy Yahoo quote POST compatibility', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('allows a JSON POST to the default Yahoo market-data route', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 200, headers: { 'Set-Cookie': 'A1=test-cookie; Path=/' } }))
+      .mockResolvedValueOnce(new Response('test-crumb', { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        chart: { result: [{ meta: { symbol: 'AAPL' }, timestamp: [], indicators: { quote: [{ close: [] }] } }], error: null }
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?symbol=AAPL', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Auth': 'test-secret' },
+      body: JSON.stringify({})
+    }), { GATEWAY_SECRET: 'test-secret' });
+
+    expect(response.status).not.toBe(405);
+    expect(await response.json()).not.toHaveProperty('error', 'POST is only supported for Gemini and cloud state actions.');
+  });
+
+  it('continues to reject POST for GET-only provider actions', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=provider-quote&provider=finnhub&symbol=AAPL', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Auth': 'test-secret' },
+      body: JSON.stringify({})
+    }), { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'provider-key' });
+    expect(response.status).toBe(405);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
