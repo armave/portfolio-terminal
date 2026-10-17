@@ -2,7 +2,8 @@ const CORS_HEADERS = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match"
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match",
+  "Access-Control-Expose-Headers": "ETag"
 };
 
 function jsonResponse(body, status = 200, revision = null) {
