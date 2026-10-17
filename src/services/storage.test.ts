@@ -186,6 +186,20 @@ describe('storage service', () => {
     });
   });
 
+    it('preserves the runtime Gateway Secret while ignoring any persisted secret', () => {
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+        activeView: 'AAPL',
+        gatewaySecret: 'legacy-plaintext-secret'
+      }));
+
+      const fallback = { activeView: 'COMBINED', gatewaySecret: 'runtime-secret' };
+      const loaded = loadSavedState(fallback);
+
+      expect(loaded.activeView).toBe('AAPL');
+      expect(loaded.gatewaySecret).toBe('runtime-secret');
+    });
+  });
+
   describe('gateway secret & header credentials', () => {
     it('gets, sets and clears gateway secret in memory', () => {
       expect(getGatewaySecret()).toBe('');
