@@ -5,9 +5,34 @@ import { PortfolioState } from '../types/portfolio';
 
 const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
-// Revision is held per app instance and refreshed by cloud pulls and successful pushes.
-let cloudRevision = 0;
+// Persist each browser's last-seen cloud revision so a reload cannot reset it to zero.
+const CLOUD_REVISION_STORAGE_KEY = 'portfolio_cloud_revision_v1';
+
+function loadCloudRevision(): number {
+  try {
+    const raw = typeof localStorage !== 'undefined'
+      ? localStorage.getItem(CLOUD_REVISION_STORAGE_KEY)
+      : null;
+    const revision = raw === null ? 0 : Number(raw);
+    return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
+  } catch {
+    return 0;
+  }
+}
+
+let cloudRevision = loadCloudRevision();
 let cloudPushQueue: Promise<void> = Promise.resolve();
+
+function setCloudRevision(revision: number): void {
+  cloudRevision = revision;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(CLOUD_REVISION_STORAGE_KEY, String(revision));
+    }
+  } catch {
+    // The in-memory revision still protects this running app instance.
+  }
+}
 
 function readCloudRevision(headers?: Headers | null): number | null {
   const etag = headers?.get('ETag');
@@ -139,7 +164,7 @@ export async function pullCloudState(
     });
 
     const pulledRevision = readCloudRevision(res.headers);
-    if (pulledRevision !== null) cloudRevision = pulledRevision;
+    if (pulledRevision !== null) setCloudRevision(pulledRevision);
 
     if (res.status === 404) {
       reportResult?.(false);
@@ -275,7 +300,7 @@ async function performPushCloudState(state?: any, options: SyncOptions = {}): Pr
     }
 
     const savedRevision = readCloudRevision(res.headers);
-    if (savedRevision !== null) cloudRevision = savedRevision;
+    if (savedRevision !== null) setCloudRevision(savedRevision);
 
     const syncEl = typeof document !== 'undefined' ? document.getElementById('cloudSyncStatus') : null;
     if (syncEl) {
