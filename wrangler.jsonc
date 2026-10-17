@@ -1,15 +1,31 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "trading-proxy",
-	"main": "worker.js",
-	"compatibility_date": "2026-10-08",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"kv_namespaces": [
-		{
-			"binding": "PORTFOLIO_KV",
-			"id": "01c5f86edd6b4307b82d54b316ec6bdd"
-		}
-	]
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trading-proxy",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-08",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "PORTFOLIO_KV",
+      "id": "01c5f86edd6b4307b82d54b316ec6bdd"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PORTFOLIO_STATE_DO",
+        "class_name": "PortfolioStateDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "PortfolioStateDO"
+      ]
+    }
+  ]
 }
