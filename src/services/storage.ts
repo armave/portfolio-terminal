@@ -3,114 +3,147 @@ const STORAGE_KEY_LEGACY_STATE = 'portfolio_state';
 const STORAGE_KEY_GW_AUTH = '_gw_auth';
 const STORAGE_KEY_RULES = 'tradernet_rules_v1';
 const STORAGE_KEY_REFRESH_INTERVAL = 'quote_refresh_interval';
+const SECRET_KEY_DB = 'portfolio-terminal-secure-storage';
+const SECRET_KEY_STORE = 'keys';
+const SECRET_KEY_ID = 'gateway-secret-key';
+const SECRET_CIPHER_PREFIX = 'aesgcm:v1:';
 
 let inMemoryGatewaySecret = '';
 
-/**
- * Obfuscates a secret string into base64 without exposing plaintext.
- */
-export function obfuscateSecret(plain: string): string {
-  if (!plain || typeof plain !== 'string') return '';
-  try {
-    if (typeof btoa === 'function') {
-      return btoa(plain);
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function openSecretKeyDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('Secure browser storage is unavailable.'));
+      return;
     }
-    return Buffer.from(plain, 'utf-8').toString('base64');
-  } catch {
-    return '';
+    const request = indexedDB.open(SECRET_KEY_DB, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(SECRET_KEY_STORE)) db.createObjectStore(SECRET_KEY_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error('Could not open secure storage.'));
+  });
+}
+
+async function getOrCreateSecretKey(): Promise<CryptoKey> {
+  const db = await openSecretKeyDatabase();
+  try {
+    const existing = await new Promise<CryptoKey | undefined>((resolve, reject) => {
+      const request = db.transaction(SECRET_KEY_STORE, 'readonly').objectStore(SECRET_KEY_STORE).get(SECRET_KEY_ID);
+      request.onsuccess = () => resolve(request.result as CryptoKey | undefined);
+      request.onerror = () => reject(request.error);
+    });
+    if (existing) return existing;
+
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(SECRET_KEY_STORE, 'readwrite');
+      tx.objectStore(SECRET_KEY_STORE).put(key, SECRET_KEY_ID);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error('Could not persist secure key.'));
+      tx.onabort = () => reject(tx.error ?? new Error('Secure key storage was aborted.'));
+    });
+    return key;
+  } finally {
+    db.close();
   }
 }
 
-/**
- * Decodes an obfuscated base64 secret string defensively.
- */
-export function deobfuscateSecret(encoded: string): string {
-  if (!encoded || typeof encoded !== 'string') return '';
-  const clean = encoded.startsWith('b64:') ? encoded.slice(4) : encoded;
-  if (!clean || /[^A-Za-z0-9+/=]/.test(clean) || clean.length % 4 !== 0) {
-    return '';
+async function encryptSecret(secret: string): Promise<string> {
+  if (!globalThis.crypto?.subtle || typeof btoa !== 'function') {
+    throw new Error('This browser does not support encrypted secret storage. Use a secure HTTPS app URL.');
   }
-  try {
-    const decoded =
-      typeof atob === 'function'
-        ? atob(clean)
-        : Buffer.from(clean, 'base64').toString('utf-8');
-    // Verify round-trip and printable ASCII to avoid corrupting non-encoded strings
-    if (!decoded || !/^[\x20-\x7E]+$/.test(decoded)) {
-      return '';
-    }
-    return decoded;
-  } catch {
-    return '';
-  }
+  const key = await getOrCreateSecretKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode(secret);
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  return SECRET_CIPHER_PREFIX + bytesToBase64(new Uint8Array([...iv, ...new Uint8Array(ciphertext)]));
 }
 
-/**
- * In-memory gateway secret getter.
- */
+async function decryptSecret(value: string): Promise<string> {
+  if (!value.startsWith(SECRET_CIPHER_PREFIX)) return '';
+  const packed = base64ToBytes(value.slice(SECRET_CIPHER_PREFIX.length));
+  if (packed.length <= 12) return '';
+  const key = await getOrCreateSecretKey();
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: packed.slice(0, 12) },
+    key,
+    packed.slice(12)
+  );
+  return new TextDecoder().decode(plaintext);
+}
+
+export function obfuscateSecret(_plain: string): string {
+  // Reversible encoding is intentionally not used for secret persistence.
+  return '';
+}
+
+export function deobfuscateSecret(_encoded: string): string {
+  return '';
+}
+
 export function getGatewaySecret(): string {
   return inMemoryGatewaySecret;
 }
 
-/**
- * In-memory gateway secret setter.
- */
 export function setGatewaySecret(secret: string): void {
   inMemoryGatewaySecret = secret ? String(secret) : '';
 }
 
-/**
- * Returns true if the in-memory gateway secret is non-empty.
- */
 export function areHeaderCredentialsConfigured(): boolean {
   return Boolean(inMemoryGatewaySecret && inMemoryGatewaySecret.trim().length > 0);
 }
 
-/**
- * Obfuscates and persists gateway secret to localStorage under `_gw_auth`,
- * purging any legacy plaintext `gateway_secret` key.
- */
-export function saveGatewaySecret(secret: string): void {
+/** Encrypts the submitted secret with AES-GCM and stores its non-extractable key in IndexedDB. */
+export async function saveGatewaySecret(secret: string): Promise<void> {
   const trimmed = typeof secret === 'string' ? secret.trim() : '';
   setGatewaySecret(trimmed);
-
   try {
     if (!trimmed) {
       localStorage.removeItem(STORAGE_KEY_GW_AUTH);
+      localStorage.removeItem('gateway_secret');
       return;
     }
-    const obfuscated = obfuscateSecret(trimmed);
-    if (obfuscated) {
-      localStorage.setItem(STORAGE_KEY_GW_AUTH, `b64:${obfuscated}`);
-    }
+    const encrypted = await encryptSecret(trimmed);
+    localStorage.setItem(STORAGE_KEY_GW_AUTH, encrypted);
+    localStorage.removeItem('gateway_secret');
   } catch (err) {
-    console.warn('Failed to save gateway secret:', err);
+    setGatewaySecret('');
+    throw new Error(err instanceof Error ? err.message : 'Could not securely save Gateway Secret.');
   }
 }
 
-/**
- * Loads gateway secret from localStorage, checking `_gw_auth` first,
- * then falling back to legacy plaintext `gateway_secret`.
- */
-export function loadGatewaySecret(): string {
-
+/** Loads an encrypted secret automatically; plaintext and reversible legacy encodings are rejected. */
+export async function loadGatewaySecret(): Promise<string> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_GW_AUTH);
-    if (raw) {
-      const recovered = raw.startsWith('b64:')
-        ? deobfuscateSecret(raw)
-        : deobfuscateSecret(raw) || raw;
+    if (raw?.startsWith(SECRET_CIPHER_PREFIX)) {
+      const recovered = await decryptSecret(raw);
       if (recovered) {
-        inMemoryGatewaySecret = recovered.trim();
+        setGatewaySecret(recovered.trim());
         return inMemoryGatewaySecret;
       }
     }
-
-  } catch {
-    // Fallback to in-memory secret
+    // Remove insecure legacy values instead of silently continuing to store credentials in plaintext.
+    localStorage.removeItem(STORAGE_KEY_GW_AUTH);
+    localStorage.removeItem('gateway_secret');
+  } catch (err) {
+    console.warn('Could not load encrypted Gateway Secret:', err);
   }
-
-  return inMemoryGatewaySecret;
+  setGatewaySecret('');
+  return '';
 }
 
 export interface SaveApiKeysOptions {
@@ -133,7 +166,7 @@ export async function saveApiKeys(options: SaveApiKeysOptions): Promise<boolean>
   }
 
   const cleanSecret = secret.trim();
-  saveGatewaySecret(cleanSecret);
+  try {\n    await saveGatewaySecret(cleanSecret);\n  } catch (err) {\n    if (typeof showToast === 'function') showToast(err instanceof Error ? err.message : 'Could not securely save Gateway Secret.', 'error');\n    return false;\n  }
 
   if (typeof logTerminal === 'function') {
     logTerminal('Gateway Secret saved. Remote access has not been verified yet.');
