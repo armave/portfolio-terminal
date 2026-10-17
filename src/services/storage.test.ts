@@ -263,6 +263,20 @@ describe('storage service', () => {
       }
     });
 
+    it('preserves encrypted device credentials when IndexedDB is temporarily unavailable', async () => {
+      setGatewaySecret('');
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const encryptedPayload = JSON.stringify({ version: 1, iv: Array(12).fill(1), data: [2, 3, 4] });
+      storageMap.set('gateway_secret_encrypted_v1', encryptedPayload);
+      vi.stubGlobal('indexedDB', undefined);
+
+      expect(await restoreGatewaySecret()).toBe('');
+      expect(storageMap.get('gateway_secret_encrypted_v1')).toBe(encryptedPayload);
+      expect(getGatewaySecret()).toBe('');
+
+      warning.mockRestore();
+    });
+
     it('saveApiKeys reports secure storage failure instead of success', async () => {
       vi.stubGlobal('indexedDB', undefined);
       const showToast = vi.fn();
