@@ -3,6 +3,7 @@ import {
   calculateMarginInterest,
   collectOpenPositionTranches,
   createBlankState,
+  createPortfolioBackupSnapshot,
   normalizePortfolioBackup,
   normalizePortfolioState,
   realizeClosedTrade,
@@ -28,6 +29,28 @@ const basePosition: MarginPosition = {
 };
 
 describe('portfolio domain', () => {
+  it('creates a backup snapshot without mutating live state or exporting secret fields', () => {
+    const source = {
+      activeView: 'AAPL',
+      balance: -100,
+      gatewaySecret: 'must-not-be-exported',
+      marginBalance: 500,
+      positions: { AAPL: { shares: 10 } }
+    };
+    const original = JSON.parse(JSON.stringify(source));
+
+    const snapshot = createPortfolioBackupSnapshot(source);
+
+    expect(source).toEqual(original);
+    expect(snapshot).toEqual({
+      activeView: 'AAPL',
+      balance: -100,
+      positions: { AAPL: { shares: 10 } }
+    });
+    expect(snapshot).not.toHaveProperty('gatewaySecret');
+    expect(snapshot).not.toHaveProperty('marginBalance');
+  });
+
   it('collects active tranches from canonical positions, ignoring empty or missing entries', () => {
     const positions = {
       AAPL: { tranches: [{ qty: 10, price: 100 }, { qty: 5, price: 110 }] },

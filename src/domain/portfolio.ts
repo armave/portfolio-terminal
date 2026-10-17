@@ -494,6 +494,17 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
   };
 }
 
+/**
+ * Creates a backup snapshot without mutating the live application state.
+ * Secrets and legacy derived fields must never be included in exported backups.
+ */
+export function createPortfolioBackupSnapshot<T extends Record<string, any>>(state: T): Partial<T> {
+  const snapshot: Record<string, any> = { ...state };
+  delete snapshot.gatewaySecret;
+  delete snapshot.marginBalance;
+  return snapshot as Partial<T>;
+}
+
 export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): PortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio backup must be an object.');
   const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate'];
