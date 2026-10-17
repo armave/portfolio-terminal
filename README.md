@@ -41,7 +41,7 @@ All calculations, broker formulas, and valuations are estimates intended for tra
 
 ### Hosted Application
 
-Access the production build on [GitHub Pages](https://armave.github.io/portfolio-terminal/). The application executes entirely client-side in the browser, storing data in `localStorage`.
+Access the production build on [GitHub Pages](https://armave.github.io/portfolio-terminal/). The application executes client-side in the browser. Portfolio state and broker preferences are stored in `localStorage`; the Gateway Secret is handled separately and, when supported, stored as ciphertext in `localStorage` with a non-extractable device key in IndexedDB. Other provider API keys may be stored in browser storage, so use a trusted device and browser profile.
 
 ### Local Development
 
@@ -181,7 +181,7 @@ Keys are configured directly in the terminal toolbar:
 
 ## Architecture & Codebase
 
-The frontend is built on **React 18**, **TypeScript**, **Tailwind CSS**, and **Vite**. Pure domain business logic is decoupled from UI rendering.
+The frontend uses **Preact with React-compatible APIs**, **TypeScript**, **Tailwind CSS**, and **Vite**. Pure domain business logic is decoupled from UI rendering.
 
 ```text
 portfolio-terminal/
@@ -214,8 +214,8 @@ The project uses **Vitest** for test execution and TypeScript for static type va
 # Run automated tests
 npm test
 
-# Run tests once without watch mode
-npm run test:run
+# Run the test suite once (Vitest is configured for a single run)
+npm test
 
 # Verify TypeScript types without building
 npm run typecheck
