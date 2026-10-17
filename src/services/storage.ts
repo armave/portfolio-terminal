@@ -24,7 +24,7 @@ function base64ToBytes(value: string): Uint8Array {
 function openSecretKeyDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
-      reject(new Error('secure browser storage is unavailable.'));
+      reject(new Error('secure browser storage is unavailable (IndexedDB cannot be opened).'));
       return;
     }
     const request = indexedDB.open(SECRET_KEY_DB, 1);
@@ -200,8 +200,7 @@ export function saveState(
 
   try {
     state.lastUpdated = Date.now();
-    const stateToPersist = { ...state };
-    delete stateToPersist.gatewaySecret;
+    const { gatewaySecret: _runtimeOnlySecret, ...stateToPersist } = state;
     localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(stateToPersist));
   } catch (err) {
     console.error('Failed to save state:', err);
