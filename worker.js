@@ -103,9 +103,6 @@ export default {
             if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
                 return jsonError("POST requests must use application/json.", 415, corsHeaders);
             }
-            if (actionHint !== "gemini" && actionHint !== "state" && new URL(request.url).pathname !== "/api/state") {
-                return jsonError("POST is only supported for Gemini and cloud state actions.", 405, corsHeaders);
-            }
             // Content-Length may be omitted by clients; measure the actual body as well.
             const rawBody = await request.clone().arrayBuffer();
             if (rawBody.byteLength > MAX_REQUEST_BYTES) {
@@ -135,7 +132,7 @@ export default {
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
             return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
         }
-        if ((action === "news" || action === "provider-quote" || (!action && pathname !== "/api/state")) && request.method !== "GET") {
+        if ((action === "news" || action === "provider-quote") && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
 
