@@ -78,6 +78,7 @@ describe('storage service', () => {
       expect(saveState(state)).toBe(true);
       const persisted = JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2')!);
       expect(persisted).not.toHaveProperty('gatewaySecret');
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).not.toContain('plaintext-sensitive-secret');
       expect(state.gatewaySecret).toBe('plaintext-sensitive-secret');
     });
 
@@ -150,6 +151,14 @@ describe('storage service', () => {
         expect.any(SyntaxError)
       );
       warnSpy.mockRestore();
+    });
+
+    it('ignores a legacy plaintext secret in saved state and preserves runtime secret', () => {
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({ activeView: 'AAPL', gatewaySecret: 'legacy-plaintext-secret' }));
+      const fallback = { activeView: 'COMBINED', gatewaySecret: 'runtime-secret' };
+      const loaded = loadSavedState(fallback);
+      expect(loaded.activeView).toBe('AAPL');
+      expect(loaded.gatewaySecret).toBe('runtime-secret');
     });
 
     it('loads and merges valid state when present in localStorage', () => {
