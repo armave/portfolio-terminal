@@ -8,6 +8,7 @@ import {
   calculateMarginInterest,
   collectOpenPositionTranches,
   createBlankState,
+  createPortfolioBackupSnapshot,
   normalizePortfolioBackup,
   normalizePortfolioState,
   processRollovers,
@@ -1121,15 +1122,7 @@ function setQuoteRefreshInterval(interval: number | string) {
 }
 
 function exportBackupJSON() {
-  delete state.gatewaySecret;
-  if ('marginBalance' in state) {
-    delete state.marginBalance;
-  }
-  const exportState = { ...state };
-  delete exportState.gatewaySecret;
-  if ('marginBalance' in exportState) {
-    delete exportState.marginBalance;
-  }
+  const exportState = createPortfolioBackupSnapshot(state);
   const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportState, null, 2));
   const downloadAnchor = document.createElement('a');
   const filename = `margin_portfolio_backup_${new Date().toISOString().split('T')[0]}.json`;

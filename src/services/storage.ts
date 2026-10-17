@@ -59,6 +59,19 @@ async function getOrCreateSecretKey(): Promise<CryptoKey> {
   } finally {
     db.close();
   }
+/**
+ * Client-side reversible encoding is deliberately disabled. Secrets must never
+ * be persisted in browser storage without a genuine secure-storage mechanism.
+ */
+export function obfuscateSecret(_plain: string): string {
+  return '';
+}
+
+/**
+ * Decoding legacy client-side encodings is deliberately disabled.
+ */
+export function deobfuscateSecret(_encoded: string): string {
+  return '';
 }
 
 async function encryptSecret(secret: string): Promise<string> {
@@ -110,8 +123,13 @@ export function areHeaderCredentialsConfigured(): boolean {
 export async function saveGatewaySecret(secret: string): Promise<void> {
   const trimmed = typeof secret === 'string' ? secret.trim() : '';
   setGatewaySecret(trimmed);
+/**
+ * Keeps the Gateway Secret in memory only and purges all legacy persisted copies.
+ */
+export function saveGatewaySecret(secret: string): void {
+  setGatewaySecret(typeof secret === 'string' ? secret.trim() : '');
   try {
-    if (!trimmed) {
+    if (typeof localStorage !== 'undefined' && localStorage) {
       localStorage.removeItem(STORAGE_KEY_GW_AUTH);
       localStorage.removeItem('gateway_secret');
       return;
@@ -144,6 +162,27 @@ export async function loadGatewaySecret(): Promise<string> {
   }
   setGatewaySecret('');
   return '';
+    }
+  } catch (err) {
+    console.warn('Failed to purge persisted gateway credentials:', err);
+  }
+}
+
+/**
+ * Returns the current runtime secret and removes any legacy browser-stored copies.
+ * A reload requires re-entering the secret because client-side reversible encoding
+ * is not secure storage.
+ */
+export function loadGatewaySecret(): string {
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage) {
+      localStorage.removeItem(STORAGE_KEY_GW_AUTH);
+      localStorage.removeItem('gateway_secret');
+    }
+  } catch {
+    // Keep the in-memory credential if browser storage is unavailable.
+  }
+  return inMemoryGatewaySecret;
 }
 
 export interface SaveApiKeysOptions {
@@ -203,6 +242,10 @@ export function saveState(
     const stateToPersist = { ...state };
     delete stateToPersist.gatewaySecret;
     localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(stateToPersist));
+    // Secrets are runtime credentials, never part of the serialized portfolio snapshot.
+    const persistedState = { ...state };
+    delete persistedState.gatewaySecret;
+    localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(persistedState));
   } catch (err) {
     console.error('Failed to save state:', err);
     return false;

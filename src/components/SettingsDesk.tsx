@@ -111,7 +111,8 @@ export function SettingsDesk({
     await onSaveApiKeys(secretValue);
     const configured = areHeaderCredentialsConfigured();
     setIsConfigured(configured);
-    setCredentialsHidden(configured);
+    // Keep the submitted value in the masked input after success; users can hide it explicitly.
+    setCredentialsHidden(false);
   };
 
   const handleIntervalChange = (e: Event) => {
