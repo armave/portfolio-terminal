@@ -124,6 +124,37 @@ export interface SyncOptions {
   logTerminal?: (msg: string) => void;
 }
 
+/**
+ * Checks whether a submitted secret can access the cloud and decrypt its existing state.
+ * A 404 means authentication succeeded but no cloud portfolio exists yet.
+ */
+export async function verifyGatewaySecret(secret: string): Promise<boolean> {
+  try {
+    const url = new URL('/api/state', WORKER_PROXY_URL);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-App-Auth': secret,
+        Authorization: `Bearer ${secret}`
+      }
+    });
+    if (response.status === 404) return true;
+    if (!response.ok) return false;
+    const data = await response.json();
+    if (typeof data?.encryptedPayload === 'string') {
+      const bytes = CryptoJS.AES.decrypt(data.encryptedPayload, secret);
+      const text = bytes?.toString(CryptoJS.enc.Utf8) || '';
+      if (!text) return false;
+      const parsed = JSON.parse(text);
+      return Boolean(parsed && typeof parsed === 'object' && !Array.isArray(parsed));
+    }
+    return Boolean(data && typeof data === 'object' && !Array.isArray(data));
+  } catch {
+    return false;
+  }
+}
+
 export async function pullCloudState(
   options: SyncOptions | ((state: any) => void) = {},
   reportResult?: (success: boolean) => void
