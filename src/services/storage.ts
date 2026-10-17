@@ -141,37 +141,81 @@ export async function persistGatewaySecret(): Promise<boolean> {
  * fails, removes the unusable ciphertext and falls back to the normal auth modal.
  */
 export async function restoreGatewaySecret(): Promise<string> {
+  if (typeof localStorage === 'undefined' || !localStorage) return inMemoryGatewaySecret;
+
   try {
-    if (typeof localStorage === 'undefined' || !localStorage) return inMemoryGatewaySecret;
     localStorage.removeItem(STORAGE_KEY_GW_AUTH);
     localStorage.removeItem('gateway_secret');
-    if (inMemoryGatewaySecret) return inMemoryGatewaySecret;
-    const raw = localStorage.getItem(STORAGE_KEY_GW_AUTH_ENCRYPTED);
-    if (!raw) return '';
-    if (!globalThis.crypto?.subtle) throw new Error('Web Crypto is unavailable');
-    const payload = JSON.parse(raw) as { version?: number; iv?: number[]; data?: number[] };
+  } catch (err) {
+    console.warn('Could not clear legacy Gateway Secret entries:', err);
+  }
+  if (inMemoryGatewaySecret) return inMemoryGatewaySecret;
+
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(STORAGE_KEY_GW_AUTH_ENCRYPTED);
+  } catch (err) {
+    console.warn('Could not read encrypted Gateway Secret from device storage:', err);
+    return '';
+  }
+  if (!raw) return '';
+
+  let payload: { version?: number; iv?: number[]; data?: number[] };
+  try {
+    payload = JSON.parse(raw) as { version?: number; iv?: number[]; data?: number[] };
     if (payload.version !== 1 || !Array.isArray(payload.iv) || !Array.isArray(payload.data)) {
       throw new Error('Encrypted Gateway Secret payload is invalid');
     }
-    const db = await openSecureKeyDatabase();
-    try {
-      const key = await getOrCreateDeviceKey(db);
-      const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: new Uint8Array(payload.iv) },
-        key,
-        new Uint8Array(payload.data)
-      );
-      const secret = new TextDecoder().decode(decrypted);
-      setGatewaySecret(secret);
-      return secret;
-    } finally {
-      db.close();
-    }
   } catch (err) {
-    console.warn('Could not restore encrypted Gateway Secret; asking for it again:', err);
+    console.warn('Encrypted Gateway Secret payload is invalid; clearing it:', err);
     try { localStorage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED); } catch { /* storage unavailable */ }
     setGatewaySecret('');
     return '';
+  }
+
+  // Preserve ciphertext when required browser APIs are unavailable. This can be
+  // temporary (e.g. a restricted browser context); deleting it would make the
+  // user's device-bound secret unrecoverable when storage becomes available again.
+  if (!globalThis.crypto?.subtle || typeof indexedDB === 'undefined') {
+    console.warn('Secure browser storage is temporarily unavailable; preserving the encrypted Gateway Secret.');
+    return '';
+  }
+
+  let db: IDBDatabase;
+  try {
+    db = await openSecureKeyDatabase();
+  } catch (err) {
+    console.warn('Could not open secure key storage; preserving the encrypted Gateway Secret:', err);
+    return '';
+  }
+
+  let key: CryptoKey;
+  try {
+    key = await getOrCreateDeviceKey(db);
+  } catch (err) {
+    console.warn('Could not access the device encryption key; preserving the encrypted Gateway Secret:', err);
+    db.close();
+    return '';
+  }
+
+  try {
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: new Uint8Array(payload.iv) },
+      key,
+      new Uint8Array(payload.data)
+    );
+    const secret = new TextDecoder().decode(decrypted);
+    setGatewaySecret(secret);
+    return secret;
+  } catch (err) {
+    // Decryption failure means the payload is corrupt or the stored device key
+    // no longer matches it. Keep the established fallback to re-enter the secret.
+    console.warn('Could not decrypt encrypted Gateway Secret; clearing unusable ciphertext:', err);
+    try { localStorage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED); } catch { /* storage unavailable */ }
+    setGatewaySecret('');
+    return '';
+  } finally {
+    db.close();
   }
 }
 
