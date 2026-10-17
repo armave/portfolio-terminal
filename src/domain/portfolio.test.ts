@@ -354,3 +354,62 @@ describe('portfolio domain', () => {
     vi.useRealTimers();
   });
 });
+
+
+describe('financial edge cases', () => {
+  it.each([0, -0.01, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects invalid sale price %s without mutating the open position',
+    (sellPrice) => {
+      const position = structuredClone(basePosition);
+      const original = structuredClone(position);
+      expect(() => realizeClosedTrade(position, 'TEST', 1, sellPrice, 1, 86_401_000)).toThrow();
+      expect(position).toEqual(original);
+    }
+  );
+
+  it('keeps commission arithmetic precise to the expected monetary result', () => {
+    const rules = { commPerShare: 0.005, commVolumePct: 0.001, minCommOrder: 0.01 };
+    expect(calculateCommission(3, 19.99, rules)).toBeCloseTo(0.03499, 8);
+    expect(calculateTrancheCommissions([
+      { qty: 3, price: 19.99 },
+      { qty: 2, price: 10.01 }
+    ], rules)).toBeCloseTo(0.06001, 8);
+  });
+
+  it('does not accrue margin interest on non-negative cash balances', () => {
+    vi.useFakeTimers();
+    const state = {
+      balance: 250,
+      lastRolloverTimestamp: new Date('2026-01-01T00:00:00Z').getTime(),
+      brokerAssumptions: { annualRate: 0.365, dayCountBasis: 365, rolloverHour: 4, rolloverMinute: 0 }
+    };
+    vi.setSystemTime(new Date('2026-01-02T01:00:00Z'));
+
+    expect(processRollovers(state)).toBe(true);
+    expect(state.balance).toBe(250);
+    expect(state.lastRolloverTimestamp).toBe(new Date('2026-01-02T00:00:00Z').getTime());
+    vi.useRealTimers();
+  });
+
+  it('does not charge interest for a negative configured annual rate', () => {
+    vi.useFakeTimers();
+    const state = {
+      balance: -1000,
+      lastRolloverTimestamp: new Date('2026-01-01T00:00:00Z').getTime(),
+      brokerAssumptions: { annualRate: -0.365, dayCountBasis: 365, rolloverHour: 4, rolloverMinute: 0 }
+    };
+    vi.setSystemTime(new Date('2026-01-02T01:00:00Z'));
+
+    expect(processRollovers(state)).toBe(true);
+    expect(state.balance).toBe(-1000);
+    vi.useRealTimers();
+  });
+
+  it('returns a stable zero for invalid commission inputs and empty tranche lists', () => {
+    const rules = { commPerShare: 0.01, commVolumePct: 0.001, minCommOrder: 1.5 };
+    expect(calculateCommission(-1, 100, rules)).toBe(0);
+    expect(calculateCommission(10, -1, rules)).toBe(0);
+    expect(calculateCommission(10, 100, { ...rules, commVolumePct: Number.NaN })).toBe(0);
+    expect(calculateTrancheCommissions([], rules)).toBe(0);
+  });
+});
