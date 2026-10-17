@@ -145,3 +145,40 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(response.status).toBe(428);
   });
 });
+
+
+describe('news proxy validation', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const request = () => new Request('https://worker.test/?action=news&symbol=AAPL', {
+    headers: { 'X-App-Auth': 'test-secret' }
+  });
+
+  it('preserves Finnhub upstream rate-limit errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ error: 'rate limit exceeded' }),
+      { status: 429, headers: { 'Content-Type': 'application/json' } }
+    )));
+    const response = await worker.fetch(request(), { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'provider-key' });
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error: 'rate limit exceeded' });
+  });
+
+  it('returns a configuration error without calling Finnhub when the key is missing', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(request(), { GATEWAY_SECRET: 'test-secret' });
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('not configured') });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a successful but malformed Finnhub response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ unexpected: true }), { status: 200 })));
+    const response = await worker.fetch(request(), { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'provider-key' });
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('invalid news response') });
+  });
+});
