@@ -26,6 +26,7 @@ describe('cloud state sync', () => {
 
     expect(result).toBe(true);
     expect(state).toEqual(originalState);
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ 'If-Match': '"0"' });
 
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     const payload = JSON.parse(String(request.body));
@@ -52,5 +53,36 @@ describe('cloud state sync', () => {
     });
 
     expect(result).toBe(false);
+  });
+});
+
+
+describe('cloud revision conflict handling', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('reports a conflict instead of silently overwriting a newer cloud state', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      headers: new Headers({ ETag: '"7"' }),
+      json: async () => ({ error: 'Cloud portfolio changed since this device last synced.' })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const showToast = vi.fn();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await pushCloudState({ activeView: 'AAPL', balance: 1250 }, {
+      secret: 'cloud-encryption-secret',
+      showToast
+    });
+
+    expect(result).toBe(false);
+    expect(showToast).toHaveBeenCalledWith(
+      'Cloud portfolio changed since this device last synced.',
+      'error'
+    );
   });
 });
