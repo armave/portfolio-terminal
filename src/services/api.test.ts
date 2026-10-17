@@ -81,7 +81,7 @@ describe('cloud revision conflict handling', () => {
 
     expect(result).toBe(false);
     expect(showToast).toHaveBeenCalledWith(
-      'Cloud portfolio changed since this device last synced.',
+      'Cloud push failed: Cloud portfolio changed since this device last synced.',
       'error'
     );
   });
