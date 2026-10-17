@@ -182,3 +182,59 @@ describe('news proxy validation', () => {
     expect(await response.json()).toMatchObject({ error: expect.stringContaining('invalid news response') });
   });
 });
+
+
+describe('Worker request hardening', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const authed = (url, init = {}) => new Request(url, {
+    ...init,
+    headers: { 'X-App-Auth': 'test-secret', ...(init.headers || {}) }
+  });
+
+  it('rejects unsupported methods before any upstream fetch', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(authed('https://worker.test/?symbol=AAPL', { method: 'DELETE' }), { GATEWAY_SECRET: 'test-secret' });
+    expect(response.status).toBe(405);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid symbols and batches larger than ten tickers', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const invalid = await worker.fetch(authed('https://worker.test/?symbol=AAPL%2F..'), { GATEWAY_SECRET: 'test-secret' });
+    expect(invalid.status).toBe(400);
+    const oversized = await worker.fetch(authed('https://worker.test/?symbol=A,B,C,D,E,F,G,H,I,J,K'), { GATEWAY_SECRET: 'test-secret' });
+    expect(oversized.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid Gemini payloads, oversized prompts, and unapproved models', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const env = { GATEWAY_SECRET: 'test-secret', GEMINI_KEY: 'provider-key' };
+    const invalid = await worker.fetch(authed('https://worker.test/?action=gemini', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: 42 })
+    }), env);
+    expect(invalid.status).toBe(400);
+    const oversized = await worker.fetch(authed('https://worker.test/?action=gemini', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: 'x'.repeat(12001) })
+    }), env);
+    expect(oversized.status).toBe(413);
+    const model = await worker.fetch(authed('https://worker.test/?action=gemini', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: 'hello', model: 'attacker-model' })
+    }), env);
+    expect(model.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized request bodies and unsupported actions', async () => {
+    const oversized = await worker.fetch(authed('https://worker.test/?action=gemini', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: 'x'.repeat(70000) })
+    }), { GATEWAY_SECRET: 'test-secret', GEMINI_KEY: 'provider-key' });
+    expect(oversized.status).toBe(413);
+    const unknown = await worker.fetch(authed('https://worker.test/?action=unknown&symbol=AAPL'), { GATEWAY_SECRET: 'test-secret' });
+    expect(unknown.status).toBe(400);
+  });
+});
