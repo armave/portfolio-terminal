@@ -72,48 +72,21 @@ export default {
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
         try {
-            // --- ACTION 0: Cloudflare Workers KV State Storage ---
+            // --- ACTION 0: Durable Object cloud portfolio state ---
             if (pathname === "/api/state" || action === "state") {
-                if (!env.PORTFOLIO_KV) {
-                    return new Response(JSON.stringify({ error: "PORTFOLIO_KV binding is missing." }), {
+                if (!env.PORTFOLIO_STATE_DO) {
+                    return new Response(JSON.stringify({ error: "PORTFOLIO_STATE_DO binding is missing." }), {
                         status: 500,
                         headers: corsHeaders
                     });
                 }
-
-                if (request.method === "GET") {
-                    const rawState = await env.PORTFOLIO_KV.get("portfolio_state");
-                    if (!rawState) {
-                        return new Response(JSON.stringify({ error: "Portfolio state not found." }), {
-                            status: 404,
-                            headers: corsHeaders
-                        });
-                    }
-                    return new Response(rawState, {
-                        status: 200,
-                        headers: corsHeaders
-                    });
-                }
-
-                if (request.method === "POST") {
-                    const body = await request.json().catch(() => null);
-                    if (!body || typeof body !== "object") {
-                        return new Response(JSON.stringify({ error: "Missing or invalid JSON body." }), {
-                            status: 400,
-                            headers: corsHeaders
-                        });
-                    }
-                    await env.PORTFOLIO_KV.put("portfolio_state", JSON.stringify(body));
-                    return new Response(JSON.stringify({ success: true, timestamp: Date.now() }), {
-                        status: 200,
-                        headers: corsHeaders
-                    });
-                }
-
-                return new Response(JSON.stringify({ error: "Method not allowed." }), {
-                    status: 405,
-                    headers: corsHeaders
-                });
+                const id = env.PORTFOLIO_STATE_DO.idFromName("portfolio_state");
+                const stub = env.PORTFOLIO_STATE_DO.get(id);
+                return stub.fetch(new Request(request.url, {
+                    method: request.method,
+                    headers: request.headers,
+                    body: request.method === "POST" ? await request.text() : undefined
+                }));
             }
 
             // --- ACTION 1: Finnhub Company News ---
