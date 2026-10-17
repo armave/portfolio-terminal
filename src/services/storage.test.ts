@@ -5,7 +5,6 @@ import {
   clearLocalData,
   getGatewaySecret,
   setGatewaySecret,
-  saveGatewaySecret,
   loadGatewaySecret,
   obfuscateSecret,
   deobfuscateSecret,

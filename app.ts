@@ -1140,7 +1140,7 @@ function exportBackupJSON() {
   logTerminal(`[Backup]: Exported state to ${filename}.`);
 }
 
-async async function importBackupJSON(event: Event) {
+async function importBackupJSON(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
@@ -1595,7 +1595,12 @@ async function handleSaveGatewaySecret(secret: string) {
     showToast('Please enter the Gateway Secret.', 'error');
     return;
   }
-  try {\n    await saveGatewaySecret(secret);\n  } catch (err: any) {\n    showToast(err?.message || 'Could not securely save Gateway Secret.', 'error');\n    return;\n  }\n  hideAuthContainer();
+  try {
+    await saveGatewaySecret(secret);
+  } catch (err: any) {
+    showToast(err?.message || 'Could not securely save Gateway Secret.', 'error');
+    return hideAuthContainer();
+  }
   if (!appInitialized) {
     appInitialized = true;
     await startApp(secret);

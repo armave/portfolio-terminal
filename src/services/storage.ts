@@ -166,7 +166,12 @@ export async function saveApiKeys(options: SaveApiKeysOptions): Promise<boolean>
   }
 
   const cleanSecret = secret.trim();
-  try {\n    await saveGatewaySecret(cleanSecret);\n  } catch (err) {\n    if (typeof showToast === 'function') showToast(err instanceof Error ? err.message : 'Could not securely save Gateway Secret.', 'error');\n    return false;\n  }
+  try {
+    await saveGatewaySecret(cleanSecret);
+  } catch (err) {
+    if (typeof showToast === 'function') showToast(err instanceof Error ? err.message : 'Could not securely save Gateway Secret.', 'error');
+    return false;
+  }
 
   if (typeof logTerminal === 'function') {
     logTerminal('Gateway Secret saved. Remote access has not been verified yet.');
