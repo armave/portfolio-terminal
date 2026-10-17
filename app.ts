@@ -1583,20 +1583,30 @@ let appInitialized = false;
 
 setSecretGetter(() => state.gatewaySecret || getGatewaySecret());
 
-async function handleSaveGatewaySecret(secret: string) {
-  if (!secret) {
+async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
+  const submittedSecret = secret.trim();
+  if (!submittedSecret) {
     showToast('Please enter the Gateway Secret.', 'error');
-    return;
+    return false;
   }
-  saveGatewaySecret(secret);
+
+  const previousSecret = getGatewaySecret();
+  saveGatewaySecret(submittedSecret);
+  state.gatewaySecret = submittedSecret;
+  const authenticated = await syncCloudState('pull');
+  if (!authenticated) {
+    saveGatewaySecret(previousSecret);
+    state.gatewaySecret = previousSecret;
+    return false;
+  }
+
+  window.dispatchEvent(new CustomEvent('gateway-secret-authenticated', { detail: { secret: submittedSecret } }));
   hideAuthContainer();
   if (!appInitialized) {
     appInitialized = true;
-    await startApp(secret);
-  } else {
-    state.gatewaySecret = secret;
-    await syncCloudState('pull');
+    await startApp(submittedSecret);
   }
+  return true;
 }
 
 function renderAuthModal(isOpen: boolean) {
