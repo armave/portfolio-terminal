@@ -44,7 +44,8 @@ export default {
                 headers: {
                     "Access-Control-Allow-Origin": "*",
                     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match"
+                    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match",
+                    "Access-Control-Expose-Headers": "ETag"
                 }
             });
         }
@@ -52,7 +53,8 @@ export default {
         const corsHeaders = {
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Expose-Headers": "ETag"
         };
 
         // SECURITY CHECK: Validate Gateway Secret
@@ -355,3 +357,6 @@ export default {
         }
     }
 };
+
+
+export { PortfolioStateDO } from "./state-store.js";
