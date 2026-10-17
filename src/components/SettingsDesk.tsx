@@ -32,6 +32,16 @@ export function SettingsDesk({
   onResetToBlankState
 }: SettingsDeskProps) {
   const [secretValue, setSecretValue] = useState<string>(() => getGatewaySecret() || '');
+  useEffect(() => {
+    const handleAuthenticated = (event: Event) => {
+      const secret = (event as CustomEvent<{ secret: string }>).detail?.secret || '';
+      setSecretValue(secret);
+      setCredentialsHidden(false);
+      setIsConfigured(Boolean(secret));
+    };
+    window.addEventListener('gateway-secret-authenticated', handleAuthenticated);
+    return () => window.removeEventListener('gateway-secret-authenticated', handleAuthenticated);
+  }, []);
   const [isConfigured, setIsConfigured] = useState<boolean>(() =>
     areHeaderCredentialsConfigured()
   );
