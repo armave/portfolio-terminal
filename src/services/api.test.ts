@@ -130,3 +130,41 @@ describe('cloud pull persistence failures', () => {
     );
   });
 });
+
+
+describe('Gateway Secret validation', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('accepts valid credentials when cloud state exists', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    await expect((await import('./api')).validateGatewaySecret('valid-secret')).resolves.toBe(true);
+  });
+
+  it('accepts valid credentials when no cloud portfolio exists yet', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+    await expect((await import('./api')).validateGatewaySecret('valid-secret')).resolves.toBe(true);
+  });
+
+  it('rejects invalid credentials', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }));
+    await expect((await import('./api')).validateGatewaySecret('wrong-secret')).resolves.toBe(false);
+  });
+
+  it('fails safely on server errors and network failures', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+    await expect((await import('./api')).validateGatewaySecret('valid-secret')).resolves.toBe(false);
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    await expect((await import('./api')).validateGatewaySecret('valid-secret')).resolves.toBe(false);
+  });
+
+  it('does not make a request for an empty secret', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect((await import('./api')).validateGatewaySecret('  ')).resolves.toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

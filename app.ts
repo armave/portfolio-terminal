@@ -27,7 +27,8 @@ import {
   fetchYahooStockData,
   proxyFetch,
   setSecretGetter,
-  syncCloudState as syncCloudStateService
+  syncCloudState as syncCloudStateService,
+  validateGatewaySecret
 } from './src/services/api';
 import {
   areHeaderCredentialsConfigured,
@@ -1593,7 +1594,7 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
   const previousSecret = getGatewaySecret();
   saveGatewaySecret(submittedSecret);
   state.gatewaySecret = submittedSecret;
-  const authenticated = await syncCloudState('pull');
+  const authenticated = await validateGatewaySecret(submittedSecret);
   if (!authenticated) {
     saveGatewaySecret(previousSecret);
     state.gatewaySecret = previousSecret;
