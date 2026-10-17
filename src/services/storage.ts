@@ -24,7 +24,7 @@ function base64ToBytes(value: string): Uint8Array {
 function openSecretKeyDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
-      reject(new Error('Secure browser storage is unavailable.'));
+      reject(new Error('secure browser storage is unavailable (IndexedDB cannot be opened).'));
       return;
     }
     const request = indexedDB.open(SECRET_KEY_DB, 1);
@@ -200,7 +200,9 @@ export function saveState(
 
   try {
     state.lastUpdated = Date.now();
-    localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(state));
+    const stateToPersist = { ...state };
+    delete stateToPersist.gatewaySecret;
+    localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(stateToPersist));
   } catch (err) {
     console.error('Failed to save state:', err);
     return false;
@@ -232,7 +234,11 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
     try {
       const parsed = JSON.parse(raw);
       return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? { ...fallback, ...parsed }
+        ? (() => {
+          const merged = { ...fallback, ...parsed };
+          delete merged.gatewaySecret;
+          return merged;
+        })()
         : fallback;
     } catch (err) {
       console.warn('Failed to parse saved state:', err);
