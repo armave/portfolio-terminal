@@ -141,9 +141,22 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
 
     try {
       const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? { ...fallback, ...parsed }
-        : fallback;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fallback;
+
+      // Strip credentials embedded by older versions before they enter runtime state.
+      const safeParsed = { ...parsed };
+      delete safeParsed.gatewaySecret;
+      purgePersistedGatewaySecrets();
+
+      if ('gatewaySecret' in parsed) {
+        try {
+          localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(safeParsed));
+        } catch {
+          // The in-memory state is still sanitized even if cleanup cannot persist.
+        }
+      }
+
+      return { ...fallback, ...safeParsed };
     } catch (err) {
       console.warn('Failed to parse saved state:', err);
       return fallback;
