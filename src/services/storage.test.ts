@@ -184,7 +184,6 @@ describe('storage service', () => {
       expect(loadSavedState(fallback)).toBe(fallback);
       expect(getElementById).not.toHaveBeenCalled();
     });
-  });
 
     it('preserves the runtime Gateway Secret while ignoring any persisted secret', () => {
       storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
