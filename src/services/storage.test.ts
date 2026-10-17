@@ -7,6 +7,8 @@ import {
   setGatewaySecret,
   saveGatewaySecret,
   loadGatewaySecret,
+  restoreGatewaySecret,
+  persistGatewaySecret,
   obfuscateSecret,
   deobfuscateSecret,
   areHeaderCredentialsConfigured,
@@ -212,6 +214,22 @@ describe('storage service', () => {
       expect(storageMap.has('_gw_auth')).toBe(false);
       expect(storageMap.has('gateway_secret')).toBe(false);
       expect(loadGatewaySecret()).toBe(secret);
+    });
+
+    it('does not store the Gateway Secret in plaintext and safely falls back when secure storage is unavailable', async () => {
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.stubGlobal('indexedDB', undefined);
+      saveGatewaySecret('private-device-secret');
+      await persistGatewaySecret();
+
+      expect(getGatewaySecret()).toBe('private-device-secret');
+      expect(storageMap.has('_gw_auth')).toBe(false);
+      expect(storageMap.has('gateway_secret')).toBe(false);
+      expect([...storageMap.values()].join('|')).not.toContain('private-device-secret');
+
+      setGatewaySecret('');
+      expect(await restoreGatewaySecret()).toBe('');
+      warning.mockRestore();
     });
 
     it('does not create reversible client-side secret encodings', () => {
