@@ -1595,8 +1595,7 @@ async function handleSaveGatewaySecret(secret: string) {
     showToast('Please enter the Gateway Secret.', 'error');
     return;
   }
-  saveGatewaySecret(secret);
-  hideAuthContainer();
+  try {\n    await saveGatewaySecret(secret);\n  } catch (err: any) {\n    showToast(err?.message || 'Could not securely save Gateway Secret.', 'error');\n    return;\n  }\n  hideAuthContainer();
   if (!appInitialized) {
     appInitialized = true;
     await startApp(secret);
@@ -1673,7 +1672,7 @@ async function initApp() {
     render(h(App, { onToggleMarketInsights: toggleMarketInsights }), rootEl);
   }
 
-  const secret = loadGatewaySecret();
+  const secret = await loadGatewaySecret();
   if (secret) {
     appInitialized = true;
     hideAuthContainer();
