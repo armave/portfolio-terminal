@@ -1,3 +1,36 @@
+const MAX_REQUEST_BYTES = 64 * 1024;
+const MAX_PROMPT_LENGTH = 12_000;
+const MAX_TICKERS = 10;
+const ALLOWED_GEMINI_MODELS = new Set([
+    "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-3.1-flash",
+    "gemini-3.1-pro", "gemini-2.5-flash", "gemini-2.5-pro",
+    "gemini-flash", "gemini-pro", "gemini-2.0-flash-lite", "gemini-2.0-flash"
+]);
+
+function jsonError(message, status, headers) {
+    return new Response(JSON.stringify({ error: message }), { status, headers });
+}
+
+function validSymbolList(symbol) {
+    const symbols = symbol.split(",").map(value => value.trim()).filter(Boolean);
+    return symbols.length > 0 && symbols.length <= MAX_TICKERS &&
+        symbols.every(value => /^[A-Z0-9.^=-]{1,20}$/.test(value));
+}
+
+async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
+    const controller = new AbortController();
+    const externalSignal = init.signal;
+    const abortFromExternal = () => controller.abort(externalSignal?.reason);
+    externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
+    const timeoutId = setTimeout(() => controller.abort(new Error("Upstream request timed out")), timeoutMs);
+    try {
+        return await fetch(input, { ...init, signal: controller.signal });
+    } finally {
+        clearTimeout(timeoutId);
+        externalSignal?.removeEventListener("abort", abortFromExternal);
+    }
+}
+
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
 export function normalizeMarketState(value) {
@@ -12,7 +45,7 @@ export function normalizeMarketState(value) {
  */
 async function getYahooCredentials() {
     // Step 1: Hit fc.yahoo.com to acquire the initial session cookie
-    const initRes = await fetch("https://fc.yahoo.com", {
+    const initRes = await fetchWithTimeout("https://fc.yahoo.com", {
         headers: { "User-Agent": USER_AGENT }
     });
 
@@ -21,7 +54,7 @@ async function getYahooCredentials() {
     const cookie = cookieMatch ? cookieMatch[1] : "";
 
     // Step 2: Use the cookie to request the session crumb
-    const crumbRes = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+    const crumbRes = await fetchWithTimeout("https://query1.finance.yahoo.com/v1/test/getcrumb", {
         headers: {
             "User-Agent": USER_AGENT,
             "Cookie": cookie
@@ -57,6 +90,29 @@ export default {
             "Access-Control-Expose-Headers": "ETag"
         };
 
+        // Reject unsupported methods and oversized bodies before parsing or proxying.
+        if (request.method !== "GET" && request.method !== "POST") {
+            return jsonError("Method not allowed.", 405, corsHeaders);
+        }
+        const declaredLength = Number(request.headers.get("Content-Length") || 0);
+        if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+            return jsonError("Request body exceeds the 64 KB limit.", 413, corsHeaders);
+        }
+        if (request.method === "POST") {
+            const actionHint = new URL(request.url).searchParams.get("action");
+            if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
+                return jsonError("POST requests must use application/json.", 415, corsHeaders);
+            }
+            if (actionHint !== "gemini" && actionHint !== "state" && new URL(request.url).pathname !== "/api/state") {
+                return jsonError("POST is only supported for Gemini and cloud state actions.", 405, corsHeaders);
+            }
+            // Content-Length may be omitted by clients; measure the actual body as well.
+            const rawBody = await request.clone().arrayBuffer();
+            if (rawBody.byteLength > MAX_REQUEST_BYTES) {
+                return jsonError("Request body exceeds the 64 KB limit.", 413, corsHeaders);
+            }
+        }
+
         // SECURITY CHECK: Validate Gateway Secret
         const authHeader = request.headers.get("Authorization") || "";
         const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim();
@@ -72,6 +128,16 @@ export default {
         const action = url.searchParams.get("action");
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
+
+        if (action && !["state", "news", "gemini", "provider-quote"].includes(action)) {
+            return jsonError("Unsupported action.", 400, corsHeaders);
+        }
+        if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
+            return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
+        }
+        if ((action === "news" || action === "provider-quote" || (!action && pathname !== "/api/state")) && request.method !== "GET") {
+            return jsonError("This action only supports GET.", 405, corsHeaders);
+        }
 
         try {
             // --- ACTION 0: Durable Object cloud portfolio state ---
@@ -105,7 +171,7 @@ export default {
                     });
                 }
 
-                const res = await fetch(
+                const res = await fetchWithTimeout(
                     `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(symbol)}&from=${fromDate}&to=${toDate}&token=${encodeURIComponent(finnhubKey)}`
                 );
                 const data = await res.json().catch(() => null);
@@ -133,27 +199,36 @@ export default {
                     }), { status: 500, headers: corsHeaders });
                 }
 
-                const body = await request.json().catch(() => ({}));
+                const body = await request.json().catch(() => null);
+                if (!body || typeof body !== "object" || Array.isArray(body)) {
+                    return jsonError("Request body must be a JSON object.", 400, corsHeaders);
+                }
                 const prompt = body.prompt;
 
-                if (!prompt) {
+                if (typeof prompt !== "string" || !prompt.trim()) {
                     return new Response(JSON.stringify({ error: "Missing 'prompt' in request body." }), {
                         status: 400,
                         headers: corsHeaders
                     });
                 }
 
-                // Deduplicate and prioritize models with healthy free limits
+                if (prompt.length > MAX_PROMPT_LENGTH) {
+                    return jsonError("Prompt exceeds the 12,000-character limit.", 413, corsHeaders);
+                }
+                if (body.model !== undefined && (typeof body.model !== "string" || !ALLOWED_GEMINI_MODELS.has(body.model.replace(/^models\//, "")))) {
+                    return jsonError("Unsupported Gemini model.", 400, corsHeaders);
+                }
+
+                // Keep proxy model selection bounded to a known allowlist.
                 const rawCandidates = [
                     body.model,
                     "gemini-2.5-flash-lite",
                     "gemini-2.0-flash-lite",
                     "gemini-2.0-flash",
-                    "gemini-3.5-flash-lite",
-                    "gemini-3.8-flash"
-                ].filter(Boolean);
-
-                const candidateModels = Array.from(new Set(rawCandidates));
+                    "gemini-3.1-flash-lite",
+                    "gemini-3.1-flash"
+                ].filter(Boolean).map(model => model.replace(/^models\//, "")).filter(model => ALLOWED_GEMINI_MODELS.has(model));
+                const candidateModels = Array.from(new Set(rawCandidates)).slice(0, 4);
 
                 let lastResponse = null;
                 let lastData = null;
@@ -244,7 +319,7 @@ export default {
                     });
                 }
 
-                const res = await fetch(endpoint);
+                const res = await fetchWithTimeout(endpoint);
                 const data = await res.json().catch(() => null);
                 if (!res.ok) {
                     return new Response(JSON.stringify(data || { error: `${providerName} returned HTTP ${res.status}.` }), {
@@ -272,7 +347,7 @@ export default {
             // Support both single "WDC" and grouped "WDC,GOOGL,META"
             const tickers = symbol.split(',').map(s => s.trim()).filter(s => s);
 
-            if (tickers.length === 0) {
+            if (tickers.length === 0 || tickers.length > MAX_TICKERS || !validSymbolList(symbol)) {
                 return new Response(JSON.stringify({ error: "No valid symbols provided." }), {
                     status: 400,
                     headers: corsHeaders
@@ -287,7 +362,7 @@ export default {
                 const yahooUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=price,summaryDetail,defaultKeyStatistics,financialData,recommendationTrend,upgradeDowngradeHistory,calendarEvents&crumb=${encodeURIComponent(crumb)}`;
 
                 try {
-                    const response = await fetch(yahooUrl, {
+                    const response = await fetchWithTimeout(yahooUrl, {
                         headers: {
                             "User-Agent": USER_AGENT,
                             "Cookie": cookie
