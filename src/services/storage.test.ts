@@ -240,7 +240,31 @@ describe('storage service', () => {
       expect(deobfuscateSecret('')).toBe('');
     });
 
-    it('saveApiKeys saves gateway secret and logs status', async () => {
+    it('saveApiKeys reports the actual device-persistence result', async () => {
+      const showToast = vi.fn();
+      const logTerminal = vi.fn();
+      const secureStorageAvailable = typeof indexedDB !== 'undefined' && Boolean(globalThis.crypto?.subtle);
+
+      const result = await saveApiKeys({
+        secret: 'test-gateway-secret',
+        showToast,
+        logTerminal
+      });
+
+      expect(getGatewaySecret()).toBe('test-gateway-secret');
+      if (secureStorageAvailable) {
+        expect(result).toBe(true);
+        expect(logTerminal).toHaveBeenCalledWith(expect.stringContaining('Remote access has not been verified'));
+        expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Remote access has not been verified'), 'success');
+      } else {
+        expect(result).toBe(false);
+        expect(showToast).toHaveBeenCalledWith(expect.stringContaining('secure device storage failed'), 'error');
+        expect(showToast).not.toHaveBeenCalledWith(expect.any(String), 'success');
+      }
+    });
+
+    it('saveApiKeys reports secure storage failure instead of success', async () => {
+      vi.stubGlobal('indexedDB', undefined);
       const showToast = vi.fn();
       const logTerminal = vi.fn();
 
@@ -250,10 +274,11 @@ describe('storage service', () => {
         logTerminal
       });
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
       expect(getGatewaySecret()).toBe('test-gateway-secret');
-      expect(logTerminal).toHaveBeenCalledWith(expect.stringContaining('Remote access has not been verified'));
-      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Remote access has not been verified'), 'success');
+      expect(showToast).toHaveBeenCalledWith(expect.stringContaining('secure device storage failed'), 'error');
+      expect(showToast).not.toHaveBeenCalledWith(expect.any(String), 'success');
+      expect(logTerminal).toHaveBeenCalledWith(expect.stringContaining('may need to be entered again after refresh'));
     });
 
     it('saveApiKeys rejects empty secret', async () => {

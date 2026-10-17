@@ -201,7 +201,14 @@ export async function saveApiKeys(options: SaveApiKeysOptions): Promise<boolean>
 
   const cleanSecret = secret.trim();
   saveGatewaySecret(cleanSecret);
-  await persistGatewaySecret();
+  const persisted = await persistGatewaySecret();
+
+  if (!persisted) {
+    const message = 'Gateway Secret is available for this session, but secure device storage failed. It may need to be entered again after refresh.';
+    if (typeof logTerminal === 'function') logTerminal(message);
+    if (typeof showToast === 'function') showToast(message, 'error');
+    return false;
+  }
 
   if (typeof logTerminal === 'function') {
     logTerminal('Gateway Secret saved. Remote access has not been verified yet.');
