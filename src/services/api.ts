@@ -124,6 +124,35 @@ export interface SyncOptions {
   logTerminal?: (msg: string) => void;
 }
 
+/**
+ * Validates the Gateway Secret without requiring a portfolio to already exist.
+ * The Worker authenticates before forwarding requests to the state store, so
+ * a 404 from /api/state means the credentials are valid but cloud state is empty.
+ */
+export async function validateGatewaySecret(secret: string): Promise<boolean> {
+  const cleanSecret = typeof secret === 'string' ? secret.trim() : '';
+  if (!cleanSecret) return false;
+
+  try {
+    const url = new URL('/api/state', WORKER_PROXY_URL);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-App-Auth': cleanSecret,
+        Authorization: `Bearer ${cleanSecret}`
+      }
+    });
+
+    // A missing portfolio is not an authentication failure. The Worker checks
+    // the secret before the Durable Object can return its 404 response.
+    return response.ok || response.status === 404;
+  } catch (error) {
+    console.warn('Gateway Secret validation failed:', error);
+    return false;
+  }
+}
+
 export async function pullCloudState(
   options: SyncOptions | ((state: any) => void) = {},
   reportResult?: (success: boolean) => void
