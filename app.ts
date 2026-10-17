@@ -1141,7 +1141,7 @@ function exportBackupJSON() {
   logTerminal(`[Backup]: Exported state to ${filename}.`);
 }
 
-async async function importBackupJSON(event: Event) {
+async function importBackupJSON(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
