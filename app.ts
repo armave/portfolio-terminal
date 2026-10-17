@@ -1629,6 +1629,18 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
     showAuthContainer();
     showToast(err?.message || 'Could not initialize the portfolio. Please try again.', 'error');
     return false;
+  try {
+    await saveGatewaySecret(secret);
+  } catch (err: any) {
+    showToast(err?.message || 'Could not securely save Gateway Secret.', 'error');
+    return hideAuthContainer();
+  }
+  if (!appInitialized) {
+    appInitialized = true;
+    await startApp(secret);
+  } else {
+    state.gatewaySecret = secret;
+    await syncCloudState('pull');
   }
 }
 
