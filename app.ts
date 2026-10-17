@@ -1591,33 +1591,42 @@ let appInitialized = false;
 
 setSecretGetter(() => state.gatewaySecret || getGatewaySecret());
 
-async function handleSaveGatewaySecret(secret: string) {
+async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
   const cleanSecret = typeof secret === 'string' ? secret.trim() : '';
   if (!cleanSecret) {
     showToast('Please enter the Gateway Secret.', 'error');
-    return;
+    return false;
   }
 
   const valid = await verifyGatewaySecret(cleanSecret);
   if (!valid) {
     showToast('Gateway Secret is invalid or the cloud service is unavailable. Please check it and try again.', 'error');
-    return;
+    return false;
   }
 
   try {
     await saveGatewaySecret(cleanSecret);
   } catch (err: any) {
     showToast(err?.message || 'Could not securely save Gateway Secret.', 'error');
-    return;
+    return false;
   }
 
-  hideAuthContainer();
-  if (!appInitialized) {
-    appInitialized = true;
-    await startApp(cleanSecret);
-  } else {
-    state.gatewaySecret = cleanSecret;
-    await syncCloudState('pull');
+  try {
+    if (!appInitialized) {
+      await startApp(cleanSecret);
+      appInitialized = true;
+    } else {
+      state.gatewaySecret = cleanSecret;
+      const synced = await syncCloudState('pull');
+      if (!synced) {
+        showToast('Secret verified, but cloud sync did not complete. Retaining local portfolio.', 'warning');
+      }
+    }
+    hideAuthContainer();
+    return true;
+  } catch (err: any) {
+    showToast(err?.message || 'Could not initialize the portfolio. Please try again.', 'error');
+    return false;
   }
 }
 
