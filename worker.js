@@ -98,10 +98,29 @@ export default {
                 const fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
                 const finnhubKey = env.FINNHUB_KEY || env.FINNHUB_API_KEY;
 
+                if (!finnhubKey) {
+                    return new Response(JSON.stringify({ error: "Finnhub provider key is not configured." }), {
+                        status: 500,
+                        headers: corsHeaders
+                    });
+                }
+
                 const res = await fetch(
-                    `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(symbol)}&from=${fromDate}&to=${toDate}&token=${finnhubKey}`
+                    `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(symbol)}&from=${fromDate}&to=${toDate}&token=${encodeURIComponent(finnhubKey)}`
                 );
-                const data = await res.json();
+                const data = await res.json().catch(() => null);
+                if (!res.ok) {
+                    return new Response(JSON.stringify(data || { error: `Finnhub returned HTTP ${res.status}.` }), {
+                        status: res.status,
+                        headers: corsHeaders
+                    });
+                }
+                if (!Array.isArray(data)) {
+                    return new Response(JSON.stringify({ error: "Finnhub returned an invalid news response." }), {
+                        status: 502,
+                        headers: corsHeaders
+                    });
+                }
                 return new Response(JSON.stringify(data), { headers: corsHeaders });
             }
 
