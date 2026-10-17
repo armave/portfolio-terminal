@@ -222,14 +222,16 @@ export async function pullCloudState(
     }
 
     const wasUpdated = processRollovers(parsedState);
+    if (!saveState(parsedState)) {
+      throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
+    }
+
     if (wasUpdated) {
-      saveState(parsedState);
       pushCloudState(parsedState, { ...handlers, secret: currentSecret, showToast: () => { } }).catch((err) => {
         console.warn('Background rollover sync failed:', err);
       });
     }
 
-    saveState(parsedState);
     if (typeof pullCloudAndRewriteLocal === 'function') {
       pullCloudAndRewriteLocal(parsedState);
     } else if (typeof window !== 'undefined' && typeof (window as any).renderBoard === 'function') {
