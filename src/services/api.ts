@@ -119,6 +119,56 @@ export async function fetchYahooStockData(ticker: string): Promise<any> {
   }
 }
 
+export type FallbackQuoteProvider = 'finnhub' | 'twelvedata';
+
+export interface NormalizedFallbackQuote {
+  symbol: string;
+  price: number;
+  previousClose: number | null;
+  change: number | null;
+  changePercent: number | null;
+  sourceName: 'Finnhub' | 'Twelve Data';
+}
+
+/** Fetch and normalize a single quote from a configured fallback provider. */
+export async function fetchFallbackQuote(
+  ticker: string,
+  provider: FallbackQuoteProvider
+): Promise<NormalizedFallbackQuote> {
+  const symbol = normalizeYahooSymbol(ticker);
+  if (!symbol) throw new Error('A ticker symbol is required for fallback quotes.');
+
+  const data = await proxyFetch('provider-quote', { symbol, provider });
+  const currentValue = provider === 'finnhub' ? data?.c : data?.close;
+  const previousValue = provider === 'finnhub' ? data?.pc : data?.previous_close;
+  const changeValue = provider === 'finnhub' ? data?.d : data?.change;
+  const percentValue = provider === 'finnhub' ? data?.dp : data?.percent_change;
+  const price = Number(currentValue);
+  const previous = Number(previousValue);
+  const suppliedChange = Number(changeValue);
+  const suppliedPercent = Number(percentValue);
+  const hasPrevious = Number.isFinite(previous) && previous > 0;
+  const change = Number.isFinite(suppliedChange)
+    ? suppliedChange
+    : hasPrevious ? price - previous : null;
+  const changePercent = Number.isFinite(suppliedPercent)
+    ? suppliedPercent
+    : hasPrevious && change !== null ? (change / previous) * 100 : null;
+
+  if (!Number.isFinite(price) || price <= 0) {
+    throw new Error(`${provider === 'finnhub' ? 'Finnhub' : 'Twelve Data'} returned no valid quote for ${symbol}.`);
+  }
+
+  return {
+    symbol,
+    price,
+    previousClose: hasPrevious ? previous : null,
+    change,
+    changePercent,
+    sourceName: provider === 'finnhub' ? 'Finnhub' : 'Twelve Data'
+  };
+}
+
 const YAHOO_DEEP_DATA_CACHE_TTL_MS = 5 * 60 * 1000;
 const yahooDeepDataCache = new Map<string, { expiresAt: number; data: any }>();
 const yahooDeepDataRequests = new Map<string, Promise<any>>();
