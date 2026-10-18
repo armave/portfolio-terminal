@@ -563,7 +563,16 @@ export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): 
     strictlyPositive = false
   ) => {
     if (!Object.hasOwn(record, field)) return;
-    const value = Number(record[field]);
+    const rawValue = record[field];
+    if (
+      rawValue === null ||
+      typeof rawValue === 'boolean' ||
+      (typeof rawValue !== 'number' && typeof rawValue !== 'string') ||
+      (typeof rawValue === 'string' && !rawValue.trim())
+    ) {
+      throw new Error(`Invalid ${label} in portfolio backup: expected a ${strictlyPositive ? 'positive' : 'non-negative'} finite number.`);
+    }
+    const value = Number(rawValue);
     if (!Number.isFinite(value) || (strictlyPositive ? value <= 0 : value < 0)) {
       throw new Error(`Invalid ${label} in portfolio backup: expected a ${strictlyPositive ? 'positive' : 'non-negative'} finite number.`);
     }
@@ -578,6 +587,7 @@ export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): 
         validateNonNegativeField(rawPosition, field, `${ticker} ${field}`);
       }
       if (Array.isArray(rawPosition.tranches)) {
+        let trancheShares = 0;
         rawPosition.tranches.forEach((rawTranche, index) => {
           if (!isRecord(rawTranche)) {
             throw new Error(`Invalid tranche ${index + 1} for ${ticker} in portfolio backup.`);
@@ -585,7 +595,21 @@ export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): 
           validateNonNegativeField(rawTranche, 'qty', `${ticker} tranche quantity`, true);
           validateNonNegativeField(rawTranche, 'price', `${ticker} tranche price`, true);
           validateNonNegativeField(rawTranche, 'buyCommission', `${ticker} tranche commission`);
+          trancheShares += Number(rawTranche.qty);
         });
+
+        // Canonical positions use both the aggregate share count and FIFO lots.
+        // If both are present, they must describe the same quantity; otherwise
+        // a sale can invent fallback lots or silently scale down imported lots.
+        if (rawPosition.tranches.length > 0 && Object.hasOwn(rawPosition, 'shares')) {
+          const shares = Number(rawPosition.shares);
+          const tolerance = Math.max(1e-8, Math.abs(shares) * 1e-8);
+          if (Math.abs(trancheShares - shares) > tolerance) {
+            throw new Error(
+              `Invalid ${ticker} position in portfolio backup: share count (${shares}) does not match tranche total (${trancheShares}).`
+            );
+          }
+        }
       }
     }
   }
