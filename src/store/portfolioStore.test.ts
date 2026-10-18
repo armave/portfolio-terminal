@@ -304,6 +304,25 @@ describe('canonical trade lifecycle and persistence', () => {
     });
   });
 
+  it('preserves valid zero-valued broker assumptions', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    store.updateAssumptions({
+      annualRate: 0,
+      annualBorrowRate: 0,
+      maintenanceMarginRatio: 0,
+      maintenanceEquityRatio: 0
+    });
+
+    expect(store.getState().brokerAssumptions).toMatchObject({
+      annualRate: 0,
+      annualBorrowRate: 0,
+      maintenanceMarginRatio: 0,
+      maintenanceEquityRatio: 0
+    });
+  });
+
   it('clears prior margin debt when a positive cash balance is entered', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
