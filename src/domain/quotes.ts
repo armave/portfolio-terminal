@@ -1,4 +1,4 @@
-export type MarketState = 'PRE' | 'REGULAR' | 'POST' | 'CLOSED' | string | undefined;
+type MarketState = 'PRE' | 'REGULAR' | 'POST' | 'CLOSED' | string | undefined;
 
 export interface MarketSessionPriceInput {
   regularPrice: unknown;
