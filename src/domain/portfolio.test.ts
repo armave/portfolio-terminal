@@ -230,6 +230,22 @@ describe('portfolio domain', () => {
     expect(resolveTradeDateTimestamp('not a date', 1234)).toBe(1234);
   });
 
+  it('rejects impossible calendar dates instead of normalizing into another month', () => {
+    expect(resolveTradeDateTimestamp('2026-02-31', 1234)).toBe(1234);
+    expect(resolveTradeDateTimestamp('31 Feb 2026', 1234)).toBe(1234);
+    expect(resolveTradeDateTimestamp('2024-02-29', 1234)).toBe(Date.UTC(2024, 1, 29));
+  });
+
+  it('does not accrue rollover cycles from an impossible purchase date', () => {
+    expect(getAccruedRolloverCycles('2026-02-31', new Date('2026-03-10T12:00:00Z'))).toBe(0);
+  });
+
+  it('returns no margin interest for invalid utilization ratios or non-finite rates', () => {
+    expect(calculateMarginInterest(1_000, { dailyRate: 0.01, marginRatio: -1, days: 1 })).toBe(0);
+    expect(calculateMarginInterest(1_000, { dailyRate: Number.POSITIVE_INFINITY, days: 1 })).toBe(0);
+    expect(calculateMarginInterest([{ qty: 10, price: 100 }], { dailyRate: 0.01, marginUtilizationRatio: -0.5, days: 1 })).toBe(0);
+  });
+
   it('realizes partial sale and carries remaining lots, commissions, and margin fees', () => {
     const result = realizeClosedTrade(basePosition, 'TEST', 4, 12, 1, 86_401_000);
 
