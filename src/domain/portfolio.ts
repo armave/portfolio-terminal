@@ -229,12 +229,12 @@ export function calculateMarginInterest(
   let dailyRate = 0;
   if (typeof paramsOrDailyRate === 'number') {
     dailyRate = paramsOrDailyRate;
-  } else if (typeof options.dailyRate === 'number' && options.dailyRate > 0) {
+  } else if (typeof options.dailyRate === 'number') {
     dailyRate = options.dailyRate;
-  } else if (typeof options.annualRate === 'number' && options.annualRate > 0) {
+  } else if (typeof options.annualRate === 'number') {
     const basis = Number(options.dayCountBasis) || 365;
     dailyRate = options.annualRate / basis;
-  } else if (typeof options.annualBorrowRate === 'number' && options.annualBorrowRate > 0) {
+  } else if (typeof options.annualBorrowRate === 'number') {
     const basis = Number(options.dayCountBasis) || 365;
     dailyRate = options.annualBorrowRate / basis;
   }
