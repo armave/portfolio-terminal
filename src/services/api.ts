@@ -116,6 +116,64 @@ export async function fetchYahooStockData(ticker: string): Promise<any> {
   }
 }
 
+const YAHOO_DEEP_DATA_CACHE_TTL_MS = 5 * 60 * 1000;
+const yahooDeepDataCache = new Map<string, { expiresAt: number; data: any }>();
+const yahooDeepDataRequests = new Map<string, Promise<any>>();
+
+function normalizeYahooSymbol(symbol: unknown): string {
+  return typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
+}
+
+/** Seed the shared deep-data cache with a successful item from a batch quote response. */
+export function rememberYahooDeepStockData(value: unknown): void {
+  const data = value && typeof value === 'object' ? value as Record<string, any> : null;
+  const symbol = normalizeYahooSymbol(data?.symbol);
+  if (!data || !symbol || data.error) return;
+  yahooDeepDataCache.set(symbol, {
+    expiresAt: Date.now() + YAHOO_DEEP_DATA_CACHE_TTL_MS,
+    data
+  });
+}
+
+/**
+ * Fetches the full Yahoo payload once per ticker and shares it between board
+ * analyst targets and all Market Insights tabs. Explicit refreshes bypass cache.
+ */
+export async function fetchYahooDeepStockData(ticker: string, force = false): Promise<any> {
+  const symbol = normalizeYahooSymbol(ticker);
+  if (!symbol) return null;
+
+  if (!force) {
+    const cached = yahooDeepDataCache.get(symbol);
+    if (cached && cached.expiresAt > Date.now()) return cached.data;
+    if (cached) yahooDeepDataCache.delete(symbol);
+  }
+
+  const existing = yahooDeepDataRequests.get(symbol);
+  if (existing) return existing;
+
+  const request = proxyFetch('', { symbol }, { method: 'POST' })
+    .then((data) => {
+      if (data && typeof data === 'object' && !data.error) {
+        rememberYahooDeepStockData(data);
+      }
+      return data;
+    })
+    .finally(() => {
+      if (yahooDeepDataRequests.get(symbol) === request) {
+        yahooDeepDataRequests.delete(symbol);
+      }
+    });
+  yahooDeepDataRequests.set(symbol, request);
+  return request;
+}
+
+/** Clears shared deep-data cache state, primarily for isolated tests. */
+export function clearYahooDeepStockDataCache(): void {
+  yahooDeepDataCache.clear();
+  yahooDeepDataRequests.clear();
+}
+
 export interface SyncOptions {
   state?: any;
   secret?: string;
