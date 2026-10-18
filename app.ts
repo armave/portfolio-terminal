@@ -992,6 +992,8 @@ async function fetchLivePriceFromProviders(symbol: string) {
           marketState
         });
 
+        const previousClose = Number(prevClose);
+        const hasPreviousClose = Number.isFinite(previousClose) && previousClose > 0;
         quoteDetails = {
           marketState,
           price: current,
