@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CryptoJS from 'crypto-js';
-import { pullCloudState, pushCloudState, syncCloudState, proxyFetch } from './api';
+import {
+  pullCloudState,
+  pushCloudState,
+  syncCloudState,
+  proxyFetch,
+  fetchYahooDeepStockData,
+  rememberYahooDeepStockData,
+  clearYahooDeepStockDataCache
+} from './api';
 import * as storage from './storage';
 
 describe('cloud state sync', () => {
@@ -261,5 +269,76 @@ describe('cloud pull revision safety', () => {
 
     const pushRequest = fetchMock.mock.calls[1][1] as RequestInit;
     expect((pushRequest.headers as Record<string, string>)['If-Match']).not.toBe('"99"');
+  });
+});
+
+
+describe('Yahoo deep-data request deduplication', () => {
+  afterEach(() => {
+    clearYahooDeepStockDataCache();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('shares an in-flight request and caches the result by normalized ticker', async () => {
+    clearYahooDeepStockDataCache();
+    let resolveResponse!: (value: any) => void;
+    const fetchMock = vi.fn(() => new Promise((resolve) => {
+      resolveResponse = resolve;
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = fetchYahooDeepStockData('aapl');
+    const second = fetchYahooDeepStockData(' AAPL ');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const payload = { symbol: 'AAPL', analystTargets: { median: 200 }, valuation: { peForward: 20 } };
+    resolveResponse({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => payload
+    });
+
+    await expect(Promise.all([first, second])).resolves.toEqual([payload, payload]);
+    await expect(fetchYahooDeepStockData('AAPL')).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses successful batch data and supports an explicit forced refresh', async () => {
+    clearYahooDeepStockDataCache();
+    const cached = { symbol: 'MSFT', analystTargets: { median: 450 } };
+    rememberYahooDeepStockData(cached);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => ({ ...cached, analystTargets: { median: 460 } })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchYahooDeepStockData('MSFT')).resolves.toEqual(cached);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await expect(fetchYahooDeepStockData('MSFT', true)).resolves.toEqual({
+      ...cached,
+      analystTargets: { median: 460 }
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache failed ticker payloads', async () => {
+    clearYahooDeepStockDataCache();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => ({ symbol: 'BAD', error: 'Yahoo unavailable' })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchYahooDeepStockData('BAD');
+    await fetchYahooDeepStockData('BAD');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
