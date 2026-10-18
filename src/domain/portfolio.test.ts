@@ -200,6 +200,36 @@ describe('portfolio domain', () => {
     });
   });
 
+  it('rejects canonical backups whose position share count disagrees with its trade lots', () => {
+    expect(() => normalizePortfolioBackup({
+      positions: {
+        AAPL: {
+          shares: 10,
+          tranches: [{ qty: 8, price: 150 }]
+        }
+      }
+    }, 10_000)).toThrow('share count (10) does not match tranche total (8)');
+
+    expect(() => normalizePortfolioBackup({
+      positions: {
+        AAPL: {
+          shares: 10,
+          tranches: [{ qty: 10, price: 150 }, { qty: 1, price: 160 }]
+        }
+      }
+    }, 10_000)).toThrow('share count (10) does not match tranche total (11)');
+  });
+
+  it('rejects null and blank strings instead of treating them as zero-valued backup fields', () => {
+    expect(() => normalizePortfolioBackup({
+      positions: { AAPL: { shares: null, tranches: [] } }
+    }, 10_000)).toThrow('AAPL shares');
+
+    expect(() => normalizePortfolioBackup({
+      positions: { AAPL: { shares: 3, commBuy: ' ', tranches: [] } }
+    }, 10_000)).toThrow('AAPL commBuy');
+  });
+
   it('prevents selling more shares than the position holds', () => {
     expect(resolveSaleQuantity(10, null)).toBe(10);
     expect(resolveSaleQuantity(10, 4)).toBe(4);
