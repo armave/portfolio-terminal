@@ -574,7 +574,7 @@ export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): 
       if (!isRecord(rawPosition)) {
         throw new Error(`Invalid position "${ticker}" in portfolio backup.`);
       }
-      for (const field of ['shares', 'commBuy', 'marginCharged'] as const) {
+      for (const field of ['shares', 'currentPrice', 'pt', 'commBuy', 'marginCharged'] as const) {
         validateNonNegativeField(rawPosition, field, `${ticker} ${field}`);
       }
       if (Array.isArray(rawPosition.tranches)) {
