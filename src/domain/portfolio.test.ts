@@ -158,6 +158,48 @@ describe('portfolio domain', () => {
     expect(() => normalizePortfolioBackup({ settings: {} }, 10_000)).toThrow('recognized portfolio backup');
   });
 
+  it('rejects negative or non-finite financial quantities in canonical backup positions', () => {
+    expect(() => normalizePortfolioBackup({
+      positions: { AAPL: { shares: -3, tranches: [] } }
+    }, 10_000)).toThrow('AAPL shares');
+
+    expect(() => normalizePortfolioBackup({
+      positions: { AAPL: { shares: 3, tranches: [{ qty: 3, price: -10 }] } }
+    }, 10_000)).toThrow('AAPL tranche price');
+
+    expect(() => normalizePortfolioBackup({
+      positions: { AAPL: { shares: 3, tranches: [{ qty: 'Infinity', price: 10 }] } }
+    }, 10_000)).toThrow('AAPL tranche quantity');
+
+    expect(() => normalizePortfolioBackup({
+      positions: { AAPL: { shares: 3, commBuy: -1, tranches: [] } }
+    }, 10_000)).toThrow('AAPL commBuy');
+
+    expect(() => normalizePortfolioBackup({
+      positions: { AAPL: { shares: 3, currentPrice: -1, tranches: [] } }
+    }, 10_000)).toThrow('AAPL currentPrice');
+  });
+
+  it('continues to accept valid zero-valued position fees and positive trade lots', () => {
+    const backup = normalizePortfolioBackup({
+      positions: {
+        AAPL: {
+          shares: 2,
+          commBuy: 0,
+          marginCharged: 0,
+          tranches: [{ qty: 2, price: 150, buyCommission: 0 }]
+        }
+      }
+    }, 10_000);
+
+    expect(backup.positions.AAPL).toMatchObject({
+      shares: 2,
+      commBuy: 0,
+      marginCharged: 0,
+      tranches: [{ qty: 2, price: 150, buyCommission: 0 }]
+    });
+  });
+
   it('prevents selling more shares than the position holds', () => {
     expect(resolveSaleQuantity(10, null)).toBe(10);
     expect(resolveSaleQuantity(10, 4)).toBe(4);
