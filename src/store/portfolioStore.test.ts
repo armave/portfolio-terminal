@@ -323,6 +323,18 @@ describe('canonical trade lifecycle and persistence', () => {
     });
   });
 
+  it('does not charge margin interest when the configured annual rate is zero', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    store.updateAssumptions({ annualRate: 0, annualBorrowRate: 0 });
+    store.buyStock('AAPL', 1, 100, '2026-10-15');
+    store.setMarginDebt(110);
+    store.sellStock('AAPL', 'ALL', 120, '2026-10-16');
+
+    expect(store.getState().closedTrades[0].marginInterest).toBe(0);
+  });
+
   it('clears prior margin debt when a positive cash balance is entered', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();

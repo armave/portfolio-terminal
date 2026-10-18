@@ -517,9 +517,11 @@ export class PortfolioStore {
       if (actualSold <= 0) return state;
 
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
-      const dailyRate =
-        (Number(rules.annualRate ?? rules.annualBorrowRate) || 0.16) /
-        (Number(rules.dayCountBasis) || 365);
+      const annualRate = this.finiteAssumption(
+        rules.annualRate ?? rules.annualBorrowRate,
+        DEFAULT_BROKER_ASSUMPTIONS.annualRate
+      );
+      const dailyRate = annualRate / (Number(rules.dayCountBasis) || 365);
 
       let remainingToSell = actualSold;
       let soldCostBasis = 0;
