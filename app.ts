@@ -26,6 +26,7 @@ import {
 import {
   fetchYahooStockData,
   fetchYahooDeepStockData,
+  fetchFallbackQuote,
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
@@ -1015,6 +1016,25 @@ async function fetchLivePriceFromProviders(symbol: string) {
     console.warn(`[Proxy Quote Error for ${symbol}]:`, e.message);
   }
 
+  if (price === null) {
+    for (const provider of ['finnhub', 'twelvedata'] as const) {
+      try {
+        const fallback = await fetchFallbackQuote(symbol, provider);
+        price = fallback.price;
+        sourceName = fallback.sourceName;
+        quoteDetails = {
+          marketState: 'REGULAR',
+          price: fallback.price,
+          change: fallback.change ?? 0,
+          changePercent: fallback.changePercent ?? 0
+        };
+        break;
+      } catch (error: any) {
+        console.warn(`[${provider} Quote Error for ${symbol}]:`, error?.message || error);
+      }
+    }
+  }
+
   const updatedAt = price ? Date.now() : null;
 
   return {
@@ -1022,7 +1042,7 @@ async function fetchLivePriceFromProviders(symbol: string) {
     sourceName,
     updatedAt,
     quoteDetails,
-    error: price ? null : "Quote unavailable via Cloudflare proxy"
+    error: price ? null : "Quote unavailable via Yahoo, Finnhub, and Twelve Data"
   };
 }
 
