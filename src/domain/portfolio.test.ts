@@ -274,6 +274,21 @@ describe('portfolio domain', () => {
     expect(interest).toBeCloseTo(expected, 4);
   });
 
+  it('honors explicit zero rates instead of falling back to alternate rate fields', () => {
+    const tranches = [{ qty: 10, price: 100, date: '2026-10-15' }];
+
+    expect(calculateMarginInterest(tranches, {
+      annualRate: 0,
+      annualBorrowRate: 0.15,
+      days: 1
+    })).toBe(0);
+    expect(calculateMarginInterest(tranches, {
+      dailyRate: 0,
+      annualRate: 0.15,
+      days: 1
+    })).toBe(0);
+  });
+
   it('compounds margin interest across each accrued rollover cycle', () => {
     const principal = 10_000;
     const dailyRate = 0.15 / 365;
