@@ -1048,7 +1048,23 @@ async function fetchLivePrice(ticker: string, silent = false, force = false) {
   return null;
 }
 
-async function refreshAllLivePrices() {
+let liveQuoteRefreshInFlight: Promise<void> | null = null;
+
+/**
+ * Prevent interval/manual refresh triggers from starting overlapping batch
+ * requests when a provider response takes longer than the configured interval.
+ */
+function refreshAllLivePrices(): Promise<void> {
+  if (liveQuoteRefreshInFlight) return liveQuoteRefreshInFlight;
+
+  const request = performRefreshAllLivePrices().finally(() => {
+    if (liveQuoteRefreshInFlight === request) liveQuoteRefreshInFlight = null;
+  });
+  liveQuoteRefreshInFlight = request;
+  return request;
+}
+
+async function performRefreshAllLivePrices() {
   const cashHoldings = state.cashCushion && state.cashCushion.holdings;
 
   const allTickers = new Set<string>([
