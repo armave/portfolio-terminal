@@ -25,6 +25,7 @@ import {
 } from './src/features/quotes/sentiment';
 import {
   fetchYahooStockData,
+  fetchYahooDeepStockData,
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
@@ -100,6 +101,7 @@ const livePriceRequests = new Map<string, Promise<any>>();
 let marketInsightsOpen = false;
 let activeInsightSection = 'news';
 let insightRequestId = 0;
+let initialQuoteRefreshPending = false;
 const boardAnalystSnapshots = new Map<string, any>();
 const boardAnalystErrors = new Map<string, any>();
 const boardAnalystRequests = new Map<string, Promise<void>>();
@@ -705,12 +707,12 @@ function sentimentBadge(direction: SentimentDirection, label = sentimentLabel(di
   return badge;
 }
 
-async function fetchBoardAnalystTarget(ticker: string) {
+async function fetchBoardAnalystTarget(ticker: string, force = false) {
   if (!ticker) return null;
   const cleanTicker = ticker.trim().toUpperCase();
 
   try {
-    const data = await proxyFetch('', { symbol: cleanTicker }, { method: 'POST' });
+    const data = await fetchYahooDeepStockData(cleanTicker, force);
     const t = data?.analystTargets;
     const targetPrice = t?.median || t?.mean || t?.high;
 
@@ -780,6 +782,13 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
     return;
   }
 
+  if (initialQuoteRefreshPending && !snapshot) {
+    container.textContent = 'Loading analyst target…';
+    container.title = 'Waiting for the initial batch quote refresh.';
+    container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
+    return;
+  }
+
   if (boardAnalystRequests.has(ticker)) {
     return;
   }
@@ -788,7 +797,7 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
   container.removeAttribute('title');
   container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
 
-  const request = fetchBoardAnalystTarget(ticker).then(result => {
+  const request = fetchBoardAnalystTarget(ticker, force).then(result => {
     boardAnalystSnapshots.set(ticker, { ...result, fetchedAt: Date.now() });
     boardAnalystErrors.delete(ticker);
   }).catch(requestError => {
@@ -1022,7 +1031,9 @@ async function fetchLivePrice(ticker: string, silent = false, force = false) {
   const result = await requestLivePrice(symbol, force);
 
   if (result.price !== null) {
-    saveState(state, pushStateToGist);
+    // Quote refreshes are transient market data; persist locally without
+    // uploading the full portfolio to cloud on every manual quote lookup.
+    saveState(state);
     renderBoard();
     if (!silent) {
       logTerminal(`[${result.sourceName}]: ${symbol} updated to ${formatUSD(result.price)}${result.matched ? '' : ' (quote only)'}.`);
@@ -1102,7 +1113,9 @@ async function refreshAllLivePrices() {
     }
 
     if (updatedCount > 0) {
-      saveState(state, pushStateToGist);
+      // Live quotes are refreshed again on every device; keep them local rather
+      // than causing a full cloud portfolio write on each polling interval.
+      saveState(state);
       syncStore();
       renderBoard();
       // logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
@@ -1674,6 +1687,9 @@ async function startApp(secret: string) {
 
   setBrokerRuleInputs();
 
+  // Avoid launching a duplicate per-ticker analyst request while the initial
+  // batch already contains the same deep Yahoo data for all tracked symbols.
+  initialQuoteRefreshPending = true;
   switchView(state.activeView);
   setTimeout(() => {
     const mainView = document.getElementById('mainTerminalView');
@@ -1682,6 +1698,8 @@ async function startApp(secret: string) {
     }
   }, 100);
   await refreshAllLivePrices();
+  initialQuoteRefreshPending = false;
+  renderBoardAnalystConsensus(getMarketInsightsTicker());
 }
 
 async function initApp() {

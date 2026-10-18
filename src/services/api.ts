@@ -109,11 +109,112 @@ export async function fetchYahooStockData(ticker: string): Promise<any> {
   const cleanTicker = ticker.trim().toUpperCase();
 
   try {
-    return await proxyFetch('', { symbol: cleanTicker });
+    const data = await proxyFetch('', { symbol: cleanTicker });
+    if (Array.isArray(data)) data.forEach(rememberYahooDeepStockData);
+    else rememberYahooDeepStockData(data);
+    return data;
   } catch (err: any) {
     console.warn(`[Yahoo Data Error for ${cleanTicker}]:`, err?.message || err);
     return null;
   }
+}
+
+const YAHOO_DEEP_DATA_CACHE_TTL_MS = 5 * 60 * 1000;
+const yahooDeepDataCache = new Map<string, { expiresAt: number; data: any }>();
+const yahooDeepDataRequests = new Map<string, Promise<any>>();
+
+function normalizeYahooSymbol(symbol: unknown): string {
+  return typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
+}
+
+/** Seed the shared deep-data cache with a successful item from a batch quote response. */
+export function rememberYahooDeepStockData(value: unknown): void {
+  if (Array.isArray(value)) {
+    value.forEach(rememberYahooDeepStockData);
+    return;
+  }
+  const data = value && typeof value === 'object' ? value as Record<string, any> : null;
+  const symbol = normalizeYahooSymbol(data?.symbol);
+  if (!data || !symbol || data.error) return;
+  yahooDeepDataCache.set(symbol, {
+    expiresAt: Date.now() + YAHOO_DEEP_DATA_CACHE_TTL_MS,
+    data
+  });
+}
+
+/**
+ * Fetches the full Yahoo payload once per ticker and shares it between board
+ * analyst targets and all Market Insights tabs. Explicit refreshes bypass cache.
+ */
+export async function fetchYahooDeepStockData(ticker: string, force = false): Promise<any> {
+  const symbol = normalizeYahooSymbol(ticker);
+  if (!symbol) return null;
+
+  if (!force) {
+    const cached = yahooDeepDataCache.get(symbol);
+    if (cached && cached.expiresAt > Date.now()) return cached.data;
+    if (cached) yahooDeepDataCache.delete(symbol);
+  }
+
+  const existing = yahooDeepDataRequests.get(symbol);
+  if (existing) return existing;
+
+  const request = proxyFetch('', { symbol }, { method: 'POST' })
+    .then((data) => {
+      if (data && typeof data === 'object' && !data.error) {
+        rememberYahooDeepStockData(data);
+      }
+      return data;
+    })
+    .finally(() => {
+      if (yahooDeepDataRequests.get(symbol) === request) {
+        yahooDeepDataRequests.delete(symbol);
+      }
+    });
+  yahooDeepDataRequests.set(symbol, request);
+  return request;
+}
+
+/** Clears shared deep-data cache state, primarily for isolated tests. */
+export function clearYahooDeepStockDataCache(): void {
+  yahooDeepDataCache.clear();
+  yahooDeepDataRequests.clear();
+  marketNewsCache.clear();
+  marketNewsRequests.clear();
+  validatedCloudResponse = null;
+}
+
+const MARKET_NEWS_CACHE_TTL_MS = 5 * 60 * 1000;
+const marketNewsCache = new Map<string, { expiresAt: number; data: any[] }>();
+const marketNewsRequests = new Map<string, Promise<any[]>>();
+
+export async function fetchMarketNews(ticker: string, force = false): Promise<any[]> {
+  const symbol = normalizeYahooSymbol(ticker);
+  if (!symbol) return [];
+
+  if (!force) {
+    const cached = marketNewsCache.get(symbol);
+    if (cached && cached.expiresAt > Date.now()) return cached.data;
+    if (cached) marketNewsCache.delete(symbol);
+  }
+
+  const existing = marketNewsRequests.get(symbol);
+  if (existing) return existing;
+
+  const request = proxyFetch('news', { symbol })
+    .then((data) => {
+      const news = Array.isArray(data) ? data : [];
+      marketNewsCache.set(symbol, {
+        expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS,
+        data: news
+      });
+      return news;
+    })
+    .finally(() => {
+      if (marketNewsRequests.get(symbol) === request) marketNewsRequests.delete(symbol);
+    });
+  marketNewsRequests.set(symbol, request);
+  return request;
 }
 
 export interface SyncOptions {
@@ -130,6 +231,30 @@ export interface SyncOptions {
  * The Worker authenticates before forwarding requests to the state store, so
  * a 404 from /api/state means the credentials are valid but cloud state is empty.
  */
+interface ValidatedCloudResponse {
+  secret: string;
+  checkedAt: number;
+  status: number;
+  etag: string | null;
+  contentType: string | null;
+  body: string;
+}
+
+let validatedCloudResponse: ValidatedCloudResponse | null = null;
+const VALIDATED_CLOUD_RESPONSE_TTL_MS = 30 * 1000;
+
+function consumeValidatedCloudResponse(secret: string): Response | null {
+  const cached = validatedCloudResponse;
+  validatedCloudResponse = null;
+  if (!cached || cached.secret !== secret || Date.now() - cached.checkedAt > VALIDATED_CLOUD_RESPONSE_TTL_MS) {
+    return null;
+  }
+  const headers = new Headers();
+  if (cached.etag) headers.set('ETag', cached.etag);
+  if (cached.contentType) headers.set('Content-Type', cached.contentType);
+  return new Response(cached.body, { status: cached.status, headers });
+}
+
 export async function validateGatewaySecret(secret: string): Promise<boolean> {
   const cleanSecret = typeof secret === 'string' ? secret.trim() : '';
   if (!cleanSecret) return false;
@@ -145,10 +270,30 @@ export async function validateGatewaySecret(secret: string): Promise<boolean> {
       }
     });
 
-    // A missing portfolio is not an authentication failure. The Worker checks
-    // the secret before the Durable Object can return its 404 response.
-    return response.ok || response.status === 404;
+    // The validation GET already contains the cloud payload. Keep its body
+    // briefly so startup can use it as the initial pull instead of downloading
+    // the same encrypted portfolio a second time.
+    if (response.ok || response.status === 404) {
+      // Real Fetch responses are readable; keep compatibility with minimal
+      // response mocks used by callers/tests that only expose status and ok.
+      if (typeof response.text === 'function') {
+        validatedCloudResponse = {
+          secret: cleanSecret,
+          checkedAt: Date.now(),
+          status: response.status,
+          etag: response.headers?.get('ETag') ?? null,
+          contentType: response.headers?.get('Content-Type') ?? null,
+          body: await response.text()
+        };
+      } else {
+        validatedCloudResponse = null;
+      }
+      return true;
+    }
+    validatedCloudResponse = null;
+    return false;
   } catch (error) {
+    validatedCloudResponse = null;
     console.warn('Gateway Secret validation failed:', error);
     return false;
   }
@@ -183,8 +328,9 @@ export async function pullCloudState(
   // showToast('Pulling portfolio from KV cloud...', 'info');
 
   try {
+    const cachedValidationResponse = consumeValidatedCloudResponse(currentSecret);
     const url = new URL('/api/state', WORKER_PROXY_URL);
-    const res = await fetch(url.toString(), {
+    const res = cachedValidationResponse || await fetch(url.toString(), {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { proxyFetch } from '../services/api';
+import { fetchMarketNews, fetchYahooDeepStockData } from '../services/api';
 
 export type InsightSection = 'news' | 'fundamentals' | 'earnings' | 'analysts';
 
@@ -32,23 +32,26 @@ export function MarketInsightsPanel({
   const [newsData, setNewsData] = useState<any[]>([]);
   const [stockData, setStockData] = useState<any>(null);
   const requestIdRef = useRef(0);
+  const lastRefreshTriggerRef = useRef(refreshTrigger);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
     if (!isOpen || !ticker) return;
 
     const currentRequestId = ++requestIdRef.current;
+    const forceRefresh = refreshTrigger !== lastRefreshTriggerRef.current;
+    lastRefreshTriggerRef.current = refreshTrigger;
     setLoading(true);
     setError(null);
 
     const fetchInsight = async () => {
       try {
         if (activeSection === 'news') {
-          const news = await proxyFetch('news', { symbol: ticker });
+          const news = await fetchMarketNews(ticker, forceRefresh);
           if (currentRequestId !== requestIdRef.current) return;
           setNewsData(Array.isArray(news) ? news : []);
         } else {
-          const data = await proxyFetch('', { symbol: ticker }, { method: 'POST' });
+          const data = await fetchYahooDeepStockData(ticker, forceRefresh);
           if (currentRequestId !== requestIdRef.current) return;
           setStockData(data || {});
         }
