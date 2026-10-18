@@ -70,7 +70,7 @@ import { AuthModal } from './src/components/AuthModal';
 import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
-import { resolveMarketSessionPrice } from './src/domain/quotes';
+import { resolveMarketSessionChange, resolveMarketSessionPrice } from './src/domain/quotes';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -970,32 +970,37 @@ async function fetchLivePriceFromProviders(symbol: string) {
   try {
     const data = await fetchYahooStockData(symbol);
 
-    if (data?.price?.current > 0) {
-      price = data.price.current;
-      sourceName = "Yahoo Proxy";
-
+    if (data?.price && typeof data.price === 'object') {
+      const regularPrice = data.price.current ?? data.regularMarketPrice;
       const prevClose = data.price.previousClose ?? data.price.regularMarketPreviousClose;
-      let change = data.price.change ?? data.price.regularMarketChange ?? (price! - prevClose);
-      const marketState = data.price?.marketState;
+      const marketState = data.price.marketState;
       const current = resolveMarketSessionPrice({
-        regularPrice: data.price.current ?? data.regularMarketPrice,
+        regularPrice,
         preMarketPrice: data.price.preMarketPrice,
         postMarketPrice: data.price.postMarketPrice,
         marketState
       });
+
       if (current !== null) {
         price = current;
-        if (marketState === 'PRE' || marketState === 'POST' || marketState === 'CLOSED') {
-          change = current - data.price.current;
-        }
-      }
+        sourceName = "Yahoo Proxy";
+        const change = resolveMarketSessionChange({
+          currentPrice: current,
+          regularPrice,
+          previousClose: prevClose,
+          suppliedChange: data.price.change ?? data.price.regularMarketChange,
+          marketState
+        });
 
-      quoteDetails = {
-        marketState,
-        price: current ?? price,
-        change,
-        changePercent: prevClose ? (change / prevClose) * 100 : 0
-      };
+        const previousClose = Number(prevClose);
+        const hasPreviousClose = Number.isFinite(previousClose) && previousClose > 0;
+        quoteDetails = {
+          marketState,
+          price: current,
+          change,
+          changePercent: hasPreviousClose ? (change / previousClose) * 100 : 0
+        };
+      }
     }
   } catch (e: any) {
     console.warn(`[Proxy Quote Error for ${symbol}]:`, e.message);
@@ -1060,20 +1065,23 @@ async function refreshAllLivePrices() {
 
       const ticker = data.symbol;
 
-      const regularPrice = data.price.current ?? data.regularMarketPrice ?? data.price;
+      const regularPrice = data.price.current ?? data.regularMarketPrice;
       const previous = data.price.previousClose ?? data.regularMarketPreviousClose;
-      let current = resolveMarketSessionPrice({
+      const marketState = data.price?.marketState;
+      const current = resolveMarketSessionPrice({
         regularPrice,
         preMarketPrice: data.price.preMarketPrice,
         postMarketPrice: data.price.postMarketPrice,
-        marketState: data.price?.marketState
+        marketState
       });
       if (current === null) continue;
-      let change = data.price.change ?? data.regularMarketChange ?? (current - previous);
-      const marketState = data.price?.marketState;
-      if (marketState === 'PRE' || marketState === 'POST' || marketState === 'CLOSED') {
-        change = current - Number(regularPrice);
-      }
+      const change = resolveMarketSessionChange({
+        currentPrice: current,
+        regularPrice,
+        previousClose: previous,
+        suppliedChange: data.price.change ?? data.regularMarketChange,
+        marketState
+      });
 
       const quoteDetails = {
         marketState,
