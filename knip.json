@@ -8,6 +8,7 @@
   "project": [
     "src/**/*.{ts,tsx}",
     "app.ts",
-    "state-store.js"
+    "state-store.js",
+    "**/*.css"
   ]
 }
