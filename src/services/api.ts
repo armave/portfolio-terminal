@@ -119,6 +119,16 @@ export async function fetchYahooStockData(ticker: string): Promise<any> {
   }
 }
 
+/**
+ * Preserve per-symbol fallback handling when a Yahoo batch request fails
+ * before returning individual quote results.
+ */
+export function normalizeYahooBatchResults(responseData: any, tickers: string[]): any[] {
+  if (Array.isArray(responseData)) return responseData;
+  if (responseData && typeof responseData === 'object') return [responseData];
+  return tickers.map(symbol => ({ symbol, error: 'Yahoo batch request failed' }));
+}
+
 export type FallbackQuoteProvider = 'finnhub' | 'twelvedata';
 
 export interface NormalizedFallbackQuote {

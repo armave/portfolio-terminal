@@ -25,6 +25,7 @@ import {
 } from './src/features/quotes/sentiment';
 import {
   fetchYahooStockData,
+  normalizeYahooBatchResults,
   fetchYahooDeepStockData,
   fetchFallbackQuote,
   proxyFetch,
@@ -1112,7 +1113,7 @@ async function performRefreshAllLivePrices() {
 
   try {
     const responseData = await fetchYahooStockData(queryStr);
-    const results = Array.isArray(responseData) ? responseData : [responseData];
+    const results = normalizeYahooBatchResults(responseData, tickersArray);
     let updatedCount = 0;
 
     for (const data of results) {

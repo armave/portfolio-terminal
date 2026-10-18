@@ -6,6 +6,7 @@ import {
   syncCloudState,
   proxyFetch,
   fetchFallbackQuote,
+  normalizeYahooBatchResults,
   validateGatewaySecret,
   fetchYahooDeepStockData,
   fetchMarketNews,
@@ -466,5 +467,25 @@ describe('fallback provider quote normalization', () => {
     }));
 
     await expect(fetchFallbackQuote('BAD', 'finnhub')).rejects.toThrow('no valid quote');
+  });
+});
+
+
+describe('Yahoo batch result normalization', () => {
+  it('keeps individual Yahoo results unchanged', () => {
+    const results = [{ symbol: 'AAPL', price: { current: 100 } }, { symbol: 'MSFT', error: 'unavailable' }];
+    expect(normalizeYahooBatchResults(results, ['AAPL', 'MSFT'])).toBe(results);
+  });
+
+  it('creates per-symbol fallback entries when the Yahoo batch request fails', () => {
+    expect(normalizeYahooBatchResults(null, ['AAPL', 'MSFT'])).toEqual([
+      { symbol: 'AAPL', error: 'Yahoo batch request failed' },
+      { symbol: 'MSFT', error: 'Yahoo batch request failed' }
+    ]);
+  });
+
+  it('wraps a single-symbol result in an array', () => {
+    const result = { symbol: 'AAPL', price: { current: 100 } };
+    expect(normalizeYahooBatchResults(result, ['AAPL'])).toEqual([result]);
   });
 });
