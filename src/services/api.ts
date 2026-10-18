@@ -144,9 +144,15 @@ export async function fetchFallbackQuote(
   const changeValue = provider === 'finnhub' ? data?.d : data?.change;
   const percentValue = provider === 'finnhub' ? data?.dp : data?.percent_change;
   const price = Number(currentValue);
-  const previous = Number(previousValue);
-  const suppliedChange = Number(changeValue);
-  const suppliedPercent = Number(percentValue);
+  const previous = previousValue === null || previousValue === undefined || previousValue === ''
+    ? NaN
+    : Number(previousValue);
+  const suppliedChange = changeValue === null || changeValue === undefined || changeValue === ''
+    ? NaN
+    : Number(changeValue);
+  const suppliedPercent = percentValue === null || percentValue === undefined || percentValue === ''
+    ? NaN
+    : Number(percentValue);
   const hasPrevious = Number.isFinite(previous) && previous > 0;
   const change = Number.isFinite(suppliedChange)
     ? suppliedChange
