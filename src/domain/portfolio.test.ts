@@ -509,6 +509,40 @@ describe('financial edge cases', () => {
     vi.useRealTimers();
   });
 
+  it.each([Number.POSITIVE_INFINITY, Number.NaN, -0.1, 1.5])(
+    'does not let an invalid annual rate corrupt margin debt (%s)',
+    (annualRate) => {
+      vi.useFakeTimers();
+      const state = {
+        balance: -1000,
+        lastRolloverTimestamp: new Date('2026-01-01T00:00:00Z').getTime(),
+        brokerAssumptions: { annualRate, dayCountBasis: 365, rolloverHour: 4, rolloverMinute: 0 }
+      };
+      vi.setSystemTime(new Date('2026-01-02T01:00:00Z'));
+
+      expect(processRollovers(state)).toBe(true);
+      expect(state.balance).toBe(-1000);
+      expect(Number.isFinite(state.balance)).toBe(true);
+      vi.useRealTimers();
+    }
+  );
+
+  it('recovers from an out-of-range rollover timestamp without throwing', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-02T01:00:00Z'));
+    const now = Date.now();
+    const state = {
+      balance: -1000,
+      lastRolloverTimestamp: Number.MAX_VALUE,
+      brokerAssumptions: { annualRate: 0.15, dayCountBasis: 365 }
+    };
+
+    expect(() => processRollovers(state)).not.toThrow();
+    expect(state.lastRolloverTimestamp).toBe(now);
+    expect(state.balance).toBe(-1000);
+    vi.useRealTimers();
+  });
+
   it('returns a stable zero for invalid commission inputs and empty tranche lists', () => {
     const rules = { commPerShare: 0.01, commVolumePct: 0.001, minCommOrder: 1.5 };
     expect(calculateCommission(-1, 100, rules)).toBe(0);
