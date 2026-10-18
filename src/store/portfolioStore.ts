@@ -314,7 +314,7 @@ export class PortfolioStore {
         ),
         annualBorrowRate: this.finiteAssumption(
           rules.annualBorrowRate ?? rules.annualRate ?? state.brokerAssumptions.annualBorrowRate,
-          DEFAULT_BROKER_ASSUMPTIONS.annualBorrowRate
+          DEFAULT_BROKER_ASSUMPTIONS.annualRate
         ),
         maintenanceMarginRatio: this.finiteAssumption(
           rules.maintenanceMarginRatio ?? rules.maintenanceEquityRatio ?? state.brokerAssumptions.maintenanceMarginRatio,
@@ -322,7 +322,7 @@ export class PortfolioStore {
         ),
         maintenanceEquityRatio: this.finiteAssumption(
           rules.maintenanceEquityRatio ?? rules.maintenanceMarginRatio ?? state.brokerAssumptions.maintenanceEquityRatio,
-          DEFAULT_BROKER_ASSUMPTIONS.maintenanceEquityRatio
+          DEFAULT_BROKER_ASSUMPTIONS.maintenanceMarginRatio
         )
       };
       saveBrokerRules(merged as any);
