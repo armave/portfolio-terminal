@@ -406,8 +406,13 @@ export function createBlankState(now = Date.now()): PortfolioState {
 export function normalizePortfolioState(candidate: unknown, now = Date.now()): PortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio state must be an object.');
 
-  // Omit the legacy field from the normalized result without mutating the caller's object.
-  const { marginBalance: _legacyMarginBalance, ...candidateState } = candidate;
+  // Never let imported or legacy state inject runtime credentials. These are
+  // managed separately from portfolio data and must not survive normalization.
+  const {
+    marginBalance: _legacyMarginBalance,
+    gatewaySecret: _gatewaySecret,
+    ...candidateState
+  } = candidate;
 
   const blankState = createBlankState(now);
   const sourceCashCushion = isRecord(candidate.cashCushion) ? candidate.cashCushion : {};
