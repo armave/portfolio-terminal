@@ -25,6 +25,8 @@ import {
 } from './src/features/quotes/sentiment';
 import {
   fetchYahooStockData,
+  fetchYahooDeepStockData,
+  rememberYahooDeepStockData,
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
@@ -705,12 +707,12 @@ function sentimentBadge(direction: SentimentDirection, label = sentimentLabel(di
   return badge;
 }
 
-async function fetchBoardAnalystTarget(ticker: string) {
+async function fetchBoardAnalystTarget(ticker: string, force = false) {
   if (!ticker) return null;
   const cleanTicker = ticker.trim().toUpperCase();
 
   try {
-    const data = await proxyFetch('', { symbol: cleanTicker }, { method: 'POST' });
+    const data = await fetchYahooDeepStockData(cleanTicker, force);
     const t = data?.analystTargets;
     const targetPrice = t?.median || t?.mean || t?.high;
 
@@ -788,7 +790,7 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
   container.removeAttribute('title');
   container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
 
-  const request = fetchBoardAnalystTarget(ticker).then(result => {
+  const request = fetchBoardAnalystTarget(ticker, force).then(result => {
     boardAnalystSnapshots.set(ticker, { ...result, fetchedAt: Date.now() });
     boardAnalystErrors.delete(ticker);
   }).catch(requestError => {
@@ -1058,6 +1060,7 @@ async function refreshAllLivePrices() {
     let updatedCount = 0;
 
     for (const data of results) {
+      rememberYahooDeepStockData(data);
       if (!data || data.error || !data.price) {
         console.warn(`[Quote Warning]: Missing or failed data for ${data?.symbol}`, data?.error);
         continue;
