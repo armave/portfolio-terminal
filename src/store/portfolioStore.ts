@@ -297,18 +297,33 @@ export class PortfolioStore {
     });
   }
 
+  private finiteAssumption(value: unknown, fallback: number): number {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  }
+
   public updateAssumptions(rules: Partial<BrokerRules & BrokerAssumptions>): void {
     this.update((state) => {
       const merged: BrokerRules = {
         ...DEFAULT_BROKER_ASSUMPTIONS,
         ...state.brokerAssumptions,
         ...rules,
-        annualRate: Number(rules.annualRate ?? rules.annualBorrowRate ?? state.brokerAssumptions.annualRate) || 0.16,
-        annualBorrowRate: Number(rules.annualBorrowRate ?? rules.annualRate ?? state.brokerAssumptions.annualRate) || 0.16,
-        maintenanceMarginRatio:
-          Number(rules.maintenanceMarginRatio ?? rules.maintenanceEquityRatio ?? state.brokerAssumptions.maintenanceMarginRatio) || 0.25,
-        maintenanceEquityRatio:
-          Number(rules.maintenanceEquityRatio ?? rules.maintenanceMarginRatio ?? state.brokerAssumptions.maintenanceMarginRatio) || 0.25
+        annualRate: this.finiteAssumption(
+          rules.annualRate ?? rules.annualBorrowRate ?? state.brokerAssumptions.annualRate,
+          DEFAULT_BROKER_ASSUMPTIONS.annualRate
+        ),
+        annualBorrowRate: this.finiteAssumption(
+          rules.annualBorrowRate ?? rules.annualRate ?? state.brokerAssumptions.annualBorrowRate,
+          DEFAULT_BROKER_ASSUMPTIONS.annualRate
+        ),
+        maintenanceMarginRatio: this.finiteAssumption(
+          rules.maintenanceMarginRatio ?? rules.maintenanceEquityRatio ?? state.brokerAssumptions.maintenanceMarginRatio,
+          DEFAULT_BROKER_ASSUMPTIONS.maintenanceMarginRatio
+        ),
+        maintenanceEquityRatio: this.finiteAssumption(
+          rules.maintenanceEquityRatio ?? rules.maintenanceMarginRatio ?? state.brokerAssumptions.maintenanceEquityRatio,
+          DEFAULT_BROKER_ASSUMPTIONS.maintenanceMarginRatio
+        )
       };
       saveBrokerRules(merged as any);
       return {
