@@ -109,7 +109,10 @@ export async function fetchYahooStockData(ticker: string): Promise<any> {
   const cleanTicker = ticker.trim().toUpperCase();
 
   try {
-    return await proxyFetch('', { symbol: cleanTicker });
+    const data = await proxyFetch('', { symbol: cleanTicker });
+    if (Array.isArray(data)) data.forEach(rememberYahooDeepStockData);
+    else rememberYahooDeepStockData(data);
+    return data;
   } catch (err: any) {
     console.warn(`[Yahoo Data Error for ${cleanTicker}]:`, err?.message || err);
     return null;
@@ -126,6 +129,10 @@ function normalizeYahooSymbol(symbol: unknown): string {
 
 /** Seed the shared deep-data cache with a successful item from a batch quote response. */
 export function rememberYahooDeepStockData(value: unknown): void {
+  if (Array.isArray(value)) {
+    value.forEach(rememberYahooDeepStockData);
+    return;
+  }
   const data = value && typeof value === 'object' ? value as Record<string, any> : null;
   const symbol = normalizeYahooSymbol(data?.symbol);
   if (!data || !symbol || data.error) return;
