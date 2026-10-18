@@ -26,7 +26,6 @@ import {
 import {
   fetchYahooStockData,
   fetchYahooDeepStockData,
-  rememberYahooDeepStockData,
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
@@ -102,6 +101,7 @@ const livePriceRequests = new Map<string, Promise<any>>();
 let marketInsightsOpen = false;
 let activeInsightSection = 'news';
 let insightRequestId = 0;
+let initialQuoteRefreshPending = false;
 const boardAnalystSnapshots = new Map<string, any>();
 const boardAnalystErrors = new Map<string, any>();
 const boardAnalystRequests = new Map<string, Promise<void>>();
@@ -782,6 +782,13 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
     return;
   }
 
+  if (initialQuoteRefreshPending && !snapshot) {
+    container.textContent = 'Loading analyst target…';
+    container.title = 'Waiting for the initial batch quote refresh.';
+    container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
+    return;
+  }
+
   if (boardAnalystRequests.has(ticker)) {
     return;
   }
@@ -1060,7 +1067,6 @@ async function refreshAllLivePrices() {
     let updatedCount = 0;
 
     for (const data of results) {
-      rememberYahooDeepStockData(data);
       if (!data || data.error || !data.price) {
         console.warn(`[Quote Warning]: Missing or failed data for ${data?.symbol}`, data?.error);
         continue;
@@ -1677,6 +1683,9 @@ async function startApp(secret: string) {
 
   setBrokerRuleInputs();
 
+  // Avoid launching a duplicate per-ticker analyst request while the initial
+  // batch already contains the same deep Yahoo data for all tracked symbols.
+  initialQuoteRefreshPending = true;
   switchView(state.activeView);
   setTimeout(() => {
     const mainView = document.getElementById('mainTerminalView');
@@ -1685,6 +1694,8 @@ async function startApp(secret: string) {
     }
   }, 100);
   await refreshAllLivePrices();
+  initialQuoteRefreshPending = false;
+  renderBoardAnalystConsensus(getMarketInsightsTicker());
 }
 
 async function initApp() {
