@@ -230,6 +230,30 @@ export interface SyncOptions {
  * The Worker authenticates before forwarding requests to the state store, so
  * a 404 from /api/state means the credentials are valid but cloud state is empty.
  */
+interface ValidatedCloudResponse {
+  secret: string;
+  checkedAt: number;
+  status: number;
+  etag: string | null;
+  contentType: string | null;
+  body: string;
+}
+
+let validatedCloudResponse: ValidatedCloudResponse | null = null;
+const VALIDATED_CLOUD_RESPONSE_TTL_MS = 30 * 1000;
+
+function consumeValidatedCloudResponse(secret: string): Response | null {
+  const cached = validatedCloudResponse;
+  validatedCloudResponse = null;
+  if (!cached || cached.secret !== secret || Date.now() - cached.checkedAt > VALIDATED_CLOUD_RESPONSE_TTL_MS) {
+    return null;
+  }
+  const headers = new Headers();
+  if (cached.etag) headers.set('ETag', cached.etag);
+  if (cached.contentType) headers.set('Content-Type', cached.contentType);
+  return new Response(cached.body, { status: cached.status, headers });
+}
+
 export async function validateGatewaySecret(secret: string): Promise<boolean> {
   const cleanSecret = typeof secret === 'string' ? secret.trim() : '';
   if (!cleanSecret) return false;
@@ -245,10 +269,24 @@ export async function validateGatewaySecret(secret: string): Promise<boolean> {
       }
     });
 
-    // A missing portfolio is not an authentication failure. The Worker checks
-    // the secret before the Durable Object can return its 404 response.
-    return response.ok || response.status === 404;
+    // The validation GET already contains the cloud payload. Keep its body
+    // briefly so startup can use it as the initial pull instead of downloading
+    // the same encrypted portfolio a second time.
+    if (response.ok || response.status === 404) {
+      validatedCloudResponse = {
+        secret: cleanSecret,
+        checkedAt: Date.now(),
+        status: response.status,
+        etag: response.headers.get('ETag'),
+        contentType: response.headers.get('Content-Type'),
+        body: await response.text()
+      };
+      return true;
+    }
+    validatedCloudResponse = null;
+    return false;
   } catch (error) {
+    validatedCloudResponse = null;
     console.warn('Gateway Secret validation failed:', error);
     return false;
   }
@@ -283,8 +321,9 @@ export async function pullCloudState(
   // showToast('Pulling portfolio from KV cloud...', 'info');
 
   try {
+    const cachedValidationResponse = consumeValidatedCloudResponse(currentSecret);
     const url = new URL('/api/state', WORKER_PROXY_URL);
-    const res = await fetch(url.toString(), {
+    const res = cachedValidationResponse || await fetch(url.toString(), {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
