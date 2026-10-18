@@ -5,6 +5,7 @@ import {
   pushCloudState,
   syncCloudState,
   proxyFetch,
+  validateGatewaySecret,
   fetchYahooDeepStockData,
   fetchMarketNews,
   rememberYahooDeepStockData,
@@ -373,5 +374,40 @@ describe('market news request deduplication', () => {
 
     await expect(fetchMarketNews('AAPL', true)).resolves.toEqual([{ headline: 'Fresh result' }]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('Gateway validation response reuse', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('uses the authenticated cloud payload for the initial pull without a second GET', async () => {
+    const secret = 'validated-once-secret';
+    const encryptedPayload = CryptoJS.AES.encrypt(JSON.stringify({
+      activeView: 'AAPL',
+      balance: 0,
+      lastRolloverTimestamp: Date.now()
+    }), secret).toString();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ encryptedPayload }),
+      { status: 200, headers: { 'Content-Type': 'application/json', ETag: '"5"' } }
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(storage, 'saveState').mockReturnValue(true);
+
+    await expect(validateGatewaySecret(secret)).resolves.toBe(true);
+    const reportResult = vi.fn();
+    await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 100 },
+      secret,
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    }, reportResult);
+
+    expect(reportResult).toHaveBeenCalledWith(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
