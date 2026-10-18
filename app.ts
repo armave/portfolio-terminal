@@ -1043,7 +1043,7 @@ async function refreshAllLivePrices() {
   const tickersArray = Array.from(allTickers);
   if (tickersArray.length === 0) return;
 
-  const queryStr = tickersArray.join(',');
+  const queryStr = tickersArray.join(', ');
   const requestStartedAt = Date.now();
   logTerminal(`[System]: Polling batch live quotes for ${queryStr}...`);
 
@@ -1097,7 +1097,7 @@ async function refreshAllLivePrices() {
       saveState(state, pushStateToGist);
       syncStore();
       renderBoard();
-      logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
+      // logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
     } else {
       logTerminal(`[Market Data Warning]: No quotes updated during batch fetch.`);
     }
