@@ -5,6 +5,7 @@ import {
   pushCloudState,
   syncCloudState,
   proxyFetch,
+  fetchFallbackQuote,
   validateGatewaySecret,
   fetchYahooDeepStockData,
   fetchMarketNews,
@@ -409,5 +410,61 @@ describe('Gateway validation response reuse', () => {
 
     expect(reportResult).toHaveBeenCalledWith(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe('fallback provider quote normalization', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('normalizes Finnhub quotes and preserves supplied change values', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => ({ c: 105, pc: 100, d: 5, dp: 5 })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchFallbackQuote('aapl', 'finnhub')).resolves.toEqual({
+      symbol: 'AAPL',
+      price: 105,
+      previousClose: 100,
+      change: 5,
+      changePercent: 5,
+      sourceName: 'Finnhub'
+    });
+    expect(fetchMock.mock.calls[0][0]).toContain('action=provider-quote');
+    expect(fetchMock.mock.calls[0][0]).toContain('provider=finnhub');
+  });
+
+  it('normalizes Twelve Data quotes and derives missing change values', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => ({ close: '210', previous_close: '200' })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchFallbackQuote('msft', 'twelvedata')).resolves.toEqual({
+      symbol: 'MSFT',
+      price: 210,
+      previousClose: 200,
+      change: 10,
+      changePercent: 5,
+      sourceName: 'Twelve Data'
+    });
+  });
+
+  it('rejects a fallback response without a positive finite quote', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => ({ c: 0, pc: 100 })
+    }));
+
+    await expect(fetchFallbackQuote('BAD', 'finnhub')).rejects.toThrow('no valid quote');
   });
 });
