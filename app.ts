@@ -1031,7 +1031,9 @@ async function fetchLivePrice(ticker: string, silent = false, force = false) {
   const result = await requestLivePrice(symbol, force);
 
   if (result.price !== null) {
-    saveState(state, pushStateToGist);
+    // Quote refreshes are transient market data; persist locally without
+    // uploading the full portfolio to cloud on every manual quote lookup.
+    saveState(state);
     renderBoard();
     if (!silent) {
       logTerminal(`[${result.sourceName}]: ${symbol} updated to ${formatUSD(result.price)}${result.matched ? '' : ' (quote only)'}.`);
@@ -1111,7 +1113,9 @@ async function refreshAllLivePrices() {
     }
 
     if (updatedCount > 0) {
-      saveState(state, pushStateToGist);
+      // Live quotes are refreshed again on every device; keep them local rather
+      // than causing a full cloud portfolio write on each polling interval.
+      saveState(state);
       syncStore();
       renderBoard();
       // logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
