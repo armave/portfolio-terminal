@@ -749,21 +749,34 @@ export function processRollovers(state: any): boolean {
   }
 
   const rules = state.brokerAssumptions || {};
-  const annualRate = Number(
+  const configuredRate = Number(
     rules.annualRate ?? rules.annualBorrowRate ?? state.settings?.marginRate ?? 0.15
   );
-  const dayCountBasis = Number(rules.dayCountBasis ?? 365) || 365;
-  const dailyRate = Math.max(0, annualRate / dayCountBasis);
-  const rolloverHour = Number.isInteger(rules.rolloverHour) ? rules.rolloverHour : 4;
-  const rolloverMinute = Number.isInteger(rules.rolloverMinute) ? rules.rolloverMinute : 0;
+  // Corrupted cloud/imported settings must never turn debt into Infinity.
+  // Match the supported broker-settings range; invalid rates accrue no interest.
+  const annualRate = Number.isFinite(configuredRate) && configuredRate >= 0 && configuredRate <= 1
+    ? configuredRate
+    : 0;
+  const configuredDayCount = Number(rules.dayCountBasis ?? 365);
+  const dayCountBasis = [360, 365].includes(configuredDayCount) ? configuredDayCount : 365;
+  const dailyRate = annualRate / dayCountBasis;
+  const configuredHour = rules.rolloverHour;
+  const configuredMinute = rules.rolloverMinute;
+  const rolloverHour = Number.isInteger(configuredHour) && configuredHour >= 0 && configuredHour <= 23
+    ? configuredHour
+    : 4;
+  const rolloverMinute = Number.isInteger(configuredMinute) && configuredMinute >= 0 && configuredMinute <= 59
+    ? configuredMinute
+    : 0;
   const now = new Date();
   const lastTimestamp = Number(state.lastRolloverTimestamp);
-  if (!Number.isFinite(lastTimestamp) || lastTimestamp <= 0) {
+  const lastDate = new Date(lastTimestamp);
+  if (!Number.isFinite(lastTimestamp) || lastTimestamp <= 0 || !Number.isFinite(lastDate.getTime())) {
     state.lastRolloverTimestamp = now.getTime();
     return false;
   }
 
-  const lastParts = getArmeniaClockParts(new Date(lastTimestamp));
+  const lastParts = getArmeniaClockParts(lastDate);
   // Armenia uses UTC+04:00 and currently has no daylight-saving transitions.
   const boundaryFor = (year: number, month: number, day: number) =>
     Date.UTC(year, month - 1, day, rolloverHour, rolloverMinute) - 4 * 60 * 60 * 1000;
