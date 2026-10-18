@@ -70,6 +70,7 @@ import { AuthModal } from './src/components/AuthModal';
 import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
+import { resolveMarketSessionPrice } from './src/domain/quotes';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -975,22 +976,23 @@ async function fetchLivePriceFromProviders(symbol: string) {
 
       const prevClose = data.price.previousClose ?? data.price.regularMarketPreviousClose;
       let change = data.price.change ?? data.price.regularMarketChange ?? (price! - prevClose);
-      let current = price ?? data.regularMarketPrice ?? data.price;
-
-      // "PRE", "REGULAR", "POST", or "CLOSED"
       const marketState = data.price?.marketState;
-      if (marketState === 'PRE') {
-        current = data.price.preMarketPrice ?? data.price.postMarketPrice;
-        change = current - data.price.current;
-      }
-      else if (marketState === 'POST' || marketState === 'CLOSED') {
-        current = data.price.postMarketPrice;
-        change = current - data.price.current;
+      const current = resolveMarketSessionPrice({
+        regularPrice: data.price.current ?? data.regularMarketPrice,
+        preMarketPrice: data.price.preMarketPrice,
+        postMarketPrice: data.price.postMarketPrice,
+        marketState
+      });
+      if (current !== null) {
+        price = current;
+        if (marketState === 'PRE' || marketState === 'POST' || marketState === 'CLOSED') {
+          change = current - data.price.current;
+        }
       }
 
       quoteDetails = {
         marketState,
-        price: current,
+        price: current ?? price,
         change,
         changePercent: prevClose ? (change / prevClose) * 100 : 0
       };
@@ -1058,19 +1060,19 @@ async function refreshAllLivePrices() {
 
       const ticker = data.symbol;
 
-      let current = data.price.current ?? data.regularMarketPrice ?? data.price;
+      const regularPrice = data.price.current ?? data.regularMarketPrice ?? data.price;
       const previous = data.price.previousClose ?? data.regularMarketPreviousClose;
+      let current = resolveMarketSessionPrice({
+        regularPrice,
+        preMarketPrice: data.price.preMarketPrice,
+        postMarketPrice: data.price.postMarketPrice,
+        marketState: data.price?.marketState
+      });
+      if (current === null) continue;
       let change = data.price.change ?? data.regularMarketChange ?? (current - previous);
-
-      // "PRE", "REGULAR", "POST", or "CLOSED"
       const marketState = data.price?.marketState;
-      if (marketState === 'PRE') {
-        current = data.price.preMarketPrice ?? data.price.postMarketPrice;
-        change = current - data.price.current;
-      }
-      else if (marketState === 'POST' || marketState === 'CLOSED') {
-        current = data.price.postMarketPrice;
-        change = current - data.price.current;
+      if (marketState === 'PRE' || marketState === 'POST' || marketState === 'CLOSED') {
+        change = current - Number(regularPrice);
       }
 
       const quoteDetails = {
