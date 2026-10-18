@@ -223,3 +223,43 @@ describe('proxy request authentication', () => {
     expect(headers['X-Custom-Header']).toBe('preserved');
   });
 });
+
+
+describe('cloud pull revision safety', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('does not trust a cloud revision when its payload cannot be decrypted', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"99"' }),
+        json: async () => ({ encryptedPayload: 'invalid-ciphertext' })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"100"' })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 1000 },
+      secret: 'cloud-encryption-secret',
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    });
+
+    await pushCloudState({ activeView: 'LOCAL', balance: 1000 }, {
+      secret: 'cloud-encryption-secret',
+      showToast: vi.fn()
+    });
+
+    const pushRequest = fetchMock.mock.calls[1][1] as RequestInit;
+    expect((pushRequest.headers as Record<string, string>)['If-Match']).not.toBe('"99"');
+  });
+});
