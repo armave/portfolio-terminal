@@ -552,6 +552,44 @@ export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): 
   if (!recognizedFields.some(field => Object.hasOwn(candidate, field))) {
     throw new Error('File does not contain a recognized portfolio backup.');
   }
+
+  // Backups are user-supplied data. Do not silently coerce invalid financial
+  // quantities to zero or accept negative shares/prices, which can corrupt
+  // position valuation and realized-trade calculations after import.
+  const validateNonNegativeField = (
+    record: Record<string, unknown>,
+    field: string,
+    label: string,
+    strictlyPositive = false
+  ) => {
+    if (!Object.hasOwn(record, field)) return;
+    const value = Number(record[field]);
+    if (!Number.isFinite(value) || (strictlyPositive ? value <= 0 : value < 0)) {
+      throw new Error(`Invalid ${label} in portfolio backup: expected a ${strictlyPositive ? 'positive' : 'non-negative'} finite number.`);
+    }
+  };
+
+  if (isRecord(candidate.positions)) {
+    for (const [ticker, rawPosition] of Object.entries(candidate.positions)) {
+      if (!isRecord(rawPosition)) {
+        throw new Error(`Invalid position "${ticker}" in portfolio backup.`);
+      }
+      for (const field of ['shares', 'commBuy', 'marginCharged'] as const) {
+        validateNonNegativeField(rawPosition, field, `${ticker} ${field}`);
+      }
+      if (Array.isArray(rawPosition.tranches)) {
+        rawPosition.tranches.forEach((rawTranche, index) => {
+          if (!isRecord(rawTranche)) {
+            throw new Error(`Invalid tranche ${index + 1} for ${ticker} in portfolio backup.`);
+          }
+          validateNonNegativeField(rawTranche, 'qty', `${ticker} tranche quantity`, true);
+          validateNonNegativeField(rawTranche, 'price', `${ticker} tranche price`, true);
+          validateNonNegativeField(rawTranche, 'buyCommission', `${ticker} tranche commission`);
+        });
+      }
+    }
+  }
+
   return normalizePortfolioState(candidate, now);
 }
 
