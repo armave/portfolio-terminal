@@ -179,6 +179,41 @@ export async function fetchYahooDeepStockData(ticker: string, force = false): Pr
 export function clearYahooDeepStockDataCache(): void {
   yahooDeepDataCache.clear();
   yahooDeepDataRequests.clear();
+  marketNewsCache.clear();
+  marketNewsRequests.clear();
+}
+
+const MARKET_NEWS_CACHE_TTL_MS = 5 * 60 * 1000;
+const marketNewsCache = new Map<string, { expiresAt: number; data: any[] }>();
+const marketNewsRequests = new Map<string, Promise<any[]>>();
+
+export async function fetchMarketNews(ticker: string, force = false): Promise<any[]> {
+  const symbol = normalizeYahooSymbol(ticker);
+  if (!symbol) return [];
+
+  if (!force) {
+    const cached = marketNewsCache.get(symbol);
+    if (cached && cached.expiresAt > Date.now()) return cached.data;
+    if (cached) marketNewsCache.delete(symbol);
+  }
+
+  const existing = marketNewsRequests.get(symbol);
+  if (existing) return existing;
+
+  const request = proxyFetch('news', { symbol })
+    .then((data) => {
+      const news = Array.isArray(data) ? data : [];
+      marketNewsCache.set(symbol, {
+        expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS,
+        data: news
+      });
+      return news;
+    })
+    .finally(() => {
+      if (marketNewsRequests.get(symbol) === request) marketNewsRequests.delete(symbol);
+    });
+  marketNewsRequests.set(symbol, request);
+  return request;
 }
 
 export interface SyncOptions {
