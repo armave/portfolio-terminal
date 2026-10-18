@@ -971,6 +971,27 @@ async function requestLivePrice(symbol: string, force = false) {
   }
 }
 
+async function fetchFallbackPrice(symbol: string) {
+  for (const provider of ['finnhub', 'twelvedata'] as const) {
+    try {
+      const fallback = await fetchFallbackQuote(symbol, provider);
+      return {
+        price: fallback.price,
+        sourceName: fallback.sourceName,
+        quoteDetails: {
+          marketState: 'REGULAR',
+          price: fallback.price,
+          change: fallback.change ?? 0,
+          changePercent: fallback.changePercent ?? 0
+        }
+      };
+    } catch (error: any) {
+      console.warn(`[${provider} Quote Error for ${symbol}]:`, error?.message || error);
+    }
+  }
+  return null;
+}
+
 async function fetchLivePriceFromProviders(symbol: string) {
   symbol = symbol.toUpperCase();
   let price: number | null = null;
@@ -1017,21 +1038,11 @@ async function fetchLivePriceFromProviders(symbol: string) {
   }
 
   if (price === null) {
-    for (const provider of ['finnhub', 'twelvedata'] as const) {
-      try {
-        const fallback = await fetchFallbackQuote(symbol, provider);
-        price = fallback.price;
-        sourceName = fallback.sourceName;
-        quoteDetails = {
-          marketState: 'REGULAR',
-          price: fallback.price,
-          change: fallback.change ?? 0,
-          changePercent: fallback.changePercent ?? 0
-        };
-        break;
-      } catch (error: any) {
-        console.warn(`[${provider} Quote Error for ${symbol}]:`, error?.message || error);
-      }
+    const fallback = await fetchFallbackPrice(symbol);
+    if (fallback) {
+      price = fallback.price;
+      sourceName = fallback.sourceName;
+      quoteDetails = fallback.quoteDetails;
     }
   }
 
@@ -1105,12 +1116,25 @@ async function performRefreshAllLivePrices() {
     let updatedCount = 0;
 
     for (const data of results) {
-      if (!data || data.error || !data.price) {
-        console.warn(`[Quote Warning]: Missing or failed data for ${data?.symbol}`, data?.error);
+      if (!data?.symbol) {
+        console.warn('[Quote Warning]: Missing symbol in batch quote response.', data?.error);
         continue;
       }
 
       const ticker = data.symbol;
+      if (data.error || !data.price) {
+        console.warn(`[Quote Warning]: Missing or failed data for ${ticker}`, data.error);
+        const fallback = await fetchFallbackPrice(ticker);
+        if (fallback && recordTrackedPrice(
+          ticker,
+          fallback.price,
+          fallback.sourceName,
+          Date.now(),
+          fallback.quoteDetails,
+          requestStartedAt
+        )) updatedCount++;
+        continue;
+      }
 
       const regularPrice = data.price.current ?? data.regularMarketPrice;
       const previous = data.price.previousClose ?? data.regularMarketPreviousClose;
@@ -1121,7 +1145,18 @@ async function performRefreshAllLivePrices() {
         postMarketPrice: data.price.postMarketPrice,
         marketState
       });
-      if (current === null) continue;
+      if (current === null) {
+        const fallback = await fetchFallbackPrice(ticker);
+        if (fallback && recordTrackedPrice(
+          ticker,
+          fallback.price,
+          fallback.sourceName,
+          Date.now(),
+          fallback.quoteDetails,
+          requestStartedAt
+        )) updatedCount++;
+        continue;
+      }
       const change = resolveMarketSessionChange({
         currentPrice: current,
         regularPrice,
