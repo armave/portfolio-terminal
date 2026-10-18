@@ -181,6 +181,7 @@ export function clearYahooDeepStockDataCache(): void {
   yahooDeepDataRequests.clear();
   marketNewsCache.clear();
   marketNewsRequests.clear();
+  validatedCloudResponse = null;
 }
 
 const MARKET_NEWS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -273,14 +274,20 @@ export async function validateGatewaySecret(secret: string): Promise<boolean> {
     // briefly so startup can use it as the initial pull instead of downloading
     // the same encrypted portfolio a second time.
     if (response.ok || response.status === 404) {
-      validatedCloudResponse = {
-        secret: cleanSecret,
-        checkedAt: Date.now(),
-        status: response.status,
-        etag: response.headers.get('ETag'),
-        contentType: response.headers.get('Content-Type'),
-        body: await response.text()
-      };
+      // Real Fetch responses are readable; keep compatibility with minimal
+      // response mocks used by callers/tests that only expose status and ok.
+      if (typeof response.text === 'function') {
+        validatedCloudResponse = {
+          secret: cleanSecret,
+          checkedAt: Date.now(),
+          status: response.status,
+          etag: response.headers?.get('ETag') ?? null,
+          contentType: response.headers?.get('Content-Type') ?? null,
+          body: await response.text()
+        };
+      } else {
+        validatedCloudResponse = null;
+      }
       return true;
     }
     validatedCloudResponse = null;
