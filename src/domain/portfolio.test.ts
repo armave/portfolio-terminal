@@ -106,6 +106,22 @@ describe('portfolio domain', () => {
     expect(normalized).not.toHaveProperty('marginBalance');
   });
 
+  it('strips Gateway credentials from imported state without mutating the source', () => {
+    const source = {
+      activeView: 'AAPL',
+      balance: -100,
+      gatewaySecret: 'stale-or-untrusted-secret',
+      positions: {}
+    };
+    const original = { ...source };
+
+    const normalized = normalizePortfolioBackup(source, 10_000);
+
+    expect(source).toEqual(original);
+    expect(normalized).not.toHaveProperty('gatewaySecret');
+    expect(normalized.balance).toBe(-100);
+  });
+
   it('rejects non-object imported state', () => {
     expect(() => normalizePortfolioState([])).toThrow('Portfolio state must be an object.');
   });
