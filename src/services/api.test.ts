@@ -6,6 +6,7 @@ import {
   syncCloudState,
   proxyFetch,
   fetchYahooDeepStockData,
+  fetchMarketNews,
   rememberYahooDeepStockData,
   clearYahooDeepStockDataCache
 } from './api';
@@ -339,6 +340,38 @@ describe('Yahoo deep-data request deduplication', () => {
 
     await fetchYahooDeepStockData('BAD');
     await fetchYahooDeepStockData('BAD');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('market news request deduplication', () => {
+  afterEach(() => {
+    clearYahooDeepStockDataCache();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('caches news by ticker and refreshes only when explicitly requested', async () => {
+    clearYahooDeepStockDataCache();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        json: async () => [{ headline: 'First result' }]
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        json: async () => [{ headline: 'Fresh result' }]
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchMarketNews('aapl')).resolves.toEqual([{ headline: 'First result' }]);
+    await expect(fetchMarketNews(' AAPL ')).resolves.toEqual([{ headline: 'First result' }]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await expect(fetchMarketNews('AAPL', true)).resolves.toEqual([{ headline: 'Fresh result' }]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
