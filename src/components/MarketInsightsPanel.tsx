@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { fetchYahooDeepStockData, proxyFetch } from '../services/api';
+import { fetchMarketNews, fetchYahooDeepStockData } from '../services/api';
 
 export type InsightSection = 'news' | 'fundamentals' | 'earnings' | 'analysts';
 
@@ -47,7 +47,7 @@ export function MarketInsightsPanel({
     const fetchInsight = async () => {
       try {
         if (activeSection === 'news') {
-          const news = await proxyFetch('news', { symbol: ticker });
+          const news = await fetchMarketNews(ticker, forceRefresh);
           if (currentRequestId !== requestIdRef.current) return;
           setNewsData(Array.isArray(news) ? news : []);
         } else {
