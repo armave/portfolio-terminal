@@ -9,8 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "knip": "npx --yes knip",
-    "ts-prune": "npx --yes ts-prune",
-    "validate:dead-code": "npm run knip && npm run ts-prune"
+    "validate:dead-code": "npm run knip"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",

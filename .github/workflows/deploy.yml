@@ -34,6 +34,9 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Validate dead code
+        run: npm run validate:dead-code
+
       - name: Build production site
         run: npm run build
 

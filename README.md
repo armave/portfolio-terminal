@@ -214,18 +214,18 @@ The project uses **Vitest** for test execution and TypeScript for static type va
 # Run automated tests
 npm test
 
-# Run the test suite once (Vitest is configured for a single run)
-npm test
-
 # Verify TypeScript types without building
 npm run typecheck
+
+# Check for unused exports and dead code
+npm run validate:dead-code
 
 # Run full production build
 npm run build
 
 ```
 
-Deployment to GitHub Pages is handled via `.github/workflows/deploy.yml` upon pushing commits to `main`.
+Deployment to GitHub Pages is handled via `.github/workflows/deploy.yml` upon pushing commits to `main`. The deployment workflow runs tests, dead-code validation, and the production build before publishing.
 
 ## Gateway and cloud-sync safety notes
 

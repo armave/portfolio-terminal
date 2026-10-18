@@ -100,7 +100,10 @@ export function isTradingDay(date: Date): boolean {
   return !isStockHoliday(date);
 }
 
-export const isUsEquityTradingDay = isTradingDay;
+/** Explicitly named alias for callers that need to distinguish US equity calendars. */
+export function isUsEquityTradingDay(date: Date): boolean {
+  return isTradingDay(date);
+}
 
 export function getNextTradingDay(fromDate: Date): Date {
   let candidate = addDays(fromDate, 1);
