@@ -70,7 +70,7 @@ import { AuthModal } from './src/components/AuthModal';
 import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
-import { resolveMarketSessionPrice } from './src/domain/quotes';
+import { resolveMarketSessionChange, resolveMarketSessionPrice } from './src/domain/quotes';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -984,20 +984,13 @@ async function fetchLivePriceFromProviders(symbol: string) {
       if (current !== null) {
         price = current;
         sourceName = "Yahoo Proxy";
-        const regularBaseline = Number(regularPrice);
-        const previousClose = Number(prevClose);
-        const hasRegularBaseline = Number.isFinite(regularBaseline) && regularBaseline > 0;
-        const hasPreviousClose = Number.isFinite(previousClose) && previousClose > 0;
-        const suppliedChange = Number(data.price.change ?? data.price.regularMarketChange);
-        let change = Number.isFinite(suppliedChange)
-          ? suppliedChange
-          : (hasPreviousClose ? current - previousClose : 0);
-
-        if (marketState === 'PRE' || marketState === 'POST' || marketState === 'CLOSED') {
-          change = hasRegularBaseline
-            ? current - regularBaseline
-            : (hasPreviousClose ? current - previousClose : 0);
-        }
+        const change = resolveMarketSessionChange({
+          currentPrice: current,
+          regularPrice,
+          previousClose: prevClose,
+          suppliedChange: data.price.change ?? data.price.regularMarketChange,
+          marketState
+        });
 
         quoteDetails = {
           marketState,
@@ -1080,19 +1073,13 @@ async function refreshAllLivePrices() {
         marketState
       });
       if (current === null) continue;
-      const regularBaseline = Number(regularPrice);
-      const previousClose = Number(previous);
-      const hasRegularBaseline = Number.isFinite(regularBaseline) && regularBaseline > 0;
-      const hasPreviousClose = Number.isFinite(previousClose) && previousClose > 0;
-      const suppliedChange = Number(data.price.change ?? data.regularMarketChange);
-      let change = Number.isFinite(suppliedChange)
-        ? suppliedChange
-        : (hasPreviousClose ? current - previousClose : 0);
-      if (marketState === 'PRE' || marketState === 'POST' || marketState === 'CLOSED') {
-        change = hasRegularBaseline
-          ? current - regularBaseline
-          : (hasPreviousClose ? current - previousClose : 0);
-      }
+      const change = resolveMarketSessionChange({
+        currentPrice: current,
+        regularPrice,
+        previousClose: previous,
+        suppliedChange: data.price.change ?? data.regularMarketChange,
+        marketState
+      });
 
       const quoteDetails = {
         marketState,
