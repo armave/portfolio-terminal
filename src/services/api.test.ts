@@ -9,6 +9,31 @@ describe('cloud state sync', () => {
     vi.restoreAllMocks();
   });
 
+  it('never trusts a Gateway Secret embedded in portfolio state', async () => {
+    storage.setGatewaySecret('trusted-stored-secret');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers()
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      const result = await pushCloudState({
+        activeView: 'AAPL',
+        balance: 1250,
+        gatewaySecret: 'untrusted-state-secret'
+      }, { showToast: vi.fn() });
+
+      expect(result).toBe(true);
+      expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
+        'X-App-Auth': 'trusted-stored-secret',
+        Authorization: 'Bearer trusted-stored-secret'
+      });
+    } finally {
+      storage.setGatewaySecret('');
+    }
+  });
+
   it('does not mutate the live state when excluding local-only fields from cloud backup', async () => {
     const state = {
       activeView: 'AAPL',

@@ -43,10 +43,9 @@ function readCloudRevision(headers?: Headers | null): number | null {
 
 export function setSecretGetter(_getter: () => string): void { }
 
-function getActiveGatewaySecret(state?: Record<string, any> | PortfolioState): string {
-  if (state && 'gatewaySecret' in state && (state as any).gatewaySecret) {
-    return (state as any).gatewaySecret;
-  }
+function getActiveGatewaySecret(): string {
+  // Credentials are managed only by the dedicated secret store/input. Portfolio
+  // state may come from an imported backup or cloud payload and is never trusted.
   const stored = getGatewaySecret();
   if (stored) return stored;
   if (typeof document !== 'undefined') {
@@ -82,7 +81,7 @@ export async function proxyFetch(
     }
   });
 
-  const authSecret = fetchOptions.secret || getActiveGatewaySecret(fetchOptions.state);
+  const authSecret = fetchOptions.secret || getActiveGatewaySecret();
 
   const res = await fetch(url.toString(), {
     ...fetchOptions,
@@ -173,7 +172,7 @@ export async function pullCloudState(
         : console.log(msg)
   } = handlers;
 
-  const currentSecret = handlers.secret || getActiveGatewaySecret(state);
+  const currentSecret = handlers.secret || getActiveGatewaySecret();
 
   if (!currentSecret) {
     reportResult?.(false);
@@ -300,7 +299,7 @@ async function performPushCloudState(state?: any, options: SyncOptions = {}): Pr
   } = handlers;
 
   const currentState = state || (typeof getState === 'function' ? getState() : {});
-  const currentSecret = handlers.secret || getActiveGatewaySecret(currentState);
+  const currentSecret = handlers.secret || getActiveGatewaySecret();
 
   if (!currentSecret) {
     showToast('Gateway Secret required to access cloud state.', 'error');

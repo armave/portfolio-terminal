@@ -130,8 +130,13 @@ export function getAccruedRolloverCycles(purchaseDateStr?: string, now: Date = n
 
   if (![pYear, pMonth, pDay].every(Number.isFinite) || pMonth < 0 || pMonth > 11 || pDay < 1 || pDay > 31) return 0;
 
+  // Date.UTC normalizes impossible dates (for example, February 31) into the
+  // following month. Reject them instead of accruing interest from another date.
+  const parsedPurchaseDate = new Date(Date.UTC(pYear, pMonth, pDay));
+  if (parsedPurchaseDate.getUTCFullYear() !== pYear || parsedPurchaseDate.getUTCMonth() !== pMonth || parsedPurchaseDate.getUTCDate() !== pDay) return 0;
+
   const localNow = getArmeniaClockParts(now);
-  const purchaseDay = Date.UTC(pYear, pMonth, pDay);
+  const purchaseDay = parsedPurchaseDate.getTime();
   const currentDay = Date.UTC(localNow.year, localNow.month - 1, localNow.day);
   const diffDays = Math.round((currentDay - purchaseDay) / 86_400_000);
   if (diffDays <= 0) return 0;
@@ -191,7 +196,7 @@ export function calculateMarginInterest(
       days = Number(maybeDays ?? opts.days ?? opts.daysHeld ?? opts.holdingDays) || 0;
     }
 
-    if (principal <= 0 || dailyRate <= 0 || days <= 0) return 0;
+    if (!Number.isFinite(principal) || !Number.isFinite(dailyRate) || !Number.isFinite(days) || !Number.isFinite(marginRatio) || principal <= 0 || dailyRate <= 0 || days <= 0 || marginRatio < 0) return 0;
     return principal * marginRatio * (Math.pow(1 + dailyRate, days) - 1);
   }
 
@@ -234,7 +239,7 @@ export function calculateMarginInterest(
     dailyRate = options.annualBorrowRate / basis;
   }
 
-  if (dailyRate <= 0) return 0;
+  if (!Number.isFinite(dailyRate) || dailyRate <= 0) return 0;
 
   const totalInvested = tranches.reduce((sum: number, tr: any) => {
     const q = Number(tr.qty ?? tr.shares ?? 0) || 0;
@@ -247,6 +252,7 @@ export function calculateMarginInterest(
     options.marginUtilizationRatio ?? options.marginRatio ?? options.utilizationRatio;
 
   if (typeof ratioCandidate === 'number') {
+    if (!Number.isFinite(ratioCandidate) || ratioCandidate < 0) return 0;
     marginRatio = ratioCandidate;
   } else if (options.marginDebt !== undefined || options.totalDebt !== undefined || (typeof options.balance === 'number' && options.balance < 0)) {
     // marginDebt may be a position's allocated share of portfolio debt. Prefer
@@ -367,24 +373,45 @@ function finiteNumber(value: unknown, fallback: number): number {
 
 export function resolveTradeDateTimestamp(value: unknown, fallbackTimestamp = Date.now()): number {
   if (typeof value !== 'string' || !value.trim()) return fallbackTimestamp;
-  const shortDate = value.trim().match(/^(\d{1,2})\s+([a-z]{3,})(?:\s+(\d{4}))?$/i);
+  const normalizedValue = value.trim();
+  const isoDate = normalizedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDate) {
+    const year = Number(isoDate[1]);
+    const month = Number(isoDate[2]);
+    const day = Number(isoDate[3]);
+    const timestamp = Date.UTC(year, month - 1, day);
+    const parsedDate = new Date(timestamp);
+    if (
+      month < 1 || month > 12 || day < 1 ||
+      parsedDate.getUTCFullYear() !== year ||
+      parsedDate.getUTCMonth() !== month - 1 ||
+      parsedDate.getUTCDate() !== day
+    ) return fallbackTimestamp;
+    return timestamp;
+  }
+
+  const shortDate = normalizedValue.match(/^(\d{1,2})\s+([a-z]{3,})(?:\s+(\d{4}))?$/i);
   if (shortDate) {
     const monthIndex = new Date(`${shortDate[2]} 1, 2000`).getMonth();
     if (!Number.isNaN(monthIndex)) {
       let year = shortDate[3] ? Number(shortDate[3]) : new Date(fallbackTimestamp).getFullYear();
-      let timestamp = new Date(year, monthIndex, Number(shortDate[1])).getTime();
+      const day = Number(shortDate[1]);
+      let date = new Date(year, monthIndex, day);
+      if (date.getMonth() !== monthIndex || date.getDate() !== day) return fallbackTimestamp;
+      let timestamp = date.getTime();
       if (!shortDate[3] && timestamp > fallbackTimestamp) {
         year -= 1;
-        timestamp = new Date(year, monthIndex, Number(shortDate[1])).getTime();
+        date = new Date(year, monthIndex, day);
+        if (date.getMonth() !== monthIndex || date.getDate() !== day) return fallbackTimestamp;
+        timestamp = date.getTime();
       }
       return timestamp;
     }
   }
 
-  const parsed = Date.parse(value);
+  const parsed = Date.parse(normalizedValue);
   return Number.isFinite(parsed) ? parsed : fallbackTimestamp;
 }
-
 export function createBlankState(now = Date.now()): PortfolioState {
   return {
     activeView: 'COMBINED',
