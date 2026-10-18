@@ -174,6 +174,10 @@ describe('portfolio domain', () => {
     expect(() => normalizePortfolioBackup({
       positions: { AAPL: { shares: 3, commBuy: -1, tranches: [] } }
     }, 10_000)).toThrow('AAPL commBuy');
+
+    expect(() => normalizePortfolioBackup({
+      positions: { AAPL: { shares: 3, currentPrice: -1, tranches: [] } }
+    }, 10_000)).toThrow('AAPL currentPrice');
   });
 
   it('continues to accept valid zero-valued position fees and positive trade lots', () => {
