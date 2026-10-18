@@ -194,9 +194,10 @@ export async function pullCloudState(
     });
 
     const pulledRevision = readCloudRevision(res.headers);
-    if (pulledRevision !== null) setCloudRevision(pulledRevision);
 
     if (res.status === 404) {
+      // A confirmed empty cloud store is safe to use as the current base revision.
+      if (pulledRevision !== null) setCloudRevision(pulledRevision);
       reportResult?.(false);
       showToast('No KV cloud state found. Retaining local state.', 'info');
       logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
@@ -255,6 +256,10 @@ export async function pullCloudState(
     if (!saveState(parsedState)) {
       throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
     }
+
+    // Only trust the cloud revision after its payload was decrypted, validated,
+    // and persisted locally. A failed pull must not authorize a later overwrite.
+    if (pulledRevision !== null) setCloudRevision(pulledRevision);
 
     if (wasUpdated) {
       pushCloudState(parsedState, { ...handlers, secret: currentSecret, showToast: () => { } }).catch((err) => {
