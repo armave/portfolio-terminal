@@ -13,7 +13,7 @@ describe('cloud state sync', () => {
     storage.setGatewaySecret('trusted-stored-secret');
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      headers: new Headers({ ETag: '"1"' })
+      headers: new Headers()
     });
     vi.stubGlobal('fetch', fetchMock);
 
