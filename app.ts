@@ -98,7 +98,7 @@ let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
-let marketInsightsOpen = false;
+let marketInsightsOpen = true;
 let activeInsightSection = 'news';
 let insightRequestId = 0;
 let initialQuoteRefreshPending = false;
@@ -576,17 +576,13 @@ function renderMarketInsightsComponent() {
   render(
     h(MarketInsightsPanel, {
       ticker,
-      isOpen: marketInsightsOpen && Boolean(ticker),
+      isOpen: true,
       activeSection: activeInsightSection as InsightSection,
       refreshTrigger: insightRequestId,
       onSelectSection: (section: InsightSection) => {
         activeInsightSection = section;
         renderMarketInsightsComponent();
       },
-      onClose: () => {
-        marketInsightsOpen = false;
-        syncMarketInsightsPanel();
-      }
     }),
     panel
   );
@@ -602,21 +598,11 @@ function getMarketInsightsTicker() {
 }
 
 function syncMarketInsightsPanel() {
-  const ticker = getMarketInsightsTicker();
-  const toggle = document.getElementById('marketInsightsToggle');
   const panel = document.getElementById('marketInsightsPanel');
-  if (!toggle || !panel) return;
+  if (!panel) return;
 
-  toggle.classList.toggle('hidden', !ticker);
-  panel.classList.toggle('hidden', !marketInsightsOpen || !ticker);
-  toggle.setAttribute('aria-expanded', String(marketInsightsOpen && Boolean(ticker)));
-  toggle.textContent = marketInsightsOpen ? 'HIDE INSIGHTS' : 'MARKET INSIGHTS';
-
-  if (!ticker) {
-    marketInsightsOpen = false;
-    return;
-  }
-
+  // Market Insights is a permanent part of the Margin workspace, not a toggleable panel.
+  marketInsightsOpen = true;
   renderMarketInsightsComponent();
 }
 
