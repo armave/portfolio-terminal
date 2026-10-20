@@ -1,7 +1,7 @@
 import { render, h } from 'preact';
 import { formatUSD } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
-export { formatTrancheDate, formatUSD, formatQuoteMetadata, formatRiskTrigger } from '../utils/formatters';
+export { formatUSD } from '../utils/formatters';
 import { TickerTabs } from '../components/TickerTab';
 import { EmptyStatePanel } from '../components/EmptyStatePanel';
 import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
@@ -12,20 +12,15 @@ import { calculateCommission, calculateMarginInterest, collectOpenPositionTranch
 import {
   BrokerRules,
   PositionRecord,
-  QuoteDetails,
   BoardState
 } from '../types/portfolio';
 
 export type {
-  BrokerRules,
   PositionRecord,
-  QuoteDetails,
   BoardState
 };
 
 const NON_POSITION_VIEWS = new Set(['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
-
-export { getTotalPortfolioInvested, getCashCushionTotal } from '../domain/portfolioSelectors';
 
 function resolveActiveView(state: BoardState): string {
   let currentView = state.activeView;
@@ -116,7 +111,7 @@ function calculateCombinedMetrics(state: BoardState, rules: BrokerRules, tickers
   });
 
   const tranchesForCombined = collectOpenPositionTranches(state.positions || {});
-    
+
   const totalDebt = Math.abs(Number(state.balance) || 0);
   const openMarginCharged = calculateMarginInterest(tranchesForCombined as any, {
     dailyRate,
@@ -144,9 +139,9 @@ function calculatePositionMetrics(state: BoardState, pos: PositionRecord, rules:
 
   const totalAccountDebt = Math.abs(Number(state.balance) || 0);
   const allocatedDebt = totalAccountDebt * weight;
-  
+
   const tranches = pos.tranches || [];
-    
+
   const posMarginCharged = calculateMarginInterest(tranches as any, {
     dailyRate,
     marginDebt: allocatedDebt,
