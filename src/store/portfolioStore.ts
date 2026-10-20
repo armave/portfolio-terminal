@@ -420,7 +420,7 @@ export class PortfolioStore {
     pt?: number
   ): void {
     const clean = ticker.trim().toUpperCase();
-    if (!clean || shares <= 0 || price <= 0) return;
+    if (!clean || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) return;
 
     const purchaseDate = date || todayIso();
 
@@ -556,7 +556,8 @@ export class PortfolioStore {
     date?: string
   ): void {
     const clean = ticker.trim().toUpperCase();
-    if (!clean || sellPrice <= 0) return;
+    if (!clean || !Number.isFinite(sellPrice) || sellPrice <= 0) return;
+    if (sharesToSell !== 'ALL' && (!Number.isFinite(sharesToSell) || sharesToSell <= 0)) return;
 
     this.update((state) => {
       const positions = { ...(state.positions || {}) };
@@ -858,7 +859,7 @@ export class PortfolioStore {
 
   public updateTargetPrice(ticker: string, pt: number): void {
     const clean = ticker.trim().toUpperCase();
-    if (!clean || pt <= 0) return;
+    if (!clean || !Number.isFinite(pt) || pt <= 0) return;
 
     this.update((state) => {
       const positions = { ...(state.positions || {}) };
@@ -876,7 +877,7 @@ export class PortfolioStore {
 
   public addCashStock(ticker: string, shares: number, price: number): void {
     const clean = ticker.trim().toUpperCase();
-    if (!clean || shares <= 0 || price <= 0) return;
+    if (!clean || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) return;
 
     this.update((state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
