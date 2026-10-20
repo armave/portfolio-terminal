@@ -55,12 +55,6 @@ export function App({ onToggleMarketInsights }: AppProps) {
               class="portfolio-metrics-grid gap-2 text-xs text-slate-300"
             ></div>
 
-            <section
-              id="marketInsightsPanel"
-              class="space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10"
-              aria-label="Market insights"
-            ></section>
-
             <div class="desktop-workspace-grid grid grid-cols-1 lg:grid-cols-1 gap-4 lg:gap-6 items-start">
               {/* Projection Table */}
               <div
@@ -90,6 +84,11 @@ export function App({ onToggleMarketInsights }: AppProps) {
           <div id="cashCushionContainer" class="hidden space-y-3"></div>
           
           {/* Keep the command console available on both Margin and Cash desks. */}
+          <section
+            id="marketInsightsPanel"
+            class="hidden market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10"
+            aria-label="Market insights"
+          ></section>
           <div
             id="tradingConsoleCard"
             class="trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full"
