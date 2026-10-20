@@ -232,6 +232,52 @@ describe('canonical trade lifecycle and persistence', () => {
     vi.unstubAllGlobals();
   });
 
+  it('normalizes malformed persisted position and cash-holding records safely', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    stored.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+      positions: {
+        AAPL: null,
+        MSFT: { ticker: 'MSFT', shares: 'not-a-number', currentPrice: 420 },
+        NVDA: {
+          ticker: 'nvda',
+          shares: 2,
+          currentPrice: 'invalid',
+          pt: 'invalid',
+          commBuy: 'invalid',
+          tranches: 'not-an-array'
+        }
+      },
+      cashCushion: {
+        freeCash: 'invalid',
+        holdings: [
+          null,
+          { ticker: '', shares: 2 },
+          { ticker: 'TSLA', shares: 'invalid', currentPrice: 300 },
+          { ticker: 'AMD', shares: 1, currentPrice: 100 }
+        ]
+      },
+      balance: 0
+    }));
+
+    const state = new PortfolioStore().getState();
+
+    expect(state.positions.AAPL).toBeUndefined();
+    expect(state.positions.MSFT).toBeUndefined();
+    expect(state.positions.NVDA).toMatchObject({
+      ticker: 'NVDA',
+      shares: 2,
+      currentPrice: 0,
+      pt: 0,
+      commBuy: 0,
+      tranches: []
+    });
+    expect(state.holdings.map((holding) => holding.ticker)).toEqual(['NVDA']);
+    expect(state.cashCushion.freeCash).toBe(0);
+    expect(state.cashCushion.holdings).toEqual([
+      expect.objectContaining({ ticker: 'AMD', shares: 1 })
+    ]);
+  });
+
   it('uses the same default broker assumptions as the application settings', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
