@@ -2,7 +2,7 @@ interface AppProps {
   onToggleMarketInsights: () => void;
 }
 
-export function App({ onToggleMarketInsights }: AppProps) {
+export function App({}: AppProps) {
   return (
     <>
       {/* Active Position Header Panel */}
@@ -40,14 +40,14 @@ export function App({ onToggleMarketInsights }: AppProps) {
               <div class="min-w-0 flex-1 text-lg font-bold text-white" id="boardTitle">
                 COMBINED PORTFOLIO
               </div>
-              <div
-                id="boardTitleActions"
-                class="board-title-actions flex flex-wrap items-center gap-2"
-              >
-                <div id="boardDailyMove" class="hidden"></div>
-                <div id="boardAnalystConsensus" class="hidden"></div>
-                <div id="boardExternalLinks" class="flex items-center gap-2"></div>
-              </div>
+            </div>
+            <div
+              id="boardTitleActions"
+              class="board-title-actions flex flex-wrap items-center gap-2"
+            >
+              <div id="boardDailyMove" class="hidden"></div>
+              <div id="boardAnalystConsensus" class="hidden"></div>
+              <div id="boardExternalLinks" class="flex items-center gap-2"></div>
             </div>
 
             <div
@@ -82,7 +82,7 @@ export function App({ onToggleMarketInsights }: AppProps) {
 
           {/* Cash Cushion Management Panel */}
           <div id="cashCushionContainer" class="hidden space-y-3"></div>
-          
+
           {/* Keep the command console available on both Margin and Cash desks. */}
           <section
             id="marketInsightsPanel"
