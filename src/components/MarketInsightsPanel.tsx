@@ -32,17 +32,21 @@ export function MarketInsightsPanel({
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
   const [newsUpdatedAt, setNewsUpdatedAt] = useState<number | null>(null);
+  const [newsRefreshRequest, setNewsRefreshRequest] = useState(0);
   const [stockData, setStockData] = useState<any>(null);
   const [stocktwitsData, setStocktwitsData] = useState<StocktwitsStream | null>(null);
   const [stocktwitsLoading, setStocktwitsLoading] = useState(false);
   const [stocktwitsError, setStocktwitsError] = useState<string | null>(null);
   const [stocktwitsUpdatedAt, setStocktwitsUpdatedAt] = useState<number | null>(null);
+  const [stocktwitsRefreshRequest, setStocktwitsRefreshRequest] = useState(0);
   const stocktwitsRequestIdRef = useRef(0);
   const newsRequestIdRef = useRef(0);
   const requestIdRef = useRef(0);
   const lastRefreshTriggerRef = useRef(refreshTrigger);
   const lastNewsRefreshTriggerRef = useRef(refreshTrigger);
   const lastStocktwitsRefreshTriggerRef = useRef(refreshTrigger);
+  const lastNewsManualRefreshRef = useRef(0);
+  const lastStocktwitsManualRefreshRef = useRef(0);
   const newsTickerRef = useRef(ticker);
   const stocktwitsTickerRef = useRef(ticker);
   const newsHasLoadedRef = useRef(false);
@@ -87,8 +91,9 @@ export function MarketInsightsPanel({
   useEffect(() => {
     if (!isOpen || !ticker) return;
 
-    const forceOnStart = refreshTrigger !== lastNewsRefreshTriggerRef.current;
+    const forceOnStart = refreshTrigger !== lastNewsRefreshTriggerRef.current || newsRefreshRequest !== lastNewsManualRefreshRef.current;
     lastNewsRefreshTriggerRef.current = refreshTrigger;
+    lastNewsManualRefreshRef.current = newsRefreshRequest;
     if (newsTickerRef.current !== ticker) {
       newsTickerRef.current = ticker;
       newsHasLoadedRef.current = false;
@@ -132,14 +137,15 @@ export function MarketInsightsPanel({
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [ticker, isOpen, refreshTrigger]);
+  }, [ticker, isOpen, refreshTrigger, newsRefreshRequest]);
 
   // Stocktwits refreshes independently of company news and insight-tab changes.
   useEffect(() => {
     if (!isOpen || !ticker) return;
 
-    const forceOnStart = refreshTrigger !== lastStocktwitsRefreshTriggerRef.current;
+    const forceOnStart = refreshTrigger !== lastStocktwitsRefreshTriggerRef.current || stocktwitsRefreshRequest !== lastStocktwitsManualRefreshRef.current;
     lastStocktwitsRefreshTriggerRef.current = refreshTrigger;
+    lastStocktwitsManualRefreshRef.current = stocktwitsRefreshRequest;
     if (stocktwitsTickerRef.current !== ticker) {
       stocktwitsTickerRef.current = ticker;
       stocktwitsHasLoadedRef.current = false;
@@ -183,7 +189,7 @@ export function MarketInsightsPanel({
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [ticker, isOpen, refreshTrigger]);
+  }, [ticker, isOpen, refreshTrigger, stocktwitsRefreshRequest]);
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -438,6 +444,13 @@ export function MarketInsightsPanel({
             </span>
           </div>
         </div>
+        {activeSection === 'news' && (
+          <button type="button" onClick={() => setNewsRefreshRequest((value) => value + 1)}
+            class="rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
+            aria-label="Refresh company news">
+            {newsLoading ? 'Refreshing…' : 'Refresh news'}
+          </button>
+        )}
       </div>
 
       <div
@@ -495,6 +508,11 @@ export function MarketInsightsPanel({
               Stocktwits <span class="text-cyan-300">{ticker ? `· ${ticker}` : ''}</span>
             </h3>
           </div>
+          <button type="button" onClick={() => setStocktwitsRefreshRequest((value) => value + 1)}
+            class="rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
+            aria-label="Refresh Stocktwits messages">
+            {stocktwitsLoading ? 'Refreshing…' : 'Refresh'}
+          </button>
           {stocktwitsData?.streamUrl && (
             <a href={stocktwitsData.streamUrl} target="_blank" rel="noopener noreferrer"
               class="text-[10px] font-semibold text-cyan-400 hover:text-cyan-300">
