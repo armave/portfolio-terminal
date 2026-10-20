@@ -47,16 +47,6 @@ export function App({ onToggleMarketInsights }: AppProps) {
                 <div id="boardDailyMove" class="hidden"></div>
                 <div id="boardAnalystConsensus" class="hidden"></div>
                 <div id="boardExternalLinks" class="flex items-center gap-2"></div>
-                <button
-                  id="marketInsightsToggle"
-                  type="button"
-                  onClick={onToggleMarketInsights}
-                  aria-expanded="false"
-                  aria-controls="marketInsightsPanel"
-                  class="hidden rounded border border-cyan-800/70 bg-cyan-950/30 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300 transition hover:bg-cyan-900/50"
-                >
-                  Market insights
-                </button>
               </div>
             </div>
 
@@ -67,7 +57,7 @@ export function App({ onToggleMarketInsights }: AppProps) {
 
             <section
               id="marketInsightsPanel"
-              class="hidden space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10"
+              class="space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10"
               aria-label="Market insights"
             ></section>
 
