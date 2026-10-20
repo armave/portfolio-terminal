@@ -42,7 +42,7 @@ describe('rollover calendar', () => {
       year: 2026, month: 1, day: 15, hour: 9, minute: 30
     });
     const configured = getLatestRolloverTimestamp(
-      new Date('2026-10-20T01:00:00.000Z'), 6, 30, YEREVAN
+      new Date('2026-10-20T03:00:00.000Z'), 6, 30, YEREVAN
     );
     expect(new Date(configured).toISOString()).toBe('2026-10-20T02:30:00.000Z');
   });
