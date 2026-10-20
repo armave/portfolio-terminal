@@ -396,6 +396,21 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().closedTrades[0].marginInterest).toBeGreaterThan(0);
   });
 
+  it('returns to the combined desk after selling the final share of the active ticker', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({ commPerShare: 0, commVolumePct: 0, minCommOrder: 0, annualRate: 0, annualBorrowRate: 0 });
+
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    expect(store.getState().activeView).toBe('AAPL');
+
+    store.sellStock('AAPL', 'ALL', 110, '2026-10-16');
+
+    expect(store.getState().positions.AAPL).toBeUndefined();
+    expect(store.getState().activeView).toBe('COMBINED');
+    expect(store.getState().selectedTicker).toBeNull();
+  });
+
   it('ignores stale quote responses after a trade and never recreates a fully closed position', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
