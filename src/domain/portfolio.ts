@@ -212,6 +212,16 @@ export function calculateMarginInterest(
   } else if (stateObj) {
     if (Array.isArray(stateObj.tranches)) {
       tranches = stateObj.tranches;
+      // An initialized but empty tranche array must not hide a valid legacy
+      // single-lot position. Only fall back when the object has its own entry
+      // price, so we never infer cost basis from a live quote.
+      if (
+        tranches.length === 0 &&
+        (stateObj.shares || stateObj.qty) &&
+        (stateObj.price || stateObj.entryPrice)
+      ) {
+        tranches = [stateObj];
+      }
     } else if (stateObj.shares || stateObj.qty) {
       tranches = [stateObj];
     }
