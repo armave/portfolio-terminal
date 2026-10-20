@@ -256,11 +256,14 @@ describe('canonical trade lifecycle and persistence', () => {
           { ticker: 'AMD', shares: 1, currentPrice: 100 }
         ]
       },
-      balance: 0
+      balance: 'Infinity',
+      realizedMarginCharged: 'NaN'
     }));
 
     const state = new PortfolioStore().getState();
 
+    expect(state.balance).toBe(0);
+    expect(state.realizedMarginCharged).toBe(0);
     expect(state.positions.AAPL).toBeUndefined();
     expect(state.positions.MSFT).toBeUndefined();
     expect(state.positions.NVDA).toMatchObject({
