@@ -312,10 +312,6 @@ export function MarketInsightsPanel({
               {loading ? 'Loading' : 'Ready'}
             </span>
           </div>
-          <p class="mt-1 text-[10px] text-slate-500">
-            Company news, fundamentals, earnings, and analyst consensus. Finnhub and Alpha Vantage
-            are tried as available.
-          </p>
         </div>
       </div>
 
