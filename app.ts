@@ -27,7 +27,6 @@ import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
-  fetchYahooStockData,
   fetchYahooDeepStockData,
   proxyFetch,
   setSecretGetter,
