@@ -2,7 +2,7 @@ interface AppProps {
   onToggleMarketInsights: () => void;
 }
 
-export function App({}: AppProps) {
+export function App({ }: AppProps) {
   return (
     <>
       {/* Active Position Header Panel */}
@@ -55,28 +55,26 @@ export function App({}: AppProps) {
               class="portfolio-metrics-grid gap-2 text-xs text-slate-300"
             ></div>
 
-            <div class="desktop-workspace-grid grid grid-cols-1 lg:grid-cols-1 gap-4 lg:gap-6 items-start">
-              {/* Projection Table */}
-              <div
-                class="table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none"
-                id="projectionTableContainer"
-              >
-                <table class="w-full min-w-[300px] text-xs border-collapse">
-                  <thead>
-                    <tr class="border-b border-slate-800 text-slate-400">
-                      <th class="py-2 px-3 text-left">Date</th>
-                      <th class="py-2 px-3 text-right">P&amp;L (Net)</th>
-                      <th class="py-2 px-3 text-right">Fee&amp;Com</th>
-                      <th class="py-2 px-3 text-right">Margin Fee</th>
-                      <th class="py-2 px-3 text-right">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody
-                    id="projectionTableBody"
-                    class="divide-y divide-slate-800/60 font-mono"
-                  ></tbody>
-                </table>
-              </div>
+            {/* Projection Table */}
+            <div
+              class="table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none"
+              id="projectionTableContainer"
+            >
+              <table class="w-full min-w-[300px] text-xs border-collapse">
+                <thead>
+                  <tr class="border-b border-slate-800 text-slate-400">
+                    <th class="py-2 px-3 text-left">Date</th>
+                    <th class="py-2 px-3 text-right">P&amp;L (Net)</th>
+                    <th class="py-2 px-3 text-right">Fee&amp;Com</th>
+                    <th class="py-2 px-3 text-right">Margin Fee</th>
+                    <th class="py-2 px-3 text-right">Balance</th>
+                  </tr>
+                </thead>
+                <tbody
+                  id="projectionTableBody"
+                  class="divide-y divide-slate-800/60 font-mono"
+                ></tbody>
+              </table>
             </div>
           </div>
 
