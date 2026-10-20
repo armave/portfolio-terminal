@@ -251,9 +251,6 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
               <span class="text-emerald-400 transition-transform group-open:rotate-90">▸</span>
               Quick Commands Guide (Click any command to load)
             </span>
-            <span class="text-[9px] font-normal text-slate-500 lowercase">
-              100% instant frontend execution
-            </span>
           </summary>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
