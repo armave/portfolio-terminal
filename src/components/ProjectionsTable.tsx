@@ -47,11 +47,11 @@ export function ProjectionsTable({
         if (kind === 'entry') {
           return (
             <tr key={`entry-${idx}`} class="border-b border-slate-800/50 text-slate-500">
-              <td class="sticky left-0 z-10 bg-slate-950/95 backdrop-blur-sm py-1.5 px-3 text-left projection-date-cell">
+              <td class="sticky left-0 z-10 bg-slate-950/95 backdrop-blur-sm py-1 px-2 text-left projection-date-cell">
                 <span class="text-[10px] font-medium text-slate-400">Entry</span>
                 <span class="text-[10px] text-slate-500 font-mono">{dateFormatted}</span>
               </td>
-              <td colSpan={4} class="py-1.5 px-3 text-[10px] italic text-center">
+              <td colSpan={4} class="py-1 px-2 text-[10px] italic text-center">
                 Position opened · projection values start today
               </td>
             </tr>
@@ -86,18 +86,18 @@ export function ProjectionsTable({
 
         return (
           <tr key={`${kind}-${daysFromToday}-${idx}`} class={rowClass}>
-            <td class="sticky left-0 z-10 bg-slate-950/95 backdrop-blur-sm py-2 px-3 text-left text-slate-300 font-semibold projection-date-cell">
+            <td class="sticky left-0 z-10 bg-slate-950/95 backdrop-blur-sm py-1 px-2 text-left text-slate-300 font-semibold projection-date-cell">
               <span>{dateFormatted}</span>
               <span class={badgeClass}>{badgeText}</span>
             </td>
-            <td class={`py-2 px-3 text-right ${netClass} font-semibold`}>
+            <td class={`py-1 px-2 text-right ${netClass} font-semibold`}>
               {netSign}{formatUSD(net_p)}
             </td>
-            <td class="py-2 px-3 text-right text-slate-200">{formatUSD(fee_c)}</td>
-            <td class="py-2 px-3 text-right text-slate-400">
+            <td class="py-1 px-2 text-right text-slate-200">{formatUSD(fee_c)}</td>
+            <td class="py-1 px-2 text-right text-slate-400">
               {formatUSD(m_d)} ({formatUSD(dr)})
             </td>
-            <td class="py-2 px-3 text-right text-rose-400">-{formatUSD(b_t)}</td>
+            <td class="py-1 px-2 text-right text-rose-400">-{formatUSD(b_t)}</td>
           </tr>
         );
       })}
