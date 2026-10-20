@@ -67,7 +67,7 @@ export async function refreshTrackedQuotes(
       changePercent: previous ? (change / previous) * 100 : 0
     };
 
-    if (recordTrackedPrice(ticker, Number(current), 'Yahoo Proxy', Date.now(), quoteDetails, requestStartedAt)) updatedCount++;
+    if (recordTrackedPrice(ticker, Number(current), 'Yahoo', Date.now(), quoteDetails, requestStartedAt)) updatedCount++;
   }
 
   return updatedCount;

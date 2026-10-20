@@ -516,6 +516,36 @@ summary:hover {
   z-index: 1;
 }
 
+/*
+ * Keep the active desk and trading terminal side by side only when both columns
+ * have enough room. auto-fit naturally moves the terminal below the desk on
+ * narrower viewports, including intermediate widths and zoomed layouts.
+ */
+.trading-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.trading-workspace-grid > * {
+  min-width: 0;
+}
+
+.trading-workspace-grid .trading-console-card {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+@media (min-width: 48rem) {
+  .trading-workspace-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
+    gap: 1.5rem;
+  }
+}
+
 .desktop-workspace-grid {
   display: flex;
   flex-direction: column;
@@ -698,3 +728,15 @@ summary:hover {
 }
 
 
+
+/* Market Insights and terminal form one grid item so they always stack together. */
+ .trading-workspace-grid > .trading-terminal-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+.trading-terminal-column > .market-insights-workspace {
+  width: 100%;
+  min-width: 0;
+}

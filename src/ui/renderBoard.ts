@@ -312,6 +312,10 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   if (consoleCard) {
     consoleCard.classList.toggle('hidden', isClosedHistoryActive || isSettingsActive);
   }
+  const marketInsightsPanel = document.getElementById('marketInsightsPanel');
+  if (marketInsightsPanel) {
+    marketInsightsPanel.classList.toggle('hidden', isCushionActive || isClosedHistoryActive || isSettingsActive);
+  }
 
   if (isCushionActive) {
     if (viewChanged) showDesk('cashCushionContainer');

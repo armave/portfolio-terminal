@@ -44,7 +44,7 @@ export async function fetchLivePriceFromProviders(symbol: string) {
 
       if (current !== null) {
         price = current;
-        sourceName = "Yahoo Proxy";
+        sourceName = "Yahoo";
         const change = resolveMarketSessionChange({
           currentPrice: current,
           regularPrice,

@@ -31,9 +31,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   if (hasChange && details.change !== undefined && details.changePercent !== undefined) {
     const sign = details.change >= 0 ? '+' : '−';
     parts.push(
-      `${sign}${formatUSD(Math.abs(details.change))} (${sign}${Math.abs(
-        details.changePercent
-      ).toFixed(2)}%)`
+      `${sign}${formatUSD(Math.abs(details.change))}`
     );
     colorClass =
       details.change > 0
@@ -144,7 +142,7 @@ export function CashCushionDesk({
                 <th class="w-[15%] py-2 px-2">Ticker</th>
                 <th class="w-[15%] py-2 px-2 text-right">Shares</th>
                 <th class="w-[20%] py-2 px-2 text-right">Price · Mkt</th>
-                <th class="w-[15%] py-2 px-2 text-right">Market Value</th>
+                <th class="w-[15%] py-2 px-2 text-right">Mkt Value</th>
                 <th class="w-[15%] py-2 px-2 text-right">Eq. Alloc</th>
                 <th class="w-[15%] py-2 px-2 text-center">Actions</th>
               </tr>
