@@ -144,22 +144,26 @@ export function MarketInsightsPanel({
       }
       return (
         <div class="space-y-2 mt-2">
-          {newsData.slice(0, 5).map((n: any, idx: number) => (
-            <a
-              key={n.id || n.url || idx}
-              href={n.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition"
-            >
-              <div class="text-[10px] text-cyan-400 mb-1">
-                {formatRelativeTime(n.datetime * 1000)} · {n.source || 'News'}
-              </div>
-              <div class="text-slate-200 text-xs font-semibold leading-snug">
-                {n.headline}
-              </div>
-            </a>
-          ))}
+          {newsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded news.</p>}
+          <p class="text-[10px] text-slate-500">{newsUpdatedAt ? `Updated ${formatRelativeTime(Math.floor(newsUpdatedAt / 1000) * 1000)}` : ''}{newsLoading ? ' · Refreshing…' : ''}</p>
+          <div class="h-[240px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Company news articles">
+            {newsData.map((n: any, idx: number) => (
+              <a
+                key={n.id || n.url || idx}
+                href={n.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="block bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition"
+              >
+                <div class="text-[10px] text-cyan-400 mb-1">
+                  {formatRelativeTime(n.datetime * 1000)} · {n.source || 'News'}
+                </div>
+                <div class="text-slate-200 text-xs font-semibold leading-snug">
+                  {n.headline}
+                </div>
+              </a>
+            ))}
+          </div>
         </div>
       );
     }
@@ -332,13 +336,16 @@ export function MarketInsightsPanel({
                 {ticker ? `· ${ticker}` : ''}
               </span>
             </h2>
-            <span
-              id="marketInsightsStatus"
-              class="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[9px] font-semibold text-slate-400"
-              role="status"
-            >
-              {loading ? 'Loading' : 'Ready'}
-            </span>
+            {loading && (
+              <span
+                id="marketInsightsStatus"
+                class="rounded-full border border-slate-700 bg-slate-900 px-2 py-0.5 text-[9px] font-semibold text-slate-400"
+                role="status"
+              >
+                Loading
+              </span>
+            )
+            }
           </div>
         </div>
       </div>
@@ -416,26 +423,30 @@ export function MarketInsightsPanel({
           <p class="py-2 text-xs text-slate-500">No recent Stocktwits messages found.</p>
         ) : (
           <div class="space-y-2">
-            {stocktwitsData.messages.slice(0, 5).map((message, idx) => {
-              const sentiment = message.sentiment?.basic ?? message.entities?.sentiment?.basic ?? null;
-              const sentimentClass = sentiment?.toLowerCase() === 'bullish'
-                ? 'text-emerald-400 border-emerald-900/70'
-                : sentiment?.toLowerCase() === 'bearish'
-                  ? 'text-rose-400 border-rose-900/70'
-                  : 'text-slate-400 border-slate-700';
-              const createdAt = Date.parse(message.created_at);
-              return (
-                <article key={message.id || idx} class="rounded border border-slate-800 bg-slate-900/50 p-2.5">
-                  <div class="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
-                    <span class="font-semibold text-slate-300">@{message.user?.username || message.user?.name || 'user'}</span>
-                    {Number.isFinite(createdAt) && <span>{formatRelativeTime(createdAt)}</span>}
-                    {sentiment && <span class={`rounded border px-1.5 py-0.5 font-bold uppercase ${sentimentClass}`}>{sentiment}</span>}
-                    {typeof message.likes?.total === 'number' && <span>♥ {message.likes.total}</span>}
-                  </div>
-                  <p class="whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-200">{message.body}</p>
-                </article>
-              );
-            })}
+            <p class="text-[10px] text-slate-500">{stocktwitsUpdatedAt ? `Updated ${formatRelativeTime(stocktwitsUpdatedAt)}` : ''}{stocktwitsLoading ? ' · Refreshing…' : ''}</p>
+            {stocktwitsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded messages.</p>}
+            <div class="h-[360px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Stocktwits messages">
+              {stocktwitsData.messages.map((message, idx) => {
+                const sentiment = message.sentiment?.basic ?? message.entities?.sentiment?.basic ?? null;
+                const sentimentClass = sentiment?.toLowerCase() === 'bullish'
+                  ? 'text-emerald-400 border-emerald-900/70'
+                  : sentiment?.toLowerCase() === 'bearish'
+                    ? 'text-rose-400 border-rose-900/70'
+                    : 'text-slate-400 border-slate-700';
+                const createdAt = Date.parse(message.created_at);
+                return (
+                  <article key={message.id || idx} class="rounded border border-slate-800 bg-slate-900/50 p-2.5">
+                    <div class="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+                      <span class="font-semibold text-slate-300">@{message.user?.username || message.user?.name || 'user'}</span>
+                      {Number.isFinite(createdAt) && <span>{formatRelativeTime(createdAt)}</span>}
+                      {sentiment && <span class={`rounded border px-1.5 py-0.5 font-bold uppercase ${sentimentClass}`}>{sentiment}</span>}
+                      {typeof message.likes?.total === 'number' && <span>♥ {message.likes.total}</span>}
+                    </div>
+                    <p class="whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-200">{message.body}</p>
+                  </article>
+                );
+              })}
+            </div>
           </div>
         )}
       </section>
