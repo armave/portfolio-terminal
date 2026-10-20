@@ -1,6 +1,6 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { fetchMarketNews, fetchYahooDeepStockData } from '../services/api';
+import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type StocktwitsStream } from '../services/api';
 
 export type InsightSection = 'news' | 'fundamentals' | 'earnings' | 'analysts';
 
@@ -30,6 +30,10 @@ export function MarketInsightsPanel({
   const [error, setError] = useState<string | null>(null);
   const [newsData, setNewsData] = useState<any[]>([]);
   const [stockData, setStockData] = useState<any>(null);
+  const [stocktwitsData, setStocktwitsData] = useState<StocktwitsStream | null>(null);
+  const [stocktwitsLoading, setStocktwitsLoading] = useState(false);
+  const [stocktwitsError, setStocktwitsError] = useState<string | null>(null);
+  const stocktwitsRequestIdRef = useRef(0);
   const requestIdRef = useRef(0);
   const lastRefreshTriggerRef = useRef(refreshTrigger);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -66,6 +70,31 @@ export function MarketInsightsPanel({
 
     fetchInsight();
   }, [ticker, isOpen, activeSection, refreshTrigger]);
+
+  useEffect(() => {
+    if (!isOpen || !ticker) return;
+
+    const currentRequestId = ++stocktwitsRequestIdRef.current;
+    setStocktwitsLoading(true);
+    setStocktwitsError(null);
+
+    fetchStocktwitsStream(ticker, refreshTrigger > 0)
+      .then((data) => {
+        if (currentRequestId !== stocktwitsRequestIdRef.current) return;
+        setStocktwitsData(data);
+      })
+      .catch((err: unknown) => {
+        if (currentRequestId !== stocktwitsRequestIdRef.current) return;
+        setStocktwitsError(err instanceof Error ? err.message : 'Unable to load Stocktwits.');
+      })
+      .finally(() => {
+        if (currentRequestId === stocktwitsRequestIdRef.current) setStocktwitsLoading(false);
+      });
+
+    return () => {
+      stocktwitsRequestIdRef.current += 1;
+    };
+  }, [ticker, isOpen, refreshTrigger]);
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -361,6 +390,56 @@ export function MarketInsightsPanel({
       >
         {renderContent()}
       </div>
+
+      <section class="mt-3 rounded-lg border border-slate-800/80 bg-slate-950/70 p-3" aria-labelledby="stocktwitsHeading">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 id="stocktwitsHeading" class="text-xs font-black uppercase tracking-wider text-slate-100">
+              Stocktwits <span class="text-cyan-300">{ticker ? `· ${ticker}` : ''}</span>
+            </h3>
+            <p class="mt-0.5 text-[10px] text-slate-500">Community stream · independent of the insight tabs</p>
+          </div>
+          {stocktwitsData?.streamUrl && (
+            <a href={stocktwitsData.streamUrl} target="_blank" rel="noopener noreferrer"
+              class="text-[10px] font-semibold text-cyan-400 hover:text-cyan-300">
+              Open Stocktwits ↗
+            </a>
+          )}
+        </div>
+
+        {!ticker ? (
+          <p class="py-2 text-xs text-slate-500">Select a ticker to view community posts.</p>
+        ) : stocktwitsLoading ? (
+          <p class="py-2 text-xs text-slate-500 font-mono animate-pulse">Loading Stocktwits stream…</p>
+        ) : stocktwitsError ? (
+          <p class="py-2 text-xs text-rose-400">Stocktwits unavailable: {stocktwitsError}</p>
+        ) : !stocktwitsData?.messages.length ? (
+          <p class="py-2 text-xs text-slate-500">No recent Stocktwits messages found.</p>
+        ) : (
+          <div class="space-y-2">
+            {stocktwitsData.messages.slice(0, 5).map((message, idx) => {
+              const sentiment = message.sentiment?.basic ?? message.entities?.sentiment?.basic ?? null;
+              const sentimentClass = sentiment?.toLowerCase() === 'bullish'
+                ? 'text-emerald-400 border-emerald-900/70'
+                : sentiment?.toLowerCase() === 'bearish'
+                  ? 'text-rose-400 border-rose-900/70'
+                  : 'text-slate-400 border-slate-700';
+              const createdAt = Date.parse(message.created_at);
+              return (
+                <article key={message.id || idx} class="rounded border border-slate-800 bg-slate-900/50 p-2.5">
+                  <div class="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+                    <span class="font-semibold text-slate-300">@{message.user?.username || message.user?.name || 'user'}</span>
+                    {Number.isFinite(createdAt) && <span>{formatRelativeTime(createdAt)}</span>}
+                    {sentiment && <span class={`rounded border px-1.5 py-0.5 font-bold uppercase ${sentimentClass}`}>{sentiment}</span>}
+                    {typeof message.likes?.total === 'number' && <span>♥ {message.likes.total}</span>}
+                  </div>
+                  <p class="whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-200">{message.body}</p>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
     </>
   );
 }
