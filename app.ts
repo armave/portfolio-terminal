@@ -590,9 +590,14 @@ function renderMarketInsightsComponent() {
 
 function getMarketInsightsTicker() {
   const currentView = state.activeView;
-  if (currentView && currentView !== 'COMBINED' && currentView !== 'CASH_CUSHION') {
-    return currentView;
-  }
+  // Desk routes are not stock symbols. Never send them to quote/insights APIs.
+  const isPositionView = Boolean(
+    currentView &&
+    !['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(currentView) &&
+    state.positions?.[currentView]
+  );
+  if (isPositionView) return currentView;
+
   const tickers = Object.keys(state.positions || {});
   const preferredTicker = state.selectedTicker;
   if (preferredTicker && state.positions?.[preferredTicker]) return preferredTicker;
