@@ -22,6 +22,8 @@ export type {
   BoardState
 };
 
+const NON_POSITION_VIEWS = new Set(['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
+
 export function getTotalPortfolioInvested(state?: BoardState | null): number {
   if (!state || typeof state !== 'object') return 0;
   return Object.values(state.positions || {}).reduce((acc, pos) => {
