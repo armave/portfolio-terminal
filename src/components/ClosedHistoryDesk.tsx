@@ -1,9 +1,20 @@
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
+import { formatRelativeTime } from '../utils/relativeTime';
 
 export function ClosedHistoryDesk() {
   const state = usePortfolio();
   const trades = (state.closedTrades || []).map((trade, index) => ({ trade, index }));
+  const realizedNet = trades.reduce((total, { trade }) =>
+    total + Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0), 0);
+  const totalFees = trades.reduce((total, { trade }) =>
+    total + Number((trade as any).feesAndCommissions ?? (trade as any).totalCommissions ?? (trade as any).commissions ?? 0), 0);
+  const winningTrades = trades.filter(({ trade }) =>
+    Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0) > 0).length;
+  const averageHoldingDays = trades.length
+    ? trades.reduce((total, { trade }) => total + Math.max(0, Number((trade as any).holdingDays ?? (trade as any).daysHeld ?? 0)), 0) / trades.length
+    : 0;
+  const winRate = trades.length ? (winningTrades / trades.length) * 100 : 0;
 
   const handleDelete = (index: number) => {
     const trade = state.closedTrades?.[index];
@@ -27,6 +38,28 @@ export function ClosedHistoryDesk() {
         </div>
         <div class="text-xs font-mono text-slate-500">
           {trades.length} realized exit{trades.length === 1 ? '' : 's'}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Realized net P&amp;L</div>
+          <div class={`mt-1 font-mono text-sm font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {realizedNet >= 0 ? '+' : '−'}${formatUSD(Math.abs(realizedNet))}
+          </div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Win rate</div>
+          <div class="mt-1 font-mono text-sm font-bold text-white">{winRate.toFixed(1)}%</div>
+          <div class="text-[10px] text-slate-500">{winningTrades} of {trades.length} exits profitable</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees &amp; commissions</div>
+          <div class="mt-1 font-mono text-sm font-bold text-slate-200">${formatUSD(totalFees)}</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Avg. holding time</div>
+          <div class="mt-1 font-mono text-sm font-bold text-slate-200">{averageHoldingDays.toFixed(1)} days</div>
         </div>
       </div>
 
@@ -118,7 +151,14 @@ export function ClosedHistoryDesk() {
                 return (
                   <tr key={(trade as any).id || index} class="hover:bg-slate-900/40 text-slate-300">
                     <td class="py-2.5 px-3 font-bold text-white">{(trade as any).ticker || '—'}</td>
-                    <td class="py-2.5 px-3 whitespace-nowrap">{dateText}</td>
+                    <td class="py-2.5 px-3 whitespace-nowrap">
+                      <span>{dateText}</span>
+                      {closedDate && !Number.isNaN(closedDate.getTime()) ? (
+                        <span class="mt-0.5 block text-[10px] text-slate-500" title={dateText}>
+                          {formatRelativeTime(closedDate)}
+                        </span>
+                      ) : null}
+                    </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap font-mono">
                       {(trade as any).shares} shares
                     </td>

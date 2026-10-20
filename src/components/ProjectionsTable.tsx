@@ -36,6 +36,11 @@ export function ProjectionsTable({
 
   return (
     <>
+      <tr>
+        <td colSpan={5} class="border-b border-slate-800/50 px-3 py-2 text-left text-[10px] leading-relaxed text-slate-500">
+          Estimate only: target-price P&amp;L and commissions are held constant; projected margin debt and interest change by date. Future price moves and broker-specific adjustments are not forecast.
+        </td>
+      </tr>
       {projectionItems.map((item, idx) => {
         const { date, daysFromToday, kind } = item;
         const dateFormatted = date.toLocaleDateString('en-US', {

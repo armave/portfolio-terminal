@@ -593,11 +593,31 @@ export class CommandDispatcher {
     });
 
     const avgExit = totalGross / totalShares;
-    const netBeforeMargin = totalGross - costBasis - (Number(pos.commBuy) || 0) - totalSellComm;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
 
     return {
       type: 'res',
-      text: `[${sym} Ladder Exit (${legs.join(' | ')})]: Avg Exit $${avgExit.toFixed(2)} | Sell Comms -$${totalSellComm.toFixed(2)} | Net (ex-margin): $${netBeforeMargin.toFixed(2)}`
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
     };
   }
 }

@@ -140,4 +140,41 @@ describe('terminal command validation and cash routing', () => {
     expect(result.sideEffect).toEqual({ type: 'FETCH_QUOTE', ticker: 'WDC' });
   });
 
+  it('shows ladder exits with estimated margin costs and net return', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      activeView: 'AAPL',
+      balance: -1000,
+      positions: {
+        ...state.positions,
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 10,
+          currentPrice: 100,
+          pt: 120,
+          commBuy: 2,
+          startDate: '2026-10-01',
+          tranches: [{ qty: 10, price: 100, date: '2026-10-01', buyCommission: 2 }]
+        }
+      },
+      brokerAssumptions: {
+        ...(state as any).brokerAssumptions,
+        annualRate: 0.15,
+        dayCountBasis: 365,
+        commPerShare: 0.012,
+        commVolumePct: 0.0012,
+        minCommOrder: 1.2
+      }
+    } as any);
+
+    const result = CommandDispatcher.execute('ladder AAPL 110, 120');
+
+    expect(result.type).toBe('res');
+    expect(result.text).toContain('[LADDER EXIT: AAPL]');
+    expect(result.text).toContain('Estimated margin interest to date');
+    expect(result.text).toContain('NET P&L after estimated costs');
+    expect(result.text).toContain('on cost basis');
+  });
+
 });
