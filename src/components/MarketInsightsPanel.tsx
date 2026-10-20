@@ -1,3 +1,4 @@
+import { formatRelativeTime } from '../utils/relativeTime';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchMarketNews, fetchYahooDeepStockData } from '../services/api';
 
@@ -123,7 +124,7 @@ export function MarketInsightsPanel({
               class="block bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition"
             >
               <div class="text-[10px] text-cyan-400 mb-1">
-                {new Date(n.datetime * 1000).toLocaleDateString()} · {n.source || 'News'}
+                {formatRelativeTime(n.datetime * 1000)} · {n.source || 'News'}
               </div>
               <div class="text-slate-200 text-xs font-semibold leading-snug">
                 {n.headline}
