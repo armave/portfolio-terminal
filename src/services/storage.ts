@@ -308,19 +308,35 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
   try {
     if (typeof localStorage === 'undefined' || !localStorage) return fallback;
 
-    const raw = localStorage.getItem(STORAGE_KEY_STATE)
-      ?? localStorage.getItem(STORAGE_KEY_LEGACY_STATE);
-    if (!raw || !raw.trim()) return fallback;
+    // Prefer the current schema, but do not let an empty or damaged current
+    // entry hide a recoverable legacy snapshot.
+    for (const key of [STORAGE_KEY_STATE, STORAGE_KEY_LEGACY_STATE]) {
+      let raw: string | null;
+      try {
+        raw = localStorage.getItem(key);
+      } catch (err) {
+        console.warn('Storage unavailable; using in-memory portfolio state:', err);
+        return fallback;
+      }
+      if (!raw || !raw.trim()) continue;
 
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? (() => { const persistedState = { ...parsed }; delete persistedState.gatewaySecret; return { ...fallback, ...persistedState }; })()
-        : fallback;
-    } catch (err) {
-      console.warn('Failed to parse saved state:', err);
-      return fallback;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        console.warn('Failed to parse saved state:', err);
+        continue;
+      }
+
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+
+      const persistedState = { ...(parsed as Record<string, unknown>) };
+      // Credentials must never be restored from portfolio snapshots.
+      delete persistedState.gatewaySecret;
+      return { ...fallback, ...persistedState };
     }
+
+    return fallback;
   } catch (err) {
     console.warn('Storage unavailable; using in-memory portfolio state:', err);
     return fallback;

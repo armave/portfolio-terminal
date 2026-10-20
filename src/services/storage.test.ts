@@ -166,6 +166,29 @@ describe('storage service', () => {
       expect(loaded.balance).toBe(3400);
     });
 
+    it('recovers the legacy snapshot when the current snapshot contains invalid JSON', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      storageMap.set('margin_portfolio_state_dynamic_v2', '{"broken');
+      storageMap.set('portfolio_state', JSON.stringify({ activeView: 'MSFT', balance: -250 }));
+
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toEqual({
+        activeView: 'MSFT',
+        balance: -250
+      });
+      expect(warnSpy).toHaveBeenCalledWith('Failed to parse saved state:', expect.any(SyntaxError));
+      warnSpy.mockRestore();
+    });
+
+    it('recovers the legacy snapshot when the current snapshot is not an object', () => {
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(['invalid-shape']));
+      storageMap.set('portfolio_state', JSON.stringify({ activeView: 'AAPL', balance: 125 }));
+
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toEqual({
+        activeView: 'AAPL',
+        balance: 125
+      });
+    });
+
     it('returns fallback state when localStorage is undefined', () => {
       vi.stubGlobal('localStorage', undefined);
       const fallback = { activeView: 'COMBINED' };
