@@ -527,12 +527,12 @@ export class PortfolioStore {
       let soldCostBasis = 0;
       let buyCommAllocated = 0;
       const updatedTranches: TrancheItem[] = [];
-      const hasPerTrancheCommissions = origTranches.length > 0 && origTranches.every(
-        (tranche) => Number.isFinite(Number((tranche as any).buyCommission))
-      );
       const origTranches = pos.tranches || [
         { qty: pos.shares, price: pos.currentPrice, date: pos.startDate }
       ];
+      const hasPerTrancheCommissions = origTranches.length > 0 && origTranches.every(
+        (tranche) => Number.isFinite(Number((tranche as any).buyCommission))
+      );
       const earliestBuyDate =
         origTranches[0]?.date || pos.startDate || state.startDate || todayIso();
 
