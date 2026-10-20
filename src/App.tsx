@@ -24,6 +24,8 @@ export function App({ onToggleMarketInsights }: AppProps) {
           </div>
         </div>
 
+        {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
+        <div id="tradingWorkspaceGrid" class="trading-workspace-grid">
         {/* Main Board Content */}
         <div id="mainDeskContainer" class="space-y-4">
           <div
@@ -97,11 +99,12 @@ export function App({ onToggleMarketInsights }: AppProps) {
         {/* Keep the command console available on both Margin and Cash desks. */}
         <div
           id="tradingConsoleCard"
-          class="trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 max-w-6xl mx-auto w-full"
+          class="trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full"
         ></div>
 
         {/* Cash Cushion Management Panel */}
         <div id="cashCushionContainer" class="hidden space-y-3"></div>
+        </div>
       </div>
 
       {/* Closed Trade History */}
