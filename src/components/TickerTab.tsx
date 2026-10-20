@@ -53,6 +53,7 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
           id="refreshQuotesButton"
           type="button"
           title="Update quotes"
+          aria-label="Refresh live quotes"
           onClick={handleRefreshQuotes}
           class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
         >
@@ -66,6 +67,7 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
           data-nav-tab="true"
           onKeyDown={handleTabKeyDown}
           onClick={() => onSetActiveView?.('COMBINED')}
+          aria-pressed={isMarginDeskActive}
           class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
             ? 'bg-emerald-600 text-black'
             : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
@@ -79,6 +81,7 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
         <button
           type="button"
           onClick={() => onSetActiveView?.(tickers[0])}
+          aria-pressed={state.activeView === tickers[0]}
           class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0] && isMarginDeskActive
             ? 'bg-emerald-600 text-black'
             : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
@@ -95,6 +98,7 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
           <button
             type="button"
             onClick={() => onSetActiveView?.('COMBINED')}
+            aria-pressed={state.activeView === 'COMBINED'}
             class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === 'COMBINED' && isMarginDeskActive
               ? 'bg-emerald-600 text-black'
               : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
@@ -110,6 +114,7 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
               key={t}
               type="button"
               onClick={() => onSetActiveView?.(t)}
+              aria-pressed={state.activeView === t}
               class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === t && isMarginDeskActive
                 ? 'bg-emerald-600 text-black'
                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
@@ -126,6 +131,7 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
       <button
         type="button"
         onClick={() => onSetActiveView?.('CASH_CUSHION')}
+        aria-pressed={isCushionActive}
         class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
           ? 'bg-cyan-500 text-black'
           : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
@@ -145,6 +151,7 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
       <button
         type="button"
         onClick={() => onSetActiveView?.('CLOSED_HISTORY')}
+        aria-pressed={isClosedHistoryActive}
         class={`px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive
           ? 'bg-purple-500 text-black'
           : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
@@ -158,6 +165,7 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
       <button
         id="settingsBtn"
         type="button"
+        aria-pressed={isSettingsActive}
         onClick={() => onSetActiveView?.('SETTINGS')}
         class={
           isSettingsActive

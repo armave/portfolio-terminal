@@ -239,6 +239,7 @@ export function SettingsDesk({
             type="button"
             onClick={onResetToBlankState}
             title="Clear all local data and return to blank slate"
+            aria-label="Reset all local portfolio data"
             class="h-8 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
           >
             Reset
@@ -246,8 +247,8 @@ export function SettingsDesk({
         </div>
       </div>
 
-      <details class="space-y-4" open>
-        <summary class="cursor-pointer text-xs font-bold text-slate-300 hover:text-cyan-300">
+      <details class="space-y-3">
+        <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
           Broker Rules
         </summary>
         <div class="mt-3">
@@ -255,7 +256,7 @@ export function SettingsDesk({
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
               Margin and commission rules (USD)
             </p>
-            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
               <label class="flex flex-col gap-1 text-[10px] text-slate-400">
                 Annual margin rate (%)
                 <input

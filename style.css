@@ -840,3 +840,48 @@ summary:hover {
 .desktop-workspace-grid #projectionTableContainer table {
   margin-inline: auto;
 }
+
+
+/* Shared keyboard focus treatment and compact settings controls (UI/UX PR 4). */
+:where(button, input, select, textarea, summary, a, [tabindex]):focus-visible {
+  outline: 2px solid rgb(34 211 238 / 0.95);
+  outline-offset: 2px;
+}
+
+#settings .terminal-toolbar {
+  align-items: stretch;
+}
+
+#settings .terminal-toolbar > div {
+  min-width: 0;
+}
+
+#settings details > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgb(51 65 85 / 0.8);
+  border-radius: 0.5rem;
+  background: rgb(15 23 42 / 0.45);
+}
+
+#settings details > summary:focus-visible {
+  outline-offset: 3px;
+}
+
+#settings #brokerRulesForm input,
+#settings #brokerRulesForm select {
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 639px) {
+  #settings .terminal-toolbar {
+    gap: 0.75rem;
+  }
+
+  #settings #brokerRulesForm .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
