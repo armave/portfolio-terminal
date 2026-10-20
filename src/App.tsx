@@ -69,7 +69,7 @@ export function App({ onToggleMarketInsights }: AppProps) {
             aria-label="Market insights"
           ></section>
 
-          <div class="desktop-workspace-grid grid grid-cols-1 lg:grid-cols-[3fr_7fr] gap-4 lg:gap-6 items-start">
+          <div class="desktop-workspace-grid grid grid-cols-1 lg:grid-cols-1 gap-4 lg:gap-6 items-start">
             {/* Projection Table */}
             <div
               class="table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none lg:mx-0"
@@ -91,14 +91,14 @@ export function App({ onToggleMarketInsights }: AppProps) {
                 ></tbody>
               </table>
             </div>
-
-            {/* Conversational Terminal Box */}
-            <div
-              id="tradingConsoleCard"
-              class="trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 max-w-2xl mx-auto w-full lg:max-w-none lg:mx-0"
-            ></div>
           </div>
         </div>
+
+        {/* Keep the command console available on both Margin and Cash desks. */}
+        <div
+          id="tradingConsoleCard"
+          class="trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 max-w-6xl mx-auto w-full"
+        ></div>
 
         {/* Cash Cushion Management Panel */}
         <div id="cashCushionContainer" class="hidden space-y-3"></div>
