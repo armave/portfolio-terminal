@@ -43,6 +43,10 @@ export function MarketInsightsPanel({
   const lastRefreshTriggerRef = useRef(refreshTrigger);
   const lastNewsRefreshTriggerRef = useRef(refreshTrigger);
   const lastStocktwitsRefreshTriggerRef = useRef(refreshTrigger);
+  const newsTickerRef = useRef(ticker);
+  const stocktwitsTickerRef = useRef(ticker);
+  const newsHasLoadedRef = useRef(false);
+  const stocktwitsHasLoadedRef = useRef(false);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Keep the detailed fundamentals/earnings/analyst request separate from news.
@@ -85,15 +89,23 @@ export function MarketInsightsPanel({
 
     const forceOnStart = refreshTrigger !== lastNewsRefreshTriggerRef.current;
     lastNewsRefreshTriggerRef.current = refreshTrigger;
+    if (newsTickerRef.current !== ticker) {
+      newsTickerRef.current = ticker;
+      newsHasLoadedRef.current = false;
+      setNewsData([]);
+      setNewsUpdatedAt(null);
+      setNewsError(null);
+    }
     let disposed = false;
 
     const refreshNews = async (force: boolean) => {
       const currentRequestId = ++newsRequestIdRef.current;
-      if (newsData.length === 0) setNewsLoading(true);
+      if (!newsHasLoadedRef.current) setNewsLoading(true);
       try {
         const news = await fetchMarketNews(ticker, force);
         if (disposed || currentRequestId !== newsRequestIdRef.current) return;
         setNewsData(Array.isArray(news) ? news : []);
+        newsHasLoadedRef.current = true;
         setNewsUpdatedAt(Date.now());
         setNewsError(null);
       } catch (err: any) {
@@ -109,7 +121,8 @@ export function MarketInsightsPanel({
       if (!document.hidden) void refreshNews(true);
     }, 5 * 60 * 1000);
     const onVisibilityChange = () => {
-      if (!document.hidden) void refreshNews(true);
+      // Let the service cache decide whether the feed is stale on return.
+      if (!document.hidden) void refreshNews(false);
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
@@ -127,15 +140,23 @@ export function MarketInsightsPanel({
 
     const forceOnStart = refreshTrigger !== lastStocktwitsRefreshTriggerRef.current;
     lastStocktwitsRefreshTriggerRef.current = refreshTrigger;
+    if (stocktwitsTickerRef.current !== ticker) {
+      stocktwitsTickerRef.current = ticker;
+      stocktwitsHasLoadedRef.current = false;
+      setStocktwitsData(null);
+      setStocktwitsUpdatedAt(null);
+      setStocktwitsError(null);
+    }
     let disposed = false;
 
     const refreshStocktwits = async (force: boolean) => {
       const currentRequestId = ++stocktwitsRequestIdRef.current;
-      if (!stocktwitsData?.messages.length) setStocktwitsLoading(true);
+      if (!stocktwitsHasLoadedRef.current) setStocktwitsLoading(true);
       try {
         const data = await fetchStocktwitsStream(ticker, force);
         if (disposed || currentRequestId !== stocktwitsRequestIdRef.current) return;
         setStocktwitsData(data);
+        stocktwitsHasLoadedRef.current = true;
         setStocktwitsUpdatedAt(Date.now());
         setStocktwitsError(null);
       } catch (err: unknown) {
@@ -151,7 +172,8 @@ export function MarketInsightsPanel({
       if (!document.hidden) void refreshStocktwits(true);
     }, 90 * 1000);
     const onVisibilityChange = () => {
-      if (!document.hidden) void refreshStocktwits(true);
+      // Reuse a still-fresh cached response instead of bypassing cache on every tab switch.
+      if (!document.hidden) void refreshStocktwits(false);
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
