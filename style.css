@@ -595,12 +595,34 @@ summary:hover {
   background: var(--bg-surface-subtle);
 }
 
-.table-scroll-wrapper table,
-#projectionTableContainer table {
+.table-scroll-wrapper table {
   min-width: max-content;
-  max-width: 550px;
   width: 100%;
   margin: 0 auto;
+}
+
+/* The projection table has five financial columns; allow the wrapper to scroll
+   rather than clipping columns to the old 550px table cap. */
+#projectionTableContainer {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+#projectionTableContainer table {
+  width: 100%;
+  min-width: 680px;
+  max-width: none;
+  margin: 0;
+  table-layout: auto;
+}
+
+#projectionTableContainer tbody td[colspan="5"] {
+  white-space: normal;
+  min-width: 0;
+  max-width: 680px;
+  line-height: 1.4;
 }
 
 .table-scroll-wrapper th,
@@ -787,6 +809,10 @@ summary:hover {
 #projectionTableContainer table th,
 #projectionTableContainer table td {
   padding: 0.375rem 0.5rem;
+}
+
+#projectionTableContainer table th:not(:first-child),
+#projectionTableContainer table td:not(:first-child) {
   white-space: nowrap;
 }
 
@@ -822,6 +848,10 @@ summary:hover {
   #projectionTableContainer table th,
   #projectionTableContainer table td {
     padding: 0.375rem;
+  }
+
+  #projectionTableContainer table {
+    min-width: 640px;
   }
 }
 
