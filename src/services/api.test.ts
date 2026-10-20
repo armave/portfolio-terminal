@@ -10,6 +10,7 @@ import {
   validateGatewaySecret,
   fetchYahooDeepStockData,
   fetchMarketNews,
+  fetchStocktwitsStream,
   rememberYahooDeepStockData,
   clearYahooDeepStockDataCache
 } from './api';
