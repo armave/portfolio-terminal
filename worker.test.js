@@ -175,6 +175,16 @@ describe('news proxy validation', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('limits successful news responses to the five items displayed by the frontend', async () => {
+    const news = Array.from({ length: 100 }, (_, index) => ({ headline: `News ${index + 1}` }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(news), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    })));
+    const response = await worker.fetch(request(), { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'provider-key' });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(news.slice(0, 5));
+  });
+
   it('rejects a successful but malformed Finnhub response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ unexpected: true }), { status: 200 })));
     const response = await worker.fetch(request(), { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'provider-key' });
