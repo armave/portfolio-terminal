@@ -39,29 +39,6 @@ export function getCashCushionTotal(state?: BoardState | null): number {
   return cashVal + stocksVal;
 }
 
-export function formatQuoteMetadata(
-  holding: { quoteUpdatedAt?: number; quoteSource?: string },
-  refreshIntervalMs = 60000
-): string {
-  if (!holding.quoteUpdatedAt) return holding.quoteSource || 'Not fetched';
-
-  const updatedAt = Number(holding.quoteUpdatedAt);
-  if (!Number.isFinite(updatedAt)) return holding?.quoteSource || 'Not fetched';
-  const time = new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const isStale = Date.now() - updatedAt > Math.max(5 * 60 * 1000, refreshIntervalMs * 2);
-  return `${isStale ? 'Stale · ' : ''} ${holding.quoteSource ? holding.quoteSource + ' · ' : ''} ${time}`;
-}
-
-export function formatRiskTrigger(triggerValue: number, currentValue: number): string {
-  if (currentValue <= 0) return `Position value ${formatUSD(triggerValue)}`;
-
-  const bufferPct = ((currentValue - triggerValue) / currentValue) * 100;
-  if (bufferPct < 0) {
-    return `Position value ${formatUSD(triggerValue)} (already${Math.abs(bufferPct).toFixed(1)}% below trigger)`;
-  }
-  return `Position value ${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
-}
-
 function resolveActiveView(state: BoardState): string {
   let currentView = state.activeView;
   if (!currentView || (!NON_POSITION_VIEWS.has(currentView) && !state.positions?.[currentView])) {
