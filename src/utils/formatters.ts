@@ -1,5 +1,4 @@
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const NON_POSITION_VIEWS = new Set(['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
 
 export function formatTrancheDate(dateStr?: string | number | null): string {
   if (!dateStr || typeof dateStr !== 'string') return 'New';
@@ -41,4 +40,27 @@ export function formatTrancheDate(dateStr?: string | number | null): string {
 export function formatUSD(val: unknown): string {
   const num = Number(val) || 0;
   return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export function formatQuoteMetadata(
+  holding: { quoteUpdatedAt?: number; quoteSource?: string },
+  refreshIntervalMs = 60000
+): string {
+  if (!holding.quoteUpdatedAt) return holding.quoteSource || 'Not fetched';
+
+  const updatedAt = Number(holding.quoteUpdatedAt);
+  if (!Number.isFinite(updatedAt)) return holding?.quoteSource || 'Not fetched';
+  const time = new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const isStale = Date.now() - updatedAt > Math.max(5 * 60 * 1000, refreshIntervalMs * 2);
+  return `${isStale ? 'Stale · ' : ''} ${holding.quoteSource ? holding.quoteSource + ' · ' : ''} ${time}`;
+}
+
+export function formatRiskTrigger(triggerValue: number, currentValue: number): string {
+  if (currentValue <= 0) return `Position value ${formatUSD(triggerValue)}`;
+
+  const bufferPct = ((currentValue - triggerValue) / currentValue) * 100;
+  if (bufferPct < 0) {
+    return `Position value ${formatUSD(triggerValue)} (already${Math.abs(bufferPct).toFixed(1)}% below trigger)`;
+  }
+  return `Position value ${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
 }
