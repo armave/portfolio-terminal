@@ -1,5 +1,5 @@
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
-import { formatUSD } from '../ui/renderBoard';
+import { formatUSD } from '../utils/formatters';
 
 export function ClosedHistoryDesk() {
   const state = usePortfolio();
