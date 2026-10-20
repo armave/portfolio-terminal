@@ -313,11 +313,17 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const daysEl = document.getElementById('daysToBreakeven');
   if (viewChanged) hideAllDesks();
 
+  const consoleCard = document.getElementById('tradingConsoleCard');
+  if (consoleCard) {
+    consoleCard.classList.toggle('hidden', isClosedHistoryActive || isSettingsActive);
+  }
+
   if (isCushionActive) {
     if (viewChanged) showDesk('cashCushionContainer');
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('CASH_CUSHION');
     renderCashCushion(state, { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs });
+    onRenderConsoleQuickActions();
     return;
   }
 
@@ -342,6 +348,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (viewChanged) showDesk('mainDeskContainer');
+  if (consoleCard) consoleCard.classList.remove('hidden');
   if (daysEl) daysEl.classList.remove('hidden');
   onUpdateLastDeskView(currentView);
 
