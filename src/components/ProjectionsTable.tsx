@@ -36,11 +36,6 @@ export function ProjectionsTable({
 
   return (
     <>
-      <tr>
-        <td colSpan={5} class="border-b border-slate-800/50 px-3 py-2 text-left text-[10px] leading-relaxed text-slate-500">
-          Estimate only: target-price P&amp;L and commissions are held constant; projected margin debt and interest change by date. Future price moves and broker-specific adjustments are not forecast.
-        </td>
-      </tr>
       {projectionItems.map((item, idx) => {
         const { date, daysFromToday, kind } = item;
         const dateFormatted = date.toLocaleDateString('en-US', {
@@ -66,7 +61,7 @@ export function ProjectionsTable({
         // Calculate exact projected debt and derive the interest to prevent rounding mismatches
         const b_t = calculateProjectedDebt(debtToUse, dailyRate, daysFromToday);
         const additionalAccrual = b_t - Math.abs(debtToUse);
-        
+
         const m_d = marginChargedToUse + additionalAccrual;
         const fee_c = calculateAccruedFees(totalComms, marginChargedToUse, additionalAccrual);
         const net_p = gross - fee_c;

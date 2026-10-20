@@ -64,9 +64,9 @@ export function App({ }: AppProps) {
                 <thead>
                   <tr class="border-b border-slate-800 text-slate-400">
                     <th class="py-2 px-3 text-left">Date</th>
-                    <th class="py-2 px-3 text-right">P&amp;L (Net)</th>
-                    <th class="py-2 px-3 text-right">Fee&amp;Com</th>
-                    <th class="py-2 px-3 text-right">Margin Fee</th>
+                    <th class="py-2 px-3 text-right">Net</th>
+                    <th class="py-2 px-3 text-right">F&amp;C</th>
+                    <th class="py-2 px-3 text-right">M Fee</th>
                     <th class="py-2 px-3 text-right">Balance</th>
                   </tr>
                 </thead>
