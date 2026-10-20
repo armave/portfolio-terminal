@@ -473,6 +473,24 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
   });
 
+  it('keeps the newest quote request for positions and cash holdings when responses finish out of order', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    store.addCashStock('MSFT', 3, 200);
+
+    store.updateLiveQuote('AAPL', { price: 110, requestStartedAt: 200, quoteSource: 'Provider B' });
+    store.updateLiveQuote('AAPL', { price: 105, requestStartedAt: 100, quoteSource: 'Provider A' });
+    expect(store.getState().positions.AAPL.currentPrice).toBe(110);
+    expect(store.getState().positions.AAPL.quoteSource).toBe('Provider B');
+
+    store.updateLiveQuote('MSFT', { price: 220, requestStartedAt: 200, quoteSource: 'Provider B' });
+    store.updateLiveQuote('MSFT', { price: 205, requestStartedAt: 100, quoteSource: 'Provider A' });
+    expect(store.getState().cashStocks?.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(220);
+    expect(store.getState().cashCushion.holdings.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(220);
+  });
+
   it('persists buys, partial sells, and full exits without resurrecting closed positions on reload', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
