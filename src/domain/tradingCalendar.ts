@@ -216,24 +216,5 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
       label: `(+${daysFromToday}d)`
     });
   }
-  // A future entry can coincide with another milestone (for example, an entry
-  // dated on Monday while today is Sunday). Keep one row per calendar date and
-  // preserve the meaning of every milestone in its combined label.
-  const uniqueProjections: ProjectionDate[] = [];
-  const projectionByDate = new Map<string, ProjectionDate>();
-  for (const projection of projections) {
-    const key = dateKey(projection.date);
-    const existing = projectionByDate.get(key);
-    if (!existing) {
-      projectionByDate.set(key, projection);
-      uniqueProjections.push(projection);
-      continue;
-    }
-
-    const labels = [existing.label, projection.label]
-      .filter((label): label is string => Boolean(label));
-    existing.label = [...new Set(labels)].join(' · ');
-  }
-
-  return uniqueProjections;
+  return projections;
 }
