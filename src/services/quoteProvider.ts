@@ -1,7 +1,7 @@
 import { fetchYahooStockData, fetchFallbackQuote } from './api';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 
-async function fetchFallbackPrice(symbol: string) {
+export async function fetchFallbackPrice(symbol: string) {
   for (const provider of ['finnhub', 'twelvedata'] as const) {
     try {
       const fallback = await fetchFallbackQuote(symbol, provider);
