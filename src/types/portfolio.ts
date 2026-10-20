@@ -60,6 +60,8 @@ interface CashStock {
   ticker: string;
   shares: number;
   currentPrice?: number;
+  /** Local request start time used to reject out-of-order quote responses. */
+  quoteRequestStartedAt?: number;
 }
 
 interface CashStockHolding {
