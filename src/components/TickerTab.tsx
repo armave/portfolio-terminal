@@ -1,4 +1,5 @@
-import { BoardState, getCashCushionTotal } from '../ui/renderBoard';
+import type { BoardState } from '../types/portfolio';
+import { getCashCushionTotal } from '../domain/portfolioSelectors';
 
 export interface TickerTabsProps {
   state: BoardState;
