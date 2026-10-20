@@ -78,6 +78,18 @@ describe('US equity trading calendar', () => {
     expect(projections.filter(({ kind }) => kind === 'entry')).toHaveLength(0);
   });
 
+  it('merges entry and next-trading-day milestones that land on the same date', () => {
+    const projections = getUsEquityProjectionDates(localDate(2026, 10, 11), '2026-10-12');
+    const mondayRows = projections.filter(({ date }) => dateLabel(date) === '2026-10-12');
+
+    expect(mondayRows).toHaveLength(1);
+    expect(mondayRows[0]).toMatchObject({
+      kind: 'entry',
+      daysFromToday: 1,
+      label: 'Entry · (NTD · +1d)'
+    });
+  });
+
   it('ignores invalid entry dates in projections', () => {
     const projections = getUsEquityProjectionDates(localDate(2026, 10, 6), 'invalid-date');
     expect(projections.some(p => p.kind === 'entry')).toBe(false);
