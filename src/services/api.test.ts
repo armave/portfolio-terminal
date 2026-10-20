@@ -10,6 +10,7 @@ import {
   validateGatewaySecret,
   fetchYahooDeepStockData,
   fetchMarketNews,
+  fetchStocktwitsStream,
   rememberYahooDeepStockData,
   clearYahooDeepStockDataCache
 } from './api';
@@ -375,6 +376,47 @@ describe('market news request deduplication', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     await expect(fetchMarketNews('AAPL', true)).resolves.toEqual([{ headline: 'Fresh result' }]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('Stocktwits stream cache and refresh', () => {
+  afterEach(() => {
+    clearYahooDeepStockDataCache();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('caches normalized symbols and supports a forced refresh', async () => {
+    clearYahooDeepStockDataCache();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        json: async () => ({ messages: [{ id: 1, body: 'First stream' }] })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        json: async () => ({ messages: [{ id: 2, body: 'Fresh stream' }] })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchStocktwitsStream('aapl')).resolves.toMatchObject({
+      symbol: 'AAPL',
+      messages: [{ id: 1, body: 'First stream' }]
+    });
+    await expect(fetchStocktwitsStream(' AAPL ')).resolves.toMatchObject({
+      symbol: 'AAPL',
+      messages: [{ id: 1, body: 'First stream' }]
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await expect(fetchStocktwitsStream('AAPL', true)).resolves.toMatchObject({
+      symbol: 'AAPL',
+      messages: [{ id: 2, body: 'Fresh stream' }]
+    });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
