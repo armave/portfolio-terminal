@@ -51,7 +51,7 @@ export function ProjectionsTable({
                 <span class="text-[10px] font-medium text-slate-400">Entry</span>
                 <span class="text-[10px] text-slate-500 font-mono">{dateFormatted}</span>
               </td>
-              <td colSpan={4} class="py-1.5 px-3 text-[10px] italic text-left">
+              <td colSpan={4} class="py-1.5 px-3 text-[10px] italic text-center">
                 Position opened · projection values start today
               </td>
             </tr>

@@ -583,6 +583,8 @@ summary:hover {
 
 .table-scroll-wrapper,
 #projectionTableContainer {
+  margin-inline: auto;
+  text-align: center;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   max-width: 960px;
@@ -821,4 +823,20 @@ summary:hover {
   #projectionTableContainer table td {
     padding: 0.375rem;
   }
+}
+
+
+/* Center the projection table wrapper within the desktop workspace grid. */
+.desktop-workspace-grid {
+  justify-items: center;
+}
+
+.desktop-workspace-grid > #projectionTableContainer {
+  justify-self: center;
+  width: 100%;
+  max-width: 100%;
+}
+
+.desktop-workspace-grid #projectionTableContainer table {
+  margin-inline: auto;
 }

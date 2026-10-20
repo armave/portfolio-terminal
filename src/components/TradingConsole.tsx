@@ -57,17 +57,35 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   const handleKeyDown = (e: KeyboardEvent) => {
     const input = e.currentTarget as HTMLInputElement;
     if (e.key === 'Tab') {
-      const value = input.value;
-      const tokens = [...value.matchAll(/\[[^\]]+\]/g)];
+      const tokens = [...input.value.matchAll(/\[[^\]]+\]/g)].map((match) => ({
+        text: match[0],
+        start: match.index ?? 0,
+        end: (match.index ?? 0) + match[0].length
+      }));
       if (tokens.length > 0) {
         e.preventDefault();
-        const cursor = input.selectionEnd ?? input.selectionStart ?? 0;
-        const next = e.shiftKey
-          ? [...tokens].reverse().find((match) => (match.index ?? 0) < cursor) ?? tokens[tokens.length - 1]
-          : tokens.find((match) => (match.index ?? 0) >= cursor) ?? tokens[0];
-        const start = next.index ?? 0;
+        const selectionStart = input.selectionStart ?? 0;
+        const selectionEnd = input.selectionEnd ?? selectionStart;
+        const selectedIndex = tokens.findIndex((token) =>
+          selectionStart === token.start && selectionEnd === token.end
+        );
+        const cursor = selectionEnd;
+        const currentIndex = selectedIndex >= 0
+          ? selectedIndex
+          : tokens.findIndex((token) => cursor >= token.start && cursor <= token.end);
+        let targetIndex: number;
+        if (currentIndex >= 0) {
+          targetIndex = (currentIndex + (e.shiftKey ? -1 : 1) + tokens.length) % tokens.length;
+        } else if (e.shiftKey) {
+          targetIndex = [...tokens].map((token, index) => ({ token, index }))
+            .filter(({ token }) => token.start < cursor).at(-1)?.index ?? tokens.length - 1;
+        } else {
+          targetIndex = tokens.findIndex((token) => token.start >= cursor);
+          if (targetIndex < 0) targetIndex = 0;
+        }
+        const target = tokens[targetIndex];
         input.focus();
-        input.setSelectionRange(start, start + next[0].length);
+        input.setSelectionRange(target.start, target.end);
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
