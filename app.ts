@@ -1838,17 +1838,12 @@ function showStartupFailure() {
 }
 
 async function continueStartupOffline() {
-  appInitialized = false;
+  appInitialized = true;
   state.gatewaySecret = '';
   try {
-    loadTradernetRules();
-    state = loadSavedState(state);
-    applyOvernightRollover();
-    syncStore();
-    switchView(state.activeView);
-    hideStartupLoading();
-    showAuthContainer();
+    await startApp('');
   } catch (error) {
+    appInitialized = false;
     console.error('[Startup Error]: Could not continue offline.', error);
     showStartupFailure();
   }
