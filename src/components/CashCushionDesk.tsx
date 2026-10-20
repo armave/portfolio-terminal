@@ -144,7 +144,7 @@ export function CashCushionDesk({
                 <th class="w-[15%] py-2 px-2">Ticker</th>
                 <th class="w-[15%] py-2 px-2 text-right">Shares</th>
                 <th class="w-[20%] py-2 px-2 text-right">Price · Mkt</th>
-                <th class="w-[15%] py-2 px-2 text-right">Market Value</th>
+                <th class="w-[15%] py-2 px-2 text-right">Mkt Value</th>
                 <th class="w-[15%] py-2 px-2 text-right">Eq. Alloc</th>
                 <th class="w-[15%] py-2 px-2 text-center">Actions</th>
               </tr>
