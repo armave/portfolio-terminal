@@ -84,15 +84,17 @@ export function App({ onToggleMarketInsights }: AppProps) {
           <div id="cashCushionContainer" class="hidden space-y-3"></div>
           
           {/* Keep the command console available on both Margin and Cash desks. */}
-          <section
-            id="marketInsightsPanel"
-            class="hidden market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10"
-            aria-label="Market insights"
-          ></section>
-          <div
-            id="tradingConsoleCard"
-            class="trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full"
-          ></div>
+          <div id="tradingTerminalColumn" class="trading-terminal-column">
+            <section
+              id="marketInsightsPanel"
+              class="market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10"
+              aria-label="Market insights"
+            ></section>
+            <div
+              id="tradingConsoleCard"
+              class="trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full"
+            ></div>
+          </div>
 
         </div>
       </div>
