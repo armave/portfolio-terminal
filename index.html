@@ -12,6 +12,15 @@
 </head>
 
 <body class="bg-slate-950 text-slate-100 antialiased selection:bg-cyan-900 selection:text-cyan-100">
+  <div id="startup-loading" class="startup-loading" role="status" aria-live="polite">
+    <div class="startup-loading__content">
+      <div class="startup-loading__mark" aria-hidden="true">PT</div>
+      <div class="startup-loading__title">PORTFOLIO TERMINAL</div>
+      <div class="startup-loading__message">Initializing your portfolio…</div>
+      <div class="startup-loading__track" aria-hidden="true"><span></span></div>
+      <div class="startup-loading__hint">Restoring saved data and market connections</div>
+    </div>
+  </div>
   <div id="auth-container" style="display: none" class="auth-overlay"></div>
   <div id="toastContainer" class="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
   <div id="root" class="max-w-6xl mx-auto"></div>
