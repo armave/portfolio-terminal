@@ -1,3 +1,4 @@
+import { formatRelativeTime } from '../utils/relativeTime';
 import type { BoardState, BrokerRules, QuoteDetails } from '../types/portfolio';
 import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
@@ -374,7 +375,7 @@ export function SummaryMetricsGrid({
         >
           {dailyQuoteMeta?.text || ''}
           <span id="boardQuoteMeta" class="text-[10px] text-slate-500">
-            {' · ' + quoteMetaText}
+            {' · ' + quoteMetaText}{pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}
           </span>
         </span>
       </div>
