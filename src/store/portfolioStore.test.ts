@@ -353,6 +353,34 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().cashBalance).toBe(0);
   });
 
+  it('uses free cash before borrowing and applies sale proceeds to debt before cash across FIFO tranches', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({ commPerShare: 0, commVolumePct: 0, minCommOrder: 0, annualRate: 0, annualBorrowRate: 0 });
+    store.setCashBalance(250);
+
+    store.buyStock('AAPL', 1, 100, '2026-10-14');
+    expect(store.getState().cashCushion.freeCash).toBe(150);
+    expect(store.getState().balance).toBe(0);
+
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    expect(store.getState().cashCushion.freeCash).toBe(0);
+    expect(store.getState().balance).toBe(-50);
+    expect(store.getState().positions.AAPL.tranches).toHaveLength(2);
+
+    store.sellStock('AAPL', 1, 120, '2026-10-16');
+    expect(store.getState().positions.AAPL.tranches).toEqual([
+      expect.objectContaining({ qty: 2, price: 100, date: '2026-10-15' })
+    ]);
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().cashCushion.freeCash).toBe(70);
+
+    store.sellStock('AAPL', 'ALL', 120, '2026-10-17');
+    expect(store.getState().positions.AAPL).toBeUndefined();
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().cashCushion.freeCash).toBe(310);
+  });
+
   it('credits sale proceeds without deducting already-accrued margin interest twice', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
