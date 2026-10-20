@@ -18,6 +18,66 @@ describe('normalizeMarketState', () => {
 });
 
 
+describe('stocktwits proxy', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns a bounded public symbol stream through the authenticated proxy', async () => {
+    const upstreamMessages = Array.from({ length: 25 }, (_, id) => ({
+      id,
+      body: `Message ${id}`,
+      created_at: '2026-10-20T12:00:00Z'
+    }));
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      symbol: { symbol: 'AAPL' },
+      messages: upstreamMessages
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(
+      new Request('https://worker.test/?action=stocktwits&symbol=AAPL', {
+        headers: { 'X-App-Auth': 'test-secret' }
+      }),
+      { GATEWAY_SECRET: 'test-secret' }
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.symbol).toBe('AAPL');
+    expect(data.messages).toHaveLength(20);
+    expect(data.streamUrl).toBe('https://stocktwits.com/symbol/AAPL');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.stocktwits.com/api/2/streams/symbol/AAPL.json',
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: 'application/json' }) })
+    );
+  });
+
+  it('preserves upstream errors and rejects multiple symbols', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'Rate limited' }), {
+      status: 429, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(
+      new Request('https://worker.test/?action=stocktwits&symbol=AAPL', {
+        headers: { 'X-App-Auth': 'test-secret' }
+      }),
+      { GATEWAY_SECRET: 'test-secret' }
+    );
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error: 'Rate limited' });
+
+    const multiple = await worker.fetch(
+      new Request('https://worker.test/?action=stocktwits&symbol=AAPL%2CMSFT', {
+        headers: { 'X-App-Auth': 'test-secret' }
+      }),
+      { GATEWAY_SECRET: 'test-secret' }
+    );
+    expect(multiple.status).toBe(400);
+  });
+});
+
 describe('provider-quote proxy validation', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
