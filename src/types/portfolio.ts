@@ -34,6 +34,8 @@ export interface PositionRecord {
   startDate?: string;
   tranches?: TrancheItem[];
   quoteUpdatedAt?: number;
+  /** Local request start time used to reject out-of-order quote responses. */
+  quoteRequestStartedAt?: number;
   quoteSource?: string;
   quoteDetails?: QuoteDetails;
   /** Timestamp of the most recent manual trade; protects it from older quote responses. */
@@ -58,6 +60,8 @@ interface CashStock {
   ticker: string;
   shares: number;
   currentPrice?: number;
+  /** Local request start time used to reject out-of-order quote responses. */
+  quoteRequestStartedAt?: number;
 }
 
 interface CashStockHolding {
@@ -66,6 +70,8 @@ interface CashStockHolding {
   price?: number | string;
   currentPrice?: number | string;
   quoteUpdatedAt?: number;
+  /** Local request start time used to reject out-of-order quote responses. */
+  quoteRequestStartedAt?: number;
   quoteSource?: string;
   quoteDetails?: QuoteDetails;
 }
