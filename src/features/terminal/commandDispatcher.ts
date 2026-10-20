@@ -17,7 +17,7 @@ export interface CommandOutput {
 function cleanNumber(val: string | undefined): number {
   if (!val) return NaN;
   const cleaned = val.replace(/[$,]/g, '').trim();
-  if (!cleaned || !/^-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)$/.test(cleaned)) return NaN;
+  if (!cleaned || !/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(cleaned)) return NaN;
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : NaN;
 }
@@ -327,7 +327,6 @@ export class CommandDispatcher {
       if (balMatch) {
         const kind = balMatch[1].toLowerCase();
         const rawAmt = cleanNumber(balMatch[2]);
-        if (isNaN(rawAmt)) throw new Error('Usage: balance <amount> or debt <amount>');
         if (!Number.isFinite(rawAmt)) throw new Error('Enter a valid finite amount.');
         if (kind === 'cash' || kind === 'free cash') {
           if (rawAmt < 0) throw new Error('Free cash cannot be negative. Use "debt <amount>" to set margin debt.');
