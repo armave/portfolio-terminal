@@ -1,14 +1,6 @@
-import {
-  BoardState,
-  BrokerRules,
-  formatUSD,
-  formatTrancheDate,
-  formatQuoteMetadata,
-  formatRiskTrigger,
-  getCashCushionTotal,
-  getTotalPortfolioInvested,
-  QuoteDetails
-} from '../ui/renderBoard';
+import type { BoardState, BrokerRules, QuoteDetails } from '../types/portfolio';
+import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger } from '../utils/formatters';
+import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import {
   calculateCommission,
   calculateMarginInterest
