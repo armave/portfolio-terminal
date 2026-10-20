@@ -582,7 +582,7 @@ function renderMarketInsightsComponent() {
       onSelectSection: (section: InsightSection) => {
         activeInsightSection = section;
         renderMarketInsightsComponent();
-      },
+      }
     }),
     panel
   );
@@ -594,7 +594,9 @@ function getMarketInsightsTicker() {
     return currentView;
   }
   const tickers = Object.keys(state.positions || {});
-  return tickers.length === 1 ? tickers[0] : '';
+  const preferredTicker = state.selectedTicker;
+  if (preferredTicker && state.positions?.[preferredTicker]) return preferredTicker;
+  return tickers[0] || '';
 }
 
 function syncMarketInsightsPanel() {

@@ -730,8 +730,7 @@ summary:hover {
 
 
 /* Market Insights and terminal form one grid item so they always stack together. */
-.trading-workspace-grid > .trading-terminal-column {
-  grid-column: 2;
+ .trading-workspace-grid > .trading-terminal-column {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -740,9 +739,4 @@ summary:hover {
 .trading-terminal-column > .market-insights-workspace {
   width: 100%;
   min-width: 0;
-}
-@media (max-width: 47.999rem) {
-  .trading-workspace-grid > .trading-terminal-column {
-    grid-column: 1;
-  }
 }
