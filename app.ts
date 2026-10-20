@@ -1579,30 +1579,51 @@ async function executeCommand(commandText?: string) {
   // 1. Execute via the deterministic dispatcher
   const localResult = CommandDispatcher.execute(text);
 
-  // 2. Handle side-effects (e.g. fetching quotes after buying)
+  // 2. Surface dispatcher validation errors directly; never send them to the AI fallback.
+  if (localResult.type === 'err') {
+    if (localResult.text) {
+      logTerminal(`[CLI Error]: ${localResult.text}`);
+      showToast(localResult.text, 'error');
+    }
+    return;
+  }
+
+  // 3. Run command side effects without hiding an already-applied local mutation
+  // if quote refresh or cloud synchronization fails.
+  let sideEffectError: string | undefined;
   if (localResult.sideEffect) {
     const effect = localResult.sideEffect;
-    if (effect.type === 'SYNC_CLOUD') {
-      renderBoard();
-      await pushStateToGist();
-    } else if (effect.type === 'FETCH_QUOTE') {
-      renderBoard();
-      await fetchLivePrice(effect.ticker, false, true); // Force a request started after the trade.
-      await pushStateToGist();
-    } else if (effect.type === 'REFRESH_ALL') {
-      await refreshAllLivePrices();
-    } else if (effect.type === 'SWITCH_VIEW') {
-      setActiveView(effect.view);
-    } else if (effect.type === 'CLEAR_TERMINAL') {
-      clearTerminalLog();
+    try {
+      if (effect.type === 'SYNC_CLOUD') {
+        renderBoard();
+        await pushStateToGist();
+      } else if (effect.type === 'FETCH_QUOTE') {
+        renderBoard();
+        await fetchLivePrice(effect.ticker, false, true); // Start quote request after the trade.
+        await pushStateToGist();
+      } else if (effect.type === 'REFRESH_ALL') {
+        await refreshAllLivePrices();
+      } else if (effect.type === 'SWITCH_VIEW') {
+        setActiveView(effect.view);
+      } else if (effect.type === 'CLEAR_TERMINAL') {
+        clearTerminalLog();
+      }
+    } catch (error) {
+      console.error('Terminal command side effect failed:', error);
+      sideEffectError = effect.type === 'SYNC_CLOUD' || effect.type === 'FETCH_QUOTE'
+        ? 'Command applied locally, but quote refresh or cloud sync failed. Check your connection and retry sync.'
+        : effect.type === 'REFRESH_ALL'
+          ? 'Quote refresh failed. Please retry.'
+          : 'The command completed locally, but its follow-up action failed.';
     }
   }
 
-  // 3. Return if a command was matched and executed locally
+  // 4. Return if a command was matched and executed locally.
   if (localResult.type === 'res' || localResult.type === 'cmd') {
-    if (localResult.text) {
-      logTerminal(`[CLI]: ${localResult.text}`);
-      showToast(localResult.text, 'success');
+    if (localResult.text) logTerminal(`[CLI]: ${localResult.text}`);
+    if (sideEffectError) {
+      logTerminal(`[CLI Error]: ${sideEffectError}`);
+      showToast(sideEffectError, 'error');
     }
     return;
   }
