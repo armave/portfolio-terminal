@@ -18,7 +18,7 @@ describe('refreshTrackedQuotes', () => {
 
     await expect(refreshTrackedQuotes(['AAPL'], 123, record)).resolves.toBe(1);
     expect(fetchYahooStockData).toHaveBeenCalledWith('AAPL');
-    expect(record).toHaveBeenCalledWith('AAPL', 100, 'Yahoo Proxy', expect.any(Number), expect.objectContaining({
+    expect(record).toHaveBeenCalledWith('AAPL', 100, 'Yahoo', expect.any(Number), expect.objectContaining({
       marketState: 'REGULAR', price: 100, change: 5, changePercent: expect.any(Number)
     }), 123);
   });

@@ -26,7 +26,7 @@ describe('fetchLivePriceFromProviders', () => {
 
     expect(fetchYahooStockData).toHaveBeenCalledWith('AAPL');
     expect(result.price).toBe(100);
-    expect(result.sourceName).toBe('Yahoo Proxy');
+    expect(result.sourceName).toBe('Yahoo');
     expect(result.quoteDetails).toMatchObject({
       marketState: 'REGULAR',
       price: 100,
