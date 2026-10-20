@@ -1,5 +1,6 @@
 import { render, h } from 'preact';
 import { formatUSD } from '../utils/formatters';
+import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatTrancheDate, formatUSD, formatQuoteMetadata, formatRiskTrigger } from '../utils/formatters';
 import { TickerTabs } from '../components/TickerTab';
 import { EmptyStatePanel } from '../components/EmptyStatePanel';
