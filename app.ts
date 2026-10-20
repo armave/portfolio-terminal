@@ -56,7 +56,6 @@ import {
   showToast
 } from './src/ui/notifications';
 import {
-  formatUSD,
   getCashCushionTotal,
   getTotalPortfolioInvested,
   renderBoard as renderBoardUI,
@@ -64,6 +63,7 @@ import {
   renderPositionsTable,
   renderSummaryCards
 } from './src/ui/renderBoard';
+import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { BoardExternalLinks } from './src/components/BoardExternalLinks';
 import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
@@ -1109,7 +1109,6 @@ async function performRefreshAllLivePrices() {
 
   const queryStr = tickersArray.join(', ');
   const requestStartedAt = Date.now();
-  logTerminal(`[System]: Polling batch live quotes for ${queryStr}...`);
 
   try {
     const responseData = await fetchYahooStockData(queryStr);
@@ -1190,7 +1189,7 @@ async function performRefreshAllLivePrices() {
       saveState(state);
       syncStore();
       renderBoard();
-      // logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
+      logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
     } else {
       logTerminal(`[Market Data Warning]: No quotes updated during batch fetch.`);
     }
