@@ -49,8 +49,6 @@ export function MarketInsightsPanel({
   const lastStocktwitsManualRefreshRef = useRef(0);
   const newsTickerRef = useRef(ticker);
   const stocktwitsTickerRef = useRef(ticker);
-  const newsHasLoadedRef = useRef(false);
-  const stocktwitsHasLoadedRef = useRef(false);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Keep the detailed fundamentals/earnings/analyst request separate from news.
@@ -96,7 +94,6 @@ export function MarketInsightsPanel({
     lastNewsManualRefreshRef.current = newsRefreshRequest;
     if (newsTickerRef.current !== ticker) {
       newsTickerRef.current = ticker;
-      newsHasLoadedRef.current = false;
       setNewsData([]);
       setNewsUpdatedAt(null);
       setNewsError(null);
@@ -105,12 +102,11 @@ export function MarketInsightsPanel({
 
     const refreshNews = async (force: boolean) => {
       const currentRequestId = ++newsRequestIdRef.current;
-      if (!newsHasLoadedRef.current) setNewsLoading(true);
+      setNewsLoading(true);
       try {
         const news = await fetchMarketNews(ticker, force);
         if (disposed || currentRequestId !== newsRequestIdRef.current) return;
         setNewsData(Array.isArray(news) ? news : []);
-        newsHasLoadedRef.current = true;
         setNewsUpdatedAt(Date.now());
         setNewsError(null);
       } catch (err: any) {
@@ -148,7 +144,6 @@ export function MarketInsightsPanel({
     lastStocktwitsManualRefreshRef.current = stocktwitsRefreshRequest;
     if (stocktwitsTickerRef.current !== ticker) {
       stocktwitsTickerRef.current = ticker;
-      stocktwitsHasLoadedRef.current = false;
       setStocktwitsData(null);
       setStocktwitsUpdatedAt(null);
       setStocktwitsError(null);
@@ -157,12 +152,11 @@ export function MarketInsightsPanel({
 
     const refreshStocktwits = async (force: boolean) => {
       const currentRequestId = ++stocktwitsRequestIdRef.current;
-      if (!stocktwitsHasLoadedRef.current) setStocktwitsLoading(true);
+      setStocktwitsLoading(true);
       try {
         const data = await fetchStocktwitsStream(ticker, force);
         if (disposed || currentRequestId !== stocktwitsRequestIdRef.current) return;
         setStocktwitsData(data);
-        stocktwitsHasLoadedRef.current = true;
         setStocktwitsUpdatedAt(Date.now());
         setStocktwitsError(null);
       } catch (err: unknown) {
