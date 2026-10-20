@@ -24,6 +24,7 @@ import {
   SentimentDirection
 } from './src/features/quotes/sentiment';
 import { fetchFallbackPrice, fetchLivePriceFromProviders } from './src/services/quoteProvider';
+import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
   fetchYahooStockData,
   normalizeYahooBatchResults,
@@ -320,7 +321,7 @@ function saveBrokerRuleInputs(event: Event) {
   saveBrokerRules(updatedRules);
   const nextRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   if (previousRollover !== nextRollover) {
-    state.lastRolloverTimestamp = getLatestRolloverTimestamp();
+    state.lastRolloverTimestamp = getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
     saveState(state, pushStateToGist);
     syncStore();
   }
@@ -336,7 +337,7 @@ function resetBrokerRules() {
   clearBrokerRules();
   setBrokerRuleInputs();
   if (previousRollover !== `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`) {
-    state.lastRolloverTimestamp = getLatestRolloverTimestamp();
+    state.lastRolloverTimestamp = getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
     saveState(state, pushStateToGist);
     syncStore();
   }
@@ -370,58 +371,10 @@ function updateRiskAssumptionTitles() {
   }
 }
 
-function getZonedDateParts(date: Date, timeZone = TRADERNET_RULES.rolloverTimeZone): Record<string, number> {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23'
-  }).formatToParts(date);
-  return Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, Number(part.value)]));
-}
-
-function zonedLocalTimeToTimestamp(year: number, month: number, day: number, hour: number, minute: number, timeZone = TRADERNET_RULES.rolloverTimeZone) {
-  const targetUtc = Date.UTC(year, month - 1, day, hour, minute);
-  let timestamp = targetUtc;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const parts = getZonedDateParts(new Date(timestamp), timeZone);
-    const representedUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
-    const adjustment = targetUtc - representedUtc;
-    if (adjustment === 0) return timestamp;
-    timestamp += adjustment;
-  }
-  return timestamp;
-}
-
-function shiftCalendarDate(year: number, month: number, day: number, offset: number) {
-  const shifted = new Date(Date.UTC(year, month - 1, day + offset));
-  return { year: shifted.getUTCFullYear(), month: shifted.getUTCMonth() + 1, day: shifted.getUTCDate() };
-}
-
-function getRolloverTimestampForLocalDate(year: number, month: number, day: number) {
-  return zonedLocalTimeToTimestamp(
-    year, month, day, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute
-  );
-}
-
-function getLatestRolloverTimestamp(now = new Date()) {
-  const local = getZonedDateParts(now);
-  let rollover = getRolloverTimestampForLocalDate(local.year, local.month, local.day);
-  if (rollover > now.getTime()) {
-    const previousDate = shiftCalendarDate(local.year, local.month, local.day, -1);
-    rollover = getRolloverTimestampForLocalDate(previousDate.year, previousDate.month, previousDate.day);
-  }
-  return rollover;
-}
-
 function applyOvernightRollover() {
   const now = new Date();
   if (!Number.isFinite(Number(state.lastRolloverTimestamp)) || Number(state.lastRolloverTimestamp) <= 0) {
-    state.lastRolloverTimestamp = getLatestRolloverTimestamp(now);
+    state.lastRolloverTimestamp = getLatestRolloverTimestamp(now, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
     saveState(state, pushStateToGist);
     syncStore();
     return;
@@ -429,17 +382,17 @@ function applyOvernightRollover() {
 
   let elapsedCycles = 0;
   const lastRolloverTimestamp = Number(state.lastRolloverTimestamp);
-  const last = getZonedDateParts(new Date(lastRolloverTimestamp));
+  const last = getZonedDateParts(new Date(lastRolloverTimestamp), TRADERNET_RULES.rolloverTimeZone);
   let rolloverDate = { year: last.year, month: last.month, day: last.day };
-  let cursor = getRolloverTimestampForLocalDate(rolloverDate.year, rolloverDate.month, rolloverDate.day);
+  let cursor = getRolloverTimestampForLocalDate(rolloverDate.year, rolloverDate.month, rolloverDate.day, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
   if (cursor <= lastRolloverTimestamp) {
     rolloverDate = shiftCalendarDate(rolloverDate.year, rolloverDate.month, rolloverDate.day, 1);
-    cursor = getRolloverTimestampForLocalDate(rolloverDate.year, rolloverDate.month, rolloverDate.day);
+    cursor = getRolloverTimestampForLocalDate(rolloverDate.year, rolloverDate.month, rolloverDate.day, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
   }
   while (cursor <= now.getTime()) {
     elapsedCycles++;
     rolloverDate = shiftCalendarDate(rolloverDate.year, rolloverDate.month, rolloverDate.day, 1);
-    cursor = getRolloverTimestampForLocalDate(rolloverDate.year, rolloverDate.month, rolloverDate.day);
+    cursor = getRolloverTimestampForLocalDate(rolloverDate.year, rolloverDate.month, rolloverDate.day, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
   }
 
   if (elapsedCycles > 0 && Math.abs(state.balance) > 0) {
