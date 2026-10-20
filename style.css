@@ -948,3 +948,24 @@ summary:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* Keep projection columns readable on narrow screens; scroll rather than crush cells. */
+@media (max-width: 639px) {
+  #projectionTableContainer {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #projectionTableContainer table {
+    min-width: 520px;
+    width: 520px;
+    table-layout: fixed;
+  }
+
+  #projectionTableContainer table th,
+  #projectionTableContainer table td {
+    padding: 0.45rem 0.5rem;
+  }
+}
