@@ -18,7 +18,7 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
   const closedTrades = state.closedTrades || [];
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     const currentButton = event.currentTarget as HTMLButtonElement;
     const buttons = Array.from(
       currentButton.parentElement?.querySelectorAll<HTMLButtonElement>('button[data-nav-tab="true"]') || []
@@ -26,8 +26,12 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
     const currentIndex = buttons.indexOf(currentButton);
     if (currentIndex < 0 || buttons.length < 2) return;
     event.preventDefault();
-    const delta = event.key === 'ArrowRight' ? 1 : -1;
-    const next = buttons[(currentIndex + delta + buttons.length) % buttons.length];
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? buttons.length - 1
+        : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+    const next = buttons[nextIndex];
     next.focus();
     next.click();
   };
@@ -78,6 +82,8 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
             ? 'bg-emerald-600 text-black'
             : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
             }`}
+          data-nav-tab="true"
+          onKeyDown={handleTabKeyDown}
         >
           MARGIN: {tickers[0]}
         </button>
@@ -92,6 +98,8 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
               ? 'bg-emerald-600 text-black'
               : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
               }`}
+          data-nav-tab="true"
+          onKeyDown={handleTabKeyDown}
           >
             COMBINED PORTFOLIO
           </button>
@@ -105,6 +113,8 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
                 ? 'bg-emerald-600 text-black'
                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                 }`}
+          data-nav-tab="true"
+          onKeyDown={handleTabKeyDown}
             >
               {t}
             </button>
@@ -119,6 +129,8 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
           ? 'bg-cyan-500 text-black'
           : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
           }`}
+          data-nav-tab="true"
+          onKeyDown={handleTabKeyDown}
       >
         <span>🛡️ BALANCE</span>
         <span
@@ -136,6 +148,8 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
           ? 'bg-purple-500 text-black'
           : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
           }`}
+          data-nav-tab="true"
+          onKeyDown={handleTabKeyDown}
       >
         CLOSED HISTORY ({closedTrades.length})
       </button>
@@ -149,6 +163,8 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
             ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
             : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition'
         }
+          data-nav-tab="true"
+          onKeyDown={handleTabKeyDown}
       >
         <span>⚙️ SETTINGS</span>
       </button>
