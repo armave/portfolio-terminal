@@ -126,13 +126,13 @@ export default {
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
-        if (action && !["state", "news", "gemini", "provider-quote"].includes(action)) {
+        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
             return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
         }
-        if ((action === "news" || action === "provider-quote") && request.method !== "GET") {
+        if ((action === "news" || action === "provider-quote" || action === "stocktwits") && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
 
@@ -187,7 +187,35 @@ export default {
                 return new Response(JSON.stringify(data.slice(0, 5)), { headers: corsHeaders });
             }
 
-            // --- ACTION 2: Gemini AI Chat / Intent Routing ---
+            // --- ACTION 2: Stocktwits public symbol stream ---
+            if (action === "stocktwits") {
+                if (!symbol || symbol.includes(",")) {
+                    return jsonError("A single valid symbol is required for Stocktwits.", 400, corsHeaders);
+                }
+
+                const res = await fetchWithTimeout(
+                    `https://api.stocktwits.com/api/2/streams/symbol/${encodeURIComponent(symbol)}.json`,
+                    { headers: { "Accept": "application/json", "User-Agent": USER_AGENT } }
+                );
+                const data = await res.json().catch(() => null);
+                if (!res.ok) {
+                    return new Response(JSON.stringify(data || { error: `Stocktwits returned HTTP ${res.status}.` }), {
+                        status: res.status,
+                        headers: corsHeaders
+                    });
+                }
+                if (!data || !Array.isArray(data.messages)) {
+                    return jsonError("Stocktwits returned an invalid stream response.", 502, corsHeaders);
+                }
+
+                return new Response(JSON.stringify({
+                    symbol,
+                    messages: data.messages.slice(0, 20),
+                    streamUrl: `https://stocktwits.com/symbol/${encodeURIComponent(symbol)}`
+                }), { headers: corsHeaders });
+            }
+
+            // --- ACTION 3: Gemini AI Chat / Intent Routing ---
             if (action === "gemini") {
                 const geminiKey = env.GEMINI_KEY || env.GEMINI_API_KEY || env.GOOGLE_API_KEY;
                 if (!geminiKey) {
