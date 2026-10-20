@@ -1820,6 +1820,20 @@ function showStartupFailure() {
   if (hint) hint.textContent = 'Check your connection, then retry or continue offline.';
   if (track) (track as HTMLElement).style.display = 'none';
   if (actions) (actions as HTMLElement).hidden = false;
+  const retryButton = document.getElementById('startup-retry');
+  const offlineButton = document.getElementById('startup-continue-offline');
+  if (retryButton) retryButton.onclick = () => {
+    const message = loader.querySelector('.startup-loading__message');
+    const hint = loader.querySelector('.startup-loading__hint');
+    const track = loader.querySelector('.startup-loading__track');
+    if (message) message.textContent = 'Initializing your portfolio…';
+    if (hint) hint.textContent = 'Restoring saved data and market connections';
+    if (track) (track as HTMLElement).style.display = '';
+    if (actions) (actions as HTMLElement).hidden = true;
+    loader.classList.remove('is-hidden');
+    void initApp();
+  };
+  if (offlineButton) offlineButton.onclick = () => { void continueStartupOffline(); };
   loader.classList.remove('is-hidden');
 }
 
