@@ -219,7 +219,7 @@ export function MarketInsightsPanel({
         <div class="space-y-2 mt-2">
           {newsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded news.</p>}
           <p class="text-[10px] text-slate-500">{newsUpdatedAt ? `Updated ${formatRelativeTime(Math.floor(newsUpdatedAt / 1000) * 1000)}` : ''}{newsLoading ? ' · Refreshing…' : ''}</p>
-          <div class="max-h-72 space-y-2 overflow-y-auto overscroll-contain pr-1" aria-label="Company news articles">
+          <div class="h-[240px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Company news articles">
           {newsData.map((n: any, idx: number) => (
             <a
               key={n.id || n.url || idx}
@@ -507,7 +507,7 @@ export function MarketInsightsPanel({
           <div class="space-y-2">
             <p class="text-[10px] text-slate-500">{stocktwitsUpdatedAt ? `Updated ${formatRelativeTime(stocktwitsUpdatedAt)}` : ''}{stocktwitsLoading ? ' · Refreshing…' : ''}</p>
             {stocktwitsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded messages.</p>}
-            <div class="max-h-96 space-y-2 overflow-y-auto overscroll-contain pr-1" aria-label="Stocktwits messages">
+            <div class="h-[360px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Stocktwits messages">
             {stocktwitsData.messages.map((message, idx) => {
               const sentiment = message.sentiment?.basic ?? message.entities?.sentiment?.basic ?? null;
               const sentimentClass = sentiment?.toLowerCase() === 'bullish'
