@@ -142,46 +142,44 @@ export function MarketInsightsPanel({
       const fh = data.financialHealth || {};
 
       return (
-        <div class="p-3 bg-slate-950/60 rounded border border-slate-800 space-y-3 font-mono text-xs mt-2">
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Trailing P/E</span>
-              <span class="text-white font-bold">
-                {val.peTrailing ? Number(val.peTrailing).toFixed(2) : '—'}
-              </span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Forward P/E</span>
-              <span class="text-white font-bold">
-                {val.peForward ? Number(val.peForward).toFixed(2) : '—'}
-              </span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">PEG Ratio</span>
-              <span class="text-white font-bold">{val.pegRatio ?? '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Short % Float</span>
-              <span class="text-amber-400 font-bold">{val.shortPercentOfFloat ?? '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Profit Margin</span>
-              <span class="text-white font-bold">{fh.profitMargin ?? '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">ROE</span>
-              <span class="text-white font-bold">{fh.returnOnEquity ?? '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Price to Book</span>
-              <span class="text-white font-bold">{val.priceToBook ?? '—'}</span>
-            </div>
-            <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
-              <span class="text-[10px] text-slate-500 uppercase block">Total Debt</span>
-              <span class="text-rose-400 font-bold">
-                {fh.totalDebt ? '$' + (fh.totalDebt / 1e9).toFixed(2) + 'B' : '—'}
-              </span>
-            </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
+            <span class="text-[10px] text-slate-500 uppercase block">Trailing P/E</span>
+            <span class="text-white font-bold">
+              {val.peTrailing ? Number(val.peTrailing).toFixed(2) : '—'}
+            </span>
+          </div>
+          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
+            <span class="text-[10px] text-slate-500 uppercase block">Forward P/E</span>
+            <span class="text-white font-bold">
+              {val.peForward ? Number(val.peForward).toFixed(2) : '—'}
+            </span>
+          </div>
+          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
+            <span class="text-[10px] text-slate-500 uppercase block">PEG Ratio</span>
+            <span class="text-white font-bold">{val.pegRatio ?? '—'}</span>
+          </div>
+          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
+            <span class="text-[10px] text-slate-500 uppercase block">Short % Float</span>
+            <span class="text-amber-400 font-bold">{val.shortPercentOfFloat ?? '—'}</span>
+          </div>
+          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
+            <span class="text-[10px] text-slate-500 uppercase block">Profit Margin</span>
+            <span class="text-white font-bold">{fh.profitMargin ?? '—'}</span>
+          </div>
+          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
+            <span class="text-[10px] text-slate-500 uppercase block">ROE</span>
+            <span class="text-white font-bold">{fh.returnOnEquity ?? '—'}</span>
+          </div>
+          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
+            <span class="text-[10px] text-slate-500 uppercase block">Price to Book</span>
+            <span class="text-white font-bold">{val.priceToBook ?? '—'}</span>
+          </div>
+          <div class="bg-slate-900/70 p-2 rounded border border-slate-800/80">
+            <span class="text-[10px] text-slate-500 uppercase block">Total Debt</span>
+            <span class="text-rose-400 font-bold">
+              {fh.totalDebt ? '$' + (fh.totalDebt / 1e9).toFixed(2) + 'B' : '—'}
+            </span>
           </div>
         </div>
       );
@@ -192,7 +190,7 @@ export function MarketInsightsPanel({
       const upDown = data.upgradesDowngrades || [];
 
       return (
-        <div class="p-3 bg-slate-950/60 rounded border border-slate-800 space-y-3 font-mono text-xs mt-2">
+        <div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 border-b border-slate-800/60 pb-3">
             <div>
               <span class="text-slate-500 block text-[10px]">Mean Target</span>
@@ -255,7 +253,7 @@ export function MarketInsightsPanel({
       const eh = data.earningsHistory || [];
 
       return (
-        <div class="p-3 bg-slate-950/60 rounded border border-slate-800 space-y-3 font-mono text-xs mt-2">
+        <div>
           <div class="bg-slate-900/70 p-2.5 rounded border border-slate-800/80 mb-3">
             <span class="text-[10px] text-slate-500 uppercase block">Next Earnings Date</span>
             <span class="text-purple-300 font-bold text-sm">{cal.earningsDate || 'TBD'}</span>
