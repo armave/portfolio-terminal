@@ -381,6 +381,34 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().cashCushion.freeCash).toBe(310);
   });
 
+  it('allocates buy commissions from the FIFO tranche actually sold', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commissionPerShare: 0,
+      commVolumePct: 0.01,
+      commissionRatePct: 0.01,
+      minCommOrder: 0,
+      commissionMin: 0,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    store.setCashBalance(5_000);
+
+    store.buyStock('AAPL', 1, 100, '2026-10-14');
+    store.buyStock('AAPL', 1, 1_000, '2026-10-15');
+    expect(store.getState().positions.AAPL.tranches.map((tranche) => tranche.buyCommission)).toEqual([1, 10]);
+
+    store.sellStock('AAPL', 1, 200, '2026-10-16');
+
+    expect(store.getState().closedTrades[0].commissions).toBe(3);
+    expect(store.getState().positions.AAPL.commBuy).toBe(10);
+    expect(store.getState().positions.AAPL.tranches).toEqual([
+      expect.objectContaining({ qty: 1, price: 1_000, buyCommission: 10 })
+    ]);
+  });
+
   it('credits sale proceeds without deducting already-accrued margin interest twice', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
