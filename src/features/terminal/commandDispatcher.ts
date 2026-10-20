@@ -323,7 +323,7 @@ export class CommandDispatcher {
       }
 
       // 7. BALANCE / FREE CASH / DEBT: "balance 5000", "debt 1500", "b: -5000"
-      const balMatch = raw.match(/^(balance|b:|cash|free\s*cash|debt|margin\s*debt)\s*([-?$0-9.,]+)$/i);
+      const balMatch = raw.match(/^(balance|b:|cash|free\s*cash|debt|margin\s*debt)\s*([-0-9$.,]+)$/i);
       if (balMatch) {
         const kind = balMatch[1].toLowerCase();
         const rawAmt = cleanNumber(balMatch[2]);
@@ -333,7 +333,7 @@ export class CommandDispatcher {
           portfolioStore.setFreeCash(rawAmt);
           const debt = Math.abs(Number(portfolioStore.getState().balance) || 0);
           return {
-            text: `Free cash set to ${rawAmt.toFixed(2)} | Margin Debt unchanged: ${debt.toFixed(2)}`,
+            text: `Free cash set to $${rawAmt.toFixed(2)} | Margin Debt unchanged: $${debt.toFixed(2)}`,
             type: 'res',
             sideEffect: { type: 'SYNC_CLOUD' }
           };
@@ -342,7 +342,7 @@ export class CommandDispatcher {
         portfolioStore.setCashBalance(signed);
         return {
           text: signed >= 0
-            ? `Free cash set to ${signed.toFixed(2)} | Margin Debt: $0.00`
+            ? `Free cash set to $${signed.toFixed(2)} | Margin Debt: $0.00`
             : `Margin debt synced to -${Math.abs(signed).toFixed(2)}`,
           type: 'res',
           sideEffect: { type: 'SYNC_CLOUD' }
