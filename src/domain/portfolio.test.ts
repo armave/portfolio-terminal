@@ -289,6 +289,17 @@ describe('portfolio domain', () => {
     })).toBe(0);
   });
 
+  it('falls back to a valid legacy single-lot position when its tranche array is empty', () => {
+    const interest = calculateMarginInterest({
+      shares: 10,
+      price: 100,
+      date: '2026-10-15',
+      tranches: []
+    }, { dailyRate: 0.01, days: 1 });
+
+    expect(interest).toBeCloseTo(10, 8);
+  });
+
   it('compounds margin interest across each accrued rollover cycle', () => {
     const principal = 10_000;
     const dailyRate = 0.15 / 365;
