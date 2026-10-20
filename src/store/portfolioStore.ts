@@ -224,15 +224,49 @@ export class PortfolioStore {
    */
   private normalizeState(raw: PortfolioState, allowLegacyMigration = false): PortfolioState {
     const legacyHoldings: Holding[] = Array.isArray(raw.holdings) ? raw.holdings : [];
-    const sourcePositions = raw.positions || {};
+    const candidatePositions = raw.positions && typeof raw.positions === 'object' && !Array.isArray(raw.positions)
+      ? raw.positions
+      : {};
+    // A partially written or old snapshot must not make normalization crash or
+    // expose malformed records as active positions.
+    const sourcePositions = Object.fromEntries(
+      Object.entries(candidatePositions).filter(([ticker, position]) => {
+        if (!ticker || !position || typeof position !== 'object' || Array.isArray(position)) return false;
+        const shares = Number((position as PositionRecord).shares);
+        return Number.isFinite(shares) && shares > 0;
+      }).map(([ticker, position]) => {
+        const record = position as PositionRecord;
+        const cleanTicker = String(record.ticker || ticker).trim().toUpperCase();
+        return [cleanTicker, {
+          ...record,
+          ticker: cleanTicker,
+          shares: Number(record.shares),
+          currentPrice: Number.isFinite(Number(record.currentPrice)) ? Number(record.currentPrice) : 0,
+          pt: Number.isFinite(Number(record.pt)) ? Number(record.pt) : 0,
+          commBuy: Number.isFinite(Number(record.commBuy)) ? Number(record.commBuy) : 0,
+          tranches: Array.isArray(record.tranches) ? record.tranches.filter((tranche) =>
+            tranche && Number.isFinite(Number(tranche.qty)) && Number(tranche.qty) > 0 &&
+            Number.isFinite(Number(tranche.price)) && Number(tranche.price) > 0
+          ) : []
+        }];
+      })
+    ) as Record<string, PositionRecord>;
     const positions = allowLegacyMigration
       ? migrateLegacyHoldingsToPositions(sourcePositions, legacyHoldings)
       : { ...sourcePositions };
     const holdings = buildHoldingsProjection(positions, legacyHoldings);
 
-    const freeCash = Math.max(0, Number(raw.cashCushion?.freeCash ?? raw.cashBalance) || 0);
-    const cashHoldings = Array.isArray(raw.cashCushion?.holdings)
-      ? raw.cashCushion.holdings
+    const cashCushion = raw.cashCushion && typeof raw.cashCushion === 'object' && !Array.isArray(raw.cashCushion)
+      ? raw.cashCushion
+      : { freeCash: 0, holdings: [] };
+    const rawFreeCash = Number(cashCushion.freeCash ?? raw.cashBalance);
+    const freeCash = Number.isFinite(rawFreeCash) ? Math.max(0, rawFreeCash) : 0;
+    const cashHoldings = Array.isArray(cashCushion.holdings)
+      ? cashCushion.holdings.filter((holding) =>
+          holding && typeof holding === 'object' && !Array.isArray(holding) &&
+          typeof holding.ticker === 'string' && holding.ticker.trim().length > 0 &&
+          Number.isFinite(Number(holding.shares)) && Number(holding.shares) > 0
+        )
       : [];
 
     return {
