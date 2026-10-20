@@ -323,7 +323,7 @@ export class CommandDispatcher {
       }
 
       // 7. BALANCE / FREE CASH / DEBT: "balance 5000", "debt 1500", "b: -5000"
-      const balMatch = raw.match(/^(balance|b:|cash|free\s*cash|debt|margin\s*debt)\s*([$-0-9.,]+)$/i);
+      const balMatch = raw.match(/^(balance|b:|cash|free\s*cash|debt|margin\s*debt)\s*([-?$0-9.,]+)$/i);
       if (balMatch) {
         const kind = balMatch[1].toLowerCase();
         const rawAmt = cleanNumber(balMatch[2]);
