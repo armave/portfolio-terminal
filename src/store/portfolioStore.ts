@@ -731,43 +731,69 @@ export class PortfolioStore {
     this.update((latestState) => {
       const positions = { ...(latestState.positions || {}) };
       const position = positions[clean];
+      const cashHoldings = [...(latestState.cashCushion?.holdings || [])];
+      const hasMatchingCashHolding = cashHoldings.some((holding) => holding.ticker.toUpperCase() === clean);
+      const cashStocks = [...(latestState.cashStocks || [])];
+      const hasMatchingCashStock = cashStocks.some((holding) => holding.ticker.toUpperCase() === clean);
+      const latestRequestStartedAt = Math.max(
+        Number(position?.quoteRequestStartedAt) || 0,
+        ...cashHoldings.filter((holding) => holding.ticker.toUpperCase() === clean)
+          .map((holding) => Number(holding.quoteRequestStartedAt) || 0),
+        ...cashStocks.filter((holding) => holding.ticker.toUpperCase() === clean)
+          .map((holding) => Number(holding.quoteRequestStartedAt) || 0)
+      );
+      const requestStartedAt = quote.requestStartedAt ?? Date.now();
+
+      // Requests can finish out of order. Apply a response only if it started
+      // after the last accepted request for this ticker, and never over a trade.
+      if (quote.requestStartedAt !== undefined && quote.requestStartedAt < latestRequestStartedAt) {
+        return latestState;
+      }
+      if (
+        position &&
+        quote.requestStartedAt !== undefined &&
+        Number(position.lastTradeAt || 0) > quote.requestStartedAt
+      ) {
+        return latestState;
+      }
+
       if (position) {
-        // Do not let a quote request overwrite a newer manual trade entry.
-        if (quote.requestStartedAt !== undefined && Number((position as any).lastTradeAt || 0) > quote.requestStartedAt) {
-          return latestState;
-        }
         positions[clean] = {
           ...position,
           currentPrice: price,
           quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
+          quoteRequestStartedAt: requestStartedAt,
           quoteSource: quote.quoteSource ?? 'Live quote',
           ...(quote.requestStartedAt === undefined && quote.quoteSource === 'Manual'
-            ? { lastTradeAt: Date.now() }
+            ? { lastTradeAt: requestStartedAt }
             : {}),
           ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {})
         };
       }
 
-      const cashHoldings = (latestState.cashCushion?.holdings || []).map((holding) =>
+      const updatedCashHoldings = cashHoldings.map((holding) =>
         holding.ticker.toUpperCase() === clean
           ? { ...holding, currentPrice: price, price, quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
+              quoteRequestStartedAt: requestStartedAt,
               quoteSource: quote.quoteSource ?? 'Live quote',
               ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {}) }
           : holding
       );
-      const cashStocks = (latestState.cashStocks || []).map((holding) =>
+      const updatedCashStocks = cashStocks.map((holding) =>
         holding.ticker.toUpperCase() === clean
-          ? { ...holding, currentPrice: price }
+          ? { ...holding, currentPrice: price, quoteRequestStartedAt: requestStartedAt }
           : holding
       );
+
+      if (!position && !hasMatchingCashHolding && !hasMatchingCashStock) return latestState;
 
       return {
         ...latestState,
         positions,
-        cashStocks,
+        cashStocks: updatedCashStocks,
         cashCushion: {
           ...(latestState.cashCushion || { freeCash: 0, holdings: [] }),
-          holdings: cashHoldings
+          holdings: updatedCashHoldings
         }
       };
     });
