@@ -612,10 +612,42 @@ summary:hover {
 
 #projectionTableContainer table {
   width: 100%;
-  min-width: 620px;
-  max-width: none;
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
-  table-layout: auto;
+  table-layout: fixed;
+  font-size: 11px;
+}
+
+#projectionTableContainer table th,
+#projectionTableContainer table td {
+  padding: 0.25rem 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+#projectionTableContainer table th:first-child,
+#projectionTableContainer table td:first-child {
+  width: 24%;
+}
+
+#projectionTableContainer table th:nth-child(2),
+#projectionTableContainer table td:nth-child(2) {
+  width: 17%;
+}
+
+#projectionTableContainer table th:nth-child(3),
+#projectionTableContainer table td:nth-child(3) {
+  width: 16%;
+}
+
+#projectionTableContainer table th:nth-child(4),
+#projectionTableContainer table td:nth-child(4) {
+  width: 23%;
+}
+
+#projectionTableContainer table th:nth-child(5),
+#projectionTableContainer table td:nth-child(5) {
+  width: 20%;
 }
 
 #projectionTableContainer tbody td[colspan="5"] {
@@ -851,7 +883,8 @@ summary:hover {
   }
 
   #projectionTableContainer table {
-    min-width: 580px;
+    min-width: 0;
+    width: 100%;
   }
 }
 
