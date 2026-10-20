@@ -369,6 +369,23 @@ export class PortfolioStore {
     });
   }
 
+  /** Set the cash-cushion balance without changing margin debt. */
+  public setFreeCash(amount: number): void {
+    const num = Number(amount);
+    if (!Number.isFinite(num) || num < 0) {
+      throw new Error('Free cash must be a finite non-negative amount.');
+    }
+
+    this.update((state) => ({
+      ...state,
+      cashBalance: num,
+      cashCushion: {
+        ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+        freeCash: num
+      }
+    }));
+  }
+
   public setCashBalance(amount: number): void {
     const num = Number(amount) || 0;
     this.update((state) => {
