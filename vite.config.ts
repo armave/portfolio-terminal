@@ -66,7 +66,7 @@ function startupCriticalCssPlugin(): Plugin {
         if (!html.includes(marker)) {
           throw new Error('Missing STARTUP_CRITICAL_CSS marker in index.html');
         }
-        return html.replace(marker, `<style id="startup-critical-styles">\\n${css}\\n</style>`);
+        return html.replace(marker, \`<style id="startup-critical-styles">\n\${css}\n</style>\`);
       }
     }
   };
