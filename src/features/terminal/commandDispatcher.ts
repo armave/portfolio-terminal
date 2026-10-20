@@ -16,7 +16,10 @@ export interface CommandOutput {
 
 function cleanNumber(val: string | undefined): number {
   if (!val) return NaN;
-  return parseFloat(val.replace(/[$,]/g, ''));
+  const cleaned = val.replace(/[$,]/g, '').trim();
+  if (!cleaned || !/^-?(?:\\d+(?:\\.\\d*)?|\\.\\d+)$/.test(cleaned)) return NaN;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : NaN;
 }
 
 const MONTH_LOOKUP: Record<string, number> = {
@@ -325,12 +328,23 @@ export class CommandDispatcher {
         const kind = balMatch[1].toLowerCase();
         const rawAmt = cleanNumber(balMatch[2]);
         if (isNaN(rawAmt)) throw new Error('Usage: balance <amount> or debt <amount>');
+        if (!Number.isFinite(rawAmt)) throw new Error('Enter a valid finite amount.');
+        if (kind === 'cash' || kind === 'free cash') {
+          if (rawAmt < 0) throw new Error('Free cash cannot be negative. Use "debt <amount>" to set margin debt.');
+          portfolioStore.setFreeCash(rawAmt);
+          const debt = Math.abs(Number(portfolioStore.getState().balance) || 0);
+          return {
+            text: `Free cash set to ${rawAmt.toFixed(2)} | Margin Debt unchanged: ${debt.toFixed(2)}`,
+            type: 'res',
+            sideEffect: { type: 'SYNC_CLOUD' }
+          };
+        }
         const signed = kind.includes('debt') ? -Math.abs(rawAmt) : rawAmt;
         portfolioStore.setCashBalance(signed);
         return {
           text: signed >= 0
-            ? `Free cash set to $${signed.toFixed(2)} | Margin Debt: $0.00`
-            : `Margin debt synced to -$${Math.abs(signed).toFixed(2)}`,
+            ? `Free cash set to ${signed.toFixed(2)} | Margin Debt: $0.00`
+            : `Margin debt synced to -${Math.abs(signed).toFixed(2)}`,
           type: 'res',
           sideEffect: { type: 'SYNC_CLOUD' }
         };
