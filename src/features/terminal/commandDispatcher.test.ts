@@ -52,4 +52,11 @@ describe('terminal command validation and cash routing', () => {
     expect(result.type).toBe('res');
     expect(buyStock).toHaveBeenCalledWith('AAPL', 2, 100, expect.any(String), undefined);
   });
+  it('returns validation failures as errors for the command runner to display', () => {
+    const result = CommandDispatcher.execute('bought 2 AAPL for 1.2.3');
+    expect(result.type).toBe('err');
+    expect(result.text.length).toBeGreaterThan(0);
+    expect(result.sideEffect).toBeUndefined();
+  });
+
 });
