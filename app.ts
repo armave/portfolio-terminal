@@ -56,7 +56,6 @@ import {
   showToast
 } from './src/ui/notifications';
 import {
-  formatUSD,
   getCashCushionTotal,
   getTotalPortfolioInvested,
   renderBoard as renderBoardUI,
@@ -64,6 +63,7 @@ import {
   renderPositionsTable,
   renderSummaryCards
 } from './src/ui/renderBoard';
+import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { BoardExternalLinks } from './src/components/BoardExternalLinks';
 import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
