@@ -23,11 +23,10 @@ import {
   sentimentLabel,
   SentimentDirection
 } from './src/features/quotes/sentiment';
-import { fetchFallbackPrice, fetchLivePriceFromProviders } from './src/services/quoteProvider';
+import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
+import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
-  fetchYahooStockData,
-  normalizeYahooBatchResults,
   fetchYahooDeepStockData,
   proxyFetch,
   setSecretGetter,
@@ -73,7 +72,6 @@ import { AuthModal } from './src/components/AuthModal';
 import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
-import { resolveMarketSessionChange, resolveMarketSessionPrice } from './src/domain/quotes';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -965,100 +963,22 @@ function refreshAllLivePrices(): Promise<void> {
 
 async function performRefreshAllLivePrices() {
   const cashHoldings = state.cashCushion && state.cashCushion.holdings;
-
-  const allTickers = new Set<string>([
+  const tickersArray = Array.from(new Set<string>([
     ...Object.keys(state.positions || {}),
-    ...(cashHoldings || []).map((h: any) => h.ticker)
-  ]);
-
-  const tickersArray = Array.from(allTickers);
+    ...(cashHoldings || []).map((holding: any) => holding.ticker)
+  ]));
   if (tickersArray.length === 0) return;
 
-  const queryStr = tickersArray.join(', ');
-  const requestStartedAt = Date.now();
-
   try {
-    const responseData = await fetchYahooStockData(queryStr);
-    const results = normalizeYahooBatchResults(responseData, tickersArray);
-    let updatedCount = 0;
-
-    for (const data of results) {
-      if (!data?.symbol) {
-        console.warn('[Quote Warning]: Missing symbol in batch quote response.', data?.error);
-        continue;
-      }
-
-      const ticker = data.symbol;
-      if (data.error || !data.price) {
-        console.warn(`[Quote Warning]: Missing or failed data for ${ticker}`, data.error);
-        const fallback = await fetchFallbackPrice(ticker);
-        if (fallback && recordTrackedPrice(
-          ticker,
-          fallback.price,
-          fallback.sourceName,
-          Date.now(),
-          fallback.quoteDetails,
-          requestStartedAt
-        )) updatedCount++;
-        continue;
-      }
-
-      const regularPrice = data.price.current ?? data.regularMarketPrice;
-      const previous = data.price.previousClose ?? data.regularMarketPreviousClose;
-      const marketState = data.price?.marketState;
-      const current = resolveMarketSessionPrice({
-        regularPrice,
-        preMarketPrice: data.price.preMarketPrice,
-        postMarketPrice: data.price.postMarketPrice,
-        marketState
-      });
-      if (current === null) {
-        const fallback = await fetchFallbackPrice(ticker);
-        if (fallback && recordTrackedPrice(
-          ticker,
-          fallback.price,
-          fallback.sourceName,
-          Date.now(),
-          fallback.quoteDetails,
-          requestStartedAt
-        )) updatedCount++;
-        continue;
-      }
-      const change = resolveMarketSessionChange({
-        currentPrice: current,
-        regularPrice,
-        previousClose: previous,
-        suppliedChange: data.price.change ?? data.regularMarketChange,
-        marketState
-      });
-
-      const quoteDetails = {
-        marketState,
-        price: current,
-        change,
-        changePercent: previous ? (change / previous) * 100 : 0
-      };
-
-      const matched = recordTrackedPrice(
-        ticker,
-        Number(current),
-        'Yahoo Proxy',
-        Date.now(),
-        quoteDetails,
-        requestStartedAt
-      );
-      if (matched) updatedCount++;
-    }
-
+    const updatedCount = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice);
     if (updatedCount > 0) {
-      // Live quotes are refreshed again on every device; keep them local rather
-      // than causing a full cloud portfolio write on each polling interval.
+      // Live quotes stay local rather than causing a cloud write every poll.
       saveState(state);
       syncStore();
       renderBoard();
       logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
     } else {
-      logTerminal(`[Market Data Warning]: No quotes updated during batch fetch.`);
+      logTerminal('[Market Data Warning]: No quotes updated during batch fetch.');
     }
   } catch (err: any) {
     console.error('Batch quote fetch failed:', err);
