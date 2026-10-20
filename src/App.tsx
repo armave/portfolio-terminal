@@ -107,11 +107,11 @@ export function App({ onToggleMarketInsights }: AppProps) {
       {/* Closed Trade History */}
       <div
         id="closedHistoryContainer"
-        class="hidden border-card p-6 rounded-lg space-y-4"
+        class="hidden p-6 rounded-lg space-y-4"
       ></div>
 
       {/* Settings */}
-      <div class="hidden border-card p-4 sm:p-6 rounded-xl space-y-4" id="settings"></div>
+      <div class="hidden p-4 sm:p-6 rounded-xl space-y-4" id="settings"></div>
     </>
   );
 }

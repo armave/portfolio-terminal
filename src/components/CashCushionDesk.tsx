@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { usePortfolio } from '../store/portfolioStore';
-import { formatUSD, formatQuoteMetadata } from '../ui/renderBoard';
+import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import { QuoteDetails } from '../types/portfolio';
 

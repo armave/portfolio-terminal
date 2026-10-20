@@ -3,7 +3,7 @@ import {
   calculateProjectedDebt
 } from '../domain/portfolio';
 import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
-import { formatUSD } from '../ui/renderBoard';
+import { formatUSD } from '../utils/formatters';
 
 export interface ProjectionsTableProps {
   gross: number;
