@@ -29,17 +29,31 @@ export function MarketInsightsPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newsData, setNewsData] = useState<any[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsError, setNewsError] = useState<string | null>(null);
+  const [newsUpdatedAt, setNewsUpdatedAt] = useState<number | null>(null);
   const [stockData, setStockData] = useState<any>(null);
   const [stocktwitsData, setStocktwitsData] = useState<StocktwitsStream | null>(null);
   const [stocktwitsLoading, setStocktwitsLoading] = useState(false);
   const [stocktwitsError, setStocktwitsError] = useState<string | null>(null);
+  const [stocktwitsUpdatedAt, setStocktwitsUpdatedAt] = useState<number | null>(null);
   const stocktwitsRequestIdRef = useRef(0);
+  const newsRequestIdRef = useRef(0);
   const requestIdRef = useRef(0);
   const lastRefreshTriggerRef = useRef(refreshTrigger);
+  const lastNewsRefreshTriggerRef = useRef(refreshTrigger);
+  const lastStocktwitsRefreshTriggerRef = useRef(refreshTrigger);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
+  // Keep the detailed fundamentals/earnings/analyst request separate from news.
+  // Background refreshes must not replace the current panel with a loading screen.
   useEffect(() => {
     if (!isOpen || !ticker) return;
+    if (activeSection === 'news') {
+      setLoading(false);
+      setError(null);
+      return;
+    }
 
     const currentRequestId = ++requestIdRef.current;
     const forceRefresh = refreshTrigger !== lastRefreshTriggerRef.current;
@@ -47,52 +61,105 @@ export function MarketInsightsPanel({
     setLoading(true);
     setError(null);
 
-    const fetchInsight = async () => {
-      try {
-        if (activeSection === 'news') {
-          const news = await fetchMarketNews(ticker, forceRefresh);
-          if (currentRequestId !== requestIdRef.current) return;
-          setNewsData(Array.isArray(news) ? news : []);
-        } else {
-          const data = await fetchYahooDeepStockData(ticker, forceRefresh);
-          if (currentRequestId !== requestIdRef.current) return;
-          setStockData(data || {});
-        }
-      } catch (err: any) {
+    fetchYahooDeepStockData(ticker, forceRefresh)
+      .then((data) => {
+        if (currentRequestId !== requestIdRef.current) return;
+        setStockData(data || {});
+      })
+      .catch((err: any) => {
         if (currentRequestId !== requestIdRef.current) return;
         setError(err?.message || 'Unknown error');
-      } finally {
-        if (currentRequestId === requestIdRef.current) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchInsight();
-  }, [ticker, isOpen, activeSection, refreshTrigger]);
-
-  useEffect(() => {
-    if (!isOpen || !ticker) return;
-
-    const currentRequestId = ++stocktwitsRequestIdRef.current;
-    setStocktwitsLoading(true);
-    setStocktwitsError(null);
-
-    fetchStocktwitsStream(ticker, refreshTrigger > 0)
-      .then((data) => {
-        if (currentRequestId !== stocktwitsRequestIdRef.current) return;
-        setStocktwitsData(data);
-      })
-      .catch((err: unknown) => {
-        if (currentRequestId !== stocktwitsRequestIdRef.current) return;
-        setStocktwitsError(err instanceof Error ? err.message : 'Unable to load Stocktwits.');
       })
       .finally(() => {
-        if (currentRequestId === stocktwitsRequestIdRef.current) setStocktwitsLoading(false);
+        if (currentRequestId === requestIdRef.current) setLoading(false);
       });
 
     return () => {
+      requestIdRef.current += 1;
+    };
+  }, [ticker, isOpen, activeSection, refreshTrigger]);
+
+  // Company news has its own five-minute refresh lifecycle and cache.
+  useEffect(() => {
+    if (!isOpen || !ticker) return;
+
+    const forceOnStart = refreshTrigger !== lastNewsRefreshTriggerRef.current;
+    lastNewsRefreshTriggerRef.current = refreshTrigger;
+    let disposed = false;
+
+    const refreshNews = async (force: boolean) => {
+      const currentRequestId = ++newsRequestIdRef.current;
+      if (newsData.length === 0) setNewsLoading(true);
+      try {
+        const news = await fetchMarketNews(ticker, force);
+        if (disposed || currentRequestId !== newsRequestIdRef.current) return;
+        setNewsData(Array.isArray(news) ? news : []);
+        setNewsUpdatedAt(Date.now());
+        setNewsError(null);
+      } catch (err: any) {
+        if (disposed || currentRequestId !== newsRequestIdRef.current) return;
+        setNewsError(err?.message || 'Unable to load company news.');
+      } finally {
+        if (!disposed && currentRequestId === newsRequestIdRef.current) setNewsLoading(false);
+      }
+    };
+
+    void refreshNews(forceOnStart);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refreshNews(true);
+    }, 5 * 60 * 1000);
+    const onVisibilityChange = () => {
+      if (!document.hidden) void refreshNews(true);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      disposed = true;
+      newsRequestIdRef.current += 1;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [ticker, isOpen, refreshTrigger]);
+
+  // Stocktwits refreshes independently of company news and insight-tab changes.
+  useEffect(() => {
+    if (!isOpen || !ticker) return;
+
+    const forceOnStart = refreshTrigger !== lastStocktwitsRefreshTriggerRef.current;
+    lastStocktwitsRefreshTriggerRef.current = refreshTrigger;
+    let disposed = false;
+
+    const refreshStocktwits = async (force: boolean) => {
+      const currentRequestId = ++stocktwitsRequestIdRef.current;
+      if (!stocktwitsData?.messages.length) setStocktwitsLoading(true);
+      try {
+        const data = await fetchStocktwitsStream(ticker, force);
+        if (disposed || currentRequestId !== stocktwitsRequestIdRef.current) return;
+        setStocktwitsData(data);
+        setStocktwitsUpdatedAt(Date.now());
+        setStocktwitsError(null);
+      } catch (err: unknown) {
+        if (disposed || currentRequestId !== stocktwitsRequestIdRef.current) return;
+        setStocktwitsError(err instanceof Error ? err.message : 'Unable to load Stocktwits.');
+      } finally {
+        if (!disposed && currentRequestId === stocktwitsRequestIdRef.current) setStocktwitsLoading(false);
+      }
+    };
+
+    void refreshStocktwits(forceOnStart);
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refreshStocktwits(true);
+    }, 90 * 1000);
+    const onVisibilityChange = () => {
+      if (!document.hidden) void refreshStocktwits(true);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      disposed = true;
       stocktwitsRequestIdRef.current += 1;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [ticker, isOpen, refreshTrigger]);
 
@@ -139,11 +206,19 @@ export function MarketInsightsPanel({
     }
 
     if (activeSection === 'news') {
+      if (newsLoading && newsData.length === 0) {
+        return <div class="py-3 text-center text-xs text-slate-500 font-mono animate-pulse">Loading company news…</div>;
+      }
+      if (newsError && newsData.length === 0) {
+        return <div class="py-3 text-rose-400 text-xs">Failed to load news: {newsError}</div>;
+      }
       if (!newsData || newsData.length === 0) {
         return <div class="py-3 text-slate-500 text-xs">No recent news found.</div>;
       }
       return (
         <div class="space-y-2 mt-2">
+          {newsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded news.</p>}
+          <p class="text-[10px] text-slate-500">{newsUpdatedAt ? `Updated ${formatRelativeTime(Math.floor(newsUpdatedAt / 1000) * 1000)}` : ''}{newsLoading ? ' · Refreshing…' : ''}</p>
           {newsData.slice(0, 5).map((n: any, idx: number) => (
             <a
               key={n.id || n.url || idx}
@@ -408,14 +483,16 @@ export function MarketInsightsPanel({
 
         {!ticker ? (
           <p class="py-2 text-xs text-slate-500">Select a ticker to view community posts.</p>
-        ) : stocktwitsLoading ? (
+        ) : stocktwitsLoading && !stocktwitsData?.messages.length ? (
           <p class="py-2 text-xs text-slate-500 font-mono animate-pulse">Loading Stocktwits stream…</p>
-        ) : stocktwitsError ? (
+        ) : stocktwitsError && !stocktwitsData?.messages.length ? (
           <p class="py-2 text-xs text-rose-400">Stocktwits unavailable: {stocktwitsError}</p>
         ) : !stocktwitsData?.messages.length ? (
           <p class="py-2 text-xs text-slate-500">No recent Stocktwits messages found.</p>
         ) : (
           <div class="space-y-2">
+            <p class="text-[10px] text-slate-500">{stocktwitsUpdatedAt ? `Updated ${formatRelativeTime(stocktwitsUpdatedAt)}` : ''}{stocktwitsLoading ? ' · Refreshing…' : ''}</p>
+            {stocktwitsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded messages.</p>}
             {stocktwitsData.messages.slice(0, 5).map((message, idx) => {
               const sentiment = message.sentiment?.basic ?? message.entities?.sentiment?.basic ?? null;
               const sentimentClass = sentiment?.toLowerCase() === 'bullish'
