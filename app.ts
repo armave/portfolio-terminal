@@ -1678,6 +1678,10 @@ function renderSettingsPanel() {
 
 let appInitialized = false;
 
+function hideStartupLoading() {
+  document.getElementById('startup-loading')?.classList.add('is-hidden');
+}
+
 setSecretGetter(() => state.gatewaySecret || getGatewaySecret());
 
 async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
@@ -1772,6 +1776,7 @@ async function startApp(secret: string) {
   await refreshAllLivePrices();
   initialQuoteRefreshPending = false;
   renderBoardAnalystConsensus(getMarketInsightsTicker());
+  hideStartupLoading();
 }
 
 async function initApp() {
@@ -1793,6 +1798,7 @@ async function initApp() {
     applyOvernightRollover();
     syncStore();
     switchView(state.activeView);
+    hideStartupLoading();
     showAuthContainer();
   }
 }
