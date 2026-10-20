@@ -247,12 +247,66 @@ export function clearYahooDeepStockDataCache(): void {
   yahooDeepDataRequests.clear();
   marketNewsCache.clear();
   marketNewsRequests.clear();
+  stocktwitsCache.clear();
+  stocktwitsRequests.clear();
   validatedCloudResponse = null;
 }
 
 const MARKET_NEWS_CACHE_TTL_MS = 5 * 60 * 1000;
 const marketNewsCache = new Map<string, { expiresAt: number; data: any[] }>();
 const marketNewsRequests = new Map<string, Promise<any[]>>();
+const STOCKTWITS_CACHE_TTL_MS = 2 * 60 * 1000;
+const stocktwitsCache = new Map<string, { expiresAt: number; data: StocktwitsStream }>();
+const stocktwitsRequests = new Map<string, Promise<StocktwitsStream>>();
+
+export interface StocktwitsMessage {
+  id: number | string;
+  body: string;
+  created_at: string;
+  user?: { username?: string; name?: string };
+  sentiment?: { basic?: 'Bullish' | 'Bearish' | null } | null;
+  likes?: { total?: number };
+  entities?: { sentiment?: { basic?: string | null } | null };
+}
+
+export interface StocktwitsStream {
+  symbol: string;
+  messages: StocktwitsMessage[];
+  streamUrl: string;
+}
+
+export async function fetchStocktwitsStream(ticker: string, force = false): Promise<StocktwitsStream> {
+  const symbol = normalizeYahooSymbol(ticker);
+  if (!symbol) return { symbol: '', messages: [], streamUrl: '' };
+
+  if (!force) {
+    const cached = stocktwitsCache.get(symbol);
+    if (cached && cached.expiresAt > Date.now()) return cached.data;
+    if (cached) stocktwitsCache.delete(symbol);
+  }
+
+  const existing = stocktwitsRequests.get(symbol);
+  if (existing) return existing;
+
+  const request = proxyFetch('stocktwits', { symbol })
+    .then((data) => {
+      const messages = Array.isArray(data?.messages) ? data.messages : [];
+      const stream: StocktwitsStream = {
+        symbol,
+        messages,
+        streamUrl: typeof data?.streamUrl === 'string'
+          ? data.streamUrl
+          : `https://stocktwits.com/symbol/${encodeURIComponent(symbol)}`
+      };
+      stocktwitsCache.set(symbol, { expiresAt: Date.now() + STOCKTWITS_CACHE_TTL_MS, data: stream });
+      return stream;
+    })
+    .finally(() => {
+      if (stocktwitsRequests.get(symbol) === request) stocktwitsRequests.delete(symbol);
+    });
+  stocktwitsRequests.set(symbol, request);
+  return request;
+}
 
 export async function fetchMarketNews(ticker: string, force = false): Promise<any[]> {
   const symbol = normalizeYahooSymbol(ticker);
