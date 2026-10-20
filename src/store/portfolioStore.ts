@@ -187,8 +187,10 @@ export class PortfolioStore {
     const raw: PortfolioState = {
       positions: saved?.positions || {},
       cashCushion: saved?.cashCushion || { freeCash: 0, holdings: [] },
-      balance: Number(saved?.balance) || 0,
-      realizedMarginCharged: Number(saved?.realizedMarginCharged) || 0,
+      balance: Number.isFinite(Number(saved?.balance)) ? Number(saved?.balance) : 0,
+      realizedMarginCharged: Number.isFinite(Number(saved?.realizedMarginCharged))
+        ? Number(saved?.realizedMarginCharged)
+        : 0,
       tranches: saved?.tranches || [],
       startDate: saved?.startDate || todayIso(),
       activeView: saved?.activeView || 'COMBINED',
