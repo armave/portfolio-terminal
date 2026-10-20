@@ -77,4 +77,67 @@ describe('terminal command validation and cash routing', () => {
     expect(result.sideEffect).toBeUndefined();
   });
 
+  it('adds cash holdings and requests cloud sync when a manual price is supplied', () => {
+    const addCashStock = vi.spyOn(portfolioStore, 'addCashStock').mockImplementation(() => {});
+    const result = CommandDispatcher.execute('cash add 10 MSFT for 420');
+
+    expect(result.type).toBe('res');
+    expect(addCashStock).toHaveBeenCalledWith('MSFT', 10, 420);
+    expect(result.sideEffect).toEqual({ type: 'SYNC_CLOUD' });
+  });
+
+  it('requests a live quote when a cash holding is added without a price', () => {
+    const addCashStock = vi.spyOn(portfolioStore, 'addCashStock').mockImplementation(() => {});
+    const result = CommandDispatcher.execute('add cash 10 MSFT');
+
+    expect(result.type).toBe('res');
+    expect(addCashStock).toHaveBeenCalledWith('MSFT', 10, 0);
+    expect(result.sideEffect).toEqual({ type: 'FETCH_QUOTE', ticker: 'MSFT' });
+  });
+
+  it('removes a cash holding and requests cloud sync', () => {
+    const removeCashStock = vi.spyOn(portfolioStore, 'removeCashStock').mockImplementation(() => {});
+    const result = CommandDispatcher.execute('cash remove MSFT');
+
+    expect(result.type).toBe('res');
+    expect(removeCashStock).toHaveBeenCalledWith('MSFT');
+    expect(result.sideEffect).toEqual({ type: 'SYNC_CLOUD' });
+  });
+
+  it('routes sold-all commands to the store using the full current share count', () => {
+    const sellStock = vi.spyOn(portfolioStore, 'sellStock').mockImplementation(() => {});
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      positions: {
+        ...state.positions,
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 7,
+          currentPrice: 100,
+          pt: 110,
+          commBuy: 0,
+          startDate: '2026-10-01',
+          tranches: [{ qty: 7, price: 100, date: '2026-10-01', buyCommission: 0 }]
+        }
+      }
+    });
+
+    const result = CommandDispatcher.execute('sold all AAPL for 120');
+
+    expect(result.type).toBe('res');
+    expect(sellStock).toHaveBeenCalledWith('AAPL', 7, 120, expect.any(String));
+    expect(result.sideEffect).toEqual({ type: 'SYNC_CLOUD' });
+  });
+
+  it('preserves an explicit backdated purchase date in the buy command', () => {
+    const buyStock = vi.spyOn(portfolioStore, 'buyStock').mockImplementation(() => {});
+    const result = CommandDispatcher.execute('bought 30 WDC for 345 on 2026-10-19');
+
+    expect(result.type).toBe('res');
+    expect(buyStock).toHaveBeenCalledWith('WDC', 30, 345, '2026-10-19', undefined);
+    expect(result.text).toContain('Date: 2026-10-19');
+    expect(result.sideEffect).toEqual({ type: 'FETCH_QUOTE', ticker: 'WDC' });
+  });
+
 });
