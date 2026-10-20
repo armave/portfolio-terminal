@@ -397,7 +397,6 @@ export function MarketInsightsPanel({
             <h3 id="stocktwitsHeading" class="text-xs font-black uppercase tracking-wider text-slate-100">
               Stocktwits <span class="text-cyan-300">{ticker ? `· ${ticker}` : ''}</span>
             </h3>
-            <p class="mt-0.5 text-[10px] text-slate-500">Community stream · independent of the insight tabs</p>
           </div>
           {stocktwitsData?.streamUrl && (
             <a href={stocktwitsData.streamUrl} target="_blank" rel="noopener noreferrer"
