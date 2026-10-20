@@ -612,7 +612,7 @@ summary:hover {
 
 #projectionTableContainer table {
   width: 100%;
-  min-width: 680px;
+  min-width: 620px;
   max-width: none;
   margin: 0;
   table-layout: auto;
@@ -621,7 +621,7 @@ summary:hover {
 #projectionTableContainer tbody td[colspan="5"] {
   white-space: normal;
   min-width: 0;
-  max-width: 680px;
+  max-width: 620px;
   line-height: 1.4;
 }
 
@@ -851,7 +851,7 @@ summary:hover {
   }
 
   #projectionTableContainer table {
-    min-width: 640px;
+    min-width: 580px;
   }
 }
 
