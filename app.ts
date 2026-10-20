@@ -73,7 +73,6 @@ import { AuthModal } from './src/components/AuthModal';
 import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
-import { resolveMarketSessionChange, resolveMarketSessionPrice } from './src/domain/quotes';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
