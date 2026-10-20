@@ -859,7 +859,6 @@ summary:hover {
 #settings details > summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
   padding: 0.625rem 0.75rem;
   border: 1px solid rgb(51 65 85 / 0.8);

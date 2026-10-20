@@ -248,7 +248,7 @@ export function SettingsDesk({
       </div>
 
       <details class="space-y-3">
-        <summary class="cursor-pointer text-xs font-bold text-slate-300 hover:text-cyan-300">
+        <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
           Broker Rules
         </summary>
         <div class="mt-3">

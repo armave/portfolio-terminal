@@ -157,7 +157,6 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
           : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
           }`}
           data-nav-tab="true"
-          aria-pressed={isClosedHistoryActive}
           onKeyDown={handleTabKeyDown}
       >
         CLOSED HISTORY ({closedTrades.length})
