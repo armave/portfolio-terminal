@@ -23,12 +23,11 @@ import {
   sentimentLabel,
   SentimentDirection
 } from './src/features/quotes/sentiment';
-import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
+import { fetchFallbackPrice, fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import {
   fetchYahooStockData,
   normalizeYahooBatchResults,
   fetchYahooDeepStockData,
-  fetchFallbackQuote,
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
