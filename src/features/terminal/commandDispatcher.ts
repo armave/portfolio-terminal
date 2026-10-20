@@ -603,23 +603,8 @@ export class CommandDispatcher {
     } as any);
     const netAfterMargin = netBeforeMargin - marginCharged;
     const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
-    const money = (value: number) => (value < 0 ? '-
-  }
-}
- : '
-  }
-}
-) + Math.abs(value).toFixed(2);
-    const signedMoney = (value: number) => (value > 0 ? '+
-  }
-}
- : value < 0 ? '-
-  }
-}
- : '
-  }
-}
-) + Math.abs(value).toFixed(2);
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
     const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
 
     return {
