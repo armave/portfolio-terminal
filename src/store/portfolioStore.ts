@@ -525,7 +525,11 @@ export class PortfolioStore {
 
       let remainingToSell = actualSold;
       let soldCostBasis = 0;
+      let buyCommAllocated = 0;
       const updatedTranches: TrancheItem[] = [];
+      const hasPerTrancheCommissions = origTranches.length > 0 && origTranches.every(
+        (tranche) => Number.isFinite(Number((tranche as any).buyCommission))
+      );
       const origTranches = pos.tranches || [
         { qty: pos.shares, price: pos.currentPrice, date: pos.startDate }
       ];
@@ -545,8 +549,22 @@ export class PortfolioStore {
         soldCostBasis += take * trPrice;
         remainingToSell -= take;
 
+        const trancheBuyCommission = hasPerTrancheCommissions
+          ? Math.max(0, Number((tr as any).buyCommission) || 0)
+          : 0;
+        const commissionForTake = hasPerTrancheCommissions && trQty > 0
+          ? Number((trancheBuyCommission * take / trQty).toFixed(2))
+          : 0;
+        buyCommAllocated += commissionForTake;
+
         if (trQty - take > 0) {
-          updatedTranches.push({ ...tr, qty: trQty - take });
+          updatedTranches.push({
+            ...tr,
+            qty: trQty - take,
+            ...(hasPerTrancheCommissions
+              ? { buyCommission: Number((trancheBuyCommission - commissionForTake).toFixed(2)) }
+              : {})
+          });
         }
       }
 
@@ -555,7 +573,13 @@ export class PortfolioStore {
       }
 
       const sellRatio = pos.shares > 0 ? actualSold / pos.shares : 1;
-      const buyCommAllocated = Number(((Number(pos.commBuy) || 0) * sellRatio).toFixed(2));
+      if (hasPerTrancheCommissions) {
+        buyCommAllocated = Number(buyCommAllocated.toFixed(2));
+      } else {
+        // Legacy positions may have only an aggregate commission. Preserve the
+        // historical proportional allocation until their lots carry commission data.
+        buyCommAllocated = Number(((Number(pos.commBuy) || 0) * sellRatio).toFixed(2));
+      }
       const sellProceeds = actualSold * sellPrice;
 
       // Calculate sell commissions
