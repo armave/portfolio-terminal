@@ -53,12 +53,32 @@ function normalizeRootPlugin(): Plugin {
   };
 }
 
+function startupCriticalCssPlugin(): Plugin {
+  return {
+    name: 'startup-critical-css',
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html) {
+        const rootDir = findRootWithIndexHtml('.');
+        const cssPath = path.resolve(rootDir, 'startup-critical.css');
+        const css = fs.readFileSync(cssPath, 'utf8');
+        const marker = '<!-- STARTUP_CRITICAL_CSS -->';
+        if (!html.includes(marker)) {
+          throw new Error('Missing STARTUP_CRITICAL_CSS marker in index.html');
+        }
+        return html.replace(marker, '<style id="startup-critical-styles">\n' + css + '\n</style>');
+      }
+    }
+  };
+}
+
 export default defineConfig({
   base: '/portfolio-terminal/',
   appType: 'spa',
   plugins: [
     preact(),
     normalizeRootPlugin(),
+    startupCriticalCssPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['ico.svg'],

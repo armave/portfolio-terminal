@@ -1678,6 +1678,10 @@ function renderSettingsPanel() {
 
 let appInitialized = false;
 
+function hideStartupLoading() {
+  document.getElementById('startup-loading')?.classList.add('is-hidden');
+}
+
 setSecretGetter(() => state.gatewaySecret || getGatewaySecret());
 
 async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
@@ -1772,6 +1776,7 @@ async function startApp(secret: string) {
   await refreshAllLivePrices();
   initialQuoteRefreshPending = false;
   renderBoardAnalystConsensus(getMarketInsightsTicker());
+  hideStartupLoading();
 }
 
 async function initApp() {
@@ -1782,18 +1787,65 @@ async function initApp() {
     render(h(App, { onToggleMarketInsights: toggleMarketInsights }), rootEl);
   }
 
-  const secret = await restoreGatewaySecret();
-  if (secret) {
-    appInitialized = true;
-    hideAuthContainer();
-    await startApp(secret);
-  } else {
-    loadTradernetRules();
-    state = loadSavedState(state);
-    applyOvernightRollover();
-    syncStore();
-    switchView(state.activeView);
-    showAuthContainer();
+  try {
+    const secret = await restoreGatewaySecret();
+    if (secret) {
+      appInitialized = true;
+      hideAuthContainer();
+      await startApp(secret);
+    } else {
+      loadTradernetRules();
+      state = loadSavedState(state);
+      applyOvernightRollover();
+      syncStore();
+      switchView(state.activeView);
+      hideStartupLoading();
+      showAuthContainer();
+    }
+  } catch (error) {
+    appInitialized = false;
+    console.error('[Startup Error]:', error);
+    showStartupFailure();
+  }
+}
+
+function showStartupFailure() {
+  const loader = document.getElementById('startup-loading');
+  if (!loader) return;
+  const message = loader.querySelector('.startup-loading__message');
+  const hint = loader.querySelector('.startup-loading__hint');
+  const track = loader.querySelector('.startup-loading__track');
+  const actions = loader.querySelector('.startup-loading__actions');
+  if (message) message.textContent = 'Could not finish initializing the app.';
+  if (hint) hint.textContent = 'Check your connection, then retry or continue offline.';
+  if (track) (track as HTMLElement).style.display = 'none';
+  if (actions) (actions as HTMLElement).hidden = false;
+  const retryButton = document.getElementById('startup-retry');
+  const offlineButton = document.getElementById('startup-continue-offline');
+  if (retryButton) retryButton.onclick = () => {
+    const message = loader.querySelector('.startup-loading__message');
+    const hint = loader.querySelector('.startup-loading__hint');
+    const track = loader.querySelector('.startup-loading__track');
+    if (message) message.textContent = 'Initializing your portfolio…';
+    if (hint) hint.textContent = 'Restoring saved data and market connections';
+    if (track) (track as HTMLElement).style.display = '';
+    if (actions) (actions as HTMLElement).hidden = true;
+    loader.classList.remove('is-hidden');
+    void initApp();
+  };
+  if (offlineButton) offlineButton.onclick = () => { void continueStartupOffline(); };
+  loader.classList.remove('is-hidden');
+}
+
+async function continueStartupOffline() {
+  appInitialized = true;
+  state.gatewaySecret = '';
+  try {
+    await startApp('');
+  } catch (error) {
+    appInitialized = false;
+    console.error('[Startup Error]: Could not continue offline.', error);
+    showStartupFailure();
   }
 }
 
