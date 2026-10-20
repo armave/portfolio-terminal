@@ -740,3 +740,85 @@ summary:hover {
   width: 100%;
   min-width: 0;
 }
+
+
+/* Compact, information-dense portfolio workspace */
+#mainTerminalView {
+  padding: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  #mainTerminalView {
+    padding: 1rem;
+  }
+}
+
+#boardHeaderBanner {
+  padding-bottom: 0.5rem;
+}
+
+#portfolioMetricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  align-items: stretch;
+}
+
+#portfolioMetricsGrid > * {
+  min-width: 0;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+}
+
+#mainDeskContainer {
+  gap: 0.75rem;
+}
+
+#boardTitle {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+#projectionTableContainer {
+  padding-top: 0.25rem;
+}
+
+#projectionTableContainer table th,
+#projectionTableContainer table td {
+  padding: 0.375rem 0.5rem;
+  white-space: nowrap;
+}
+
+#projectionTableContainer table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-table-head);
+}
+
+#projectionTableContainer table tbody tr {
+  height: 2rem;
+}
+
+#tradingTerminalColumn {
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+#tradingTerminalColumn > * {
+  min-width: 0;
+}
+
+@media (max-width: 639px) {
+  #mainTerminalView {
+    padding: 0.625rem;
+  }
+
+  #portfolioMetricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #projectionTableContainer table th,
+  #projectionTableContainer table td {
+    padding: 0.375rem;
+  }
+}
