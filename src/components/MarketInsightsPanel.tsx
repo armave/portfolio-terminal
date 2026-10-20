@@ -85,7 +85,7 @@ export function MarketInsightsPanel({
     };
   }, [ticker, isOpen, activeSection, refreshTrigger]);
 
-  // Company news has its own five-minute refresh lifecycle and cache.
+  // Company news loads on open and refreshes only when requested.
   useEffect(() => {
     if (!isOpen || !ticker) return;
 
@@ -118,24 +118,13 @@ export function MarketInsightsPanel({
     };
 
     void refreshNews(forceOnStart);
-    const timer = window.setInterval(() => {
-      if (!document.hidden) void refreshNews(true);
-    }, 5 * 60 * 1000);
-    const onVisibilityChange = () => {
-      // Let the service cache decide whether the feed is stale on return.
-      if (!document.hidden) void refreshNews(false);
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
     return () => {
       disposed = true;
       newsRequestIdRef.current += 1;
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [ticker, isOpen, refreshTrigger, newsRefreshRequest]);
 
-  // Stocktwits refreshes independently of company news and insight-tab changes.
+  // Stocktwits loads on open and refreshes only when requested.
   useEffect(() => {
     if (!isOpen || !ticker) return;
 
@@ -168,20 +157,9 @@ export function MarketInsightsPanel({
     };
 
     void refreshStocktwits(forceOnStart);
-    const timer = window.setInterval(() => {
-      if (!document.hidden) void refreshStocktwits(true);
-    }, 90 * 1000);
-    const onVisibilityChange = () => {
-      // Reuse a still-fresh cached response instead of bypassing cache on every tab switch.
-      if (!document.hidden) void refreshStocktwits(false);
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
     return () => {
       disposed = true;
       stocktwitsRequestIdRef.current += 1;
-      window.clearInterval(timer);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [ticker, isOpen, refreshTrigger, stocktwitsRefreshRequest]);
 
@@ -527,7 +505,8 @@ export function MarketInsightsPanel({
           <div class="space-y-2">
             <p class="text-[10px] text-slate-500">{stocktwitsUpdatedAt ? `Updated ${formatRelativeTime(stocktwitsUpdatedAt)}` : ''}{stocktwitsLoading ? ' · Refreshing…' : ''}</p>
             {stocktwitsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded messages.</p>}
-            {stocktwitsData.messages.slice(0, 5).map((message, idx) => {
+            <div class="max-h-96 space-y-2 overflow-y-auto overscroll-contain pr-1" aria-label="Stocktwits messages">
+            {stocktwitsData.messages.map((message, idx) => {
               const sentiment = message.sentiment?.basic ?? message.entities?.sentiment?.basic ?? null;
               const sentimentClass = sentiment?.toLowerCase() === 'bullish'
                 ? 'text-emerald-400 border-emerald-900/70'
@@ -547,6 +526,7 @@ export function MarketInsightsPanel({
                 </article>
               );
             })}
+            </div>
           </div>
         )}
       </section>
