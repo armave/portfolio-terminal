@@ -8,7 +8,7 @@ export function App({ onToggleMarketInsights }: AppProps) {
       {/* Active Position Header Panel */}
       <div
         id="mainTerminalView"
-        class="border-card p-4 sm:p-6 rounded-xl space-y-2 max-w-6xl mx-auto mt-10"
+        class="border-card p-4 sm:p-6 rounded-xl space-y-2 max-w-6xl mx-auto"
       >
         {/* Asset View Tabs */}
         <div

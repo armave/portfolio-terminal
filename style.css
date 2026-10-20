@@ -67,6 +67,10 @@ body::before {
   content: none;
 }
 
+#root {
+  padding-top: 1.5%;
+}
+
 #terminalLog,
 #tickerTabs,
 input,
@@ -81,7 +85,7 @@ button {
     transform 160ms ease;
 }
 
-#mainTerminalView, #settings, #closedHistoryContainer {
+#settings, #closedHistoryContainer {
   margin-top: 10px;
 }
 
