@@ -1,0 +1,56 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fetchFallbackPrice } from './quoteProvider';
+import { fetchYahooStockData, normalizeYahooBatchResults } from './api';
+import { refreshTrackedQuotes } from './quotePolling';
+
+vi.mock('./quoteProvider', () => ({ fetchFallbackPrice: vi.fn() }));
+vi.mock('./api', () => ({ fetchYahooStockData: vi.fn(), normalizeYahooBatchResults: vi.fn() }));
+
+describe('refreshTrackedQuotes', () => {
+  afterEach(() => vi.resetAllMocks());
+
+  it('resolves a batch market price and applies it through the current-state callback', async () => {
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([{
+      symbol: 'AAPL', price: { current: 100, previousClose: 95, marketState: 'REGULAR', change: 5 }
+    }] as never);
+    const record = vi.fn().mockReturnValue(true);
+
+    await expect(refreshTrackedQuotes(['AAPL'], 123, record)).resolves.toBe(1);
+    expect(fetchYahooStockData).toHaveBeenCalledWith('AAPL');
+    expect(record).toHaveBeenCalledWith('AAPL', 100, 'Yahoo Proxy', expect.any(Number), expect.objectContaining({
+      marketState: 'REGULAR', price: 100, change: 5, changePercent: expect.any(Number)
+    }), 123);
+  });
+
+  it('uses fallback quotes when batch data has no usable price', async () => {
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([{ symbol: 'MSFT', error: 'No batch quote' }] as never);
+    vi.mocked(fetchFallbackPrice).mockResolvedValue({
+      price: 42, sourceName: 'Twelve Data',
+      quoteDetails: { marketState: 'REGULAR', price: 42, change: 2, changePercent: 5 }
+    } as never);
+    const record = vi.fn().mockReturnValue(true);
+
+    await expect(refreshTrackedQuotes(['MSFT'], 456, record)).resolves.toBe(1);
+    expect(fetchFallbackPrice).toHaveBeenCalledWith('MSFT');
+    expect(record).toHaveBeenCalledWith('MSFT', 42, 'Twelve Data', expect.any(Number), expect.objectContaining({ price: 42 }), 456);
+  });
+
+  it('returns zero for no tickers or when returned symbols are not tracked', async () => {
+    const record = vi.fn().mockReturnValue(false);
+    await expect(refreshTrackedQuotes([], 789, record)).resolves.toBe(0);
+    expect(fetchYahooStockData).not.toHaveBeenCalled();
+
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([{
+      symbol: 'NVDA', price: { current: 50, previousClose: 50, marketState: 'REGULAR', change: 0 }
+    }] as never);
+    await expect(refreshTrackedQuotes(['NVDA'], 789, record)).resolves.toBe(0);
+  });
+
+  it('propagates batch provider failures to the caller', async () => {
+    vi.mocked(fetchYahooStockData).mockRejectedValue(new Error('Network unavailable'));
+    await expect(refreshTrackedQuotes(['TSLA'], 100, vi.fn())).rejects.toThrow('Network unavailable');
+  });
+});
