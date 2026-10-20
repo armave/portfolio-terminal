@@ -398,7 +398,7 @@ describe('canonical trade lifecycle and persistence', () => {
 
     store.buyStock('AAPL', 1, 100, '2026-10-14');
     store.buyStock('AAPL', 1, 1_000, '2026-10-15');
-    expect(store.getState().positions.AAPL.tranches.map((tranche) => tranche.buyCommission)).toEqual([1, 10]);
+    expect(store.getState().positions.AAPL?.tranches.map((tranche) => tranche.buyCommission)).toEqual([1, 10]);
 
     store.sellStock('AAPL', 1, 200, '2026-10-16');
 
