@@ -58,7 +58,7 @@ export function App({}: AppProps) {
             <div class="desktop-workspace-grid grid grid-cols-1 lg:grid-cols-1 gap-4 lg:gap-6 items-start">
               {/* Projection Table */}
               <div
-                class="table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none lg:mx-0"
+                class="table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none"
                 id="projectionTableContainer"
               >
                 <table class="w-full min-w-[300px] text-xs border-collapse">
