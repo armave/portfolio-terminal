@@ -583,6 +583,8 @@ summary:hover {
 
 .table-scroll-wrapper,
 #projectionTableContainer {
+  margin-inline: auto;
+  text-align: center;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   max-width: 960px;
