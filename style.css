@@ -728,3 +728,14 @@ summary:hover {
 }
 
 
+
+/* Keep Market Insights directly above the terminal in the same workspace column. */
+.trading-workspace-grid > .market-insights-workspace {
+  grid-column: 2;
+  margin-bottom: -0.5rem;
+}
+@media (max-width: 47.999rem) {
+  .trading-workspace-grid > .market-insights-workspace {
+    grid-column: 1;
+  }
+}
