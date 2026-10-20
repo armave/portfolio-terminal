@@ -402,7 +402,7 @@ describe('canonical trade lifecycle and persistence', () => {
 
     store.sellStock('AAPL', 1, 200, '2026-10-16');
 
-    expect(store.getState().closedTrades[0].commissions).toBe(3);
+    expect(store.getState().closedTrades[0]?.commissions).toBe(3);
     expect(store.getState().positions.AAPL.commBuy).toBe(10);
     expect(store.getState().positions.AAPL.tranches).toEqual([
       expect.objectContaining({ qty: 1, price: 1_000, buyCommission: 10 })
