@@ -1787,12 +1787,46 @@ async function initApp() {
     render(h(App, { onToggleMarketInsights: toggleMarketInsights }), rootEl);
   }
 
-  const secret = await restoreGatewaySecret();
-  if (secret) {
-    appInitialized = true;
-    hideAuthContainer();
-    await startApp(secret);
-  } else {
+  try {
+    const secret = await restoreGatewaySecret();
+    if (secret) {
+      appInitialized = true;
+      hideAuthContainer();
+      await startApp(secret);
+    } else {
+      loadTradernetRules();
+      state = loadSavedState(state);
+      applyOvernightRollover();
+      syncStore();
+      switchView(state.activeView);
+      hideStartupLoading();
+      showAuthContainer();
+    }
+  } catch (error) {
+    appInitialized = false;
+    console.error('[Startup Error]:', error);
+    showStartupFailure();
+  }
+}
+
+function showStartupFailure() {
+  const loader = document.getElementById('startup-loading');
+  if (!loader) return;
+  const message = loader.querySelector('.startup-loading__message');
+  const hint = loader.querySelector('.startup-loading__hint');
+  const track = loader.querySelector('.startup-loading__track');
+  const actions = loader.querySelector('.startup-loading__actions');
+  if (message) message.textContent = 'Could not finish initializing the app.';
+  if (hint) hint.textContent = 'Check your connection, then retry or continue offline.';
+  if (track) (track as HTMLElement).style.display = 'none';
+  if (actions) (actions as HTMLElement).hidden = false;
+  loader.classList.remove('is-hidden');
+}
+
+async function continueStartupOffline() {
+  appInitialized = false;
+  state.gatewaySecret = '';
+  try {
     loadTradernetRules();
     state = loadSavedState(state);
     applyOvernightRollover();
@@ -1800,6 +1834,9 @@ async function initApp() {
     switchView(state.activeView);
     hideStartupLoading();
     showAuthContainer();
+  } catch (error) {
+    console.error('[Startup Error]: Could not continue offline.', error);
+    showStartupFailure();
   }
 }
 
