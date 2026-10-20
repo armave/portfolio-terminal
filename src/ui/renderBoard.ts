@@ -1,5 +1,6 @@
 import { render, h } from 'preact';
 import { formatUSD } from '../utils/formatters';
+import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatTrancheDate, formatUSD, formatQuoteMetadata, formatRiskTrigger } from '../utils/formatters';
 import { TickerTabs } from '../components/TickerTab';
 import { EmptyStatePanel } from '../components/EmptyStatePanel';
@@ -24,22 +25,7 @@ export type {
 
 const NON_POSITION_VIEWS = new Set(['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
 
-export function getTotalPortfolioInvested(state?: BoardState | null): number {
-  if (!state || typeof state !== 'object') return 0;
-  return Object.values(state.positions || {}).reduce((acc, pos) => {
-    return acc + (pos?.tranches || []).reduce((sum, tr) => sum + tr.qty * tr.price, 0);
-  }, 0);
-}
-
-export function getCashCushionTotal(state?: BoardState | null): number {
-  if (!state?.cashCushion) return 0;
-  const cashVal = Number(state.cashCushion.freeCash) || 0;
-  const stocksVal = (state.cashCushion.holdings || []).reduce((sum, h) => {
-    const price = Number(h.currentPrice ?? h.price) || 0;
-    return sum + (Number(h.shares) || 0) * price;
-  }, 0);
-  return cashVal + stocksVal;
-}
+export { getTotalPortfolioInvested, getCashCushionTotal } from '../domain/portfolioSelectors';
 
 function resolveActiveView(state: BoardState): string {
   let currentView = state.activeView;

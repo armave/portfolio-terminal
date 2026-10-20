@@ -56,13 +56,12 @@ import {
   showToast
 } from './src/ui/notifications';
 import {
-  getCashCushionTotal,
-  getTotalPortfolioInvested,
   renderBoard as renderBoardUI,
   renderCashCushion,
   renderPositionsTable,
   renderSummaryCards
 } from './src/ui/renderBoard';
+import { getCashCushionTotal, getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { BoardExternalLinks } from './src/components/BoardExternalLinks';
