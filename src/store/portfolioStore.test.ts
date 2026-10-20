@@ -426,6 +426,29 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().cashBalance).toBe(0);
   });
 
+
+  it('ignores non-finite trade inputs without corrupting financial state', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({ commPerShare: 0, commVolumePct: 0, minCommOrder: 0, annualRate: 0, annualBorrowRate: 0 });
+    store.setCashBalance(500);
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const before = store.getState();
+
+    store.buyStock('MSFT', Number.POSITIVE_INFINITY, 100, '2026-10-15');
+    store.buyStock('MSFT', 2, Number.NaN, '2026-10-15');
+    store.sellStock('AAPL', 1, Number.POSITIVE_INFINITY, '2026-10-16');
+    store.sellStock('AAPL', Number.NaN, 110, '2026-10-16');
+    store.addCashStock('NVDA', Number.POSITIVE_INFINITY, 100);
+    store.addCashStock('NVDA', 2, Number.NaN);
+    store.updateTargetPrice('AAPL', Number.POSITIVE_INFINITY);
+
+    expect(store.getState().positions).toEqual(before.positions);
+    expect(store.getState().balance).toBe(before.balance);
+    expect(store.getState().cashCushion).toEqual(before.cashCushion);
+    expect(store.getState().closedTrades).toEqual(before.closedTrades);
+  });
+
   it('uses free cash before borrowing and applies sale proceeds to debt before cash across FIFO tranches', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();

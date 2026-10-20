@@ -52,6 +52,24 @@ describe('terminal command validation and cash routing', () => {
     expect(result.type).toBe('res');
     expect(buyStock).toHaveBeenCalledWith('AAPL', 2, 100, expect.any(String), undefined);
   });
+
+  it('dispatches a live quote request as a visible side effect', () => {
+    const result = CommandDispatcher.execute('quote AAPL');
+
+    expect(result.type).toBe('cmd');
+    expect(result.text).toContain('Fetching live quote for AAPL');
+    expect(result.sideEffect).toEqual({ type: 'FETCH_QUOTE', ticker: 'AAPL' });
+  });
+
+  it('applies manual quote commands to the store and requests cloud sync', () => {
+    const updatePrice = vi.spyOn(portfolioStore, 'updatePrice').mockImplementation(() => {});
+    const result = CommandDispatcher.execute('quote AAPL 195.50');
+
+    expect(result.type).toBe('res');
+    expect(updatePrice).toHaveBeenCalledWith('AAPL', 195.5);
+    expect(result.sideEffect).toEqual({ type: 'SYNC_CLOUD' });
+  });
+
   it('returns validation failures as errors for the command runner to display', () => {
     const result = CommandDispatcher.execute('bought 2 AAPL for 1.2.3');
     expect(result.type).toBe('err');
