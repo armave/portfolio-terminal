@@ -384,6 +384,30 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().closedTrades[0].marginInterest).toBe(0);
   });
 
+  it('sets free cash without changing existing margin debt', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.setMarginDebt(587.81);
+
+    store.setFreeCash(2500);
+
+    expect(store.getState().cashCushion.freeCash).toBe(2500);
+    expect(store.getState().cashBalance).toBe(2500);
+    expect(store.getState().balance).toBe(-587.81);
+  });
+
+  it('rejects negative or non-finite free-cash values without changing state', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.setMarginDebt(500);
+    const before = store.getState();
+
+    expect(() => store.setFreeCash(-1)).toThrow('Free cash must be a finite non-negative amount.');
+    expect(() => store.setFreeCash(Number.NaN)).toThrow('Free cash must be a finite non-negative amount.');
+    expect(store.getState().balance).toBe(before.balance);
+    expect(store.getState().cashCushion.freeCash).toBe(before.cashCushion.freeCash);
+  });
+
   it('clears prior margin debt when a positive cash balance is entered', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
