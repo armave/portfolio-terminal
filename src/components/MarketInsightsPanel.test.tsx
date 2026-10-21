@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getStocktwitsCashtags } from './MarketInsightsPanel';
+import { getStocktwitsCashtags, hasStocktwitsCommentary } from './MarketInsightsPanel';
 
 describe('getStocktwitsCashtags', () => {
   it('returns unique ticker cashtags in uppercase', () => {
@@ -17,5 +17,23 @@ describe('getStocktwitsCashtags', () => {
 
   it('does not treat ordinary dollar amounts as ticker symbols', () => {
     expect(getStocktwitsCashtags('Bought shares for $125 and waiting')).toEqual([]);
+  });
+});
+
+describe('hasStocktwitsCommentary', () => {
+  it('filters posts containing only ticker symbols and punctuation', () => {
+    expect(hasStocktwitsCommentary('$AAPL')).toBe(false);
+    expect(hasStocktwitsCommentary('$AAPL $MSFT')).toBe(false);
+    expect(hasStocktwitsCommentary('  $aapl, $AAPL!  ')).toBe(false);
+  });
+
+  it('keeps posts with commentary alongside a ticker', () => {
+    expect(hasStocktwitsCommentary('$AAPL looking bullish')).toBe(true);
+    expect(hasStocktwitsCommentary('$MSFT 🚀')).toBe(true);
+  });
+
+  it('safely rejects missing or malformed bodies', () => {
+    expect(hasStocktwitsCommentary(null)).toBe(false);
+    expect(hasStocktwitsCommentary(undefined)).toBe(false);
   });
 });
