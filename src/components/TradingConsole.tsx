@@ -120,7 +120,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       display: `bought [shares] ${hasPosition ? ticker : '[TICKER]'} for ${priceText}, pt ${comparisonPrice}`
     },
     {
-      category: 'Buy More? (Preview)',
+      category: 'Buy More Scenario (What-if)',
       badgeColor: 'text-purple-400 border-purple-900/60 bg-purple-950/30',
       id: 'hintBuyMoreScenario',
       command: `buy scenario [shares] ${hasPosition ? ticker : '[TICKER]'} at ${priceText}`,
