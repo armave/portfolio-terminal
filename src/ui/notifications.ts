@@ -60,10 +60,10 @@ function renderScenarioReport(container: HTMLElement, message: string): void {
     } else if (/^(?:\\s*[A-Z][A-Z0-9 /&()_-]{2,}:|\\s*\\d+[.)]\\s|\\s*[A-Z]\\)\\s)/.test(rawLine) ||
       /^(?:BEST ESTIMATED EXIT|NET ADVANTAGE|RESULT:|PRICE SENSITIVITY:)/i.test(rawLine.trim())) {
       row.className += ' mt-2 border-l-2 border-cyan-400/80 bg-cyan-400/[0.07] font-semibold text-cyan-100';
+    } else if (/(?:-\\$|loss|downside|worse|decrease|commission|interest)/i.test(rawLine)) {
+      row.className += ' my-1 bg-rose-400/[0.045] text-slate-200';
     } else if (/(?:\\+\\$|\\+\\d|profit|gain|upside|better|increase|NET P&L)/i.test(rawLine)) {
       row.className += ' my-1 bg-emerald-400/[0.06] text-slate-100';
-    } else if (/(?:-\\$|loss|cost|downside|worse|decrease|commission|interest)/i.test(rawLine)) {
-      row.className += ' my-1 bg-rose-400/[0.045] text-slate-200';
     } else if (rawLine.includes('|')) {
       row.className += ' my-0.5 odd:bg-white/[0.025] text-slate-200';
     } else {
