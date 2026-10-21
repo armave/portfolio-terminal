@@ -241,7 +241,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
           value={command}
           onInput={(event) => setCommand((event.currentTarget as HTMLInputElement).value)}
           type="text"
-          autocomplete="off"
+          autocomplete="new-password"
           spellcheck={false}
           placeholder={`e.g. sell ${hasPosition ? ticker : 'AAPL'} today for ${priceText} vs sell 14 days later for ${comparisonPrice}`}
           onKeyDown={handleKeyDown}
