@@ -79,10 +79,141 @@ function parseTagAndStyle(rawMessage: string, isError: boolean) {
   };
 }
 
+function isScenarioReport(message: string): boolean {
+  const firstLine = message.split('\n', 1)[0].toUpperCase();
+  return (
+    message.includes('\n') ||
+    firstLine.startsWith('[SIM ') ||
+    firstLine.startsWith('[EXIT COMPARISON:') ||
+    firstLine.startsWith('[MULTI-DATE EXIT COMPARISON:') ||
+    firstLine.startsWith('[HYPOTHETICAL BUY:') ||
+    firstLine.startsWith('[LADDER EXIT:') ||
+    firstLine.startsWith('[SIM ') ||
+    firstLine.startsWith('[STAGED EXIT:')
+  );
+}
+
+function showScenarioReport(message: string): void {
+  const existing = document.getElementById('scenarioReportModal');
+  existing?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'scenarioReportModal';
+  overlay.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 sm:p-6';
+  overlay.setAttribute('role', 'presentation');
+
+  const dialog = document.createElement('section');
+  dialog.className = 'flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-purple-800/70 bg-slate-950 shadow-2xl shadow-black/50';
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', 'scenarioReportTitle');
+
+  const header = document.createElement('div');
+  header.className = 'flex items-start justify-between gap-4 border-b border-slate-800 bg-slate-900/90 px-4 py-3 sm:px-5';
+
+  const headingGroup = document.createElement('div');
+  headingGroup.className = 'min-w-0';
+
+  const eyebrow = document.createElement('div');
+  eyebrow.className = 'mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-purple-300';
+  eyebrow.textContent = 'What-if analysis';
+
+  const title = document.createElement('h2');
+  title.id = 'scenarioReportTitle';
+  title.className = 'break-words text-sm font-bold text-white sm:text-base';
+  title.textContent = message.split('\n', 1)[0].replace(/^\[|\]$/g, '') || 'Scenario report';
+
+  const subtitle = document.createElement('p');
+  subtitle.className = 'mt-1 text-[11px] text-slate-400';
+  subtitle.textContent = 'Estimated results based on the entered prices and current portfolio assumptions.';
+
+  headingGroup.append(eyebrow, title, subtitle);
+
+  const closeTop = document.createElement('button');
+  closeTop.type = 'button';
+  closeTop.className = 'shrink-0 rounded border border-slate-700 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:border-slate-500 hover:text-white';
+  closeTop.textContent = 'Close';
+  closeTop.setAttribute('aria-label', 'Close scenario report');
+
+  header.append(headingGroup, closeTop);
+
+  const report = document.createElement('pre');
+  report.className = 'overflow-auto whitespace-pre-wrap break-words px-4 py-4 font-mono text-xs leading-6 text-slate-200 sm:px-5 sm:text-[13px]';
+  report.textContent = message;
+
+  const footer = document.createElement('div');
+  footer.className = 'flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900/70 px-4 py-3 sm:px-5';
+
+  const disclaimer = document.createElement('p');
+  disclaimer.className = 'max-w-xl text-[10px] leading-relaxed text-slate-500';
+  disclaimer.textContent = 'Hypothetical only — this report does not execute trades or guarantee future results. Margin costs and commissions are estimates.';
+
+  const closeBottom = document.createElement('button');
+  closeBottom.type = 'button';
+  closeBottom.className = 'rounded-md bg-purple-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-purple-400';
+  closeBottom.textContent = 'Done';
+
+  footer.append(disclaimer, closeBottom);
+  dialog.append(header, report, footer);
+  overlay.appendChild(dialog);
+
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKeyDown);
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') close();
+  };
+
+  closeTop.addEventListener('click', close);
+  closeBottom.addEventListener('click', close);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) close();
+  });
+  document.addEventListener('keydown', onKeyDown);
+  document.body.appendChild(overlay);
+  closeTop.focus();
+}
+
 export function logTerminal(message: string, isUser = false, isError = false): void {
   const logEl =
     document.getElementById('terminalLog') || document.getElementById('terminalOutput');
   if (!logEl) return;
+
+  if (!isUser && !isError && isScenarioReport(message)) {
+    showScenarioReport(message);
+
+    const entry = document.createElement('div');
+    const timeStr = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    entry.className = 'flex items-start justify-between gap-2 rounded border-l-2 border-purple-500/80 bg-purple-950/15 px-2.5 py-1.5 text-xs font-mono text-slate-200';
+    const summary = document.createElement('div');
+    summary.className = 'min-w-0 flex-1';
+    const label = document.createElement('span');
+    label.className = 'mr-2 rounded border border-purple-800/80 bg-purple-950/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-purple-300';
+    label.textContent = 'WHAT-IF REPORT';
+    const text = document.createElement('span');
+    text.className = 'break-words';
+    text.textContent = message.split('\n', 1)[0].slice(0, 180);
+    const reopen = document.createElement('button');
+    reopen.type = 'button';
+    reopen.className = 'shrink-0 rounded border border-purple-800/80 px-2 py-1 text-[10px] font-bold text-purple-300 hover:bg-purple-950/70';
+    reopen.textContent = 'View report';
+    reopen.addEventListener('click', () => showScenarioReport(message));
+    summary.append(label, text);
+    entry.append(summary, reopen);
+    const time = document.createElement('span');
+    time.className = 'shrink-0 pt-0.5 text-[9px] text-slate-600';
+    time.textContent = timeStr;
+    entry.appendChild(time);
+    logEl.appendChild(entry);
+    logEl.scrollTop = logEl.scrollHeight;
+    return;
+  }
 
   const entry = document.createElement('div');
   const timeStr = new Date().toLocaleTimeString([], {
