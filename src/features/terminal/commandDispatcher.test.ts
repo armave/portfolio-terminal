@@ -208,7 +208,10 @@ describe('terminal command validation and cash routing', () => {
     expect(result.type).toBe('res');
     expect(result.text).toContain('[HYPOTHETICAL BUY: AAPL]');
     expect(result.text).toContain('Average entry');
-    expect(result.text).toContain('PRICE SENSITIVITY');
+    expect(result.text).toContain('PROFIT / LOSS COMPARISON');
+    expect(result.text).toContain('At current quote');
+    expect(result.text).toContain('At target');
+    expect(result.text).toContain('Return on cost at target');
     expect(buyStock).not.toHaveBeenCalled();
   });
 
