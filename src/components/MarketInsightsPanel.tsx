@@ -28,6 +28,14 @@ export function getStocktwitsCashtags(body: unknown): string[] {
   ));
 }
 
+export function hasStocktwitsCommentary(body: unknown): boolean {
+  if (typeof body !== 'string') return false;
+  return body
+    .replace(STOCKTWITS_CASHTAG_PATTERN, '')
+    .replace(/[\\s.,!?;:()[\\]{}|/\\-]+/g, '')
+    .length > 0;
+}
+
 function renderStocktwitsBody(body: string) {
   const parts = body.split(/(\$[A-Z][A-Z0-9.-]{0,9}\b)/gi);
   return parts.map((part, index) =>
@@ -201,7 +209,9 @@ export function MarketInsightsPanel({
   };
 
   const filteredStocktwitsMessages = (stocktwitsData?.messages ?? []).filter(
-    (message) => getStocktwitsCashtags(message.body).length <= 1
+    (message) =>
+      getStocktwitsCashtags(message.body).length <= 1 &&
+      hasStocktwitsCommentary(message.body)
   );
 
   const renderContent = () => {
