@@ -972,3 +972,7 @@ summary:hover {
     padding: 0.45rem 0.5rem;
   }
 }
+
+.scenario-report-content {
+  text-wrap: pretty;
+}

@@ -177,4 +177,42 @@ describe('terminal command validation and cash routing', () => {
     expect(result.text).toContain('on cost basis');
   });
 
+  it('compares multiple user-specified exit dates without changing the portfolio', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state, activeView: 'AAPL', balance: -1000,
+      positions: { ...state.positions, AAPL: {
+        ticker: 'AAPL', shares: 10, currentPrice: 100, pt: 120, commBuy: 2,
+        tranches: [{ qty: 10, price: 100, buyCommission: 2 }]
+      } }
+    } as any);
+    const result = CommandDispatcher.execute('compare exits AAPL today at 110, tomorrow at 111, 1 week later at 115, 10 days at 118');
+    expect(result.type).toBe('res');
+    expect(result.text).toContain('[MULTI-DATE EXIT COMPARISON: AAPL]');
+    expect(result.text).toContain('1 week later');
+    expect(result.text).toContain('10 days');
+    expect(result.text).toContain('BEST ESTIMATED EXIT');
+  });
+
+  it('simulates buying more shares without calling portfolio mutation methods', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state, activeView: 'AAPL',
+      positions: { ...state.positions, AAPL: {
+        ticker: 'AAPL', shares: 10, currentPrice: 110, pt: 120, commBuy: 2,
+        tranches: [{ qty: 10, price: 100, buyCommission: 2 }]
+      } }
+    } as any);
+    const buyStock = vi.spyOn(portfolioStore, 'buyStock');
+    const result = CommandDispatcher.execute('buy scenario 10 AAPL at 105');
+    expect(result.type).toBe('res');
+    expect(result.text).toContain('[HYPOTHETICAL BUY: AAPL]');
+    expect(result.text).toContain('Average entry');
+    expect(result.text).toContain('PROFIT / LOSS COMPARISON');
+    expect(result.text).toContain('At current quote');
+    expect(result.text).toContain('At target');
+    expect(result.text).toContain('Return on cost at target');
+    expect(buyStock).not.toHaveBeenCalled();
+  });
+
 });

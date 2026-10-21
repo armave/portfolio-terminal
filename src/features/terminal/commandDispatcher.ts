@@ -169,6 +169,8 @@ export class CommandDispatcher {
             '  • sell today for <p1> vs sell <N> days later for <p2>',
             '  • sim [ticker] <price> in <days> days    (e.g. sim AAPL 205 in 14d)',
             '  • ladder [ticker] <p1>, <p2>, <p3>       (e.g. ladder AAPL 195, 200, 205)',
+            '  • compare exits [ticker] today at <p>, 1 week at <p>, 10 days at <p>',
+            '  • buy scenario <shares> <ticker> at <price> (read-only add-on purchase simulation)',
             '  • view <ticker|combined|cash> | refresh | clear'
           ].join('\n')
         };
@@ -193,6 +195,25 @@ export class CommandDispatcher {
           sideEffect: { type: 'SWITCH_VIEW', view: mapped }
         };
       }
+
+      const exitSeriesMatch = raw.match(/^compare\s+exits?\s+(.+)$/i);
+      if (exitSeriesMatch) {
+        let tickerArg: string | undefined;
+        const scenarios: Array<{ label: string; days: number; price: number }> = [];
+        for (const segment of exitSeriesMatch[1].split(/\s*,\s*/).filter(Boolean)) {
+          const match = segment.match(/^(?:([A-Za-z]{1,10})\s+)?(today|tomorrow|(?:\d+)\s*(?:d|days?|w|weeks?)(?:\s+(?:later|from\s+now))?)\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
+          if (!match) throw new Error('Usage: compare exits [TICKER] today at 190, 1 day at 191, 1 week later at 195, 10 days at 198');
+          if (match[1]) { const found = match[1].toUpperCase(); if (tickerArg && tickerArg !== found) throw new Error('Use the same ticker for every exit scenario.'); tickerArg = found; }
+          const period = match[2].toLowerCase(); let days = period === 'tomorrow' ? 1 : 0;
+          if (period !== 'today' && period !== 'tomorrow') { const p = period.match(/^(\d+)\s*(d|day|days|w|week|weeks)/); if (!p) throw new Error('Unrecognized exit date: ' + match[2]); days = Number(p[1]) * (p[2].startsWith('w') ? 7 : 1); }
+          const price = cleanNumber(match[3]); if (!Number.isFinite(price) || price <= 0) throw new Error('Every exit price must be a positive number.');
+          scenarios.push({ label: match[2], days, price });
+        }
+        if (scenarios.length < 2) throw new Error('Provide at least two exit scenarios to compare.');
+        return this.evaluateExitScenarios(tickerArg, scenarios);
+      }
+      const buyScenarioMatch = raw.match(/^buy\s+scenario\s+([0-9.,]+)\s+([A-Za-z]{1,10})\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
+      if (buyScenarioMatch) return this.evaluateBuyScenario(cleanNumber(buyScenarioMatch[1]), buyScenarioMatch[2].toUpperCase(), cleanNumber(buyScenarioMatch[3]));
 
       // 3. COMPARISON SIMULATION: "sell today for $180 vs sell 14 days later for $185"
       const vsMatch = raw.match(
@@ -567,10 +588,94 @@ export class CommandDispatcher {
         '  NET P&L:            ' + signedMoney(netLater),
         '',
         'NET ADVANTAGE (B - A): ' + signedMoney(diff),
-        winner,
-        'Estimate only; assumes shares, cost basis, and margin debt stay unchanged until exit.'
+        winner
       ].join('\n')
     };
+  }
+
+  private static evaluateExitScenarios(tickerArg: string | undefined, scenarios: Array<{ label: string; days: number; price: number }>): CommandOutput {
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg), rules = this.getRules(state), shares = Number(pos.shares);
+    if (!Number.isFinite(shares) || shares <= 0) throw new Error('No valid open shares found for ' + sym + '.');
+    const costBasis = (pos.tranches || []).reduce((sum: number, t: any) => sum + (Number(t.qty) || 0) * (Number(t.price) || 0), 0);
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0), debt = Math.abs(Number(state.balance) || 0);
+    const currentMargin = calculateMarginInterest(pos.tranches || [], { dailyRate: rules.dailyRate, marginDebt: debt, totalDebt: debt } as any);
+    const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2), signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const rows = scenarios.map(s => { const gross = shares * s.price, sellFee = calculateCommission(shares, gross, rules as any), carry = debt * rules.dailyRate * s.days, net = gross - costBasis - buyCommission - sellFee - currentMargin - carry; return { ...s, gross, sellFee, carry, net }; });
+    const baseline = rows.find(r => r.days === 0)?.net ?? rows[0].net, best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
+    return { type: 'res', text: [
+      '[MULTI-DATE EXIT COMPARISON: ' + sym + '] ' + shares.toLocaleString() + ' shares | Cost basis: ' + money(costBasis),
+      'Assumptions: buy commissions ' + money(buyCommission) + ' | current margin interest ' + money(currentMargin) + ' | margin debt ' + money(debt), '',
+      ...rows.map((r, i) => [(i + 1) + ') ' + r.label + ' | Exit @ ' + money(r.price) + (r.days ? ' | +' + r.days + 'd' : ''),
+        '   Gross proceeds: ' + money(r.gross) + ' | Sell commission: -' + money(r.sellFee),
+        '   Margin interest: -' + money(currentMargin + r.carry) + (r.carry ? ' (extra carry ' + money(r.carry) + ')' : ''),
+        '   NET P&L: ' + signed(r.net) + ' | vs baseline: ' + signed(r.net - baseline)].join('\n')),
+      '', 'BEST ESTIMATED EXIT: ' + best.label + ' @ ' + money(best.price) + ' → ' + signed(best.net) + ' net P&L',
+      'Estimate only; prices are assumptions. Assumes shares, cost basis and margin debt remain unchanged until exit.'
+    ].join('\n') };
+  }
+
+  private static evaluateBuyScenario(qty: number, ticker: string, price: number): CommandOutput {
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
+      throw new Error('Usage: buy scenario <shares> <ticker> at <price>.');
+    }
+    const state: any = portfolioStore.getState();
+    const pos = state.positions?.[ticker];
+    if (!pos || !(Number(pos.shares) > 0)) {
+      throw new Error('No open position found for ' + ticker + '. Buy scenarios require an existing position.');
+    }
+
+    const rules = this.getRules(state);
+    const oldShares = Number(pos.shares);
+    const oldCost = (pos.tranches || []).reduce(
+      (sum: number, tranche: any) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0
+    );
+    const oldBuyFee = Math.max(0, Number(pos.commBuy) || 0);
+    const purchaseValue = qty * price;
+    const purchaseFee = calculateCommission(qty, purchaseValue, rules as any);
+    const newShares = oldShares + qty;
+    const newCost = oldCost + purchaseValue;
+    const newBuyFee = oldBuyFee + purchaseFee;
+    const quote = Number(pos.currentPrice) > 0 ? Number(pos.currentPrice) : oldCost / oldShares;
+    const oldAverage = oldCost / oldShares;
+    const newAverage = newCost / newShares;
+    const oldValue = oldShares * quote;
+    const newValue = newShares * quote;
+    const oldPnl = oldValue - oldCost - oldBuyFee;
+    const newPnl = newValue - newCost - newBuyFee;
+    const target = Number(pos.pt);
+    const hasTarget = Number.isFinite(target) && target > 0;
+    const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const pct = (n: number) => (n > 0 ? '+' : '') + n.toFixed(2) + '%';
+    const targetOldPnl = hasTarget ? oldShares * target - oldCost - oldBuyFee : 0;
+    const targetNewPnl = hasTarget ? newShares * target - newCost - newBuyFee : 0;
+
+    const lines = [
+      '[HYPOTHETICAL BUY: ' + ticker + ']',
+      'Add ' + qty.toLocaleString() + ' shares @ ' + money(price) + ' · est. fee ' + money(purchaseFee),
+      'Cash required: ' + money(purchaseValue + purchaseFee),
+      '',
+      'POSITION CHANGE',
+      'Shares: ' + oldShares.toLocaleString() + ' → ' + newShares.toLocaleString() + ' (+' + qty.toLocaleString() + ')',
+      'Average entry: ' + money(oldAverage) + ' → ' + money(newAverage) + ' (' + signed(newAverage - oldAverage) + '/share)',
+      'Cost basis: ' + money(oldCost + oldBuyFee) + ' → ' + money(newCost + newBuyFee),
+      '',
+      'PROFIT / LOSS COMPARISON',
+      'At current quote (' + money(quote) + '): ' + signed(oldPnl) + ' → ' + signed(newPnl) + ' (' + signed(newPnl - oldPnl) + ')',
+      'P&L change per $1 stock move: ' + money(oldShares) + ' → ' + money(newShares) + ' (' + signed(qty) + ' per $1 move)'
+    ];
+    if (hasTarget) {
+      lines.push(
+        'At target (' + money(target) + '): ' + signed(targetOldPnl) + ' → ' + signed(targetNewPnl) + ' (' + signed(targetNewPnl - targetOldPnl) + ')',
+        'Return on cost at target: ' + pct(oldCost + oldBuyFee > 0 ? targetOldPnl / (oldCost + oldBuyFee) * 100 : 0) +
+          ' → ' + pct(newCost + newBuyFee > 0 ? targetNewPnl / (newCost + newBuyFee) * 100 : 0)
+      );
+    }
+    lines.push(
+      '',
+      'Hypothetical only · no trade or portfolio changes.'
+    );
+    return { type: 'res', text: lines.join('\n') };
   }
 
   private static evaluateLadder(tickerArg: string | undefined, prices: number[]): CommandOutput {
