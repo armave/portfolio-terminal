@@ -169,6 +169,8 @@ export class CommandDispatcher {
             '  • sell today for <p1> vs sell <N> days later for <p2>',
             '  • sim [ticker] <price> in <days> days    (e.g. sim AAPL 205 in 14d)',
             '  • ladder [ticker] <p1>, <p2>, <p3>       (e.g. ladder AAPL 195, 200, 205)',
+            '  • compare exits [ticker] today at <p>, 1 week at <p>, 10 days at <p>',
+            '  • buy scenario <shares> <ticker> at <price> (read-only add-on purchase simulation)',
             '  • view <ticker|combined|cash> | refresh | clear'
           ].join('\n')
         };
