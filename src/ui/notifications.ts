@@ -60,9 +60,7 @@ function renderScenarioReport(container: HTMLElement, message: string): void {
 
     const row = document.createElement('div');
     row.className = 'rounded-md px-3 py-1 leading-snug';
-    if (index === 0) {
-      row.className = 'mb-4 rounded-xl border border-violet-400/30 bg-gradient-to-r from-violet-500/15 via-indigo-500/10 to-cyan-500/10 px-4 py-3 text-base font-bold leading-relaxed text-white shadow-inner shadow-violet-950/20 sm:text-lg';
-    } else if (/^(?:\s*[A-Z][A-Z0-9 /&()_-]{2,}:|\s*\d+[.)]\s|\s*[A-Z]\)\s)/.test(rawLine) ||
+    if (/^(?:[A-Z][A-Z /&()_-]{2,}|\s*[A-Z][A-Z0-9 /&()_-]{2,}:|\s*\d+[.)]\s|\s*[A-Z]\)\s)/.test(rawLine.trim()) ||
       /^(?:BEST ESTIMATED EXIT|NET ADVANTAGE|RESULT:|PRICE SENSITIVITY:)/i.test(rawLine.trim())) {
       row.className = 'mt-2 border-l-2 border-cyan-400/80 bg-cyan-400/[0.07] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-cyan-100';
     } else if (/(?:-\$|loss|downside|worse|decrease|commission|interest)/i.test(rawLine)) {
