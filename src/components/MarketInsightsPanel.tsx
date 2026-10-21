@@ -98,11 +98,7 @@ export function MarketInsightsPanel({
         if (currentRequestId === requestIdRef.current) setLoading(false);
       });
 
-    const filteredStocktwitsMessages = (stocktwitsData?.messages ?? []).filter(
-    (message) => getStocktwitsCashtags(message.body).length <= 1
-  );
-
-  return () => {
+    return () => {
       requestIdRef.current += 1;
     };
   }, [ticker, isOpen, activeSection, refreshTrigger]);
@@ -203,6 +199,10 @@ export function MarketInsightsPanel({
     tabRefs.current[nextTab.id]?.focus();
     onSelectSection(nextTab.id);
   };
+
+  const filteredStocktwitsMessages = (stocktwitsData?.messages ?? []).filter(
+    (message) => getStocktwitsCashtags(message.body).length <= 1
+  );
 
   const renderContent = () => {
     if (!ticker) {
