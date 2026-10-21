@@ -76,11 +76,11 @@ function renderScenarioReport(container: HTMLElement, message: string): void {
 
 function colorizeFinancialTokens(escapedText: string): string {
   return escapedText
-    .replace(/(\\+\\$[0-9,]+(?:\\.[0-9]+)?|\\+[0-9]+(?:\\.[0-9]+)?%)/g, '<span class="text-emerald-400 font-bold">$1</span>')
-    .replace(/(-\\$[0-9,]+(?:\\.[0-9]+)?|-[0-9]+(?:\\.[0-9]+)?%)/g, '<span class="text-rose-400 font-bold">$1</span>')
-    .replace(/(?<![+-])(\\$[0-9,]+(?:\\.[0-9]+)?)/g, '<span class="text-amber-300 font-semibold">$1</span>')
+    .replace(/(\+\$[0-9,]+(?:\.[0-9]+)?|\+[0-9]+(?:\.[0-9]+)?%)/g, '<span class="text-emerald-400 font-bold">$1</span>')
+    .replace(/(-\$[0-9,]+(?:\.[0-9]+)?|-[0-9]+(?:\.[0-9]+)?%)/g, '<span class="text-rose-400 font-bold">$1</span>')
+    .replace(/(?<![+-])(\$[0-9,]+(?:\.[0-9]+)?)/g, '<span class="text-amber-300 font-semibold">$1</span>')
     .replace(/→/g, '<span class="text-cyan-400 font-bold px-1">→</span>')
-    .replace(/\\s\\|\\s/g, ' <span class="text-slate-700">|</span> ');
+    .replace(/\s\|\s/g, ' <span class="text-slate-700">|</span> ');
 }
 
 
