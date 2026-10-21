@@ -35,15 +35,20 @@ function appendScenarioLineContent(container: HTMLElement, rawLine: string): voi
 }
 
 function renderScenarioReport(container: HTMLElement, message: string): void {
-  const lines = message.split('\n');
+  const lines = message.split('\n').slice(1); // The first line is already displayed as the modal title.
+  let previousWasSpacer = false;
   lines.forEach((rawLine, index) => {
     if (!rawLine.trim()) {
-      const spacer = document.createElement('div');
-      spacer.className = 'h-2';
-      spacer.setAttribute('aria-hidden', 'true');
-      container.append(spacer);
+      if (!previousWasSpacer) {
+        const spacer = document.createElement('div');
+        spacer.className = 'h-1';
+        spacer.setAttribute('aria-hidden', 'true');
+        container.append(spacer);
+      }
+      previousWasSpacer = true;
       return;
     }
+    previousWasSpacer = false;
 
     if (/^\s*(?:[-=]{3,}|_{3,})\s*$/.test(rawLine)) {
       const divider = document.createElement('div');
@@ -54,18 +59,18 @@ function renderScenarioReport(container: HTMLElement, message: string): void {
     }
 
     const row = document.createElement('div');
-    row.className = 'rounded-lg px-3 py-2 leading-relaxed';
+    row.className = 'rounded-md px-3 py-1 leading-snug';
     if (index === 0) {
       row.className = 'mb-4 rounded-xl border border-violet-400/30 bg-gradient-to-r from-violet-500/15 via-indigo-500/10 to-cyan-500/10 px-4 py-3 text-base font-bold leading-relaxed text-white shadow-inner shadow-violet-950/20 sm:text-lg';
     } else if (/^(?:\s*[A-Z][A-Z0-9 /&()_-]{2,}:|\s*\d+[.)]\s|\s*[A-Z]\)\s)/.test(rawLine) ||
       /^(?:BEST ESTIMATED EXIT|NET ADVANTAGE|RESULT:|PRICE SENSITIVITY:)/i.test(rawLine.trim())) {
-      row.className += ' mt-2 border-l-2 border-cyan-400/80 bg-cyan-400/[0.07] font-semibold text-cyan-100';
+      row.className = 'mt-2 border-l-2 border-cyan-400/80 bg-cyan-400/[0.07] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-cyan-100';
     } else if (/(?:-\$|loss|downside|worse|decrease|commission|interest)/i.test(rawLine)) {
-      row.className += ' my-1 bg-rose-400/[0.045] text-slate-200';
+      row.className += ' my-0.5 bg-rose-400/[0.045] text-slate-200';
     } else if (/(?:\+\$|\+\d|profit|gain|upside|better|increase|NET P&L)/i.test(rawLine)) {
-      row.className += ' my-1 bg-emerald-400/[0.06] text-slate-100';
+      row.className += ' my-0.5 bg-emerald-400/[0.06] text-slate-100';
     } else if (rawLine.includes('|')) {
-      row.className += ' my-0.5 odd:bg-white/[0.025] text-slate-200';
+      row.className += ' my-0 odd:bg-white/[0.025] text-slate-200';
     } else {
       row.className += ' text-slate-200';
     }
@@ -179,7 +184,7 @@ function showScenarioReport(message: string): void {
 
   const subtitle = document.createElement('p');
   subtitle.className = 'mt-1.5 max-w-xl text-xs leading-relaxed text-slate-400';
-  subtitle.textContent = 'Estimated results based on the entered prices and current portfolio assumptions.';
+  subtitle.textContent = 'Before vs. after · estimated values';
 
   headingGroup.append(eyebrow, title, subtitle);
 
@@ -192,7 +197,7 @@ function showScenarioReport(message: string): void {
   header.append(headingGroup, closeTop);
 
   const report = document.createElement('div');
-  report.className = 'scenario-report-content min-h-0 flex-1 overflow-auto break-words bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/90 px-3 py-4 text-sm leading-relaxed selection:bg-violet-500/30 sm:px-6 sm:py-6 sm:text-[15px]';
+  report.className = 'scenario-report-content min-h-0 flex-1 overflow-auto break-words bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/90 px-3 py-3 text-[13px] leading-snug selection:bg-violet-500/30 sm:px-5 sm:py-4 sm:text-sm';
   report.setAttribute('aria-label', 'Scenario report details');
   renderScenarioReport(report, message);
 
@@ -201,7 +206,7 @@ function showScenarioReport(message: string): void {
 
   const disclaimer = document.createElement('p');
   disclaimer.className = 'max-w-xl text-[11px] leading-relaxed text-slate-400';
-  disclaimer.textContent = 'Hypothetical only — this report does not execute trades or guarantee future results. Margin costs and commissions are estimates.';
+  disclaimer.textContent = 'Estimates only · actual results may differ.';
 
   const closeBottom = document.createElement('button');
   closeBottom.type = 'button';
