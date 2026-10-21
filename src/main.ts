@@ -15,9 +15,15 @@ function disablePasswordSavingForNonAuthInputs() {
 
   const configureInput = (input: HTMLInputElement) => {
     if (input.matches(authInputSelector)) return;
-    input.setAttribute('autocomplete', 'off');
-    input.setAttribute('data-lpignore', 'true');
-    input.setAttribute('data-1p-ignore', 'true');
+    if (input.getAttribute('autocomplete') !== 'off') {
+      input.setAttribute('autocomplete', 'off');
+    }
+    if (input.getAttribute('data-lpignore') !== 'true') {
+      input.setAttribute('data-lpignore', 'true');
+    }
+    if (input.getAttribute('data-1p-ignore') !== 'true') {
+      input.setAttribute('data-1p-ignore', 'true');
+    }
   };
 
   const configureInputs = (root: ParentNode) => {
