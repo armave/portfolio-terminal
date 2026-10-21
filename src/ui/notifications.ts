@@ -31,6 +31,32 @@ function colorizeFinancialTokens(escapedText: string): string {
     .replace(/\s\|\s/g, ' <span class="text-slate-700">|</span> ');
 }
 
+function formatScenarioReportHtml(rawMessage: string): string {
+  return rawMessage.split('\n').map((rawLine, index) => {
+    const line = colorizeFinancialTokens(escapeHtml(rawLine));
+    if (!rawLine.trim()) return '<div class="h-2" aria-hidden="true"></div>';
+    if (index === 0) {
+      return `<div class="mb-4 rounded-xl border border-violet-400/30 bg-gradient-to-r from-violet-500/15 via-indigo-500/10 to-cyan-500/10 px-4 py-3 text-base font-bold leading-relaxed text-white shadow-inner shadow-violet-950/20 sm:text-lg">${line}</div>`;
+    }
+    if (/^\s*(?:[-=]{3,}|_{3,})\s*$/.test(rawLine)) {
+      return '<div class="my-3 border-t border-slate-700/80" aria-hidden="true"></div>';
+    }
+    if (/^\s*(?:[A-Z][A-Z0-9 /&()_-]{2,}:|\d+[.)]\s)/.test(rawLine)) {
+      return `<div class="mt-3 rounded-lg border-l-2 border-cyan-400/80 bg-cyan-400/[0.07] px-3 py-2 font-semibold leading-relaxed text-cyan-100">${line}</div>`;
+    }
+    if (/(?:\+\$|\+\d|profit|gain|upside|better|increase)/i.test(rawLine)) {
+      return `<div class="my-1 rounded-md bg-emerald-400/[0.06] px-3 py-1.5 leading-relaxed text-slate-100">${line}</div>`;
+    }
+    if (/(?:-\$|-\d|loss|cost|downside|worse|decrease)/i.test(rawLine)) {
+      return `<div class="my-1 rounded-md bg-rose-400/[0.06] px-3 py-1.5 leading-relaxed text-slate-100">${line}</div>`;
+    }
+    if (rawLine.includes('|')) {
+      return `<div class="my-0.5 rounded-md px-3 py-1.5 leading-relaxed odd:bg-white/[0.025] text-slate-200">${line}</div>`;
+    }
+    return `<div class="px-3 py-1 leading-relaxed text-slate-200">${line}</div>`;
+  }).join('');
+}
+
 function parseTagAndStyle(rawMessage: string, isError: boolean) {
   const tagMatch = rawMessage.match(/^\[([^\]]+)\]:?\s*([\s\S]*)$/);
   const rawTag = tagMatch ? tagMatch[1].trim() : isError ? 'ERROR' : 'INFO';
@@ -138,8 +164,8 @@ function showScenarioReport(message: string): void {
   header.append(headingGroup, closeTop);
 
   const report = document.createElement('pre');
-  report.className = 'min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words bg-slate-950/70 px-4 py-5 font-mono text-xs leading-6 text-slate-200 selection:bg-purple-500/30 sm:px-6 sm:py-6 sm:text-[13px]';
-  report.textContent = message;
+  report.className = 'scenario-report-content min-h-0 flex-1 overflow-auto break-words bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/90 px-3 py-4 text-sm leading-relaxed selection:bg-violet-500/30 sm:px-6 sm:py-6 sm:text-[15px]';
+  report.innerHTML = formatScenarioReportHtml(message);
 
   const footer = document.createElement('div');
   footer.className = 'flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900/80 px-4 py-3.5 sm:px-6';
