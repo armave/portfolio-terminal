@@ -19,6 +19,24 @@ const INSIGHT_TABS: Array<{ id: InsightSection; domId: string; label: string }> 
   { id: 'analysts', domId: 'insightTabAnalysts', label: 'Analysts' }
 ];
 
+const STOCKTWITS_CASHTAG_PATTERN = /\$([A-Z][A-Z0-9.-]{0,9})\b/gi;
+
+export function getStocktwitsCashtags(body: unknown): string[] {
+  if (typeof body !== 'string') return [];
+  return Array.from(new Set(
+    Array.from(body.matchAll(STOCKTWITS_CASHTAG_PATTERN), (match) => match[1].toUpperCase())
+  ));
+}
+
+function renderStocktwitsBody(body: string) {
+  const parts = body.split(/(\$[A-Z][A-Z0-9.-]{0,9}\b)/gi);
+  return parts.map((part, index) =>
+    /^\$[A-Z][A-Z0-9.-]{0,9}\b$/i.test(part)
+      ? <span key={index} class="inline-block rounded bg-cyan-950/80 px-1 font-bold text-cyan-300 ring-1 ring-inset ring-cyan-700/60">{part}</span>
+      : part
+  );
+}
+
 export function MarketInsightsPanel({
   ticker,
   isOpen,
@@ -80,7 +98,11 @@ export function MarketInsightsPanel({
         if (currentRequestId === requestIdRef.current) setLoading(false);
       });
 
-    return () => {
+    const filteredStocktwitsMessages = (stocktwitsData?.messages ?? []).filter(
+    (message) => getStocktwitsCashtags(message.body).length <= 1
+  );
+
+  return () => {
       requestIdRef.current += 1;
     };
   }, [ticker, isOpen, activeSection, refreshTrigger]);
@@ -510,8 +532,10 @@ export function MarketInsightsPanel({
           <div class="space-y-2">
             <p class="text-[10px] text-slate-500">{stocktwitsUpdatedAt ? `Updated ${formatRelativeTime(stocktwitsUpdatedAt)}` : ''}{stocktwitsLoading ? ' · Refreshing…' : ''}</p>
             {stocktwitsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded messages.</p>}
-            <div class="h-[360px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Stocktwits messages">
-            {stocktwitsData.messages.map((message, idx) => {
+            <div class="h-[306px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Stocktwits messages">
+            {filteredStocktwitsMessages.length === 0 ? (
+              <p class="rounded border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">No single-ticker messages found.</p>
+            ) : filteredStocktwitsMessages.map((message, idx) => {
               const sentiment = message.sentiment?.basic ?? message.entities?.sentiment?.basic ?? null;
               const sentimentClass = sentiment?.toLowerCase() === 'bullish'
                 ? 'text-emerald-400 border-emerald-900/70'
@@ -527,7 +551,7 @@ export function MarketInsightsPanel({
                     {sentiment && <span class={`rounded border px-1.5 py-0.5 font-bold uppercase ${sentimentClass}`}>{sentiment}</span>}
                     {typeof message.likes?.total === 'number' && <span>♥ {message.likes.total}</span>}
                   </div>
-                  <p class="whitespace-pre-wrap break-words text-xs leading-relaxed text-slate-200">{message.body}</p>
+                  <p class="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-200">{renderStocktwitsBody(typeof message.body === 'string' ? message.body : '')}</p>
                 </article>
               );
             })}
