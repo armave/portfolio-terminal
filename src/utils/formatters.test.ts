@@ -25,8 +25,7 @@ describe('display formatters', () => {
   it('classifies quote freshness at the configured stale threshold', () => {
     const now = 1_800_000_000_000;
     expect(getQuoteFreshness({ quoteUpdatedAt: now - 30_000 }, now, 60_000)).toBe('fresh');
-    expect(getQuoteFreshness({ quoteUpdatedAt: now - 121_000 }, now, 60_000)).toBe('fresh');
-    expect(getQuoteFreshness({ quoteUpdatedAt: now - 121_001 }, now, 60_000)).toBe('fresh');
+    expect(getQuoteFreshness({ quoteUpdatedAt: now - 300_000 }, now, 60_000)).toBe('fresh');
     expect(getQuoteFreshness({ quoteUpdatedAt: now - 300_001 }, now, 60_000)).toBe('stale');
     expect(getQuoteFreshness({ quoteUpdatedAt: now + 1 }, now, 60_000)).toBe('stale');
     expect(getQuoteFreshness({}, now, 60_000)).toBe('unavailable');
