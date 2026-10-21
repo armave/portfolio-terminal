@@ -615,29 +615,67 @@ export class CommandDispatcher {
   }
 
   private static evaluateBuyScenario(qty: number, ticker: string, price: number): CommandOutput {
-    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) throw new Error('Usage: buy scenario <shares> <ticker> at <price>.');
-    const state: any = portfolioStore.getState(), pos = state.positions?.[ticker];
-    if (!pos || !(Number(pos.shares) > 0)) throw new Error('No open position found for ' + ticker + '. Buy scenarios require an existing position.');
-    const rules = this.getRules(state), oldShares = Number(pos.shares);
-    const oldCost = (pos.tranches || []).reduce((sum: number, t: any) => sum + (Number(t.qty) || 0) * (Number(t.price) || 0), 0);
-    const oldBuyFee = Math.max(0, Number(pos.commBuy) || 0), purchaseValue = qty * price, purchaseFee = calculateCommission(qty, purchaseValue, rules as any);
-    const newShares = oldShares + qty, newCost = oldCost + purchaseValue, newBuyFee = oldBuyFee + purchaseFee;
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
+      throw new Error('Usage: buy scenario <shares> <ticker> at <price>.');
+    }
+    const state: any = portfolioStore.getState();
+    const pos = state.positions?.[ticker];
+    if (!pos || !(Number(pos.shares) > 0)) {
+      throw new Error('No open position found for ' + ticker + '. Buy scenarios require an existing position.');
+    }
+
+    const rules = this.getRules(state);
+    const oldShares = Number(pos.shares);
+    const oldCost = (pos.tranches || []).reduce(
+      (sum: number, tranche: any) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0
+    );
+    const oldBuyFee = Math.max(0, Number(pos.commBuy) || 0);
+    const purchaseValue = qty * price;
+    const purchaseFee = calculateCommission(qty, purchaseValue, rules as any);
+    const newShares = oldShares + qty;
+    const newCost = oldCost + purchaseValue;
+    const newBuyFee = oldBuyFee + purchaseFee;
     const quote = Number(pos.currentPrice) > 0 ? Number(pos.currentPrice) : oldCost / oldShares;
-    const oldValue = oldShares * quote, newValue = newShares * quote, oldPnl = oldValue - oldCost - oldBuyFee, newPnl = newValue - newCost - newBuyFee;
-    const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2), signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
-    return { type: 'res', text: [
-      '[HYPOTHETICAL BUY: ' + ticker + '] No portfolio changes made', '', 'Purchase: ' + qty + ' shares @ ' + money(price),
-      'Purchase value: ' + money(purchaseValue) + ' | Estimated buy commission: ' + money(purchaseFee),
-      'Total estimated cash required: ' + money(purchaseValue + purchaseFee), '',
-      'METRIC:                 BEFORE → AFTER',
-      'Shares:                 ' + oldShares + ' → ' + newShares + ' (+' + qty + ')',
-      'Cost basis:             ' + money(oldCost) + ' → ' + money(newCost),
-      'Average entry:          ' + money(oldCost / oldShares) + ' → ' + money(newCost / newShares),
-      'Position value @ ' + money(quote) + ': ' + money(oldValue) + ' → ' + money(newValue),
-      'Unrealized P&L @ quote: ' + signed(oldPnl) + ' → ' + signed(newPnl) + ' (' + signed(newPnl - oldPnl) + ')', '',
-      'PRICE SENSITIVITY: each $1 move changes position value by ' + money(oldShares) + ' before vs ' + money(newShares) + ' after; added exposure is ' + money(qty) + ' per $1 move.',
-      'If fully margin-financed, debt could rise by about ' + money(purchaseValue + purchaseFee) + '.',
-    ].join('\n') };
+    const oldAverage = oldCost / oldShares;
+    const newAverage = newCost / newShares;
+    const oldValue = oldShares * quote;
+    const newValue = newShares * quote;
+    const oldPnl = oldValue - oldCost - oldBuyFee;
+    const newPnl = newValue - newCost - newBuyFee;
+    const target = Number(pos.pt);
+    const hasTarget = Number.isFinite(target) && target > 0;
+    const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const pct = (n: number) => (n > 0 ? '+' : '') + n.toFixed(2) + '%';
+    const targetOldPnl = hasTarget ? oldShares * target - oldCost - oldBuyFee : 0;
+    const targetNewPnl = hasTarget ? newShares * target - newCost - newBuyFee : 0;
+
+    const lines = [
+      '[HYPOTHETICAL BUY: ' + ticker + ']',
+      'Add ' + qty.toLocaleString() + ' shares @ ' + money(price) + ' · est. fee ' + money(purchaseFee),
+      'Cash required: ' + money(purchaseValue + purchaseFee),
+      '',
+      'POSITION CHANGE',
+      'Shares: ' + oldShares.toLocaleString() + ' → ' + newShares.toLocaleString() + ' (+' + qty.toLocaleString() + ')',
+      'Average entry: ' + money(oldAverage) + ' → ' + money(newAverage) + ' (' + signed(newAverage - oldAverage) + '/share)',
+      'Cost basis: ' + money(oldCost + oldBuyFee) + ' → ' + money(newCost + newBuyFee),
+      '',
+      'PROFIT / LOSS COMPARISON',
+      'At current quote (' + money(quote) + '): ' + signed(oldPnl) + ' → ' + signed(newPnl) + ' (' + signed(newPnl - oldPnl) + ')',
+      'P&L change per $1 stock move: ' + money(oldShares) + ' → ' + money(newShares) + ' (' + signed(qty) + ' per $1 move)'
+    ];
+    if (hasTarget) {
+      lines.push(
+        'At target (' + money(target) + '): ' + signed(targetOldPnl) + ' → ' + signed(targetNewPnl) + ' (' + signed(targetNewPnl - targetOldPnl) + ')',
+        'Return on cost at target: ' + pct(oldCost + oldBuyFee > 0 ? targetOldPnl / (oldCost + oldBuyFee) * 100 : 0) +
+          ' → ' + pct(newCost + newBuyFee > 0 ? targetNewPnl / (newCost + newBuyFee) * 100 : 0)
+      );
+    }
+    lines.push(
+      '',
+      'Hypothetical only · no trade or portfolio changes.'
+    );
+    return { type: 'res', text: lines.join('\n') };
   }
 
   private static evaluateLadder(tickerArg: string | undefined, prices: number[]): CommandOutput {
