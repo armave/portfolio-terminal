@@ -99,67 +99,74 @@ function showScenarioReport(message: string): void {
 
   const overlay = document.createElement('div');
   overlay.id = 'scenarioReportModal';
-  overlay.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 sm:p-6';
+  overlay.className = 'scenario-modal-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-3 opacity-0 backdrop-blur-sm transition-opacity duration-200 ease-out sm:p-6';
   overlay.setAttribute('role', 'presentation');
 
   const dialog = document.createElement('section');
-  dialog.className = 'flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-purple-800/70 bg-slate-950 shadow-2xl shadow-black/50';
+  dialog.className = 'scenario-modal-dialog flex max-h-[min(90vh,900px)] w-full max-w-3xl translate-y-3 scale-[0.985] flex-col overflow-hidden rounded-2xl border border-purple-800/70 bg-slate-950 shadow-2xl shadow-black/50 ring-1 ring-white/5 transition-[opacity,transform] duration-200 ease-out opacity-0 sm:max-h-[90vh]';
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
   dialog.setAttribute('aria-labelledby', 'scenarioReportTitle');
 
   const header = document.createElement('div');
-  header.className = 'flex items-start justify-between gap-4 border-b border-slate-800 bg-slate-900/90 px-4 py-3 sm:px-5';
+  header.className = 'flex items-start justify-between gap-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-purple-950/40 px-4 py-4 sm:px-6';
 
   const headingGroup = document.createElement('div');
   headingGroup.className = 'min-w-0';
 
   const eyebrow = document.createElement('div');
-  eyebrow.className = 'mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-purple-300';
+  eyebrow.className = 'mb-1.5 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-purple-300';
   eyebrow.textContent = 'What-if analysis';
 
   const title = document.createElement('h2');
   title.id = 'scenarioReportTitle';
-  title.className = 'break-words text-sm font-bold text-white sm:text-base';
+  title.className = 'break-words text-base font-bold tracking-tight text-white sm:text-lg';
   title.textContent = message.split('\n', 1)[0].replace(/^\[|\]$/g, '') || 'Scenario report';
 
   const subtitle = document.createElement('p');
-  subtitle.className = 'mt-1 text-[11px] text-slate-400';
+  subtitle.className = 'mt-1.5 max-w-xl text-xs leading-relaxed text-slate-400';
   subtitle.textContent = 'Estimated results based on the entered prices and current portfolio assumptions.';
 
   headingGroup.append(eyebrow, title, subtitle);
 
   const closeTop = document.createElement('button');
   closeTop.type = 'button';
-  closeTop.className = 'shrink-0 rounded border border-slate-700 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:border-slate-500 hover:text-white';
+  closeTop.className = 'shrink-0 rounded-lg border border-slate-700/80 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors duration-150 hover:border-slate-500 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400';
   closeTop.textContent = 'Close';
   closeTop.setAttribute('aria-label', 'Close scenario report');
 
   header.append(headingGroup, closeTop);
 
   const report = document.createElement('pre');
-  report.className = 'overflow-auto whitespace-pre-wrap break-words px-4 py-4 font-mono text-xs leading-6 text-slate-200 sm:px-5 sm:text-[13px]';
+  report.className = 'min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words bg-slate-950/70 px-4 py-5 font-mono text-xs leading-6 text-slate-200 selection:bg-purple-500/30 sm:px-6 sm:py-6 sm:text-[13px]';
   report.textContent = message;
 
   const footer = document.createElement('div');
-  footer.className = 'flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900/70 px-4 py-3 sm:px-5';
+  footer.className = 'flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900/80 px-4 py-3.5 sm:px-6';
 
   const disclaimer = document.createElement('p');
-  disclaimer.className = 'max-w-xl text-[10px] leading-relaxed text-slate-500';
+  disclaimer.className = 'max-w-xl text-[11px] leading-relaxed text-slate-400';
   disclaimer.textContent = 'Hypothetical only — this report does not execute trades or guarantee future results. Margin costs and commissions are estimates.';
 
   const closeBottom = document.createElement('button');
   closeBottom.type = 'button';
-  closeBottom.className = 'rounded-md bg-purple-500 px-4 py-2 text-xs font-bold text-slate-950 hover:bg-purple-400';
+  closeBottom.className = 'rounded-lg bg-purple-400 px-5 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-purple-950/30 transition duration-150 hover:-translate-y-px hover:bg-purple-300 hover:shadow-purple-900/30 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950';
   closeBottom.textContent = 'Done';
 
   footer.append(disclaimer, closeBottom);
   dialog.append(header, report, footer);
   overlay.appendChild(dialog);
 
+  let isClosing = false;
   const close = () => {
-    overlay.remove();
+    if (isClosing) return;
+    isClosing = true;
     document.removeEventListener('keydown', onKeyDown);
+    overlay.classList.remove('opacity-100');
+    overlay.classList.add('opacity-0');
+    dialog.classList.remove('translate-y-0', 'scale-100', 'opacity-100');
+    dialog.classList.add('translate-y-3', 'scale-[0.985]', 'opacity-0');
+    window.setTimeout(() => overlay.remove(), 200);
   };
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') close();
@@ -172,6 +179,20 @@ function showScenarioReport(message: string): void {
   });
   document.addEventListener('keydown', onKeyDown);
   document.body.appendChild(overlay);
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduceMotion) {
+    overlay.classList.remove('transition-opacity', 'duration-200', 'opacity-0');
+    overlay.classList.add('opacity-100');
+    dialog.classList.remove('transition-[opacity,transform]', 'duration-200', 'translate-y-3', 'scale-[0.985]', 'opacity-0');
+    dialog.classList.add('translate-y-0', 'scale-100', 'opacity-100');
+  } else {
+    requestAnimationFrame(() => {
+      overlay.classList.remove('opacity-0');
+      overlay.classList.add('opacity-100');
+      dialog.classList.remove('translate-y-3', 'scale-[0.985]', 'opacity-0');
+      dialog.classList.add('translate-y-0', 'scale-100', 'opacity-100');
+    });
+  }
   closeTop.focus();
 }
 
