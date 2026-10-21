@@ -60,7 +60,9 @@ function computeMarginRiskDisplay(
       showMarginCall: false,
       marginCallText: '',
       showStopOut: false,
-      stopOutText: ''
+      stopOutText: '',
+      showRiskTriggers: false,
+      marginCallBufferPct: 100
     };
   }
 
@@ -95,6 +97,11 @@ function computeMarginRiskDisplay(
 
   const marginCallValue = Math.max(0, marginCallAssetsRequired - collateral);
   const stopOutValue = Math.max(0, stopOutAssetsRequired - collateral);
+  // Match formatRiskTrigger's buffer definition: remaining position value after
+  // the estimated trigger amount, expressed as a percentage of current value.
+  const marginCallBufferPct =
+    positionValue > 0 ? ((positionValue - marginCallValue) / positionValue) * 100 : -Infinity;
+  const showRiskTriggers = showMarginCall && marginCallBufferPct < 60;
 
   return {
     summaryText,
@@ -102,7 +109,9 @@ function computeMarginRiskDisplay(
     showMarginCall,
     marginCallText: marginCallValue > 0 ? formatRiskTrigger(marginCallValue, positionValue) : '',
     showStopOut,
-    stopOutText: showStopOut ? formatRiskTrigger(stopOutValue, positionValue) : ''
+    stopOutText: showStopOut ? formatRiskTrigger(stopOutValue, positionValue) : '',
+    showRiskTriggers,
+    marginCallBufferPct
   };
 }
 
@@ -256,8 +265,27 @@ export function SummaryMetricsGrid({
             </span>
           </div>
           <div
+            class={risk.showRiskTriggers ? 'w-full rounded-md border border-amber-900/70 bg-slate-950/60 px-3 py-2' : 'hidden'}
+            aria-label="Margin-call risk buffer"
+            title="Estimated buffer to the margin-call trigger. This is a model estimate, not a live broker risk indicator."
+          >
+            <div class="mb-1.5 flex items-center justify-between gap-3">
+              <span class="text-slate-400 font-semibold">Risk buffer</span>
+              <span class={risk.marginCallBufferPct < 30 ? 'font-mono font-bold text-rose-400' : 'font-mono font-bold text-amber-300'}>
+                {Number.isFinite(risk.marginCallBufferPct) ? `${risk.marginCallBufferPct.toFixed(1)}%` : '—'}
+              </span>
+            </div>
+            <div class="h-2 overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-label="Margin-call buffer percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Number.isFinite(risk.marginCallBufferPct) ? Math.max(0, Math.min(100, risk.marginCallBufferPct)) : 0}>
+              <div class={risk.marginCallBufferPct < 30 ? 'h-full rounded-full bg-rose-500' : 'h-full rounded-full bg-amber-400'} style={{ width: `${Math.max(0, Math.min(100, Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct : 0))}%` }}></div>
+            </div>
+            <div class="mt-1 flex justify-between text-[9px] text-slate-500">
+              <span>0% · Trigger</span>
+              <span>60% · Display threshold</span>
+            </div>
+          </div>
+          <div
             id="boardMarginCallRow"
-            class={risk.showMarginCall ? '' : 'hidden'}
+            class={risk.showRiskTriggers ? '' : 'hidden'}
             title="Estimate assumes the configured maintenance-margin ratio and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ."
           >
             <span class="text-slate-500">Margin-call trigger:</span>{' '}
@@ -267,7 +295,7 @@ export function SummaryMetricsGrid({
           </div>
           <div
             id="boardStopOutRow"
-            class={risk.showStopOut ? '' : 'hidden'}
+            class={risk.showRiskTriggers && risk.showStopOut ? '' : 'hidden'}
             title="Estimate assumes the configured stop-out threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ."
           >
             <span class="text-slate-500">Stop-out trigger:</span>{' '}
@@ -431,7 +459,7 @@ export function SummaryMetricsGrid({
         </div>
         <div
           id="boardStopOutRow"
-          class={risk.showStopOut ? '' : 'hidden'}
+          class={risk.showRiskTriggers && risk.showStopOut ? '' : 'hidden'}
           title="Estimate assumes the configured stop-out threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ."
         >
           <span class="text-slate-500">Stop-out trigger:</span>{' '}
