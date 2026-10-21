@@ -19,7 +19,7 @@ const INSIGHT_TABS: Array<{ id: InsightSection; domId: string; label: string }> 
   { id: 'analysts', domId: 'insightTabAnalysts', label: 'Analysts' }
 ];
 
-const STOCKTWITS_CASHTAG_PATTERN = /\$([A-Z][A-Z0-9.-]{0,9})\b/g;
+const STOCKTWITS_CASHTAG_PATTERN = /\$([A-Z][A-Z0-9.-]{0,9})\b/gi;
 
 export function getStocktwitsCashtags(body: unknown): string[] {
   if (typeof body !== 'string') return [];
@@ -29,9 +29,9 @@ export function getStocktwitsCashtags(body: unknown): string[] {
 }
 
 function renderStocktwitsBody(body: string) {
-  const parts = body.split(/(\$[A-Z][A-Z0-9.-]{0,9}\b)/g);
+  const parts = body.split(/(\$[A-Z][A-Z0-9.-]{0,9}\b)/gi);
   return parts.map((part, index) =>
-    /^\$[A-Z][A-Z0-9.-]{0,9}\b$/.test(part)
+    /^\$[A-Z][A-Z0-9.-]{0,9}\b$/i.test(part)
       ? <span key={index} class="inline-block rounded bg-cyan-950/80 px-1 font-bold text-cyan-300 ring-1 ring-inset ring-cyan-700/60">{part}</span>
       : part
   );
