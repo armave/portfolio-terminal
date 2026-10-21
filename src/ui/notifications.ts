@@ -37,7 +37,7 @@ function appendScenarioLineContent(container: HTMLElement, rawLine: string): voi
 function renderScenarioReport(container: HTMLElement, message: string): void {
   const lines = message.split('\n').slice(1); // The first line is already displayed as the modal title.
   let previousWasSpacer = false;
-  lines.forEach((rawLine, index) => {
+  lines.forEach((rawLine) => {
     if (!rawLine.trim()) {
       if (!previousWasSpacer) {
         const spacer = document.createElement('div');
