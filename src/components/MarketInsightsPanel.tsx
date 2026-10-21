@@ -32,7 +32,7 @@ export function hasStocktwitsCommentary(body: unknown): boolean {
   if (typeof body !== 'string') return false;
   return body
     .replace(STOCKTWITS_CASHTAG_PATTERN, '')
-    .replace(/[\\s.,!?;:()[\\]{}|/\\-]+/g, '')
+    .replace(/[\\s.,!?;:()\\[\\]{}|/\\\\-]+/g, '')
     .length > 0;
 }
 
