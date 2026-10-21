@@ -588,8 +588,7 @@ export class CommandDispatcher {
         '  NET P&L:            ' + signedMoney(netLater),
         '',
         'NET ADVANTAGE (B - A): ' + signedMoney(diff),
-        winner,
-        'Estimate only; assumes shares, cost basis, and margin debt stay unchanged until exit.'
+        winner
       ].join('\n')
     };
   }
@@ -638,7 +637,6 @@ export class CommandDispatcher {
       'Unrealized P&L @ quote: ' + signed(oldPnl) + ' → ' + signed(newPnl) + ' (' + signed(newPnl - oldPnl) + ')', '',
       'PRICE SENSITIVITY: each $1 move changes position value by ' + money(oldShares) + ' before vs ' + money(newShares) + ' after; added exposure is ' + money(qty) + ' per $1 move.',
       'If fully margin-financed, debt could rise by about ' + money(purchaseValue + purchaseFee) + '.',
-      'Estimate only; no portfolio records were changed.'
     ].join('\n') };
   }
 
