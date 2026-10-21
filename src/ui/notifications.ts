@@ -82,7 +82,6 @@ function parseTagAndStyle(rawMessage: string, isError: boolean) {
 function isScenarioReport(message: string): boolean {
   const firstLine = message.split('\n', 1)[0].toUpperCase();
   return (
-    message.includes('\n') ||
     firstLine.startsWith('[SIM ') ||
     firstLine.startsWith('[EXIT COMPARISON:') ||
     firstLine.startsWith('[MULTI-DATE EXIT COMPARISON:') ||
