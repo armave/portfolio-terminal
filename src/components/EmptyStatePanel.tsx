@@ -1,33 +1,14 @@
-export function EmptyStatePanel() {
-  const handleQuickBuy = () => {
-    const input = document.getElementById('cmdInput') as HTMLInputElement | null;
-    if (!input) return;
-    input.value = 'bought [shares] [TICKER] for [price]';
-    input.focus();
-    const start = input.value.indexOf('[');
-    const end = input.value.indexOf(']', start) + 1;
-    if (start >= 0 && end > start) {
-      input.setSelectionRange(start, end);
-    }
-  };
+export interface EmptyStatePanelProps {
+  onQuickBuy?: () => void;
+  onAddCashStock?: () => void;
+  onImportBackup?: () => void;
+}
 
-  const handleAddCashStock = () => {
-    const input = document.getElementById('cmdInput') as HTMLInputElement | null;
-    if (!input) return;
-    input.value = 'add cash stock [shares] [TICKER] for [price]';
-    input.focus();
-    const start = input.value.indexOf('[');
-    const end = input.value.indexOf(']', start) + 1;
-    if (start >= 0 && end > start) {
-      input.setSelectionRange(start, end);
-    }
-  };
-
-  const handleImportBackup = () => {
-    const fileInput = document.getElementById('importFileInput') as HTMLInputElement | null;
-    fileInput?.click();
-  };
-
+export function EmptyStatePanel({
+  onQuickBuy,
+  onAddCashStock,
+  onImportBackup
+}: EmptyStatePanelProps) {
   return (
     <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
       <div>
@@ -41,21 +22,21 @@ export function EmptyStatePanel() {
       <div class="flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={handleQuickBuy}
+          onClick={onQuickBuy}
           class="bg-emerald-600 hover:bg-emerald-500 text-black text-[11px] font-bold px-3 py-1.5 rounded transition"
         >
           Quick Buy
         </button>
         <button
           type="button"
-          onClick={handleAddCashStock}
+          onClick={onAddCashStock}
           class="bg-cyan-700 hover:bg-cyan-600 text-white text-[11px] font-bold px-3 py-1.5 rounded transition"
         >
           Add Cash Stock
         </button>
         <button
           type="button"
-          onClick={handleImportBackup}
+          onClick={onImportBackup}
           class="bg-slate-800 hover:bg-slate-700 text-purple-300 text-[11px] font-bold px-3 py-1.5 rounded border border-purple-700 transition"
         >
           Import Backup
