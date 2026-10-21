@@ -1,6 +1,6 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import type { BoardState, BrokerRules, QuoteDetails } from '../types/portfolio';
-import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger } from '../utils/formatters';
+import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import {
   calculateCommission,
@@ -187,6 +187,14 @@ export function SummaryMetricsGrid({
     const quoteMetaText = latestQuote
       ? `Latest portfolio quote · ${formatQuoteMetadata(latestQuote, refreshIntervalMs)}`
       : 'No live quotes fetched for margin positions';
+    const quoteFreshness = latestQuote
+      ? getQuoteFreshness(latestQuote, Date.now(), refreshIntervalMs)
+      : 'unavailable';
+    const quoteFreshnessClass = quoteFreshness === 'fresh'
+      ? 'bg-emerald-400'
+      : quoteFreshness === 'stale'
+        ? 'bg-amber-400'
+        : 'bg-slate-500';
 
     const totalAccountEquity = totalMarketValue + cushionTotal - totalDebt;
     const totalAccountAssets = totalMarketValue + cushionTotal;
@@ -220,7 +228,8 @@ export function SummaryMetricsGrid({
             </span>
           </span>
           <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
-          <span id="boardQuoteMeta" class="text-[10px] text-slate-500">
+          <span id="boardQuoteMeta" class="inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
+            <span aria-hidden="true" class={`inline-block h-1.5 w-1.5 rounded-full ${quoteFreshnessClass}`}></span>
             {quoteMetaText}
           </span>
         </div>
@@ -366,6 +375,12 @@ export function SummaryMetricsGrid({
   )} sell)`;
   const marginChargedText = `${formatUSD(posMarginCharged)} (Position To Date)`;
   const quoteMetaText = formatQuoteMetadata(pos, refreshIntervalMs);
+  const quoteFreshness = getQuoteFreshness(pos, Date.now(), refreshIntervalMs);
+  const quoteFreshnessClass = quoteFreshness === 'fresh'
+    ? 'bg-emerald-400'
+    : quoteFreshness === 'stale'
+      ? 'bg-amber-400'
+      : 'bg-slate-500';
 
   const positionAssets = currentMktVal + allocatedCushion;
   const positionEquity = positionAssets - allocatedDebt;
@@ -402,7 +417,8 @@ export function SummaryMetricsGrid({
           class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}
         >
           {dailyQuoteMeta?.text || ''}
-          <span id="boardQuoteMeta" class="text-[10px] text-slate-500">
+          <span id="boardQuoteMeta" class="inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
+            <span aria-hidden="true" class={`inline-block h-1.5 w-1.5 rounded-full ${quoteFreshnessClass}`}></span>
             {' · ' + quoteMetaText}{pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}
           </span>
         </span>
@@ -449,7 +465,7 @@ export function SummaryMetricsGrid({
         </div>
         <div
           id="boardMarginCallRow"
-          class={risk.showMarginCall ? '' : 'hidden'}
+          class={risk.showRiskTriggers ? '' : 'hidden'}
           title="Estimate assumes the configured maintenance-margin ratio and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ."
         >
           <span class="text-slate-500">Margin-call trigger:</span>{' '}
