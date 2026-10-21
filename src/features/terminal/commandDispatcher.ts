@@ -194,23 +194,23 @@ export class CommandDispatcher {
         };
       }
 
-      const exitSeriesMatch = raw.match(/^compare\\s+exits?\\s+(.+)$/i);
+      const exitSeriesMatch = raw.match(/^compare\s+exits?\s+(.+)$/i);
       if (exitSeriesMatch) {
         let tickerArg: string | undefined;
         const scenarios: Array<{ label: string; days: number; price: number }> = [];
-        for (const segment of exitSeriesMatch[1].split(/\\s*,\\s*/).filter(Boolean)) {
-          const match = segment.match(/^(?:([A-Za-z]{1,10})\\s+)?(today|tomorrow|(?:\\d+)\\s*(?:d|days?|w|weeks?)(?:\\s+(?:later|from\\s+now))?)\\s+(?:at|for|@)\\s*([$0-9.,]+)$/i);
+        for (const segment of exitSeriesMatch[1].split(/\s*,\s*/).filter(Boolean)) {
+          const match = segment.match(/^(?:([A-Za-z]{1,10})\s+)?(today|tomorrow|(?:\d+)\s*(?:d|days?|w|weeks?)(?:\s+(?:later|from\s+now))?)\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
           if (!match) throw new Error('Usage: compare exits [TICKER] today at 190, 1 day at 191, 1 week later at 195, 10 days at 198');
           if (match[1]) { const found = match[1].toUpperCase(); if (tickerArg && tickerArg !== found) throw new Error('Use the same ticker for every exit scenario.'); tickerArg = found; }
           const period = match[2].toLowerCase(); let days = period === 'tomorrow' ? 1 : 0;
-          if (period !== 'today' && period !== 'tomorrow') { const p = period.match(/^(\\d+)\\s*(d|day|days|w|week|weeks)/); if (!p) throw new Error('Unrecognized exit date: ' + match[2]); days = Number(p[1]) * (p[2].startsWith('w') ? 7 : 1); }
+          if (period !== 'today' && period !== 'tomorrow') { const p = period.match(/^(\d+)\s*(d|day|days|w|week|weeks)/); if (!p) throw new Error('Unrecognized exit date: ' + match[2]); days = Number(p[1]) * (p[2].startsWith('w') ? 7 : 1); }
           const price = cleanNumber(match[3]); if (!Number.isFinite(price) || price <= 0) throw new Error('Every exit price must be a positive number.');
           scenarios.push({ label: match[2], days, price });
         }
         if (scenarios.length < 2) throw new Error('Provide at least two exit scenarios to compare.');
         return this.evaluateExitScenarios(tickerArg, scenarios);
       }
-      const buyScenarioMatch = raw.match(/^buy\\s+scenario\\s+([0-9.,]+)\\s+([A-Za-z]{1,10})\\s+(?:at|for|@)\\s*([$0-9.,]+)$/i);
+      const buyScenarioMatch = raw.match(/^buy\s+scenario\s+([0-9.,]+)\s+([A-Za-z]{1,10})\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
       if (buyScenarioMatch) return this.evaluateBuyScenario(cleanNumber(buyScenarioMatch[1]), buyScenarioMatch[2].toUpperCase(), cleanNumber(buyScenarioMatch[3]));
 
       // 3. COMPARISON SIMULATION: "sell today for $180 vs sell 14 days later for $185"
@@ -607,10 +607,10 @@ export class CommandDispatcher {
       ...rows.map((r, i) => [(i + 1) + ') ' + r.label + ' | Exit @ ' + money(r.price) + (r.days ? ' | +' + r.days + 'd' : ''),
         '   Gross proceeds: ' + money(r.gross) + ' | Sell commission: -' + money(r.sellFee),
         '   Margin interest: -' + money(currentMargin + r.carry) + (r.carry ? ' (extra carry ' + money(r.carry) + ')' : ''),
-        '   NET P&L: ' + signed(r.net) + ' | vs baseline: ' + signed(r.net - baseline)].join('\\n')),
+        '   NET P&L: ' + signed(r.net) + ' | vs baseline: ' + signed(r.net - baseline)].join('\n')),
       '', 'BEST ESTIMATED EXIT: ' + best.label + ' @ ' + money(best.price) + ' → ' + signed(best.net) + ' net P&L',
       'Estimate only; prices are assumptions. Assumes shares, cost basis and margin debt remain unchanged until exit.'
-    ].join('\\n') };
+    ].join('\n') };
   }
 
   private static evaluateBuyScenario(qty: number, ticker: string, price: number): CommandOutput {
@@ -637,7 +637,7 @@ export class CommandDispatcher {
       'PRICE SENSITIVITY: each $1 move changes position value by ' + money(oldShares) + ' before vs ' + money(newShares) + ' after; added exposure is ' + money(qty) + ' per $1 move.',
       'If fully margin-financed, debt could rise by about ' + money(purchaseValue + purchaseFee) + '.',
       'Estimate only; no portfolio records were changed.'
-    ].join('\\n') };
+    ].join('\n') };
   }
 
   private static evaluateLadder(tickerArg: string | undefined, prices: number[]): CommandOutput {
