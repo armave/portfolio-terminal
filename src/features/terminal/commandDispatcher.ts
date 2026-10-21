@@ -194,6 +194,48 @@ export class CommandDispatcher {
         };
       }
 
+      // Multi-date exit comparison: every scenario is a hypothetical exit, never a portfolio mutation.
+      const exitSeriesMatch = raw.match(/^compare\\s+exits?\\s+(.+)$/i);
+      if (exitSeriesMatch) {
+        const segments = exitSeriesMatch[1].split(/\\s*,\\s*/).filter(Boolean);
+        let tickerArg: string | undefined;
+        const scenarios: Array<{ label: string; days: number; price: number }> = [];
+        for (const segment of segments) {
+          const match = segment.match(/^(?:([A-Za-z]{1,10})\\s+)?(today|tomorrow|(?:\\d+)\\s*(?:d|days?|w|weeks?)(?:\\s+(?:later|from\\s+now))?)\\s+(?:at|for|@)\\s*([$0-9.,]+)$/i);
+          if (!match) {
+            throw new Error('Usage: compare exits [TICKER] today at 190, 1 day at 191, 1 week later at 195, 10 days at 198');
+          }
+          if (match[1]) {
+            const segmentTicker = match[1].toUpperCase();
+            if (tickerArg && tickerArg !== segmentTicker) throw new Error('Use the same ticker for every exit scenario.');
+            tickerArg = segmentTicker;
+          }
+          const period = match[2].toLowerCase();
+          let days = 0;
+          if (period === 'tomorrow') days = 1;
+          else if (period !== 'today') {
+            const periodMatch = period.match(/^(\\d+)\\s*(d|day|days|w|week|weeks)/);
+            if (!periodMatch) throw new Error('Unrecognized exit date: ' + match[2]);
+            days = Number(periodMatch[1]) * (periodMatch[2].startsWith('w') ? 7 : 1);
+          }
+          const price = cleanNumber(match[3]);
+          if (!Number.isFinite(price) || price <= 0) throw new Error('Every exit price must be a positive number.');
+          scenarios.push({ label: match[2], days, price });
+        }
+        if (scenarios.length < 2) throw new Error('Provide at least two exit scenarios to compare.');
+        return this.evaluateExitScenarios(tickerArg, scenarios);
+      }
+
+      // Hypothetical add-on purchase; deliberately read-only.
+      const buyScenarioMatch = raw.match(/^buy\\s+scenario\\s+([0-9.,]+)\\s+([A-Za-z]{1,10})\\s+(?:at|for|@)\\s*([$0-9.,]+)$/i);
+      if (buyScenarioMatch) {
+        return this.evaluateBuyScenario(
+          cleanNumber(buyScenarioMatch[1]),
+          buyScenarioMatch[2].toUpperCase(),
+          cleanNumber(buyScenarioMatch[3])
+        );
+      }
+
       // 3. COMPARISON SIMULATION: "sell today for $180 vs sell 14 days later for $185"
       const vsMatch = raw.match(
         /sell\s+(?:([a-zA-Z]+)\s+)?today\s+(?:for|at|@)\s*([$0-9.,]+)\s+(?:vs\.?|versus|or)\s+sell\s+(\d+)\s*d(?:ays?)?\s*(?:later\s+)?(?:for|at|@)\s*([$0-9.,]+)/i
@@ -570,6 +612,583 @@ export class CommandDispatcher {
         winner,
         'Estimate only; assumes shares, cost basis, and margin debt stay unchanged until exit.'
       ].join('\n')
+    };
+  }
+
+  private static evaluateExitScenarios(
+    tickerArg: string | undefined,
+    scenarios: Array<{ label: string; days: number; price: number }>
+  ): CommandOutput {
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const shares = Number(pos.shares);
+    if (!Number.isFinite(shares) || shares <= 0) throw new Error('No valid open shares found for ' + sym + '.');
+    const costBasis = (pos.tranches || []).reduce((sum: number, tranche: any) =>
+      sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0);
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const currentMargin = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate, marginDebt: totalDebt, totalDebt
+    } as any);
+    const money = (value: number) => (value < 0 ? '-
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+ : '
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+) + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+ : value < 0 ? '-
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+ : '
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+) + Math.abs(value).toFixed(2);
+    const rows = scenarios.map(scenario => {
+      const gross = shares * scenario.price;
+      const sellCommission = calculateCommission(shares, gross, rules as any);
+      const extraCarry = totalDebt * rules.dailyRate * scenario.days;
+      const margin = currentMargin + extraCarry;
+      const net = gross - costBasis - buyCommission - sellCommission - margin;
+      return { ...scenario, gross, sellCommission, extraCarry, margin, net };
+    });
+    const best = rows.reduce((winner, row) => row.net > winner.net ? row : winner, rows[0]);
+    const lines = [
+      '[MULTI-DATE EXIT COMPARISON: ' + sym + '] ' + shares.toLocaleString() + ' shares | Cost basis: ' + money(costBasis),
+      'Assumptions: buy commissions ' + money(buyCommission) + ' | current margin interest ' + money(currentMargin) + ' | margin debt ' + money(totalDebt),
+      '',
+      ...rows.map((row, index) => [
+        (index + 1) + ') ' + row.label + ' | Exit @ ' + money(row.price) + (row.days ? ' | +' + row.days + 'd' : ''),
+        '   Gross proceeds: ' + money(row.gross) + ' | Sell commission: -' + money(row.sellCommission),
+        '   Margin interest: -' + money(row.margin) + (row.extraCarry ? ' (extra carry ' + money(row.extraCarry) + ')' : ''),
+        '   NET P&L: ' + signedMoney(row.net) + ' | vs today: ' + signedMoney(row.net - (rows.find(item => item.days === 0)?.net ?? rows[0].net))
+      ].join('\\n')),
+      '',
+      'BEST ESTIMATED EXIT: ' + best.label + ' @ ' + money(best.price) + ' → ' + signedMoney(best.net) + ' net P&L',
+      'Estimate only; each price is your assumption. Assumes shares, cost basis and margin debt remain unchanged until exit.'
+    ];
+    return { type: 'res', text: lines.join('\\n') };
+  }
+
+  private static evaluateBuyScenario(qty: number, tickerArg: string, price: number): CommandOutput {
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
+      throw new Error('Usage: buy scenario <shares> <ticker> at <price> (positive quantity and price required).');
+    }
+    const state: any = portfolioStore.getState();
+    const pos = state.positions?.[tickerArg];
+    if (!pos || !(Number(pos.shares) > 0)) {
+      throw new Error('No open position found for ' + tickerArg + '. Buy scenarios are for an existing position.');
+    }
+    const rules = this.getRules(state);
+    const oldShares = Number(pos.shares);
+    const oldCost = (pos.tranches || []).reduce((sum: number, tranche: any) =>
+      sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0);
+    const oldBuyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const purchaseValue = qty * price;
+    const purchaseCommission = calculateCommission(qty, purchaseValue, rules as any);
+    const newShares = oldShares + qty;
+    const newCost = oldCost + purchaseValue;
+    const newBuyCommission = oldBuyCommission + purchaseCommission;
+    const currentPrice = Number(pos.currentPrice) > 0 ? Number(pos.currentPrice) : oldCost / oldShares;
+    const oldValue = oldShares * currentPrice;
+    const newValue = newShares * currentPrice;
+    const oldUnrealized = oldValue - oldCost - oldBuyCommission;
+    const newUnrealized = newValue - newCost - newBuyCommission;
+    const money = (value: number) => (value < 0 ? '-
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+ : '
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+) + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+ : value < 0 ? '-
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+ : '
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+) + Math.abs(value).toFixed(2);
+    const oldAverage = oldCost / oldShares;
+    const newAverage = newCost / newShares;
+    const oldExposure = oldValue;
+    const newExposure = newValue;
+    const dailyCarry = Math.abs(Number(state.balance) || 0) * rules.dailyRate;
+    return {
+      type: 'res',
+      text: [
+        '[HYPOTHETICAL BUY: ' + tickerArg + '] No portfolio changes made',
+        '',
+        'PURCHASE: ' + qty.toLocaleString() + ' shares @ ' + money(price),
+        'Purchase value: ' + money(purchaseValue) + ' | Estimated buy commission: ' + money(purchaseCommission),
+        'Total estimated cash required: ' + money(purchaseValue + purchaseCommission),
+        '',
+        'METRIC                 BEFORE          AFTER          CHANGE',
+        'Shares                 ' + oldShares.toFixed(2) + '           ' + newShares.toFixed(2) + '           +' + qty.toFixed(2),
+        'Cost basis              ' + money(oldCost) + '       ' + money(newCost) + '       +' + money(purchaseValue),
+        'Average entry           ' + money(oldAverage) + '         ' + money(newAverage) + '         ' + signedMoney(newAverage - oldAverage),
+        'Position value @ ' + money(currentPrice) + ': ' + money(oldExposure) + ' → ' + money(newExposure) + ' (+' + money(qty * currentPrice) + ')',
+        'Unrealized P&L @ current quote: ' + signedMoney(oldUnrealized) + ' → ' + signedMoney(newUnrealized) + ' (' + signedMoney(newUnrealized - oldUnrealized) + ')',
+        '',
+        'PRICE SENSITIVITY: each $1 move changes position value by ' + money(oldShares) + ' before vs ' + money(newShares) + ' after; incremental exposure is ' + money(qty) + ' per $1 move.',
+        'If the purchase is fully margin-financed, debt could rise by about ' + money(purchaseValue + purchaseCommission) + '; at current debt, estimated daily interest is ' + money(dailyCarry) + '.',
+        'Estimate only; excludes any future price movement and assumes the extra purchase is separate from existing lots.'
+      ].join('\\n')
     };
   }
 
