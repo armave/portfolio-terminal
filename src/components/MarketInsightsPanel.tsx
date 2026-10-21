@@ -97,7 +97,11 @@ export function MarketInsightsPanel({
         if (currentRequestId === requestIdRef.current) setLoading(false);
       });
 
-    return () => {
+    const filteredStocktwitsMessages = (stocktwitsData?.messages ?? []).filter(
+    (message) => getStocktwitsCashtags(message.body).length <= 1
+  );
+
+  return () => {
       requestIdRef.current += 1;
     };
   }, [ticker, isOpen, activeSection, refreshTrigger]);
@@ -525,7 +529,9 @@ export function MarketInsightsPanel({
             <p class="text-[10px] text-slate-500">{stocktwitsUpdatedAt ? `Updated ${formatRelativeTime(stocktwitsUpdatedAt)}` : ''}{stocktwitsLoading ? ' · Refreshing…' : ''}</p>
             {stocktwitsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded messages.</p>}
             <div class="h-[306px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Stocktwits messages">
-            {stocktwitsData.messages.filter((message) => getStocktwitsCashtags(message.body).length <= 1).map((message, idx) => {
+            {filteredStocktwitsMessages.length === 0 ? (
+              <p class="rounded border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">No single-ticker messages found.</p>
+            ) : filteredStocktwitsMessages.map((message, idx) => {
               const sentiment = message.sentiment?.basic ?? message.entities?.sentiment?.basic ?? null;
               const sentimentClass = sentiment?.toLowerCase() === 'bullish'
                 ? 'text-emerald-400 border-emerald-900/70'
