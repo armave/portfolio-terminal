@@ -21,7 +21,8 @@ const INSIGHT_TABS: Array<{ id: InsightSection; domId: string; label: string }> 
 
 const STOCKTWITS_CASHTAG_PATTERN = /\$([A-Z][A-Z0-9.-]{0,9})\b/g;
 
-export function getStocktwitsCashtags(body: string): string[] {
+export function getStocktwitsCashtags(body: unknown): string[] {
+  if (typeof body !== 'string') return [];
   return Array.from(new Set(
     Array.from(body.matchAll(STOCKTWITS_CASHTAG_PATTERN), (match) => match[1].toUpperCase())
   ));
@@ -547,7 +548,7 @@ export function MarketInsightsPanel({
                     {sentiment && <span class={`rounded border px-1.5 py-0.5 font-bold uppercase ${sentimentClass}`}>{sentiment}</span>}
                     {typeof message.likes?.total === 'number' && <span>♥ {message.likes.total}</span>}
                   </div>
-                  <p class="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-200">{renderStocktwitsBody(message.body)}</p>
+                  <p class="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-200">{renderStocktwitsBody(typeof message.body === 'string' ? message.body : '')}</p>
                 </article>
               );
             })}
