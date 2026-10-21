@@ -9,7 +9,7 @@ function escapeHtml(str: string): string {
 }
 
 function appendScenarioLineContent(container: HTMLElement, rawLine: string): void {
-  const tokenPattern = /([+-]?\\$[0-9,]+(?:\\.[0-9]+)?|[+-]?\\d+(?:\\.[0-9]+)?%|→)/g;
+  const tokenPattern = /([+-]?\$[0-9,]+(?:\.[0-9]+)?|[+-]?\d+(?:\.[0-9]+)?%|→)/g;
   let cursor = 0;
   for (const match of rawLine.matchAll(tokenPattern)) {
     const index = match.index ?? 0;
@@ -35,7 +35,7 @@ function appendScenarioLineContent(container: HTMLElement, rawLine: string): voi
 }
 
 function renderScenarioReport(container: HTMLElement, message: string): void {
-  const lines = message.split('\\n');
+  const lines = message.split('\n');
   lines.forEach((rawLine, index) => {
     if (!rawLine.trim()) {
       const spacer = document.createElement('div');
@@ -45,7 +45,7 @@ function renderScenarioReport(container: HTMLElement, message: string): void {
       return;
     }
 
-    if (/^\\s*(?:[-=]{3,}|_{3,})\\s*$/.test(rawLine)) {
+    if (/^\s*(?:[-=]{3,}|_{3,})\s*$/.test(rawLine)) {
       const divider = document.createElement('div');
       divider.className = 'my-3 border-t border-slate-700/80';
       divider.setAttribute('aria-hidden', 'true');
@@ -57,12 +57,12 @@ function renderScenarioReport(container: HTMLElement, message: string): void {
     row.className = 'rounded-lg px-3 py-2 leading-relaxed';
     if (index === 0) {
       row.className = 'mb-4 rounded-xl border border-violet-400/30 bg-gradient-to-r from-violet-500/15 via-indigo-500/10 to-cyan-500/10 px-4 py-3 text-base font-bold leading-relaxed text-white shadow-inner shadow-violet-950/20 sm:text-lg';
-    } else if (/^(?:\\s*[A-Z][A-Z0-9 /&()_-]{2,}:|\\s*\\d+[.)]\\s|\\s*[A-Z]\\)\\s)/.test(rawLine) ||
+    } else if (/^(?:\s*[A-Z][A-Z0-9 /&()_-]{2,}:|\s*\d+[.)]\s|\s*[A-Z]\)\s)/.test(rawLine) ||
       /^(?:BEST ESTIMATED EXIT|NET ADVANTAGE|RESULT:|PRICE SENSITIVITY:)/i.test(rawLine.trim())) {
       row.className += ' mt-2 border-l-2 border-cyan-400/80 bg-cyan-400/[0.07] font-semibold text-cyan-100';
-    } else if (/(?:-\\$|loss|downside|worse|decrease|commission|interest)/i.test(rawLine)) {
+    } else if (/(?:-\$|loss|downside|worse|decrease|commission|interest)/i.test(rawLine)) {
       row.className += ' my-1 bg-rose-400/[0.045] text-slate-200';
-    } else if (/(?:\\+\\$|\\+\\d|profit|gain|upside|better|increase|NET P&L)/i.test(rawLine)) {
+    } else if (/(?:\+\$|\+\d|profit|gain|upside|better|increase|NET P&L)/i.test(rawLine)) {
       row.className += ' my-1 bg-emerald-400/[0.06] text-slate-100';
     } else if (rawLine.includes('|')) {
       row.className += ' my-0.5 odd:bg-white/[0.025] text-slate-200';
@@ -73,6 +73,16 @@ function renderScenarioReport(container: HTMLElement, message: string): void {
     container.append(row);
   });
 }
+
+function colorizeFinancialTokens(escapedText: string): string {
+  return escapedText
+    .replace(/(\\+\\$[0-9,]+(?:\\.[0-9]+)?|\\+[0-9]+(?:\\.[0-9]+)?%)/g, '<span class="text-emerald-400 font-bold">$1</span>')
+    .replace(/(-\\$[0-9,]+(?:\\.[0-9]+)?|-[0-9]+(?:\\.[0-9]+)?%)/g, '<span class="text-rose-400 font-bold">$1</span>')
+    .replace(/(?<![+-])(\\$[0-9,]+(?:\\.[0-9]+)?)/g, '<span class="text-amber-300 font-semibold">$1</span>')
+    .replace(/→/g, '<span class="text-cyan-400 font-bold px-1">→</span>')
+    .replace(/\\s\\|\\s/g, ' <span class="text-slate-700">|</span> ');
+}
+
 
 function parseTagAndStyle(rawMessage: string, isError: boolean) {
   const tagMatch = rawMessage.match(/^\[([^\]]+)\]:?\s*([\s\S]*)$/);
