@@ -8,53 +8,70 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function colorizeFinancialTokens(escapedText: string): string {
-  return escapedText
-    // Positive currency/percent (+$120.50, +4.25%)
-    .replace(
-      /(\+\$[0-9,]+(?:\.[0-9]+)?|\+[0-9]+(?:\.[0-9]+)?%)/g,
-      '<span class="text-emerald-400 font-bold">$1</span>'
-    )
-    // Negative currency/percent (-$45.20, -2.10%)
-    .replace(
-      /(-\$[0-9,]+(?:\.[0-9]+)?|-[0-9]+(?:\.[0-9]+)?%)/g,
-      '<span class="text-rose-400 font-bold">$1</span>'
-    )
-    // Neutral currency ($185.50)
-    .replace(
-      /(?<![+-])(\$[0-9,]+(?:\.[0-9]+)?)/g,
-      '<span class="text-amber-300 font-semibold">$1</span>'
-    )
-    // Arrow highlights
-    .replace(/→/g, '<span class="text-cyan-400 font-bold px-1">→</span>')
-    // Pipe separators
-    .replace(/\s\|\s/g, ' <span class="text-slate-700">|</span> ');
+function appendScenarioLineContent(container: HTMLElement, rawLine: string): void {
+  const tokenPattern = /([+-]?\\$[0-9,]+(?:\\.[0-9]+)?|[+-]?\\d+(?:\\.[0-9]+)?%|→)/g;
+  let cursor = 0;
+  for (const match of rawLine.matchAll(tokenPattern)) {
+    const index = match.index ?? 0;
+    if (index > cursor) container.append(document.createTextNode(rawLine.slice(cursor, index)));
+    const token = match[0];
+    const span = document.createElement('span');
+    span.textContent = token;
+    if (token === '→') {
+      span.className = 'mx-1 font-bold text-cyan-300';
+    } else if (token.startsWith('+$') || (token.startsWith('+') && token.endsWith('%'))) {
+      span.className = 'font-bold text-emerald-300';
+    } else if (token.startsWith('-$') || (token.startsWith('-') && token.endsWith('%'))) {
+      span.className = 'font-bold text-rose-300';
+    } else if (token.startsWith('$')) {
+      span.className = 'font-semibold text-amber-200';
+    } else {
+      span.className = 'font-semibold text-slate-100';
+    }
+    container.append(span);
+    cursor = index + token.length;
+  }
+  if (cursor < rawLine.length) container.append(document.createTextNode(rawLine.slice(cursor)));
 }
 
-function formatScenarioReportHtml(rawMessage: string): string {
-  return rawMessage.split('\n').map((rawLine, index) => {
-    const line = colorizeFinancialTokens(escapeHtml(rawLine));
-    if (!rawLine.trim()) return '<div class="h-2" aria-hidden="true"></div>';
+function renderScenarioReport(container: HTMLElement, message: string): void {
+  const lines = message.split('\\n');
+  lines.forEach((rawLine, index) => {
+    if (!rawLine.trim()) {
+      const spacer = document.createElement('div');
+      spacer.className = 'h-2';
+      spacer.setAttribute('aria-hidden', 'true');
+      container.append(spacer);
+      return;
+    }
+
+    if (/^\\s*(?:[-=]{3,}|_{3,})\\s*$/.test(rawLine)) {
+      const divider = document.createElement('div');
+      divider.className = 'my-3 border-t border-slate-700/80';
+      divider.setAttribute('aria-hidden', 'true');
+      container.append(divider);
+      return;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'rounded-lg px-3 py-2 leading-relaxed';
     if (index === 0) {
-      return `<div class="mb-4 rounded-xl border border-violet-400/30 bg-gradient-to-r from-violet-500/15 via-indigo-500/10 to-cyan-500/10 px-4 py-3 text-base font-bold leading-relaxed text-white shadow-inner shadow-violet-950/20 sm:text-lg">${line}</div>`;
+      row.className = 'mb-4 rounded-xl border border-violet-400/30 bg-gradient-to-r from-violet-500/15 via-indigo-500/10 to-cyan-500/10 px-4 py-3 text-base font-bold leading-relaxed text-white shadow-inner shadow-violet-950/20 sm:text-lg';
+    } else if (/^(?:\\s*[A-Z][A-Z0-9 /&()_-]{2,}:|\\s*\\d+[.)]\\s|\\s*[A-Z]\\)\\s)/.test(rawLine) ||
+      /^(?:BEST ESTIMATED EXIT|NET ADVANTAGE|RESULT:|PRICE SENSITIVITY:)/i.test(rawLine.trim())) {
+      row.className += ' mt-2 border-l-2 border-cyan-400/80 bg-cyan-400/[0.07] font-semibold text-cyan-100';
+    } else if (/(?:\\+\\$|\\+\\d|profit|gain|upside|better|increase|NET P&L)/i.test(rawLine)) {
+      row.className += ' my-1 bg-emerald-400/[0.06] text-slate-100';
+    } else if (/(?:-\\$|loss|cost|downside|worse|decrease|commission|interest)/i.test(rawLine)) {
+      row.className += ' my-1 bg-rose-400/[0.045] text-slate-200';
+    } else if (rawLine.includes('|')) {
+      row.className += ' my-0.5 odd:bg-white/[0.025] text-slate-200';
+    } else {
+      row.className += ' text-slate-200';
     }
-    if (/^\s*(?:[-=]{3,}|_{3,})\s*$/.test(rawLine)) {
-      return '<div class="my-3 border-t border-slate-700/80" aria-hidden="true"></div>';
-    }
-    if (/^\s*(?:[A-Z][A-Z0-9 /&()_-]{2,}:|\d+[.)]\s)/.test(rawLine)) {
-      return `<div class="mt-3 rounded-lg border-l-2 border-cyan-400/80 bg-cyan-400/[0.07] px-3 py-2 font-semibold leading-relaxed text-cyan-100">${line}</div>`;
-    }
-    if (/(?:\+\$|\+\d|profit|gain|upside|better|increase)/i.test(rawLine)) {
-      return `<div class="my-1 rounded-md bg-emerald-400/[0.06] px-3 py-1.5 leading-relaxed text-slate-100">${line}</div>`;
-    }
-    if (/(?:-\$|-\d|loss|cost|downside|worse|decrease)/i.test(rawLine)) {
-      return `<div class="my-1 rounded-md bg-rose-400/[0.06] px-3 py-1.5 leading-relaxed text-slate-100">${line}</div>`;
-    }
-    if (rawLine.includes('|')) {
-      return `<div class="my-0.5 rounded-md px-3 py-1.5 leading-relaxed odd:bg-white/[0.025] text-slate-200">${line}</div>`;
-    }
-    return `<div class="px-3 py-1 leading-relaxed text-slate-200">${line}</div>`;
-  }).join('');
+    appendScenarioLineContent(row, rawLine);
+    container.append(row);
+  });
 }
 
 function parseTagAndStyle(rawMessage: string, isError: boolean) {
@@ -133,6 +150,7 @@ function showScenarioReport(message: string): void {
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
   dialog.setAttribute('aria-labelledby', 'scenarioReportTitle');
+  dialog.setAttribute('tabindex', '-1');
 
   const header = document.createElement('div');
   header.className = 'flex items-start justify-between gap-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-purple-950/40 px-4 py-4 sm:px-6';
@@ -163,9 +181,10 @@ function showScenarioReport(message: string): void {
 
   header.append(headingGroup, closeTop);
 
-  const report = document.createElement('pre');
+  const report = document.createElement('div');
   report.className = 'scenario-report-content min-h-0 flex-1 overflow-auto break-words bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/90 px-3 py-4 text-sm leading-relaxed selection:bg-violet-500/30 sm:px-6 sm:py-6 sm:text-[15px]';
-  report.innerHTML = formatScenarioReportHtml(message);
+  report.setAttribute('aria-label', 'Scenario report details');
+  renderScenarioReport(report, message);
 
   const footer = document.createElement('div');
   footer.className = 'flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900/80 px-4 py-3.5 sm:px-6';
@@ -184,6 +203,9 @@ function showScenarioReport(message: string): void {
   overlay.appendChild(dialog);
 
   let isClosing = false;
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const previousBodyOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
   const close = () => {
     if (isClosing) return;
     isClosing = true;
@@ -192,10 +214,40 @@ function showScenarioReport(message: string): void {
     overlay.classList.add('opacity-0');
     dialog.classList.remove('translate-y-0', 'scale-100', 'opacity-100');
     dialog.classList.add('translate-y-3', 'scale-[0.985]', 'opacity-0');
-    window.setTimeout(() => overlay.remove(), 200);
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const finishClose = () => {
+      overlay.remove();
+      document.body.style.overflow = previousBodyOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+    if (reduceMotion) finishClose();
+    else window.setTimeout(finishClose, 200);
   };
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') close();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key === 'Tab') {
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ));
+      if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
   };
 
   closeTop.addEventListener('click', close);
