@@ -122,6 +122,13 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
       title: `Add shares to ${position.ticker}`
     },
     {
+      text: '⇧ Buy More?…',
+      command: `buy scenario [shares] ${position.ticker} at ${priceText}`,
+      selectText: '[shares]',
+      color: 'text-purple-300 border-purple-900/70 hover:bg-purple-950/60',
+      title: `Preview how buying more ${position.ticker} shares changes average entry, exposure, and unrealized P&L without placing an order`
+    },
+    {
       text: '− Sell Part…',
       command: `sold [shares] ${position.ticker} for ${priceText}`,
       color: 'text-rose-300 border-rose-900/70 hover:bg-rose-950/60',
