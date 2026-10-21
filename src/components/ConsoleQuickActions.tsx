@@ -122,7 +122,7 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
       title: `Add shares to ${position.ticker}`
     },
     {
-      text: '⇧ Buy More?…',
+      text: '⇧ Buy More Scenario…',
       command: `buy scenario [shares] ${position.ticker} at ${priceText}`,
       selectText: '[shares]',
       color: 'text-purple-300 border-purple-900/70 hover:bg-purple-950/60',
