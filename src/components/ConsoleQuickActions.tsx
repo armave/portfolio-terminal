@@ -130,8 +130,8 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
     },
     {
       text: '⇧ Buy More Scenario…',
-      command: `buy scenario [shares] ${position.ticker} at ${priceText}`,
-      selectText: '[shares]',
+      command: `buy scenario ${Math.max(1, Math.floor(Number(position.shares) / 2))} ${position.ticker} at ${priceText}`,
+      selectText: String(Math.max(1, Math.floor(Number(position.shares) / 2))),
       color: 'text-purple-300 border-purple-900/70 hover:bg-purple-950/60',
       title: `Preview how buying more ${position.ticker} shares changes average entry, exposure, and unrealized P&L without placing an order`
     },

@@ -632,6 +632,10 @@ export class CommandDispatcher {
     const oldBuyFee = Math.max(0, Number(pos.commBuy) || 0);
     const purchaseValue = qty * price;
     const purchaseFee = calculateCommission(qty, purchaseValue, rules as any);
+    const currentDebt = Math.max(0, -(Number(state.balance) || 0));
+    const currentDailyMarginFee = currentDebt * rules.dailyRate;
+    const projectedDailyMarginFee = (currentDebt + purchaseValue) * rules.dailyRate;
+    const dailyMarginFeeDifference = projectedDailyMarginFee - currentDailyMarginFee;
     const newShares = oldShares + qty;
     const newCost = oldCost + purchaseValue;
     const newBuyFee = oldBuyFee + purchaseFee;
@@ -654,6 +658,7 @@ export class CommandDispatcher {
       '[HYPOTHETICAL BUY: ' + ticker + ']',
       'Add ' + qty.toLocaleString() + ' shares @ ' + money(price) + ' · est. fee ' + money(purchaseFee),
       'Cash required: ' + money(purchaseValue + purchaseFee),
+      'Daily margin fee: ' + money(currentDailyMarginFee) + ' → ' + money(projectedDailyMarginFee) + ' (' + (dailyMarginFeeDifference >= 0 ? '+' : '-') + money(Math.abs(dailyMarginFeeDifference)) + '/day)',
       '',
       'POSITION CHANGE',
       'Shares: ' + oldShares.toLocaleString() + ' → ' + newShares.toLocaleString() + ' (+' + qty.toLocaleString() + ')',

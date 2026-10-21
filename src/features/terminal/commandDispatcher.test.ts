@@ -207,6 +207,7 @@ describe('terminal command validation and cash routing', () => {
     const result = CommandDispatcher.execute('buy scenario 10 AAPL at 105');
     expect(result.type).toBe('res');
     expect(result.text).toContain('[HYPOTHETICAL BUY: AAPL]');
+    expect(result.text).toContain('Daily margin fee:');
     expect(result.text).toContain('Average entry');
     expect(result.text).toContain('PROFIT / LOSS COMPARISON');
     expect(result.text).toContain('At current quote');

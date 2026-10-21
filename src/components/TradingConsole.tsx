@@ -123,8 +123,8 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       category: 'Buy More Scenario (What-if)',
       badgeColor: 'text-purple-400 border-purple-900/60 bg-purple-950/30',
       id: 'hintBuyMoreScenario',
-      command: `buy scenario [shares] ${hasPosition ? ticker : '[TICKER]'} at ${priceText}`,
-      display: `buy scenario [shares] ${hasPosition ? ticker : '[TICKER]'} at ${priceText}`
+      command: `buy scenario ${halfShares} ${hasPosition ? ticker : '[TICKER]'} at ${priceText}`,
+      display: `buy scenario ${halfShares} ${hasPosition ? ticker : '[TICKER]'} at ${priceText}`
     },
     {
       category: 'Sell / Close',
@@ -241,7 +241,11 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
           value={command}
           onInput={(event) => setCommand((event.currentTarget as HTMLInputElement).value)}
           type="text"
-          autocomplete="new-password"
+          name="terminal-command"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          enterkeyhint="go"
           spellcheck={false}
           placeholder={`e.g. sell ${hasPosition ? ticker : 'AAPL'} today for ${priceText} vs sell 14 days later for ${comparisonPrice}`}
           onKeyDown={handleKeyDown}
