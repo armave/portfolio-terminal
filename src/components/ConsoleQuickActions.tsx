@@ -122,6 +122,13 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
       title: `Add shares to ${position.ticker}`
     },
     {
+      text: '⇄ Compare Exits…',
+      command: `sell ${position.ticker} today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`,
+      selectText: comparisonPriceText,
+      color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/60',
+      title: 'Compare net profit after margin carry between selling today vs waiting'
+    },
+    {
       text: '⇧ Buy More Scenario…',
       command: `buy scenario [shares] ${position.ticker} at ${priceText}`,
       selectText: '[shares]',
@@ -142,11 +149,11 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
       title: `Close entire ${position.ticker} position`
     },
     {
-      text: '⇄ Compare Exits…',
-      command: `sell ${position.ticker} today for ${priceText} vs sell 14 days later for ${comparisonPriceText}`,
-      selectText: comparisonPriceText,
+      text: '◎ Target…',
+      command: `target ${position.ticker} ${targetPrice}`,
+      selectText: targetPrice,
       color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/60',
-      title: 'Compare net profit after margin carry between selling today vs waiting'
+      title: `Update ${position.ticker} price target`
     },
     {
       text: '🪜 Ladder…',
@@ -154,13 +161,6 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
       selectText: comparisonPriceText,
       color: 'text-purple-300 border-purple-900/70 hover:bg-purple-950/60',
       title: 'Simulate scaling out across multiple price targets'
-    },
-    {
-      text: '◎ Target…',
-      command: `target ${position.ticker} ${targetPrice}`,
-      selectText: targetPrice,
-      color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/60',
-      title: `Update ${position.ticker} price target`
     }
   ];
 
