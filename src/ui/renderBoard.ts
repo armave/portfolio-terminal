@@ -252,7 +252,9 @@ function prefillTerminalCommand(command: string): void {
 
   const start = input.value.indexOf('[');
   const end = start >= 0 ? input.value.indexOf(']', start) + 1 : -1;
-  if (start >= 0 && end > start) input.setSelectionRange(start, end);
+  if (start >= 0 && end > start) {
+    requestAnimationFrame(() => input.setSelectionRange(start, end));
+  }
 }
 
 function showDesk(id: string) {
