@@ -79,17 +79,18 @@ function parseTagAndStyle(rawMessage: string, isError: boolean) {
   };
 }
 
-function isScenarioReport(message: string): boolean {
-  const firstLine = message.split('\n', 1)[0].toUpperCase();
-  return (
+function scenarioReportText(message: string): string | null {
+  // executeCommand wraps local command results in a [CLI] log tag; inspect the payload too.
+  const report = message.replace(/^\[CLI\]:?\s*/i, '');
+  const firstLine = report.split('\n', 1)[0].toUpperCase();
+  const isReport =
     firstLine.startsWith('[SIM ') ||
     firstLine.startsWith('[EXIT COMPARISON:') ||
     firstLine.startsWith('[MULTI-DATE EXIT COMPARISON:') ||
     firstLine.startsWith('[HYPOTHETICAL BUY:') ||
     firstLine.startsWith('[LADDER EXIT:') ||
-    firstLine.startsWith('[SIM ') ||
-    firstLine.startsWith('[STAGED EXIT:')
-  );
+    firstLine.startsWith('[STAGED EXIT:');
+  return isReport ? report : null;
 }
 
 function showScenarioReport(message: string): void {
@@ -179,8 +180,9 @@ export function logTerminal(message: string, isUser = false, isError = false): v
     document.getElementById('terminalLog') || document.getElementById('terminalOutput');
   if (!logEl) return;
 
-  if (!isUser && !isError && isScenarioReport(message)) {
-    showScenarioReport(message);
+  const scenarioReport = !isUser && !isError ? scenarioReportText(message) : null;
+  if (scenarioReport !== null) {
+    showScenarioReport(scenarioReport);
 
     const entry = document.createElement('div');
     const timeStr = new Date().toLocaleTimeString([], {
@@ -197,12 +199,12 @@ export function logTerminal(message: string, isUser = false, isError = false): v
     label.textContent = 'WHAT-IF REPORT';
     const text = document.createElement('span');
     text.className = 'break-words';
-    text.textContent = message.split('\n', 1)[0].slice(0, 180);
+    text.textContent = scenarioReport.split('\n', 1)[0].slice(0, 180);
     const reopen = document.createElement('button');
     reopen.type = 'button';
     reopen.className = 'shrink-0 rounded border border-purple-800/80 px-2 py-1 text-[10px] font-bold text-purple-300 hover:bg-purple-950/70';
     reopen.textContent = 'View report';
-    reopen.addEventListener('click', () => showScenarioReport(message));
+    reopen.addEventListener('click', () => showScenarioReport(scenarioReport));
     summary.append(label, text);
     entry.append(summary, reopen);
     const time = document.createElement('span');
