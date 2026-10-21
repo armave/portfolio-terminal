@@ -10,6 +10,11 @@ describe('getStocktwitsCashtags', () => {
     expect(getStocktwitsCashtags('Market is choppy today')).toEqual([]);
   });
 
+  it('safely handles malformed message bodies', () => {
+    expect(getStocktwitsCashtags(null)).toEqual([]);
+    expect(getStocktwitsCashtags(undefined)).toEqual([]);
+  });
+
   it('does not treat ordinary dollar amounts as ticker symbols', () => {
     expect(getStocktwitsCashtags('Bought shares for $125 and waiting')).toEqual([]);
   });
