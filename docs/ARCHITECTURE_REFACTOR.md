@@ -182,4 +182,6 @@ The latest head passed typecheck, Vitest, production build, and dead-code diagno
 - Added parity coverage comparing terminal and AI-confirmed sales under the same position and broker assumptions, including remaining position, debt, cash, realized margin charges, commissions, and realized profit.
 - The current code/test head passed all four merge gates: typecheck, Vitest, production build, and dead-code diagnostics.
 
+**Known boundary kept separate:** the active runtime rollover uses the configured timezone and batch debt projection, while the legacy cloud-import `processRollovers` path uses the historical Asia/Yerevan boundary and per-cycle rounding. These are not assumed equivalent; combining them without a decision about the existing financial rounding contract could change persisted debt. Keep both paths covered independently rather than silently changing the formula during this refactor.
+
 The remaining work is the final repository diff review and compatibility audit. Keep the PR in draft until the latest head passes the merge gates and the audit finds no unintended financial, persistence, quote, or UI regressions.
