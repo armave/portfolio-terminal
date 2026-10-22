@@ -281,6 +281,29 @@ describe('canonical trade lifecycle and persistence', () => {
     ]);
   });
 
+  it('normalizes unsupported active views without relying on render-time mutation', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    store.importState({ activeView: 'MISSING_TICKER' });
+    expect(store.getState().activeView).toBe('COMBINED');
+
+    store.importState({
+      activeView: 'AAPL',
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 1,
+          currentPrice: 100,
+          pt: 110,
+          commBuy: 0,
+          tranches: [{ qty: 1, price: 100, date: '2026-10-01' }]
+        }
+      }
+    });
+    expect(store.getState().activeView).toBe('AAPL');
+  });
+
   it('uses the same default broker assumptions as the application settings', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
