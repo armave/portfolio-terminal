@@ -10,6 +10,7 @@ import {
   resolveSaleQuantity,
   resolveTradeDateTimestamp,
   calculateProjectedDebt,
+  calculateRolloverDebt,
   calculateAccruedFees,
   calculateBreakevenDays,
   processRollovers,
@@ -407,6 +408,16 @@ describe('portfolio domain', () => {
     expect(calculateAccruedFees(0, 0, 0)).toBe(0);
     expect(calculateAccruedFees(Number.POSITIVE_INFINITY, 5, 2)).toBe(7);
     expect(calculateAccruedFees(10, Number.NaN, 2)).toBe(12);
+  });
+
+  it('preserves distinct batch and legacy per-cycle rollover rounding modes', () => {
+    const batch = calculateRolloverDebt(1000, 0.00018, 19, 'batch');
+    expect(batch.compoundedDebt).toBe(1003.43);
+    expect(batch.interestAccrued).toBeCloseTo(3.425546, 6);
+    expect(calculateRolloverDebt(1000, 0.00018, 19, 'per-cycle')).toEqual({
+      compoundedDebt: 1003.42,
+      interestAccrued: 3.42
+    });
   });
 
   it('calculates breakeven days using the same daily compounding model as projected debt', () => {
