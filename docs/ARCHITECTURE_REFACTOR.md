@@ -120,12 +120,19 @@ npm run validate:dead-code
 
 All checks must be run against the same final commit. Also review the final diff for unexpected financial behavior changes, duplicate execution paths, secrets, unrelated files, and compatibility regressions. If the refactor uncovers an unrelated defect, document it separately unless it blocks a required invariant.
 
-## Initial implementation note
+## Implementation progress
 
-The first implementation slice now:
+The refactor is being delivered in small, regression-tested slices on one draft PR.
+
+Implemented so far:
 - Treats an updater that returns the exact current state object as an explicit no-op, avoiding persistence and subscriber notifications for rejected stale quotes.
-- Routes cash-cushion holding additions and removals through store-owned mutations rather than mutating the active state object in the runtime controller.
+- Routes cash-cushion holding additions/removals and AI-confirmed cash-holding sales through store-owned mutations.
+- Routes AI-confirmed buys and margin-position sales through atomic store operations; the sale operation preserves the existing confirmed-action accounting path and commits position, debt, free cash, realized margin charges, and closed-trade history together.
+- Routes AI target-price changes, explicit margin-debt changes, and view changes through the store.
+- Makes a new buy execution price authoritative over an older quote and clears stale quote metadata.
 - Restricts batch quote polling to normalized requested tickers and uses the shared `QuoteDetails` type instead of `any`.
 - Keeps routine success/status feedback out of toast notifications while retaining actionable errors.
 
-Regression tests cover stale-quote no-op behavior, canonical cash-holding mutations, and unexpected symbols in provider batch responses. These changes are a safe foundation; the remaining runtime-controller migration still needs to route all trade and settings mutations through store operations.
+Regression tests cover stale-quote no-op behavior, quote-after-trade ordering, cash-holding mutations and sales, margin sale lifecycle, persistence, and unexpected symbols in provider batch responses.
+
+Remaining work includes moving rollover/accounting and cloud-import transitions behind store-owned operations, reviewing the legacy runtime state bridge and duplicate sale paths, and completing the rendering/subscription and persistence/cloud-sync work packages. This is not yet a completed app-wide refactor; keep the PR in draft until the final head passes all merge gates and the remaining work is reviewed.
