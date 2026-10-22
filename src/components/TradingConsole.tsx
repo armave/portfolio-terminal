@@ -200,9 +200,6 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
           <span class="text-xs font-bold text-slate-200 uppercase tracking-wider font-mono">
             Trading Console
           </span>
-          <span class="hidden sm:inline-block rounded bg-slate-900 border border-slate-800 px-1.5 py-0.5 text-[9px] font-mono text-emerald-400">
-            LOCAL ENGINE
-          </span>
         </div>
 
         <div class="flex items-center gap-2">

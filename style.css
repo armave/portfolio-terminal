@@ -1218,14 +1218,14 @@ summary:hover {
 
   #tradingConsoleCard textarea,
   #tradingConsoleCard input {
-    font-size: 16px !important;
+    font-size: 13px !important;
   }
 
   #tradingConsoleCard #consoleQuickActions,
   #tradingConsoleCard .console-quick-actions,
   #tradingConsoleCard [data-console-quick-actions] {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 0.5rem;
     max-width: 100%;
     overflow-x: auto;
