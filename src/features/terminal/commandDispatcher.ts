@@ -582,7 +582,7 @@ export class CommandDispatcher {
     const currentMargin = calculateMarginInterest(pos.tranches || [], { dailyRate: rules.dailyRate, marginDebt: debt, totalDebt: debt } as any);
     const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2), signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     const rows = scenarios.map(s => { const gross = shares * s.price, sellFee = calculateCommission(shares, gross, rules as any), carry = debt * rules.dailyRate * s.days, net = gross - costBasis - buyCommission - sellFee - currentMargin - carry; return { ...s, gross, sellFee, carry, net }; });
-    const baseline = rows.find(r => r.days === 0)?.net ?? rows[0].net, best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
+    const best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
     const bestDelta = (r: typeof rows[number]) => signed(r.net - best.net);
     return { type: 'res', text: [
       '[EXIT COMPARISON: ' + sym + '] · ' + shares.toLocaleString() + ' shares',
@@ -632,14 +632,12 @@ export class CommandDispatcher {
     const hasTarget = Number.isFinite(target) && target > 0;
     const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
-    const pct = (n: number) => (n > 0 ? '+' : '') + n.toFixed(2) + '%';
     const targetOldPnl = hasTarget ? oldShares * target - oldCost - oldBuyFee : 0;
     const targetNewPnl = hasTarget ? newShares * target - newCost - newBuyFee : 0;
     const downsidePrice = quote * 0.9;
     const downsideOldPnl = oldShares * downsidePrice - oldCost - oldBuyFee;
     const downsideNewPnl = newShares * downsidePrice - newCost - newBuyFee;
     const downsideDelta = downsideNewPnl - downsideOldPnl;
-    const breakEvenAfterBuy = (newCost + newBuyFee) / newShares;
 
     const targetDelta = hasTarget ? targetNewPnl - targetOldPnl : 0;
     const currentDelta = newPnl - oldPnl;
