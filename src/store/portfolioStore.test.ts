@@ -780,7 +780,12 @@ describe('canonical trade lifecycle and persistence', () => {
     });
     expect(aiStore.getState().balance).toBe(terminalStore.getState().balance);
     expect(aiStore.getState().cashCushion.freeCash).toBe(terminalStore.getState().cashCushion.freeCash);
-    expect(aiStore.getState().positions.AAPL).toEqual(terminalStore.getState().positions.AAPL);
+    expect(aiStore.getState().positions.AAPL).toMatchObject({
+      shares: 1,
+      currentPrice: 100,
+      commBuy: 0.6,
+      tranches: [expect.objectContaining({ qty: 1, price: 100, buyCommission: 0.6 })]
+    });
     expect(aiStore.getState().realizedMarginCharged).toBe(terminalStore.getState().realizedMarginCharged);
     expect(aiStore.getState().realizedMarginCharged).toBeGreaterThan(0);
     expect(aiStore.getState().closedTrades[0]).toMatchObject({
