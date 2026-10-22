@@ -1,5 +1,6 @@
 import { portfolioStore } from '../../store/portfolioStore';
-import { calculateCommission, calculateMarginInterest } from '../../domain/portfolio';
+import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedDebt } from '../../domain/portfolio';
+import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
 
 type SideEffectAction =
   | { type: 'FETCH_QUOTE'; ticker: string }
@@ -23,8 +24,12 @@ export interface ScenarioModalData {
   rows: Array<{
     label: string;
     values: string[];
-    kind?: 'fee' | 'result' | 'balance';
+    kind?: 'section' | 'fee' | 'result' | 'risk' | 'balance';
+    deltas?: Array<string | undefined>;
   }>;
+  presets?: Array<{ label: string; columnIndexes: number[] }>;
+  quickActions?: Array<{ label: string; command?: string; columnIndexes?: number[]; invert?: boolean }>;
+  action?: { label: string; command: string };
   note: string;
 }
 
@@ -597,6 +602,7 @@ export class CommandDispatcher {
     const costBasis = (pos.tranches || []).reduce((sum: number, t: any) => sum + (Number(t.qty) || 0) * (Number(t.price) || 0), 0);
     const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
     const balance = Number(state.balance) || 0;
+    const startingCash = Number(state.cashBalance ?? state.cashCushion?.freeCash) || 0;
     const debt = Math.max(0, -balance);
     const currentMargin = calculateMarginInterest(pos.tranches || [], { dailyRate: rules.dailyRate, marginDebt: debt, totalDebt: debt } as any);
     const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
@@ -611,25 +617,44 @@ export class CommandDispatcher {
       const debtRepaid = Math.min(debt, netProceeds);
       const finalBalance = debt > 0 ? -(debt - debtRepaid) : balance;
       const cashSurplus = debt > 0 ? Math.max(0, netProceeds - debt) : netProceeds;
-      return { ...s, gross, sellFee, carry, marginFee, net, netProceeds, debtRepaid, finalBalance, cashSurplus };
+      // Project post-exit account equity from the actual current account state:
+      // available cash + sale proceeds after sell commission - current margin debt
+      // - estimated interest through the selected exit date. Buy commission is historical
+      // and already reflected in the current account state, so do not deduct it again.
+      const resultingAccountBalance = startingCash + netProceeds - debt - marginFee;
+      return { ...s, gross, sellFee, carry, marginFee, net, netProceeds, debtRepaid, finalBalance, cashSurplus, resultingAccountBalance };
     });
     const best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
+    const dayLabel = (days: number) => days === 0 ? 'Today' : days + ' Days';
+    const presets = rows.slice(0, -1).map((row, index) => ({
+      label: dayLabel(row.days) + ' vs ' + dayLabel(rows[index + 1].days),
+      columnIndexes: [index, index + 1]
+    }));
     const modal: ScenarioModalData = {
       kind: 'exit-comparison',
-      title: 'Exit comparison · ' + sym,
+      title: 'Exit Comparison · ' + sym,
       subtitle: shares.toLocaleString() + ' shares · estimated net result after fees',
-      columns: rows.map(r => r.label + ' · ' + money(r.price)),
-      rows: [
-        { label: 'Gross proceeds', values: rows.map(r => money(r.gross)) },
-        { label: 'Cost basis', values: rows.map(() => '−' + money(costBasis)) },
-        { label: 'Buy commission', values: rows.map(() => '−' + money(buyCommission)), kind: 'fee' },
-        { label: 'Sell commission', values: rows.map(r => '−' + money(r.sellFee)), kind: 'fee' },
-        { label: 'Margin interest', values: rows.map(r => '−' + money(r.marginFee)), kind: 'fee' },
-        { label: 'NET P&L', values: rows.map(r => signed(r.net) + (r.net === best.net ? ' · BEST' : '')), kind: 'result' },
-        { label: 'Margin balance before', values: rows.map(() => money(balance)), kind: 'balance' },
-        { label: 'Final margin balance', values: rows.map(r => money(r.finalBalance)), kind: 'balance' }
+      columns: rows.map(r => dayLabel(r.days) + ' · ' + money(r.price) + (r === best ? ' · BEST' : '')),
+      presets,
+      quickActions: [
+        ...(rows.some(r => r.days === 7) ? [{ label: 'Switch to 7d', columnIndexes: [rows.findIndex(r => r.days === 7)] }] : []),
+        ...(rows.some(r => r.days === 14) ? [{ label: 'Lock 14d Best', command: 'target ' + sym + ' ' + rows.find(r => r.days === 14)!.price.toFixed(2) }] : []),
+        ...(rows.length > 1 ? [{ label: 'Invert Comparison', invert: true }] : [])
       ],
-      note: 'Includes buy/sell commissions and estimated interest through each exit date. Future prices are assumptions.'
+      action: { label: 'Stage target command', command: 'target ' + sym + ' ' + best.price.toFixed(2) },
+      rows: [
+        { label: 'Cost Basis', values: rows.map(() => money(costBasis)), kind: 'fee' },
+        { label: 'Gross Proceeds', values: rows.map(r => money(r.gross)), kind: 'fee' },
+        { label: 'Total Fee Friction', values: rows.map(r => money(buyCommission + r.sellFee + r.marginFee)), kind: 'fee' },
+        {
+          label: 'Net P&L',
+          values: rows.map(r => signed(r.net)),
+          deltas: rows.map(r => r === best ? 'BEST' : signed(r.net - best.net)),
+          kind: 'result'
+        },
+        { label: 'Resulting Account Balance', values: rows.map(r => money(r.resultingAccountBalance)), kind: 'balance' }
+      ],
+      note: 'Total fee friction includes buy commission, sell commission, and estimated margin interest. Future prices are assumptions. The action stages a target-price command in the terminal; it does not submit a broker order.'
     };
     const text = [
       '[EXIT COMPARISON: ' + sym + ']',
@@ -685,38 +710,53 @@ export class CommandDispatcher {
     const scenarioPnl = (shares: number, cost: number, buyFee: number, exitPrice: number) =>
       shares * exitPrice - cost - buyFee -
       calculateCommission(shares, shares * exitPrice, rules as any) - currentMargin;
-    const scenarios = [
-      { label: 'Current quote · ' + money(quote), price: quote },
-      ...(hasTarget ? [{ label: 'Target · ' + money(target), price: target }] : []),
-      { label: '−10% · ' + money(downsidePrice), price: downsidePrice }
-    ];
     const modal: ScenarioModalData = {
       kind: 'buy-more',
-      title: 'Buy more comparison · ' + ticker,
-      subtitle: '+' + qty.toLocaleString() + ' shares at ' + money(price) + ' · hypothetical only',
-      columns: ['Before', 'After buying'],
-      rows: [
-        { label: 'Shares', values: [oldShares.toLocaleString(), newShares.toLocaleString()] },
-        { label: 'Average entry', values: [money(oldAverage), money(newAverage)] },
-        { label: 'Buy cost incl. commission', values: ['$0.00', money(totalOutlay)] },
-        { label: 'Buy commissions (total)', values: [money(oldBuyFee), money(newBuyFee)], kind: 'fee' },
-        ...scenarios.map(s => ({
-          label: 'Net P&L · ' + s.label,
-          values: [
-            signed(scenarioPnl(oldShares, oldCost, oldBuyFee, s.price)),
-            signed(scenarioPnl(newShares, newCost, newBuyFee, s.price))
-          ],
-          kind: 'result' as const
-        })),
-        { label: 'Sell commissions (quote / target / −10%)', values: [
-          [money(calculateCommission(oldShares, oldShares * quote, rules as any)), ...(hasTarget ? [money(calculateCommission(oldShares, oldShares * target, rules as any))] : []), money(calculateCommission(oldShares, oldShares * downsidePrice, rules as any))].join(' / '),
-          [money(calculateCommission(newShares, newShares * quote, rules as any)), ...(hasTarget ? [money(calculateCommission(newShares, newShares * target, rules as any))] : []), money(calculateCommission(newShares, newShares * downsidePrice, rules as any))].join(' / ')
-        ], kind: 'fee' },
-        { label: 'Accrued margin interest', values: [money(currentMargin), money(currentMargin)], kind: 'fee' },
-        { label: 'Margin balance', values: [money(balance), money(balanceAfter)], kind: 'balance' },
-        { label: 'Extra interest / day', values: ['$0.00', money(dailyMarginFeeDifference)], kind: 'fee' }
-      ],
-      note: 'Net P&L includes buy/sell commissions and accrued interest. Sell commission order: quote / target (if set) / −10%. Hypothetical only; no order placed.'
+      title: 'Buy More Projection · ' + ticker,
+      subtitle: 'Hypothetical projection after buying +' + qty.toLocaleString() + ' shares at ' + money(price) + ' · no order placed',
+      columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW M Fee', 'AFTER M Fee', 'NOW Balance', 'AFTER Balance'],
+      rows: (() => {
+        const projectionPrice = hasTarget ? target : quote;
+        const dates = getUsEquityProjectionDates(new Date(), pos.startDate || state.startDate);
+        const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules as any);
+        const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules as any);
+        const currentDebt = Math.max(0, -balance);
+        const projectedDebt = Math.max(0, -balanceAfter);
+        return dates.map(item => {
+          const dateLabel = item.date.toLocaleDateString('en-US', {
+            weekday: 'short', month: 'short', day: 'numeric'
+          });
+          const rowLabel = item.kind === 'today'
+            ? dateLabel + ' · TODAY'
+            : dateLabel + (item.label ? ' · ' + item.label.replace(/^\\(|\\)$/g, '') : '');
+          if (item.kind === 'entry') {
+            return { label: rowLabel, values: ['—', '—', '—', '—', '—', '—', '—', '—'], kind: 'fee' as const };
+          }
+          const currentDebtAtDate = calculateProjectedDebt(currentDebt, rules.dailyRate, item.daysFromToday);
+          const afterDebtAtDate = calculateProjectedDebt(projectedDebt, rules.dailyRate, item.daysFromToday);
+          const currentAccrual = currentDebtAtDate - currentDebt;
+          const afterAccrual = afterDebtAtDate - projectedDebt;
+          const currentFees = calculateAccruedFees(currentComms, currentMargin, currentAccrual);
+          const afterFees = calculateAccruedFees(projectedComms, currentMargin, afterAccrual);
+          const currentNet = oldShares * projectionPrice - oldCost - currentFees;
+          const afterNet = newShares * projectionPrice - newCost - afterFees;
+          return {
+            label: rowLabel,
+            values: [
+              signed(currentNet),
+              signed(afterNet),
+              money(currentFees),
+              money(afterFees),
+              money(currentMargin + currentAccrual) + ' (' + money(currentDebtAtDate * rules.dailyRate) + ')',
+              money(currentMargin + afterAccrual) + ' (' + money(afterDebtAtDate * rules.dailyRate) + ')',
+              '−' + money(currentDebtAtDate),
+              '−' + money(afterDebtAtDate)
+            ],
+            kind: item.kind === 'today' ? 'result' as const : 'fee' as const
+          };
+        });
+      })(),
+      note: 'Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the target price (or current quote if no target is set). Fees include buy/sell commissions and accrued margin interest. No portfolio mutation or order placement occurs.'
     };
     const targetOldPnl = hasTarget ? scenarioPnl(oldShares, oldCost, oldBuyFee, target) : 0;
     const targetNewPnl = hasTarget ? scenarioPnl(newShares, newCost, newBuyFee, target) : 0;
@@ -784,4 +824,6 @@ export class CommandDispatcher {
       ].join('\n')
     };
   }
+
+
 }
