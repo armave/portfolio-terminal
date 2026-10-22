@@ -4,9 +4,10 @@ import { getCashCushionTotal } from '../domain/portfolioSelectors';
 export interface TickerTabsProps {
   state: BoardState;
   onSetActiveView?: (view: string) => void;
+  onRefreshAllLivePrices?: () => void;
 }
 
-export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
+export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: TickerTabsProps) {
   const tickers = Object.keys(state.positions || {});
   const isCushionActive =
     state.activeView === 'CASH_CUSHION' || state.activeView === 'BALANCE';
@@ -38,12 +39,7 @@ export function TickerTabs({ state, onSetActiveView }: TickerTabsProps) {
   };
 
   const handleRefreshQuotes = () => {
-    if (
-      typeof window !== 'undefined' &&
-      typeof (window as any).refreshAllLivePrices === 'function'
-    ) {
-      (window as any).refreshAllLivePrices();
-    }
+    onRefreshAllLivePrices?.();
   };
 
   return (
