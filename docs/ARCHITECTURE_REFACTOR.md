@@ -156,6 +156,15 @@ Regression tests cover quote ordering, unexpected symbols, deduplicated inputs, 
 
 The latest head passed typecheck, Vitest, production build, and dead-code diagnostics.
 
-**Current step: Step 6 of 8 — Persistence and cloud-sync conflict scenarios.** Review and strengthen regression coverage for failed local persistence, backup replacement rollback, cloud revision conflicts, and local/cloud migration boundaries.
+**Step 6 of 8 — Persistence and cloud-sync conflict scenarios: complete for the current slice.**
 
-Still outstanding after this step: terminal/settings cleanup and consolidation of duplicate mutation/accounting paths. The app-wide refactor is not complete; keep the PR in draft until the final head passes all merge gates and the remaining work is reviewed.
+- Extracted backup replacement into a small transaction helper that restores the prior snapshot if persistence returns false or throws.
+- Added tests for backup import success and rollback on both failure modes.
+- Added coverage proving concurrent cloud pushes serialize and the next write uses the revision returned by the prior write.
+- Retained existing coverage for cloud revision conflicts, failed local persistence, invalid/decryption-failed cloud payloads, and local/cloud migration boundaries.
+
+The latest head passed typecheck, Vitest, production build, and dead-code diagnostics.
+
+**Current step: Step 7 of 8 — Terminal and settings cleanup.** Reduce remaining global-function exposure and keep command/settings orchestration behind typed callbacks, while preserving existing command behavior and the user's unsaved form state.
+
+Still outstanding after this step: consolidation of duplicate mutation/accounting paths and final end-to-end review. The app-wide refactor is not complete; keep the PR in draft until the final head passes all merge gates and the remaining work is reviewed.
