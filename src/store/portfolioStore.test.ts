@@ -384,6 +384,25 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().closedTrades[0].marginInterest).toBe(0);
   });
 
+  it('commits rollover debt and accounting timestamp in one store update', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.setMarginDebt(100);
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.applyRollover(101, 1, Date.parse('2026-10-16T00:00:00.000Z'), true);
+
+    expect(store.getState().balance).toBe(-101);
+    expect(store.getState().realizedMarginCharged).toBe(1);
+    expect(store.getState().lastRolloverTimestamp).toBe(Date.parse('2026-10-16T00:00:00.000Z'));
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    store.applyRollover(102, 1, Date.parse('2026-10-17T00:00:00.000Z'), false);
+    expect(store.getState().balance).toBe(-102);
+    expect(store.getState().realizedMarginCharged).toBe(1);
+  });
+
   it('sets free cash without changing existing margin debt', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
