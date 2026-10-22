@@ -710,11 +710,6 @@ export class CommandDispatcher {
     const scenarioPnl = (shares: number, cost: number, buyFee: number, exitPrice: number) =>
       shares * exitPrice - cost - buyFee -
       calculateCommission(shares, shares * exitPrice, rules as any) - currentMargin;
-    const scenarios = [
-      { label: 'Current quote · ' + money(quote), price: quote },
-      ...(hasTarget ? [{ label: 'Target · ' + money(target), price: target }] : []),
-      { label: '−10% · ' + money(downsidePrice), price: downsidePrice }
-    ];
     const modal: ScenarioModalData = {
       kind: 'buy-more',
       title: 'Buy More Projection · ' + ticker,
@@ -744,7 +739,7 @@ export class CommandDispatcher {
           return {
             label: rowLabel,
             values: [
-              (netAtDate >= 0 ? '+' : '−') + money(netAtDate),
+              signed(netAtDate),
               money(feesAtDate),
               money(marginAtDate) + ' (' + money(dailyFee) + ')',
               '−' + money(debtAtDate)
