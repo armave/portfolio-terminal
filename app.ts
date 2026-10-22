@@ -96,6 +96,7 @@ let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
+let settingsPanelMounted = false;
 const livePriceRequests = new Map<string, Promise<any>>();
 let marketInsightsOpen = true;
 let activeInsightSection = 'news';
@@ -544,7 +545,9 @@ function renderBoard() {
     onUpdateLastDeskView: (view: string) => { lastRenderedDeskView = view; }
   });
 
-  renderSettingsPanel();
+  // Keep the settings form mounted and its local edits intact during quote refreshes.
+  // When settings are active, renderBoardUI calls renderSettingsPanel explicitly.
+  if (!settingsPanelMounted) renderSettingsPanel();
 }
 
 function renderMarketInsightsComponent() {
@@ -1707,6 +1710,7 @@ function renderSettingsPanel() {
     }),
     container
   );
+  settingsPanelMounted = true;
 }
 
 let appInitialized = false;
