@@ -1397,6 +1397,7 @@ function showScenarioModal(data: ScenarioModalData): void {
   const mobileCards = document.createElement('div');
   mobileCards.className = 'flex flex-col gap-2';
   const isExit = data.kind === 'exit-comparison';
+  const isBuyMore = data.kind === 'buy-more';
   const isMobile = () => window.matchMedia('(max-width: 767px)').matches;
   let activeColumns = data.columns.map((_, index) => index);
   let activePreset = 0;
@@ -1441,7 +1442,8 @@ function showScenarioModal(data: ScenarioModalData): void {
       tr.appendChild(labelCell);
       columnIndexes.forEach((columnIndex) => {
         const td = document.createElement('td');
-        td.className = 'px-2 py-2 text-right font-mono whitespace-nowrap';
+        td.className = 'px-2 py-2 text-right font-mono ' +
+          (isBuyMore && row.label.startsWith('Sell commissions') ? 'whitespace-normal break-words' : 'whitespace-nowrap');
         td.style.fontVariantNumeric = 'tabular-nums';
         const value = document.createElement('span');
         value.textContent = row.values[columnIndex] ?? '—';
