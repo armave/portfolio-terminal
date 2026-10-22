@@ -580,14 +580,113 @@ function createInsightElement(tagName: string, className = '', text = '') {
   return element;
 }
 
+async function fetchBoardAnalystTarget(ticker: string, force = false) {
+  if (!ticker) return null;
+  const cleanTicker = ticker.trim().toUpperCase();
+
+  try {
+    const data = await fetchYahooDeepStockData(cleanTicker, force);
+    const t = data?.analystTargets;
+    const targetPrice = t?.median || t?.mean || t?.high;
+
+    if (typeof targetPrice === "number" && Number.isFinite(targetPrice) && targetPrice > 0) {
+      return {
+        targetPrice,
+        provider: "Yahoo",
+        source: "Yahoo",
+        targetMean: t.mean,
+        targetHigh: t.high,
+        targetLow: t.low,
+        numberOfAnalysts: t.numberOfAnalysts || 0,
+        consensus: t.consensusRecommendation || null,
+        valuation: data.valuation,
+        calendar: data.calendar,
+        profile: data.profile
+      };
+    }
+  } catch (err: any) {
+    console.warn(`[Yahoo Worker Error for ${cleanTicker}]:`, err.message);
+  }
+
+  throw new Error(`Analyst price target unavailable via proxy for ${cleanTicker}.`);
+}
+
+function renderBoardAnalystConsensus(ticker: string, force = false) {
+  const container = document.getElementById('boardAnalystConsensus');
+  if (!container) return;
+  const hideConsensus = () => {
+    container.textContent = '';
+    container.removeAttribute('title');
+    container.className = 'hidden';
+  };
+  if (!ticker || !state.positions[ticker]) {
+    hideConsensus();
+    return;
+  }
+
+  const now = Date.now();
+  const snapshot = boardAnalystSnapshots.get(ticker);
+  const error = boardAnalystErrors.get(ticker);
+  const currentPrice = Number(state.positions[ticker].currentPrice);
+
+  if (!force && snapshot && now - snapshot.fetchedAt < BOARD_ANALYST_CACHE_TTL_MS) {
+    const upside = calculateTargetUpsidePercent(snapshot.targetPrice, currentPrice);
+    if (upside !== undefined) {
+      const color = upside > 0
+        ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
+        : upside < 0
+          ? 'border-rose-800 bg-rose-950/40 text-rose-300'
+          : 'border-slate-700 bg-slate-900 text-slate-300';
+      container.textContent = `${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`;
+      container.title = `Target from ${snapshot.source}: ${formatUSD(snapshot.targetPrice)} versus current price ${formatUSD(currentPrice)}.`;
+      container.className = `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`;
+    } else {
+      container.textContent = `${snapshot.source} price target · ${formatUSD(snapshot.targetPrice)} · current price unavailable`;
+      container.title = `Price target from ${snapshot.source}.`;
+      container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300';
+    }
+    return;
+  }
+
+  if (!force && error && now - error.failedAt < BOARD_ANALYST_RETRY_MS) {
+    container.textContent = 'Analyst target unavailable';
+    container.title = error.message;
+    container.className = 'rounded border border-amber-800 bg-amber-950/30 px-2.5 py-1 text-[10px] font-semibold text-amber-300';
+    return;
+  }
+
+  if (initialQuoteRefreshPending && !snapshot) {
+    container.textContent = 'Loading analyst target…';
+    container.title = 'Waiting for the initial batch quote refresh.';
+    container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
+    return;
+  }
+
+  if (boardAnalystRequests.has(ticker)) {
+    return;
+  }
+
+  container.textContent = 'Checking analyst target…';
+  container.removeAttribute('title');
+  container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
+
+  const request = fetchBoardAnalystTarget(ticker, force).then(result => {
+    boardAnalystSnapshots.set(ticker, { ...result, fetchedAt: Date.now() });
+    boardAnalystErrors.delete(ticker);
+  }).catch(requestError => {
+    const message = requestError instanceof Error ? requestError.message : String(requestError);
+    boardAnalystErrors.set(ticker, { failedAt: Date.now(), message });
+  }).finally(() => {
+    boardAnalystRequests.delete(ticker);
+    if (getMarketInsightsTicker() === ticker) renderBoardAnalystConsensus(ticker);
+  });
+  boardAnalystRequests.set(ticker, request);
+}
+
 function loadMarketInsight(section: string, force = false) {
   activeInsightSection = section;
   if (force) insightRequestId++;
   renderMarketInsightsComponent();
-}
-
-function refreshMarketInsight() {
-  return loadMarketInsight(activeInsightSection, true);
 }
 
 function recordTrackedPrice(
