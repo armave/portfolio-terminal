@@ -1532,6 +1532,10 @@ function showScenarioModal(data: ScenarioModalData): void {
 
   function renderLayout(): void {
     const mobile = isMobile();
+    if (!mobile && isExit && data.presets?.length) {
+      activePreset = Math.min(activePreset, data.presets.length - 1);
+      activeColumns = data.presets[activePreset]?.columnIndexes ?? activeColumns;
+    }
     tableWrap.replaceChildren();
     if (isExit && mobile) {
       tableWrap.appendChild(mobileCards);
@@ -1541,8 +1545,9 @@ function showScenarioModal(data: ScenarioModalData): void {
     renderToolbar();
   }
 
+  let actionBar: HTMLDivElement | undefined;
   if (data.action) {
-    const actionBar = document.createElement('div');
+    actionBar = document.createElement('div');
     actionBar.className = 'flex items-center justify-between gap-3 border-t border-slate-800 px-3 py-2 sm:px-4';
     const actionNote = document.createElement('p');
     actionNote.className = 'text-[10px] leading-snug text-slate-500';
@@ -1561,7 +1566,6 @@ function showScenarioModal(data: ScenarioModalData): void {
       close();
     });
     actionBar.append(actionNote, actionButton);
-    dialog.appendChild(actionBar);
   }
 
   const footer = document.createElement('div');
@@ -1571,13 +1575,14 @@ function showScenarioModal(data: ScenarioModalData): void {
   note.textContent = data.note;
   footer.appendChild(note);
 
-  dialog.append(header, toolbar, tableWrap, footer);
+  dialog.append(header, toolbar, tableWrap, ...(actionBar ? [actionBar] : []), footer);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
 
   const close = () => {
     overlay.remove();
     document.removeEventListener('keydown', handleKeyDown);
+    window.removeEventListener('resize', renderLayout);
   };
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') close();
