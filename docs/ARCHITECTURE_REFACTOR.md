@@ -165,6 +165,15 @@ The latest head passed typecheck, Vitest, production build, and dead-code diagno
 
 The latest head passed typecheck, Vitest, production build, and dead-code diagnostics.
 
-**Current step: Step 7 of 8 — Terminal and settings cleanup.** Reduce remaining global-function exposure and keep command/settings orchestration behind typed callbacks, while preserving existing command behavior and the user's unsaved form state.
+**Step 7 of 8 — Terminal and settings cleanup: complete for the current slice.**
 
-Still outstanding after this step: consolidation of duplicate mutation/accounting paths and final end-to-end review. The app-wide refactor is not complete; keep the PR in draft until the final head passes all merge gates and the remaining work is reviewed.
+- Removed the legacy `Object.assign(window, ...)` function registry and the matching service fallbacks that depended on it.
+- Replaced Cash Desk balance/add-stock and ticker-tab refresh globals with typed callbacks passed through `renderBoard`.
+- Removed obsolete global-only DOM helpers and imports.
+- Kept settings render behavior behind a typed callback; unchanged settings rules do not trigger rerenders during quote refreshes, and restore-defaults still forces the expected update.
+
+The latest head passed typecheck, Vitest, production build, and dead-code diagnostics.
+
+**Current step: Step 8 of 8 — Consolidate duplicate mutation/accounting paths.** Unify the terminal and AI-confirmed sale paths only after comparing their FIFO allocation, commissions, margin-interest accounting, balance/debt transitions, and closed-trade records. Preserve current expected results with explicit parity tests before deleting duplicate logic.
+
+The final step also includes a complete repository audit and merge-gate review. Keep the PR in draft until the final head passes all checks and any remaining compatibility risks are resolved.
