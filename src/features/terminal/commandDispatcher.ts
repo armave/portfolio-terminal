@@ -815,7 +815,6 @@ export class CommandDispatcher {
       ].join('\n')
     };
   }
-}
 
   private static evaluateBuyScenario(qty: number, ticker: string, price: number): CommandOutput {
     if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
