@@ -569,6 +569,24 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
   });
 
+  it('does not notify subscribers when a stale quote is rejected as a no-op', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+
+    const before = store.getState();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.updateLiveQuote('AAPL', {
+      price: 90,
+      requestStartedAt: (before.positions.AAPL.lastTradeAt || Date.now()) - 1
+    });
+
+    expect(store.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('keeps the newest quote request for positions and cash holdings when responses finish out of order', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
