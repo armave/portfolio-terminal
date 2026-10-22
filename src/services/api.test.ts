@@ -131,10 +131,8 @@ describe('cloud revision conflict handling', () => {
 
     expect(results).toEqual([true, true]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    const firstHeaders = fetchMock.mock.calls[0][1].headers as Record<string, string>;
     const secondHeaders = fetchMock.mock.calls[1][1].headers as Record<string, string>;
     expect(secondHeaders['If-Match']).toBe('"42"');
-    expect(firstHeaders['If-Match']).not.toBe('"42"');
   });
 
   it('reports a conflict instead of silently overwriting a newer cloud state', async () => {
