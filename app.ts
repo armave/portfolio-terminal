@@ -1153,15 +1153,7 @@ async function applyPortfolioActions(action: any) {
     }
 
 
-    if (isCashHolding) {
-      if (sharesToSell >= pos.shares) {
-        state.cashCushion.holdings.splice(cashHoldingIdx, 1);
-        logTerminal(`[Cash Holding Closed]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(netCashCredited)} (Debt paid: ${formatUSD(debtRepaid)}, Free Cash added: ${formatUSD(cashSurplus)}).`);
-      } else {
-        pos.shares -= sharesToSell;
-        logTerminal(`[Cash Holding Partial Sell]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Remaining: ${pos.shares} shares.`);
-      }
-    } else {
+    if (!isCashHolding) {
       const totalPortfolioInvested = getTotalPortfolioInvested(state);
       const positionInvested = (pos.tranches || []).reduce(
         (sum: number, tranche: any) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0),
