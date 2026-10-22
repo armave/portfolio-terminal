@@ -661,6 +661,46 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().closedTrades).toHaveLength(0);
   });
 
+  it('commits confirmed margin sales atomically while preserving closed-trade history', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commVolumePct: 0,
+      minCommOrder: 0,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    store.buyStock('AAPL', 5, 100, '2026-10-01');
+
+    const partial = store.sellMarginPosition('aapl', 2, 120, Date.parse('2026-10-10'));
+    expect(partial).toMatchObject({
+      ticker: 'AAPL',
+      sharesSold: 2,
+      remainingShares: 3,
+      netProceeds: 240,
+      debtRepaid: 240,
+      cashSurplus: 0
+    });
+    expect(store.getState().positions.AAPL.shares).toBe(3);
+    expect(store.getState().balance).toBe(-260);
+    expect(store.getState().closedTrades).toHaveLength(1);
+
+    const full = store.sellMarginPosition('AAPL', 3, 110, Date.parse('2026-10-16'));
+    expect(full).toMatchObject({
+      ticker: 'AAPL',
+      sharesSold: 3,
+      remainingShares: 0,
+      netProceeds: 330,
+      debtRepaid: 260,
+      cashSurplus: 70
+    });
+    expect(store.getState().positions.AAPL).toBeUndefined();
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().cashCushion.freeCash).toBe(70);
+    expect(store.getState().closedTrades).toHaveLength(2);
+  });
+
   it('does not notify subscribers when a stale quote is rejected as a no-op', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
