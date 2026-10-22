@@ -35,7 +35,6 @@ export interface RenderCashCushionOptions {
   onRemoveCashStock?: (index: number) => void;
   onSaveBalance?: (signedValue: number) => void;
   onAddCashStock?: (ticker: string, shares: number, manualPrice: number) => void;
-  onRefreshAllLivePrices?: () => void;
   refreshIntervalMs?: number;
 }
 
