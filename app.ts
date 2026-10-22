@@ -317,9 +317,8 @@ function saveBrokerRuleInputs(event: Event) {
   saveBrokerRules(updatedRules);
   const nextRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   if (previousRollover !== nextRollover) {
-    state.lastRolloverTimestamp = getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
+    portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
     saveState(state, pushStateToGist);
-    syncStore();
   }
   verifyTradernetRulesOnload();
   renderBoard();
@@ -368,9 +367,8 @@ function updateRiskAssumptionTitles() {
 function applyOvernightRollover() {
   const now = new Date();
   if (!Number.isFinite(Number(state.lastRolloverTimestamp)) || Number(state.lastRolloverTimestamp) <= 0) {
-    state.lastRolloverTimestamp = getLatestRolloverTimestamp(now, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
+    portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(now, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
     saveState(state, pushStateToGist);
-    syncStore();
     return;
   }
 
@@ -394,22 +392,16 @@ function applyOvernightRollover() {
     const compoundedDebt = calculateProjectedDebt(currentDebt, getDailyRate(), elapsedCycles);
     const interestAccrued = calculateMarginInterest(currentDebt, getDailyRate(), elapsedCycles);
 
-    state.balance = -compoundedDebt;
-
     const tickers = Object.keys(state.positions);
     const totalInvested = getTotalPortfolioInvested(state);
-    if (tickers.length === 0 || totalInvested === 0) {
-      state.realizedMarginCharged = (state.realizedMarginCharged || 0) + interestAccrued;
-    }
+    const recordAsRealized = tickers.length === 0 || totalInvested === 0;
 
-    state.lastRolloverTimestamp = now.getTime();
+    portfolioStore.applyRollover(compoundedDebt, interestAccrued, now.getTime(), recordAsRealized);
     saveState(state, pushStateToGist);
-    syncStore();
     logTerminal(`[Broker ${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')} Armenia rollover]: Processed ${elapsedCycles} cycle(s). Accrued interest: +${formatUSD(interestAccrued)}. Margin Debt: -${formatUSD(compoundedDebt)}.`);
   } else if (elapsedCycles > 0) {
-    state.lastRolloverTimestamp = now.getTime();
+    portfolioStore.setLastRolloverTimestamp(now.getTime());
     saveState(state, pushStateToGist);
-    syncStore();
   }
 }
 
