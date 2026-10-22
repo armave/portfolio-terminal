@@ -1422,7 +1422,12 @@ function showScenarioModal(data: ScenarioModalData): void {
     const shownColumns = isBuyMore ? data.columns.map((_, index) => index) : columnIndexes;
     shownColumns.forEach((columnIndex) => {
       const th = document.createElement('th');
-      th.className = 'min-w-[90px] px-2 py-2 text-right font-semibold whitespace-nowrap ' + (isBuyMore && columnIndex % 2 === 1 ? 'text-emerald-300' : '');
+      th.className = 'min-w-[90px] px-2 py-2 text-right font-semibold whitespace-nowrap';
+      if (isBuyMore && columnIndex % 2 === 1) {
+        // Apply the accent directly so it survives competing table/header styles
+        // and Tailwind content-scanning or class-generation differences.
+        th.style.color = '#6ee7b7';
+      }
       th.textContent = data.columns[columnIndex];
       headRow.appendChild(th);
     });
