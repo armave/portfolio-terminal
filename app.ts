@@ -573,13 +573,6 @@ function renderClosedHistoryPanel() {
   render(h(ClosedHistoryDesk, null), container);
 }
 
-function createInsightElement(tagName: string, className = '', text = '') {
-  const element = document.createElement(tagName);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
-}
-
 async function fetchBoardAnalystTarget(ticker: string, force = false) {
   if (!ticker) return null;
   const cleanTicker = ticker.trim().toUpperCase();
