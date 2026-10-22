@@ -6,13 +6,13 @@ import { registerSW } from 'virtual:pwa-register';
 registerSW({ immediate: true });
 
 /**
- * Reduce browser and password-manager autofill suggestions across the app.
- * The gateway secret field is excluded to preserve normal credential handling.
+ * Ask browser autofill and common password managers to ignore ordinary app
+ * fields. The gateway secret is deliberately excluded so authentication still
+ * works with the user's credential manager.
  *
- * Mobile browsers can ignore autocomplete="off" for ordinary text fields, so
- * use the stronger "new-password" hint for non-auth fields and disable mobile
- * text correction. This is a best-effort browser hint, not a guarantee against
- * OS-level autofill services.
+ * Note: a site cannot reliably suppress prompts injected by every installed
+ * password-manager app/extension; manager-specific site settings may still
+ * be needed.
  */
 function disableAutofillForNonAuthFields() {
   const authFieldSelector = '#gatewaySecretInput';
@@ -21,18 +21,23 @@ function disableAutofillForNonAuthFields() {
   const configureField = (field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) => {
     if (field.matches(authFieldSelector)) return;
 
-    // "off" is ignored by some mobile browsers; "new-password" is a stronger
-    // hint that discourages stored-value suggestions without changing the value.
-    const autocomplete = field instanceof HTMLSelectElement ? 'off' : 'new-password';
-    if (field.getAttribute('autocomplete') !== autocomplete) {
-      field.setAttribute('autocomplete', autocomplete);
+    // Do not use autocomplete="new-password" here: that token can itself
+    // trigger password-manager generation/save UI. These are not credentials.
+    if (field.getAttribute('autocomplete') !== 'off') {
+      field.setAttribute('autocomplete', 'off');
     }
 
-    if (field.getAttribute('data-lpignore') !== 'true') {
-      field.setAttribute('data-lpignore', 'true');
-    }
-    if (field.getAttribute('data-1p-ignore') !== 'true') {
-      field.setAttribute('data-1p-ignore', 'true');
+    // Password-manager-specific opt-out hints (ignored by managers that do not
+    // support them). Keep the values stable to avoid MutationObserver loops.
+    const ignoreAttributes: Record<string, string> = {
+      'data-lpignore': 'true',
+      'data-1p-ignore': 'true',
+      'data-bwignore': 'true',
+      'data-protonpass-ignore': 'true',
+      'data-form-type': 'other'
+    };
+    for (const [name, value] of Object.entries(ignoreAttributes)) {
+      if (field.getAttribute(name) !== value) field.setAttribute(name, value);
     }
 
     if (!(field instanceof HTMLSelectElement)) {
