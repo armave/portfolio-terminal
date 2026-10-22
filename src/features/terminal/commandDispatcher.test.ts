@@ -188,13 +188,16 @@ describe('terminal command validation and cash routing', () => {
     } as any);
     const result = CommandDispatcher.execute('compare exits AAPL today at 110, tomorrow at 111, after 4 days at 113, in 2 weeks at 115, 7 days later at 116, after 1 month at 118, 2 months later at 120');
     expect(result.type).toBe('res');
-    expect(result.text).toContain('[MULTI-DATE EXIT COMPARISON: AAPL]');
+    expect(result.text).toContain('[EXIT COMPARISON: AAPL]');
     expect(result.text).toContain('after 4 days');
     expect(result.text).toContain('in 2 weeks');
     expect(result.text).toContain('7 days later');
     expect(result.text).toContain('after 1 month');
     expect(result.text).toContain('2 months later');
-    expect(result.text).toContain('BEST ESTIMATED EXIT');
+    expect(result.text).toContain('BEST:');
+    expect(result.text).toContain('net P&L');
+    expect(result.text).not.toContain('Assumptions:');
+    expect(result.text).not.toContain('Gross proceeds:');
   });
 
   it.each([
@@ -231,16 +234,17 @@ describe('terminal command validation and cash routing', () => {
     const buyStock = vi.spyOn(portfolioStore, 'buyStock');
     const result = CommandDispatcher.execute('buy scenario 10 AAPL at 105');
     expect(result.type).toBe('res');
-    expect(result.text).toContain('[HYPOTHETICAL BUY: AAPL]');
-    expect(result.text).toContain('Daily margin fee:');
-    expect(result.text).toContain('Average entry');
-    expect(result.text).toContain('PROFIT / LOSS COMPARISON');
-    expect(result.text).toContain('At current quote');
-    expect(result.text).toContain('At target');
-    expect(result.text).toContain('Return on cost at target');
-    expect(result.text).toContain('At -10% from quote');
-    expect(result.text).toContain('Break-even after adding shares');
-    expect(result.text).toContain('Risk note');
+    expect(result.text).toContain('[BUY MORE: AAPL]');
+    expect(result.text).toContain('Cash needed:');
+    expect(result.text).toContain('Average entry:');
+    expect(result.text).toContain('P&L at quote');
+    expect(result.text).toContain('P&L at target');
+    expect(result.text).toContain('P&L at -10%');
+    expect(result.text).toContain('Extra margin cost:');
+    expect(result.text).toContain('Trade-off:');
+    expect(result.text).not.toContain('PROFIT / LOSS COMPARISON');
+    expect(result.text).not.toContain('Downside sensitivity:');
+    expect(result.text).not.toContain('Return on cost at target');
     expect(buyStock).not.toHaveBeenCalled();
   });
 
