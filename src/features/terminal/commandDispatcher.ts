@@ -816,19 +816,6 @@ export class CommandDispatcher {
     };
   }
 }
-, '
-      ],
-      note: 'Total fee friction includes buy commission, sell commission, and estimated margin interest. Future prices are assumptions. The action stages a target-price command in the terminal; it does not submit a broker order.'
-    };
-    const text = [
-      '[EXIT COMPARISON: ' + sym + ']',
-      ...rows.map(r => r.label + ' · ' + money(r.price) + ' → ' + signed(r.net) + ' net P&L' + (r.net === best.net ? ' · BEST' : '')),
-      'BEST: ' + best.label + ' at ' + money(best.price) + ' · ' + signed(best.net) + ' net',
-      'Fees included: buy commission, sell commission, estimated margin interest.',
-      'Estimate only · no portfolio changes.'
-    ].join('\n');
-    return { type: 'res', text, modal };
-  }
 
   private static evaluateBuyScenario(qty: number, ticker: string, price: number): CommandOutput {
     if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
