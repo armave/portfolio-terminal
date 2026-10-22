@@ -1221,6 +1221,7 @@ summary:hover {
     font-size: 16px !important;
   }
 
+  #tradingConsoleCard #consoleQuickActions,
   #tradingConsoleCard .console-quick-actions,
   #tradingConsoleCard [data-console-quick-actions] {
     display: flex;
@@ -1235,6 +1236,7 @@ summary:hover {
     scrollbar-width: thin;
   }
 
+  #tradingConsoleCard #consoleQuickActions > *,
   #tradingConsoleCard .console-quick-actions > *,
   #tradingConsoleCard [data-console-quick-actions] > * {
     flex: 0 0 auto;
