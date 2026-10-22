@@ -637,6 +637,7 @@ export class CommandDispatcher {
     const text = [
       '[EXIT COMPARISON: ' + sym + ']',
       ...rows.map(r => r.label + ' · ' + money(r.price) + ' → ' + signed(r.net) + ' net P&L' + (r.net === best.net ? ' · BEST' : '')),
+      'BEST: ' + best.label + ' at ' + money(best.price) + ' · ' + signed(best.net) + ' net',
       'Fees included: buy commission, sell commission, estimated margin interest.',
       'Estimate only · no portfolio changes.'
     ].join('\n');
