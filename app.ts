@@ -1353,7 +1353,7 @@ function showScenarioModal(data: ScenarioModalData): void {
   overlay.className = 'fixed inset-0 z-[1000] flex items-center justify-center p-2 sm:p-4';
   overlay.style.background = 'rgba(10, 15, 25, 0.78)';
   overlay.style.backdropFilter = 'blur(8px)';
-  overlay.style.webkitBackdropFilter = 'blur(8px)';
+  overlay.style.setProperty('-webkit-backdrop-filter', 'blur(8px)');
   overlay.setAttribute('role', 'presentation');
 
   const dialog = document.createElement('section');
