@@ -751,9 +751,9 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().closedTrades[0]).toMatchObject({
       ticker: 'AAPL',
       shares: 1,
-      feesAndCommissions: 1.8,
       netProfit: 18.2
     });
+    expect(store.getState().closedTrades[0].feesAndCommissions).toBeCloseTo(1.8, 8);
     expect(store.getState().positions.AAPL.tranches).toEqual([
       expect.objectContaining({ qty: 1, price: 100, buyCommission: 0.6 })
     ]);
