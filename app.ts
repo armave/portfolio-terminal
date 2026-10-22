@@ -535,6 +535,7 @@ function renderBoard() {
     rules: TRADERNET_RULES as any,
     onSetActiveView: setActiveView,
     onRenderClosedHistory: renderClosedHistoryPanel,
+    onRenderSettingsPanel: () => renderSettingsPanel(),
     onRenderAnalystConsensus: renderBoardAnalystConsensus,
     onFetchLivePrice: fetchLivePrice,
     onRemoveCashStock: removeCashStock,
