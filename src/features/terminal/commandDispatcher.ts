@@ -201,10 +201,10 @@ export class CommandDispatcher {
         let tickerArg: string | undefined;
         const scenarios: Array<{ label: string; days: number; price: number }> = [];
         for (const segment of exitSeriesMatch[1].split(/\\s*,\\s*/).filter(Boolean)) {
-          const match = segment.match(/^(?:([A-Za-z]{1,10})\\s+)?(today|tomorrow|(?:after\\s+|in\\s+)?\\d+\\s*(?:d|days?|w|weeks?)(?:\\s+(?:later|from\\s+now))?)\\s+(?:at|for|@)\\s*([$0-9.,]+)$/i);
+          const match = segment.match(/^(?:([A-Za-z]{1,10})\\s+)?(today|tomorrow|(?:(?:after|in)\\s+)?(?:\\d+|a|one)\\s*(?:d|days?|w|weeks?)(?:\\s+(?:later|from\\s+now))?)\\s+(?:at|for|@)\\s*([$0-9.,]+)$/i);
           if (!match) throw new Error('Usage: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, 1 week later at 195');
           if (match[1]) { const found = match[1].toUpperCase(); if (tickerArg && tickerArg !== found) throw new Error('Use the same ticker for every exit scenario.'); tickerArg = found; }
-          const period = match[2].toLowerCase().replace(/^(?:after|in)\\s+/, '').replace(/\\s+(?:later|from\\s+now)$/, '');
+          const period = match[2].toLowerCase().replace(/^(?:after|in)\\s+/, '').replace(/\\s+(?:later|from\\s+now)$/, '').replace(/^a\\s+/, '1 ').replace(/^one\\s+/, '1 ');
           let days = 0;
           if (period === 'tomorrow') days = 1;
           else if (period !== 'today') {
@@ -639,9 +639,11 @@ export class CommandDispatcher {
     const oldBuyFee = Math.max(0, Number(pos.commBuy) || 0);
     const purchaseValue = qty * price;
     const purchaseFee = calculateCommission(qty, purchaseValue, rules as any);
-    const currentDebt = Math.max(0, -(Number(state.balance) || 0));
+    const balance = Number(state.balance) || 0;
+    const currentDebt = Math.max(0, -balance);
+    const additionalMarginDebt = Math.max(0, purchaseValue + purchaseFee - Math.max(0, balance));
     const currentDailyMarginFee = currentDebt * rules.dailyRate;
-    const projectedDailyMarginFee = (currentDebt + purchaseValue) * rules.dailyRate;
+    const projectedDailyMarginFee = (currentDebt + additionalMarginDebt) * rules.dailyRate;
     const dailyMarginFeeDifference = projectedDailyMarginFee - currentDailyMarginFee;
     const newShares = oldShares + qty;
     const newCost = oldCost + purchaseValue;
