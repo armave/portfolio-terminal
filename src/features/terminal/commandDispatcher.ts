@@ -201,7 +201,7 @@ export class CommandDispatcher {
         let tickerArg: string | undefined;
         const scenarios: Array<{ label: string; days: number; price: number }> = [];
         for (const segment of exitSeriesMatch[1].split(/\s*,\s*/).filter(Boolean)) {
-          const match = segment.match(/^(?:([A-Za-z]{1,10})\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?)(?:\s+(?:later|from\s+now))?)\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
+          const match = segment.match(/^(?:(?!(?:after|in)\s)([A-Za-z]{1,10})\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?)(?:\s+(?:later|from\s+now))?)\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
           if (!match) throw new Error('Usage: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, 1 week later at 195');
           if (match[1]) { const found = match[1].toUpperCase(); if (tickerArg && tickerArg !== found) throw new Error('Use the same ticker for every exit scenario.'); tickerArg = found; }
           const period = match[2].toLowerCase().replace(/^(?:after|in)\s+/, '').replace(/\s+(?:later|from\s+now)$/, '').replace(/^a\s+/, '1 ').replace(/^one\s+/, '1 ');
