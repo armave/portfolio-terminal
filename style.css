@@ -1172,3 +1172,101 @@ summary:hover {
   }
 }
 
+
+
+/* Responsive terminal workspace refinements */
+.trading-workspace-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.trading-workspace-grid > *,
+.trading-terminal-column,
+.trading-console-card {
+  min-width: 0;
+}
+
+@media (min-width: 48rem) {
+  .trading-workspace-grid {
+    grid-template-columns: minmax(0, 1.85fr) minmax(18rem, 1fr);
+    align-items: start;
+  }
+
+  .trading-terminal-column {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+}
+
+/* Keep quick actions in a touch-friendly horizontal rail on small screens. */
+@media (max-width: 767px) {
+  #mainTerminalView {
+    padding: 0.75rem;
+  }
+
+  #tradingConsoleCard {
+    padding: 0.875rem;
+  }
+
+  #tradingConsoleCard button,
+  #tradingConsoleCard input,
+  #tradingConsoleCard textarea,
+  #tradingConsoleCard select {
+    min-height: 44px;
+  }
+
+  #tradingConsoleCard textarea,
+  #tradingConsoleCard input {
+    font-size: 16px !important;
+  }
+
+  #tradingConsoleCard .console-quick-actions,
+  #tradingConsoleCard [data-console-quick-actions] {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.25rem 0.125rem 0.625rem;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  #tradingConsoleCard .console-quick-actions > *,
+  #tradingConsoleCard [data-console-quick-actions] > * {
+    flex: 0 0 auto;
+  }
+
+  #projectionTableContainer,
+  .table-scroll-wrapper {
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
+/* Prefer sticky positioning over fixed positioning so the console never covers
+   portfolio content or the mobile keyboard. */
+@media (min-width: 64rem) {
+  #tradingConsoleCard {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
