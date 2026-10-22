@@ -290,8 +290,7 @@ export function SummaryMetricsGrid({
         </div>
 
         <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(cushionTotal)} />
-        <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(allocatedCushion)} />
-      <div class="portfolio-risk-summary flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
+        <div class="portfolio-risk-summary hidden flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
           <div>
             <span class="text-slate-500">Account Equity:</span>{' '}
             <span id="boardEquity" class="text-white font-bold font-mono">
@@ -481,7 +480,8 @@ export function SummaryMetricsGrid({
         </span>
       </div>
 
-      <div class="portfolio-risk-summary flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
+      <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(allocatedCushion)} />
+      <div class="portfolio-risk-summary hidden flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
         <div>
           <span class="text-slate-500">Account Equity:</span>{' '}
           <span id="boardEquity" class="text-white font-bold font-mono">
