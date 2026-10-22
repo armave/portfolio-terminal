@@ -181,12 +181,12 @@ const pushStateToGist = pushStateToCloud;
 function pullCloudAndRewriteLocal(parsedState: any) {
   const currentView = state.activeView;
   const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(parsedState, state);
-  state = { ...state, ...compatibleCloudState };
+  const mergedState = { ...state, ...compatibleCloudState };
   if (!parsedState?.activeView && currentView) {
-    state.activeView = currentView;
+    mergedState.activeView = currentView;
   }
-  state = loadSavedState(state);
-  syncStore();
+  portfolioStore.importState(loadSavedState(mergedState));
+  state = portfolioStore.getState();
   switchView(state.activeView);
   console.log("[Sync]: Cloud state ingested and UI re-rendered successfully", state);
   setTimeout(() => {
@@ -209,9 +209,9 @@ async function syncCloudState(mode = 'push') {
 
 function resetToBlankState() {
   if (confirm("Reset the entire terminal to a blank slate? This will clear all holdings, balances, and history locally and on KV cloud.")) {
-    state = createBlankState();
+    portfolioStore.importState(createBlankState());
+    state = portfolioStore.getState();
     saveState(state, pushStateToGist);
-    syncStore();
     pushStateToGist(true);
     renderBoard();
     logTerminal("[System]: Portfolio reset to a clean blank slate.");
@@ -1007,16 +1007,16 @@ async function importBackupJSON(event: Event) {
     }
 
     importedState.lastUpdated = Date.now();
-    const previousState = state;
-    state = importedState;
+    const previousState = portfolioStore.getState();
+    portfolioStore.importState(importedState);
+    state = portfolioStore.getState();
     try {
       if (!saveState(state, pushStateToGist)) {
         throw new Error('Could not persist the imported backup to browser storage.');
       }
-      syncStore();
     } catch (error) {
-      state = previousState;
-      syncStore();
+      portfolioStore.importState(previousState);
+      state = portfolioStore.getState();
       throw error;
     }
     await pushStateToGist(true);
@@ -1776,10 +1776,10 @@ function hideAuthContainer() {
 
 async function startApp(secret: string) {
   loadTradernetRules();
-  state.gatewaySecret = secret;
-  state = loadSavedState(state);
+  portfolioStore.setState({ gatewaySecret: secret });
+  portfolioStore.importState(loadSavedState(portfolioStore.getState()));
+  state = portfolioStore.getState();
   applyOvernightRollover();
-  syncStore();
 
   if (secret) await syncCloudState('pull');
 
@@ -1834,9 +1834,9 @@ async function initApp() {
       await startApp(secret);
     } else {
       loadTradernetRules();
-      state = loadSavedState(state);
+      portfolioStore.importState(loadSavedState(portfolioStore.getState()));
+      state = portfolioStore.getState();
       applyOvernightRollover();
-      syncStore();
       switchView(state.activeView);
       hideStartupLoading();
       showAuthContainer();
