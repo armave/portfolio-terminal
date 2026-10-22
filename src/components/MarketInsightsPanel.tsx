@@ -632,7 +632,7 @@ export function MarketInsightsPanel({
               <button type="button" class="shrink-0 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white" onClick={() => setSelectedNews(null)} aria-label="Close news article">✕</button>
             </header>
             <div class="max-h-[min(72dvh,42rem)] space-y-4 overflow-y-auto p-4 sm:p-5">
-              <div class="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-300">
+              <div class="whitespace-pre-wrap break-words leading-relaxed text-slate-300">
                 {selectedNews.summary || selectedNews.description || selectedNews.content || 'A summary is not available from the news provider. Open the original article for the full story.'}
               </div>
               {selectedNews.url && <a href={selectedNews.url} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded border border-cyan-800/80 bg-cyan-950/40 px-3 py-2 text-xs font-semibold text-cyan-300 transition hover:bg-cyan-900/50">Read full article ↗</a>}
