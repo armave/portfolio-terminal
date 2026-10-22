@@ -1048,57 +1048,29 @@ async function applyPortfolioActions(action: any) {
   const todayDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 
   if (action.action === "buy") {
-    const ticker = action.ticker.toUpperCase();
+    const ticker = String(action.ticker || '').trim().toUpperCase();
     const shares = Number(action.shares);
     const price = Number(action.price);
-    const tradeCost = shares * price;
-    const buyComm = calcCommission(shares, tradeCost);
-    const totalOutlay = tradeCost + buyComm;
+    const targetPrice = Number(action.pt) > 0
+      ? Number(action.pt)
+      : Number((price * 1.05).toFixed(2));
 
-    if (!state.positions[ticker]) {
-      state.positions[ticker] = {
-        ticker: ticker,
-        shares: 0,
-        tranches: [],
-        currentPrice: price,
-        quoteSource: 'Trade input',
-        pt: action.pt ? Number(action.pt) : Number((price * 1.05).toFixed(2)),
-        commBuy: 0,
-        startDate: new Date().toISOString().split('T')[0]
-      };
+    if (!ticker || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) {
+      logTerminal('[AI Action Error]: Buy requires a valid ticker, positive share count, and positive price.');
+      showToast('Invalid buy details.', 'error');
+      return;
     }
 
-    const pos = state.positions[ticker];
-    pos.shares += shares;
-    pos.tranches.push({
-      qty: shares,
-      price: price,
-      date: action.date || todayDateStr,
-      acquiredAt: resolveTradeDateTimestamp(action.date),
-      buyCommission: buyComm
-    });
-    pos.commBuy += buyComm;
-    pos.currentPrice = price;
-    pos.lastTradeAt = Date.now();
-    pos.quoteSource = 'Trade input';
-    delete pos.quoteUpdatedAt;
-    delete pos.quoteDetails;
-    if (action.pt) pos.pt = Number(action.pt);
-
-    const currentFreeCash = Number(state.cashCushion?.freeCash) || 0;
-    const cashUsed = Math.min(currentFreeCash, totalOutlay);
+    portfolioStore.buyStock(ticker, shares, price, action.date || new Date().toISOString().split('T')[0], targetPrice);
+    const committedState = portfolioStore.getState();
+    const committedPosition = committedState.positions[ticker];
+    const rules = committedState.brokerAssumptions || TRADERNET_RULES;
+    const buyComm = calculateCommission(shares, shares * price, rules as any);
+    const totalOutlay = shares * price + buyComm;
+    const cashUsed = Math.min(Math.max(0, Number(committedState.cashCushion?.freeCash) || 0) + totalOutlay, totalOutlay);
     const debtAdded = totalOutlay - cashUsed;
 
-    if (cashUsed > 0) {
-      state.cashCushion.freeCash = currentFreeCash - cashUsed;
-    }
-
-    state.balance = state.balance - debtAdded;
-    state.activeView = ticker;
-
-    saveState(state, pushStateToGist);
-    syncStore();
-    logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Funded: ${formatUSD(cashUsed)} cash | +${formatUSD(debtAdded)} margin debt. Free Cash remaining: ${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(state.balance))}.`);
+    logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Free Cash remaining: ${formatUSD(committedState.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(committedState.balance))}.`);
     await fetchLivePrice(ticker, false, true);
   }
   else if (action.action === "sell") {
