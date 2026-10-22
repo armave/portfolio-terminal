@@ -620,19 +620,16 @@ export class CommandDispatcher {
       subtitle: shares.toLocaleString() + ' shares · estimated net result after fees',
       columns: rows.map(r => r.label + ' · ' + money(r.price)),
       rows: [
-        { label: 'Shares sold', values: rows.map(() => shares.toLocaleString()) },
         { label: 'Gross proceeds', values: rows.map(r => money(r.gross)) },
         { label: 'Cost basis', values: rows.map(() => '−' + money(costBasis)) },
-        { label: 'Buy commissions (paid)', values: rows.map(() => '−' + money(buyCommission)), kind: 'fee' },
+        { label: 'Buy commission', values: rows.map(() => '−' + money(buyCommission)), kind: 'fee' },
         { label: 'Sell commission', values: rows.map(r => '−' + money(r.sellFee)), kind: 'fee' },
-        { label: 'Margin interest (est.)', values: rows.map(r => '−' + money(r.marginFee) + (r.days ? ' incl. ' + money(r.carry) + ' future carry' : '')) , kind: 'fee' },
-        { label: 'NET P&L after fees', values: rows.map(r => signed(r.net) + (r.net === best.net ? ' · BEST' : '')), kind: 'result' },
+        { label: 'Margin interest', values: rows.map(r => '−' + money(r.marginFee)), kind: 'fee' },
+        { label: 'NET P&L', values: rows.map(r => signed(r.net) + (r.net === best.net ? ' · BEST' : '')), kind: 'result' },
         { label: 'Margin balance before', values: rows.map(() => money(balance)), kind: 'balance' },
-        { label: 'Debt repaid from proceeds', values: rows.map(r => money(r.debtRepaid)) },
-        { label: 'Final margin balance', values: rows.map(r => money(r.finalBalance)), kind: 'balance' },
-        { label: 'Cash left after debt payoff', values: rows.map(r => money(r.cashSurplus)) }
+        { label: 'Final margin balance', values: rows.map(r => money(r.finalBalance)), kind: 'balance' }
       ],
-      note: 'Includes estimated buy/sell commissions and accrued margin interest plus projected carry. Sale proceeds repay margin debt after sell commission; any surplus is cash. Future prices are assumptions.'
+      note: 'Includes buy/sell commissions and estimated interest through each exit date. Future prices are assumptions.'
     };
     const text = [
       '[EXIT COMPARISON: ' + sym + ']',
@@ -699,11 +696,10 @@ export class CommandDispatcher {
       subtitle: '+' + qty.toLocaleString() + ' shares at ' + money(price) + ' · hypothetical only',
       columns: ['Before', 'After buying'],
       rows: [
-        { label: 'Shares held', values: [oldShares.toLocaleString(), newShares.toLocaleString()] },
+        { label: 'Shares', values: [oldShares.toLocaleString(), newShares.toLocaleString()] },
         { label: 'Average entry', values: [money(oldAverage), money(newAverage)] },
-        { label: 'Additional purchase', values: ['$0.00', money(purchaseValue)] },
+        { label: 'Buy cost incl. commission', values: ['$0.00', money(totalOutlay)] },
         { label: 'Buy commissions (total)', values: [money(oldBuyFee), money(newBuyFee)], kind: 'fee' },
-        { label: 'Buy commission on new order', values: ['$0.00', money(purchaseFee)], kind: 'fee' },
         ...scenarios.map(s => ({
           label: 'Net P&L · ' + s.label,
           values: [
@@ -712,15 +708,15 @@ export class CommandDispatcher {
           ],
           kind: 'result' as const
         })),
-        { label: 'Accrued margin interest (est.)', values: [money(currentMargin), money(currentMargin)], kind: 'fee' },
-        { label: 'Sell commission at current quote', values: [money(calculateCommission(oldShares, oldShares * quote, rules as any)), money(calculateCommission(newShares, newShares * quote, rules as any))], kind: 'fee' },
-        ...(hasTarget ? [{ label: 'Sell commission at target', values: [money(calculateCommission(oldShares, oldShares * target, rules as any)), money(calculateCommission(newShares, newShares * target, rules as any))], kind: 'fee' as const }] : []),
-        { label: 'Cash required (incl. buy fee)', values: ['$0.00', money(totalOutlay)] },
-        { label: 'Margin balance before', values: [money(balance), money(balance)], kind: 'balance' },
-        { label: 'Final margin balance after buy', values: [money(balance), money(balanceAfter)], kind: 'balance' },
-        { label: 'Extra margin interest / day', values: ['$0.00', money(dailyMarginFeeDifference)], kind: 'fee' }
+        { label: 'Sell commissions (quote / target / −10%)', values: [
+          [money(calculateCommission(oldShares, oldShares * quote, rules as any)), ...(hasTarget ? [money(calculateCommission(oldShares, oldShares * target, rules as any))] : []), money(calculateCommission(oldShares, oldShares * downsidePrice, rules as any))].join(' / '),
+          [money(calculateCommission(newShares, newShares * quote, rules as any)), ...(hasTarget ? [money(calculateCommission(newShares, newShares * target, rules as any))] : []), money(calculateCommission(newShares, newShares * downsidePrice, rules as any))].join(' / ')
+        ], kind: 'fee' },
+        { label: 'Accrued margin interest', values: [money(currentMargin), money(currentMargin)], kind: 'fee' },
+        { label: 'Margin balance', values: [money(balance), money(balanceAfter)], kind: 'balance' },
+        { label: 'Extra interest / day', values: ['$0.00', money(dailyMarginFeeDifference)], kind: 'fee' }
       ],
-      note: 'Net P&L includes buy commissions, estimated sell commission and currently accrued margin interest. Extra future margin interest is shown per day; no order is placed and portfolio values are unchanged.'
+      note: 'Net P&L includes buy/sell commissions and accrued interest. Sell commission order: quote / target (if set) / −10%. Hypothetical only; no order placed.'
     };
     const targetOldPnl = hasTarget ? scenarioPnl(oldShares, oldCost, oldBuyFee, target) : 0;
     const targetNewPnl = hasTarget ? scenarioPnl(newShares, newCost, newBuyFee, target) : 0;

@@ -1350,17 +1350,17 @@ function showScenarioModal(data: ScenarioModalData): void {
 
   const overlay = document.createElement('div');
   overlay.id = 'scenarioComparisonModal';
-  overlay.className = 'fixed inset-0 z-[1000] flex items-center justify-center bg-black/75 p-3 sm:p-6';
+  overlay.className = 'fixed inset-0 z-[1000] flex items-center justify-center bg-black/75 p-2 sm:p-4';
   overlay.setAttribute('role', 'presentation');
 
   const dialog = document.createElement('section');
-  dialog.className = 'w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl flex flex-col';
+  dialog.className = 'w-full max-w-4xl max-h-[88vh] overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl flex flex-col';
   dialog.setAttribute('role', 'dialog');
   dialog.setAttribute('aria-modal', 'true');
   dialog.setAttribute('aria-labelledby', 'scenarioComparisonTitle');
 
   const header = document.createElement('div');
-  header.className = 'flex items-start justify-between gap-4 border-b border-slate-800 px-4 py-4 sm:px-6';
+  header.className = 'flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-4';
   const headingWrap = document.createElement('div');
   headingWrap.className = 'min-w-0';
   const title = document.createElement('h2');
@@ -1380,19 +1380,19 @@ function showScenarioModal(data: ScenarioModalData): void {
   header.append(headingWrap, closeButton);
 
   const tableWrap = document.createElement('div');
-  tableWrap.className = 'overflow-auto px-3 py-3 sm:px-5';
+  tableWrap.className = 'overflow-auto px-2 py-2 sm:px-3';
   const table = document.createElement('table');
-  table.className = 'w-full min-w-max border-collapse text-xs sm:text-sm';
+  table.className = 'w-full min-w-max border-collapse text-xs';
   const thead = document.createElement('thead');
   const headRow = document.createElement('tr');
   headRow.className = 'border-b border-slate-700 text-slate-300';
   const metricHead = document.createElement('th');
-  metricHead.className = 'sticky left-0 bg-slate-950 px-3 py-2 text-left font-semibold';
+  metricHead.className = 'sticky left-0 bg-slate-950 px-2 py-1.5 text-left font-semibold';
   metricHead.textContent = 'Metric';
   headRow.appendChild(metricHead);
   data.columns.forEach((column) => {
     const th = document.createElement('th');
-    th.className = 'min-w-[150px] px-3 py-2 text-right font-semibold whitespace-nowrap';
+    th.className = 'min-w-[120px] px-2 py-1.5 text-right font-semibold whitespace-nowrap';
     th.textContent = column;
     headRow.appendChild(th);
   });
@@ -1407,12 +1407,12 @@ function showScenarioModal(data: ScenarioModalData): void {
         ? 'border-b border-cyan-900/50 bg-cyan-950/20 text-cyan-200'
         : 'border-b border-slate-800/80 text-slate-300';
     const label = document.createElement('th');
-    label.className = 'sticky left-0 bg-slate-950 px-3 py-2 text-left font-medium whitespace-nowrap';
+    label.className = 'sticky left-0 bg-slate-950 px-2 py-1.5 text-left font-medium whitespace-nowrap';
     label.textContent = row.label;
     tr.appendChild(label);
     row.values.forEach((value) => {
       const td = document.createElement('td');
-      td.className = 'px-3 py-2 text-right font-mono whitespace-nowrap';
+      td.className = 'px-2 py-1.5 text-right font-mono whitespace-nowrap';
       td.textContent = value;
       tr.appendChild(td);
     });
@@ -1422,9 +1422,9 @@ function showScenarioModal(data: ScenarioModalData): void {
   tableWrap.appendChild(table);
 
   const footer = document.createElement('div');
-  footer.className = 'border-t border-slate-800 px-4 py-3 sm:px-6';
+  footer.className = 'border-t border-slate-800 px-3 py-2 sm:px-4';
   const note = document.createElement('p');
-  note.className = 'text-[11px] sm:text-xs leading-relaxed text-slate-500';
+  note.className = 'text-[10px] leading-snug text-slate-500';
   note.textContent = data.note;
   footer.appendChild(note);
 

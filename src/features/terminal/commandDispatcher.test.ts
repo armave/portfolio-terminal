@@ -202,9 +202,9 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.columns).toHaveLength(7);
     const modalRows = result.modal?.rows.map((row) => row.label) || [];
     expect(modalRows).toContain('Gross proceeds');
-    expect(modalRows).toContain('Buy commissions (paid)');
+    expect(modalRows).toContain('Buy commission');
     expect(modalRows).toContain('Sell commission');
-    expect(modalRows).toContain('Margin interest (est.)');
+    expect(modalRows).toContain('Margin interest');
     expect(modalRows).toContain('Margin balance before');
     expect(modalRows).toContain('Final margin balance');
     expect(result.modal?.note).toContain('Future prices are assumptions');
@@ -259,11 +259,11 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.columns).toEqual(['Before', 'After buying']);
     const modalRows = result.modal?.rows.map((row) => row.label) || [];
     expect(modalRows).toContain('Buy commissions (total)');
-    expect(modalRows).toContain('Sell commission at current quote');
-    expect(modalRows).toContain('Accrued margin interest (est.)');
-    expect(modalRows).toContain('Final margin balance after buy');
-    expect(modalRows).toContain('Extra margin interest / day');
-    expect(result.modal?.note).toContain('no order is placed');
+    expect(modalRows).toContain('Sell commissions (quote / target / −10%)');
+    expect(modalRows).toContain('Accrued margin interest');
+    expect(modalRows).toContain('Margin balance');
+    expect(modalRows).toContain('Extra interest / day');
+    expect(result.modal?.note).toContain('no order placed');
     expect(buyStock).not.toHaveBeenCalled();
   });
 
