@@ -271,8 +271,15 @@ export class PortfolioStore {
         )
       : [];
 
+    const requestedView = typeof raw.activeView === 'string' ? raw.activeView : 'COMBINED';
+    const supportedViews = ['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'];
+    const activeView = supportedViews.includes(requestedView) || positions[requestedView]
+      ? requestedView
+      : 'COMBINED';
+
     return {
       ...raw,
+      activeView,
       positions,
       holdings,
       cashBalance: freeCash,
