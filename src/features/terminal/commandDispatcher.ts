@@ -716,9 +716,9 @@ export class CommandDispatcher {
     ];
     const modal: ScenarioModalData = {
       kind: 'buy-more',
-      title: 'Buy More Comparison · ' + ticker,
-      subtitle: '+' + qty.toLocaleString() + ' shares at ' + money(price) + ' · hypothetical only',
-      columns: ['Before', 'After buying', 'Change (Δ)'],
+      title: 'Buy More Projection · ' + ticker,
+      subtitle: 'Hypothetical projection after buying +' + qty.toLocaleString() + ' shares at ' + money(price) + ' · no order placed',
+      columns: ['Current Position', 'Hypothetical After Buy', 'Change (Δ)'],
       rows: [
         { label: 'POSITION & BASIS', values: [], kind: 'section' },
         { label: 'Shares', values: [oldShares.toLocaleString(), newShares.toLocaleString(), '+' + qty.toLocaleString()] },
@@ -726,14 +726,35 @@ export class CommandDispatcher {
         { label: 'Buy cost incl. commission', values: ['$0.00', money(totalOutlay), signed(totalOutlay)] },
         { label: 'Buy commissions (total)', values: [money(oldBuyFee), money(newBuyFee), signed(newBuyFee - oldBuyFee)], kind: 'fee' },
         { label: 'PROJECTED OUTCOMES', values: [], kind: 'section' },
-        ...scenarios.map(s => {
+        ...scenarios.flatMap(s => {
+          const beforeGrossValue = oldShares * s.price;
+          const afterGrossValue = newShares * s.price;
           const beforePnl = scenarioPnl(oldShares, oldCost, oldBuyFee, s.price);
           const afterPnl = scenarioPnl(newShares, newCost, newBuyFee, s.price);
-          return {
-            label: 'Net P&L · ' + s.label,
-            values: [signed(beforePnl), signed(afterPnl), signed(afterPnl - beforePnl)],
-            kind: (s.label.startsWith('−10%') ? 'risk' : 'result') as 'risk' | 'result'
-          };
+          const beforeReturn = oldCost + oldBuyFee > 0 ? beforePnl / (oldCost + oldBuyFee) * 100 : 0;
+          const afterReturn = newCost + newBuyFee > 0 ? afterPnl / (newCost + newBuyFee) * 100 : 0;
+          const risk = s.label.startsWith('−10%');
+          return [
+            {
+              label: 'Projected market value · ' + s.label,
+              values: [money(beforeGrossValue), money(afterGrossValue), signed(afterGrossValue - beforeGrossValue)],
+              kind: risk ? 'risk' as const : 'fee' as const
+            },
+            {
+              label: 'Net P&L · ' + s.label,
+              values: [signed(beforePnl), signed(afterPnl), signed(afterPnl - beforePnl)],
+              kind: risk ? 'risk' as const : 'result' as const
+            },
+            {
+              label: 'Return on cost · ' + s.label,
+              values: [
+                (beforeReturn > 0 ? '+' : '') + beforeReturn.toFixed(2) + '%',
+                (afterReturn > 0 ? '+' : '') + afterReturn.toFixed(2) + '%',
+                (afterReturn - beforeReturn > 0 ? '+' : '') + (afterReturn - beforeReturn).toFixed(2) + ' pp'
+              ],
+              kind: risk ? 'risk' as const : 'fee' as const
+            }
+          ];
         }),
         { label: 'FINANCING & MARGIN CARRY', values: [], kind: 'section' },
         { label: 'Margin balance before / after buy', values: [money(balance), money(balanceAfter), signed(balanceAfter - balance)], kind: 'balance' },
@@ -755,7 +776,7 @@ export class CommandDispatcher {
           kind: 'fee'
         }
       ],
-      note: 'Net P&L includes buy/sell commissions and accrued interest. Sell commissions are shown at quote, target (if set), and −10%. Hypothetical only; no order placed.'
+      note: 'Projected market value, net P&L after buy/sell commissions and accrued margin interest, and return on cost are shown for the current position versus the hypothetical purchase. Return on cost uses purchase cost plus buy commissions. Sell commissions are summarized at quote, target (if set), and −10%. No portfolio mutation or order placement occurs.'
     };
     const targetOldPnl = hasTarget ? scenarioPnl(oldShares, oldCost, oldBuyFee, target) : 0;
     const targetNewPnl = hasTarget ? scenarioPnl(newShares, newCost, newBuyFee, target) : 0;
