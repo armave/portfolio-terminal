@@ -375,6 +375,38 @@ export class PortfolioStore {
     });
   }
 
+  /** Persist a rollover boundary through the canonical store. */
+  public setLastRolloverTimestamp(timestamp: number): void {
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return;
+    this.update((state) => ({
+      ...state,
+      lastRolloverTimestamp: timestamp
+    }));
+  }
+
+  /**
+   * Atomically commits accrued rollover debt and its accounting timestamp.
+   * Realized charges are tracked separately only when no open investment can
+   * carry the interest in the active-position calculations.
+   */
+  public applyRollover(
+    compoundedDebt: number,
+    interestAccrued: number,
+    timestamp: number,
+    recordAsRealized: boolean
+  ): void {
+    if (![compoundedDebt, interestAccrued, timestamp].every(Number.isFinite) ||
+      compoundedDebt < 0 || interestAccrued < 0 || timestamp <= 0) return;
+
+    this.update((state) => ({
+      ...state,
+      balance: compoundedDebt > 0 ? -compoundedDebt : 0,
+      lastRolloverTimestamp: timestamp,
+      realizedMarginCharged: Math.max(0, Number(state.realizedMarginCharged) || 0) +
+        (recordAsRealized ? interestAccrued : 0)
+    }));
+  }
+
   /** Set the cash-cushion balance without changing margin debt. */
   public setFreeCash(amount: number): void {
     const num = Number(amount);
