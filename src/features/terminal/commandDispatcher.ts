@@ -978,7 +978,6 @@ export class CommandDispatcher {
       ].join('\n')
     };
   }
-}
 
   private static evaluateExitScenarios(tickerArg: string | undefined, scenarios: Array<{ label: string; days: number; price: number }>): CommandOutput {
     const { sym, pos, state } = this.resolveActivePosition(tickerArg);
@@ -1033,11 +1032,8 @@ export class CommandDispatcher {
       'BEST: ' + best.label + ' at ' + money(best.price) + ' · ' + signed(best.net) + ' net',
       'Fees included: buy commission, sell commission, estimated margin interest.',
       'Estimate only · no portfolio changes.'
-    ].join('\\n');
+    ].join('\n');
     return { type: 'res', text, modal };
-  }
-
-
   }
 
   private static evaluateBuyScenario(qty: number, ticker: string, price: number): CommandOutput {
