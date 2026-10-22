@@ -1695,7 +1695,7 @@ function renderSettingsPanel() {
       onSaveApiKeys: async (secret: string) => {
         const saved = await saveApiKeys({ secret, showToast: (message, type) => showToast(message, type as any), logTerminal });
         if (saved) {
-          state.gatewaySecret = secret.trim();
+          portfolioStore.setState({ gatewaySecret: secret.trim() });
           await syncCloudState('pull');
         }
       },
@@ -1730,7 +1730,7 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
 
   saveGatewaySecret(submittedSecret);
   const persisted = await persistGatewaySecret();
-  state.gatewaySecret = submittedSecret;
+  portfolioStore.setState({ gatewaySecret: submittedSecret });
   if (!persisted) {
     showToast('Secure storage failed. Re-enter the Gateway Secret after refresh.', 'error');
   }
@@ -1869,7 +1869,7 @@ function showStartupFailure() {
 
 async function continueStartupOffline() {
   appInitialized = true;
-  state.gatewaySecret = '';
+  portfolioStore.setState({ gatewaySecret: '' });
   try {
     await startApp('');
   } catch (error) {
