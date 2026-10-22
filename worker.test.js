@@ -24,10 +24,11 @@ describe('stocktwits proxy', () => {
   });
 
   it('returns a bounded public symbol stream through the authenticated proxy', async () => {
-    const upstreamMessages = Array.from({ length: 25 }, (_, id) => ({
+    const upstreamMessages = Array.from({ length: 45 }, (_, id) => ({
       id,
       body: `Message ${id}`,
-      created_at: '2026-10-20T12:00:00Z'
+      created_at: '2026-10-20T12:00:00Z',
+      ...(id % 3 === 0 ? { conversation: { parent_message_id: id - 1 } } : {})
     }));
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       symbol: { symbol: 'AAPL' },
@@ -45,7 +46,8 @@ describe('stocktwits proxy', () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.symbol).toBe('AAPL');
-    expect(data.messages).toHaveLength(20);
+    expect(data.messages).toHaveLength(30);
+    expect(data.messages.every((message) => message.conversation?.parent_message_id == null)).toBe(true);
     expect(data.streamUrl).toBe('https://stocktwits.com/symbol/AAPL');
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.stocktwits.com/api/2/streams/symbol/AAPL.json',
@@ -235,14 +237,14 @@ describe('news proxy validation', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('limits successful news responses to the five items displayed by the frontend', async () => {
+  it('returns at most ten news items for the frontend', async () => {
     const news = Array.from({ length: 100 }, (_, index) => ({ headline: `News ${index + 1}` }));
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(news), {
       status: 200, headers: { 'Content-Type': 'application/json' }
     })));
     const response = await worker.fetch(request(), { GATEWAY_SECRET: 'test-secret', FINNHUB_KEY: 'provider-key' });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(news.slice(0, 5));
+    expect(await response.json()).toEqual(news.slice(0, 10));
   });
 
   it('rejects a successful but malformed Finnhub response', async () => {

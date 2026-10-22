@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getStocktwitsCashtags, hasStocktwitsCommentary } from './MarketInsightsPanel';
+import { getStocktwitsCashtags, hasStocktwitsCommentary, isStandaloneStocktwitsMessage } from './MarketInsightsPanel';
 
 describe('getStocktwitsCashtags', () => {
   it('returns unique ticker cashtags in uppercase', () => {
@@ -35,5 +35,24 @@ describe('hasStocktwitsCommentary', () => {
   it('safely rejects missing or malformed bodies', () => {
     expect(hasStocktwitsCommentary(null)).toBe(false);
     expect(hasStocktwitsCommentary(undefined)).toBe(false);
+  });
+});
+
+
+describe('isStandaloneStocktwitsMessage', () => {
+  it('keeps original posts without reply metadata', () => {
+    expect(isStandaloneStocktwitsMessage({ id: 1, body: '$AAPL bullish' })).toBe(true);
+    expect(isStandaloneStocktwitsMessage({ conversation: { parent_message_id: null } })).toBe(true);
+  });
+
+  it('filters replies identified by conversation parent or reply fields', () => {
+    expect(isStandaloneStocktwitsMessage({ conversation: { parent_message_id: 42 } })).toBe(false);
+    expect(isStandaloneStocktwitsMessage({ in_reply_to: 42 })).toBe(false);
+    expect(isStandaloneStocktwitsMessage({ reply_to: { id: 42 } })).toBe(false);
+  });
+
+  it('rejects malformed messages', () => {
+    expect(isStandaloneStocktwitsMessage(null)).toBe(false);
+    expect(isStandaloneStocktwitsMessage('message')).toBe(false);
   });
 });
