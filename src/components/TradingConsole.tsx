@@ -12,7 +12,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState<number>(-1);
   const [command, setCommand] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const ticker = position?.ticker || 'AAPL';
   const hasPosition = Boolean(position);
@@ -54,8 +54,16 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
     requestAnimationFrame(() => inputRef.current?.setSelectionRange(selectionStart, selectionEnd));
   };
 
+  const resizeCommandInput = (input = inputRef.current) => {
+    if (!input) return;
+    input.style.height = 'auto';
+    const maxHeight = 128;
+    input.style.height = `${Math.min(input.scrollHeight, maxHeight)}px`;
+    input.style.overflowY = input.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  };
+
   const handleKeyDown = (e: KeyboardEvent) => {
-    const input = e.currentTarget as HTMLInputElement;
+    const input = e.currentTarget as HTMLTextAreaElement;
     if (e.key === 'Tab') {
       const tokens = [...input.value.matchAll(/\[[^\]]+\]/g)].map((match) => ({
         text: match[0],
@@ -87,7 +95,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
         input.focus();
         input.setSelectionRange(target.start, target.end);
       }
-    } else if (e.key === 'Enter') {
+    } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       triggerExecute();
     } else if (e.key === 'ArrowUp') {
@@ -233,15 +241,19 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       </div>
 
       {/* Command Input Bar */}
-      <div class="flex items-center gap-2 rounded-lg bg-slate-900/95 border border-slate-700/90 px-3 py-1.5 focus-within:border-emerald-500/80 focus-within:ring-1 focus-within:ring-emerald-500/30 transition">
+      <div class="flex items-center gap-2 rounded-lg bg-slate-900/95 border border-slate-700/90 px-3 py-2 focus-within:border-emerald-500/80 focus-within:ring-1 focus-within:ring-emerald-500/30 transition">
         <span class="text-emerald-400 font-mono font-bold text-sm select-none">❯</span>
-        <input
+        <textarea
           id="cmdInput"
           aria-label="Terminal command"
           ref={inputRef}
           value={command}
-          onInput={(event) => setCommand((event.currentTarget as HTMLInputElement).value)}
-          type="text"
+          onInput={(event) => {
+            const input = event.currentTarget as HTMLTextAreaElement;
+            setCommand(input.value);
+            resizeCommandInput(input);
+          }}
+          rows={1}
           name="cli-entry"
           autoComplete="off"
           data-form-type="other"
@@ -255,7 +267,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
           spellcheck={false}
           placeholder={`e.g. sell ${hasPosition ? ticker : 'AAPL'} today for ${priceText} vs sell 14 days later for ${comparisonPrice}`}
           onKeyDown={handleKeyDown}
-          class="flex-1 bg-transparent border-none text-xs font-mono text-white placeholder-slate-500 focus:outline-none"
+          class="flex-1 min-w-0 min-h-[44px] max-h-32 resize-none overflow-y-hidden whitespace-pre-wrap break-words bg-transparent border-none text-base leading-5 py-2 font-mono text-white placeholder-slate-500 focus:outline-none"
         />
         <span class="hidden md:inline text-[10px] font-mono text-slate-600 select-none">
           ↑↓ History
