@@ -643,7 +643,6 @@ export class CommandDispatcher {
 
     const targetDelta = hasTarget ? targetNewPnl - targetOldPnl : 0;
     const currentDelta = newPnl - oldPnl;
-    const downsideDelta = downsideNewPnl - downsideOldPnl;
     const lines = [
       '[BUY MORE: ' + ticker + '] · +' + qty.toLocaleString() + ' shares @ ' + money(price),
       'Cash needed: ' + money(purchaseValue + purchaseFee) + ' incl. fee',
