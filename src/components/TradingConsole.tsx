@@ -243,7 +243,6 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
           onInput={(event) => setCommand((event.currentTarget as HTMLInputElement).value)}
           type="text"
           name="cli-entry"
-          id="cmdInput"
           autoComplete="off"
           data-form-type="other"
           data-lpignore="true"
