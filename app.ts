@@ -1219,10 +1219,10 @@ function showScenarioModal(data: ScenarioModalData): void {
   // Add thousands separators to standalone numeric values while leaving dates,
   // already-grouped numbers, identifiers, and decimal precision intact.
   const formatModalNumberGroups = (text: string): string =>
-    text.replace(/(?<![\\w.,/-])(-?\\d{4,})(\\.\\d+)?(?![\\w/-])/g, (_match, integer: string, fraction = '') => {
+    text.replace(/(?<![\w.,/-])(-?\d{4,})(\.\d+)?(?![\w/-])/g, (_match, integer: string, fraction = '') => {
       const sign = integer.startsWith('-') ? '-' : '';
       const digits = sign ? integer.slice(1) : integer;
-      return sign + digits.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',') + fraction;
+      return sign + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + fraction;
     });
 
   const formatScenarioButton = (index: number) => {
@@ -1355,7 +1355,7 @@ function showScenarioModal(data: ScenarioModalData): void {
           const badge = document.createElement('span');
           badge.className = 'mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-semibold ' +
             (delta.includes('BEST') ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400');
-          badge.textContent = delta;
+          badge.textContent = formatModalNumberGroups(delta);
           value.appendChild(document.createElement('br'));
           value.appendChild(badge);
         }
