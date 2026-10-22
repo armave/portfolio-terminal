@@ -72,6 +72,7 @@ import { AuthModal } from './src/components/AuthModal';
 import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
+import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -1344,6 +1345,108 @@ function confirmAiPortfolioAction(action: any) {
   return confirm(`Gemini interpreted your input as this portfolio change:\n\n${message}\n\nApply it?`);
 }
 
+function showScenarioModal(data: ScenarioModalData): void {
+  document.getElementById('scenarioComparisonModal')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'scenarioComparisonModal';
+  overlay.className = 'fixed inset-0 z-[1000] flex items-center justify-center bg-black/75 p-3 sm:p-6';
+  overlay.setAttribute('role', 'presentation');
+
+  const dialog = document.createElement('section');
+  dialog.className = 'w-full max-w-5xl max-h-[92vh] overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl flex flex-col';
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', 'scenarioComparisonTitle');
+
+  const header = document.createElement('div');
+  header.className = 'flex items-start justify-between gap-4 border-b border-slate-800 px-4 py-4 sm:px-6';
+  const headingWrap = document.createElement('div');
+  headingWrap.className = 'min-w-0';
+  const title = document.createElement('h2');
+  title.id = 'scenarioComparisonTitle';
+  title.className = 'text-base sm:text-lg font-bold text-white';
+  title.textContent = data.title;
+  const subtitle = document.createElement('p');
+  subtitle.className = 'mt-1 text-xs sm:text-sm text-slate-400';
+  subtitle.textContent = data.subtitle;
+  headingWrap.append(title, subtitle);
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'shrink-0 rounded-md border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white';
+  closeButton.textContent = 'Close';
+  closeButton.setAttribute('aria-label', 'Close scenario comparison');
+  header.append(headingWrap, closeButton);
+
+  const tableWrap = document.createElement('div');
+  tableWrap.className = 'overflow-auto px-3 py-3 sm:px-5';
+  const table = document.createElement('table');
+  table.className = 'w-full min-w-max border-collapse text-xs sm:text-sm';
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  headRow.className = 'border-b border-slate-700 text-slate-300';
+  const metricHead = document.createElement('th');
+  metricHead.className = 'sticky left-0 bg-slate-950 px-3 py-2 text-left font-semibold';
+  metricHead.textContent = 'Metric';
+  headRow.appendChild(metricHead);
+  data.columns.forEach((column) => {
+    const th = document.createElement('th');
+    th.className = 'min-w-[150px] px-3 py-2 text-right font-semibold whitespace-nowrap';
+    th.textContent = column;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+
+  const tbody = document.createElement('tbody');
+  data.rows.forEach((row) => {
+    const tr = document.createElement('tr');
+    tr.className = row.kind === 'result'
+      ? 'border-b border-emerald-900/70 bg-emerald-950/30 font-semibold text-emerald-300'
+      : row.kind === 'balance'
+        ? 'border-b border-cyan-900/50 bg-cyan-950/20 text-cyan-200'
+        : 'border-b border-slate-800/80 text-slate-300';
+    const label = document.createElement('th');
+    label.className = 'sticky left-0 bg-slate-950 px-3 py-2 text-left font-medium whitespace-nowrap';
+    label.textContent = row.label;
+    tr.appendChild(label);
+    row.values.forEach((value) => {
+      const td = document.createElement('td');
+      td.className = 'px-3 py-2 text-right font-mono whitespace-nowrap';
+      td.textContent = value;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.append(thead, tbody);
+  tableWrap.appendChild(table);
+
+  const footer = document.createElement('div');
+  footer.className = 'border-t border-slate-800 px-4 py-3 sm:px-6';
+  const note = document.createElement('p');
+  note.className = 'text-[11px] sm:text-xs leading-relaxed text-slate-500';
+  note.textContent = data.note;
+  footer.appendChild(note);
+
+  dialog.append(header, tableWrap, footer);
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', handleKeyDown);
+  };
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') close();
+  };
+  closeButton.addEventListener('click', close);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) close();
+  });
+  document.addEventListener('keydown', handleKeyDown);
+  closeButton.focus();
+}
+
 async function executeCommand(commandText?: string) {
   const input = document.getElementById("cmdInput") as HTMLInputElement | null;
   const text = (commandText ?? input?.value ?? '').trim();
@@ -1364,6 +1467,12 @@ async function executeCommand(commandText?: string) {
       logTerminal(`[CLI Error]: ${localResult.text}`);
       showToast(localResult.text, 'error');
     }
+    return;
+  }
+
+  // Scenario commands return structured data for a decision modal, not a terminal dump.
+  if (localResult.modal) {
+    showScenarioModal(localResult.modal);
     return;
   }
 
