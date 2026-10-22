@@ -18,6 +18,11 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
   }, [isOpen]);
 
   const handleDialogKeyDown = (event: KeyboardEvent) => {
+    if (submitting) {
+      event.preventDefault();
+      return;
+    }
+
     if (event.key === 'Escape') {
       event.preventDefault();
       setSecret('');
@@ -64,7 +69,7 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
   };
 
   return (
-    <div class="auth-card border-card" role="dialog" aria-modal="true" aria-labelledby="authModalTitle" onKeyDown={handleDialogKeyDown}>
+    <div class={"auth-card border-card " + (submitting ? "cursor-wait" : "")} role="dialog" aria-modal="true" aria-busy={submitting} aria-labelledby="authModalTitle" onKeyDown={handleDialogKeyDown}>
       <div class="space-y-1">
         <h2 id="authModalTitle" class="text-sm font-bold text-emerald-400 tracking-wider uppercase">
           Gateway Authentication
@@ -79,6 +84,7 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
           type="password"
           id="gatewaySecretInput"
           value={secret}
+          disabled={submitting}
           onInput={(e) => { setSecret((e.target as HTMLInputElement).value); setInvalid(false); }}
           autoComplete="current-password"
           autoCapitalize="off"
@@ -86,16 +92,20 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
           spellcheck={false}
           placeholder="Enter Gateway Secret"
           required
-          class={"flex-1 bg-slate-900 text-slate-200 border rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500 " + (invalid ? "border-red-500" : "border-slate-700")} aria-invalid={invalid}
+          class={"flex-1 bg-slate-900 text-slate-200 border rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500 disabled:opacity-60 disabled:cursor-wait " + (invalid ? "border-red-500" : "border-slate-700")} aria-invalid={invalid}
         />
         <button
           id="authSaveButton"
           type="submit"
-          class="bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-4 py-2 rounded transition"
+          disabled={submitting}
+          aria-disabled={submitting}
+          class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-wait text-black text-xs font-bold px-4 py-2 rounded transition inline-flex items-center justify-center gap-2"
         >
-          {submitting ? 'Checking…' : 'Save'}
+          {submitting && <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-black/30 border-t-black" aria-hidden="true" />}
+          {submitting ? 'Syncing data…' : 'Save'}
         </button>
       </form>
+      {submitting && <p class="text-xs text-cyan-300" role="status">Authenticating and loading your portfolio data. Please wait…</p>}
       {invalid && <p class="text-xs text-red-400" role="alert">Invalid Gateway Secret. Please try again.</p>}
     </div>
   );
