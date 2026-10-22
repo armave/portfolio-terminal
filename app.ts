@@ -61,6 +61,7 @@ import { SettingsDesk } from './src/components/SettingsDesk';
 import { AuthModal } from './src/components/AuthModal';
 import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
+import { PriceAlertsPanel } from './src/components/PriceAlertsPanel';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 
@@ -698,6 +699,7 @@ function recordTrackedPrice(
     ...(quoteDetails ? { quoteDetails } : {}),
     ...(requestStartedAt === undefined ? {} : { requestStartedAt })
   });
+  window.dispatchEvent(new CustomEvent('portfolio-price-update', { detail: { ticker: symbol, price, sourceName, updatedAt: updatedAt ?? Date.now() } }));
   return true;
 }
 
