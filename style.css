@@ -976,3 +976,105 @@ summary:hover {
 .scenario-report-content {
   text-wrap: pretty;
 }
+
+/* Modal polish: shared motion, safer viewport sizing, and consistent keyboard focus. */
+#scenarioComparisonModal {
+  padding:
+    max(0.75rem, env(safe-area-inset-top))
+    max(0.75rem, env(safe-area-inset-right))
+    max(0.75rem, env(safe-area-inset-bottom))
+    max(0.75rem, env(safe-area-inset-left));
+  overscroll-behavior: contain;
+  animation: modal-overlay-enter 160ms ease-out both;
+}
+
+#scenarioComparisonModal > [role="dialog"] {
+  width: min(100%, 72rem);
+  max-height: min(90dvh, 56rem);
+  min-height: 0;
+  border-radius: 1rem;
+  overflow: hidden;
+  isolation: isolate;
+  animation: modal-dialog-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+#scenarioComparisonModal [role="dialog"] > div:nth-child(3) {
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.7) transparent;
+}
+
+#scenarioComparisonModal [role="dialog"] button:focus-visible,
+#auth-container button:focus-visible,
+#auth-container input:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+#scenarioComparisonModal h2,
+#scenarioComparisonModal p {
+  overflow-wrap: anywhere;
+}
+
+#auth-container {
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.auth-card {
+  width: min(100%, 28rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: clamp(1rem, 4vw, 1.5rem);
+  border-radius: 1rem;
+  backdrop-filter: blur(16px);
+}
+
+.auth-card form {
+  align-items: stretch;
+}
+
+.auth-card input {
+  min-width: 0;
+  min-height: 2.75rem;
+}
+
+.auth-card button {
+  min-height: 2.75rem;
+}
+
+@keyframes modal-overlay-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-dialog-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 640px) {
+  #scenarioComparisonModal > [role="dialog"] {
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem);
+    border-radius: 0.875rem;
+  }
+
+  #scenarioComparisonModal [role="dialog"] > div:first-child {
+    padding: 0.875rem;
+  }
+
+  #scenarioComparisonModal [role="dialog"] > div:nth-child(2) {
+    padding: 0.625rem 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #scenarioComparisonModal,
+  #scenarioComparisonModal > [role="dialog"] {
+    animation: none;
+  }
+}
+
