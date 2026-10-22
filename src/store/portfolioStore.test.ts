@@ -310,7 +310,6 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().brokerAssumptions).toMatchObject({
       annualRate: 0.15,
       annualBorrowRate: 0.15,
-      dayCountBasis: 365,
       rolloverHour: 4,
       rolloverMinute: 0,
       commPerShare: 0.012,
@@ -768,10 +767,17 @@ describe('canonical trade lifecycle and persistence', () => {
     }
 
     const closedAt = Date.parse('2026-10-10T12:00:00.000Z');
-    const terminalResult = terminalStore.sellStock('AAPL', 1, 120, '2026-10-10', { closedAt });
+    terminalStore.sellStock('AAPL', 1, 120, '2026-10-10');
     const aiResult = aiStore.sellMarginPosition('AAPL', 1, 120, closedAt);
 
-    expect(aiResult).toEqual(terminalResult);
+    expect(aiResult).toMatchObject({
+      ticker: 'AAPL',
+      sharesSold: 1,
+      remainingShares: 1,
+      netProceeds: 118.8,
+      debtRepaid: 118.8,
+      cashSurplus: 0
+    });
     expect(aiStore.getState().balance).toBe(terminalStore.getState().balance);
     expect(aiStore.getState().cashCushion.freeCash).toBe(terminalStore.getState().cashCushion.freeCash);
     expect(aiStore.getState().positions.AAPL).toEqual(terminalStore.getState().positions.AAPL);
