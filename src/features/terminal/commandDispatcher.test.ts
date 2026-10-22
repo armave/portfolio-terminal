@@ -267,9 +267,14 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.columns).toEqual(['Before', 'After buying', 'Change (Δ)']);
     const modalRows = result.modal?.rows.map((row) => row.label) || [];
     expect(modalRows).toContain('Buy commissions (total)');
-    expect(modalRows).toContain('Sell commission @ quote');
-    expect(modalRows).toContain('Sell commission @ target');
-    expect(modalRows).toContain('Sell commission @ −10%');
+    expect(modalRows).toContain('Sell commissions · Quote / Target / −10%');
+    expect(modalRows).not.toContain('Sell commission @ quote');
+    expect(modalRows).not.toContain('Sell commission @ target');
+    expect(modalRows).not.toContain('Sell commission @ −10%');
+    const sellCommissionSummary = result.modal?.rows.find((row) => row.label === 'Sell commissions · Quote / Target / −10%');
+    expect(sellCommissionSummary?.values).toHaveLength(3);
+    expect(sellCommissionSummary?.values[0]).toContain('Q ');
+    expect(sellCommissionSummary?.values[0]).toContain('−10%');
     expect(modalRows).toContain('Accrued margin interest');
     expect(modalRows).toContain('Margin balance before / after buy');
     expect(modalRows).toContain('Daily margin accrual');
