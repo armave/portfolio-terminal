@@ -241,6 +241,22 @@ function hideAllDesks() {
   });
 }
 
+function prefillTerminalCommand(command: string): void {
+  const input = document.getElementById('cmdInput') as HTMLInputElement | null;
+  if (!input) return;
+
+  input.value = command;
+  // Notify Preact's controlled input so its internal command state stays in sync.
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.focus();
+
+  const start = input.value.indexOf('[');
+  const end = start >= 0 ? input.value.indexOf(']', start) + 1 : -1;
+  if (start >= 0 && end > start) {
+    requestAnimationFrame(() => input.setSelectionRange(start, end));
+  }
+}
+
 function showDesk(id: string) {
   const el = document.getElementById(id);
   if (el) {
@@ -363,19 +379,11 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
       render(
         h(EmptyStatePanel, {
           onQuickBuy: () => {
-            const cmdInput = document.getElementById('cmdInput') as HTMLInputElement | null;
-            if (cmdInput) {
-              const todayIso = new Date().toISOString().split('T')[0];
-              cmdInput.value = `bought [shares] [TICKER] for [price] on [${todayIso}]`;
-              cmdInput.focus();
-            }
+            const todayIso = new Date().toISOString().split('T')[0];
+            prefillTerminalCommand(`bought [shares] [TICKER] for [price] on [${todayIso}]`);
           },
           onAddCashStock: () => {
-            const cmdInput = document.getElementById('cmdInput') as HTMLInputElement | null;
-            if (cmdInput) {
-              cmdInput.value = 'add cash stock [shares] [TICKER] for [price]';
-              cmdInput.focus();
-            }
+            prefillTerminalCommand('add cash stock [shares] [TICKER] for [price]');
           },
           onImportBackup: () => {
             document.getElementById('importFileInput')?.click();

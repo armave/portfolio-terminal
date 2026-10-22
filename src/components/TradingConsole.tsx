@@ -18,9 +18,9 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   const hasPosition = Boolean(position);
   const currentPrice =
     position && Number(position.currentPrice) > 0 ? Number(position.currentPrice) : null;
-  const priceText = currentPrice === null ? '185.00' : formatUSD(currentPrice);
+  const priceText = currentPrice === null ? '[price]' : formatUSD(currentPrice);
   const comparisonPrice =
-    currentPrice === null ? '192.00' : formatUSD(Number((currentPrice * 1.03).toFixed(2)));
+    currentPrice === null ? '[target_price]' : formatUSD(Number((currentPrice * 1.03).toFixed(2)));
   const halfShares =
     position && Number(position.shares) > 1
       ? String(Math.max(1, Math.floor(Number(position.shares) / 2)))
@@ -236,6 +236,8 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       <div class="flex items-center gap-2 rounded-lg bg-slate-900/95 border border-slate-700/90 px-3 py-1.5 focus-within:border-emerald-500/80 focus-within:ring-1 focus-within:ring-emerald-500/30 transition">
         <span class="text-emerald-400 font-mono font-bold text-sm select-none">❯</span>
         <input
+          id="cmdInput"
+          aria-label="Terminal command"
           ref={inputRef}
           value={command}
           onInput={(event) => setCommand((event.currentTarget as HTMLInputElement).value)}

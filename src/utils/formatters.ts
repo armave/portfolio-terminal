@@ -42,17 +42,34 @@ export function formatUSD(val: unknown): string {
   return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+export type QuoteFreshness = 'fresh' | 'stale' | 'unavailable';
+
+export function getQuoteFreshness(
+  holding: { quoteUpdatedAt?: number; quoteSource?: string },
+  now = Date.now(),
+  refreshIntervalMs = 60000
+): QuoteFreshness {
+  const updatedAt = Number(holding.quoteUpdatedAt);
+  if (!holding.quoteUpdatedAt || !Number.isFinite(updatedAt) || updatedAt <= 0) return 'unavailable';
+
+  const staleAfterMs = Math.max(5 * 60 * 1000, refreshIntervalMs * 2);
+  const ageMs = now - updatedAt;
+  // A future timestamp usually indicates a clock/data issue; don't label it fresh.
+  if (ageMs < 0 || ageMs > staleAfterMs) return 'stale';
+  return 'fresh';
+}
+
 export function formatQuoteMetadata(
   holding: { quoteUpdatedAt?: number; quoteSource?: string },
   refreshIntervalMs = 60000
 ): string {
-  if (!holding.quoteUpdatedAt) return holding.quoteSource || 'Not fetched';
+  const freshness = getQuoteFreshness(holding, Date.now(), refreshIntervalMs);
+  if (freshness === 'unavailable') return holding.quoteSource || 'Not fetched';
 
   const updatedAt = Number(holding.quoteUpdatedAt);
-  if (!Number.isFinite(updatedAt)) return holding?.quoteSource || 'Not fetched';
   const time = new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const isStale = Date.now() - updatedAt > Math.max(5 * 60 * 1000, refreshIntervalMs * 2);
-  return `${isStale ? 'Stale · ' : ''} ${holding.quoteSource ? holding.quoteSource + ' · ' : ''} ${time}`;
+  const source = holding.quoteSource ? `${holding.quoteSource} · ` : '';
+  return `${freshness === 'stale' ? 'Stale · ' : ''}${source}${time}`;
 }
 
 export function formatRiskTrigger(triggerValue: number, currentValue: number): string {
