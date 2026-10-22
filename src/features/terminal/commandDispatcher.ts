@@ -26,6 +26,7 @@ export interface ScenarioModalData {
     kind?: 'section' | 'fee' | 'result' | 'risk' | 'balance';
   }>;
   presets?: Array<{ label: string; columnIndexes: number[] }>;
+  action?: { label: string; command: string };
   note: string;
 }
 
@@ -617,7 +618,7 @@ export class CommandDispatcher {
     const best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
     const nextBestNet = rows.filter(r => r !== best).reduce((bestNet, row) => Math.max(bestNet, row.net), Number.NEGATIVE_INFINITY);
     const bestAdvantage = Number.isFinite(nextBestNet) ? Math.max(0, best.net - nextBestNet) : 0;
-    const dayLabel = (days: number) => days === 0 ? 'Today' : '+' + days + 'd';
+    const dayLabel = (days: number) => days === 0 ? 'Today' : days + ' Days';
     const presets = rows.slice(0, -1).map((row, index) => ({
       label: dayLabel(row.days) + ' vs ' + dayLabel(rows[index + 1].days),
       columnIndexes: [index, index + 1]
@@ -626,23 +627,16 @@ export class CommandDispatcher {
       kind: 'exit-comparison',
       title: 'Exit Comparison · ' + sym,
       subtitle: shares.toLocaleString() + ' shares · estimated net result after fees',
-      columns: rows.map(r => r.label + ' · ' + money(r.price)),
+      columns: rows.map(r => dayLabel(r.days) + ' · ' + money(r.price) + (r === best ? ' · BEST' : '')),
       presets,
+      action: { label: 'Stage target command', command: 'target ' + sym + ' ' + best.price.toFixed(2) },
       rows: [
-        { label: 'EXECUTION & PROCEEDS', values: [], kind: 'section' },
-        { label: 'Gross proceeds', values: rows.map(r => money(r.gross)) },
-        { label: 'Cost basis', values: rows.map(() => '−' + money(costBasis)) },
-        { label: 'TRANSACTION & FINANCING COSTS', values: [], kind: 'section' },
-        { label: 'Buy commission', values: rows.map(() => '−' + money(buyCommission)), kind: 'fee' },
-        { label: 'Sell commission', values: rows.map(r => '−' + money(r.sellFee)), kind: 'fee' },
-        { label: 'Margin interest', values: rows.map(r => '−' + money(r.marginFee)), kind: 'fee' },
-        { label: 'NET OUTCOME & MARGIN BALANCE', values: [], kind: 'section' },
-        { label: 'NET P&L', values: rows.map(r => signed(r.net) + (r === best ? ' · BEST ' + signed(bestAdvantage) + ' vs next' : '')), kind: 'result' },
-        { label: 'Δ vs best net P&L', values: rows.map(r => signed(r.net - best.net)), kind: 'result' },
-        { label: 'Margin balance before', values: rows.map(() => money(balance)), kind: 'balance' },
-        { label: 'Final margin balance', values: rows.map(r => money(r.finalBalance)), kind: 'balance' }
+        { label: 'Total Fee Friction', values: rows.map(r => money(buyCommission + r.sellFee + r.marginFee)), kind: 'fee' },
+        { label: 'Net P&L', values: rows.map(r => signed(r.net) + (r === best ? ' · BEST ' + signed(bestAdvantage) + ' vs alternative' : '')), kind: 'result' },
+        { label: 'Δ vs best outcome', values: rows.map(r => signed(r.net - best.net)), kind: 'result' },
+        { label: 'Final Margin Balance', values: rows.map(r => money(r.finalBalance)), kind: 'balance' }
       ],
-      note: 'Includes buy/sell commissions and estimated interest through each exit date. Future prices are assumptions; comparisons do not place orders.'
+      note: 'Total fee friction includes buy commission, sell commission, and estimated margin interest. Future prices are assumptions. The action stages a target-price command in the terminal; it does not submit a broker order.'
     };
     const text = [
       '[EXIT COMPARISON: ' + sym + ']',
