@@ -110,13 +110,6 @@ const BOARD_ANALYST_RETRY_MS = 60 * 1000;
 const DEFAULT_QUOTE_REFRESH_INTERVAL_MS = 60 * 1000;
 const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
 
-/**
- * Syncs the active runtime state into the reactive portfolioStore
- */
-function syncStore() {
-  portfolioStore.importState(state as any);
-}
-
 // ==========================================
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
 // ==========================================
@@ -149,8 +142,7 @@ async function pushStateToCloud(forceImmediate = false) {
     return;
   }
 
-  state.lastUpdated = Date.now();
-  syncStore();
+  portfolioStore.setState({ lastUpdated: Date.now() });
 
   const doPush = async () => {
     setCloudStatus('syncing', 'WRITING...');
@@ -947,7 +939,6 @@ async function performRefreshAllLivePrices() {
     if (updatedCount > 0) {
       // Live quotes stay local rather than causing a cloud write every poll.
       saveState(state);
-      syncStore();
       renderBoard();
       logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
     } else {
