@@ -1442,7 +1442,18 @@ function showScenarioModal(data: ScenarioModalData): void {
       columnIndexes.forEach((columnIndex) => {
         const td = document.createElement('td');
         td.className = 'px-2 py-2 text-right font-mono whitespace-nowrap';
-        td.textContent = row.values[columnIndex] ?? '—';
+        td.style.fontVariantNumeric = 'tabular-nums';
+        const value = document.createElement('span');
+        value.textContent = row.values[columnIndex] ?? '—';
+        td.appendChild(value);
+        const delta = row.deltas?.[columnIndex];
+        if (delta) {
+          const badge = document.createElement('span');
+          badge.className = 'ml-1.5 inline-flex rounded px-1.5 py-0.5 align-middle text-[9px] font-semibold ' +
+            (delta.includes('BEST') ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400');
+          badge.textContent = delta;
+          td.appendChild(badge);
+        }
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -1482,6 +1493,16 @@ function showScenarioModal(data: ScenarioModalData): void {
         value.textContent = row.values[columnIndex] ?? '—';
         if (row.kind === 'result') value.className += ' text-emerald-300';
         if (row.kind === 'balance') value.className += ' text-cyan-200';
+        value.style.fontVariantNumeric = 'tabular-nums';
+        const delta = row.deltas?.[columnIndex];
+        if (delta) {
+          const badge = document.createElement('span');
+          badge.className = 'mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-semibold ' +
+            (delta.includes('BEST') ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400');
+          badge.textContent = delta;
+          value.appendChild(document.createElement('br'));
+          value.appendChild(badge);
+        }
         line.append(label, value);
         card.appendChild(line);
       });
@@ -1491,11 +1512,47 @@ function showScenarioModal(data: ScenarioModalData): void {
 
   function renderToolbar(): void {
     toolbar.replaceChildren();
-    if (!isExit || !data.presets?.length) {
+    const hasQuickActions = isExit && Boolean(data.quickActions?.length);
+    const hasPresets = isExit && Boolean(data.presets?.length);
+    if (!hasQuickActions && !hasPresets) {
       toolbar.className = 'hidden';
       return;
     }
     toolbar.className = 'flex flex-wrap items-center gap-1.5 border-b border-slate-800 px-3 py-2';
+
+    if (hasQuickActions) {
+      data.quickActions!.forEach((action) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'rounded-full border border-cyan-900/80 bg-cyan-950/30 px-2.5 py-1.5 text-[10px] font-semibold text-cyan-200 hover:bg-cyan-900/50';
+        button.textContent = action.label;
+        button.addEventListener('click', () => {
+          if (action.command) {
+            const input = document.getElementById('cmdInput') as HTMLInputElement | null;
+            if (!input) return;
+            input.value = action.command;
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            close();
+            return;
+          }
+          if (action.invert) {
+            renderTable([...activeColumns].reverse());
+            return;
+          }
+          if (action.columnIndexes?.length) {
+            activePreset = data.presets?.findIndex(preset =>
+              preset.columnIndexes.length === action.columnIndexes!.length &&
+              preset.columnIndexes.every((value, index) => value === action.columnIndexes![index])
+            ) ?? activePreset;
+            renderTable(action.columnIndexes);
+          }
+        });
+        toolbar.appendChild(button);
+      });
+    }
+
     if (isMobile()) {
       data.columns.forEach((_, index) => {
         const scenario = formatScenarioButton(index);
@@ -1512,22 +1569,25 @@ function showScenarioModal(data: ScenarioModalData): void {
       });
       return;
     }
-    const label = document.createElement('span');
-    label.className = 'mr-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500';
-    label.textContent = 'Quick shift';
-    toolbar.appendChild(label);
-    data.presets.forEach((preset, presetIndex) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'rounded-md border px-2 py-1 text-[10px] font-medium ' +
-        (activePreset === presetIndex ? 'border-cyan-700 bg-cyan-950/50 text-cyan-200' : 'border-slate-700 text-slate-300');
-      button.textContent = preset.label;
-      button.addEventListener('click', () => {
-        activePreset = presetIndex;
-        renderTable(preset.columnIndexes);
+
+    if (hasPresets) {
+      const label = document.createElement('span');
+      label.className = 'mr-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500';
+      label.textContent = 'Compare';
+      toolbar.appendChild(label);
+      data.presets!.forEach((preset, presetIndex) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'rounded-md border px-2 py-1 text-[10px] font-medium ' +
+          (activePreset === presetIndex ? 'border-cyan-700 bg-cyan-950/50 text-cyan-200' : 'border-slate-700 text-slate-300');
+        button.textContent = preset.label;
+        button.addEventListener('click', () => {
+          activePreset = presetIndex;
+          renderTable(preset.columnIndexes);
+        });
+        toolbar.appendChild(button);
       });
-      toolbar.appendChild(button);
-    });
+    }
   }
 
   function renderLayout(): void {

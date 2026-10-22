@@ -24,8 +24,10 @@ export interface ScenarioModalData {
     label: string;
     values: string[];
     kind?: 'section' | 'fee' | 'result' | 'risk' | 'balance';
+    deltas?: Array<string | undefined>;
   }>;
   presets?: Array<{ label: string; columnIndexes: number[] }>;
+  quickActions?: Array<{ label: string; command?: string; columnIndexes?: number[]; invert?: boolean }>;
   action?: { label: string; command: string };
   note: string;
 }
@@ -599,6 +601,7 @@ export class CommandDispatcher {
     const costBasis = (pos.tranches || []).reduce((sum: number, t: any) => sum + (Number(t.qty) || 0) * (Number(t.price) || 0), 0);
     const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
     const balance = Number(state.balance) || 0;
+    const startingCash = Number(state.cashBalance ?? state.cashCushion?.freeCash) || 0;
     const debt = Math.max(0, -balance);
     const currentMargin = calculateMarginInterest(pos.tranches || [], { dailyRate: rules.dailyRate, marginDebt: debt, totalDebt: debt } as any);
     const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
@@ -613,7 +616,10 @@ export class CommandDispatcher {
       const debtRepaid = Math.min(debt, netProceeds);
       const finalBalance = debt > 0 ? -(debt - debtRepaid) : balance;
       const cashSurplus = debt > 0 ? Math.max(0, netProceeds - debt) : netProceeds;
-      return { ...s, gross, sellFee, carry, marginFee, net, netProceeds, debtRepaid, finalBalance, cashSurplus };
+      // Net P&L already includes buy/sell commissions and estimated margin interest.
+      // Add it to available starting cash without subtracting fees a second time.
+      const resultingAccountBalance = startingCash + net;
+      return { ...s, gross, sellFee, carry, marginFee, net, netProceeds, debtRepaid, finalBalance, cashSurplus, resultingAccountBalance };
     });
     const best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
     const nextBestNet = rows.filter(r => r !== best).reduce((bestNet, row) => Math.max(bestNet, row.net), Number.NEGATIVE_INFINITY);
@@ -629,17 +635,21 @@ export class CommandDispatcher {
       subtitle: shares.toLocaleString() + ' shares · estimated net result after fees',
       columns: rows.map(r => dayLabel(r.days) + ' · ' + money(r.price) + (r === best ? ' · BEST' : '')),
       presets,
+      quickActions: [
+        ...(rows.some(r => r.days === 7) ? [{ label: 'Switch to 7d', columnIndexes: [rows.findIndex(r => r.days === 7)] }] : []),
+        ...(rows.some(r => r.days === 14) ? [{ label: 'Lock 14d Best', command: 'target ' + sym + ' ' + rows.find(r => r.days === 14)!.price.toFixed(2) }] : []),
+        ...(rows.length > 1 ? [{ label: 'Invert Comparison', invert: true }] : [])
+      ],
       action: { label: 'Stage target command', command: 'target ' + sym + ' ' + best.price.toFixed(2) },
       rows: [
         { label: 'Total Fee Friction', values: rows.map(r => money(buyCommission + r.sellFee + r.marginFee)), kind: 'fee' },
         {
           label: 'Net P&L',
-          values: rows.map(r => r === best
-            ? signed(r.net) + ' · BEST (+' + signed(bestAdvantage) + ' vs alternative)'
-            : signed(r.net) + ' · Δ ' + signed(r.net - best.net) + ' vs best'),
+          values: rows.map(r => signed(r.net)),
+          deltas: rows.map(r => r === best ? 'BEST +' + money(bestAdvantage).slice(1) : signed(r.net - best.net) + ' vs best'),
           kind: 'result'
         },
-        { label: 'Final Margin Balance', values: rows.map(r => money(r.finalBalance)), kind: 'balance' }
+        { label: 'Resulting Account Balance', values: rows.map(r => money(r.resultingAccountBalance)), kind: 'balance' }
       ],
       note: 'Total fee friction includes buy commission, sell commission, and estimated margin interest. Future prices are assumptions. The action stages a target-price command in the terminal; it does not submit a broker order.'
     };
