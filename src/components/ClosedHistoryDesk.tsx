@@ -160,7 +160,7 @@ export function ClosedHistoryDesk() {
                       ) : null}
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap font-mono">
-                      {(trade as any).shares} shares
+                      {(trade as any).shares}
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-400">
                       {durationDays} {durationDays === 1 ? 'day' : 'days'}
