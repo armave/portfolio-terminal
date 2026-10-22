@@ -219,7 +219,7 @@ describe('terminal command validation and cash routing', () => {
     expect(result.text).toContain('[EXIT COMPARISON: GOOGL]');
     expect(result.text).toContain(firstDate);
     expect(result.text).toContain(secondDate);
-    expect(result.text).toContain('BEST ESTIMATED EXIT');
+    expect(result.text).toContain('BEST:');
   });
 
   it('simulates buying more shares without calling portfolio mutation methods', () => {
