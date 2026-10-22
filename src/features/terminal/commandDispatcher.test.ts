@@ -201,7 +201,7 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.kind).toBe('exit-comparison');
     expect(result.modal?.columns).toHaveLength(7);
     const modalRows = result.modal?.rows.map((row) => row.label) || [];
-    expect(modalRows).toEqual(['Total Fee Friction', 'Net P&L', 'Δ vs best outcome', 'Final Margin Balance']);
+    expect(modalRows).toEqual(['Total Fee Friction', 'Net P&L', 'Final Margin Balance']);
     expect(modalRows).not.toContain('Gross proceeds');
     expect(modalRows).not.toContain('Cost basis');
     expect(modalRows).not.toContain('Margin balance before');

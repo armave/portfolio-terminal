@@ -632,8 +632,363 @@ export class CommandDispatcher {
       action: { label: 'Stage target command', command: 'target ' + sym + ' ' + best.price.toFixed(2) },
       rows: [
         { label: 'Total Fee Friction', values: rows.map(r => money(buyCommission + r.sellFee + r.marginFee)), kind: 'fee' },
-        { label: 'Net P&L', values: rows.map(r => signed(r.net) + (r === best ? ' · BEST ' + signed(bestAdvantage) + ' vs alternative' : '')), kind: 'result' },
-        { label: 'Δ vs best outcome', values: rows.map(r => signed(r.net - best.net)), kind: 'result' },
+        { label: 'Net P&L', values: rows.map(r => r === best
+          ? signed(r.net) + ' · BEST +' + money(bestAdvantage).replace('
+      ],
+      note: 'Total fee friction includes buy commission, sell commission, and estimated margin interest. Future prices are assumptions. The action stages a target-price command in the terminal; it does not submit a broker order.'
+    };
+    const text = [
+      '[EXIT COMPARISON: ' + sym + ']',
+      ...rows.map(r => r.label + ' · ' + money(r.price) + ' → ' + signed(r.net) + ' net P&L' + (r.net === best.net ? ' · BEST' : '')),
+      'BEST: ' + best.label + ' at ' + money(best.price) + ' · ' + signed(best.net) + ' net',
+      'Fees included: buy commission, sell commission, estimated margin interest.',
+      'Estimate only · no portfolio changes.'
+    ].join('\n');
+    return { type: 'res', text, modal };
+  }
+
+  private static evaluateBuyScenario(qty: number, ticker: string, price: number): CommandOutput {
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
+      throw new Error('Usage: buy scenario <shares> <ticker> at <price>.');
+    }
+    const state: any = portfolioStore.getState();
+    const pos = state.positions?.[ticker];
+    if (!pos || !(Number(pos.shares) > 0)) {
+      throw new Error('No open position found for ' + ticker + '. Buy scenarios require an existing position.');
+    }
+
+    const rules = this.getRules(state);
+    const oldShares = Number(pos.shares);
+    const oldCost = (pos.tranches || []).reduce(
+      (sum: number, tranche: any) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0
+    );
+    const oldBuyFee = Math.max(0, Number(pos.commBuy) || 0);
+    const purchaseValue = qty * price;
+    const purchaseFee = calculateCommission(qty, purchaseValue, rules as any);
+    const totalOutlay = purchaseValue + purchaseFee;
+    const balance = Number(state.balance) || 0;
+    const freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+    const additionalDebt = Math.max(0, totalOutlay - freeCash);
+    const balanceAfter = balance - additionalDebt;
+    const currentDebt = Math.max(0, -balance);
+    const dailyMarginBefore = currentDebt * rules.dailyRate;
+    const dailyMarginAfter = Math.max(0, -balanceAfter) * rules.dailyRate;
+    const dailyMarginFeeDifference = dailyMarginAfter - dailyMarginBefore;
+    const newShares = oldShares + qty;
+    const newCost = oldCost + purchaseValue;
+    const newBuyFee = oldBuyFee + purchaseFee;
+    const quote = Number(pos.currentPrice) > 0 ? Number(pos.currentPrice) : oldCost / oldShares;
+    const oldAverage = oldCost / oldShares;
+    const newAverage = newCost / newShares;
+    const target = Number(pos.pt);
+    const hasTarget = Number.isFinite(target) && target > 0;
+    const downsidePrice = quote * 0.9;
+    const currentMargin = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate, marginDebt: currentDebt, totalDebt: currentDebt
+    } as any);
+    const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const scenarioPnl = (shares: number, cost: number, buyFee: number, exitPrice: number) =>
+      shares * exitPrice - cost - buyFee -
+      calculateCommission(shares, shares * exitPrice, rules as any) - currentMargin;
+    const scenarios = [
+      { label: 'Current quote · ' + money(quote), price: quote },
+      ...(hasTarget ? [{ label: 'Target · ' + money(target), price: target }] : []),
+      { label: '−10% · ' + money(downsidePrice), price: downsidePrice }
+    ];
+    const modal: ScenarioModalData = {
+      kind: 'buy-more',
+      title: 'Buy More Comparison · ' + ticker,
+      subtitle: '+' + qty.toLocaleString() + ' shares at ' + money(price) + ' · hypothetical only',
+      columns: ['Before', 'After buying', 'Change (Δ)'],
+      rows: [
+        { label: 'POSITION & BASIS', values: [], kind: 'section' },
+        { label: 'Shares', values: [oldShares.toLocaleString(), newShares.toLocaleString(), '+' + qty.toLocaleString()] },
+        { label: 'Average entry', values: [money(oldAverage), money(newAverage), signed(newAverage - oldAverage)] },
+        { label: 'Buy cost incl. commission', values: ['$0.00', money(totalOutlay), signed(totalOutlay)] },
+        { label: 'Buy commissions (total)', values: [money(oldBuyFee), money(newBuyFee), signed(newBuyFee - oldBuyFee)], kind: 'fee' },
+        { label: 'PROJECTED OUTCOMES', values: [], kind: 'section' },
+        ...scenarios.map(s => {
+          const beforePnl = scenarioPnl(oldShares, oldCost, oldBuyFee, s.price);
+          const afterPnl = scenarioPnl(newShares, newCost, newBuyFee, s.price);
+          return {
+            label: 'Net P&L · ' + s.label,
+            values: [signed(beforePnl), signed(afterPnl), signed(afterPnl - beforePnl)],
+            kind: (s.label.startsWith('−10%') ? 'risk' : 'result') as 'risk' | 'result'
+          };
+        }),
+        { label: 'FINANCING & MARGIN CARRY', values: [], kind: 'section' },
+        { label: 'Margin balance before / after buy', values: [money(balance), money(balanceAfter), signed(balanceAfter - balance)], kind: 'balance' },
+        { label: 'Daily margin accrual', values: [money(dailyMarginBefore), money(dailyMarginAfter), signed(dailyMarginFeeDifference) + '/day'], kind: 'fee' },
+        { label: 'Accrued margin interest', values: [money(currentMargin), money(currentMargin), '$0.00'], kind: 'fee' },
+        { label: 'Sell commission @ quote', values: [
+          money(calculateCommission(oldShares, oldShares * quote, rules as any)),
+          money(calculateCommission(newShares, newShares * quote, rules as any)),
+          signed(calculateCommission(newShares, newShares * quote, rules as any) - calculateCommission(oldShares, oldShares * quote, rules as any))
+        ], kind: 'fee' },
+        ...(hasTarget ? [{
+          label: 'Sell commission @ target',
+          values: [
+            money(calculateCommission(oldShares, oldShares * target, rules as any)),
+            money(calculateCommission(newShares, newShares * target, rules as any)),
+            signed(calculateCommission(newShares, newShares * target, rules as any) - calculateCommission(oldShares, oldShares * target, rules as any))
+          ],
+          kind: 'fee' as const
+        }] : []),
+        { label: 'Sell commission @ −10%', values: [
+          money(calculateCommission(oldShares, oldShares * downsidePrice, rules as any)),
+          money(calculateCommission(newShares, newShares * downsidePrice, rules as any)),
+          signed(calculateCommission(newShares, newShares * downsidePrice, rules as any) - calculateCommission(oldShares, oldShares * downsidePrice, rules as any))
+        ], kind: 'fee' }
+      ],
+      note: 'Net P&L includes buy/sell commissions and accrued interest. Sell commissions are shown at quote, target (if set), and −10%. Hypothetical only; no order placed.'
+    };
+    const targetOldPnl = hasTarget ? scenarioPnl(oldShares, oldCost, oldBuyFee, target) : 0;
+    const targetNewPnl = hasTarget ? scenarioPnl(newShares, newCost, newBuyFee, target) : 0;
+    const currentDelta = scenarioPnl(newShares, newCost, newBuyFee, quote) - scenarioPnl(oldShares, oldCost, oldBuyFee, quote);
+    const downsideDelta = scenarioPnl(newShares, newCost, newBuyFee, downsidePrice) - scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice);
+    const lines = [
+      '[BUY MORE: ' + ticker + ']',
+      'Cash needed: ' + money(totalOutlay) + ' incl. fee',
+      'Average entry: ' + money(oldAverage) + ' → ' + money(newAverage),
+      'Net P&L at quote: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, quote)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, quote)),
+      ...(hasTarget ? ['Net P&L at target: ' + signed(targetOldPnl) + ' → ' + signed(targetNewPnl)] : []),
+      'Net P&L at -10%: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, downsidePrice)),
+      'Final margin balance: ' + money(balance) + ' → ' + money(balanceAfter),
+      'Extra margin cost: ' + money(dailyMarginFeeDifference) + '/day',
+      'Trade-off: quote P&L changes by ' + signed(currentDelta) + '; downside P&L changes by ' + signed(downsideDelta) + '.',
+      'Estimate only · no portfolio changes.'
+    ];
+    return { type: 'res', text: lines.join('\n'), modal };
+  }
+
+  private static evaluateLadder(tickerArg: string | undefined, prices: number[]): CommandOutput {
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+, '
+      ],
+      note: 'Total fee friction includes buy commission, sell commission, and estimated margin interest. Future prices are assumptions. The action stages a target-price command in the terminal; it does not submit a broker order.'
+    };
+    const text = [
+      '[EXIT COMPARISON: ' + sym + ']',
+      ...rows.map(r => r.label + ' · ' + money(r.price) + ' → ' + signed(r.net) + ' net P&L' + (r.net === best.net ? ' · BEST' : '')),
+      'BEST: ' + best.label + ' at ' + money(best.price) + ' · ' + signed(best.net) + ' net',
+      'Fees included: buy commission, sell commission, estimated margin interest.',
+      'Estimate only · no portfolio changes.'
+    ].join('\n');
+    return { type: 'res', text, modal };
+  }
+
+  private static evaluateBuyScenario(qty: number, ticker: string, price: number): CommandOutput {
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0) {
+      throw new Error('Usage: buy scenario <shares> <ticker> at <price>.');
+    }
+    const state: any = portfolioStore.getState();
+    const pos = state.positions?.[ticker];
+    if (!pos || !(Number(pos.shares) > 0)) {
+      throw new Error('No open position found for ' + ticker + '. Buy scenarios require an existing position.');
+    }
+
+    const rules = this.getRules(state);
+    const oldShares = Number(pos.shares);
+    const oldCost = (pos.tranches || []).reduce(
+      (sum: number, tranche: any) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0
+    );
+    const oldBuyFee = Math.max(0, Number(pos.commBuy) || 0);
+    const purchaseValue = qty * price;
+    const purchaseFee = calculateCommission(qty, purchaseValue, rules as any);
+    const totalOutlay = purchaseValue + purchaseFee;
+    const balance = Number(state.balance) || 0;
+    const freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+    const additionalDebt = Math.max(0, totalOutlay - freeCash);
+    const balanceAfter = balance - additionalDebt;
+    const currentDebt = Math.max(0, -balance);
+    const dailyMarginBefore = currentDebt * rules.dailyRate;
+    const dailyMarginAfter = Math.max(0, -balanceAfter) * rules.dailyRate;
+    const dailyMarginFeeDifference = dailyMarginAfter - dailyMarginBefore;
+    const newShares = oldShares + qty;
+    const newCost = oldCost + purchaseValue;
+    const newBuyFee = oldBuyFee + purchaseFee;
+    const quote = Number(pos.currentPrice) > 0 ? Number(pos.currentPrice) : oldCost / oldShares;
+    const oldAverage = oldCost / oldShares;
+    const newAverage = newCost / newShares;
+    const target = Number(pos.pt);
+    const hasTarget = Number.isFinite(target) && target > 0;
+    const downsidePrice = quote * 0.9;
+    const currentMargin = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate, marginDebt: currentDebt, totalDebt: currentDebt
+    } as any);
+    const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const scenarioPnl = (shares: number, cost: number, buyFee: number, exitPrice: number) =>
+      shares * exitPrice - cost - buyFee -
+      calculateCommission(shares, shares * exitPrice, rules as any) - currentMargin;
+    const scenarios = [
+      { label: 'Current quote · ' + money(quote), price: quote },
+      ...(hasTarget ? [{ label: 'Target · ' + money(target), price: target }] : []),
+      { label: '−10% · ' + money(downsidePrice), price: downsidePrice }
+    ];
+    const modal: ScenarioModalData = {
+      kind: 'buy-more',
+      title: 'Buy More Comparison · ' + ticker,
+      subtitle: '+' + qty.toLocaleString() + ' shares at ' + money(price) + ' · hypothetical only',
+      columns: ['Before', 'After buying', 'Change (Δ)'],
+      rows: [
+        { label: 'POSITION & BASIS', values: [], kind: 'section' },
+        { label: 'Shares', values: [oldShares.toLocaleString(), newShares.toLocaleString(), '+' + qty.toLocaleString()] },
+        { label: 'Average entry', values: [money(oldAverage), money(newAverage), signed(newAverage - oldAverage)] },
+        { label: 'Buy cost incl. commission', values: ['$0.00', money(totalOutlay), signed(totalOutlay)] },
+        { label: 'Buy commissions (total)', values: [money(oldBuyFee), money(newBuyFee), signed(newBuyFee - oldBuyFee)], kind: 'fee' },
+        { label: 'PROJECTED OUTCOMES', values: [], kind: 'section' },
+        ...scenarios.map(s => {
+          const beforePnl = scenarioPnl(oldShares, oldCost, oldBuyFee, s.price);
+          const afterPnl = scenarioPnl(newShares, newCost, newBuyFee, s.price);
+          return {
+            label: 'Net P&L · ' + s.label,
+            values: [signed(beforePnl), signed(afterPnl), signed(afterPnl - beforePnl)],
+            kind: (s.label.startsWith('−10%') ? 'risk' : 'result') as 'risk' | 'result'
+          };
+        }),
+        { label: 'FINANCING & MARGIN CARRY', values: [], kind: 'section' },
+        { label: 'Margin balance before / after buy', values: [money(balance), money(balanceAfter), signed(balanceAfter - balance)], kind: 'balance' },
+        { label: 'Daily margin accrual', values: [money(dailyMarginBefore), money(dailyMarginAfter), signed(dailyMarginFeeDifference) + '/day'], kind: 'fee' },
+        { label: 'Accrued margin interest', values: [money(currentMargin), money(currentMargin), '$0.00'], kind: 'fee' },
+        { label: 'Sell commission @ quote', values: [
+          money(calculateCommission(oldShares, oldShares * quote, rules as any)),
+          money(calculateCommission(newShares, newShares * quote, rules as any)),
+          signed(calculateCommission(newShares, newShares * quote, rules as any) - calculateCommission(oldShares, oldShares * quote, rules as any))
+        ], kind: 'fee' },
+        ...(hasTarget ? [{
+          label: 'Sell commission @ target',
+          values: [
+            money(calculateCommission(oldShares, oldShares * target, rules as any)),
+            money(calculateCommission(newShares, newShares * target, rules as any)),
+            signed(calculateCommission(newShares, newShares * target, rules as any) - calculateCommission(oldShares, oldShares * target, rules as any))
+          ],
+          kind: 'fee' as const
+        }] : []),
+        { label: 'Sell commission @ −10%', values: [
+          money(calculateCommission(oldShares, oldShares * downsidePrice, rules as any)),
+          money(calculateCommission(newShares, newShares * downsidePrice, rules as any)),
+          signed(calculateCommission(newShares, newShares * downsidePrice, rules as any) - calculateCommission(oldShares, oldShares * downsidePrice, rules as any))
+        ], kind: 'fee' }
+      ],
+      note: 'Net P&L includes buy/sell commissions and accrued interest. Sell commissions are shown at quote, target (if set), and −10%. Hypothetical only; no order placed.'
+    };
+    const targetOldPnl = hasTarget ? scenarioPnl(oldShares, oldCost, oldBuyFee, target) : 0;
+    const targetNewPnl = hasTarget ? scenarioPnl(newShares, newCost, newBuyFee, target) : 0;
+    const currentDelta = scenarioPnl(newShares, newCost, newBuyFee, quote) - scenarioPnl(oldShares, oldCost, oldBuyFee, quote);
+    const downsideDelta = scenarioPnl(newShares, newCost, newBuyFee, downsidePrice) - scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice);
+    const lines = [
+      '[BUY MORE: ' + ticker + ']',
+      'Cash needed: ' + money(totalOutlay) + ' incl. fee',
+      'Average entry: ' + money(oldAverage) + ' → ' + money(newAverage),
+      'Net P&L at quote: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, quote)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, quote)),
+      ...(hasTarget ? ['Net P&L at target: ' + signed(targetOldPnl) + ' → ' + signed(targetNewPnl)] : []),
+      'Net P&L at -10%: ' + signed(scenarioPnl(oldShares, oldCost, oldBuyFee, downsidePrice)) + ' → ' + signed(scenarioPnl(newShares, newCost, newBuyFee, downsidePrice)),
+      'Final margin balance: ' + money(balance) + ' → ' + money(balanceAfter),
+      'Extra margin cost: ' + money(dailyMarginFeeDifference) + '/day',
+      'Trade-off: quote P&L changes by ' + signed(currentDelta) + '; downside P&L changes by ' + signed(downsideDelta) + '.',
+      'Estimate only · no portfolio changes.'
+    ];
+    return { type: 'res', text: lines.join('\n'), modal };
+  }
+
+  private static evaluateLadder(tickerArg: string | undefined, prices: number[]): CommandOutput {
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const totalShares = Number(pos.shares);
+    const trancheShares = totalShares / prices.length;
+    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
+
+    let totalGross = 0;
+    let totalSellComm = 0;
+    const legs: string[] = [];
+
+    prices.forEach((p, idx) => {
+      const legVal = trancheShares * p;
+      const legComm = calculateCommission(trancheShares, legVal, rules as any);
+      totalGross += legVal;
+      totalSellComm += legComm;
+      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
+    });
+
+    const avgExit = totalGross / totalShares;
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
+    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const marginCharged = calculateMarginInterest(pos.tranches || [], {
+      dailyRate: rules.dailyRate,
+      marginDebt: totalDebt,
+      totalDebt
+    } as any);
+    const netAfterMargin = netBeforeMargin - marginCharged;
+    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
+    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
+    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
+
+    return {
+      type: 'res',
+      text: [
+        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
+        ...legs,
+        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
+        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
+        `Estimated margin interest to date: -${money(marginCharged)}`,
+        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
+        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
+      ].join('\n')
+    };
+  }
+}
+) + ' vs alternative'
+          : signed(r.net) + ' · Δ ' + signed(r.net - best.net) + ' vs best'), kind: 'result' },
         { label: 'Final Margin Balance', values: rows.map(r => money(r.finalBalance)), kind: 'balance' }
       ],
       note: 'Total fee friction includes buy commission, sell commission, and estimated margin interest. Future prices are assumptions. The action stages a target-price command in the terminal; it does not submit a broker order.'
