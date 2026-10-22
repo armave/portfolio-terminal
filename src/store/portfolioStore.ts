@@ -642,6 +642,15 @@ export class PortfolioStore {
     ticker: string,
     sharesToSell: number | 'ALL',
     sellPrice: number,
+    date?: string
+  ): void {
+    this.applyMarginSale(ticker, sharesToSell, sellPrice, date);
+  }
+
+  private applyMarginSale(
+    ticker: string,
+    sharesToSell: number | 'ALL',
+    sellPrice: number,
     date?: string,
     options: { closedAt?: number } = {}
   ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
@@ -1164,7 +1173,7 @@ export class PortfolioStore {
       !Number.isFinite(closedAt) || closedAt <= 0) return null;
 
     const date = new Date(closedAt).toISOString().slice(0, 10);
-    return this.sellStock(clean, sharesToSell, sellPrice, date, { closedAt });
+    return this.applyMarginSale(clean, sharesToSell, sellPrice, date, { closedAt });
   }
 
   public deleteClosedTrade(index: number): void {
