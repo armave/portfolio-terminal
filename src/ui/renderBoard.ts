@@ -268,6 +268,7 @@ export interface RenderBoardOptions extends RenderCashCushionOptions {
   rules: BrokerRules;
   onSetActiveView?: (view: string) => void;
   onRenderClosedHistory?: () => void;
+  onRenderSettingsPanel?: () => void;
   onRenderAnalystConsensus?: (ticker: string) => void;
   onRenderExternalLinks?: () => void;
   onRenderConsoleQuickActions?: () => void;
@@ -282,6 +283,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     rules,
     onSetActiveView = () => { },
     onRenderClosedHistory = () => { },
+    onRenderSettingsPanel = () => { },
     onRenderAnalystConsensus = () => { },
     onFetchLivePrice = () => { },
     onRemoveCashStock = () => { },
@@ -355,9 +357,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   if (isSettingsActive) {
     if (viewChanged) showDesk('settings');
-    if (typeof window !== 'undefined' && typeof (window as any).renderSettingsPanel === 'function') {
-      (window as any).renderSettingsPanel();
-    }
+    onRenderSettingsPanel();
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('SETTINGS');
     return;
