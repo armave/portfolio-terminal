@@ -21,6 +21,18 @@ const INSIGHT_TABS: Array<{ id: InsightSection; domId: string; label: string }> 
 
 const STOCKTWITS_CASHTAG_PATTERN = /\$([A-Z][A-Z0-9.-]{0,9})\b/gi;
 
+export function isStandaloneStocktwitsMessage(message: unknown): boolean {
+  if (!message || typeof message !== 'object') return false;
+  const value = message as {
+    conversation?: { parent_message_id?: number | string | null } | null;
+    in_reply_to?: unknown;
+    reply_to?: unknown;
+  };
+  return value.conversation?.parent_message_id == null &&
+    value.in_reply_to == null &&
+    value.reply_to == null;
+}
+
 export function getStocktwitsCashtags(body: unknown): string[] {
   if (typeof body !== 'string') return [];
   return Array.from(new Set(
@@ -55,10 +67,20 @@ export function MarketInsightsPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newsData, setNewsData] = useState<any[]>([]);
+  const [selectedNews, setSelectedNews] = useState<any | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
   const [newsUpdatedAt, setNewsUpdatedAt] = useState<number | null>(null);
   const [newsRefreshRequest, setNewsRefreshRequest] = useState(0);
+
+  useEffect(() => {
+    if (!selectedNews) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedNews(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedNews]);
   const [stockData, setStockData] = useState<any>(null);
   const [stocktwitsData, setStocktwitsData] = useState<StocktwitsStream | null>(null);
   const [stocktwitsLoading, setStocktwitsLoading] = useState(false);
@@ -210,6 +232,7 @@ export function MarketInsightsPanel({
 
   const filteredStocktwitsMessages = (stocktwitsData?.messages ?? []).filter(
     (message) =>
+      isStandaloneStocktwitsMessage(message) &&
       getStocktwitsCashtags(message.body).length <= 1 &&
       hasStocktwitsCommentary(message.body)
   );
@@ -253,20 +276,21 @@ export function MarketInsightsPanel({
           <p class="text-[10px] text-slate-500">{newsUpdatedAt ? `Updated ${formatRelativeTime(Math.floor(newsUpdatedAt / 1000) * 1000)}` : ''}{newsLoading ? ' · Refreshing…' : ''}</p>
           <div class="h-[240px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Company news articles">
             {newsData.map((n: any, idx: number) => (
-              <a
+              <button
                 key={n.id || n.url || idx}
-                href={n.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="block bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition"
+                type="button"
+                onClick={() => setSelectedNews(n)}
+                aria-label={`Read news: ${n.headline || 'Untitled article'}`}
+                class="block w-full text-left bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
               >
                 <div class="text-[10px] text-cyan-400 mb-1">
-                  {formatRelativeTime(n.datetime * 1000)} · {n.source || 'News'}
+                  {formatRelativeTime(Number(n.datetime) * 1000)} · {n.source || 'News'}
                 </div>
                 <div class="text-slate-200 text-xs font-semibold leading-snug">
-                  {n.headline}
+                  {n.headline || 'Untitled article'}
                 </div>
-              </a>
+                {n.summary && <p class="mt-1.5 text-[11px] leading-relaxed text-slate-400 line-clamp-2">{n.summary}</p>}
+              </button>
             ))}
           </div>
         </div>
@@ -582,6 +606,43 @@ export function MarketInsightsPanel({
           </div>
         )}
       </section>
+
+      {selectedNews && (
+        <div
+          class="news-article-modal fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-sm sm:p-6"
+          role="presentation"
+          onClick={() => setSelectedNews(null)}
+        >
+          <section
+            class="news-article-dialog w-full max-w-3xl overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="newsArticleModalTitle"
+            onClick={(event: MouseEvent) => event.stopPropagation()}
+          >
+            <header class="flex items-start justify-between gap-4 border-b border-slate-800 p-4 sm:p-5">
+              <div class="min-w-0">
+                <p class="mb-1 text-[10px] font-bold uppercase tracking-widest text-cyan-400">
+                  {selectedNews.source || 'Company news'}{selectedNews.datetime ? ` · ${formatRelativeTime(Number(selectedNews.datetime) * 1000)}` : ''}
+                </p>
+                <h2 id="newsArticleModalTitle" class="text-base font-bold leading-snug text-slate-100 sm:text-lg">
+                  {selectedNews.headline || 'Untitled article'}
+                </h2>
+              </div>
+              <button type="button" class="shrink-0 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white" onClick={() => setSelectedNews(null)} aria-label="Close news article">✕</button>
+            </header>
+            <div class="max-h-[min(72dvh,42rem)] space-y-4 overflow-y-auto p-4 sm:p-5">
+              {(selectedNews.image || selectedNews.imageUrl || selectedNews.urlToImage) && (
+                <img src={selectedNews.image || selectedNews.imageUrl || selectedNews.urlToImage} alt="" class="max-h-80 w-full rounded-lg border border-slate-800 bg-slate-900 object-cover" loading="lazy" />
+              )}
+              <div class="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-300">
+                {selectedNews.summary || selectedNews.description || selectedNews.content || 'A summary is not available from the news provider. Open the original article for the full story.'}
+              </div>
+              {selectedNews.url && <a href={selectedNews.url} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded border border-cyan-800/80 bg-cyan-950/40 px-3 py-2 text-xs font-semibold text-cyan-300 transition hover:bg-cyan-900/50">Read full article ↗</a>}
+            </div>
+          </section>
+        </div>
+      )}
     </>
   );
 }
