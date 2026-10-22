@@ -1112,6 +1112,24 @@ async function applyPortfolioActions(action: any) {
       showToast('Sale price must be greater than zero.', 'error');
       return;
     }
+    if (isCashHolding) {
+      const result = portfolioStore.sellCashHolding(ticker, sharesToSell, sellPrice);
+      if (!result) {
+        logTerminal(`[Sell Error]: Could not sell cash holding ${ticker}.`);
+        showToast('Cash holding sale failed.', 'error');
+        return;
+      }
+
+      saveState(state, pushStateToGist);
+      if (result.remainingShares <= 1e-8) {
+        logTerminal(`[Cash Holding Closed]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}).`);
+      } else {
+        logTerminal(`[Cash Holding Partial Sell]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Remaining: ${result.remainingShares} shares. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}).`);
+      }
+      renderBoard();
+      return;
+    }
+
     const grossProceeds = sharesToSell * sellPrice;
     const sellComm = calcCommission(sharesToSell, grossProceeds);
     const netCashCredited = grossProceeds - sellComm;
