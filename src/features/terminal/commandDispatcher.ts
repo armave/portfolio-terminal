@@ -200,17 +200,32 @@ export class CommandDispatcher {
       if (exitSeriesMatch) {
         let tickerArg: string | undefined;
         const scenarios: Array<{ label: string; days: number; price: number }> = [];
-        for (const segment of exitSeriesMatch[1].split(/\s*,\s*/).filter(Boolean)) {
-          const match = segment.match(/^(?:(?!(?:after|in)\s)([A-Za-z]{1,10})\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?)(?:\s+(?:later|from\s+now))?)\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
-          if (!match) throw new Error('Usage: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, 1 week later at 195');
+        for (const segment of exitSeriesMatch[1].split(/\\s*,\\s*/).filter(Boolean)) {
+          const match = segment.match(/^(?:(?!(?:after|in)\\s)([A-Za-z]{1,10})\\s+)?(today|tomorrow|(?:(?:after|in)\\s+)?(?:\\d+|a|one)\\s*(?:d|days?|w|weeks?|m|months?)(?:\\s+(?:later|from\\s+now))?)\\s+(?:at|for|@)\\s*([$0-9.,]+)$/i);
+          if (!match) throw new Error('Usage: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200');
           if (match[1]) { const found = match[1].toUpperCase(); if (tickerArg && tickerArg !== found) throw new Error('Use the same ticker for every exit scenario.'); tickerArg = found; }
-          const period = match[2].toLowerCase().replace(/^(?:after|in)\s+/, '').replace(/\s+(?:later|from\s+now)$/, '').replace(/^a\s+/, '1 ').replace(/^one\s+/, '1 ');
+          const period = match[2].toLowerCase()
+            .replace(/^(?:after|in)\\s+/, '')
+            .replace(/\\s+(?:later|from\\s+now)$/, '')
+            .replace(/^a\\s+/, '1 ')
+            .replace(/^one\\s+/, '1 ');
           let days = 0;
           if (period === 'tomorrow') days = 1;
           else if (period !== 'today') {
-            const p = period.match(/^(\d+)\s*(d|day|days|w|week|weeks)$/);
+            const p = period.match(/^(\\d+)\\s*(d|day|days|w|week|weeks|m|month|months)$/);
             if (!p) throw new Error('Unrecognized exit date: ' + match[2]);
-            days = Number(p[1]) * (p[2].startsWith('w') ? 7 : 1);
+            const amount = Number(p[1]);
+            const unit = p[2];
+            if (unit.startsWith('m')) {
+              const now = new Date();
+              const target = new Date(now.getFullYear(), now.getMonth() + amount, now.getDate());
+              // If the target month is shorter (e.g. Jan 31 + 1 month), clamp to its last day.
+              if (target.getDate() !== now.getDate()) target.setDate(0);
+              days = Math.round((new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime() -
+                new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86400000);
+            } else {
+              days = amount * (unit.startsWith('w') ? 7 : 1);
+            }
           }
           if (!Number.isInteger(days) || days < 0 || days > 3650) throw new Error('Exit date must be within the next 10 years.');
           const price = cleanNumber(match[3]); if (!Number.isFinite(price) || price <= 0) throw new Error('Every exit price must be a positive number.');
