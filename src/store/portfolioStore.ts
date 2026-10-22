@@ -469,7 +469,10 @@ export class PortfolioStore {
         ...existingPos,
         ticker: clean,
         shares: nextShares,
-        currentPrice: existingPos?.currentPrice || price,
+        // A confirmed execution price is newer than any previously fetched
+        // quote. Invalidate quote metadata so an older in-flight response cannot
+        // visually overwrite the latest trade.
+        currentPrice: price,
         pt:
           pt !== undefined && Number.isFinite(pt) && pt > 0
             ? pt
@@ -477,6 +480,10 @@ export class PortfolioStore {
         commBuy: nextCommBuy,
         startDate: earliestPosDate,
         tranches: nextTranches,
+        quoteSource: 'Trade input',
+        quoteUpdatedAt: undefined,
+        quoteDetails: undefined,
+        quoteRequestStartedAt: undefined,
         lastTradeAt: Date.now()
       } as PositionRecord;
 
