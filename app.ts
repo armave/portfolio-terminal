@@ -1688,11 +1688,12 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
   }
 
   window.dispatchEvent(new CustomEvent('gateway-secret-authenticated', { detail: { secret: submittedSecret } }));
-  hideAuthContainer();
   if (!appInitialized) {
-    appInitialized = true;
     await startApp(submittedSecret);
+    appInitialized = true;
   }
+  // Keep the modal visible until startup and the initial cloud-data pull finish.
+  hideAuthContainer();
   return true;
 }
 
