@@ -12,7 +12,6 @@ import {
   normalizePortfolioBackup,
   normalizePortfolioState,
   processRollovers,
-  realizeClosedTrade,
   resolveSaleQuantity,
 } from './src/domain/portfolio';
 import { evaluateIntent, parseAiIntent } from './src/features/ai/intent';
