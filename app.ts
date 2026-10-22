@@ -97,6 +97,7 @@ let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
 let settingsPanelMounted = false;
+let lastSettingsRulesSignature: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
 let marketInsightsOpen = true;
 let activeInsightSection = 'news';
@@ -1682,18 +1683,22 @@ async function executeCommand(commandText?: string) {
   }
 }
 
-function renderSettingsPanel() {
+function renderSettingsPanel(force = false) {
   const container = document.getElementById('settings');
   if (!container) return;
 
+  const rules = { ...TRADERNET_RULES };
+  const rulesSignature = JSON.stringify(rules);
+  if (settingsPanelMounted && !force && rulesSignature === lastSettingsRulesSignature) return;
+
   render(
     h(SettingsDesk, {
-      rules: { ...TRADERNET_RULES },
+      rules,
       defaultRefreshIntervalMs: DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
       onSaveBrokerRules: saveBrokerRuleInputs,
       onResetBrokerRules: () => {
         resetBrokerRules();
-        renderSettingsPanel();
+        renderSettingsPanel(true);
       },
       onSaveApiKeys: async (secret: string) => {
         const saved = await saveApiKeys({ secret, showToast: (message, type) => showToast(message, type as any), logTerminal });
@@ -1711,6 +1716,7 @@ function renderSettingsPanel() {
     container
   );
   settingsPanelMounted = true;
+  lastSettingsRulesSignature = rulesSignature;
 }
 
 let appInitialized = false;
