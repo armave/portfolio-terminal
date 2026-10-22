@@ -796,23 +796,15 @@ function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
     throw new Error('Ticker and a positive share quantity are required.');
   }
 
-  if (!state.cashCushion) state.cashCushion = { freeCash: 0, holdings: [] };
-  if (!Array.isArray(state.cashCushion.holdings)) state.cashCushion.holdings = [];
-  const existing = state.cashCushion.holdings.find((holding: any) => holding.ticker === symbol);
-  const currentPrice = Number.isFinite(manualPrice) && manualPrice > 0
-    ? manualPrice
-    : (Number(existing?.price) || 0);
-
-  if (existing) {
-    existing.shares = (Number(existing.shares) || 0) + quantity;
-  } else {
-    state.cashCushion.holdings.push({ ticker: symbol, shares: quantity, price: currentPrice });
+  const added = portfolioStore.addCashHolding(symbol, quantity, manualPrice);
+  if (!added) {
+    throw new Error('Ticker and a positive share quantity are required.');
   }
+
   if (Number.isFinite(manualPrice) && manualPrice > 0) {
     recordTrackedPrice(symbol, manualPrice, 'Manual');
   }
-  syncStore();
-  return { ticker: symbol, shares: quantity, price: currentPrice };
+  return added;
 }
 
 function removeCashHolding(ticker: string) {
