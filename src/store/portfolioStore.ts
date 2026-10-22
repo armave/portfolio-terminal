@@ -788,12 +788,16 @@ export class PortfolioStore {
       if (remainingShares <= 0 || updatedTranches.length === 0) {
         delete positions[clean];
       } else {
-        positions[clean] = {
+        const remainingPosition = {
           ...pos,
           shares: remainingShares,
           commBuy: Math.max(0, (Number(pos.commBuy) || 0) - buyCommAllocated),
           tranches: updatedTranches
         };
+        // The sold slice has been realized below; do not carry a one-shot
+        // margin charge forward and count it again on the next partial exit.
+        delete (remainingPosition as any).marginCharged;
+        positions[clean] = remainingPosition;
       }
 
       const exitDateStr = date || todayIso();
@@ -1153,9 +1157,14 @@ export class PortfolioStore {
     sellPrice: number,
     closedAt = Date.now()
   ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
-    if (!Number.isFinite(closedAt) || closedAt <= 0) return null;
+    const clean = ticker.trim().toUpperCase();
+    const position = this.state.positions?.[clean];
+    if (!clean || !position || !Number.isFinite(sharesToSell) || sharesToSell <= 0 ||
+      sharesToSell - position.shares > 1e-8 || !Number.isFinite(sellPrice) || sellPrice <= 0 ||
+      !Number.isFinite(closedAt) || closedAt <= 0) return null;
+
     const date = new Date(closedAt).toISOString().slice(0, 10);
-    return this.sellStock(ticker, sharesToSell, sellPrice, date, { closedAt });
+    return this.sellStock(clean, sharesToSell, sellPrice, date, { closedAt });
   }
 
   public deleteClosedTrade(index: number): void {
