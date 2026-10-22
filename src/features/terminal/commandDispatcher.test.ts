@@ -186,10 +186,12 @@ describe('terminal command validation and cash routing', () => {
         tranches: [{ qty: 10, price: 100, buyCommission: 2 }]
       } }
     } as any);
-    const result = CommandDispatcher.execute('compare exits AAPL today at 110, tomorrow at 111, 1 week later at 115, 10 days at 118');
+    const result = CommandDispatcher.execute('compare exits AAPL today at 110, tomorrow at 111, after 4 days at 113, a week later at 115, 7 days later at 116, 10 days at 118');
     expect(result.type).toBe('res');
     expect(result.text).toContain('[MULTI-DATE EXIT COMPARISON: AAPL]');
-    expect(result.text).toContain('1 week later');
+    expect(result.text).toContain('after 4 days');
+    expect(result.text).toContain('a week later');
+    expect(result.text).toContain('7 days later');
     expect(result.text).toContain('10 days');
     expect(result.text).toContain('BEST ESTIMATED EXIT');
   });
@@ -213,6 +215,9 @@ describe('terminal command validation and cash routing', () => {
     expect(result.text).toContain('At current quote');
     expect(result.text).toContain('At target');
     expect(result.text).toContain('Return on cost at target');
+    expect(result.text).toContain('At -10% from quote');
+    expect(result.text).toContain('Break-even after adding shares');
+    expect(result.text).toContain('Risk note');
     expect(buyStock).not.toHaveBeenCalled();
   });
 
