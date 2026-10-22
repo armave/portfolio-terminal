@@ -1,3 +1,5 @@
+import { PriceAlertsPanel } from './components/PriceAlertsPanel';
+
 interface AppProps {
   onToggleMarketInsights: () => void;
 }
@@ -96,6 +98,8 @@ export function App({ }: AppProps) {
 
         </div>
       </div>
+
+      <div class="max-w-6xl mx-auto px-4 pb-4"><PriceAlertsPanel /></div>
 
       {/* Closed Trade History */}
       <div
