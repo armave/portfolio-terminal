@@ -334,6 +334,43 @@ export function calculateMarginInterest(
   return totalInterest;
 }
 
+/**
+ * Shared rollover projection with explicit rounding modes. The active app uses
+ * batch compounding; the legacy cloud-import migration retains per-cycle
+ * cent-rounding to avoid silently changing previously persisted debt.
+ */
+export function calculateRolloverDebt(
+  principal: number,
+  dailyRate: number,
+  cycles: number,
+  mode: 'batch' | 'per-cycle' = 'batch'
+): { compoundedDebt: number; interestAccrued: number } {
+  const inputs = [principal, dailyRate, cycles].map(Number);
+  if (!inputs.every(Number.isFinite)) return { compoundedDebt: 0, interestAccrued: 0 };
+
+  const debt = Math.abs(inputs[0]);
+  const rate = Math.max(0, inputs[1]);
+  const count = Math.floor(Math.max(0, inputs[2]));
+
+  if (mode === 'per-cycle') {
+    let balance = debt;
+    let interestAccrued = 0;
+    for (let i = 0; i < count; i++) {
+      const before = balance;
+      const interest = balance * rate;
+      if (!Number.isFinite(interest)) return { compoundedDebt: debt, interestAccrued: 0 };
+      balance = Number((balance + interest).toFixed(2));
+      interestAccrued += balance - before;
+    }
+    return { compoundedDebt: balance, interestAccrued: Number(interestAccrued.toFixed(2)) };
+  }
+
+  return {
+    compoundedDebt: calculateProjectedDebt(debt, rate, count),
+    interestAccrued: calculateMarginInterest(debt, rate, count)
+  };
+}
+
 export function calculateProjectedDebt(principal: number, dailyRate: number, days: number): number {
   const inputs = [principal, dailyRate, days].map(Number);
   if (!inputs.every(Number.isFinite)) return 0;
@@ -805,9 +842,9 @@ export function processRollovers(state: any): boolean {
   while (boundary <= now.getTime()) {
     if (state.balance < 0 && dailyRate > 0) {
       const before = Math.abs(Number(state.balance) || 0);
-      const after = Number((before * (1 + dailyRate)).toFixed(2));
-      state.balance = -after;
-      totalDeducted += after - before;
+      const rollover = calculateRolloverDebt(before, dailyRate, 1, 'per-cycle');
+      state.balance = -rollover.compoundedDebt;
+      totalDeducted += rollover.interestAccrued;
     }
     rolloversApplied++;
     lastProcessedBoundary = boundary;
