@@ -481,48 +481,6 @@ export function SummaryMetricsGrid({
       </div>
 
       <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(allocatedCushion)} />
-      <div class="portfolio-risk-summary hidden flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
-        <div>
-          <span class="text-slate-500">Account Equity:</span>{' '}
-          <span id="boardEquity" class="text-white font-bold font-mono">
-            {equityText}
-          </span>
-        </div>
-        <div>
-          <span class="text-slate-500">
-            Allocated Cash / Collateral:
-          </span>{' '}
-          <span id="boardCushionMetric" class="text-cyan-400 font-bold font-mono">
-            +{formatUSD(allocatedCushion)}
-          </span>
-        </div>
-        <div title="Estimated from portfolio equity and configured margin thresholds; not a live broker risk indicator.">
-          <span class="text-slate-500">Margin Risk:</span>{' '}
-          <span id="boardMarginRisk" class={risk.summaryClass}>
-            {risk.summaryText}
-          </span>
-        </div>
-        <div
-          id="boardMarginCallRow"
-          class={risk.showRiskTriggers ? '' : 'hidden'}
-          title="Estimate assumes the configured maintenance-margin ratio and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ."
-        >
-          <span class="text-slate-500">Margin-call trigger:</span>{' '}
-          <span id="boardMarginCall" class="text-amber-400 font-bold font-mono">
-            {risk.marginCallText}
-          </span>
-        </div>
-        <div
-          id="boardStopOutRow"
-          class={risk.showRiskTriggers && risk.showStopOut ? '' : 'hidden'}
-          title="Estimate assumes the configured stop-out threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ."
-        >
-          <span class="text-slate-500">Stop-out trigger:</span>{' '}
-          <span id="boardStopOut" class="text-rose-400 font-bold font-mono">
-            {risk.stopOutText}
-          </span>
-        </div>
-      </div>
     </>
   );
 }
