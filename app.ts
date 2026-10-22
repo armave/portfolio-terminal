@@ -331,9 +331,8 @@ function resetBrokerRules() {
   clearBrokerRules();
   setBrokerRuleInputs();
   if (previousRollover !== `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`) {
-    state.lastRolloverTimestamp = getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
+    portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
     saveState(state, pushStateToGist);
-    syncStore();
   }
   verifyTradernetRulesOnload();
   renderBoard();
