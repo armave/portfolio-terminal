@@ -273,7 +273,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
           spellcheck={false}
           placeholder={`e.g. sell ${hasPosition ? ticker : 'AAPL'} today for ${priceText} vs sell 14 days later for ${comparisonPrice}`}
           onKeyDown={handleKeyDown}
-          class="flex-1 min-w-0 min-h-[44px] max-h-32 resize-none overflow-y-hidden whitespace-pre-wrap break-words bg-transparent border-none text-base leading-5 py-2 font-mono text-white placeholder-slate-500 focus:outline-none"
+          class="flex-1 min-w-0 min-h-[44px] max-h-32 resize-none overflow-y-hidden whitespace-pre-wrap break-words text-xs bg-transparent border-none text-base leading-5 py-2 font-mono text-white placeholder-slate-500 focus:outline-none"
         />
         <span class="hidden md:inline text-[10px] font-mono text-slate-600 select-none">
           ↑↓ History
