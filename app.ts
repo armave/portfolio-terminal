@@ -1454,15 +1454,48 @@ function showScenarioModal(data: ScenarioModalData): void {
 
   dialog.append(header, toolbar, tableWrap);
   overlay.appendChild(dialog);
+
+  const previouslyFocused = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  const previousBodyOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
   document.body.appendChild(overlay);
 
   const close = () => {
+    if (!overlay.isConnected) return;
     overlay.remove();
     document.removeEventListener('keydown', handleKeyDown);
     window.removeEventListener('resize', renderLayout);
+    document.body.style.overflow = previousBodyOverflow;
+    if (previouslyFocused?.isConnected) previouslyFocused.focus();
   };
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') close();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+    )).filter((element) => element.getAttribute('aria-hidden') !== 'true');
+    if (!focusable.length) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+      event.preventDefault();
+      first.focus();
+    }
   };
   closeButton.addEventListener('click', close);
   overlay.addEventListener('click', (event) => {
