@@ -184,7 +184,7 @@ export default {
                         headers: corsHeaders
                     });
                 }
-                return new Response(JSON.stringify(data.slice(0, 20)), { headers: corsHeaders });
+                return new Response(JSON.stringify(data.slice(0, 10)), { headers: corsHeaders });
             }
 
             // --- ACTION 2: Stocktwits public symbol stream ---
