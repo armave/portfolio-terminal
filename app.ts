@@ -816,12 +816,16 @@ function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
 }
 
 function removeCashHolding(ticker: string) {
-  const holdings = state.cashCushion?.holdings;
-  if (!Array.isArray(holdings)) return null;
   const symbol = ticker.trim().toUpperCase();
-  const index = holdings.findIndex((holding: any) => holding.ticker === symbol);
-  const removed = index < 0 ? null : holdings.splice(index, 1)[0];
-  if (removed) syncStore();
+  const holdings = state.cashCushion?.holdings;
+  if (!symbol || !Array.isArray(holdings)) return null;
+
+  const removed = holdings.find((holding: any) => holding.ticker === symbol);
+  if (!removed) return null;
+
+  // Let the store own this state transition; its subscriber updates the runtime
+  // state reference after the canonical mutation has been committed.
+  portfolioStore.removeCashStock(symbol);
   return removed;
 }
 
