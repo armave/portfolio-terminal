@@ -714,7 +714,7 @@ export class CommandDispatcher {
       kind: 'buy-more',
       title: 'Buy More Projection · ' + ticker,
       subtitle: 'Hypothetical projection after buying +' + qty.toLocaleString() + ' shares at ' + money(price) + ' · no order placed',
-      columns: ['Current Net', 'After Buy Net', 'Current F&C', 'After Buy F&C', 'Current M Fee', 'After Buy M Fee', 'Current Balance', 'After Buy Balance'],
+      columns: ['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW M Fee', 'AFTER M Fee', 'NOW Balance', 'AFTER Balance'],
       rows: (() => {
         const projectionPrice = hasTarget ? target : quote;
         const dates = getUsEquityProjectionDates(new Date(), pos.startDate || state.startDate);

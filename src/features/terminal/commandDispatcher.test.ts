@@ -266,7 +266,7 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.kind).toBe('buy-more');
     expect(result.modal?.title).toBe('Buy More Projection · AAPL');
     expect(result.modal?.subtitle).toContain('Hypothetical projection after buying +10 shares');
-    expect(result.modal?.columns).toEqual(['Current Net', 'After Buy Net', 'Current F&C', 'After Buy F&C', 'Current M Fee', 'After Buy M Fee', 'Current Balance', 'After Buy Balance']);
+    expect(result.modal?.columns).toEqual(['NOW Net', 'AFTER Net', 'NOW F&C', 'AFTER F&C', 'NOW M Fee', 'AFTER M Fee', 'NOW Balance', 'AFTER Balance']);
     const modalRows = result.modal?.rows.map((row) => row.label) || [];
     expect(modalRows.some(label => label.includes('TODAY'))).toBe(true);
     expect(result.modal?.rows.every(row => row.values.length === 8)).toBe(true);
