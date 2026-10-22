@@ -1638,37 +1638,7 @@ function showScenarioModal(data: ScenarioModalData): void {
     renderToolbar();
   }
 
-  let actionBar: HTMLDivElement | undefined;
-  if (data.action) {
-    actionBar = document.createElement('div');
-    actionBar.className = 'flex items-center justify-between gap-3 border-t border-slate-800 px-3 py-2 sm:px-4';
-    const actionNote = document.createElement('p');
-    actionNote.className = 'text-[10px] leading-snug text-slate-500';
-    actionNote.textContent = 'Prepares a terminal command only; no broker order is sent.';
-    const actionButton = document.createElement('button');
-    actionButton.type = 'button';
-    actionButton.className = 'shrink-0 rounded-md border border-emerald-800 bg-emerald-950/60 px-3 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-900/70';
-    actionButton.textContent = data.action.label;
-    actionButton.addEventListener('click', () => {
-      const input = document.getElementById('cmdInput') as HTMLInputElement | null;
-      if (!input) return;
-      input.value = data.action!.command;
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      close();
-    });
-    actionBar.append(actionNote, actionButton);
-  }
-
-  const footer = document.createElement('div');
-  footer.className = 'border-t border-slate-800 px-3 py-2 sm:px-4';
-  const note = document.createElement('p');
-  note.className = 'text-[10px] leading-snug text-slate-500';
-  note.textContent = data.note;
-  footer.appendChild(note);
-
-  dialog.append(header, toolbar, tableWrap, ...(actionBar ? [actionBar] : []), footer);
+  dialog.append(header, toolbar, tableWrap);
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
 
