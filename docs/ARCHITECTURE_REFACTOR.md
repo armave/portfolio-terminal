@@ -122,4 +122,10 @@ All checks must be run against the same final commit. Also review the final diff
 
 ## Initial implementation note
 
-The store now treats an updater that returns the exact current state object as an explicit no-op. This avoids unnecessary persistence and subscriber notifications when a stale quote or invalid operation is rejected. A regression test verifies that rejected stale quotes do not notify subscribers.
+The first implementation slice now:
+- Treats an updater that returns the exact current state object as an explicit no-op, avoiding persistence and subscriber notifications for rejected stale quotes.
+- Routes cash-cushion holding additions and removals through store-owned mutations rather than mutating the active state object in the runtime controller.
+- Restricts batch quote polling to normalized requested tickers and uses the shared `QuoteDetails` type instead of `any`.
+- Keeps routine success/status feedback out of toast notifications while retaining actionable errors.
+
+Regression tests cover stale-quote no-op behavior, canonical cash-holding mutations, and unexpected symbols in provider batch responses. These changes are a safe foundation; the remaining runtime-controller migration still needs to route all trade and settings mutations through store operations.
