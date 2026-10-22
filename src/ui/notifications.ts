@@ -182,7 +182,7 @@ function showScenarioReport(message: string): void {
 
   const subtitle = document.createElement('p');
   subtitle.className = 'mt-1.5 max-w-xl text-xs leading-relaxed text-slate-400';
-  const reportHeader = message.split('\\n', 1)[0].toUpperCase();
+  const reportHeader = message.split('\n', 1)[0].toUpperCase();
   subtitle.textContent = reportHeader.startsWith('[HYPOTHETICAL BUY:')
     ? 'Current position vs. proposed purchase · profit, downside, exposure and fees'
     : reportHeader.startsWith('[MULTI-DATE EXIT COMPARISON:')
