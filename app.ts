@@ -534,6 +534,9 @@ function renderBoard() {
   renderBoardUI(state, {
     rules: TRADERNET_RULES as any,
     onSetActiveView: setActiveView,
+    onRefreshAllLivePrices: refreshAllLivePrices,
+    onSaveBalance: saveCurrentBalance,
+    onAddCashStock: addCashStockFromDesk,
     onRenderClosedHistory: renderClosedHistoryPanel,
     onRenderSettingsPanel: () => renderSettingsPanel(),
     onRenderAnalystConsensus: renderBoardAnalystConsensus,
@@ -818,45 +821,25 @@ function setCurrentBalance(value: number) {
   };
 }
 
-function saveCurrentBalanceFromInput() {
-  const input = document.getElementById('freeCashInput') as HTMLInputElement | null;
-  if (!input || !input.reportValidity()) return;
-
-  const inputValue = input.valueAsNumber;
-  const { balance, debt } = setCurrentBalance(inputValue);
+function saveCurrentBalance(signedValue: number) {
+  if (!Number.isFinite(signedValue)) return;
+  const { balance, debt } = setCurrentBalance(signedValue);
   saveState(state, pushStateToGist);
   renderBoard();
   logTerminal(`[Balance]: Current balance/debt updated. Balance: ${formatUSD(balance)} | Margin debt: -${formatUSD(debt)}.`);
 }
 
-async function addCashStockFromUI() {
-  const tickerInput = document.getElementById('newCashTicker') as HTMLInputElement;
-  const sharesInput = document.getElementById('newCashShares') as HTMLInputElement;
-  const priceInput = document.getElementById('newCashPrice') as HTMLInputElement;
+async function addCashStockFromDesk(ticker: string, shares: number, manualPrice: number) {
+  const cleanTicker = ticker.trim().toUpperCase();
+  if (!cleanTicker || !Number.isFinite(shares) || shares <= 0) return;
+  if (Number.isFinite(manualPrice) && manualPrice <= 0) return;
+  if (!Number.isFinite(manualPrice) && !Number.isNaN(manualPrice)) return;
 
-  const ticker = tickerInput.value.trim().toUpperCase();
-  const shares = sharesInput.valueAsNumber;
-  const manualPrice = priceInput.value === '' ? NaN : priceInput.valueAsNumber;
-
-  if (!tickerInput.reportValidity() || !sharesInput.reportValidity() ||
-    (priceInput.value !== '' && !priceInput.reportValidity())) return;
-
-  if (!ticker) {
-    logTerminal(`[Error]: Please enter valid ticker symbol and share count.`);
-    tickerInput.focus();
-    return;
-  }
-
-  addCashHolding(ticker, shares, manualPrice);
-
-  tickerInput.value = '';
-  sharesInput.value = '';
-  priceInput.value = '';
-
+  addCashHolding(cleanTicker, shares, manualPrice);
   saveState(state, pushStateToGist);
   renderBoard();
-  logTerminal(`[Balance]: Added ${shares} ${ticker}. Fetching live online quote...`);
-  await fetchLivePrice(ticker);
+  logTerminal(`[Balance]: Added ${shares} ${cleanTicker}. Fetching live online quote...`);
+  await fetchLivePrice(cleanTicker);
 }
 
 function removeCashStock(index: number) {
@@ -1896,7 +1879,6 @@ if (document.readyState === 'loading') {
 }
 
 Object.assign(window as any, {
-  addCashStockFromUI,
   applyOvernightRollover,
   clearLocalData,
   createInsightElement,
@@ -1920,11 +1902,9 @@ Object.assign(window as any, {
   syncCloudState,
   pullCloudState: () => syncCloudState('pull'),
   pushCloudState: () => syncCloudState('push'),
-  refreshAllLivePrices,
   refreshMarketInsight,
   resetToBlankState,
   saveApiKeys,
-  saveCurrentBalanceFromInput,
   setActiveView,
   setQuoteRefreshInterval,
   showToast,
