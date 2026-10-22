@@ -49,6 +49,22 @@ describe('refreshTrackedQuotes', () => {
     await expect(refreshTrackedQuotes(['NVDA'], 789, record)).resolves.toBe(0);
   });
 
+  it('ignores unexpected symbols returned by the batch provider', async () => {
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([
+      { symbol: 'AAPL', price: { current: 100, previousClose: 95, marketState: 'REGULAR', change: 5 } },
+      { symbol: 'UNREQUESTED', error: 'Unexpected symbol' }
+    ] as never);
+    const record = vi.fn().mockReturnValue(true);
+
+    await expect(refreshTrackedQuotes([' aapl '], 321, record)).resolves.toBe(1);
+
+    expect(fetchYahooStockData).toHaveBeenCalledWith('AAPL');
+    expect(record).toHaveBeenCalledTimes(1);
+    expect(record).toHaveBeenCalledWith('AAPL', 100, 'Yahoo', expect.any(Number), expect.any(Object), 321);
+    expect(fetchFallbackPrice).not.toHaveBeenCalled();
+  });
+
   it('propagates batch provider failures to the caller', async () => {
     vi.mocked(fetchYahooStockData).mockRejectedValue(new Error('Network unavailable'));
     await expect(refreshTrackedQuotes(['TSLA'], 100, vi.fn())).rejects.toThrow('Network unavailable');
