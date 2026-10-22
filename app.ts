@@ -1216,10 +1216,19 @@ function showScenarioModal(data: ScenarioModalData): void {
   let activeColumns = data.columns.map((_, index) => index);
   let activePreset = 0;
 
+  // Add thousands separators to standalone numeric values while leaving dates,
+  // already-grouped numbers, identifiers, and decimal precision intact.
+  const formatModalNumberGroups = (text: string): string =>
+    text.replace(/(?<![\w.,/-])(-?\d{4,})(\.\d+)?(?![\w/-])/g, (_match, integer: string, fraction = '') => {
+      const sign = integer.startsWith('-') ? '-' : '';
+      const digits = sign ? integer.slice(1) : integer;
+      return sign + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + fraction;
+    });
+
   const formatScenarioButton = (index: number) => {
     const row = data.rows.find(item => item.label === 'Net P&L');
     const isBest = row?.values[index]?.includes('BEST') ?? false;
-    const value = row?.values[index]?.split(' · ')[0] ?? '';
+    const value = formatModalNumberGroups(row?.values[index]?.split(' · ')[0] ?? '');
     return { label: data.columns[index] + ' · ' + value + (isBest ? ' BEST' : ''), isBest };
   };
 
@@ -1265,14 +1274,14 @@ function showScenarioModal(data: ScenarioModalData): void {
         td.className = 'px-2 py-2 text-right font-mono whitespace-nowrap ' + (isBuyMore ? (columnIndex % 2 === 0 ? 'text-slate-400 bg-slate-950/30' : 'text-emerald-200 bg-emerald-950/20 border-l border-emerald-900/40') : '');
         td.style.fontVariantNumeric = 'tabular-nums';
         const value = document.createElement('span');
-        value.textContent = row.values[columnIndex] ?? '—';
+        value.textContent = formatModalNumberGroups(row.values[columnIndex] ?? '—');
         td.appendChild(value);
         const delta = row.deltas?.[columnIndex];
         if (delta) {
           const badge = document.createElement('span');
           badge.className = 'ml-1.5 inline-flex rounded px-1.5 py-0.5 align-middle text-[9px] font-semibold ' +
             (delta.includes('BEST') ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400');
-          badge.textContent = delta;
+          badge.textContent = formatModalNumberGroups(delta);
           td.appendChild(badge);
         }
         tr.appendChild(td);
@@ -1302,7 +1311,7 @@ function showScenarioModal(data: ScenarioModalData): void {
           label.textContent = column;
           const value = document.createElement('span');
           value.className = 'text-right font-mono text-xs font-semibold ' + (isBuyMore ? (index % 2 === 0 ? 'text-slate-400' : 'text-emerald-200') : 'text-slate-200');
-          value.textContent = row.values[index] ?? '—';
+          value.textContent = formatModalNumberGroups(row.values[index] ?? '—');
           if (index === 0 && row.kind === 'result') value.className += ' text-emerald-300';
           if (index === 3) value.className += ' text-cyan-200';
           line.append(label, value);
@@ -1337,7 +1346,7 @@ function showScenarioModal(data: ScenarioModalData): void {
         const value = document.createElement('span');
         value.className = 'text-right font-mono text-xs font-semibold text-slate-200';
         value.style.fontVariantNumeric = 'tabular-nums';
-        value.textContent = row.values[columnIndex] ?? '—';
+        value.textContent = formatModalNumberGroups(row.values[columnIndex] ?? '—');
         if (row.kind === 'result') value.className += ' text-emerald-300';
         if (row.kind === 'balance') value.className += ' text-cyan-200';
         value.style.fontVariantNumeric = 'tabular-nums';
@@ -1346,7 +1355,7 @@ function showScenarioModal(data: ScenarioModalData): void {
           const badge = document.createElement('span');
           badge.className = 'mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-semibold ' +
             (delta.includes('BEST') ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400');
-          badge.textContent = delta;
+          badge.textContent = formatModalNumberGroups(delta);
           value.appendChild(document.createElement('br'));
           value.appendChild(badge);
         }
@@ -1454,15 +1463,48 @@ function showScenarioModal(data: ScenarioModalData): void {
 
   dialog.append(header, toolbar, tableWrap);
   overlay.appendChild(dialog);
+
+  const previouslyFocused = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  const previousBodyOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
   document.body.appendChild(overlay);
 
   const close = () => {
+    if (!overlay.isConnected) return;
     overlay.remove();
     document.removeEventListener('keydown', handleKeyDown);
     window.removeEventListener('resize', renderLayout);
+    document.body.style.overflow = previousBodyOverflow;
+    if (previouslyFocused?.isConnected) previouslyFocused.focus();
   };
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') close();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+    )).filter((element) => element.getAttribute('aria-hidden') !== 'true');
+    if (!focusable.length) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+      event.preventDefault();
+      first.focus();
+    }
   };
   closeButton.addEventListener('click', close);
   overlay.addEventListener('click', (event) => {

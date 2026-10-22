@@ -976,3 +976,199 @@ summary:hover {
 .scenario-report-content {
   text-wrap: pretty;
 }
+
+/* Modal polish: shared motion, safer viewport sizing, and consistent keyboard focus. */
+#scenarioComparisonModal {
+  padding:
+    max(0.75rem, env(safe-area-inset-top))
+    max(0.75rem, env(safe-area-inset-right))
+    max(0.75rem, env(safe-area-inset-bottom))
+    max(0.75rem, env(safe-area-inset-left));
+  overscroll-behavior: contain;
+  animation: modal-overlay-enter 160ms ease-out both;
+}
+
+#scenarioComparisonModal > [role="dialog"] {
+  width: min(100%, 72rem);
+  max-height: min(90dvh, 56rem);
+  min-height: 0;
+  border-radius: 1rem;
+  overflow: hidden;
+  isolation: isolate;
+  animation: modal-dialog-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+#scenarioComparisonModal [role="dialog"] > div:nth-child(3) {
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.7) transparent;
+}
+
+#scenarioComparisonModal [role="dialog"] button:focus-visible,
+#auth-container button:focus-visible,
+#auth-container input:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+#scenarioComparisonModal h2,
+#scenarioComparisonModal p {
+  overflow-wrap: anywhere;
+}
+
+#auth-container {
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.auth-card {
+  width: min(100%, 28rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: clamp(1rem, 4vw, 1.5rem);
+  border-radius: 1rem;
+  backdrop-filter: blur(16px);
+}
+
+.auth-card form {
+  align-items: stretch;
+}
+
+.auth-card input {
+  min-width: 0;
+  min-height: 2.75rem;
+}
+
+.auth-card button {
+  min-height: 2.75rem;
+}
+
+@keyframes modal-overlay-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-dialog-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 640px) {
+  #scenarioComparisonModal > [role="dialog"] {
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem);
+    border-radius: 0.875rem;
+  }
+
+  #scenarioComparisonModal [role="dialog"] > div:first-child {
+    padding: 0.875rem;
+  }
+
+  #scenarioComparisonModal [role="dialog"] > div:nth-child(2) {
+    padding: 0.625rem 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #scenarioComparisonModal,
+  #scenarioComparisonModal > [role="dialog"] {
+    animation: none;
+  }
+}
+
+/* Modal financial figures: prioritize legibility over compact density. */
+#scenarioComparisonModal table {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+#scenarioComparisonModal table th {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  letter-spacing: 0.025em;
+  color: #cbd5e1;
+}
+
+#scenarioComparisonModal table td {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  font-weight: 550;
+  color: #e2e8f0;
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+#scenarioComparisonModal table tbody th {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #cbd5e1;
+  white-space: normal;
+  min-width: 7.5rem;
+}
+
+#scenarioComparisonModal table tbody tr {
+  border-bottom-color: rgb(71 85 105 / 0.65);
+}
+
+#scenarioComparisonModal table tbody tr:nth-child(even) {
+  background-color: rgb(30 41 59 / 0.28);
+}
+
+#scenarioComparisonModal table tbody tr:has(td span) td span:first-child {
+  letter-spacing: -0.015em;
+}
+
+#scenarioComparisonModal .font-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+#scenarioComparisonModal .text-emerald-300,
+#scenarioComparisonModal .text-emerald-200 {
+  color: #6ee7b7;
+}
+
+#scenarioComparisonModal .text-cyan-200 {
+  color: #a5f3fc;
+}
+
+#scenarioComparisonModal .text-rose-300 {
+  color: #fda4af;
+}
+
+#scenarioComparisonModal .text-slate-400 {
+  color: #cbd5e1;
+}
+
+#scenarioComparisonModal .text-\[9px\] {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 767px) {
+  #scenarioComparisonModal table {
+    min-width: 38rem;
+  }
+
+  #scenarioComparisonModal table th,
+  #scenarioComparisonModal table td {
+    padding: 0.65rem 0.75rem;
+  }
+
+  #scenarioComparisonModal .text-right.font-mono.text-xs {
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
+
+  #scenarioComparisonModal .text-\[11px\] {
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+}
+
