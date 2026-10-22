@@ -61,7 +61,6 @@ import { SettingsDesk } from './src/components/SettingsDesk';
 import { AuthModal } from './src/components/AuthModal';
 import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
-import { PriceAlertsPanel } from './src/components/PriceAlertsPanel';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 
