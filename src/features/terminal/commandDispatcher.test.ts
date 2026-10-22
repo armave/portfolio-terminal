@@ -216,7 +216,7 @@ describe('terminal command validation and cash routing', () => {
     } as any);
     const result = CommandDispatcher.execute(command);
     expect(result.type).toBe('res');
-    expect(result.text).toContain('[MULTI-DATE EXIT COMPARISON: GOOGL]');
+    expect(result.text).toContain('[EXIT COMPARISON: GOOGL]');
     expect(result.text).toContain(firstDate);
     expect(result.text).toContain(secondDate);
     expect(result.text).toContain('BEST ESTIMATED EXIT');
