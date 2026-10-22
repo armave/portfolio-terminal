@@ -17,7 +17,7 @@ import {
   saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
-import { calculateCommission, calculateMarginInterest, realizeClosedTrade } from '../domain/portfolio';
+import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
 
 const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
   broker: 'Freedom Broker Armenia (Tradernet)',
