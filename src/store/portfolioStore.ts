@@ -1032,38 +1032,10 @@ export class PortfolioStore {
     return { ticker: clean, shares, price: resolvedPrice };
   }
 
+  /** Legacy compatibility wrapper; the canonical mutation is addCashHolding. */
   public addCashStock(ticker: string, shares: number, price: number): void {
-    const clean = ticker.trim().toUpperCase();
-    if (!clean || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) return;
-
-    this.update((state) => {
-      const holdings = [...(state.cashCushion?.holdings || [])];
-      const existingIdx = holdings.findIndex((h) => h.ticker.toUpperCase() === clean);
-      if (existingIdx >= 0) {
-        const prev = holdings[existingIdx];
-        holdings[existingIdx] = {
-          ...prev,
-          shares: (Number(prev.shares) || 0) + shares,
-          price,
-          currentPrice: price
-        };
-      } else {
-        holdings.push({
-          ticker: clean,
-          shares,
-          price,
-          currentPrice: price
-        });
-      }
-
-      return {
-        ...state,
-        cashCushion: {
-          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
-          holdings
-        }
-      };
-    });
+    if (!Number.isFinite(price) || price <= 0) return;
+    this.addCashHolding(ticker, shares, price);
   }
 
   public removeCashStock(indexOrTicker: number | string): void {
