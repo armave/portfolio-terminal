@@ -263,7 +263,7 @@ export class CommandDispatcher {
       // 3. NATURAL-LANGUAGE EXIT COMPARISON:
       // "sell GOOGL tomorrow for 333.10 vs sell 14 days later for 343.09"
       const vsMatch = raw.match(
-        /^sell\s+(?:([a-zA-Z]{1,10})\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?|m|months?)(?:\s+(?:later|from\s+now))?)\s+(?:for|at|@)\s*([$0-9.,]+)\s+(?:vs\.?|versus|or)\s+sell\s+(?:[a-zA-Z]{1,10}\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?|m|months?)(?:\s+(?:later|from\s+now))?)\s+(?:for|at|@)\s*([$0-9.,]+)$/i
+        /^sell\s+(?:(?!(?:after|in|today|tomorrow)\s)([a-zA-Z]{1,10})\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?|m|months?)(?:\s+(?:later|from\s+now))?)\s+(?:for|at|@)\s*([$0-9.,]+)\s+(?:vs\.?|versus|or)\s+sell\s+(?:(?!(?:after|in|today|tomorrow)\s)[a-zA-Z]{1,10}\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?|m|months?)(?:\s+(?:later|from\s+now))?)\s+(?:for|at|@)\s*([$0-9.,]+)$/i
       );
       if (vsMatch) {
         const firstDate = vsMatch[2];
