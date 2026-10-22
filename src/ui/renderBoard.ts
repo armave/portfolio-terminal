@@ -315,8 +315,12 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     closedTradesCount.textContent = `${closedTrades.length} realized exit${closedTrades.length === 1 ? '' : 's'}`;
   }
 
-  onUpdateCombinedBreakeven();
-  onSyncMarketInsightsPanel();
+  // Hidden desks do not need their derived metrics or insights panel refreshed.
+  // They will be updated when the user returns to a position/combined desk.
+  if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) {
+    onUpdateCombinedBreakeven();
+    onSyncMarketInsightsPanel();
+  }
 
   const daysEl = document.getElementById('daysToBreakeven');
   if (viewChanged) hideAllDesks();
