@@ -273,9 +273,6 @@ export class CommandDispatcher {
         const firstDays = parseRelativeExitDays(firstDate);
         const secondDays = parseRelativeExitDays(secondDate);
         if (firstDays > 3650 || secondDays > 3650) throw new Error('Exit date must be within the next 10 years.');
-        if (firstDays === 0 && /^today$/i.test(firstDate)) {
-          return this.evaluateComparison(vsMatch[1], firstPrice, secondDays, secondPrice);
-        }
         return this.evaluateExitScenarios(vsMatch[1], [
           { label: firstDate, days: firstDays, price: firstPrice },
           { label: secondDate, days: secondDays, price: secondPrice }
@@ -574,81 +571,6 @@ export class CommandDispatcher {
     return {
       type: 'res',
       text: `[Sim ${sym} @ $${simPrice.toFixed(2)} in ${daysOffset}d]: Gross $${(grossSell - costBasis).toFixed(2)} | Comms -$${totalComms.toFixed(2)} | Margin -$${projectedMargin.toFixed(2)} → Net P&L: ${netProfit >= 0 ? '+' : '-'}$${Math.abs(netProfit).toFixed(2)}`
-    };
-  }
-
-  private static evaluateComparison(tickerArg: string | undefined, p1: number, days: number, p2: number): CommandOutput {
-    if (!Number.isFinite(p1) || p1 <= 0 || !Number.isFinite(p2) || p2 <= 0) {
-      throw new Error('Enter valid positive prices for both exit scenarios.');
-    }
-    if (!Number.isInteger(days) || days < 0) {
-      throw new Error('Waiting period must be a whole number of days (zero or more).');
-    }
-
-    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
-    const rules = this.getRules(state);
-    const shares = Number(pos.shares);
-    if (!Number.isFinite(shares) || shares <= 0) {
-      throw new Error('No valid open shares found for ' + sym + '.');
-    }
-
-    const costBasis = (pos.tranches || []).reduce((sum: number, tranche: any) =>
-      sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0);
-    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
-    const totalDebt = Math.abs(Number(state.balance) || 0);
-    const currentMargin = calculateMarginInterest(pos.tranches || [], {
-      dailyRate: rules.dailyRate,
-      marginDebt: totalDebt,
-      totalDebt
-    } as any);
-    const extraCarry = totalDebt * rules.dailyRate * days;
-
-    const grossToday = shares * p1;
-    const sellCommToday = calculateCommission(shares, grossToday, rules as any);
-    const marginToday = currentMargin;
-    const netToday = grossToday - costBasis - buyCommission - sellCommToday - marginToday;
-
-    const grossLater = shares * p2;
-    const sellCommLater = calculateCommission(shares, grossLater, rules as any);
-    const marginLater = currentMargin + extraCarry;
-    const netLater = grossLater - costBasis - buyCommission - sellCommLater - marginLater;
-
-    const diff = netLater - netToday;
-    const priceChange = ((p2 - p1) / p1) * 100;
-    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
-    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
-    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
-    const winner = Math.abs(diff) < 0.005
-      ? 'RESULT: Effectively tied after estimated costs.'
-      : diff > 0
-        ? 'RESULT: Waiting wins by ' + money(diff) + ' net.'
-        : 'RESULT: Selling today wins by ' + money(-diff) + ' net.';
-
-    return {
-      type: 'res',
-      text: [
-        '[EXIT COMPARISON: ' + sym + '] ' + shares.toLocaleString() + ' shares | Cost basis: ' + money(costBasis),
-        'Assumptions: buy commissions ' + money(buyCommission) + ' | current margin interest ' + money(currentMargin) + ' | margin debt ' + money(totalDebt),
-        '',
-        'A) SELL TODAY @ ' + money(p1),
-        '  Gross proceeds:     ' + money(grossToday),
-        '  Cost basis:        -' + money(costBasis),
-        '  Buy commission:    -' + money(buyCommission),
-        '  Sell commission:   -' + money(sellCommToday),
-        '  Margin interest:   -' + money(marginToday),
-        '  NET P&L:            ' + signedMoney(netToday),
-        '',
-        'B) WAIT ' + days + ' DAY' + (days === 1 ? '' : 'S') + ' @ ' + money(p2) + ' (' + signedPercent(priceChange) + ' vs today)',
-        '  Gross proceeds:     ' + money(grossLater),
-        '  Cost basis:        -' + money(costBasis),
-        '  Buy commission:    -' + money(buyCommission),
-        '  Sell commission:   -' + money(sellCommLater),
-        '  Margin interest:   -' + money(marginLater) + ' (extra carry ' + money(extraCarry) + ')',
-        '  NET P&L:            ' + signedMoney(netLater),
-        '',
-        'NET ADVANTAGE (B - A): ' + signedMoney(diff),
-        winner
-      ].join('\n')
     };
   }
 
