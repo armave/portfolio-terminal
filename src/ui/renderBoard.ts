@@ -30,7 +30,7 @@ function resolveActiveView(state: BoardState): string {
   return currentView;
 }
 
-export interface RenderCashCushionOptions {
+interface RenderCashCushionOptions {
   onFetchLivePrice?: (ticker: string) => void;
   onRemoveCashStock?: (index: number) => void;
   onSaveBalance?: (signedValue: number) => void;
@@ -38,7 +38,7 @@ export interface RenderCashCushionOptions {
   refreshIntervalMs?: number;
 }
 
-export function renderCashCushion(
+function renderCashCushion(
   _state: BoardState,
   options: RenderCashCushionOptions = {}
 ): void {
@@ -64,7 +64,7 @@ export function renderCashCushion(
   }
 }
 
-export function renderPositionsTable(
+function renderPositionsTable(
   gross: number,
   totalComms: number,
   debtToUse: number,
@@ -161,14 +161,14 @@ function calculatePositionMetrics(state: BoardState, pos: PositionRecord, rules:
   return { gross, totalComms, allocatedDebt, posMarginCharged, netPct };
 }
 
-export interface RenderSummaryCardsOptions {
+interface RenderSummaryCardsOptions {
   rules: BrokerRules;
   refreshIntervalMs?: number;
   onRenderExternalLinks?: () => void;
   onRenderAnalystConsensus?: (ticker: string) => void;
 }
 
-export function renderSummaryCards(
+function renderSummaryCards(
   state: BoardState,
   options: RenderSummaryCardsOptions
 ): void {

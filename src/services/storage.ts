@@ -272,7 +272,7 @@ export async function saveApiKeys(options: SaveApiKeysOptions): Promise<boolean>
   return true;
 }
 
-export const saveStateToStorage = saveState;
+const saveStateToStorage = saveState;
 
 /**
  * Persists application state to localStorage and updates `state.lastUpdated`.
