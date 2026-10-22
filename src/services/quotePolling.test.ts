@@ -65,6 +65,21 @@ describe('refreshTrackedQuotes', () => {
     expect(fetchFallbackPrice).not.toHaveBeenCalled();
   });
 
+  it('keeps quote change percentages finite when previous close is invalid', async () => {
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([{
+      symbol: 'AAPL',
+      price: { current: 100, previousClose: '0', marketState: 'REGULAR', change: 5 }
+    }] as never);
+    const record = vi.fn().mockReturnValue(true);
+
+    await expect(refreshTrackedQuotes(['AAPL'], 654, record)).resolves.toBe(1);
+
+    expect(record).toHaveBeenCalledWith('AAPL', 100, 'Yahoo', expect.any(Number), expect.objectContaining({
+      changePercent: 0
+    }), 654);
+  });
+
   it('normalizes and deduplicates requested symbols before querying the provider', async () => {
     vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
     vi.mocked(normalizeYahooBatchResults).mockReturnValue([
