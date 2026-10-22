@@ -266,11 +266,11 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.kind).toBe('buy-more');
     expect(result.modal?.title).toBe('Buy More Projection · AAPL');
     expect(result.modal?.subtitle).toContain('Hypothetical projection after buying +10 shares');
-    expect(result.modal?.columns).toEqual(['Net', 'F&C', 'M Fee', 'Balance']);
+    expect(result.modal?.columns).toEqual(['Current Net', 'After Buy Net', 'Current F&C', 'After Buy F&C', 'Current M Fee', 'After Buy M Fee', 'Current Balance', 'After Buy Balance']);
     const modalRows = result.modal?.rows.map((row) => row.label) || [];
     expect(modalRows.some(label => label.includes('TODAY'))).toBe(true);
-    expect(result.modal?.rows.every(row => row.values.length === 4)).toBe(true);
-    expect(result.modal?.rows[0]?.values).toHaveLength(4);
+    expect(result.modal?.rows.every(row => row.values.length === 8)).toBe(true);
+    expect(result.modal?.rows[0]?.values).toHaveLength(8);
     expect(result.modal?.note).toContain('Same projection schedule and columns as the main table');
     expect(result.modal?.note).toContain('No portfolio mutation or order placement');
     expect(buyStock).not.toHaveBeenCalled();
