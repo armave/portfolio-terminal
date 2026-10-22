@@ -236,13 +236,18 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       <div class="flex items-center gap-2 rounded-lg bg-slate-900/95 border border-slate-700/90 px-3 py-1.5 focus-within:border-emerald-500/80 focus-within:ring-1 focus-within:ring-emerald-500/30 transition">
         <span class="text-emerald-400 font-mono font-bold text-sm select-none">❯</span>
         <input
-          id="cmdInput"
           ref={inputRef}
           value={command}
           onInput={(event) => setCommand((event.currentTarget as HTMLInputElement).value)}
           type="text"
-          name="terminal-command"
-          autocomplete="off"
+          name="cli-entry"
+          id="cmdInput"
+          autoComplete="off"
+          data-form-type="other"
+          data-lpignore="true"
+          data-1p-ignore="true"
+          data-bwignore="true"
+          data-protonpass-ignore="true"
           autocapitalize="off"
           autocorrect="off"
           enterkeyhint="go"
