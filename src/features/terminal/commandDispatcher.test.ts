@@ -201,18 +201,15 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.kind).toBe('exit-comparison');
     expect(result.modal?.columns).toHaveLength(7);
     const modalRows = result.modal?.rows.map((row) => row.label) || [];
-    expect(modalRows).toContain('Gross proceeds');
-    expect(modalRows).toContain('Buy commission');
-    expect(modalRows).toContain('Sell commission');
-    expect(modalRows).toContain('Margin interest');
-    expect(modalRows).toContain('Margin balance before');
-    expect(modalRows).toContain('Final margin balance');
-    expect(modalRows).toContain('EXECUTION & PROCEEDS');
-    expect(modalRows).toContain('TRANSACTION & FINANCING COSTS');
-    expect(modalRows).toContain('NET OUTCOME & MARGIN BALANCE');
-    expect(modalRows).toContain('Δ vs best net P&L');
+    expect(modalRows).toEqual(['Total Fee Friction', 'Net P&L', 'Δ vs best outcome', 'Final Margin Balance']);
+    expect(modalRows).not.toContain('Gross proceeds');
+    expect(modalRows).not.toContain('Cost basis');
+    expect(modalRows).not.toContain('Margin balance before');
     expect(result.modal?.presets?.length).toBeGreaterThan(0);
+    expect(result.modal?.action?.label).toBe('Stage target command');
+    expect(result.modal?.action?.command).toMatch(/^target AAPL \\d+\\.\\d{2}$/);
     expect(result.modal?.note).toContain('Future prices are assumptions');
+    expect(result.modal?.note).toContain('does not submit a broker order');
   });
 
   it.each([
