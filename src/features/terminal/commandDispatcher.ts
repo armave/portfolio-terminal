@@ -103,6 +103,29 @@ function parsePurchaseDate(rawDate?: string): string {
   );
 }
 
+function parseRelativeExitDays(rawDate: string): number {
+  const cleaned = rawDate.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (cleaned === 'today') return 0;
+  if (cleaned === 'tomorrow') return 1;
+  const normalized = cleaned
+    .replace(/^(?:after|in)\s+/, '')
+    .replace(/\s+(?:later|from\s+now)$/, '')
+    .replace(/^a\s+/, '1 ')
+    .replace(/^one\s+/, '1 ');
+  const match = normalized.match(/^(\d+)\s*(d|day|days|w|week|weeks|m|month|months)$/);
+  if (!match) throw new Error('Unrecognized exit date: ' + rawDate);
+  const amount = Number(match[1]);
+  const unit = match[2];
+  if (unit.startsWith('m')) {
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth() + amount, now.getDate());
+    if (target.getDate() !== now.getDate()) target.setDate(0);
+    return Math.round((new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime() -
+      new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86400000);
+  }
+  return amount * (unit.startsWith('w') ? 7 : 1);
+}
+
 export class CommandDispatcher {
 
   private static evaluateScheduledLadder(
@@ -237,12 +260,23 @@ export class CommandDispatcher {
       const buyScenarioMatch = raw.match(/^buy\s+scenario\s+([0-9.,]+)\s+([A-Za-z]{1,10})\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
       if (buyScenarioMatch) return this.evaluateBuyScenario(cleanNumber(buyScenarioMatch[1]), buyScenarioMatch[2].toUpperCase(), cleanNumber(buyScenarioMatch[3]));
 
-      // 3. COMPARISON SIMULATION: "sell today for $180 vs sell 14 days later for $185"
+      // 3. NATURAL-LANGUAGE EXIT COMPARISON:
+      // "sell GOOGL tomorrow for 333.10 vs sell 14 days later for 343.09"
       const vsMatch = raw.match(
-        /sell\s+(?:([a-zA-Z]+)\s+)?today\s+(?:for|at|@)\s*([$0-9.,]+)\s+(?:vs\.?|versus|or)\s+sell\s+(\d+)\s*d(?:ays?)?\s*(?:later\s+)?(?:for|at|@)\s*([$0-9.,]+)/i
+        /^sell\s+(?:([a-zA-Z]{1,10})\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?|m|months?)(?:\s+(?:later|from\s+now))?)\s+(?:for|at|@)\s*([$0-9.,]+)\s+(?:vs\.?|versus|or)\s+sell\s+(?:[a-zA-Z]{1,10}\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?|m|months?)(?:\s+(?:later|from\s+now))?)\s+(?:for|at|@)\s*([$0-9.,]+)$/i
       );
       if (vsMatch) {
-        return this.evaluateComparison(vsMatch[1], cleanNumber(vsMatch[2]), parseInt(vsMatch[3], 10), cleanNumber(vsMatch[4]));
+        const firstDate = vsMatch[2];
+        const firstPrice = cleanNumber(vsMatch[3]);
+        const secondDate = vsMatch[4];
+        const secondPrice = cleanNumber(vsMatch[5]);
+        const firstDays = parseRelativeExitDays(firstDate);
+        const secondDays = parseRelativeExitDays(secondDate);
+        if (firstDays > 3650 || secondDays > 3650) throw new Error('Exit date must be within the next 10 years.');
+        return this.evaluateExitScenarios(vsMatch[1], [
+          { label: firstDate, days: firstDays, price: firstPrice },
+          { label: secondDate, days: secondDays, price: secondPrice }
+        ]);
       }
 
       // 4. SINGLE SIMULATION: "sim AAPL 200 in 14 days" or "sell in 10 days for 195"
