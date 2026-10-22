@@ -764,6 +764,13 @@ describe('canonical trade lifecycle and persistence', () => {
       store.updateAssumptions(assumptions);
       store.buyStock('AAPL', 2, 100, '2026-10-01');
       store.setMarginDebt(210);
+      const currentPosition = store.getState().positions.AAPL;
+      store.setState({
+        positions: {
+          ...store.getState().positions,
+          AAPL: { ...currentPosition, marginCharged: 10 } as any
+        }
+      });
     }
 
     const closedAt = Date.parse('2026-10-10T12:00:00.000Z');
@@ -787,7 +794,8 @@ describe('canonical trade lifecycle and persistence', () => {
       tranches: [expect.objectContaining({ qty: 1, price: 100, buyCommission: 0.6 })]
     });
     expect(aiStore.getState().realizedMarginCharged).toBe(terminalStore.getState().realizedMarginCharged);
-    expect(aiStore.getState().realizedMarginCharged).toBeGreaterThan(0);
+    expect(aiStore.getState().realizedMarginCharged).toBe(5);
+    expect(aiStore.getState().positions.AAPL).not.toHaveProperty('marginCharged');
     expect(aiStore.getState().closedTrades[0]).toMatchObject({
       ticker: terminalStore.getState().closedTrades[0].ticker,
       shares: terminalStore.getState().closedTrades[0].shares,
