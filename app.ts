@@ -1131,63 +1131,19 @@ async function applyPortfolioActions(action: any) {
       return;
     }
 
-    const grossProceeds = sharesToSell * sellPrice;
-    const sellComm = calcCommission(sharesToSell, grossProceeds);
-    const netCashCredited = grossProceeds - sellComm;
-
-    const currentDebt = Math.abs(state.balance);
-    let debtRepaid = 0;
-    let cashSurplus = 0;
-
-    if (currentDebt > 0) {
-      debtRepaid = Math.min(currentDebt, netCashCredited);
-      state.balance = currentDebt > debtRepaid ? -(currentDebt - debtRepaid) : 0;
-      cashSurplus = netCashCredited - debtRepaid;
-    } else {
-      cashSurplus = netCashCredited;
-    }
-
-    if (cashSurplus > 0) {
-      if (!state.cashCushion) state.cashCushion = { freeCash: 0.00, holdings: [] };
-      state.cashCushion.freeCash = (Number(state.cashCushion.freeCash) || 0) + cashSurplus;
-    }
-
-
-    if (!isCashHolding) {
-      const totalPortfolioInvested = getTotalPortfolioInvested(state);
-      const positionInvested = (pos.tranches || []).reduce(
-        (sum: number, tranche: any) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0),
-        0
-      );
-      const allocatedDebt = totalPortfolioInvested > 0
-        ? currentDebt * (positionInvested / totalPortfolioInvested)
-        : currentDebt;
-      const accruedMarginInterest = calculateMarginInterest(pos.tranches || [], {
-        dailyRate: getDailyRate(),
-        marginDebt: allocatedDebt,
-        totalDebt: currentDebt
-      });
-      const positionForClose = {
-        ...pos,
-        marginCharged: Math.max(Number(pos.marginCharged) || 0, accruedMarginInterest)
-      };
-      const realizedTrade = realizeClosedTrade(positionForClose, ticker, sharesToSell, sellPrice, sellComm, Date.now());
-      delete (realizedTrade.position as any).marginCharged;
-      state.positions[ticker] = realizedTrade.position;
-      if (realizedTrade.trade) state.closedTrades.push(realizedTrade.trade);
-      state.realizedMarginCharged = (state.realizedMarginCharged || 0) + realizedTrade.marginFee;
-
-      if (realizedTrade.position.shares <= 1e-8) {
-        delete state.positions[ticker];
-        state.activeView = "COMBINED";
-        logTerminal(`[Position Closed]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(netCashCredited)} (Debt paid: ${formatUSD(debtRepaid)}, Free Cash added: ${formatUSD(cashSurplus)}). Remaining Debt: -${formatUSD(Math.abs(state.balance))}. Free Cash: ${formatUSD(state.cashCushion.freeCash)}.`);
-      } else {
-        logTerminal(`[Partial Sell]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(netCashCredited)} (Debt paid: ${formatUSD(debtRepaid)}, Free Cash added: ${formatUSD(cashSurplus)}). Remaining: ${realizedTrade.position.shares} shares.`);
-      }
+    const result = portfolioStore.sellMarginPosition(ticker, sharesToSell, sellPrice);
+    if (!result) {
+      logTerminal(`[Sell Error]: Could not sell margin position ${ticker}.`);
+      showToast('Margin position sale failed.', 'error');
+      return;
     }
 
     saveState(state, pushStateToGist);
-    syncStore();
+    if (result.remainingShares <= 1e-8) {
+      logTerminal(`[Position Closed]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}). Remaining Debt: -${formatUSD(Math.abs(state.balance))}. Free Cash: ${formatUSD(state.cashCushion.freeCash)}.`);
+    } else {
+      logTerminal(`[Partial Sell]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}). Remaining: ${result.remainingShares} shares.`);
+    }
   }
   else if (action.action === "set_pt") {
     const ticker = (action.ticker ? action.ticker.toUpperCase() : null) || (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
