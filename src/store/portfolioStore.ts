@@ -993,6 +993,78 @@ export class PortfolioStore {
     });
   }
 
+  /**
+   * Sells a cash-cushion holding as one atomic balance transition. Unlike a
+   * margin-position exit, this does not create a margin closed-trade record.
+   */
+  public sellCashHolding(
+    ticker: string,
+    sharesToSell: number,
+    sellPrice: number
+  ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || !Number.isFinite(sharesToSell) || sharesToSell <= 0 ||
+      !Number.isFinite(sellPrice) || sellPrice <= 0) return null;
+
+    let result: { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null = null;
+
+    this.update((state) => {
+      const holdings = [...(state.cashCushion?.holdings || [])];
+      const holdingIndex = holdings.findIndex(
+        (holding) => holding.ticker.trim().toUpperCase() === clean
+      );
+      if (holdingIndex < 0) return state;
+
+      const holding = holdings[holdingIndex];
+      const availableShares = Number(holding.shares) || 0;
+      const actualSold = Math.min(availableShares, sharesToSell);
+      if (actualSold <= 0) return state;
+
+      const grossProceeds = actualSold * sellPrice;
+      const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
+      const sellCommission = calculateCommission(actualSold, grossProceeds, {
+        commPerShare: Number(rules.commPerShare ?? rules.commissionPerShare ?? 0.012),
+        commVolumePct: Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0012),
+        minCommOrder: Number(rules.minCommOrder ?? rules.commissionMin ?? 1.2)
+      });
+      const netProceeds = Number((grossProceeds - sellCommission).toFixed(2));
+      const currentDebt = Math.abs(Number(state.balance) || 0);
+      const debtRepaid = Math.min(currentDebt, netProceeds);
+      const nextDebt = Math.max(0, currentDebt - debtRepaid);
+      const cashSurplus = Math.max(0, netProceeds - debtRepaid);
+      const freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0) + cashSurplus;
+      const remainingShares = Math.max(0, availableShares - actualSold);
+
+      if (remainingShares <= 1e-8) {
+        holdings.splice(holdingIndex, 1);
+      } else {
+        holdings[holdingIndex] = { ...holding, shares: remainingShares };
+      }
+
+      result = {
+        ticker: clean,
+        sharesSold: actualSold,
+        remainingShares,
+        netProceeds,
+        debtRepaid,
+        cashSurplus
+      };
+
+      return {
+        ...state,
+        balance: nextDebt > 0 ? -nextDebt : 0,
+        cashBalance: freeCash,
+        cashCushion: {
+          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          freeCash,
+          holdings
+        }
+      };
+    });
+
+    return result;
+  }
+
   public deleteClosedTrade(index: number): void {
     this.update((state) => {
       const nextClosed = (state.closedTrades || []).filter((_, idx) => idx !== index);
