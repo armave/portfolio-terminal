@@ -416,7 +416,8 @@ function applyOvernightRollover() {
 
 function setActiveView(view: string) {
   const normalizedView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED');
-  portfolioStore.setActiveView(normalizedView);
+  // Preserve the prior view-only behavior; selectedTicker is managed separately.
+  portfolioStore.setState({ activeView: normalizedView });
   saveState(state, pushStateToGist);
   renderBoard();
 }
