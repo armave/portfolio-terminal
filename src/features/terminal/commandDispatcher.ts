@@ -582,16 +582,15 @@ export class CommandDispatcher {
     const currentMargin = calculateMarginInterest(pos.tranches || [], { dailyRate: rules.dailyRate, marginDebt: debt, totalDebt: debt } as any);
     const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2), signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     const rows = scenarios.map(s => { const gross = shares * s.price, sellFee = calculateCommission(shares, gross, rules as any), carry = debt * rules.dailyRate * s.days, net = gross - costBasis - buyCommission - sellFee - currentMargin - carry; return { ...s, gross, sellFee, carry, net }; });
-    const baseline = rows.find(r => r.days === 0)?.net ?? rows[0].net, best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
+    const best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
+    const bestDelta = (r: typeof rows[number]) => signed(r.net - best.net);
     return { type: 'res', text: [
-      '[MULTI-DATE EXIT COMPARISON: ' + sym + '] ' + shares.toLocaleString() + ' shares | Cost basis: ' + money(costBasis),
-      'Assumptions: buy commissions ' + money(buyCommission) + ' | current margin interest ' + money(currentMargin) + ' | margin debt ' + money(debt), '',
-      ...rows.map((r, i) => [(i + 1) + ') ' + r.label + ' | Exit @ ' + money(r.price) + (r.days ? ' | +' + r.days + 'd' : ''),
-        '   Gross proceeds: ' + money(r.gross) + ' | Sell commission: -' + money(r.sellFee),
-        '   Margin interest: -' + money(currentMargin + r.carry) + (r.carry ? ' (extra carry ' + money(r.carry) + ')' : ''),
-        '   NET P&L: ' + signed(r.net) + ' | vs baseline: ' + signed(r.net - baseline)].join('\n')),
-      '', 'BEST ESTIMATED EXIT: ' + best.label + ' @ ' + money(best.price) + ' → ' + signed(best.net) + ' net P&L',
-      'Estimate only; prices are assumptions. Assumes shares, cost basis and margin debt remain unchanged until exit.'
+      '[EXIT COMPARISON: ' + sym + '] · ' + shares.toLocaleString() + ' shares',
+      ...rows.map(r => r.label + ' · ' + money(r.price) + ' → ' + signed(r.net) + ' net P&L' +
+        (r.days ? ' · carry -' + money(r.carry) : '') +
+        (r.net === best.net ? ' · BEST' : ' · ' + bestDelta(r) + ' vs best')),
+      'BEST: ' + best.label + ' at ' + money(best.price) + ' · ' + signed(best.net) + ' net',
+      'Includes estimated commissions and margin interest. Future prices are assumptions; position and debt held constant.'
     ].join('\n') };
   }
 
@@ -633,49 +632,27 @@ export class CommandDispatcher {
     const hasTarget = Number.isFinite(target) && target > 0;
     const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
-    const pct = (n: number) => (n > 0 ? '+' : '') + n.toFixed(2) + '%';
     const targetOldPnl = hasTarget ? oldShares * target - oldCost - oldBuyFee : 0;
     const targetNewPnl = hasTarget ? newShares * target - newCost - newBuyFee : 0;
     const downsidePrice = quote * 0.9;
     const downsideOldPnl = oldShares * downsidePrice - oldCost - oldBuyFee;
     const downsideNewPnl = newShares * downsidePrice - newCost - newBuyFee;
     const downsideDelta = downsideNewPnl - downsideOldPnl;
-    const breakEvenAfterBuy = (newCost + newBuyFee) / newShares;
 
+    const targetDelta = hasTarget ? targetNewPnl - targetOldPnl : 0;
+    const currentDelta = newPnl - oldPnl;
     const lines = [
-      '[HYPOTHETICAL BUY: ' + ticker + ']',
-      'Add ' + qty.toLocaleString() + ' shares @ ' + money(price) + ' · est. fee ' + money(purchaseFee),
-      'Cash required: ' + money(purchaseValue + purchaseFee),
-      'Daily margin fee: ' + money(currentDailyMarginFee) + ' → ' + money(projectedDailyMarginFee) + ' (' + (dailyMarginFeeDifference >= 0 ? '+' : '-') + money(Math.abs(dailyMarginFeeDifference)) + '/day)',
-      'Additional exposure: ' + money(purchaseValue) + ' before fee | New position value at quote: ' + money(newShares * quote),
-      '',
-      'POSITION CHANGE',
-      'Shares: ' + oldShares.toLocaleString() + ' → ' + newShares.toLocaleString() + ' (+' + qty.toLocaleString() + ')',
-      'Average entry: ' + money(oldAverage) + ' → ' + money(newAverage) + ' (' + signed(newAverage - oldAverage) + '/share)',
-      'Cost basis: ' + money(oldCost + oldBuyFee) + ' → ' + money(newCost + newBuyFee),
-      '',
-      'PROFIT / LOSS COMPARISON',
-      'At current quote (' + money(quote) + '): ' + signed(oldPnl) + ' → ' + signed(newPnl) + ' (' + signed(newPnl - oldPnl) + ')',
-      'P&L change per $1 stock move: ' + money(oldShares) + ' → ' + money(newShares) + ' (' + signed(qty) + ' per $1 move)'
+      '[BUY MORE: ' + ticker + '] · +' + qty.toLocaleString() + ' shares @ ' + money(price),
+      'Cash needed: ' + money(purchaseValue + purchaseFee) + ' incl. fee',
+      'Average entry: ' + money(oldAverage) + ' → ' + money(newAverage),
+      'P&L at quote (' + money(quote) + '): ' + signed(oldPnl) + ' → ' + signed(newPnl) + ' (' + signed(currentDelta) + ')',
+      ...(hasTarget ? ['P&L at target (' + money(target) + '): ' + signed(targetOldPnl) + ' → ' + signed(targetNewPnl) + ' (' + signed(targetDelta) + ')'] : []),
+      'P&L at -10% (' + money(downsidePrice) + '): ' + signed(downsideOldPnl) + ' → ' + signed(downsideNewPnl) + ' (' + signed(downsideDelta) + ')',
+      'Extra margin cost: ' + money(dailyMarginFeeDifference) + '/day',
+      'Trade-off: ' + (hasTarget ? signed(targetDelta) + ' at target' : signed(currentDelta) + ' at current quote') +
+        '; downside P&L changes by ' + signed(downsideDelta) + '.',
+      'Estimate only · no portfolio changes.'
     ];
-    lines.push(
-      'At -10% from quote (' + money(downsidePrice) + '): ' + signed(downsideOldPnl) + ' → ' + signed(downsideNewPnl) + ' (' + signed(downsideDelta) + ' change)',
-      'Break-even after adding shares (incl. estimated buy fees): ' + money(breakEvenAfterBuy),
-      'Downside sensitivity: every additional $1 decline adds about ' + money(qty) + ' more loss versus current position.'
-    );
-    if (hasTarget) {
-      lines.push(
-        'At target (' + money(target) + '): ' + signed(targetOldPnl) + ' → ' + signed(targetNewPnl) + ' (' + signed(targetNewPnl - targetOldPnl) + ')',
-        'Return on cost at target: ' + pct(oldCost + oldBuyFee > 0 ? targetOldPnl / (oldCost + oldBuyFee) * 100 : 0) +
-          ' → ' + pct(newCost + newBuyFee > 0 ? targetNewPnl / (newCost + newBuyFee) * 100 : 0),
-        'Target upside from quote: ' + pct((target / quote - 1) * 100) + ' | Added shares gross upside: ' + signed(qty * (target - price) - purchaseFee)
-      );
-    }
-    lines.push(
-      '',
-      'Risk note: more shares increase both gains and losses; the -10% case is a stress test, not a forecast.',
-      'Hypothetical only · no trade or portfolio changes.'
-    );
     return { type: 'res', text: lines.join('\n') };
   }
 
