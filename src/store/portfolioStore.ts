@@ -1143,7 +1143,7 @@ export class PortfolioStore {
       if (realizedTrade.position.shares <= 1e-8) {
         delete positions[clean];
       } else {
-        positions[clean] = realizedTrade.position as PositionRecord;
+        positions[clean] = realizedTrade.position as unknown as PositionRecord;
       }
 
       const remainingShares = Math.max(0, Number(realizedTrade.position.shares) || 0);
