@@ -197,6 +197,28 @@ describe('terminal command validation and cash routing', () => {
     expect(result.text).toContain('BEST ESTIMATED EXIT');
   });
 
+  it.each([
+    ['sell GOOGL tomorrow for 333.10 vs sell 14 days later for 343.09', 'tomorrow', '14 days later'],
+    ['sell GOOGL today for 333.10 vs sell 2 days later for 343.09', 'today', '2 days later'],
+    ['sell GOOGL today for 333.10 vs sell after 2 weeks for 343.09', 'today', 'after 2 weeks'],
+    ['sell GOOGL today for 333.10 vs sell in 2 weeks for 343.09', 'today', 'in 2 weeks']
+  ])('parses natural-language exit comparison: %s', (command, firstDate, secondDate) => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state, activeView: 'GOOGL', balance: -1000,
+      positions: { ...state.positions, GOOGL: {
+        ticker: 'GOOGL', shares: 10, currentPrice: 330, pt: 350, commBuy: 2,
+        tranches: [{ qty: 10, price: 320, buyCommission: 2 }]
+      } }
+    } as any);
+    const result = CommandDispatcher.execute(command);
+    expect(result.type).toBe('res');
+    expect(result.text).toContain('[MULTI-DATE EXIT COMPARISON: GOOGL]');
+    expect(result.text).toContain(firstDate);
+    expect(result.text).toContain(secondDate);
+    expect(result.text).toContain('BEST ESTIMATED EXIT');
+  });
+
   it('simulates buying more shares without calling portfolio mutation methods', () => {
     const state = portfolioStore.getState();
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
