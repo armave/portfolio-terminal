@@ -65,6 +65,36 @@ describe('refreshTrackedQuotes', () => {
     expect(fetchFallbackPrice).not.toHaveBeenCalled();
   });
 
+  it('normalizes and deduplicates requested symbols before querying the provider', async () => {
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([
+      { symbol: 'AAPL', price: { current: 100, previousClose: 95, marketState: 'REGULAR', change: 5 } },
+      { symbol: 'MSFT', price: { current: 200, previousClose: 190, marketState: 'REGULAR', change: 10 } }
+    ] as never);
+    const record = vi.fn().mockReturnValue(true);
+
+    await expect(refreshTrackedQuotes([' aapl ', 'AAPL', ' msft ', ''], 654, record)).resolves.toBe(2);
+
+    expect(fetchYahooStockData).toHaveBeenCalledTimes(1);
+    expect(fetchYahooStockData).toHaveBeenCalledWith('AAPL, MSFT');
+    expect(record).toHaveBeenCalledTimes(2);
+    expect(record.mock.calls.map(([ticker]) => ticker)).toEqual(['AAPL', 'MSFT']);
+  });
+
+  it('does not apply or erase a quote when both batch and fallback providers fail', async () => {
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([
+      { symbol: 'AAPL', error: 'Batch unavailable' }
+    ] as never);
+    vi.mocked(fetchFallbackPrice).mockResolvedValue(null as never);
+    const record = vi.fn().mockReturnValue(true);
+
+    await expect(refreshTrackedQuotes(['AAPL'], 987, record)).resolves.toBe(0);
+
+    expect(fetchFallbackPrice).toHaveBeenCalledWith('AAPL');
+    expect(record).not.toHaveBeenCalled();
+  });
+
   it('propagates batch provider failures to the caller', async () => {
     vi.mocked(fetchYahooStockData).mockRejectedValue(new Error('Network unavailable'));
     await expect(refreshTrackedQuotes(['TSLA'], 100, vi.fn())).rejects.toThrow('Network unavailable');
