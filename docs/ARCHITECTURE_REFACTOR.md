@@ -147,6 +147,15 @@ The refactor is being delivered in small, regression-tested slices on one draft 
 
 Regression tests cover quote ordering, unexpected symbols, deduplicated inputs, provider failures, and finite quote percentages. The latest head passed typecheck, Vitest, production build, and dead-code diagnostics.
 
-**Current step: Step 5 of 8 — Rendering and subscriptions.** Reduce avoidable rerenders and UI flicker while preserving terminal focus/scroll position and unsaved settings edits during quote refreshes.
+**Step 5 of 8 — Rendering and subscriptions: complete for the current slice.**
 
-Still outstanding after this step: cloud conflict/import failure scenarios, terminal/settings cleanup, and consolidation of duplicate mutation/accounting paths. The app-wide refactor is not complete; keep the PR in draft until the final head passes all merge gates and the remaining work is reviewed.
+- Rendering helpers no longer mutate canonical portfolio state to repair an invalid active view or initialize cash state; the store normalizes unsupported views before rendering.
+- Hidden desks skip derived-metric and market-insights refreshes.
+- Settings form rendering is cached by broker-rule values, so quote refreshes do not rerender an unchanged settings form or discard unsaved edits; explicit restore-defaults still forces a render.
+- The terminal and board continue to render into stable Preact roots, preserving component state across data updates.
+
+The latest head passed typecheck, Vitest, production build, and dead-code diagnostics.
+
+**Current step: Step 6 of 8 — Persistence and cloud-sync conflict scenarios.** Review and strengthen regression coverage for failed local persistence, backup replacement rollback, cloud revision conflicts, and local/cloud migration boundaries.
+
+Still outstanding after this step: terminal/settings cleanup and consolidation of duplicate mutation/accounting paths. The app-wide refactor is not complete; keep the PR in draft until the final head passes all merge gates and the remaining work is reviewed.
