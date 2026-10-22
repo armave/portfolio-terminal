@@ -273,6 +273,9 @@ export class CommandDispatcher {
         const firstDays = parseRelativeExitDays(firstDate);
         const secondDays = parseRelativeExitDays(secondDate);
         if (firstDays > 3650 || secondDays > 3650) throw new Error('Exit date must be within the next 10 years.');
+        if (firstDays === 0 && /^today$/i.test(firstDate)) {
+          return this.evaluateComparison(vsMatch[1], firstPrice, secondDays, secondPrice);
+        }
         return this.evaluateExitScenarios(vsMatch[1], [
           { label: firstDate, days: firstDays, price: firstPrice },
           { label: secondDate, days: secondDays, price: secondPrice }
