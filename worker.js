@@ -184,7 +184,7 @@ export default {
                         headers: corsHeaders
                     });
                 }
-                return new Response(JSON.stringify(data.slice(0, 5)), { headers: corsHeaders });
+                return new Response(JSON.stringify(data.slice(0, 20)), { headers: corsHeaders });
             }
 
             // --- ACTION 2: Stocktwits public symbol stream ---
@@ -208,9 +208,16 @@ export default {
                     return jsonError("Stocktwits returned an invalid stream response.", 502, corsHeaders);
                 }
 
+                // Filter replies before applying the limit so they don't crowd out original posts.
+                const standaloneMessages = data.messages.filter((message) =>
+                    message &&
+                    message.conversation?.parent_message_id == null &&
+                    message.in_reply_to == null &&
+                    message.reply_to == null
+                );
                 return new Response(JSON.stringify({
                     symbol,
-                    messages: data.messages.slice(0, 20),
+                    messages: standaloneMessages.slice(0, 40),
                     streamUrl: `https://stocktwits.com/symbol/${encodeURIComponent(symbol)}`
                 }), { headers: corsHeaders });
             }
