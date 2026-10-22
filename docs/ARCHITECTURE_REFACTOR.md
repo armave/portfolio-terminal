@@ -174,11 +174,12 @@ The latest head passed typecheck, Vitest, production build, and dead-code diagno
 
 The latest head passed typecheck, Vitest, production build, and dead-code diagnostics.
 
-**Current step: Step 8 of 8 — Consolidate duplicate mutation/accounting paths (in progress).**
+**Step 8 of 8 — Consolidation and final audit (in progress).**
 
-- Extracted a shared sale-commission helper and a shared debt-first proceeds-settlement helper used by both the regular terminal sale and AI-confirmed sale paths.
-- Added a parity regression test that runs both paths with identical position, debt, broker assumptions, quantity, and sale price, then compares remaining shares, debt, cash, commission totals, and realized profit.
-- Intentionally retained distinct closed-trade record construction and margin-interest allocation. Those paths have legacy differences that require separate characterization before a safe unification.
-- CI validation for this consolidation slice is running; do not treat Step 8 or the overall refactor as complete until it passes and the final audit is done.
+- Extracted a shared sale-commission helper and a shared debt-first proceeds-settlement helper.
+- Consolidated regular terminal sales and AI-confirmed margin sales into one store-owned sale transaction. `sellMarginPosition` now validates AI-confirmed inputs and delegates to `sellStock`, passing the confirmed close timestamp while reusing the same FIFO tranche allocation, commission, margin-interest, debt/cash settlement, and closed-trade construction.
+- Preserved safety checks for invalid quantities, attempts to sell more shares than are held, and closed-ticker behavior. Partial sales no longer carry a one-shot margin charge forward and count it again.
+- Added parity coverage comparing terminal and AI-confirmed sales under the same position and broker assumptions, including remaining position, debt, cash, realized margin charges, commissions, and realized profit.
+- The current code/test head passed all four merge gates: typecheck, Vitest, production build, and dead-code diagnostics.
 
-The remaining work in this step is to inspect the financial parity test and final diff, review any CI failures, and confirm that no duplicate mutation path can be removed without changing established behavior. Keep the PR in draft until the final head passes all merge gates and compatibility risks are resolved.
+The remaining work is the final repository diff review and compatibility audit. Keep the PR in draft until the latest head passes the merge gates and the audit finds no unintended financial, persistence, quote, or UI regressions.
