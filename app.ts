@@ -201,7 +201,7 @@ async function syncCloudState(mode = 'push') {
 
 function resetToBlankState() {
   if (confirm("Reset the entire terminal to a blank slate? This will clear all holdings, balances, and history locally and on KV cloud.")) {
-    portfolioStore.importState(createBlankState());
+    portfolioStore.importState(createBlankState() as any);
     state = portfolioStore.getState();
     saveState(state, pushStateToGist);
     pushStateToGist(true);
