@@ -266,7 +266,7 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.kind).toBe('buy-more');
     expect(result.modal?.title).toBe('Buy More Projection · AAPL');
     expect(result.modal?.subtitle).toContain('Hypothetical projection after buying +10 shares');
-    expect(result.modal?.columns).toEqual(['Current Position', 'Hypothetical After Buy', 'Change (Δ)']);
+    expect(result.modal?.columns).toEqual(['Net', 'F&C', 'M Fee', 'Balance']);
     const modalRows = result.modal?.rows.map((row) => row.label) || [];
     expect(modalRows).toContain('Buy commissions (total)');
     expect(modalRows).toContain('Sell commissions · Quote / Target / −10%');
@@ -280,12 +280,8 @@ describe('terminal command validation and cash routing', () => {
     expect(modalRows).toContain('Accrued margin interest');
     expect(modalRows).toContain('Margin balance before / after buy');
     expect(modalRows).toContain('Daily margin accrual');
-    expect(modalRows).toContain('POSITION & BASIS');
-    expect(modalRows).toContain('PROJECTED OUTCOMES');
-    expect(modalRows).toContain('Projected market value · Current quote · $110.00');
-    expect(modalRows).toContain('Return on cost · Target · $120.00');
-    expect(modalRows).toContain('FINANCING & MARGIN CARRY');
-    expect(result.modal?.rows.find((row) => row.label === 'Average entry')?.values).toHaveLength(3);
+    expect(modalRows.some(label => label.includes('TODAY'))).toBe(true);
+    expect(result.modal?.note).toContain('Same projection schedule and columns as the main table');
     expect(result.modal?.note).toContain('no order placed');
     expect(buyStock).not.toHaveBeenCalled();
   });

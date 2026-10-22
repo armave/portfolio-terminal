@@ -1415,13 +1415,14 @@ function showScenarioModal(data: ScenarioModalData): void {
     const thead = document.createElement('thead');
     const headRow = document.createElement('tr');
     headRow.className = 'border-b border-slate-700 text-slate-300';
-    const metricHead = document.createElement('th');
-    metricHead.className = 'px-2 py-2 text-left font-semibold';
-    metricHead.textContent = 'Metric';
-    headRow.appendChild(metricHead);
-    columnIndexes.forEach((columnIndex) => {
+    const firstHead = document.createElement('th');
+    firstHead.className = 'px-2 py-2 text-left font-semibold';
+    firstHead.textContent = isBuyMore ? 'Date' : 'Metric';
+    headRow.appendChild(firstHead);
+    const shownColumns = isBuyMore ? data.columns.map((_, index) => index) : columnIndexes;
+    shownColumns.forEach((columnIndex) => {
       const th = document.createElement('th');
-      th.className = 'min-w-[120px] px-2 py-2 text-right font-semibold whitespace-nowrap';
+      th.className = 'min-w-[76px] px-2 py-2 text-right font-semibold whitespace-nowrap';
       th.textContent = data.columns[columnIndex];
       headRow.appendChild(th);
     });
@@ -1440,10 +1441,9 @@ function showScenarioModal(data: ScenarioModalData): void {
       labelCell.className = 'px-2 py-2 text-left font-medium whitespace-nowrap';
       labelCell.textContent = row.label;
       tr.appendChild(labelCell);
-      columnIndexes.forEach((columnIndex) => {
+      shownColumns.forEach((columnIndex) => {
         const td = document.createElement('td');
-        td.className = 'px-2 py-2 text-right font-mono ' +
-          (isBuyMore && row.label.startsWith('Sell commissions') ? 'whitespace-normal break-words' : 'whitespace-nowrap');
+        td.className = 'px-2 py-2 text-right font-mono whitespace-nowrap';
         td.style.fontVariantNumeric = 'tabular-nums';
         const value = document.createElement('span');
         value.textContent = row.values[columnIndex] ?? '—';
@@ -1467,6 +1467,32 @@ function showScenarioModal(data: ScenarioModalData): void {
 
   function renderMobileCards(columnIndexes: number[]): void {
     mobileCards.replaceChildren();
+    if (isBuyMore) {
+      data.rows.forEach((row) => {
+        const card = document.createElement('section');
+        card.className = 'rounded-lg border border-slate-700 bg-slate-900/50 p-3';
+        const heading = document.createElement('h3');
+        heading.className = 'mb-2 border-b border-slate-800 pb-2 text-xs font-semibold text-white';
+        heading.textContent = row.label;
+        card.appendChild(heading);
+        data.columns.forEach((column, index) => {
+          const line = document.createElement('div');
+          line.className = 'flex items-start justify-between gap-3 border-b border-slate-800/70 py-2 last:border-0';
+          const label = document.createElement('span');
+          label.className = 'text-[11px] text-slate-400';
+          label.textContent = column;
+          const value = document.createElement('span');
+          value.className = 'text-right font-mono text-xs font-semibold text-slate-200';
+          value.textContent = row.values[index] ?? '—';
+          if (index === 0 && row.kind === 'result') value.className += ' text-emerald-300';
+          if (index === 3) value.className += ' text-cyan-200';
+          line.append(label, value);
+          card.appendChild(line);
+        });
+        mobileCards.appendChild(card);
+      });
+      return;
+    }
     columnIndexes.forEach((columnIndex) => {
       const card = document.createElement('section');
       card.className = 'rounded-lg border border-slate-700 bg-slate-900/50 p-3';
