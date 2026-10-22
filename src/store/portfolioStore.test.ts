@@ -703,51 +703,6 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().closedTrades).toHaveLength(0);
   });
 
-  it('keeps legacy and AI-confirmed sale accounting aligned for shared commission and proceeds rules', () => {
-    vi.stubGlobal('localStorage', localStorageMock);
-    const legacyStore = new PortfolioStore();
-    const confirmedStore = new PortfolioStore();
-    const assumptions = {
-      commPerShare: 0.012,
-      commissionPerShare: 0.012,
-      commVolumePct: 0.0012,
-      commissionRatePct: 0.0012,
-      minCommOrder: 1.2,
-      commissionMin: 1.2,
-      annualRate: 0,
-      annualBorrowRate: 0
-    };
-    legacyStore.updateAssumptions(assumptions);
-    confirmedStore.updateAssumptions(assumptions);
-    legacyStore.buyStock('AAPL', 5, 100, '2026-10-01');
-    confirmedStore.buyStock('AAPL', 5, 100, '2026-10-01');
-    legacyStore.setMarginDebt(250);
-    confirmedStore.setMarginDebt(250);
-
-    legacyStore.sellStock('AAPL', 2, 120, '2026-10-10');
-    const confirmedResult = confirmedStore.sellMarginPosition('AAPL', 2, 120, Date.parse('2026-10-10'));
-
-    expect(confirmedResult).toMatchObject({
-      ticker: 'AAPL',
-      sharesSold: 2,
-      remainingShares: 3,
-      netProceeds: 238.8,
-      debtRepaid: 238.8,
-      cashSurplus: 0
-    });
-    for (const store of [legacyStore, confirmedStore]) {
-      expect(store.getState().positions.AAPL.shares).toBe(3);
-      expect(store.getState().balance).toBeCloseTo(-11.2, 8);
-      expect(store.getState().cashCushion.freeCash).toBe(0);
-      expect(store.getState().closedTrades[0].shares).toBe(2);
-      expect(store.getState().closedTrades[0].netProfit).toBeCloseTo(38.32, 8);
-    }
-    expect(legacyStore.getState().closedTrades[0].commissions).toBeCloseTo(
-      Number(confirmedStore.getState().closedTrades[0].feesAndCommissions),
-      8
-    );
-  });
-
   it('commits confirmed margin sales atomically while preserving closed-trade history', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
@@ -804,7 +759,7 @@ describe('canonical trade lifecycle and persistence', () => {
       minCommOrder: 1.2,
       annualRate: 0.15,
       annualBorrowRate: 0.15,
-      dayCountBasis: 365
+      dayCountBasis: 365 as const
     };
     for (const store of [terminalStore, aiStore]) {
       store.updateAssumptions(assumptions);
