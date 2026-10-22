@@ -1878,36 +1878,4 @@ if (document.readyState === 'loading') {
   initApp();
 }
 
-Object.assign(window as any, {
-  applyOvernightRollover,
-  clearLocalData,
-  createInsightElement,
-  createStockPageLink,
-  executeCommand,
-  exportBackupJSON,
-  getCashCushionTotal,
-  importBackupJSON,
-  loadMarketInsight,
-  loadTradernetRules,
-  logTerminal,
-  normalizePortfolioState,
-  processRollovers,
-  renderBoard,
-  renderBoardExternalLinks,
-  renderCashCushion,
-  renderPositionsTable,
-  renderSummaryCards,
-  saveStateToStorage,
-  sentimentBadge,
-  syncCloudState,
-  pullCloudState: () => syncCloudState('pull'),
-  pushCloudState: () => syncCloudState('push'),
-  refreshMarketInsight,
-  resetToBlankState,
-  saveApiKeys,
-  setActiveView,
-  setQuoteRefreshInterval,
-  showToast,
-  switchView,
-  updateEmptyStateVisibility
-});
+
