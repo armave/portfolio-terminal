@@ -691,8 +691,14 @@ describe('canonical trade lifecycle and persistence', () => {
       annualBorrowRate: 0
     });
     store.buyStock('AAPL', 5, 100, '2026-10-01');
+    const beforeSale = store.getState();
+    const beforePosition = beforeSale.positions.AAPL;
+    const beforeTranches = beforePosition.tranches?.map((tranche) => ({ ...tranche }));
 
     const partial = store.sellMarginPosition('aapl', 2, 120, Date.parse('2026-10-10'));
+    expect(beforeSale.positions.AAPL).toBe(beforePosition);
+    expect(beforePosition.tranches).toEqual(beforeTranches);
+    expect(store.getState()).not.toBe(beforeSale);
     expect(partial).toMatchObject({
       ticker: 'AAPL',
       sharesSold: 2,
@@ -718,6 +724,20 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().balance).toBe(0);
     expect(store.getState().cashCushion.freeCash).toBe(70);
     expect(store.getState().closedTrades).toHaveLength(2);
+  });
+
+  it('rejects invalid confirmed sale inputs without changing canonical state', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const before = store.getState();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.sellMarginPosition('AAPL', 3, 120)).toBeNull();
+    expect(store.sellMarginPosition('AAPL', 1, Number.NaN)).toBeNull();
+    expect(store.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('does not notify subscribers when a stale quote is rejected as a no-op', () => {
