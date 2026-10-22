@@ -1078,3 +1078,97 @@ summary:hover {
   }
 }
 
+/* Modal financial figures: prioritize legibility over compact density. */
+#scenarioComparisonModal table {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+#scenarioComparisonModal table th {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  letter-spacing: 0.025em;
+  color: #cbd5e1;
+}
+
+#scenarioComparisonModal table td {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  font-weight: 550;
+  color: #e2e8f0;
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+#scenarioComparisonModal table tbody th {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #cbd5e1;
+  white-space: normal;
+  min-width: 7.5rem;
+}
+
+#scenarioComparisonModal table tbody tr {
+  border-bottom-color: rgb(71 85 105 / 0.65);
+}
+
+#scenarioComparisonModal table tbody tr:nth-child(even) {
+  background-color: rgb(30 41 59 / 0.28);
+}
+
+#scenarioComparisonModal table tbody tr:has(td span) td span:first-child {
+  letter-spacing: -0.015em;
+}
+
+#scenarioComparisonModal .font-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+#scenarioComparisonModal .text-emerald-300,
+#scenarioComparisonModal .text-emerald-200 {
+  color: #6ee7b7;
+}
+
+#scenarioComparisonModal .text-cyan-200 {
+  color: #a5f3fc;
+}
+
+#scenarioComparisonModal .text-rose-300 {
+  color: #fda4af;
+}
+
+#scenarioComparisonModal .text-slate-400 {
+  color: #cbd5e1;
+}
+
+#scenarioComparisonModal .text-\[9px\] {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 767px) {
+  #scenarioComparisonModal table {
+    min-width: 38rem;
+  }
+
+  #scenarioComparisonModal table th,
+  #scenarioComparisonModal table td {
+    padding: 0.65rem 0.75rem;
+  }
+
+  #scenarioComparisonModal .text-right.font-mono.text-xs {
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
+
+  #scenarioComparisonModal .text-\[11px\] {
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+}
+
