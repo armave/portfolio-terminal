@@ -5,6 +5,7 @@ import {
   calculateBreakevenDays,
   calculateCommission,
   calculateProjectedDebt,
+  calculateRolloverDebt,
   calculateMarginInterest,
   collectOpenPositionTranches,
   createBlankState,
@@ -374,8 +375,9 @@ function applyOvernightRollover() {
 
   if (elapsedCycles > 0 && Math.abs(state.balance) > 0) {
     const currentDebt = Math.abs(state.balance);
-    const compoundedDebt = calculateProjectedDebt(currentDebt, getDailyRate(), elapsedCycles);
-    const interestAccrued = calculateMarginInterest(currentDebt, getDailyRate(), elapsedCycles);
+    const rollover = calculateRolloverDebt(currentDebt, getDailyRate(), elapsedCycles, 'batch');
+    const compoundedDebt = rollover.compoundedDebt;
+    const interestAccrued = rollover.interestAccrued;
 
     const tickers = Object.keys(state.positions);
     const totalInvested = getTotalPortfolioInvested(state);
