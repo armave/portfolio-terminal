@@ -124,15 +124,19 @@ All checks must be run against the same final commit. Also review the final diff
 
 The refactor is being delivered in small, regression-tested slices on one draft PR.
 
-Implemented so far:
+**Step 2 of 8 — Canonical state and atomic mutations: complete for the current migration slice.**
+
 - Treats an updater that returns the exact current state object as an explicit no-op, avoiding persistence and subscriber notifications for rejected stale quotes.
-- Routes cash-cushion holding additions/removals and AI-confirmed cash-holding sales through store-owned mutations.
-- Routes AI-confirmed buys and margin-position sales through atomic store operations; the sale operation preserves the existing confirmed-action accounting path and commits position, debt, free cash, realized margin charges, and closed-trade history together.
-- Routes AI target-price changes, explicit margin-debt changes, and view changes through the store.
+- Routes cash-holding additions/removals, AI-confirmed cash sales, AI-confirmed margin sales, and AI-confirmed buys through store-owned operations.
+- Commits sale accounting together: position quantities, debt, free cash, realized margin charges, and closed-trade history.
+- Routes target-price changes, explicit margin-debt changes, rollover accounting/timestamps, startup snapshots, cloud pulls, backup imports, reset, view changes, and gateway-secret state updates through the store.
+- Removes the `syncStore` whole-state import bridge; the runtime now receives store state through its subscription instead of repeatedly re-importing the entire snapshot.
 - Makes a new buy execution price authoritative over an older quote and clears stale quote metadata.
 - Restricts batch quote polling to normalized requested tickers and uses the shared `QuoteDetails` type instead of `any`.
 - Keeps routine success/status feedback out of toast notifications while retaining actionable errors.
 
-Regression tests cover stale-quote no-op behavior, quote-after-trade ordering, cash-holding mutations and sales, margin sale lifecycle, persistence, and unexpected symbols in provider batch responses.
+Regression tests cover stale-quote no-op behavior, quote-after-trade ordering, cash-holding mutations and sales, margin sale lifecycle, rollover accounting, persistence, and unexpected symbols in provider batch responses. The current head passed typecheck, Vitest, production build, and dead-code diagnostics.
 
-Remaining work includes moving rollover/accounting and cloud-import transitions behind store-owned operations, reviewing the legacy runtime state bridge and duplicate sale paths, and completing the rendering/subscription and persistence/cloud-sync work packages. This is not yet a completed app-wide refactor; keep the PR in draft until the final head passes all merge gates and the remaining work is reviewed.
+**Current step: Step 3 of 8 — Financial domain invariants.** Audit and strengthen regression coverage around commission rounding, FIFO lot accounting, margin-interest allocation, closed-trade history, and the read-only nature of hypothetical exit scenarios. No financial formula should change without an explicit expected-value test.
+
+Still outstanding after this step: complete quote-race and provider-failure review, rendering/subscription behavior, cloud conflict/import failure scenarios, terminal/settings cleanup, and consolidation of duplicate mutation/accounting paths. The app-wide refactor is not complete; keep the PR in draft until the final head passes all merge gates and the remaining work is reviewed.
