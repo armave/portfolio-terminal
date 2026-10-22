@@ -648,12 +648,12 @@ describe('canonical trade lifecycle and persistence', () => {
       ticker: 'MSFT',
       sharesSold: 1,
       remainingShares: 1,
-      netProceeds: 98.8,
+      netProceeds: 98.68,
       debtRepaid: 50,
-      cashSurplus: 48.8
+      cashSurplus: 48.68
     });
     expect(store.getState().balance).toBe(0);
-    expect(store.getState().cashCushion.freeCash).toBeCloseTo(48.8, 8);
+    expect(store.getState().cashCushion.freeCash).toBeCloseTo(48.68, 8);
     expect(store.getState().cashCushion.holdings).toEqual([
       expect.objectContaining({ ticker: 'MSFT', shares: 1 })
     ]);
