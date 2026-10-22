@@ -636,6 +636,30 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it('sells cash-cushion shares atomically, paying debt before adding surplus cash', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.addCashStock('MSFT', 2, 100);
+    store.setMarginDebt(50);
+
+    const result = store.sellCashHolding('msft', 1, 100);
+
+    expect(result).toEqual({
+      ticker: 'MSFT',
+      sharesSold: 1,
+      remainingShares: 1,
+      netProceeds: 98.8,
+      debtRepaid: 50,
+      cashSurplus: 48.8
+    });
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().cashCushion.freeCash).toBeCloseTo(48.8, 8);
+    expect(store.getState().cashCushion.holdings).toEqual([
+      expect.objectContaining({ ticker: 'MSFT', shares: 1 })
+    ]);
+    expect(store.getState().closedTrades).toHaveLength(0);
+  });
+
   it('does not notify subscribers when a stale quote is rejected as a no-op', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
