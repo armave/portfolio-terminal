@@ -676,12 +676,6 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
   boardAnalystRequests.set(ticker, request);
 }
 
-function loadMarketInsight(section: string, force = false) {
-  activeInsightSection = section;
-  if (force) insightRequestId++;
-  renderMarketInsightsComponent();
-}
-
 function recordTrackedPrice(
   ticker: string,
   price: number,
