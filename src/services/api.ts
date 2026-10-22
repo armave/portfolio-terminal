@@ -465,7 +465,6 @@ export async function pullCloudState(
       // A confirmed empty cloud store is safe to use as the current base revision.
       if (pulledRevision !== null) setCloudRevision(pulledRevision);
       reportResult?.(false);
-      showToast('No KV cloud state found. Retaining local state.', 'info');
       logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
       return loadSavedState(state || {});
     }
