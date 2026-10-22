@@ -794,6 +794,43 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().closedTrades).toHaveLength(2);
   });
 
+  it('keeps terminal and AI-confirmed sales financially equivalent', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const terminalStore = new PortfolioStore();
+    const aiStore = new PortfolioStore();
+    const assumptions = {
+      commPerShare: 0.012,
+      commVolumePct: 0.0012,
+      minCommOrder: 1.2,
+      annualRate: 0.15,
+      annualBorrowRate: 0.15,
+      dayCountBasis: 365
+    };
+    for (const store of [terminalStore, aiStore]) {
+      store.updateAssumptions(assumptions);
+      store.buyStock('AAPL', 2, 100, '2026-10-01');
+      store.setMarginDebt(210);
+    }
+
+    const closedAt = Date.parse('2026-10-10T12:00:00.000Z');
+    const terminalResult = terminalStore.sellStock('AAPL', 1, 120, '2026-10-10', { closedAt });
+    const aiResult = aiStore.sellMarginPosition('AAPL', 1, 120, closedAt);
+
+    expect(aiResult).toEqual(terminalResult);
+    expect(aiStore.getState().balance).toBe(terminalStore.getState().balance);
+    expect(aiStore.getState().cashCushion.freeCash).toBe(terminalStore.getState().cashCushion.freeCash);
+    expect(aiStore.getState().positions.AAPL).toEqual(terminalStore.getState().positions.AAPL);
+    expect(aiStore.getState().realizedMarginCharged).toBe(terminalStore.getState().realizedMarginCharged);
+    expect(aiStore.getState().realizedMarginCharged).toBeGreaterThan(0);
+    expect(aiStore.getState().closedTrades[0]).toMatchObject({
+      ticker: terminalStore.getState().closedTrades[0].ticker,
+      shares: terminalStore.getState().closedTrades[0].shares,
+      feesAndCommissions: terminalStore.getState().closedTrades[0].feesAndCommissions,
+      marginInterest: terminalStore.getState().closedTrades[0].marginInterest,
+      netProfit: terminalStore.getState().closedTrades[0].netProfit
+    });
+  });
+
   it('allocates buy commission FIFO and keeps confirmed-sale net P&L consistent', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
