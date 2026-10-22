@@ -881,6 +881,59 @@ export class PortfolioStore {
     });
   }
 
+  /**
+   * Adds shares to a cash-cushion holding while keeping the holding mutation
+   * inside the canonical store. A missing/invalid manual price preserves the
+   * existing quote (or initializes a new holding at zero until quote refresh).
+   */
+  public addCashHolding(
+    ticker: string,
+    shares: number,
+    price = 0
+  ): { ticker: string; shares: number; price: number } | null {
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || !Number.isFinite(shares) || shares <= 0) return null;
+
+    const manualPrice = Number(price);
+    const hasManualPrice = Number.isFinite(manualPrice) && manualPrice > 0;
+    const currentHoldings = this.state.cashCushion?.holdings || [];
+    const existing = currentHoldings.find((holding) => holding.ticker.trim().toUpperCase() === clean);
+    const resolvedPrice = hasManualPrice ? manualPrice : Number(existing?.price) || 0;
+
+    this.update((state) => {
+      const holdings = [...(state.cashCushion?.holdings || [])];
+      const existingIndex = holdings.findIndex(
+        (holding) => holding.ticker.trim().toUpperCase() === clean
+      );
+
+      if (existingIndex >= 0) {
+        const previous = holdings[existingIndex];
+        holdings[existingIndex] = {
+          ...previous,
+          shares: (Number(previous.shares) || 0) + shares,
+          ...(hasManualPrice ? { price: manualPrice, currentPrice: manualPrice } : {})
+        };
+      } else {
+        holdings.push({
+          ticker: clean,
+          shares,
+          price: resolvedPrice,
+          ...(hasManualPrice ? { currentPrice: manualPrice } : {})
+        });
+      }
+
+      return {
+        ...state,
+        cashCushion: {
+          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          holdings
+        }
+      };
+    });
+
+    return { ticker: clean, shares, price: resolvedPrice };
+  }
+
   public addCashStock(ticker: string, shares: number, price: number): void {
     const clean = ticker.trim().toUpperCase();
     if (!clean || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) return;
