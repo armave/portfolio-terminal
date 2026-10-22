@@ -33,6 +33,9 @@ function resolveActiveView(state: BoardState): string {
 export interface RenderCashCushionOptions {
   onFetchLivePrice?: (ticker: string) => void;
   onRemoveCashStock?: (index: number) => void;
+  onSaveBalance?: (signedValue: number) => void;
+  onAddCashStock?: (ticker: string, shares: number, manualPrice: number) => void;
+  onRefreshAllLivePrices?: () => void;
   refreshIntervalMs?: number;
 }
 
@@ -40,13 +43,21 @@ export function renderCashCushion(
   _state: BoardState,
   options: RenderCashCushionOptions = {}
 ): void {
-  const { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs = 60000 } = options;
+  const {
+    onFetchLivePrice,
+    onRemoveCashStock,
+    onSaveBalance,
+    onAddCashStock,
+    refreshIntervalMs = 60000
+  } = options;
   const container = document.getElementById('cashCushionContainer');
   if (container) {
     render(
       h(CashCushionDesk, {
         onFetchLivePrice,
         onRemoveCashStock,
+        onSaveBalance,
+        onAddCashStock,
         refreshIntervalMs
       }),
       container
@@ -267,6 +278,7 @@ function showDesk(id: string) {
 export interface RenderBoardOptions extends RenderCashCushionOptions {
   rules: BrokerRules;
   onSetActiveView?: (view: string) => void;
+  onRefreshAllLivePrices?: () => void;
   onRenderClosedHistory?: () => void;
   onRenderSettingsPanel?: () => void;
   onRenderAnalystConsensus?: (ticker: string) => void;
@@ -282,6 +294,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const {
     rules,
     onSetActiveView = () => { },
+    onRefreshAllLivePrices = () => { },
     onRenderClosedHistory = () => { },
     onRenderSettingsPanel = () => { },
     onRenderAnalystConsensus = () => { },
@@ -308,7 +321,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const tabsContainer = document.getElementById('tickerTabs');
   if (tabsContainer) {
-    render(h(TickerTabs, { state, onSetActiveView }), tabsContainer);
+    render(h(TickerTabs, { state, onSetActiveView, onRefreshAllLivePrices }), tabsContainer);
   }
 
   const closedTrades = state.closedTrades || [];
