@@ -726,6 +726,40 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().closedTrades).toHaveLength(2);
   });
 
+  it('allocates buy commission FIFO and keeps confirmed-sale net P&L consistent', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0.012,
+      commVolumePct: 0.0012,
+      minCommOrder: 1.2,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    store.buyStock('AAPL', 2, 100, '2026-10-01');
+    store.setMarginDebt(0);
+
+    const result = store.sellMarginPosition('AAPL', 1, 120, Date.parse('2026-10-10'));
+
+    expect(result).toMatchObject({
+      sharesSold: 1,
+      remainingShares: 1,
+      netProceeds: 118.8,
+      debtRepaid: 0,
+      cashSurplus: 118.8
+    });
+    expect(store.getState().closedTrades[0]).toMatchObject({
+      ticker: 'AAPL',
+      shares: 1,
+      feesAndCommissions: 1.8,
+      netProfit: 18.2
+    });
+    expect(store.getState().positions.AAPL.tranches).toEqual([
+      expect.objectContaining({ qty: 1, price: 100, buyCommission: 0.6 })
+    ]);
+    expect(store.getState().positions.AAPL.commBuy).toBeCloseTo(0.6, 8);
+  });
+
   it('rejects invalid confirmed sale inputs without changing canonical state', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
