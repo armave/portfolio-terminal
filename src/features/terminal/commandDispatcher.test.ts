@@ -272,7 +272,7 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.rows.every(row => row.values.length === 4)).toBe(true);
     expect(result.modal?.rows[0]?.values).toHaveLength(4);
     expect(result.modal?.note).toContain('Same projection schedule and columns as the main table');
-    expect(result.modal?.note).toContain('no portfolio mutation or order placement');
+    expect(result.modal?.note).toContain('No portfolio mutation or order placement');
     expect(buyStock).not.toHaveBeenCalled();
   });
 
