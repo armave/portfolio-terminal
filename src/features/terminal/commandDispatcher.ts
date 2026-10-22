@@ -642,11 +642,13 @@ export class CommandDispatcher {
       ],
       action: { label: 'Stage target command', command: 'target ' + sym + ' ' + best.price.toFixed(2) },
       rows: [
+        { label: 'Cost Basis', values: rows.map(() => money(costBasis)), kind: 'fee' },
+        { label: 'Gross Proceeds', values: rows.map(r => money(r.gross)), kind: 'fee' },
         { label: 'Total Fee Friction', values: rows.map(r => money(buyCommission + r.sellFee + r.marginFee)), kind: 'fee' },
         {
           label: 'Net P&L',
           values: rows.map(r => signed(r.net)),
-          deltas: rows.map(r => r === best ? 'BEST +' + money(bestAdvantage).slice(1) : signed(r.net - best.net) + ' vs best'),
+          deltas: rows.map(r => r === best ? 'BEST' : signed(r.net - best.net)),
           kind: 'result'
         },
         { label: 'Resulting Account Balance', values: rows.map(r => money(r.resultingAccountBalance)), kind: 'balance' }
@@ -737,25 +739,21 @@ export class CommandDispatcher {
         { label: 'Margin balance before / after buy', values: [money(balance), money(balanceAfter), signed(balanceAfter - balance)], kind: 'balance' },
         { label: 'Daily margin accrual', values: [money(dailyMarginBefore), money(dailyMarginAfter), signed(dailyMarginFeeDifference) + '/day'], kind: 'fee' },
         { label: 'Accrued margin interest', values: [money(currentMargin), money(currentMargin), '$0.00'], kind: 'fee' },
-        { label: 'Sell commission @ quote', values: [
-          money(calculateCommission(oldShares, oldShares * quote, rules as any)),
-          money(calculateCommission(newShares, newShares * quote, rules as any)),
-          signed(calculateCommission(newShares, newShares * quote, rules as any) - calculateCommission(oldShares, oldShares * quote, rules as any))
-        ], kind: 'fee' },
-        ...(hasTarget ? [{
-          label: 'Sell commission @ target',
+        {
+          label: 'Sell commissions · Quote / Target / −10%',
           values: [
-            money(calculateCommission(oldShares, oldShares * target, rules as any)),
-            money(calculateCommission(newShares, newShares * target, rules as any)),
-            signed(calculateCommission(newShares, newShares * target, rules as any) - calculateCommission(oldShares, oldShares * target, rules as any))
+            'Q ' + money(calculateCommission(oldShares, oldShares * quote, rules as any)) +
+              (hasTarget ? ' · T ' + money(calculateCommission(oldShares, oldShares * target, rules as any)) : '') +
+              ' · −10% ' + money(calculateCommission(oldShares, oldShares * downsidePrice, rules as any)),
+            'Q ' + money(calculateCommission(newShares, newShares * quote, rules as any)) +
+              (hasTarget ? ' · T ' + money(calculateCommission(newShares, newShares * target, rules as any)) : '') +
+              ' · −10% ' + money(calculateCommission(newShares, newShares * downsidePrice, rules as any)),
+            'Q ' + signed(calculateCommission(newShares, newShares * quote, rules as any) - calculateCommission(oldShares, oldShares * quote, rules as any)) +
+              (hasTarget ? ' · T ' + signed(calculateCommission(newShares, newShares * target, rules as any) - calculateCommission(oldShares, oldShares * target, rules as any)) : '') +
+              ' · −10% ' + signed(calculateCommission(newShares, newShares * downsidePrice, rules as any) - calculateCommission(oldShares, oldShares * downsidePrice, rules as any))
           ],
-          kind: 'fee' as const
-        }] : []),
-        { label: 'Sell commission @ −10%', values: [
-          money(calculateCommission(oldShares, oldShares * downsidePrice, rules as any)),
-          money(calculateCommission(newShares, newShares * downsidePrice, rules as any)),
-          signed(calculateCommission(newShares, newShares * downsidePrice, rules as any) - calculateCommission(oldShares, oldShares * downsidePrice, rules as any))
-        ], kind: 'fee' }
+          kind: 'fee'
+        }
       ],
       note: 'Net P&L includes buy/sell commissions and accrued interest. Sell commissions are shown at quote, target (if set), and −10%. Hypothetical only; no order placed.'
     };

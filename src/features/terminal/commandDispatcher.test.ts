@@ -201,12 +201,14 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.kind).toBe('exit-comparison');
     expect(result.modal?.columns).toHaveLength(7);
     const modalRows = result.modal?.rows.map((row) => row.label) || [];
-    expect(modalRows).toEqual(['Total Fee Friction', 'Net P&L', 'Resulting Account Balance']);
+    expect(modalRows).toEqual(['Cost Basis', 'Gross Proceeds', 'Total Fee Friction', 'Net P&L', 'Resulting Account Balance']);
     expect(modalRows).not.toContain('Gross proceeds');
     expect(modalRows).not.toContain('Cost basis');
     expect(modalRows).not.toContain('Margin balance before');
     expect(result.modal?.presets?.length).toBeGreaterThan(0);
     expect(result.modal?.rows.find(row => row.label === 'Net P&L')?.values.every(value => !value.includes('vs best') && !value.includes('Δ'))).toBe(true);
+    expect(result.modal?.rows.map(row => row.label)).toContain('Cost Basis');
+    expect(result.modal?.rows.map(row => row.label)).toContain('Gross Proceeds');
     expect(result.modal?.rows.find(row => row.label === 'Net P&L')?.deltas?.some(value => value?.includes('BEST'))).toBe(true);
     expect(result.modal?.rows.find(row => row.label === 'Resulting Account Balance')).toBeDefined();
     expect(result.modal?.quickActions?.map(action => action.label)).toContain('Invert Comparison');
