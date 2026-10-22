@@ -10,16 +10,12 @@ import {
   createBlankState,
   createPortfolioBackupSnapshot,
   normalizePortfolioBackup,
-  normalizePortfolioState,
-  processRollovers,
   resolveSaleQuantity,
 } from './src/domain/portfolio';
 import { evaluateIntent, parseAiIntent } from './src/features/ai/intent';
 import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
   calculateTargetUpsidePercent,
-  sentimentLabel,
-  SentimentDirection
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
@@ -35,7 +31,6 @@ import {
 import {
   areHeaderCredentialsConfigured,
   clearBrokerRules,
-  clearLocalData,
   getGatewaySecret,
   getQuoteRefreshInterval,
   loadBrokerRules,
@@ -47,7 +42,6 @@ import {
   saveGatewaySecret,
   saveQuoteRefreshInterval,
   saveState,
-  saveStateToStorage
 } from './src/services/storage';
 import {
   clearTerminalLog,
@@ -56,11 +50,8 @@ import {
 } from './src/ui/notifications';
 import {
   renderBoard as renderBoardUI,
-  renderCashCushion,
-  renderPositionsTable,
-  renderSummaryCards
 } from './src/ui/renderBoard';
-import { getCashCushionTotal, getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
+import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { BoardExternalLinks } from './src/components/BoardExternalLinks';
@@ -491,38 +482,6 @@ function updateCombinedBreakeven() {
   beEl.innerText = `Combined Breakeven: ${beDays} days (${beDateStr})`;
 }
 
-function createStockPageLink(ticker: string, provider: string) {
-  const link = document.createElement('a');
-  const symbol = encodeURIComponent(ticker);
-  let href = '';
-  let brandClass = '';
-  if (provider === 'Finviz') {
-    href = `https://finviz.com/stock?t=${symbol}`;
-    link.id = 'finvizLink';
-    brandClass = 'stock-link-finviz';
-  } else if (provider === 'Stocktwits') {
-    href = `https://stocktwits.com/symbol/${symbol}`;
-    link.id = 'stocktwitsLink';
-    brandClass = 'stock-link-stocktwits';
-  } else if (provider === 'TV Chart') {
-    href = `https://tradingview.com/chart/?symbol=${symbol}`;
-    link.id = 'tvChartLink';
-    brandClass = 'stock-link-tv-chart';
-  } else if (provider === 'TV Ideas') {
-    href = `https://tradingview.com/symbols/${symbol}/ideas/?sort=recent`;
-    link.id = 'tvIdeasLink';
-    brandClass = 'stock-link-tv-ideas';
-  }
-  link.href = href;
-  link.target = '_blank';
-  link.rel = 'noopener noreferrer';
-  link.className = `stock-external-link ${brandClass} px-2 py-1 rounded text-[10px] font-bold font-mono uppercase`;
-  link.textContent = provider;
-  link.title = `Open ${ticker} on ${provider} in a new tab`;
-  link.setAttribute('aria-label', `Open ${ticker} on ${provider} in a new tab`);
-  return link;
-}
-
 function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
   const stockPageLinks = document.getElementById('boardExternalLinks');
@@ -621,129 +580,7 @@ function createInsightElement(tagName: string, className = '', text = '') {
   return element;
 }
 
-function sentimentBadge(direction: SentimentDirection, label = sentimentLabel(direction)) {
-  const styles: Record<string, string> = {
-    bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
-    bearish: 'border-rose-800 bg-rose-950/50 text-rose-300',
-    neutral: 'border-slate-700 bg-slate-900 text-slate-300',
-    unknown: 'border-slate-800 bg-slate-950 text-slate-500'
-  };
-  const badge = createInsightElement(
-    'span',
-    `inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${styles[direction]}`,
-    label
-  );
-  badge.dataset.sentiment = direction;
-  badge.title = direction === 'unknown'
-    ? 'The selected data source did not provide a sentiment signal.'
-    : 'A directional marker based only on the provider values shown in this section.';
-  return badge;
-}
-
-async function fetchBoardAnalystTarget(ticker: string, force = false) {
-  if (!ticker) return null;
-  const cleanTicker = ticker.trim().toUpperCase();
-
-  try {
-    const data = await fetchYahooDeepStockData(cleanTicker, force);
-    const t = data?.analystTargets;
-    const targetPrice = t?.median || t?.mean || t?.high;
-
-    if (typeof targetPrice === "number" && Number.isFinite(targetPrice) && targetPrice > 0) {
-      return {
-        targetPrice,
-        provider: "Yahoo",
-        source: "Yahoo",
-        targetMean: t.mean,
-        targetHigh: t.high,
-        targetLow: t.low,
-        numberOfAnalysts: t.numberOfAnalysts || 0,
-        consensus: t.consensusRecommendation || null,
-        valuation: data.valuation,
-        calendar: data.calendar,
-        profile: data.profile
-      };
-    }
-  } catch (err: any) {
-    console.warn(`[Yahoo Worker Error for ${cleanTicker}]:`, err.message);
-  }
-
-  throw new Error(`Analyst price target unavailable via proxy for ${cleanTicker}.`);
-}
-
-function renderBoardAnalystConsensus(ticker: string, force = false) {
-  const container = document.getElementById('boardAnalystConsensus');
-  if (!container) return;
-  const hideConsensus = () => {
-    container.textContent = '';
-    container.removeAttribute('title');
-    container.className = 'hidden';
-  };
-  if (!ticker || !state.positions[ticker]) {
-    hideConsensus();
-    return;
-  }
-
-  const now = Date.now();
-  const snapshot = boardAnalystSnapshots.get(ticker);
-  const error = boardAnalystErrors.get(ticker);
-  const currentPrice = Number(state.positions[ticker].currentPrice);
-
-  if (!force && snapshot && now - snapshot.fetchedAt < BOARD_ANALYST_CACHE_TTL_MS) {
-    const upside = calculateTargetUpsidePercent(snapshot.targetPrice, currentPrice);
-    if (upside !== undefined) {
-      const color = upside > 0
-        ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
-        : upside < 0
-          ? 'border-rose-800 bg-rose-950/40 text-rose-300'
-          : 'border-slate-700 bg-slate-900 text-slate-300';
-      container.textContent = `${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`;
-      container.title = `Target from ${snapshot.source}: ${formatUSD(snapshot.targetPrice)} versus current price ${formatUSD(currentPrice)}.`;
-      container.className = `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`;
-    } else {
-      container.textContent = `${snapshot.source} price target · ${formatUSD(snapshot.targetPrice)} · current price unavailable`;
-      container.title = `Price target from ${snapshot.source}.`;
-      container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300';
-    }
-    return;
-  }
-
-  if (!force && error && now - error.failedAt < BOARD_ANALYST_RETRY_MS) {
-    container.textContent = 'Analyst target unavailable';
-    container.title = error.message;
-    container.className = 'rounded border border-amber-800 bg-amber-950/30 px-2.5 py-1 text-[10px] font-semibold text-amber-300';
-    return;
-  }
-
-  if (initialQuoteRefreshPending && !snapshot) {
-    container.textContent = 'Loading analyst target…';
-    container.title = 'Waiting for the initial batch quote refresh.';
-    container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
-    return;
-  }
-
-  if (boardAnalystRequests.has(ticker)) {
-    return;
-  }
-
-  container.textContent = 'Checking analyst target…';
-  container.removeAttribute('title');
-  container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
-
-  const request = fetchBoardAnalystTarget(ticker, force).then(result => {
-    boardAnalystSnapshots.set(ticker, { ...result, fetchedAt: Date.now() });
-    boardAnalystErrors.delete(ticker);
-  }).catch(requestError => {
-    const message = requestError instanceof Error ? requestError.message : String(requestError);
-    boardAnalystErrors.set(ticker, { failedAt: Date.now(), message });
-  }).finally(() => {
-    boardAnalystRequests.delete(ticker);
-    if (getMarketInsightsTicker() === ticker) renderBoardAnalystConsensus(ticker);
-  });
-  boardAnalystRequests.set(ticker, request);
-}
-
-async function loadMarketInsight(section: string, force = false) {
+function loadMarketInsight(section: string, force = false) {
   activeInsightSection = section;
   if (force) insightRequestId++;
   renderMarketInsightsComponent();
@@ -849,12 +686,6 @@ function removeCashStock(index: number) {
   saveState(state, pushStateToGist);
   renderBoard();
   logTerminal(`[Cash Cushion]: Removed ${removed.ticker} from cash holdings.`);
-}
-
-function updateEmptyStateVisibility(isEmpty: boolean) {
-  const panel = document.getElementById('emptyStatePanel');
-  if (!panel) return;
-  panel.classList.toggle('hidden', !isEmpty);
 }
 
 async function requestLivePrice(symbol: string, force = false) {
