@@ -640,6 +640,7 @@ describe('canonical trade lifecycle and persistence', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
     store.addCashStock('MSFT', 2, 100);
+    store.updateAssumptions({ commPerShare: 0, commVolumePct: 0, minCommOrder: 1.2 });
     store.setMarginDebt(50);
 
     const result = store.sellCashHolding('msft', 1, 100);
@@ -648,12 +649,12 @@ describe('canonical trade lifecycle and persistence', () => {
       ticker: 'MSFT',
       sharesSold: 1,
       remainingShares: 1,
-      netProceeds: 98.68,
+      netProceeds: 98.8,
       debtRepaid: 50,
-      cashSurplus: 48.68
+      cashSurplus: 48.8
     });
     expect(store.getState().balance).toBe(0);
-    expect(store.getState().cashCushion.freeCash).toBeCloseTo(48.68, 8);
+    expect(store.getState().cashCushion.freeCash).toBeCloseTo(48.8, 8);
     expect(store.getState().cashCushion.holdings).toEqual([
       expect.objectContaining({ ticker: 'MSFT', shares: 1 })
     ]);
