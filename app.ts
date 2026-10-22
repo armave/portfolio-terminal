@@ -1047,10 +1047,6 @@ async function applyPortfolioActions(action: any) {
     const ticker = String(action.ticker || '').trim().toUpperCase();
     const shares = Number(action.shares);
     const price = Number(action.price);
-    const targetPrice = Number(action.pt) > 0
-      ? Number(action.pt)
-      : Number((price * 1.05).toFixed(2));
-
     if (!ticker || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) {
       logTerminal('[AI Action Error]: Buy requires a valid ticker, positive share count, and positive price.');
       showToast('Invalid buy details.', 'error');
@@ -1058,6 +1054,11 @@ async function applyPortfolioActions(action: any) {
     }
 
     const priorState = portfolioStore.getState();
+    const targetPrice = Number(action.pt) > 0
+      ? Number(action.pt)
+      : priorState.positions[ticker]
+        ? undefined
+        : Number((price * 1.05).toFixed(2));
     const priorFreeCash = Math.max(0, Number(priorState.cashCushion?.freeCash) || 0);
     const priorDebt = Math.abs(Number(priorState.balance) || 0);
     const rules = priorState.brokerAssumptions || TRADERNET_RULES;
