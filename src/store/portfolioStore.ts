@@ -171,6 +171,43 @@ export function migrateLegacyCloudHoldingsToPositions(
   };
 }
 
+/** Shared broker commission calculation for all confirmed stock-sale paths. */
+function calculateSaleCommission(shares: number, proceeds: number, rules: BrokerRules): number {
+  const commPerShare = Number(rules.commPerShare ?? rules.commissionPerShare ?? 0.012);
+  const commVolumePct = Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0012);
+  const minCommOrder = Number(rules.minCommOrder ?? rules.commissionMin ?? 1.2);
+  const fallback = Number(Math.max(minCommOrder, shares * commPerShare + proceeds * commVolumePct).toFixed(2));
+
+  try {
+    const calculated = calculateCommission(shares, proceeds, rules as any);
+    return Number.isFinite(calculated) && calculated > 0
+      ? Number(calculated.toFixed(2))
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Shared debt-first allocation of net sale proceeds. */
+function settleSaleProceeds(
+  debt: number,
+  freeCash: number,
+  netProceeds: number
+): { remainingDebt: number; freeCash: number; debtRepaid: number; cashSurplus: number } {
+  const normalizedDebt = Math.max(0, Number(debt) || 0);
+  const normalizedCash = Math.max(0, Number(freeCash) || 0);
+  const normalizedProceeds = Math.max(0, Number(netProceeds) || 0);
+  const debtRepaid = Math.min(normalizedDebt, normalizedProceeds);
+  const cashSurplus = Math.max(0, normalizedProceeds - debtRepaid);
+
+  return {
+    remainingDebt: Math.max(0, normalizedDebt - debtRepaid),
+    freeCash: normalizedCash + cashSurplus,
+    debtRepaid,
+    cashSurplus
+  };
+}
+
 export class PortfolioStore {
   private state: PortfolioState;
   private listeners: Set<(state: PortfolioState) => void> = new Set();
@@ -688,22 +725,8 @@ export class PortfolioStore {
       }
       const sellProceeds = actualSold * sellPrice;
 
-      // Calculate sell commissions
-      const commPerShare = Number((rules as any).commPerShare ?? (rules as any).commissionPerShare ?? 0.02);
-      const commVolumePct = Number((rules as any).commVolumePct ?? (rules as any).commissionRatePct ?? 0.0005);
-      const minCommOrder = Number((rules as any).minCommOrder ?? (rules as any).commissionMin ?? 1.50);
-
-      const rawSellComm = actualSold * commPerShare + sellProceeds * commVolumePct;
-      let sellComm = Number(Math.max(minCommOrder, rawSellComm).toFixed(2));
-
-      try {
-        const calculated = calculateCommission(actualSold, sellProceeds, rules as any);
-        if (Number.isFinite(calculated) && calculated > 0) {
-          sellComm = Number(calculated.toFixed(2));
-        }
-      } catch {
-        // Fallback to rawSellComm
-      }
+      // Shared with the AI-confirmed sale path to keep broker fees consistent.
+      const sellComm = calculateSaleCommission(actualSold, sellProceeds, rules);
 
       // Debt and margin interest calculation
       const totalPortfolioInvested = Object.values(positions).reduce(
@@ -748,16 +771,13 @@ export class PortfolioStore {
       // Keep it in realized P&L, but do not subtract it a second time from cash proceeds.
       const netCashProceeds = Number((sellProceeds - sellComm).toFixed(2));
 
-      let currentDebt = totalDebt;
-      let freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
-
-      if (currentDebt >= netCashProceeds) {
-        currentDebt -= netCashProceeds;
-      } else {
-        const surplus = netCashProceeds - currentDebt;
-        currentDebt = 0;
-        freeCash += surplus;
-      }
+      const settlement = settleSaleProceeds(
+        totalDebt,
+        Number(state.cashCushion?.freeCash) || 0,
+        netCashProceeds
+      );
+      const currentDebt = settlement.remainingDebt;
+      const freeCash = settlement.freeCash;
 
       const remainingShares = pos.shares - actualSold;
       if (remainingShares <= 0 || updatedTranches.length === 0) {
@@ -1061,17 +1081,17 @@ export class PortfolioStore {
 
       const grossProceeds = actualSold * sellPrice;
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
-      const sellCommission = calculateCommission(actualSold, grossProceeds, {
-        commPerShare: Number(rules.commPerShare ?? rules.commissionPerShare ?? 0.012),
-        commVolumePct: Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0012),
-        minCommOrder: Number(rules.minCommOrder ?? rules.commissionMin ?? 1.2)
-      });
+      const sellCommission = calculateSaleCommission(actualSold, grossProceeds, rules);
       const netProceeds = Number((grossProceeds - sellCommission).toFixed(2));
-      const currentDebt = Math.abs(Number(state.balance) || 0);
-      const debtRepaid = Math.min(currentDebt, netProceeds);
-      const nextDebt = Math.max(0, currentDebt - debtRepaid);
-      const cashSurplus = Math.max(0, netProceeds - debtRepaid);
-      const freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0) + cashSurplus;
+      const settlement = settleSaleProceeds(
+        Math.abs(Number(state.balance) || 0),
+        Number(state.cashCushion?.freeCash) || 0,
+        netProceeds
+      );
+      const nextDebt = settlement.remainingDebt;
+      const debtRepaid = settlement.debtRepaid;
+      const cashSurplus = settlement.cashSurplus;
+      const freeCash = settlement.freeCash;
       const remainingShares = Math.max(0, availableShares - actualSold);
 
       if (remainingShares <= 1e-8) {
