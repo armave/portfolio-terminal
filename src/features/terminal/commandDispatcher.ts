@@ -632,8 +632,14 @@ export class CommandDispatcher {
       action: { label: 'Stage target command', command: 'target ' + sym + ' ' + best.price.toFixed(2) },
       rows: [
         { label: 'Total Fee Friction', values: rows.map(r => money(buyCommission + r.sellFee + r.marginFee)), kind: 'fee' },
-        { label: 'Net P&L', values: rows.map(r => r === best
-          ? signed(r.net) + ' · BEST +' + money(bestAdvantage).replace('
+        {
+          label: 'Net P&L',
+          values: rows.map(r => r === best
+            ? signed(r.net) + ' · BEST (+' + signed(bestAdvantage) + ' vs alternative)'
+            : signed(r.net) + ' · Δ ' + signed(r.net - best.net) + ' vs best'),
+          kind: 'result'
+        },
+        { label: 'Final Margin Balance', values: rows.map(r => money(r.finalBalance)), kind: 'balance' }
       ],
       note: 'Total fee friction includes buy commission, sell commission, and estimated margin interest. Future prices are assumptions. The action stages a target-price command in the terminal; it does not submit a broker order.'
     };
