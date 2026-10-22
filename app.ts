@@ -23,6 +23,7 @@ import {
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
+import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
   fetchYahooDeepStockData,
@@ -1003,17 +1004,15 @@ async function importBackupJSON(event: Event) {
 
     importedState.lastUpdated = Date.now();
     const previousState = portfolioStore.getState();
-    portfolioStore.importState(importedState);
-    state = portfolioStore.getState();
-    try {
-      if (!saveState(state, pushStateToGist)) {
-        throw new Error('Could not persist the imported backup to browser storage.');
-      }
-    } catch (error) {
-      portfolioStore.importState(previousState);
-      state = portfolioStore.getState();
-      throw error;
-    }
+    commitPortfolioBackupImport(
+      importedState,
+      previousState,
+      (snapshot) => {
+        portfolioStore.importState(snapshot as any);
+        state = portfolioStore.getState();
+      },
+      () => saveState(state, pushStateToGist)
+    );
     await pushStateToGist(true);
     renderBoard();
     logTerminal(`[Backup Import]: Imported ${file.name} into this browser. Check KV cloud status for sync results.`);
