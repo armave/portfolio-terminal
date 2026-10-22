@@ -569,6 +569,19 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
   });
 
+  it('removes cash holdings through the store with case-insensitive ticker matching', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.addCashStock('MSFT', 2, 100);
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.removeCashStock('msft');
+
+    expect(store.getState().cashCushion.holdings).toEqual([]);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it('does not notify subscribers when a stale quote is rejected as a no-op', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
