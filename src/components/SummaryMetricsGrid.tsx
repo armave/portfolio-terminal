@@ -11,7 +11,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText }: { 
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
   const equityWidth = Math.max(0, Math.min(100, equity));
   const buffer = Number.isFinite(risk.marginCallBufferPct) ? Math.max(0, Math.min(100, risk.marginCallBufferPct)) : 0;
-  const [detailsOpen, setDetailsOpen] = [false, () => {}];
+  const stopOutBuffer = Number.isFinite(risk.stopOutBufferPct) ? Math.max(0, Math.min(100, risk.stopOutBufferPct)) : 0;
   return (
     <section class="margin-risk-gauge-card" aria-label="Margin risk and account equity">
       <div class="margin-risk-gauge-heading">
@@ -30,8 +30,8 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText }: { 
           <div class="margin-risk-detail"><span>Trigger estimate</span><strong>{risk.showMarginCall ? risk.marginCallText : 'Not near trigger'}</strong></div>
         </div>
         <div class="margin-risk-gauge-item">
-          <div class="margin-risk-gauge-row"><span class="margin-risk-label">STOP-OUT THRESHOLD</span><strong>{risk.showStopOut ? 'Configured' : 'Not near trigger'}</strong></div>
-          <div class="margin-risk-buffer-track"><span class={risk.showStopOut ? 'danger' : 'safe'} style={{ width: (risk.showStopOut ? Math.max(0, Math.min(100, buffer)) : 100) + '%' }}></span></div>
+          <div class="margin-risk-gauge-row"><span class="margin-risk-label">STOP-OUT THRESHOLD</span><strong>{Number.isFinite(risk.stopOutBufferPct) ? risk.stopOutBufferPct.toFixed(1) + '% buffer' : '—'}</strong></div>
+          <div class="margin-risk-buffer-track"><span class={stopOutBuffer < 30 ? 'danger' : 'safe'} style={{ width: stopOutBuffer + '%' }}></span></div>
           <div class="margin-risk-detail"><span>Trigger estimate</span><strong>{risk.showStopOut ? risk.stopOutText : '—'}</strong></div>
         </div>
       </div>
@@ -95,7 +95,8 @@ function computeMarginRiskDisplay(
       showStopOut: false,
       stopOutText: '',
       showRiskTriggers: false,
-      marginCallBufferPct: 100
+      marginCallBufferPct: 100,
+      stopOutBufferPct: 100
     };
   }
 
@@ -134,6 +135,8 @@ function computeMarginRiskDisplay(
   // the estimated trigger amount, expressed as a percentage of current value.
   const marginCallBufferPct =
     positionValue > 0 ? ((positionValue - marginCallValue) / positionValue) * 100 : -Infinity;
+  const stopOutBufferPct =
+    positionValue > 0 ? ((positionValue - stopOutValue) / positionValue) * 100 : -Infinity;
   const showRiskTriggers = showMarginCall && marginCallBufferPct < 60;
 
   return {
@@ -144,7 +147,8 @@ function computeMarginRiskDisplay(
     showStopOut,
     stopOutText: showStopOut ? formatRiskTrigger(stopOutValue, positionValue) : '',
     showRiskTriggers,
-    marginCallBufferPct
+    marginCallBufferPct,
+    stopOutBufferPct
   };
 }
 
