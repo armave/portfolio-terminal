@@ -207,6 +207,11 @@ describe('terminal command validation and cash routing', () => {
     expect(modalRows).toContain('Margin interest');
     expect(modalRows).toContain('Margin balance before');
     expect(modalRows).toContain('Final margin balance');
+    expect(modalRows).toContain('EXECUTION & PROCEEDS');
+    expect(modalRows).toContain('TRANSACTION & FINANCING COSTS');
+    expect(modalRows).toContain('NET OUTCOME & MARGIN BALANCE');
+    expect(modalRows).toContain('Δ vs best net P&L');
+    expect(result.modal?.presets?.length).toBeGreaterThan(0);
     expect(result.modal?.note).toContain('Future prices are assumptions');
   });
 
@@ -256,13 +261,17 @@ describe('terminal command validation and cash routing', () => {
     expect(result.text).not.toContain('Downside sensitivity:');
     expect(result.text).not.toContain('Return on cost at target');
     expect(result.modal?.kind).toBe('buy-more');
-    expect(result.modal?.columns).toEqual(['Before', 'After buying']);
+    expect(result.modal?.columns).toEqual(['Before', 'After buying', 'Change (Δ)']);
     const modalRows = result.modal?.rows.map((row) => row.label) || [];
     expect(modalRows).toContain('Buy commissions (total)');
     expect(modalRows).toContain('Sell commissions (quote / target / −10%)');
     expect(modalRows).toContain('Accrued margin interest');
     expect(modalRows).toContain('Margin balance');
     expect(modalRows).toContain('Extra interest / day');
+    expect(modalRows).toContain('POSITION & BASIS');
+    expect(modalRows).toContain('PROJECTED OUTCOMES');
+    expect(modalRows).toContain('FINANCING & MARGIN CARRY');
+    expect(modalRows).toContain('Δ vs best net P&L');
     expect(result.modal?.note).toContain('no order placed');
     expect(buyStock).not.toHaveBeenCalled();
   });
