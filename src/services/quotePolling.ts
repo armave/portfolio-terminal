@@ -67,11 +67,13 @@ export async function refreshTrackedQuotes(
       suppliedChange: data.price.change ?? data.regularMarketChange,
       marketState
     });
+    const previousClose = Number(previous);
+    const hasPreviousClose = Number.isFinite(previousClose) && previousClose > 0;
     const quoteDetails = {
       marketState,
       price: current,
       change,
-      changePercent: previous ? (change / previous) * 100 : 0
+      changePercent: hasPreviousClose ? (change / previousClose) * 100 : 0
     };
 
     if (recordTrackedPrice(ticker, Number(current), 'Yahoo', Date.now(), quoteDetails, requestStartedAt)) updatedCount++;
