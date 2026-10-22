@@ -61,7 +61,7 @@ function renderScenarioReport(container: HTMLElement, message: string): void {
     const row = document.createElement('div');
     row.className = 'rounded-md px-3 py-1 leading-snug';
     if (/^(?:[A-Z][A-Z /&()_-]{2,}|\s*[A-Z][A-Z0-9 /&()_-]{2,}:|\s*\d+[.)]\s|\s*[A-Z]\)\s)/.test(rawLine.trim()) ||
-      /^(?:BEST ESTIMATED EXIT|NET ADVANTAGE|RESULT:|PRICE SENSITIVITY:)/i.test(rawLine.trim())) {
+      /^(?:BEST ESTIMATED EXIT|NET ADVANTAGE|RESULT:|PRICE SENSITIVITY:|RISK NOTE:)/i.test(rawLine.trim()) || /^(?:PROFIT \/ LOSS COMPARISON|POSITION CHANGE|RISK|UPSIDE|DOWNSIDE)/i.test(rawLine.trim())) {
       row.className = 'mt-2 border-l-2 border-cyan-400/80 bg-cyan-400/[0.07] px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-cyan-100';
     } else if (/(?:-\$|loss|downside|worse|decrease|commission|interest)/i.test(rawLine)) {
       row.className += ' my-0.5 bg-rose-400/[0.045] text-slate-200';
@@ -182,7 +182,12 @@ function showScenarioReport(message: string): void {
 
   const subtitle = document.createElement('p');
   subtitle.className = 'mt-1.5 max-w-xl text-xs leading-relaxed text-slate-400';
-  subtitle.textContent = 'Before vs. after · estimated values';
+  const reportHeader = message.split('\n', 1)[0].toUpperCase();
+  subtitle.textContent = reportHeader.startsWith('[HYPOTHETICAL BUY:')
+    ? 'Current position vs. proposed purchase · profit, downside, exposure and fees'
+    : reportHeader.startsWith('[MULTI-DATE EXIT COMPARISON:')
+      ? 'Sell now vs. future exits · estimated net results after costs'
+      : 'Before vs. after · estimated values';
 
   headingGroup.append(eyebrow, title, subtitle);
 

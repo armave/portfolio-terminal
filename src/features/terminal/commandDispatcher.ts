@@ -169,7 +169,7 @@ export class CommandDispatcher {
             '  • sell today for <p1> vs sell <N> days later for <p2>',
             '  • sim [ticker] <price> in <days> days    (e.g. sim AAPL 205 in 14d)',
             '  • ladder [ticker] <p1>, <p2>, <p3>       (e.g. ladder AAPL 195, 200, 205)',
-            '  • compare exits [ticker] today at <p>, 1 week at <p>, 10 days at <p>',
+            '  • compare exits [ticker] today at <p>, tomorrow at <p>, after 4 days at <p>, 1 week later at <p>',
             '  • buy scenario <shares> <ticker> at <price> (read-only add-on purchase simulation)',
             '  • view <ticker|combined|cash> | refresh | clear'
           ].join('\n')
@@ -201,11 +201,18 @@ export class CommandDispatcher {
         let tickerArg: string | undefined;
         const scenarios: Array<{ label: string; days: number; price: number }> = [];
         for (const segment of exitSeriesMatch[1].split(/\s*,\s*/).filter(Boolean)) {
-          const match = segment.match(/^(?:([A-Za-z]{1,10})\s+)?(today|tomorrow|(?:\d+)\s*(?:d|days?|w|weeks?)(?:\s+(?:later|from\s+now))?)\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
-          if (!match) throw new Error('Usage: compare exits [TICKER] today at 190, 1 day at 191, 1 week later at 195, 10 days at 198');
+          const match = segment.match(/^(?:(?!(?:after|in)\s)([A-Za-z]{1,10})\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?)(?:\s+(?:later|from\s+now))?)\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
+          if (!match) throw new Error('Usage: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, 1 week later at 195');
           if (match[1]) { const found = match[1].toUpperCase(); if (tickerArg && tickerArg !== found) throw new Error('Use the same ticker for every exit scenario.'); tickerArg = found; }
-          const period = match[2].toLowerCase(); let days = period === 'tomorrow' ? 1 : 0;
-          if (period !== 'today' && period !== 'tomorrow') { const p = period.match(/^(\d+)\s*(d|day|days|w|week|weeks)/); if (!p) throw new Error('Unrecognized exit date: ' + match[2]); days = Number(p[1]) * (p[2].startsWith('w') ? 7 : 1); }
+          const period = match[2].toLowerCase().replace(/^(?:after|in)\s+/, '').replace(/\s+(?:later|from\s+now)$/, '').replace(/^a\s+/, '1 ').replace(/^one\s+/, '1 ');
+          let days = 0;
+          if (period === 'tomorrow') days = 1;
+          else if (period !== 'today') {
+            const p = period.match(/^(\d+)\s*(d|day|days|w|week|weeks)$/);
+            if (!p) throw new Error('Unrecognized exit date: ' + match[2]);
+            days = Number(p[1]) * (p[2].startsWith('w') ? 7 : 1);
+          }
+          if (!Number.isInteger(days) || days < 0 || days > 3650) throw new Error('Exit date must be within the next 10 years.');
           const price = cleanNumber(match[3]); if (!Number.isFinite(price) || price <= 0) throw new Error('Every exit price must be a positive number.');
           scenarios.push({ label: match[2], days, price });
         }
@@ -632,9 +639,11 @@ export class CommandDispatcher {
     const oldBuyFee = Math.max(0, Number(pos.commBuy) || 0);
     const purchaseValue = qty * price;
     const purchaseFee = calculateCommission(qty, purchaseValue, rules as any);
-    const currentDebt = Math.max(0, -(Number(state.balance) || 0));
+    const balance = Number(state.balance) || 0;
+    const currentDebt = Math.max(0, -balance);
+    const additionalMarginDebt = Math.max(0, purchaseValue + purchaseFee - Math.max(0, balance));
     const currentDailyMarginFee = currentDebt * rules.dailyRate;
-    const projectedDailyMarginFee = (currentDebt + purchaseValue) * rules.dailyRate;
+    const projectedDailyMarginFee = (currentDebt + additionalMarginDebt) * rules.dailyRate;
     const dailyMarginFeeDifference = projectedDailyMarginFee - currentDailyMarginFee;
     const newShares = oldShares + qty;
     const newCost = oldCost + purchaseValue;
@@ -653,12 +662,18 @@ export class CommandDispatcher {
     const pct = (n: number) => (n > 0 ? '+' : '') + n.toFixed(2) + '%';
     const targetOldPnl = hasTarget ? oldShares * target - oldCost - oldBuyFee : 0;
     const targetNewPnl = hasTarget ? newShares * target - newCost - newBuyFee : 0;
+    const downsidePrice = quote * 0.9;
+    const downsideOldPnl = oldShares * downsidePrice - oldCost - oldBuyFee;
+    const downsideNewPnl = newShares * downsidePrice - newCost - newBuyFee;
+    const downsideDelta = downsideNewPnl - downsideOldPnl;
+    const breakEvenAfterBuy = (newCost + newBuyFee) / newShares;
 
     const lines = [
       '[HYPOTHETICAL BUY: ' + ticker + ']',
       'Add ' + qty.toLocaleString() + ' shares @ ' + money(price) + ' · est. fee ' + money(purchaseFee),
       'Cash required: ' + money(purchaseValue + purchaseFee),
       'Daily margin fee: ' + money(currentDailyMarginFee) + ' → ' + money(projectedDailyMarginFee) + ' (' + (dailyMarginFeeDifference >= 0 ? '+' : '-') + money(Math.abs(dailyMarginFeeDifference)) + '/day)',
+      'Additional exposure: ' + money(purchaseValue) + ' before fee | New position value at quote: ' + money(newShares * quote),
       '',
       'POSITION CHANGE',
       'Shares: ' + oldShares.toLocaleString() + ' → ' + newShares.toLocaleString() + ' (+' + qty.toLocaleString() + ')',
@@ -669,15 +684,22 @@ export class CommandDispatcher {
       'At current quote (' + money(quote) + '): ' + signed(oldPnl) + ' → ' + signed(newPnl) + ' (' + signed(newPnl - oldPnl) + ')',
       'P&L change per $1 stock move: ' + money(oldShares) + ' → ' + money(newShares) + ' (' + signed(qty) + ' per $1 move)'
     ];
+    lines.push(
+      'At -10% from quote (' + money(downsidePrice) + '): ' + signed(downsideOldPnl) + ' → ' + signed(downsideNewPnl) + ' (' + signed(downsideDelta) + ' change)',
+      'Break-even after adding shares (incl. estimated buy fees): ' + money(breakEvenAfterBuy),
+      'Downside sensitivity: every additional $1 decline adds about ' + money(qty) + ' more loss versus current position.'
+    );
     if (hasTarget) {
       lines.push(
         'At target (' + money(target) + '): ' + signed(targetOldPnl) + ' → ' + signed(targetNewPnl) + ' (' + signed(targetNewPnl - targetOldPnl) + ')',
         'Return on cost at target: ' + pct(oldCost + oldBuyFee > 0 ? targetOldPnl / (oldCost + oldBuyFee) * 100 : 0) +
-          ' → ' + pct(newCost + newBuyFee > 0 ? targetNewPnl / (newCost + newBuyFee) * 100 : 0)
+          ' → ' + pct(newCost + newBuyFee > 0 ? targetNewPnl / (newCost + newBuyFee) * 100 : 0),
+        'Target upside from quote: ' + pct((target / quote - 1) * 100) + ' | Added shares gross upside: ' + signed(qty * (target - price) - purchaseFee)
       );
     }
     lines.push(
       '',
+      'Risk note: more shares increase both gains and losses; the -10% case is a stress test, not a forecast.',
       'Hypothetical only · no trade or portfolio changes.'
     );
     return { type: 'res', text: lines.join('\n') };
