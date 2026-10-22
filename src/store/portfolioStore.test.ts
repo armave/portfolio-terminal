@@ -743,7 +743,7 @@ describe('canonical trade lifecycle and persistence', () => {
       expect(store.getState().closedTrades[0].netProfit).toBeCloseTo(38.32, 8);
     }
     expect(legacyStore.getState().closedTrades[0].commissions).toBeCloseTo(
-      confirmedStore.getState().closedTrades[0].feesAndCommissions,
+      Number(confirmedStore.getState().closedTrades[0].feesAndCommissions),
       8
     );
   });
