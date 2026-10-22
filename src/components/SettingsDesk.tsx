@@ -19,6 +19,34 @@ export interface SettingsDeskProps {
   onResetToBlankState: () => void;
 }
 
+export interface BrokerRulesFormValues {
+  annualRate: string;
+  dayCountBasis: string;
+  maintenanceMargin: string;
+  stopOutRatio: string;
+  rolloverTime: string;
+  commPerShare: string;
+  commVolumePct: string;
+  minCommOrder: string;
+}
+
+/** Converts persisted numeric rules into the strings controlled form inputs require. */
+export function toBrokerRulesFormValues(rules: BrokerRules): BrokerRulesFormValues {
+  const hours = String(rules.rolloverHour ?? 4).padStart(2, '0');
+  const minutes = String(rules.rolloverMinute ?? 0).padStart(2, '0');
+
+  return {
+    annualRate: ((rules.annualRate ?? 0.15) * 100).toFixed(2),
+    dayCountBasis: String(rules.dayCountBasis ?? 365),
+    maintenanceMargin: ((rules.maintenanceMarginRatio ?? 0.1) * 100).toFixed(2),
+    stopOutRatio: ((rules.stopOutRatio ?? 0) * 100).toFixed(2),
+    rolloverTime: `${hours}:${minutes}`,
+    commPerShare: String(rules.commPerShare ?? 0.012),
+    commVolumePct: ((rules.commVolumePct ?? 0.0012) * 100).toFixed(2),
+    minCommOrder: (rules.minCommOrder ?? 1.2).toFixed(2)
+  };
+}
+
 export function SettingsDesk({
   rules,
   defaultRefreshIntervalMs = 60000,
@@ -52,48 +80,15 @@ export function SettingsDesk({
     String(getQuoteRefreshInterval(defaultRefreshIntervalMs))
   );
 
-  // Form states initialized from rules
-  const [annualRate, setAnnualRate] = useState<string>(() =>
-    ((rules.annualRate ?? 0.15) * 100).toFixed(2)
-  );
-  const [dayCountBasis, setDayCountBasis] = useState<string>(() =>
-    String(rules.dayCountBasis ?? 365)
-  );
-  const [maintenanceMargin, setMaintenanceMargin] = useState<string>(() =>
-    ((rules.maintenanceMarginRatio ?? 0.1) * 100).toFixed(2)
-  );
-  const [stopOutRatio, setStopOutRatio] = useState<string>(() =>
-    ((rules.stopOutRatio ?? 0) * 100).toFixed(2)
-  );
-  const [rolloverTime, setRolloverTime] = useState<string>(() => {
-    const h = String(rules.rolloverHour ?? 4).padStart(2, '0');
-    const m = String(rules.rolloverMinute ?? 0).padStart(2, '0');
-    return `${h}:${m}`;
-  });
-  const [commPerShare, setCommPerShare] = useState<string>(() =>
-    String(rules.commPerShare ?? 0.012)
-  );
-  const [commVolumePct, setCommVolumePct] = useState<string>(() =>
-    ((rules.commVolumePct ?? 0.0012) * 100).toFixed(2)
-  );
-  const [minCommOrder, setMinCommOrder] = useState<string>(() =>
-    (rules.minCommOrder ?? 1.2).toFixed(2)
+  const [ruleValues, setRuleValues] = useState<BrokerRulesFormValues>(() =>
+    toBrokerRulesFormValues(rules)
   );
 
   const stopOutInputRef = useRef<HTMLInputElement | null>(null);
 
   // Sync local form values whenever rules prop updates (e.g. Restore defaults)
   useEffect(() => {
-    setAnnualRate(((rules.annualRate ?? 0.15) * 100).toFixed(2));
-    setDayCountBasis(String(rules.dayCountBasis ?? 365));
-    setMaintenanceMargin(((rules.maintenanceMarginRatio ?? 0.1) * 100).toFixed(2));
-    setStopOutRatio(((rules.stopOutRatio ?? 0) * 100).toFixed(2));
-    const h = String(rules.rolloverHour ?? 4).padStart(2, '0');
-    const m = String(rules.rolloverMinute ?? 0).padStart(2, '0');
-    setRolloverTime(`${h}:${m}`);
-    setCommPerShare(String(rules.commPerShare ?? 0.012));
-    setCommVolumePct(((rules.commVolumePct ?? 0.0012) * 100).toFixed(2));
-    setMinCommOrder((rules.minCommOrder ?? 1.2).toFixed(2));
+    setRuleValues(toBrokerRulesFormValues(rules));
     stopOutInputRef.current?.setCustomValidity('');
   }, [
     rules.annualRate,
@@ -106,6 +101,10 @@ export function SettingsDesk({
     rules.commVolumePct,
     rules.minCommOrder
   ]);
+
+  const updateRuleValue = (field: keyof BrokerRulesFormValues, value: string) => {
+    setRuleValues((current) => ({ ...current, [field]: value }));
+  };
 
   const handleSecretInput = (e: Event) => {
     const val = (e.target as HTMLInputElement).value;
@@ -275,8 +274,8 @@ export function SettingsDesk({
                   step="0.01"
                   required
                   inputMode="decimal"
-                  value={annualRate}
-                  onInput={(e) => setAnnualRate((e.target as HTMLInputElement).value)}
+                  value={ruleValues.annualRate}
+                  onInput={(e) => updateRuleValue('annualRate', (e.target as HTMLInputElement).value)}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
                 />
               </label>
@@ -284,8 +283,8 @@ export function SettingsDesk({
                 Interest day-count
                 <select
                   id="interestDayCountInput"
-                  value={dayCountBasis}
-                  onChange={(e) => setDayCountBasis((e.target as HTMLSelectElement).value)}
+                  value={ruleValues.dayCountBasis}
+                  onChange={(e) => updateRuleValue('dayCountBasis', (e.target as HTMLSelectElement).value)}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
                 >
                   <option value="365">365 days</option>
@@ -302,9 +301,9 @@ export function SettingsDesk({
                   step="0.01"
                   required
                   inputMode="decimal"
-                  value={maintenanceMargin}
+                  value={ruleValues.maintenanceMargin}
                   onInput={(e) => {
-                    setMaintenanceMargin((e.target as HTMLInputElement).value);
+                    updateRuleValue('maintenanceMargin', (e.target as HTMLInputElement).value);
                     stopOutInputRef.current?.setCustomValidity('');
                   }}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
@@ -321,9 +320,9 @@ export function SettingsDesk({
                   step="0.01"
                   required
                   inputMode="decimal"
-                  value={stopOutRatio}
+                  value={ruleValues.stopOutRatio}
                   onInput={(e) => {
-                    setStopOutRatio((e.target as HTMLInputElement).value);
+                    updateRuleValue('stopOutRatio', (e.target as HTMLInputElement).value);
                     stopOutInputRef.current?.setCustomValidity('');
                   }}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
@@ -335,8 +334,8 @@ export function SettingsDesk({
                   id="rolloverTimeInput"
                   type="time"
                   required
-                  value={rolloverTime}
-                  onInput={(e) => setRolloverTime((e.target as HTMLInputElement).value)}
+                  value={ruleValues.rolloverTime}
+                  onInput={(e) => updateRuleValue('rolloverTime', (e.target as HTMLInputElement).value)}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
                 />
               </label>
@@ -349,8 +348,8 @@ export function SettingsDesk({
                   step="0.001"
                   required
                   inputMode="decimal"
-                  value={commPerShare}
-                  onInput={(e) => setCommPerShare((e.target as HTMLInputElement).value)}
+                  value={ruleValues.commPerShare}
+                  onInput={(e) => updateRuleValue('commPerShare', (e.target as HTMLInputElement).value)}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
                 />
               </label>
@@ -364,8 +363,8 @@ export function SettingsDesk({
                   step="0.01"
                   required
                   inputMode="decimal"
-                  value={commVolumePct}
-                  onInput={(e) => setCommVolumePct((e.target as HTMLInputElement).value)}
+                  value={ruleValues.commVolumePct}
+                  onInput={(e) => updateRuleValue('commVolumePct', (e.target as HTMLInputElement).value)}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
                 />
               </label>
@@ -378,8 +377,8 @@ export function SettingsDesk({
                   step="0.01"
                   required
                   inputMode="decimal"
-                  value={minCommOrder}
-                  onInput={(e) => setMinCommOrder((e.target as HTMLInputElement).value)}
+                  value={ruleValues.minCommOrder}
+                  onInput={(e) => updateRuleValue('minCommOrder', (e.target as HTMLInputElement).value)}
                   class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
                 />
               </label>

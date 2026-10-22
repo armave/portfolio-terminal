@@ -11,6 +11,16 @@ const STORAGE_KEY_REFRESH_INTERVAL = 'quote_refresh_interval';
 
 let inMemoryGatewaySecret = '';
 
+/** Returns browser storage only when it is available to the current runtime. */
+function getBrowserStorage(): Storage | null {
+  return typeof localStorage !== 'undefined' && localStorage ? localStorage : null;
+}
+
+/** Removes related legacy keys together so credential cleanup follows one path. */
+function removeStoredKeys(storage: Storage, keys: string[]): void {
+  keys.forEach((key) => storage.removeItem(key));
+}
+
 /**
  * Reversible client-side secret encoding is disabled.
  */
@@ -83,10 +93,11 @@ async function getOrCreateDeviceKey(db: IDBDatabase): Promise<CryptoKey> {
 }
 
 async function persistEncryptedGatewaySecret(secret: string): Promise<void> {
-  if (typeof localStorage === 'undefined' || !localStorage) throw new Error('Local storage is unavailable');
+  const storage = getBrowserStorage();
+  if (!storage) throw new Error('Local storage is unavailable');
   if (!globalThis.crypto?.subtle) throw new Error('Web Crypto is unavailable');
   if (!secret) {
-    localStorage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED);
+    storage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED);
     return;
   }
   const db = await openSecureKeyDatabase();
@@ -99,7 +110,7 @@ async function persistEncryptedGatewaySecret(secret: string): Promise<void> {
       iv: Array.from(iv),
       data: Array.from(new Uint8Array(encrypted))
     });
-    localStorage.setItem(STORAGE_KEY_GW_AUTH_ENCRYPTED, payload);
+    storage.setItem(STORAGE_KEY_GW_AUTH_ENCRYPTED, payload);
   } finally {
     db.close();
   }
@@ -114,10 +125,8 @@ export function saveGatewaySecret(secret: string): void {
   const cleanSecret = typeof secret === 'string' ? secret.trim() : '';
   setGatewaySecret(cleanSecret);
   try {
-    if (typeof localStorage !== 'undefined' && localStorage) {
-      localStorage.removeItem(STORAGE_KEY_GW_AUTH);
-      localStorage.removeItem('gateway_secret');
-    }
+    const storage = getBrowserStorage();
+    if (storage) removeStoredKeys(storage, [STORAGE_KEY_GW_AUTH, 'gateway_secret']);
   } catch (err) {
     console.warn('Failed to purge persisted gateway credentials:', err);
   }
@@ -141,11 +150,11 @@ export async function persistGatewaySecret(): Promise<boolean> {
  * fails, removes the unusable ciphertext and falls back to the normal auth modal.
  */
 export async function restoreGatewaySecret(): Promise<string> {
-  if (typeof localStorage === 'undefined' || !localStorage) return inMemoryGatewaySecret;
+  const storage = getBrowserStorage();
+  if (!storage) return inMemoryGatewaySecret;
 
   try {
-    localStorage.removeItem(STORAGE_KEY_GW_AUTH);
-    localStorage.removeItem('gateway_secret');
+    removeStoredKeys(storage, [STORAGE_KEY_GW_AUTH, 'gateway_secret']);
   } catch (err) {
     console.warn('Could not clear legacy Gateway Secret entries:', err);
   }
@@ -153,7 +162,7 @@ export async function restoreGatewaySecret(): Promise<string> {
 
   let raw: string | null;
   try {
-    raw = localStorage.getItem(STORAGE_KEY_GW_AUTH_ENCRYPTED);
+    raw = storage.getItem(STORAGE_KEY_GW_AUTH_ENCRYPTED);
   } catch (err) {
     console.warn('Could not read encrypted Gateway Secret from device storage:', err);
     return '';
@@ -168,7 +177,7 @@ export async function restoreGatewaySecret(): Promise<string> {
     }
   } catch (err) {
     console.warn('Encrypted Gateway Secret payload is invalid; clearing it:', err);
-    try { localStorage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED); } catch { /* storage unavailable */ }
+    try { storage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED); } catch { /* storage unavailable */ }
     setGatewaySecret('');
     return '';
   }
@@ -211,7 +220,7 @@ export async function restoreGatewaySecret(): Promise<string> {
     // Decryption failure means the payload is corrupt or the stored device key
     // no longer matches it. Keep the established fallback to re-enter the secret.
     console.warn('Could not decrypt encrypted Gateway Secret; clearing unusable ciphertext:', err);
-    try { localStorage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED); } catch { /* storage unavailable */ }
+    try { storage.removeItem(STORAGE_KEY_GW_AUTH_ENCRYPTED); } catch { /* storage unavailable */ }
     setGatewaySecret('');
     return '';
   } finally {
@@ -275,15 +284,14 @@ export function saveState(
   if (!state || typeof state !== 'object' || Array.isArray(state)) {
     return false;
   }
-  if (typeof localStorage === 'undefined' || !localStorage) {
-    return false;
-  }
+  const storage = getBrowserStorage();
+  if (!storage) return false;
 
   try {
     state.lastUpdated = Date.now();
     const persistedState = { ...state };
     delete persistedState.gatewaySecret;
-    localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(persistedState));
+    storage.setItem(STORAGE_KEY_STATE, JSON.stringify(persistedState));
   } catch (err) {
     console.error('Failed to save state:', err);
     return false;
@@ -306,14 +314,15 @@ export function saveState(
  */
 export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
   try {
-    if (typeof localStorage === 'undefined' || !localStorage) return fallback;
+    const storage = getBrowserStorage();
+    if (!storage) return fallback;
 
     // Prefer the current schema, but do not let an empty or damaged current
     // entry hide a recoverable legacy snapshot.
     for (const key of [STORAGE_KEY_STATE, STORAGE_KEY_LEGACY_STATE]) {
       let raw: string | null;
       try {
-        raw = localStorage.getItem(key);
+        raw = storage.getItem(key);
       } catch (err) {
         console.warn('Storage unavailable; using in-memory portfolio state:', err);
         return fallback;
@@ -347,11 +356,10 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
  * Loads broker rules with fallback on corrupted JSON or missing data.
  */
 export function loadBrokerRules<T = unknown>(defaultRules: T): T {
-  if (typeof localStorage === 'undefined' || !localStorage) {
-    return defaultRules;
-  }
+  const storage = getBrowserStorage();
+  if (!storage) return defaultRules;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_RULES);
+    const raw = storage.getItem(STORAGE_KEY_RULES);
     if (!raw) return defaultRules;
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : defaultRules;
@@ -365,9 +373,10 @@ export function loadBrokerRules<T = unknown>(defaultRules: T): T {
  * Saves broker rules configuration to localStorage.
  */
 export function saveBrokerRules(rules: unknown): void {
-  if (typeof localStorage === 'undefined' || !localStorage) return;
+  const storage = getBrowserStorage();
+  if (!storage) return;
   try {
-    localStorage.setItem(STORAGE_KEY_RULES, JSON.stringify(rules));
+    storage.setItem(STORAGE_KEY_RULES, JSON.stringify(rules));
   } catch (err) {
     console.error('Failed to save broker rules:', err);
   }
@@ -377,9 +386,10 @@ export function saveBrokerRules(rules: unknown): void {
  * Clears saved broker rules from localStorage.
  */
 export function clearBrokerRules(): void {
-  if (typeof localStorage === 'undefined' || !localStorage) return;
+  const storage = getBrowserStorage();
+  if (!storage) return;
   try {
-    localStorage.removeItem(STORAGE_KEY_RULES);
+    storage.removeItem(STORAGE_KEY_RULES);
   } catch (err) {
     console.error('Failed to clear broker rules:', err);
   }
@@ -389,11 +399,10 @@ export function clearBrokerRules(): void {
  * Gets quote refresh interval with fallback.
  */
 export function getQuoteRefreshInterval(fallback = 60000): number {
-  if (typeof localStorage === 'undefined' || !localStorage) {
-    return fallback;
-  }
+  const storage = getBrowserStorage();
+  if (!storage) return fallback;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_REFRESH_INTERVAL);
+    const raw = storage.getItem(STORAGE_KEY_REFRESH_INTERVAL);
     if (raw === null || raw === undefined) return fallback;
     const num = Number(raw);
     return Number.isFinite(num) ? num : fallback;
@@ -406,9 +415,10 @@ export function getQuoteRefreshInterval(fallback = 60000): number {
  * Saves quote refresh interval in milliseconds.
  */
 export function saveQuoteRefreshInterval(interval: number): void {
-  if (typeof localStorage === 'undefined' || !localStorage) return;
+  const storage = getBrowserStorage();
+  if (!storage) return;
   try {
-    localStorage.setItem(STORAGE_KEY_REFRESH_INTERVAL, String(interval));
+    storage.setItem(STORAGE_KEY_REFRESH_INTERVAL, String(interval));
   } catch (err) {
     console.error('Failed to save quote refresh interval:', err);
   }
@@ -418,10 +428,10 @@ export function saveQuoteRefreshInterval(interval: number): void {
  * Purges active and legacy state payloads from localStorage.
  */
 export function clearLocalData(): void {
-  if (typeof localStorage === 'undefined' || !localStorage) return;
+  const storage = getBrowserStorage();
+  if (!storage) return;
   try {
-    localStorage.removeItem(STORAGE_KEY_LEGACY_STATE);
-    localStorage.removeItem(STORAGE_KEY_STATE);
+    removeStoredKeys(storage, [STORAGE_KEY_LEGACY_STATE, STORAGE_KEY_STATE]);
   } catch (err) {
     console.error('Failed to clear local data:', err);
   }
