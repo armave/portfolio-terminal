@@ -979,7 +979,49 @@ export class CommandDispatcher {
     };
   }
 }
-) + ' vs alternative'
+
+  private static evaluateExitScenarios(tickerArg: string | undefined, scenarios: Array<{ label: string; days: number; price: number }>): CommandOutput {
+    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
+    const rules = this.getRules(state);
+    const shares = Number(pos.shares);
+    if (!Number.isFinite(shares) || shares <= 0) throw new Error('No valid open shares found for ' + sym + '.');
+
+    const costBasis = (pos.tranches || []).reduce((sum: number, t: any) => sum + (Number(t.qty) || 0) * (Number(t.price) || 0), 0);
+    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
+    const balance = Number(state.balance) || 0;
+    const debt = Math.max(0, -balance);
+    const currentMargin = calculateMarginInterest(pos.tranches || [], { dailyRate: rules.dailyRate, marginDebt: debt, totalDebt: debt } as any);
+    const money = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+    const rows = scenarios.map(s => {
+      const gross = shares * s.price;
+      const sellFee = calculateCommission(shares, gross, rules as any);
+      const carry = debt * rules.dailyRate * s.days;
+      const marginFee = currentMargin + carry;
+      const net = gross - costBasis - buyCommission - sellFee - marginFee;
+      const netProceeds = Math.max(0, gross - sellFee);
+      const debtRepaid = Math.min(debt, netProceeds);
+      const finalBalance = debt > 0 ? -(debt - debtRepaid) : balance;
+      const cashSurplus = debt > 0 ? Math.max(0, netProceeds - debt) : netProceeds;
+      return { ...s, gross, sellFee, carry, marginFee, net, netProceeds, debtRepaid, finalBalance, cashSurplus };
+    });
+    const best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
+    const nextBestNet = rows.filter(r => r !== best).reduce((value, row) => Math.max(value, row.net), Number.NEGATIVE_INFINITY);
+    const bestAdvantage = Number.isFinite(nextBestNet) ? best.net - nextBestNet : 0;
+    const modal: ScenarioModalData = {
+      kind: 'exit-comparison',
+      title: 'Exit Comparison · ' + sym,
+      subtitle: shares.toLocaleString() + ' shares · estimated net result after fees',
+      columns: rows.map(r => (r.days === 0 ? 'Today' : r.days + ' Days') + ' · ' + money(r.price) + (r === best ? ' · BEST' : '')),
+      presets: rows.slice(0, -1).map((row, index) => ({
+        label: (row.days === 0 ? 'Today' : row.days + ' Days') + ' vs ' + (rows[index + 1].days === 0 ? 'Today' : rows[index + 1].days + ' Days'),
+        columnIndexes: [index, index + 1]
+      })),
+      action: { label: 'Stage target command', command: 'target ' + sym + ' ' + best.price.toFixed(2) },
+      rows: [
+        { label: 'Total Fee Friction', values: rows.map(r => money(buyCommission + r.sellFee + r.marginFee)), kind: 'fee' },
+        { label: 'Net P&L', values: rows.map(r => r === best
+          ? signed(r.net) + ' · BEST (+' + signed(bestAdvantage) + ' vs alternative)'
           : signed(r.net) + ' · Δ ' + signed(r.net - best.net) + ' vs best'), kind: 'result' },
         { label: 'Final Margin Balance', values: rows.map(r => money(r.finalBalance)), kind: 'balance' }
       ],
@@ -991,8 +1033,11 @@ export class CommandDispatcher {
       'BEST: ' + best.label + ' at ' + money(best.price) + ' · ' + signed(best.net) + ' net',
       'Fees included: buy commission, sell commission, estimated margin interest.',
       'Estimate only · no portfolio changes.'
-    ].join('\n');
+    ].join('\\n');
     return { type: 'res', text, modal };
+  }
+
+
   }
 
   private static evaluateBuyScenario(qty: number, ticker: string, price: number): CommandOutput {
