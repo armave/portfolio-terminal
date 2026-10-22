@@ -207,7 +207,7 @@ describe('terminal command validation and cash routing', () => {
     expect(modalRows).not.toContain('Margin balance before');
     expect(result.modal?.presets?.length).toBeGreaterThan(0);
     expect(result.modal?.action?.label).toBe('Stage target command');
-    expect(result.modal?.action?.command).toMatch(/^target AAPL \\d+\\.\\d{2}$/);
+    expect(result.modal?.action?.command).toMatch(/^target AAPL \d+\.\d{2}$/);
     expect(result.modal?.note).toContain('Future prices are assumptions');
     expect(result.modal?.note).toContain('does not submit a broker order');
   });
