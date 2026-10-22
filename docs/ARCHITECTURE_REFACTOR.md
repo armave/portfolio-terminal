@@ -180,8 +180,10 @@ The latest head passed typecheck, Vitest, production build, and dead-code diagno
 - Consolidated regular terminal sales and AI-confirmed margin sales into one store-owned sale transaction. `sellMarginPosition` now validates AI-confirmed inputs and delegates to `sellStock`, passing the confirmed close timestamp while reusing the same FIFO tranche allocation, commission, margin-interest, debt/cash settlement, and closed-trade construction.
 - Preserved safety checks for invalid quantities, attempts to sell more shares than are held, and closed-ticker behavior. Partial sales no longer carry a one-shot margin charge forward and count it again.
 - Added parity coverage comparing terminal and AI-confirmed sales under the same position and broker assumptions, including remaining position, debt, cash, realized margin charges, commissions, and realized profit.
-- The current code/test head passed all four merge gates: typecheck, Vitest, production build, and dead-code diagnostics.
+- Added a shared rollover projection helper with explicit `batch` and `per-cycle` modes; both runtime and cloud-import paths use it without silently changing their existing rounding behavior.
+- Added an expected-value test that locks down the one-cent difference between the two historical rounding modes for a long rollover interval.
+- The last fully validated code head passed all four merge gates: typecheck, Vitest, production build, and dead-code diagnostics.
 
-**Known boundary kept separate:** the active runtime rollover uses the configured timezone and batch debt projection, while the legacy cloud-import `processRollovers` path uses the historical Asia/Yerevan boundary and per-cycle rounding. These are not assumed equivalent; combining them without a decision about the existing financial rounding contract could change persisted debt. Keep both paths covered independently rather than silently changing the formula during this refactor.
+**Known boundary kept explicit:** the active runtime rollover uses the configured timezone and batch debt projection, while the legacy cloud-import `processRollovers` path uses the historical Asia/Yerevan boundary and per-cycle rounding. The calculation is now shared, but the modes remain intentionally distinct until there is a product decision to change persisted-debt rounding.
 
 The remaining work is the final repository diff review and compatibility audit. Keep the PR in draft until the latest head passes the merge gates and the audit finds no unintended financial, persistence, quote, or UI regressions.
