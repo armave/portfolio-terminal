@@ -37,7 +37,7 @@ export interface RenderCashCushionOptions {
 }
 
 export function renderCashCushion(
-  state: BoardState,
+  _state: BoardState,
   options: RenderCashCushionOptions = {}
 ): void {
   const { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs = 60000 } = options;
