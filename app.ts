@@ -217,7 +217,6 @@ function resetToBlankState() {
     pushStateToGist(true);
     renderBoard();
     logTerminal("[System]: Portfolio reset to a clean blank slate.");
-    showToast('Portfolio reset to a blank slate.', 'warning');
   }
 }
 
@@ -326,7 +325,6 @@ function saveBrokerRuleInputs(event: Event) {
   }
   verifyTradernetRulesOnload();
   renderBoard();
-  showToast('Broker assumptions saved in this browser.', 'success');
 }
 
 function resetBrokerRules() {
@@ -342,7 +340,6 @@ function resetBrokerRules() {
   }
   verifyTradernetRulesOnload();
   renderBoard();
-  showToast('Broker assumptions restored to defaults.', 'info');
 }
 
 function verifyTradernetRulesOnload() {
@@ -847,7 +844,6 @@ function saveCurrentBalanceFromInput() {
   saveState(state, pushStateToGist);
   renderBoard();
   logTerminal(`[Balance]: Current balance/debt updated. Balance: ${formatUSD(balance)} | Margin debt: -${formatUSD(debt)}.`);
-  showToast(`Balance ${formatUSD(balance)} | Debt -${formatUSD(debt)}`, 'success');
 }
 
 async function addCashStockFromUI() {
@@ -877,7 +873,6 @@ async function addCashStockFromUI() {
   saveState(state, pushStateToGist);
   renderBoard();
   logTerminal(`[Balance]: Added ${shares} ${ticker}. Fetching live online quote...`);
-  showToast(`${shares} ${ticker} added to balance holdings.`, 'success');
   await fetchLivePrice(ticker);
 }
 
@@ -888,7 +883,6 @@ function removeCashStock(index: number) {
   saveState(state, pushStateToGist);
   renderBoard();
   logTerminal(`[Cash Cushion]: Removed ${removed.ticker} from cash holdings.`);
-  showToast(`${removed.ticker} removed from cash holdings.`, 'info');
 }
 
 function updateEmptyStateVisibility(isEmpty: boolean) {
@@ -1043,7 +1037,6 @@ async function importBackupJSON(event: Event) {
     await pushStateToGist(true);
     renderBoard();
     logTerminal(`[Backup Import]: Imported ${file.name} into this browser. Check KV cloud status for sync results.`);
-    showToast('Backup imported locally. Check KV cloud status for sync.', 'success');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logTerminal(`[Backup Error]: Could not import backup (${message}).`);
@@ -1110,7 +1103,6 @@ async function applyPortfolioActions(action: any) {
     saveState(state, pushStateToGist);
     syncStore();
     logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Funded: ${formatUSD(cashUsed)} cash | +${formatUSD(debtAdded)} margin debt. Free Cash remaining: ${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(state.balance))}.`);
-    showToast(`${shares} ${ticker} bought at ${formatUSD(price)}.`, 'success');
     await fetchLivePrice(ticker, false, true);
   }
   else if (action.action === "sell") {
@@ -1173,7 +1165,6 @@ async function applyPortfolioActions(action: any) {
       state.cashCushion.freeCash = (Number(state.cashCushion.freeCash) || 0) + cashSurplus;
     }
 
-    const resultMessage = `${sharesToSell} ${ticker} sold at ${formatUSD(sellPrice)}.`;
 
     if (isCashHolding) {
       if (sharesToSell >= pos.shares) {
@@ -1218,7 +1209,6 @@ async function applyPortfolioActions(action: any) {
 
     saveState(state, pushStateToGist);
     syncStore();
-    showToast(resultMessage, 'success');
   }
   else if (action.action === "set_pt") {
     const ticker = (action.ticker ? action.ticker.toUpperCase() : null) || (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
@@ -1822,10 +1812,7 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
   const persisted = await persistGatewaySecret();
   state.gatewaySecret = submittedSecret;
   if (!persisted) {
-    showToast(
-      'Gateway Secret is valid for this session, but secure device storage failed. You may be asked again after refresh.',
-      'warning'
-    );
+    showToast('Secure storage failed. Re-enter the Gateway Secret after refresh.', 'error');
   }
 
   window.dispatchEvent(new CustomEvent('gateway-secret-authenticated', { detail: { secret: submittedSecret } }));
