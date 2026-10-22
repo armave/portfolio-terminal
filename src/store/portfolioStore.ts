@@ -17,7 +17,7 @@ import {
   saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
-import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
+import { calculateCommission, calculateMarginInterest, realizeClosedTrade } from '../domain/portfolio';
 
 const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
   broker: 'Freedom Broker Armenia (Tradernet)',
@@ -1059,6 +1059,118 @@ export class PortfolioStore {
           freeCash,
           holdings
         }
+      };
+    });
+
+    return result;
+  }
+
+  /**
+   * Applies an AI-confirmed margin-position sale using the same domain accounting
+   * as the legacy confirmed-action flow, but commits all portfolio fields together.
+   */
+  public sellMarginPosition(
+    ticker: string,
+    sharesToSell: number,
+    sellPrice: number,
+    closedAt = Date.now()
+  ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || !Number.isFinite(sharesToSell) || sharesToSell <= 0 ||
+      !Number.isFinite(sellPrice) || sellPrice <= 0) return null;
+
+    let result: { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null = null;
+
+    this.update((state) => {
+      const position = state.positions?.[clean];
+      if (!position || !Number.isFinite(position.shares) || position.shares <= 0 ||
+        sharesToSell - position.shares > 1e-8) return state;
+
+      const actualSold = Math.min(position.shares, sharesToSell);
+      const grossProceeds = actualSold * sellPrice;
+      const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
+      const sellCommission = calculateCommission(actualSold, grossProceeds, {
+        commPerShare: Number(rules.commPerShare ?? rules.commissionPerShare ?? 0.012),
+        commVolumePct: Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0012),
+        minCommOrder: Number(rules.minCommOrder ?? rules.commissionMin ?? 1.2)
+      });
+      const netProceeds = Number((grossProceeds - sellCommission).toFixed(2));
+      const currentDebt = Math.abs(Number(state.balance) || 0);
+      const debtRepaid = Math.min(currentDebt, netProceeds);
+      const nextDebt = Math.max(0, currentDebt - debtRepaid);
+      const cashSurplus = Math.max(0, netProceeds - debtRepaid);
+      const freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0) + cashSurplus;
+
+      const totalPortfolioInvested = Object.values(state.positions || {}).reduce(
+        (total, current) => total + (current.tranches || []).reduce(
+          (sum, tranche) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0),
+          0
+        ),
+        0
+      );
+      const positionInvested = (position.tranches || []).reduce(
+        (sum, tranche) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0),
+        0
+      );
+      const allocatedDebt = totalPortfolioInvested > 0
+        ? currentDebt * (positionInvested / totalPortfolioInvested)
+        : currentDebt;
+      const annualRate = this.finiteAssumption(
+        rules.annualRate ?? rules.annualBorrowRate,
+        DEFAULT_BROKER_ASSUMPTIONS.annualRate
+      );
+      const dailyRate = annualRate / (Number(rules.dayCountBasis) || 365);
+      const accruedMarginInterest = calculateMarginInterest(position.tranches || [], {
+        dailyRate,
+        marginDebt: allocatedDebt,
+        totalDebt: currentDebt
+      });
+      const positionForClose = {
+        ...position,
+        marginCharged: Math.max(Number((position as any).marginCharged) || 0, accruedMarginInterest)
+      };
+      const realizedTrade = realizeClosedTrade(
+        positionForClose as any,
+        clean,
+        actualSold,
+        sellPrice,
+        sellCommission,
+        closedAt
+      );
+      delete (realizedTrade.position as any).marginCharged;
+
+      const positions = { ...(state.positions || {}) };
+      if (realizedTrade.position.shares <= 1e-8) {
+        delete positions[clean];
+      } else {
+        positions[clean] = realizedTrade.position as PositionRecord;
+      }
+
+      const remainingShares = Math.max(0, Number(realizedTrade.position.shares) || 0);
+      result = {
+        ticker: clean,
+        sharesSold: actualSold,
+        remainingShares,
+        netProceeds,
+        debtRepaid,
+        cashSurplus
+      };
+
+      return {
+        ...state,
+        positions,
+        activeView: remainingShares <= 1e-8 ? 'COMBINED' : state.activeView,
+        selectedTicker: remainingShares <= 1e-8 ? null : state.selectedTicker,
+        balance: nextDebt > 0 ? -nextDebt : 0,
+        cashBalance: freeCash,
+        cashCushion: {
+          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          freeCash
+        },
+        realizedMarginCharged: (Number(state.realizedMarginCharged) || 0) + realizedTrade.marginFee,
+        closedTrades: realizedTrade.trade
+          ? [realizedTrade.trade, ...(state.closedTrades || [])]
+          : state.closedTrades || []
       };
     });
 
