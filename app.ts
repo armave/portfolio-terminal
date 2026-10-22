@@ -1417,12 +1417,12 @@ function showScenarioModal(data: ScenarioModalData): void {
     headRow.className = 'border-b border-slate-700 text-slate-300';
     const firstHead = document.createElement('th');
     firstHead.className = 'px-2 py-2 text-left font-semibold';
-    firstHead.textContent = isBuyMore ? 'Date' : 'Metric';
+    firstHead.textContent = isBuyMore ? 'Projection Date' : 'Metric';
     headRow.appendChild(firstHead);
     const shownColumns = isBuyMore ? data.columns.map((_, index) => index) : columnIndexes;
     shownColumns.forEach((columnIndex) => {
       const th = document.createElement('th');
-      th.className = 'min-w-[76px] px-2 py-2 text-right font-semibold whitespace-nowrap';
+      th.className = 'min-w-[90px] px-2 py-2 text-right font-semibold whitespace-nowrap ' + (isBuyMore && columnIndex % 2 === 1 ? 'text-emerald-300' : '');
       th.textContent = data.columns[columnIndex];
       headRow.appendChild(th);
     });
@@ -1443,7 +1443,7 @@ function showScenarioModal(data: ScenarioModalData): void {
       tr.appendChild(labelCell);
       shownColumns.forEach((columnIndex) => {
         const td = document.createElement('td');
-        td.className = 'px-2 py-2 text-right font-mono whitespace-nowrap';
+        td.className = 'px-2 py-2 text-right font-mono whitespace-nowrap ' + (isBuyMore ? (columnIndex % 2 === 0 ? 'text-slate-400 bg-slate-950/30' : 'text-emerald-200 bg-emerald-950/20 border-l border-emerald-900/40') : '');
         td.style.fontVariantNumeric = 'tabular-nums';
         const value = document.createElement('span');
         value.textContent = row.values[columnIndex] ?? '—';
@@ -1482,7 +1482,7 @@ function showScenarioModal(data: ScenarioModalData): void {
           label.className = 'text-[11px] text-slate-400';
           label.textContent = column;
           const value = document.createElement('span');
-          value.className = 'text-right font-mono text-xs font-semibold text-slate-200';
+          value.className = 'text-right font-mono text-xs font-semibold ' + (isBuyMore ? (index % 2 === 0 ? 'text-slate-400' : 'text-emerald-200') : 'text-slate-200');
           value.textContent = row.values[index] ?? '—';
           if (index === 0 && row.kind === 'result') value.className += ' text-emerald-300';
           if (index === 3) value.className += ' text-cyan-200';

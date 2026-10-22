@@ -714,13 +714,15 @@ export class CommandDispatcher {
       kind: 'buy-more',
       title: 'Buy More Projection · ' + ticker,
       subtitle: 'Hypothetical projection after buying +' + qty.toLocaleString() + ' shares at ' + money(price) + ' · no order placed',
-      columns: ['Net', 'F&C', 'M Fee', 'Balance'],
+      columns: ['Current Net', 'After Buy Net', 'Current F&C', 'After Buy F&C', 'Current M Fee', 'After Buy M Fee', 'Current Balance', 'After Buy Balance'],
       rows: (() => {
         const projectionPrice = hasTarget ? target : quote;
-        const gross = newShares * projectionPrice - newCost;
-        const totalComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules as any);
+        const dates = getUsEquityProjectionDates(new Date(), pos.startDate || state.startDate);
+        const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules as any);
+        const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules as any);
+        const currentDebt = Math.max(0, -balance);
         const projectedDebt = Math.max(0, -balanceAfter);
-        return getUsEquityProjectionDates(new Date(), pos.startDate || state.startDate).map(item => {
+        return dates.map(item => {
           const dateLabel = item.date.toLocaleDateString('en-US', {
             weekday: 'short', month: 'short', day: 'numeric'
           });
@@ -728,21 +730,27 @@ export class CommandDispatcher {
             ? dateLabel + ' · TODAY'
             : dateLabel + (item.label ? ' · ' + item.label.replace(/^\\(|\\)$/g, '') : '');
           if (item.kind === 'entry') {
-            return { label: rowLabel, values: ['—', '—', '—', '—'], kind: 'fee' as const };
+            return { label: rowLabel, values: ['—', '—', '—', '—', '—', '—', '—', '—'], kind: 'fee' as const };
           }
-          const debtAtDate = calculateProjectedDebt(projectedDebt, rules.dailyRate, item.daysFromToday);
-          const additionalAccrual = debtAtDate - projectedDebt;
-          const marginAtDate = currentMargin + additionalAccrual;
-          const feesAtDate = calculateAccruedFees(totalComms, currentMargin, additionalAccrual);
-          const netAtDate = gross - feesAtDate;
-          const dailyFee = debtAtDate * rules.dailyRate;
+          const currentDebtAtDate = calculateProjectedDebt(currentDebt, rules.dailyRate, item.daysFromToday);
+          const afterDebtAtDate = calculateProjectedDebt(projectedDebt, rules.dailyRate, item.daysFromToday);
+          const currentAccrual = currentDebtAtDate - currentDebt;
+          const afterAccrual = afterDebtAtDate - projectedDebt;
+          const currentFees = calculateAccruedFees(currentComms, currentMargin, currentAccrual);
+          const afterFees = calculateAccruedFees(projectedComms, currentMargin, afterAccrual);
+          const currentNet = oldShares * projectionPrice - oldCost - currentFees;
+          const afterNet = newShares * projectionPrice - newCost - afterFees;
           return {
             label: rowLabel,
             values: [
-              signed(netAtDate),
-              money(feesAtDate),
-              money(marginAtDate) + ' (' + money(dailyFee) + ')',
-              '−' + money(debtAtDate)
+              signed(currentNet),
+              signed(afterNet),
+              money(currentFees),
+              money(afterFees),
+              money(currentMargin + currentAccrual) + ' (' + money(currentDebtAtDate * rules.dailyRate) + ')',
+              money(currentMargin + afterAccrual) + ' (' + money(afterDebtAtDate * rules.dailyRate) + ')',
+              '−' + money(currentDebtAtDate),
+              '−' + money(afterDebtAtDate)
             ],
             kind: item.kind === 'today' ? 'result' as const : 'fee' as const
           };
