@@ -3,7 +3,6 @@
   "entry": [
     "src/**/*.test.{ts,tsx}",
     "worker.js",
-    "worker.test.js",
     "startup-critical.css"
   ],
   "project": [
