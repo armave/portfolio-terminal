@@ -1061,16 +1061,19 @@ async function applyPortfolioActions(action: any) {
       return;
     }
 
-    portfolioStore.buyStock(ticker, shares, price, action.date || new Date().toISOString().split('T')[0], targetPrice);
-    const committedState = portfolioStore.getState();
-    const committedPosition = committedState.positions[ticker];
-    const rules = committedState.brokerAssumptions || TRADERNET_RULES;
+    const priorState = portfolioStore.getState();
+    const priorFreeCash = Math.max(0, Number(priorState.cashCushion?.freeCash) || 0);
+    const priorDebt = Math.abs(Number(priorState.balance) || 0);
+    const rules = priorState.brokerAssumptions || TRADERNET_RULES;
     const buyComm = calculateCommission(shares, shares * price, rules as any);
     const totalOutlay = shares * price + buyComm;
-    const cashUsed = Math.min(Math.max(0, Number(committedState.cashCushion?.freeCash) || 0) + totalOutlay, totalOutlay);
+    const cashUsed = Math.min(priorFreeCash, totalOutlay);
     const debtAdded = totalOutlay - cashUsed;
 
-    logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Free Cash remaining: ${formatUSD(committedState.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(committedState.balance))}.`);
+    portfolioStore.buyStock(ticker, shares, price, action.date || new Date().toISOString().split('T')[0], targetPrice);
+    const committedState = portfolioStore.getState();
+
+    logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Funded: ${formatUSD(cashUsed)} cash | +${formatUSD(debtAdded)} margin debt. Free Cash remaining: ${formatUSD(committedState.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(committedState.balance))} (was -${formatUSD(priorDebt)}).`);
     await fetchLivePrice(ticker, false, true);
   }
   else if (action.action === "sell") {
