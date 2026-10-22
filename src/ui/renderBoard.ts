@@ -26,7 +26,6 @@ function resolveActiveView(state: BoardState): string {
   let currentView = state.activeView;
   if (!currentView || (!NON_POSITION_VIEWS.has(currentView) && !state.positions?.[currentView])) {
     currentView = 'COMBINED';
-    state.activeView = 'COMBINED';
   }
   return currentView;
 }
@@ -42,8 +41,6 @@ export function renderCashCushion(
   options: RenderCashCushionOptions = {}
 ): void {
   const { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs = 60000 } = options;
-  if (!state.cashCushion) state.cashCushion = { freeCash: 0.0, holdings: [] };
-
   const container = document.getElementById('cashCushionContainer');
   if (container) {
     render(
