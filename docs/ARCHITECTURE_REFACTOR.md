@@ -131,12 +131,22 @@ The refactor is being delivered in small, regression-tested slices on one draft 
 - Commits sale accounting together: position quantities, debt, free cash, realized margin charges, and closed-trade history.
 - Routes target-price changes, explicit margin-debt changes, rollover accounting/timestamps, startup snapshots, cloud pulls, backup imports, reset, view changes, and gateway-secret state updates through the store.
 - Removes the `syncStore` whole-state import bridge; the runtime now receives store state through its subscription instead of repeatedly re-importing the entire snapshot.
-- Makes a new buy execution price authoritative over an older quote and clears stale quote metadata.
-- Restricts batch quote polling to normalized requested tickers and uses the shared `QuoteDetails` type instead of `any`.
-- Keeps routine success/status feedback out of toast notifications while retaining actionable errors.
 
-Regression tests cover stale-quote no-op behavior, quote-after-trade ordering, cash-holding mutations and sales, margin sale lifecycle, rollover accounting, persistence, and unexpected symbols in provider batch responses. The current head passed typecheck, Vitest, production build, and dead-code diagnostics.
+**Step 3 of 8 — Financial domain invariants: complete for the current slice.**
 
-**Current step: Step 3 of 8 — Financial domain invariants.** Audit and strengthen regression coverage around commission rounding, FIFO lot accounting, margin-interest allocation, closed-trade history, and the read-only nature of hypothetical exit scenarios. No financial formula should change without an explicit expected-value test.
+- Added expected-value coverage for FIFO buy-commission allocation, sale proceeds/debt repayment, net realized P&L, invalid sale requests, and immutable prior snapshots.
+- Kept the existing financial formulas unchanged; commission floating-point comparisons use a monetary tolerance.
 
-Still outstanding after this step: complete quote-race and provider-failure review, rendering/subscription behavior, cloud conflict/import failure scenarios, terminal/settings cleanup, and consolidation of duplicate mutation/accounting paths. The app-wide refactor is not complete; keep the PR in draft until the final head passes all merge gates and the remaining work is reviewed.
+**Step 4 of 8 — Quote pipeline and asynchronous race protection: complete for the current slice.**
+
+- Makes a new buy execution price authoritative over older in-flight quotes and clears stale quote metadata.
+- Restricts batch polling to normalized, deduplicated requested tickers and ignores unexpected provider symbols.
+- Ensures failed batch and fallback providers do not overwrite a valid tracked quote.
+- Guards quote change-percentage calculations against invalid previous-close values so they remain finite.
+- Uses the shared `QuoteDetails` type rather than `any` in the batch polling callback contract.
+
+Regression tests cover quote ordering, unexpected symbols, deduplicated inputs, provider failures, and finite quote percentages. The latest head passed typecheck, Vitest, production build, and dead-code diagnostics.
+
+**Current step: Step 5 of 8 — Rendering and subscriptions.** Reduce avoidable rerenders and UI flicker while preserving terminal focus/scroll position and unsaved settings edits during quote refreshes.
+
+Still outstanding after this step: cloud conflict/import failure scenarios, terminal/settings cleanup, and consolidation of duplicate mutation/accounting paths. The app-wide refactor is not complete; keep the PR in draft until the final head passes all merge gates and the remaining work is reviewed.
