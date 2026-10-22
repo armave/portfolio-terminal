@@ -152,11 +152,19 @@ export function SettingsDesk({
           >
             <input
               id="headerGatewaySecretInput"
-              type="password"
+              // Use a text input with visual masking: password inputs can trigger
+              // Google Password Manager's saved-password bottom sheet on mobile.
+              type="text"
               value={secretValue}
               onInput={handleSecretInput}
               placeholder="Gateway Secret..."
               autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-bwignore="true"
+              data-protonpass-ignore="true"
+              data-form-type="other"
+              style={{ WebkitTextSecurity: 'disc' }}
               class="w-36 h-8 bg-slate-800 text-slate-200 border border-slate-700 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500"
             />
           </div>
