@@ -103,6 +103,29 @@ function parsePurchaseDate(rawDate?: string): string {
   );
 }
 
+function parseRelativeExitDays(rawDate: string): number {
+  const cleaned = rawDate.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (cleaned === 'today') return 0;
+  if (cleaned === 'tomorrow') return 1;
+  const normalized = cleaned
+    .replace(/^(?:after|in)\s+/, '')
+    .replace(/\s+(?:later|from\s+now)$/, '')
+    .replace(/^a\s+/, '1 ')
+    .replace(/^one\s+/, '1 ');
+  const match = normalized.match(/^(\d+)\s*(d|day|days|w|week|weeks|m|month|months)$/);
+  if (!match) throw new Error('Unrecognized exit date: ' + rawDate);
+  const amount = Number(match[1]);
+  const unit = match[2];
+  if (unit.startsWith('m')) {
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth() + amount, now.getDate());
+    if (target.getDate() !== now.getDate()) target.setDate(0);
+    return Math.round((new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime() -
+      new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86400000);
+  }
+  return amount * (unit.startsWith('w') ? 7 : 1);
+}
+
 export class CommandDispatcher {
 
   private static evaluateScheduledLadder(
@@ -237,12 +260,23 @@ export class CommandDispatcher {
       const buyScenarioMatch = raw.match(/^buy\s+scenario\s+([0-9.,]+)\s+([A-Za-z]{1,10})\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
       if (buyScenarioMatch) return this.evaluateBuyScenario(cleanNumber(buyScenarioMatch[1]), buyScenarioMatch[2].toUpperCase(), cleanNumber(buyScenarioMatch[3]));
 
-      // 3. COMPARISON SIMULATION: "sell today for $180 vs sell 14 days later for $185"
+      // 3. NATURAL-LANGUAGE EXIT COMPARISON:
+      // "sell GOOGL tomorrow for 333.10 vs sell 14 days later for 343.09"
       const vsMatch = raw.match(
-        /sell\s+(?:([a-zA-Z]+)\s+)?today\s+(?:for|at|@)\s*([$0-9.,]+)\s+(?:vs\.?|versus|or)\s+sell\s+(\d+)\s*d(?:ays?)?\s*(?:later\s+)?(?:for|at|@)\s*([$0-9.,]+)/i
+        /^sell\s+(?:(?!(?:after|in|today|tomorrow)\s)([a-zA-Z]{1,10})\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?|m|months?)(?:\s+(?:later|from\s+now))?)\s+(?:for|at|@)\s*([$0-9.,]+)\s+(?:vs\.?|versus|or)\s+sell\s+(?:(?!(?:after|in|today|tomorrow)\s)[a-zA-Z]{1,10}\s+)?(today|tomorrow|(?:(?:after|in)\s+)?(?:\d+|a|one)\s*(?:d|days?|w|weeks?|m|months?)(?:\s+(?:later|from\s+now))?)\s+(?:for|at|@)\s*([$0-9.,]+)$/i
       );
       if (vsMatch) {
-        return this.evaluateComparison(vsMatch[1], cleanNumber(vsMatch[2]), parseInt(vsMatch[3], 10), cleanNumber(vsMatch[4]));
+        const firstDate = vsMatch[2];
+        const firstPrice = cleanNumber(vsMatch[3]);
+        const secondDate = vsMatch[4];
+        const secondPrice = cleanNumber(vsMatch[5]);
+        const firstDays = parseRelativeExitDays(firstDate);
+        const secondDays = parseRelativeExitDays(secondDate);
+        if (firstDays > 3650 || secondDays > 3650) throw new Error('Exit date must be within the next 10 years.');
+        return this.evaluateExitScenarios(vsMatch[1], [
+          { label: firstDate, days: firstDays, price: firstPrice },
+          { label: secondDate, days: secondDays, price: secondPrice }
+        ]);
       }
 
       // 4. SINGLE SIMULATION: "sim AAPL 200 in 14 days" or "sell in 10 days for 195"
@@ -537,81 +571,6 @@ export class CommandDispatcher {
     return {
       type: 'res',
       text: `[Sim ${sym} @ $${simPrice.toFixed(2)} in ${daysOffset}d]: Gross $${(grossSell - costBasis).toFixed(2)} | Comms -$${totalComms.toFixed(2)} | Margin -$${projectedMargin.toFixed(2)} → Net P&L: ${netProfit >= 0 ? '+' : '-'}$${Math.abs(netProfit).toFixed(2)}`
-    };
-  }
-
-  private static evaluateComparison(tickerArg: string | undefined, p1: number, days: number, p2: number): CommandOutput {
-    if (!Number.isFinite(p1) || p1 <= 0 || !Number.isFinite(p2) || p2 <= 0) {
-      throw new Error('Enter valid positive prices for both exit scenarios.');
-    }
-    if (!Number.isInteger(days) || days < 0) {
-      throw new Error('Waiting period must be a whole number of days (zero or more).');
-    }
-
-    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
-    const rules = this.getRules(state);
-    const shares = Number(pos.shares);
-    if (!Number.isFinite(shares) || shares <= 0) {
-      throw new Error('No valid open shares found for ' + sym + '.');
-    }
-
-    const costBasis = (pos.tranches || []).reduce((sum: number, tranche: any) =>
-      sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0), 0);
-    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
-    const totalDebt = Math.abs(Number(state.balance) || 0);
-    const currentMargin = calculateMarginInterest(pos.tranches || [], {
-      dailyRate: rules.dailyRate,
-      marginDebt: totalDebt,
-      totalDebt
-    } as any);
-    const extraCarry = totalDebt * rules.dailyRate * days;
-
-    const grossToday = shares * p1;
-    const sellCommToday = calculateCommission(shares, grossToday, rules as any);
-    const marginToday = currentMargin;
-    const netToday = grossToday - costBasis - buyCommission - sellCommToday - marginToday;
-
-    const grossLater = shares * p2;
-    const sellCommLater = calculateCommission(shares, grossLater, rules as any);
-    const marginLater = currentMargin + extraCarry;
-    const netLater = grossLater - costBasis - buyCommission - sellCommLater - marginLater;
-
-    const diff = netLater - netToday;
-    const priceChange = ((p2 - p1) / p1) * 100;
-    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
-    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
-    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
-    const winner = Math.abs(diff) < 0.005
-      ? 'RESULT: Effectively tied after estimated costs.'
-      : diff > 0
-        ? 'RESULT: Waiting wins by ' + money(diff) + ' net.'
-        : 'RESULT: Selling today wins by ' + money(-diff) + ' net.';
-
-    return {
-      type: 'res',
-      text: [
-        '[EXIT COMPARISON: ' + sym + '] ' + shares.toLocaleString() + ' shares | Cost basis: ' + money(costBasis),
-        'Assumptions: buy commissions ' + money(buyCommission) + ' | current margin interest ' + money(currentMargin) + ' | margin debt ' + money(totalDebt),
-        '',
-        'A) SELL TODAY @ ' + money(p1),
-        '  Gross proceeds:     ' + money(grossToday),
-        '  Cost basis:        -' + money(costBasis),
-        '  Buy commission:    -' + money(buyCommission),
-        '  Sell commission:   -' + money(sellCommToday),
-        '  Margin interest:   -' + money(marginToday),
-        '  NET P&L:            ' + signedMoney(netToday),
-        '',
-        'B) WAIT ' + days + ' DAY' + (days === 1 ? '' : 'S') + ' @ ' + money(p2) + ' (' + signedPercent(priceChange) + ' vs today)',
-        '  Gross proceeds:     ' + money(grossLater),
-        '  Cost basis:        -' + money(costBasis),
-        '  Buy commission:    -' + money(buyCommission),
-        '  Sell commission:   -' + money(sellCommLater),
-        '  Margin interest:   -' + money(marginLater) + ' (extra carry ' + money(extraCarry) + ')',
-        '  NET P&L:            ' + signedMoney(netLater),
-        '',
-        'NET ADVANTAGE (B - A): ' + signedMoney(diff),
-        winner
-      ].join('\n')
     };
   }
 
