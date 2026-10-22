@@ -18,7 +18,7 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
   }, [isOpen]);
 
   const handleDialogKeyDown = (event: KeyboardEvent) => {
-    if (submitting) {
+    if (submitting && event.key === 'Escape') {
       event.preventDefault();
       return;
     }
@@ -55,16 +55,17 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
       if (accepted === false) {
         setSecret('');
         setInvalid(true);
-        inputRef.current?.focus();
       } else {
         setSecret('');
       }
     } catch {
       setSecret('');
       setInvalid(true);
-      inputRef.current?.focus();
     } finally {
       setSubmitting(false);
+      window.setTimeout(() => {
+        if (inputRef.current && !inputRef.current.disabled) inputRef.current.focus();
+      }, 0);
     }
   };
 
