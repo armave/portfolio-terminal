@@ -569,6 +569,29 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
   });
 
+  it('adds cash holdings atomically and preserves a live quote when no manual price is supplied', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    expect(store.addCashHolding('msft', 2, 100)).toEqual({
+      ticker: 'MSFT',
+      shares: 2,
+      price: 100
+    });
+    store.updateLiveQuote('MSFT', { price: 125, quoteSource: 'Yahoo' });
+
+    store.addCashHolding('MSFT', 3, 0);
+
+    expect(store.getState().cashCushion.holdings).toEqual([
+      expect.objectContaining({
+        ticker: 'MSFT',
+        shares: 5,
+        price: 125,
+        currentPrice: 125
+      })
+    ]);
+  });
+
   it('removes cash holdings through the store with case-insensitive ticker matching', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
