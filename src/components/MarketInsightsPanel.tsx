@@ -632,9 +632,6 @@ export function MarketInsightsPanel({
               <button type="button" class="shrink-0 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white" onClick={() => setSelectedNews(null)} aria-label="Close news article">✕</button>
             </header>
             <div class="max-h-[min(72dvh,42rem)] space-y-4 overflow-y-auto p-4 sm:p-5">
-              {(selectedNews.image || selectedNews.imageUrl || selectedNews.urlToImage) && (
-                <img src={selectedNews.image || selectedNews.imageUrl || selectedNews.urlToImage} alt="" class="max-h-80 w-full rounded-lg border border-slate-800 bg-slate-900 object-cover" loading="lazy" />
-              )}
               <div class="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-300">
                 {selectedNews.summary || selectedNews.description || selectedNews.content || 'A summary is not available from the news provider. Open the original article for the full story.'}
               </div>
