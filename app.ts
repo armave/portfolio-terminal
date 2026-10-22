@@ -417,9 +417,8 @@ function applyOvernightRollover() {
 
 function setActiveView(view: string) {
   const normalizedView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED');
-  state.activeView = normalizedView;
+  portfolioStore.setActiveView(normalizedView);
   saveState(state, pushStateToGist);
-  syncStore();
   renderBoard();
 }
 
@@ -1045,8 +1044,6 @@ async function importBackupJSON(event: Event) {
 // ==========================================
 async function applyPortfolioActions(action: any) {
   applyOvernightRollover();
-  const todayDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-
   if (action.action === "buy") {
     const ticker = String(action.ticker || '').trim().toUpperCase();
     const shares = Number(action.shares);
@@ -1184,9 +1181,8 @@ async function applyPortfolioActions(action: any) {
   else if (action.action === "set_pt") {
     const ticker = (action.ticker ? action.ticker.toUpperCase() : null) || (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
     if (state.positions[ticker] && Number(action.pt) > 0) {
-      state.positions[ticker].pt = Number(action.pt);
+      portfolioStore.updateTargetPrice(ticker, Number(action.pt));
       saveState(state, pushStateToGist);
-      syncStore();
       logTerminal(`[Target Updated]: ${ticker} PT updated to ${formatUSD(action.pt)}.`);
     }
   }
@@ -1206,9 +1202,14 @@ async function applyPortfolioActions(action: any) {
     }
   }
   else if (action.action === "set_balance") {
-    state.balance = -Math.abs(Number(action.balance));
+    const debt = Math.abs(Number(action.balance));
+    if (!Number.isFinite(debt)) {
+      logTerminal('[Margin Sync Error]: Enter a valid finite debt amount.');
+      showToast('Invalid margin debt amount.', 'error');
+      return;
+    }
+    portfolioStore.setMarginDebt(debt);
     saveState(state, pushStateToGist);
-    syncStore();
     logTerminal(`[Margin Synced]: Total margin balance explicitly set to -${formatUSD(Math.abs(state.balance))}.`);
   }
   else if (action.action === "set_free_cash") {
