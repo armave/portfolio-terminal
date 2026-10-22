@@ -301,6 +301,12 @@ export class PortfolioStore {
 
   public update(updater: (state: PortfolioState) => PortfolioState): void {
     const next = updater(this.state);
+
+    // Treat a returned current-state reference as an explicit no-op. Besides
+    // avoiding unnecessary storage writes, this prevents rejected stale quote
+    // responses and invalid commands from notifying every subscriber.
+    if (next === this.state) return;
+
     this.state = this.normalizeState({
       ...next,
       lastUpdated: Date.now()
