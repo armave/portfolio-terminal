@@ -26,7 +26,6 @@ function resolveActiveView(state: BoardState): string {
   let currentView = state.activeView;
   if (!currentView || (!NON_POSITION_VIEWS.has(currentView) && !state.positions?.[currentView])) {
     currentView = 'COMBINED';
-    state.activeView = 'COMBINED';
   }
   return currentView;
 }
@@ -34,22 +33,30 @@ function resolveActiveView(state: BoardState): string {
 export interface RenderCashCushionOptions {
   onFetchLivePrice?: (ticker: string) => void;
   onRemoveCashStock?: (index: number) => void;
+  onSaveBalance?: (signedValue: number) => void;
+  onAddCashStock?: (ticker: string, shares: number, manualPrice: number) => void;
   refreshIntervalMs?: number;
 }
 
 export function renderCashCushion(
-  state: BoardState,
+  _state: BoardState,
   options: RenderCashCushionOptions = {}
 ): void {
-  const { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs = 60000 } = options;
-  if (!state.cashCushion) state.cashCushion = { freeCash: 0.0, holdings: [] };
-
+  const {
+    onFetchLivePrice,
+    onRemoveCashStock,
+    onSaveBalance,
+    onAddCashStock,
+    refreshIntervalMs = 60000
+  } = options;
   const container = document.getElementById('cashCushionContainer');
   if (container) {
     render(
       h(CashCushionDesk, {
         onFetchLivePrice,
         onRemoveCashStock,
+        onSaveBalance,
+        onAddCashStock,
         refreshIntervalMs
       }),
       container
@@ -270,7 +277,9 @@ function showDesk(id: string) {
 export interface RenderBoardOptions extends RenderCashCushionOptions {
   rules: BrokerRules;
   onSetActiveView?: (view: string) => void;
+  onRefreshAllLivePrices?: () => void;
   onRenderClosedHistory?: () => void;
+  onRenderSettingsPanel?: () => void;
   onRenderAnalystConsensus?: (ticker: string) => void;
   onRenderExternalLinks?: () => void;
   onRenderConsoleQuickActions?: () => void;
@@ -284,7 +293,9 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const {
     rules,
     onSetActiveView = () => { },
+    onRefreshAllLivePrices = () => { },
     onRenderClosedHistory = () => { },
+    onRenderSettingsPanel = () => { },
     onRenderAnalystConsensus = () => { },
     onFetchLivePrice = () => { },
     onRemoveCashStock = () => { },
@@ -309,7 +320,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const tabsContainer = document.getElementById('tickerTabs');
   if (tabsContainer) {
-    render(h(TickerTabs, { state, onSetActiveView }), tabsContainer);
+    render(h(TickerTabs, { state, onSetActiveView, onRefreshAllLivePrices }), tabsContainer);
   }
 
   const closedTrades = state.closedTrades || [];
@@ -318,8 +329,12 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     closedTradesCount.textContent = `${closedTrades.length} realized exit${closedTrades.length === 1 ? '' : 's'}`;
   }
 
-  onUpdateCombinedBreakeven();
-  onSyncMarketInsightsPanel();
+  // Hidden desks do not need their derived metrics or insights panel refreshed.
+  // They will be updated when the user returns to a position/combined desk.
+  if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) {
+    onUpdateCombinedBreakeven();
+    onSyncMarketInsightsPanel();
+  }
 
   const daysEl = document.getElementById('daysToBreakeven');
   if (viewChanged) hideAllDesks();
@@ -354,9 +369,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   if (isSettingsActive) {
     if (viewChanged) showDesk('settings');
-    if (typeof window !== 'undefined' && typeof (window as any).renderSettingsPanel === 'function') {
-      (window as any).renderSettingsPanel();
-    }
+    onRenderSettingsPanel();
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('SETTINGS');
     return;

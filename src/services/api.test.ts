@@ -102,6 +102,39 @@ describe('cloud revision conflict handling', () => {
     vi.restoreAllMocks();
   });
 
+  it('serializes concurrent pushes and uses the revision returned by the prior push', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"42"' }),
+        json: async () => ({})
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"43"' }),
+        json: async () => ({})
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const results = await Promise.all([
+      pushCloudState({ activeView: 'AAPL', balance: 100 }, {
+        secret: 'cloud-encryption-secret',
+        showToast: vi.fn()
+      }),
+      pushCloudState({ activeView: 'MSFT', balance: 200 }, {
+        secret: 'cloud-encryption-secret',
+        showToast: vi.fn()
+      })
+    ]);
+
+    expect(results).toEqual([true, true]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const secondHeaders = fetchMock.mock.calls[1][1].headers as Record<string, string>;
+    expect(secondHeaders['If-Match']).toBe('"42"');
+  });
+
   it('reports a conflict instead of silently overwriting a newer cloud state', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,

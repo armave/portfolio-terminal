@@ -427,14 +427,8 @@ export async function pullCloudState(
   const {
     state,
     pullCloudAndRewriteLocal,
-    showToast = (msg: string, type: string) =>
-      typeof window !== 'undefined' && typeof (window as any).showToast === 'function'
-        ? (window as any).showToast(msg, type)
-        : console.log(msg),
-    logTerminal = (msg: string) =>
-      typeof window !== 'undefined' && typeof (window as any).logTerminal === 'function'
-        ? (window as any).logTerminal(msg)
-        : console.log(msg)
+    showToast = (msg: string, type: string) => console.log(`[${type}] ${msg}`),
+    logTerminal = (msg: string) => console.log(msg)
   } = handlers;
 
   const currentSecret = handlers.secret || getActiveGatewaySecret();
@@ -465,7 +459,6 @@ export async function pullCloudState(
       // A confirmed empty cloud store is safe to use as the current base revision.
       if (pulledRevision !== null) setCloudRevision(pulledRevision);
       reportResult?.(false);
-      showToast('No KV cloud state found. Retaining local state.', 'info');
       logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
       return loadSavedState(state || {});
     }
@@ -535,8 +528,6 @@ export async function pullCloudState(
 
     if (typeof pullCloudAndRewriteLocal === 'function') {
       pullCloudAndRewriteLocal(parsedState);
-    } else if (typeof window !== 'undefined' && typeof (window as any).renderBoard === 'function') {
-      (window as any).renderBoard();
     }
 
     reportResult?.(true);
@@ -563,10 +554,7 @@ async function performPushCloudState(state?: any, options: SyncOptions = {}): Pr
   const handlers: SyncOptions = typeof options === 'function' ? {} : options;
   const {
     getState,
-    showToast = (msg: string, type: string) =>
-      typeof window !== 'undefined' && typeof (window as any).showToast === 'function'
-        ? (window as any).showToast(msg, type)
-        : console.log(msg)
+    showToast = (msg: string, type: string) => console.log(`[${type}] ${msg}`)
   } = handlers;
 
   const currentState = state || (typeof getState === 'function' ? getState() : {});

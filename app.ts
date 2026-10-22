@@ -10,21 +10,16 @@ import {
   createBlankState,
   createPortfolioBackupSnapshot,
   normalizePortfolioBackup,
-  normalizePortfolioState,
-  processRollovers,
-  realizeClosedTrade,
   resolveSaleQuantity,
-  resolveTradeDateTimestamp
 } from './src/domain/portfolio';
 import { evaluateIntent, parseAiIntent } from './src/features/ai/intent';
 import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
   calculateTargetUpsidePercent,
-  sentimentLabel,
-  SentimentDirection
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
+import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
   fetchYahooDeepStockData,
@@ -36,7 +31,6 @@ import {
 import {
   areHeaderCredentialsConfigured,
   clearBrokerRules,
-  clearLocalData,
   getGatewaySecret,
   getQuoteRefreshInterval,
   loadBrokerRules,
@@ -48,7 +42,6 @@ import {
   saveGatewaySecret,
   saveQuoteRefreshInterval,
   saveState,
-  saveStateToStorage
 } from './src/services/storage';
 import {
   clearTerminalLog,
@@ -57,11 +50,8 @@ import {
 } from './src/ui/notifications';
 import {
   renderBoard as renderBoardUI,
-  renderCashCushion,
-  renderPositionsTable,
-  renderSummaryCards
 } from './src/ui/renderBoard';
-import { getCashCushionTotal, getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
+import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { BoardExternalLinks } from './src/components/BoardExternalLinks';
@@ -98,6 +88,8 @@ let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
+let settingsPanelMounted = false;
+let lastSettingsRulesSignature: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
 let marketInsightsOpen = true;
 let activeInsightSection = 'news';
@@ -111,13 +103,6 @@ const BOARD_ANALYST_RETRY_MS = 60 * 1000;
 
 const DEFAULT_QUOTE_REFRESH_INTERVAL_MS = 60 * 1000;
 const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
-
-/**
- * Syncs the active runtime state into the reactive portfolioStore
- */
-function syncStore() {
-  portfolioStore.importState(state as any);
-}
 
 // ==========================================
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
@@ -151,8 +136,7 @@ async function pushStateToCloud(forceImmediate = false) {
     return;
   }
 
-  state.lastUpdated = Date.now();
-  syncStore();
+  portfolioStore.setState({ lastUpdated: Date.now() });
 
   const doPush = async () => {
     setCloudStatus('syncing', 'WRITING...');
@@ -183,12 +167,12 @@ const pushStateToGist = pushStateToCloud;
 function pullCloudAndRewriteLocal(parsedState: any) {
   const currentView = state.activeView;
   const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(parsedState, state);
-  state = { ...state, ...compatibleCloudState };
+  const mergedState = { ...state, ...compatibleCloudState };
   if (!parsedState?.activeView && currentView) {
-    state.activeView = currentView;
+    mergedState.activeView = currentView;
   }
-  state = loadSavedState(state);
-  syncStore();
+  portfolioStore.importState(loadSavedState(mergedState));
+  state = portfolioStore.getState();
   switchView(state.activeView);
   console.log("[Sync]: Cloud state ingested and UI re-rendered successfully", state);
   setTimeout(() => {
@@ -211,13 +195,12 @@ async function syncCloudState(mode = 'push') {
 
 function resetToBlankState() {
   if (confirm("Reset the entire terminal to a blank slate? This will clear all holdings, balances, and history locally and on KV cloud.")) {
-    state = createBlankState();
+    portfolioStore.importState(createBlankState() as any);
+    state = portfolioStore.getState();
     saveState(state, pushStateToGist);
-    syncStore();
     pushStateToGist(true);
     renderBoard();
     logTerminal("[System]: Portfolio reset to a clean blank slate.");
-    showToast('Portfolio reset to a blank slate.', 'warning');
   }
 }
 
@@ -320,13 +303,11 @@ function saveBrokerRuleInputs(event: Event) {
   saveBrokerRules(updatedRules);
   const nextRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   if (previousRollover !== nextRollover) {
-    state.lastRolloverTimestamp = getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
+    portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
     saveState(state, pushStateToGist);
-    syncStore();
   }
   verifyTradernetRulesOnload();
   renderBoard();
-  showToast('Broker assumptions saved in this browser.', 'success');
 }
 
 function resetBrokerRules() {
@@ -336,13 +317,11 @@ function resetBrokerRules() {
   clearBrokerRules();
   setBrokerRuleInputs();
   if (previousRollover !== `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`) {
-    state.lastRolloverTimestamp = getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
+    portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
     saveState(state, pushStateToGist);
-    syncStore();
   }
   verifyTradernetRulesOnload();
   renderBoard();
-  showToast('Broker assumptions restored to defaults.', 'info');
 }
 
 function verifyTradernetRulesOnload() {
@@ -373,9 +352,8 @@ function updateRiskAssumptionTitles() {
 function applyOvernightRollover() {
   const now = new Date();
   if (!Number.isFinite(Number(state.lastRolloverTimestamp)) || Number(state.lastRolloverTimestamp) <= 0) {
-    state.lastRolloverTimestamp = getLatestRolloverTimestamp(now, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone);
+    portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(now, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
     saveState(state, pushStateToGist);
-    syncStore();
     return;
   }
 
@@ -399,30 +377,24 @@ function applyOvernightRollover() {
     const compoundedDebt = calculateProjectedDebt(currentDebt, getDailyRate(), elapsedCycles);
     const interestAccrued = calculateMarginInterest(currentDebt, getDailyRate(), elapsedCycles);
 
-    state.balance = -compoundedDebt;
-
     const tickers = Object.keys(state.positions);
     const totalInvested = getTotalPortfolioInvested(state);
-    if (tickers.length === 0 || totalInvested === 0) {
-      state.realizedMarginCharged = (state.realizedMarginCharged || 0) + interestAccrued;
-    }
+    const recordAsRealized = tickers.length === 0 || totalInvested === 0;
 
-    state.lastRolloverTimestamp = now.getTime();
+    portfolioStore.applyRollover(compoundedDebt, interestAccrued, now.getTime(), recordAsRealized);
     saveState(state, pushStateToGist);
-    syncStore();
     logTerminal(`[Broker ${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')} Armenia rollover]: Processed ${elapsedCycles} cycle(s). Accrued interest: +${formatUSD(interestAccrued)}. Margin Debt: -${formatUSD(compoundedDebt)}.`);
   } else if (elapsedCycles > 0) {
-    state.lastRolloverTimestamp = now.getTime();
+    portfolioStore.setLastRolloverTimestamp(now.getTime());
     saveState(state, pushStateToGist);
-    syncStore();
   }
 }
 
 function setActiveView(view: string) {
   const normalizedView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED');
-  state.activeView = normalizedView;
+  // Preserve the prior view-only behavior; selectedTicker is managed separately.
+  portfolioStore.setState({ activeView: normalizedView });
   saveState(state, pushStateToGist);
-  syncStore();
   renderBoard();
 }
 
@@ -510,38 +482,6 @@ function updateCombinedBreakeven() {
   beEl.innerText = `Combined Breakeven: ${beDays} days (${beDateStr})`;
 }
 
-function createStockPageLink(ticker: string, provider: string) {
-  const link = document.createElement('a');
-  const symbol = encodeURIComponent(ticker);
-  let href = '';
-  let brandClass = '';
-  if (provider === 'Finviz') {
-    href = `https://finviz.com/stock?t=${symbol}`;
-    link.id = 'finvizLink';
-    brandClass = 'stock-link-finviz';
-  } else if (provider === 'Stocktwits') {
-    href = `https://stocktwits.com/symbol/${symbol}`;
-    link.id = 'stocktwitsLink';
-    brandClass = 'stock-link-stocktwits';
-  } else if (provider === 'TV Chart') {
-    href = `https://tradingview.com/chart/?symbol=${symbol}`;
-    link.id = 'tvChartLink';
-    brandClass = 'stock-link-tv-chart';
-  } else if (provider === 'TV Ideas') {
-    href = `https://tradingview.com/symbols/${symbol}/ideas/?sort=recent`;
-    link.id = 'tvIdeasLink';
-    brandClass = 'stock-link-tv-ideas';
-  }
-  link.href = href;
-  link.target = '_blank';
-  link.rel = 'noopener noreferrer';
-  link.className = `stock-external-link ${brandClass} px-2 py-1 rounded text-[10px] font-bold font-mono uppercase`;
-  link.textContent = provider;
-  link.title = `Open ${ticker} on ${provider} in a new tab`;
-  link.setAttribute('aria-label', `Open ${ticker} on ${provider} in a new tab`);
-  return link;
-}
-
 function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
   const stockPageLinks = document.getElementById('boardExternalLinks');
@@ -553,7 +493,11 @@ function renderBoard() {
   renderBoardUI(state, {
     rules: TRADERNET_RULES as any,
     onSetActiveView: setActiveView,
+    onRefreshAllLivePrices: refreshAllLivePrices,
+    onSaveBalance: saveCurrentBalance,
+    onAddCashStock: addCashStockFromDesk,
     onRenderClosedHistory: renderClosedHistoryPanel,
+    onRenderSettingsPanel: () => renderSettingsPanel(),
     onRenderAnalystConsensus: renderBoardAnalystConsensus,
     onFetchLivePrice: fetchLivePrice,
     onRemoveCashStock: removeCashStock,
@@ -566,7 +510,9 @@ function renderBoard() {
     onUpdateLastDeskView: (view: string) => { lastRenderedDeskView = view; }
   });
 
-  renderSettingsPanel();
+  // Keep the settings form mounted and its local edits intact during quote refreshes.
+  // When settings are active, renderBoardUI calls renderSettingsPanel explicitly.
+  if (!settingsPanelMounted) renderSettingsPanel();
 }
 
 function renderMarketInsightsComponent() {
@@ -625,32 +571,6 @@ function renderClosedHistoryPanel() {
   const container = document.getElementById('closedHistoryContainer');
   if (!container) return;
   render(h(ClosedHistoryDesk, null), container);
-}
-
-function createInsightElement(tagName: string, className = '', text = '') {
-  const element = document.createElement(tagName);
-  if (className) element.className = className;
-  if (text) element.textContent = text;
-  return element;
-}
-
-function sentimentBadge(direction: SentimentDirection, label = sentimentLabel(direction)) {
-  const styles: Record<string, string> = {
-    bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
-    bearish: 'border-rose-800 bg-rose-950/50 text-rose-300',
-    neutral: 'border-slate-700 bg-slate-900 text-slate-300',
-    unknown: 'border-slate-800 bg-slate-950 text-slate-500'
-  };
-  const badge = createInsightElement(
-    'span',
-    `inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${styles[direction]}`,
-    label
-  );
-  badge.dataset.sentiment = direction;
-  badge.title = direction === 'unknown'
-    ? 'The selected data source did not provide a sentiment signal.'
-    : 'A directional marker based only on the provider values shown in this section.';
-  return badge;
 }
 
 async function fetchBoardAnalystTarget(ticker: string, force = false) {
@@ -756,16 +676,6 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
   boardAnalystRequests.set(ticker, request);
 }
 
-async function loadMarketInsight(section: string, force = false) {
-  activeInsightSection = section;
-  if (force) insightRequestId++;
-  renderMarketInsightsComponent();
-}
-
-function refreshMarketInsight() {
-  return loadMarketInsight(activeInsightSection, true);
-}
-
 function recordTrackedPrice(
   ticker: string,
   price: number,
@@ -799,32 +709,28 @@ function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
     throw new Error('Ticker and a positive share quantity are required.');
   }
 
-  if (!state.cashCushion) state.cashCushion = { freeCash: 0, holdings: [] };
-  if (!Array.isArray(state.cashCushion.holdings)) state.cashCushion.holdings = [];
-  const existing = state.cashCushion.holdings.find((holding: any) => holding.ticker === symbol);
-  const currentPrice = Number.isFinite(manualPrice) && manualPrice > 0
-    ? manualPrice
-    : (Number(existing?.price) || 0);
-
-  if (existing) {
-    existing.shares = (Number(existing.shares) || 0) + quantity;
-  } else {
-    state.cashCushion.holdings.push({ ticker: symbol, shares: quantity, price: currentPrice });
+  const added = portfolioStore.addCashHolding(symbol, quantity, manualPrice);
+  if (!added) {
+    throw new Error('Ticker and a positive share quantity are required.');
   }
+
   if (Number.isFinite(manualPrice) && manualPrice > 0) {
     recordTrackedPrice(symbol, manualPrice, 'Manual');
   }
-  syncStore();
-  return { ticker: symbol, shares: quantity, price: currentPrice };
+  return added;
 }
 
 function removeCashHolding(ticker: string) {
-  const holdings = state.cashCushion?.holdings;
-  if (!Array.isArray(holdings)) return null;
   const symbol = ticker.trim().toUpperCase();
-  const index = holdings.findIndex((holding: any) => holding.ticker === symbol);
-  const removed = index < 0 ? null : holdings.splice(index, 1)[0];
-  if (removed) syncStore();
+  const holdings = state.cashCushion?.holdings;
+  if (!symbol || !Array.isArray(holdings)) return null;
+
+  const removed = holdings.find((holding: any) => holding.ticker === symbol);
+  if (!removed) return null;
+
+  // Let the store own this state transition; its subscriber updates the runtime
+  // state reference after the canonical mutation has been committed.
+  portfolioStore.removeCashStock(symbol);
   return removed;
 }
 
@@ -838,47 +744,25 @@ function setCurrentBalance(value: number) {
   };
 }
 
-function saveCurrentBalanceFromInput() {
-  const input = document.getElementById('freeCashInput') as HTMLInputElement | null;
-  if (!input || !input.reportValidity()) return;
-
-  const inputValue = input.valueAsNumber;
-  const { balance, debt } = setCurrentBalance(inputValue);
+function saveCurrentBalance(signedValue: number) {
+  if (!Number.isFinite(signedValue)) return;
+  const { balance, debt } = setCurrentBalance(signedValue);
   saveState(state, pushStateToGist);
   renderBoard();
   logTerminal(`[Balance]: Current balance/debt updated. Balance: ${formatUSD(balance)} | Margin debt: -${formatUSD(debt)}.`);
-  showToast(`Balance ${formatUSD(balance)} | Debt -${formatUSD(debt)}`, 'success');
 }
 
-async function addCashStockFromUI() {
-  const tickerInput = document.getElementById('newCashTicker') as HTMLInputElement;
-  const sharesInput = document.getElementById('newCashShares') as HTMLInputElement;
-  const priceInput = document.getElementById('newCashPrice') as HTMLInputElement;
+async function addCashStockFromDesk(ticker: string, shares: number, manualPrice: number) {
+  const cleanTicker = ticker.trim().toUpperCase();
+  if (!cleanTicker || !Number.isFinite(shares) || shares <= 0) return;
+  if (Number.isFinite(manualPrice) && manualPrice <= 0) return;
+  if (!Number.isFinite(manualPrice) && !Number.isNaN(manualPrice)) return;
 
-  const ticker = tickerInput.value.trim().toUpperCase();
-  const shares = sharesInput.valueAsNumber;
-  const manualPrice = priceInput.value === '' ? NaN : priceInput.valueAsNumber;
-
-  if (!tickerInput.reportValidity() || !sharesInput.reportValidity() ||
-    (priceInput.value !== '' && !priceInput.reportValidity())) return;
-
-  if (!ticker) {
-    logTerminal(`[Error]: Please enter valid ticker symbol and share count.`);
-    tickerInput.focus();
-    return;
-  }
-
-  addCashHolding(ticker, shares, manualPrice);
-
-  tickerInput.value = '';
-  sharesInput.value = '';
-  priceInput.value = '';
-
+  addCashHolding(cleanTicker, shares, manualPrice);
   saveState(state, pushStateToGist);
   renderBoard();
-  logTerminal(`[Balance]: Added ${shares} ${ticker}. Fetching live online quote...`);
-  showToast(`${shares} ${ticker} added to balance holdings.`, 'success');
-  await fetchLivePrice(ticker);
+  logTerminal(`[Balance]: Added ${shares} ${cleanTicker}. Fetching live online quote...`);
+  await fetchLivePrice(cleanTicker);
 }
 
 function removeCashStock(index: number) {
@@ -888,13 +772,6 @@ function removeCashStock(index: number) {
   saveState(state, pushStateToGist);
   renderBoard();
   logTerminal(`[Cash Cushion]: Removed ${removed.ticker} from cash holdings.`);
-  showToast(`${removed.ticker} removed from cash holdings.`, 'info');
-}
-
-function updateEmptyStateVisibility(isEmpty: boolean) {
-  const panel = document.getElementById('emptyStatePanel');
-  if (!panel) return;
-  panel.classList.toggle('hidden', !isEmpty);
 }
 
 async function requestLivePrice(symbol: string, force = false) {
@@ -968,7 +845,6 @@ async function performRefreshAllLivePrices() {
     if (updatedCount > 0) {
       // Live quotes stay local rather than causing a cloud write every poll.
       saveState(state);
-      syncStore();
       renderBoard();
       logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
     } else {
@@ -1028,22 +904,19 @@ async function importBackupJSON(event: Event) {
     }
 
     importedState.lastUpdated = Date.now();
-    const previousState = state;
-    state = importedState;
-    try {
-      if (!saveState(state, pushStateToGist)) {
-        throw new Error('Could not persist the imported backup to browser storage.');
-      }
-      syncStore();
-    } catch (error) {
-      state = previousState;
-      syncStore();
-      throw error;
-    }
+    const previousState = portfolioStore.getState();
+    commitPortfolioBackupImport(
+      importedState,
+      previousState,
+      (snapshot) => {
+        portfolioStore.importState(snapshot as any);
+        state = portfolioStore.getState();
+      },
+      () => saveState(state, pushStateToGist)
+    );
     await pushStateToGist(true);
     renderBoard();
     logTerminal(`[Backup Import]: Imported ${file.name} into this browser. Check KV cloud status for sync results.`);
-    showToast('Backup imported locally. Check KV cloud status for sync.', 'success');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logTerminal(`[Backup Error]: Could not import backup (${message}).`);
@@ -1056,61 +929,34 @@ async function importBackupJSON(event: Event) {
 // ==========================================
 async function applyPortfolioActions(action: any) {
   applyOvernightRollover();
-  const todayDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-
   if (action.action === "buy") {
-    const ticker = action.ticker.toUpperCase();
+    const ticker = String(action.ticker || '').trim().toUpperCase();
     const shares = Number(action.shares);
     const price = Number(action.price);
-    const tradeCost = shares * price;
-    const buyComm = calcCommission(shares, tradeCost);
-    const totalOutlay = tradeCost + buyComm;
-
-    if (!state.positions[ticker]) {
-      state.positions[ticker] = {
-        ticker: ticker,
-        shares: 0,
-        tranches: [],
-        currentPrice: price,
-        quoteSource: 'Trade input',
-        pt: action.pt ? Number(action.pt) : Number((price * 1.05).toFixed(2)),
-        commBuy: 0,
-        startDate: new Date().toISOString().split('T')[0]
-      };
+    if (!ticker || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) {
+      logTerminal('[AI Action Error]: Buy requires a valid ticker, positive share count, and positive price.');
+      showToast('Invalid buy details.', 'error');
+      return;
     }
 
-    const pos = state.positions[ticker];
-    pos.shares += shares;
-    pos.tranches.push({
-      qty: shares,
-      price: price,
-      date: action.date || todayDateStr,
-      acquiredAt: resolveTradeDateTimestamp(action.date),
-      buyCommission: buyComm
-    });
-    pos.commBuy += buyComm;
-    pos.currentPrice = price;
-    pos.lastTradeAt = Date.now();
-    pos.quoteSource = 'Trade input';
-    delete pos.quoteUpdatedAt;
-    delete pos.quoteDetails;
-    if (action.pt) pos.pt = Number(action.pt);
-
-    const currentFreeCash = Number(state.cashCushion?.freeCash) || 0;
-    const cashUsed = Math.min(currentFreeCash, totalOutlay);
+    const priorState = portfolioStore.getState();
+    const targetPrice = Number(action.pt) > 0
+      ? Number(action.pt)
+      : priorState.positions[ticker]
+        ? undefined
+        : Number((price * 1.05).toFixed(2));
+    const priorFreeCash = Math.max(0, Number(priorState.cashCushion?.freeCash) || 0);
+    const priorDebt = Math.abs(Number(priorState.balance) || 0);
+    const rules = priorState.brokerAssumptions || TRADERNET_RULES;
+    const buyComm = calculateCommission(shares, shares * price, rules as any);
+    const totalOutlay = shares * price + buyComm;
+    const cashUsed = Math.min(priorFreeCash, totalOutlay);
     const debtAdded = totalOutlay - cashUsed;
 
-    if (cashUsed > 0) {
-      state.cashCushion.freeCash = currentFreeCash - cashUsed;
-    }
+    portfolioStore.buyStock(ticker, shares, price, action.date || new Date().toISOString().split('T')[0], targetPrice);
+    const committedState = portfolioStore.getState();
 
-    state.balance = state.balance - debtAdded;
-    state.activeView = ticker;
-
-    saveState(state, pushStateToGist);
-    syncStore();
-    logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Funded: ${formatUSD(cashUsed)} cash | +${formatUSD(debtAdded)} margin debt. Free Cash remaining: ${formatUSD(state.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(state.balance))}.`);
-    showToast(`${shares} ${ticker} bought at ${formatUSD(price)}.`, 'success');
+    logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Funded: ${formatUSD(cashUsed)} cash | +${formatUSD(debtAdded)} margin debt. Free Cash remaining: ${formatUSD(committedState.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(committedState.balance))} (was -${formatUSD(priorDebt)}).`);
     await fetchLivePrice(ticker, false, true);
   }
   else if (action.action === "sell") {
@@ -1152,80 +998,43 @@ async function applyPortfolioActions(action: any) {
       showToast('Sale price must be greater than zero.', 'error');
       return;
     }
-    const grossProceeds = sharesToSell * sellPrice;
-    const sellComm = calcCommission(sharesToSell, grossProceeds);
-    const netCashCredited = grossProceeds - sellComm;
-
-    const currentDebt = Math.abs(state.balance);
-    let debtRepaid = 0;
-    let cashSurplus = 0;
-
-    if (currentDebt > 0) {
-      debtRepaid = Math.min(currentDebt, netCashCredited);
-      state.balance = currentDebt > debtRepaid ? -(currentDebt - debtRepaid) : 0;
-      cashSurplus = netCashCredited - debtRepaid;
-    } else {
-      cashSurplus = netCashCredited;
-    }
-
-    if (cashSurplus > 0) {
-      if (!state.cashCushion) state.cashCushion = { freeCash: 0.00, holdings: [] };
-      state.cashCushion.freeCash = (Number(state.cashCushion.freeCash) || 0) + cashSurplus;
-    }
-
-    const resultMessage = `${sharesToSell} ${ticker} sold at ${formatUSD(sellPrice)}.`;
-
     if (isCashHolding) {
-      if (sharesToSell >= pos.shares) {
-        state.cashCushion.holdings.splice(cashHoldingIdx, 1);
-        logTerminal(`[Cash Holding Closed]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(netCashCredited)} (Debt paid: ${formatUSD(debtRepaid)}, Free Cash added: ${formatUSD(cashSurplus)}).`);
-      } else {
-        pos.shares -= sharesToSell;
-        logTerminal(`[Cash Holding Partial Sell]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Remaining: ${pos.shares} shares.`);
+      const result = portfolioStore.sellCashHolding(ticker, sharesToSell, sellPrice);
+      if (!result) {
+        logTerminal(`[Sell Error]: Could not sell cash holding ${ticker}.`);
+        showToast('Cash holding sale failed.', 'error');
+        return;
       }
-    } else {
-      const totalPortfolioInvested = getTotalPortfolioInvested(state);
-      const positionInvested = (pos.tranches || []).reduce(
-        (sum: number, tranche: any) => sum + (Number(tranche.qty) || 0) * (Number(tranche.price) || 0),
-        0
-      );
-      const allocatedDebt = totalPortfolioInvested > 0
-        ? currentDebt * (positionInvested / totalPortfolioInvested)
-        : currentDebt;
-      const accruedMarginInterest = calculateMarginInterest(pos.tranches || [], {
-        dailyRate: getDailyRate(),
-        marginDebt: allocatedDebt,
-        totalDebt: currentDebt
-      });
-      const positionForClose = {
-        ...pos,
-        marginCharged: Math.max(Number(pos.marginCharged) || 0, accruedMarginInterest)
-      };
-      const realizedTrade = realizeClosedTrade(positionForClose, ticker, sharesToSell, sellPrice, sellComm, Date.now());
-      delete (realizedTrade.position as any).marginCharged;
-      state.positions[ticker] = realizedTrade.position;
-      if (realizedTrade.trade) state.closedTrades.push(realizedTrade.trade);
-      state.realizedMarginCharged = (state.realizedMarginCharged || 0) + realizedTrade.marginFee;
 
-      if (realizedTrade.position.shares <= 1e-8) {
-        delete state.positions[ticker];
-        state.activeView = "COMBINED";
-        logTerminal(`[Position Closed]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(netCashCredited)} (Debt paid: ${formatUSD(debtRepaid)}, Free Cash added: ${formatUSD(cashSurplus)}). Remaining Debt: -${formatUSD(Math.abs(state.balance))}. Free Cash: ${formatUSD(state.cashCushion.freeCash)}.`);
+      saveState(state, pushStateToGist);
+      if (result.remainingShares <= 1e-8) {
+        logTerminal(`[Cash Holding Closed]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}).`);
       } else {
-        logTerminal(`[Partial Sell]: Sold ${sharesToSell} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(netCashCredited)} (Debt paid: ${formatUSD(debtRepaid)}, Free Cash added: ${formatUSD(cashSurplus)}). Remaining: ${realizedTrade.position.shares} shares.`);
+        logTerminal(`[Cash Holding Partial Sell]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Remaining: ${result.remainingShares} shares. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}).`);
       }
+      renderBoard();
+      return;
+    }
+
+    const result = portfolioStore.sellMarginPosition(ticker, sharesToSell, sellPrice);
+    if (!result) {
+      logTerminal(`[Sell Error]: Could not sell margin position ${ticker}.`);
+      showToast('Margin position sale failed.', 'error');
+      return;
     }
 
     saveState(state, pushStateToGist);
-    syncStore();
-    showToast(resultMessage, 'success');
+    if (result.remainingShares <= 1e-8) {
+      logTerminal(`[Position Closed]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}). Remaining Debt: -${formatUSD(Math.abs(state.balance))}. Free Cash: ${formatUSD(state.cashCushion.freeCash)}.`);
+    } else {
+      logTerminal(`[Partial Sell]: Sold ${result.sharesSold} ${ticker} @ ${formatUSD(sellPrice)}. Net credited: +${formatUSD(result.netProceeds)} (Debt paid: ${formatUSD(result.debtRepaid)}, Free Cash added: ${formatUSD(result.cashSurplus)}). Remaining: ${result.remainingShares} shares.`);
+    }
   }
   else if (action.action === "set_pt") {
     const ticker = (action.ticker ? action.ticker.toUpperCase() : null) || (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
     if (state.positions[ticker] && Number(action.pt) > 0) {
-      state.positions[ticker].pt = Number(action.pt);
+      portfolioStore.updateTargetPrice(ticker, Number(action.pt));
       saveState(state, pushStateToGist);
-      syncStore();
       logTerminal(`[Target Updated]: ${ticker} PT updated to ${formatUSD(action.pt)}.`);
     }
   }
@@ -1245,9 +1054,14 @@ async function applyPortfolioActions(action: any) {
     }
   }
   else if (action.action === "set_balance") {
-    state.balance = -Math.abs(Number(action.balance));
+    const debt = Math.abs(Number(action.balance));
+    if (!Number.isFinite(debt)) {
+      logTerminal('[Margin Sync Error]: Enter a valid finite debt amount.');
+      showToast('Invalid margin debt amount.', 'error');
+      return;
+    }
+    portfolioStore.setMarginDebt(debt);
     saveState(state, pushStateToGist);
-    syncStore();
     logTerminal(`[Margin Synced]: Total margin balance explicitly set to -${formatUSD(Math.abs(state.balance))}.`);
   }
   else if (action.action === "set_free_cash") {
@@ -1769,23 +1583,27 @@ async function executeCommand(commandText?: string) {
   }
 }
 
-function renderSettingsPanel() {
+function renderSettingsPanel(force = false) {
   const container = document.getElementById('settings');
   if (!container) return;
 
+  const rules = { ...TRADERNET_RULES };
+  const rulesSignature = JSON.stringify(rules);
+  if (settingsPanelMounted && !force && rulesSignature === lastSettingsRulesSignature) return;
+
   render(
     h(SettingsDesk, {
-      rules: { ...TRADERNET_RULES },
+      rules,
       defaultRefreshIntervalMs: DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
       onSaveBrokerRules: saveBrokerRuleInputs,
       onResetBrokerRules: () => {
         resetBrokerRules();
-        renderSettingsPanel();
+        renderSettingsPanel(true);
       },
       onSaveApiKeys: async (secret: string) => {
         const saved = await saveApiKeys({ secret, showToast: (message, type) => showToast(message, type as any), logTerminal });
         if (saved) {
-          state.gatewaySecret = secret.trim();
+          portfolioStore.setState({ gatewaySecret: secret.trim() });
           await syncCloudState('pull');
         }
       },
@@ -1797,6 +1615,8 @@ function renderSettingsPanel() {
     }),
     container
   );
+  settingsPanelMounted = true;
+  lastSettingsRulesSignature = rulesSignature;
 }
 
 let appInitialized = false;
@@ -1820,12 +1640,9 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
 
   saveGatewaySecret(submittedSecret);
   const persisted = await persistGatewaySecret();
-  state.gatewaySecret = submittedSecret;
+  portfolioStore.setState({ gatewaySecret: submittedSecret });
   if (!persisted) {
-    showToast(
-      'Gateway Secret is valid for this session, but secure device storage failed. You may be asked again after refresh.',
-      'warning'
-    );
+    showToast('Secure storage failed. Re-enter the Gateway Secret after refresh.', 'error');
   }
 
   window.dispatchEvent(new CustomEvent('gateway-secret-authenticated', { detail: { secret: submittedSecret } }));
@@ -1860,10 +1677,10 @@ function hideAuthContainer() {
 
 async function startApp(secret: string) {
   loadTradernetRules();
-  state.gatewaySecret = secret;
-  state = loadSavedState(state);
+  portfolioStore.setState({ gatewaySecret: secret });
+  portfolioStore.importState(loadSavedState(portfolioStore.getState()));
+  state = portfolioStore.getState();
   applyOvernightRollover();
-  syncStore();
 
   if (secret) await syncCloudState('pull');
 
@@ -1918,9 +1735,9 @@ async function initApp() {
       await startApp(secret);
     } else {
       loadTradernetRules();
-      state = loadSavedState(state);
+      portfolioStore.importState(loadSavedState(portfolioStore.getState()));
+      state = portfolioStore.getState();
       applyOvernightRollover();
-      syncStore();
       switchView(state.activeView);
       hideStartupLoading();
       showAuthContainer();
@@ -1962,7 +1779,7 @@ function showStartupFailure() {
 
 async function continueStartupOffline() {
   appInitialized = true;
-  state.gatewaySecret = '';
+  portfolioStore.setState({ gatewaySecret: '' });
   try {
     await startApp('');
   } catch (error) {
@@ -1978,39 +1795,4 @@ if (document.readyState === 'loading') {
   initApp();
 }
 
-Object.assign(window as any, {
-  addCashStockFromUI,
-  applyOvernightRollover,
-  clearLocalData,
-  createInsightElement,
-  createStockPageLink,
-  executeCommand,
-  exportBackupJSON,
-  getCashCushionTotal,
-  importBackupJSON,
-  loadMarketInsight,
-  loadTradernetRules,
-  logTerminal,
-  normalizePortfolioState,
-  processRollovers,
-  renderBoard,
-  renderBoardExternalLinks,
-  renderCashCushion,
-  renderPositionsTable,
-  renderSummaryCards,
-  saveStateToStorage,
-  sentimentBadge,
-  syncCloudState,
-  pullCloudState: () => syncCloudState('pull'),
-  pushCloudState: () => syncCloudState('push'),
-  refreshAllLivePrices,
-  refreshMarketInsight,
-  resetToBlankState,
-  saveApiKeys,
-  saveCurrentBalanceFromInput,
-  setActiveView,
-  setQuoteRefreshInterval,
-  showToast,
-  switchView,
-  updateEmptyStateVisibility
-});
+

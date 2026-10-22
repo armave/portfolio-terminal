@@ -171,6 +171,43 @@ export function migrateLegacyCloudHoldingsToPositions(
   };
 }
 
+/** Shared broker commission calculation for all confirmed stock-sale paths. */
+function calculateSaleCommission(shares: number, proceeds: number, rules: BrokerRules): number {
+  const commPerShare = Number(rules.commPerShare ?? rules.commissionPerShare ?? 0.012);
+  const commVolumePct = Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0012);
+  const minCommOrder = Number(rules.minCommOrder ?? rules.commissionMin ?? 1.2);
+  const fallback = Number(Math.max(minCommOrder, shares * commPerShare + proceeds * commVolumePct).toFixed(2));
+
+  try {
+    const calculated = calculateCommission(shares, proceeds, rules as any);
+    return Number.isFinite(calculated) && calculated > 0
+      ? Number(calculated.toFixed(2))
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Shared debt-first allocation of net sale proceeds. */
+function settleSaleProceeds(
+  debt: number,
+  freeCash: number,
+  netProceeds: number
+): { remainingDebt: number; freeCash: number; debtRepaid: number; cashSurplus: number } {
+  const normalizedDebt = Math.max(0, Number(debt) || 0);
+  const normalizedCash = Math.max(0, Number(freeCash) || 0);
+  const normalizedProceeds = Math.max(0, Number(netProceeds) || 0);
+  const debtRepaid = Math.min(normalizedDebt, normalizedProceeds);
+  const cashSurplus = Math.max(0, normalizedProceeds - debtRepaid);
+
+  return {
+    remainingDebt: Math.max(0, normalizedDebt - debtRepaid),
+    freeCash: normalizedCash + cashSurplus,
+    debtRepaid,
+    cashSurplus
+  };
+}
+
 export class PortfolioStore {
   private state: PortfolioState;
   private listeners: Set<(state: PortfolioState) => void> = new Set();
@@ -271,8 +308,15 @@ export class PortfolioStore {
         )
       : [];
 
+    const requestedView = typeof raw.activeView === 'string' ? raw.activeView : 'COMBINED';
+    const supportedViews = ['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'];
+    const activeView = supportedViews.includes(requestedView) || positions[requestedView]
+      ? requestedView
+      : 'COMBINED';
+
     return {
       ...raw,
+      activeView,
       positions,
       holdings,
       cashBalance: freeCash,
@@ -301,6 +345,12 @@ export class PortfolioStore {
 
   public update(updater: (state: PortfolioState) => PortfolioState): void {
     const next = updater(this.state);
+
+    // Treat a returned current-state reference as an explicit no-op. Besides
+    // avoiding unnecessary storage writes, this prevents rejected stale quote
+    // responses and invalid commands from notifying every subscriber.
+    if (next === this.state) return;
+
     this.state = this.normalizeState({
       ...next,
       lastUpdated: Date.now()
@@ -367,6 +417,38 @@ export class PortfolioStore {
         brokerAssumptions: merged
       };
     });
+  }
+
+  /** Persist a rollover boundary through the canonical store. */
+  public setLastRolloverTimestamp(timestamp: number): void {
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return;
+    this.update((state) => ({
+      ...state,
+      lastRolloverTimestamp: timestamp
+    }));
+  }
+
+  /**
+   * Atomically commits accrued rollover debt and its accounting timestamp.
+   * Realized charges are tracked separately only when no open investment can
+   * carry the interest in the active-position calculations.
+   */
+  public applyRollover(
+    compoundedDebt: number,
+    interestAccrued: number,
+    timestamp: number,
+    recordAsRealized: boolean
+  ): void {
+    if (![compoundedDebt, interestAccrued, timestamp].every(Number.isFinite) ||
+      compoundedDebt < 0 || interestAccrued < 0 || timestamp <= 0) return;
+
+    this.update((state) => ({
+      ...state,
+      balance: compoundedDebt > 0 ? -compoundedDebt : 0,
+      lastRolloverTimestamp: timestamp,
+      realizedMarginCharged: Math.max(0, Number(state.realizedMarginCharged) || 0) +
+        (recordAsRealized ? interestAccrued : 0)
+    }));
   }
 
   /** Set the cash-cushion balance without changing margin debt. */
@@ -463,7 +545,10 @@ export class PortfolioStore {
         ...existingPos,
         ticker: clean,
         shares: nextShares,
-        currentPrice: existingPos?.currentPrice || price,
+        // A confirmed execution price is newer than any previously fetched
+        // quote. Invalidate quote metadata so an older in-flight response cannot
+        // visually overwrite the latest trade.
+        currentPrice: price,
         pt:
           pt !== undefined && Number.isFinite(pt) && pt > 0
             ? pt
@@ -471,6 +556,10 @@ export class PortfolioStore {
         commBuy: nextCommBuy,
         startDate: earliestPosDate,
         tranches: nextTranches,
+        quoteSource: 'Trade input',
+        quoteUpdatedAt: undefined,
+        quoteDetails: undefined,
+        quoteRequestStartedAt: undefined,
         lastTradeAt: Date.now()
       } as PositionRecord;
 
@@ -555,9 +644,21 @@ export class PortfolioStore {
     sellPrice: number,
     date?: string
   ): void {
+    this.applyMarginSale(ticker, sharesToSell, sellPrice, date);
+  }
+
+  private applyMarginSale(
+    ticker: string,
+    sharesToSell: number | 'ALL',
+    sellPrice: number,
+    date?: string,
+    options: { closedAt?: number } = {}
+  ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
     const clean = ticker.trim().toUpperCase();
-    if (!clean || !Number.isFinite(sellPrice) || sellPrice <= 0) return;
-    if (sharesToSell !== 'ALL' && (!Number.isFinite(sharesToSell) || sharesToSell <= 0)) return;
+    if (!clean || !Number.isFinite(sellPrice) || sellPrice <= 0) return null;
+    if (sharesToSell !== 'ALL' && (!Number.isFinite(sharesToSell) || sharesToSell <= 0)) return null;
+
+    let result: { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null = null;
 
     this.update((state) => {
       const positions = { ...(state.positions || {}) };
@@ -636,22 +737,8 @@ export class PortfolioStore {
       }
       const sellProceeds = actualSold * sellPrice;
 
-      // Calculate sell commissions
-      const commPerShare = Number((rules as any).commPerShare ?? (rules as any).commissionPerShare ?? 0.02);
-      const commVolumePct = Number((rules as any).commVolumePct ?? (rules as any).commissionRatePct ?? 0.0005);
-      const minCommOrder = Number((rules as any).minCommOrder ?? (rules as any).commissionMin ?? 1.50);
-
-      const rawSellComm = actualSold * commPerShare + sellProceeds * commVolumePct;
-      let sellComm = Number(Math.max(minCommOrder, rawSellComm).toFixed(2));
-
-      try {
-        const calculated = calculateCommission(actualSold, sellProceeds, rules as any);
-        if (Number.isFinite(calculated) && calculated > 0) {
-          sellComm = Number(calculated.toFixed(2));
-        }
-      } catch {
-        // Fallback to rawSellComm
-      }
+      // Shared with the AI-confirmed sale path to keep broker fees consistent.
+      const sellComm = calculateSaleCommission(actualSold, sellProceeds, rules);
 
       // Debt and margin interest calculation
       const totalPortfolioInvested = Object.values(positions).reduce(
@@ -687,6 +774,8 @@ export class PortfolioStore {
       } catch {
         posMarginInterest = 0;
       }
+      // Keep any already-recorded position charge if the current accrual is lower.
+      posMarginInterest = Math.max(posMarginInterest, Number((pos as any).marginCharged) || 0);
       const marginInterestAllocated = Number((posMarginInterest * sellRatio).toFixed(2));
 
       const totalCommissions = Number((buyCommAllocated + sellComm).toFixed(2));
@@ -696,27 +785,28 @@ export class PortfolioStore {
       // Keep it in realized P&L, but do not subtract it a second time from cash proceeds.
       const netCashProceeds = Number((sellProceeds - sellComm).toFixed(2));
 
-      let currentDebt = totalDebt;
-      let freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
-
-      if (currentDebt >= netCashProceeds) {
-        currentDebt -= netCashProceeds;
-      } else {
-        const surplus = netCashProceeds - currentDebt;
-        currentDebt = 0;
-        freeCash += surplus;
-      }
+      const settlement = settleSaleProceeds(
+        totalDebt,
+        Number(state.cashCushion?.freeCash) || 0,
+        netCashProceeds
+      );
+      const currentDebt = settlement.remainingDebt;
+      const freeCash = settlement.freeCash;
 
       const remainingShares = pos.shares - actualSold;
       if (remainingShares <= 0 || updatedTranches.length === 0) {
         delete positions[clean];
       } else {
-        positions[clean] = {
+        const remainingPosition = {
           ...pos,
           shares: remainingShares,
           commBuy: Math.max(0, (Number(pos.commBuy) || 0) - buyCommAllocated),
           tranches: updatedTranches
         };
+        // The sold slice has been realized below; do not carry a one-shot
+        // margin charge forward and count it again on the next partial exit.
+        delete (remainingPosition as any).marginCharged;
+        positions[clean] = remainingPosition;
       }
 
       const exitDateStr = date || todayIso();
@@ -726,7 +816,10 @@ export class PortfolioStore {
         0,
         Math.round(Math.abs(exitTimestamp - buyTimestamp) / 86400000)
       );
-      const closedTimestamp = Number.isFinite(exitTimestamp) ? exitTimestamp : Date.now();
+      const requestedClosedAt = Number(options.closedAt);
+      const closedTimestamp = Number.isFinite(requestedClosedAt) && requestedClosedAt > 0
+        ? requestedClosedAt
+        : Number.isFinite(exitTimestamp) ? exitTimestamp : Date.now();
 
       const closedRecord: ClosedTrade = {
         id: `${clean}-${Date.now()}`,
@@ -753,6 +846,14 @@ export class PortfolioStore {
       };
 
       const nextActiveView = positions[clean] ? clean : 'COMBINED';
+      result = {
+        ticker: clean,
+        sharesSold: actualSold,
+        remainingShares: Math.max(0, Number(remainingShares) || 0),
+        netProceeds: netCashProceeds,
+        debtRepaid: settlement.debtRepaid,
+        cashSurplus: settlement.cashSurplus
+      };
 
       return {
         ...state,
@@ -765,9 +866,12 @@ export class PortfolioStore {
           ...(state.cashCushion || { freeCash: 0, holdings: [] }),
           freeCash
         },
+        realizedMarginCharged: Math.max(0, Number(state.realizedMarginCharged) || 0) + marginInterestAllocated,
         closedTrades: [closedRecord, ...(state.closedTrades || [])]
       };
     });
+
+    return result;
   }
 
   /**
@@ -875,27 +979,44 @@ export class PortfolioStore {
     });
   }
 
-  public addCashStock(ticker: string, shares: number, price: number): void {
+  /**
+   * Adds shares to a cash-cushion holding while keeping the holding mutation
+   * inside the canonical store. A missing/invalid manual price preserves the
+   * existing quote (or initializes a new holding at zero until quote refresh).
+   */
+  public addCashHolding(
+    ticker: string,
+    shares: number,
+    price = 0
+  ): { ticker: string; shares: number; price: number } | null {
     const clean = ticker.trim().toUpperCase();
-    if (!clean || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) return;
+    if (!clean || !Number.isFinite(shares) || shares <= 0) return null;
+
+    const manualPrice = Number(price);
+    const hasManualPrice = Number.isFinite(manualPrice) && manualPrice > 0;
+    const currentHoldings = this.state.cashCushion?.holdings || [];
+    const existing = currentHoldings.find((holding) => holding.ticker.trim().toUpperCase() === clean);
+    const resolvedPrice = hasManualPrice ? manualPrice : Number(existing?.price) || 0;
 
     this.update((state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
-      const existingIdx = holdings.findIndex((h) => h.ticker.toUpperCase() === clean);
-      if (existingIdx >= 0) {
-        const prev = holdings[existingIdx];
-        holdings[existingIdx] = {
-          ...prev,
-          shares: (Number(prev.shares) || 0) + shares,
-          price,
-          currentPrice: price
+      const existingIndex = holdings.findIndex(
+        (holding) => holding.ticker.trim().toUpperCase() === clean
+      );
+
+      if (existingIndex >= 0) {
+        const previous = holdings[existingIndex];
+        holdings[existingIndex] = {
+          ...previous,
+          shares: (Number(previous.shares) || 0) + shares,
+          ...(hasManualPrice ? { price: manualPrice, currentPrice: manualPrice } : {})
         };
       } else {
         holdings.push({
           ticker: clean,
           shares,
-          price,
-          currentPrice: price
+          price: resolvedPrice,
+          ...(hasManualPrice ? { currentPrice: manualPrice } : {})
         });
       }
 
@@ -907,6 +1028,14 @@ export class PortfolioStore {
         }
       };
     });
+
+    return { ticker: clean, shares, price: resolvedPrice };
+  }
+
+  /** Legacy compatibility wrapper; the canonical mutation is addCashHolding. */
+  public addCashStock(ticker: string, shares: number, price: number): void {
+    if (!Number.isFinite(price) || price <= 0) return;
+    this.addCashHolding(ticker, shares, price);
   }
 
   public removeCashStock(indexOrTicker: number | string): void {
@@ -925,6 +1054,98 @@ export class PortfolioStore {
         }
       };
     });
+  }
+
+  /**
+   * Sells a cash-cushion holding as one atomic balance transition. Unlike a
+   * margin-position exit, this does not create a margin closed-trade record.
+   */
+  public sellCashHolding(
+    ticker: string,
+    sharesToSell: number,
+    sellPrice: number
+  ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || !Number.isFinite(sharesToSell) || sharesToSell <= 0 ||
+      !Number.isFinite(sellPrice) || sellPrice <= 0) return null;
+
+    let result: { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null = null;
+
+    this.update((state) => {
+      const holdings = [...(state.cashCushion?.holdings || [])];
+      const holdingIndex = holdings.findIndex(
+        (holding) => holding.ticker.trim().toUpperCase() === clean
+      );
+      if (holdingIndex < 0) return state;
+
+      const holding = holdings[holdingIndex];
+      const availableShares = Number(holding.shares) || 0;
+      const actualSold = Math.min(availableShares, sharesToSell);
+      if (actualSold <= 0) return state;
+
+      const grossProceeds = actualSold * sellPrice;
+      const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
+      const sellCommission = calculateSaleCommission(actualSold, grossProceeds, rules);
+      const netProceeds = Number((grossProceeds - sellCommission).toFixed(2));
+      const settlement = settleSaleProceeds(
+        Math.abs(Number(state.balance) || 0),
+        Number(state.cashCushion?.freeCash) || 0,
+        netProceeds
+      );
+      const nextDebt = settlement.remainingDebt;
+      const debtRepaid = settlement.debtRepaid;
+      const cashSurplus = settlement.cashSurplus;
+      const freeCash = settlement.freeCash;
+      const remainingShares = Math.max(0, availableShares - actualSold);
+
+      if (remainingShares <= 1e-8) {
+        holdings.splice(holdingIndex, 1);
+      } else {
+        holdings[holdingIndex] = { ...holding, shares: remainingShares };
+      }
+
+      result = {
+        ticker: clean,
+        sharesSold: actualSold,
+        remainingShares,
+        netProceeds,
+        debtRepaid,
+        cashSurplus
+      };
+
+      return {
+        ...state,
+        balance: nextDebt > 0 ? -nextDebt : 0,
+        cashBalance: freeCash,
+        cashCushion: {
+          ...(state.cashCushion || { freeCash: 0, holdings: [] }),
+          freeCash,
+          holdings
+        }
+      };
+    });
+
+    return result;
+  }
+
+  /**
+   * Compatibility entry point for AI-confirmed sales. Terminal and AI sales
+   * share the same FIFO, commission, margin-interest, debt/cash, and history path.
+   */
+  public sellMarginPosition(
+    ticker: string,
+    sharesToSell: number,
+    sellPrice: number,
+    closedAt = Date.now()
+  ): { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null {
+    const clean = ticker.trim().toUpperCase();
+    const position = this.state.positions?.[clean];
+    if (!clean || !position || !Number.isFinite(sharesToSell) || sharesToSell <= 0 ||
+      sharesToSell - position.shares > 1e-8 || !Number.isFinite(sellPrice) || sellPrice <= 0 ||
+      !Number.isFinite(closedAt) || closedAt <= 0) return null;
+
+    const date = new Date(closedAt).toISOString().slice(0, 10);
+    return this.applyMarginSale(clean, sharesToSell, sellPrice, date, { closedAt });
   }
 
   public deleteClosedTrade(index: number): void {

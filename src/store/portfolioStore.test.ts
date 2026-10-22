@@ -281,13 +281,35 @@ describe('canonical trade lifecycle and persistence', () => {
     ]);
   });
 
+  it('normalizes unsupported active views without relying on render-time mutation', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    store.importState({ activeView: 'MISSING_TICKER' });
+    expect(store.getState().activeView).toBe('COMBINED');
+
+    store.importState({
+      activeView: 'AAPL',
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 1,
+          currentPrice: 100,
+          pt: 110,
+          commBuy: 0,
+          tranches: [{ qty: 1, price: 100, date: '2026-10-01' }]
+        }
+      }
+    });
+    expect(store.getState().activeView).toBe('AAPL');
+  });
+
   it('uses the same default broker assumptions as the application settings', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
     expect(store.getState().brokerAssumptions).toMatchObject({
       annualRate: 0.15,
       annualBorrowRate: 0.15,
-      dayCountBasis: 365,
       rolloverHour: 4,
       rolloverMinute: 0,
       commPerShare: 0.012,
@@ -382,6 +404,25 @@ describe('canonical trade lifecycle and persistence', () => {
     store.sellStock('AAPL', 'ALL', 120, '2026-10-16');
 
     expect(store.getState().closedTrades[0].marginInterest).toBe(0);
+  });
+
+  it('commits rollover debt and accounting timestamp in one store update', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.setMarginDebt(100);
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.applyRollover(101, 1, Date.parse('2026-10-16T00:00:00.000Z'), true);
+
+    expect(store.getState().balance).toBe(-101);
+    expect(store.getState().realizedMarginCharged).toBe(1);
+    expect(store.getState().lastRolloverTimestamp).toBe(Date.parse('2026-10-16T00:00:00.000Z'));
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    store.applyRollover(102, 1, Date.parse('2026-10-17T00:00:00.000Z'), false);
+    expect(store.getState().balance).toBe(-102);
+    expect(store.getState().realizedMarginCharged).toBe(1);
   });
 
   it('sets free cash without changing existing margin debt', () => {
@@ -535,6 +576,37 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().selectedTicker).toBeNull();
   });
 
+  it('makes a new buy execution authoritative over an older live quote', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    store.updateLiveQuote('AAPL', {
+      price: 110,
+      quoteSource: 'Yahoo',
+      quoteUpdatedAt: 123,
+      quoteDetails: { change: 10 }
+    });
+
+    store.buyStock('AAPL', 1, 95, '2026-10-16');
+
+    expect(store.getState().positions.AAPL).toMatchObject({
+      shares: 3,
+      currentPrice: 95,
+      quoteSource: 'Trade input',
+      quoteUpdatedAt: undefined,
+      quoteDetails: undefined
+    });
+
+    const lastTradeAt = store.getState().positions.AAPL.lastTradeAt || Date.now();
+    store.updateLiveQuote('AAPL', {
+      price: 90,
+      requestStartedAt: lastTradeAt - 1,
+      quoteSource: 'Stale provider'
+    });
+    expect(store.getState().positions.AAPL.currentPrice).toBe(95);
+  });
+
   it('ignores stale quote responses after a trade and never recreates a fully closed position', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
@@ -567,6 +639,236 @@ describe('canonical trade lifecycle and persistence', () => {
 
     expect(store.getState().positions.AAPL).toBeUndefined();
     expect(store.getState().holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
+  });
+
+  it('adds cash holdings atomically and preserves a live quote when no manual price is supplied', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    expect(store.addCashHolding('msft', 2, 100)).toEqual({
+      ticker: 'MSFT',
+      shares: 2,
+      price: 100
+    });
+    store.updateLiveQuote('MSFT', { price: 125, quoteSource: 'Yahoo' });
+
+    store.addCashHolding('MSFT', 3, 0);
+
+    expect(store.getState().cashCushion.holdings).toEqual([
+      expect.objectContaining({
+        ticker: 'MSFT',
+        shares: 5,
+        price: 125,
+        currentPrice: 125
+      })
+    ]);
+  });
+
+  it('removes cash holdings through the store with case-insensitive ticker matching', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.addCashStock('MSFT', 2, 100);
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.removeCashStock('msft');
+
+    expect(store.getState().cashCushion.holdings).toEqual([]);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('sells cash-cushion shares atomically, paying debt before adding surplus cash', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.addCashStock('MSFT', 2, 100);
+    store.updateAssumptions({ commPerShare: 0, commVolumePct: 0, minCommOrder: 1.2 });
+    store.setMarginDebt(50);
+
+    const result = store.sellCashHolding('msft', 1, 100);
+
+    expect(result).toEqual({
+      ticker: 'MSFT',
+      sharesSold: 1,
+      remainingShares: 1,
+      netProceeds: 98.8,
+      debtRepaid: 50,
+      cashSurplus: 48.8
+    });
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().cashCushion.freeCash).toBeCloseTo(48.8, 8);
+    expect(store.getState().cashCushion.holdings).toEqual([
+      expect.objectContaining({ ticker: 'MSFT', shares: 1 })
+    ]);
+    expect(store.getState().closedTrades).toHaveLength(0);
+  });
+
+  it('commits confirmed margin sales atomically while preserving closed-trade history', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commVolumePct: 0,
+      minCommOrder: 0,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    store.buyStock('AAPL', 5, 100, '2026-10-01');
+    const beforeSale = store.getState();
+    const beforePosition = beforeSale.positions.AAPL;
+    const beforeTranches = beforePosition.tranches?.map((tranche) => ({ ...tranche }));
+
+    const partial = store.sellMarginPosition('aapl', 2, 120, Date.parse('2026-10-10'));
+    expect(beforeSale.positions.AAPL).toBe(beforePosition);
+    expect(beforePosition.tranches).toEqual(beforeTranches);
+    expect(store.getState()).not.toBe(beforeSale);
+    expect(partial).toMatchObject({
+      ticker: 'AAPL',
+      sharesSold: 2,
+      remainingShares: 3,
+      netProceeds: 240,
+      debtRepaid: 240,
+      cashSurplus: 0
+    });
+    expect(store.getState().positions.AAPL.shares).toBe(3);
+    expect(store.getState().balance).toBe(-260);
+    expect(store.getState().closedTrades).toHaveLength(1);
+
+    const full = store.sellMarginPosition('AAPL', 3, 110, Date.parse('2026-10-16'));
+    expect(full).toMatchObject({
+      ticker: 'AAPL',
+      sharesSold: 3,
+      remainingShares: 0,
+      netProceeds: 330,
+      debtRepaid: 260,
+      cashSurplus: 70
+    });
+    expect(store.getState().positions.AAPL).toBeUndefined();
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().cashCushion.freeCash).toBe(70);
+    expect(store.getState().closedTrades).toHaveLength(2);
+  });
+
+  it('keeps terminal and AI-confirmed sales financially equivalent', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const terminalStore = new PortfolioStore();
+    const aiStore = new PortfolioStore();
+    const assumptions = {
+      commPerShare: 0.012,
+      commVolumePct: 0.0012,
+      minCommOrder: 1.2,
+      annualRate: 0.15,
+      annualBorrowRate: 0.15,
+      dayCountBasis: 365 as const
+    };
+    for (const store of [terminalStore, aiStore]) {
+      store.updateAssumptions(assumptions);
+      store.buyStock('AAPL', 2, 100, '2026-10-01');
+      store.setMarginDebt(210);
+      const currentPosition = store.getState().positions.AAPL;
+      store.setState({
+        positions: {
+          ...store.getState().positions,
+          AAPL: { ...currentPosition, marginCharged: 10 } as any
+        }
+      });
+    }
+
+    const closedAt = Date.parse('2026-10-10T12:00:00.000Z');
+    terminalStore.sellStock('AAPL', 1, 120, '2026-10-10');
+    const aiResult = aiStore.sellMarginPosition('AAPL', 1, 120, closedAt);
+
+    expect(aiResult).toMatchObject({
+      ticker: 'AAPL',
+      sharesSold: 1,
+      remainingShares: 1,
+      netProceeds: 118.8,
+      debtRepaid: 118.8,
+      cashSurplus: 0
+    });
+    expect(aiStore.getState().balance).toBe(terminalStore.getState().balance);
+    expect(aiStore.getState().cashCushion.freeCash).toBe(terminalStore.getState().cashCushion.freeCash);
+    expect(aiStore.getState().positions.AAPL).toMatchObject({
+      shares: 1,
+      currentPrice: 100,
+      commBuy: 0.6,
+      tranches: [expect.objectContaining({ qty: 1, price: 100, buyCommission: 0.6 })]
+    });
+    expect(aiStore.getState().realizedMarginCharged).toBe(terminalStore.getState().realizedMarginCharged);
+    expect(aiStore.getState().realizedMarginCharged).toBe(5);
+    expect(aiStore.getState().positions.AAPL).not.toHaveProperty('marginCharged');
+    expect(aiStore.getState().closedTrades[0]).toMatchObject({
+      ticker: terminalStore.getState().closedTrades[0].ticker,
+      shares: terminalStore.getState().closedTrades[0].shares,
+      feesAndCommissions: terminalStore.getState().closedTrades[0].feesAndCommissions,
+      marginInterest: terminalStore.getState().closedTrades[0].marginInterest,
+      netProfit: terminalStore.getState().closedTrades[0].netProfit
+    });
+  });
+
+  it('allocates buy commission FIFO and keeps confirmed-sale net P&L consistent', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0.012,
+      commVolumePct: 0.0012,
+      minCommOrder: 1.2,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    store.buyStock('AAPL', 2, 100, '2026-10-01');
+    store.setMarginDebt(0);
+
+    const result = store.sellMarginPosition('AAPL', 1, 120, Date.parse('2026-10-10'));
+
+    expect(result).toMatchObject({
+      sharesSold: 1,
+      remainingShares: 1,
+      netProceeds: 118.8,
+      debtRepaid: 0,
+      cashSurplus: 118.8
+    });
+    expect(store.getState().closedTrades[0]).toMatchObject({
+      ticker: 'AAPL',
+      shares: 1,
+      netProfit: 18.2
+    });
+    expect(store.getState().closedTrades[0].feesAndCommissions).toBeCloseTo(1.8, 8);
+    expect(store.getState().positions.AAPL.tranches).toEqual([
+      expect.objectContaining({ qty: 1, price: 100, buyCommission: 0.6 })
+    ]);
+    expect(store.getState().positions.AAPL.commBuy).toBeCloseTo(0.6, 8);
+  });
+
+  it('rejects invalid confirmed sale inputs without changing canonical state', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const before = store.getState();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.sellMarginPosition('AAPL', 3, 120)).toBeNull();
+    expect(store.sellMarginPosition('AAPL', 1, Number.NaN)).toBeNull();
+    expect(store.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('does not notify subscribers when a stale quote is rejected as a no-op', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+
+    const before = store.getState();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.updateLiveQuote('AAPL', {
+      price: 90,
+      requestStartedAt: (before.positions.AAPL.lastTradeAt || Date.now()) - 1
+    });
+
+    expect(store.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('keeps the newest quote request for positions and cash holdings when responses finish out of order', () => {

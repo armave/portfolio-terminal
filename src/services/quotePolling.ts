@@ -1,13 +1,14 @@
 import { fetchFallbackPrice } from './quoteProvider';
 import { fetchYahooStockData, normalizeYahooBatchResults } from './api';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
+import type { QuoteDetails } from '../types/portfolio';
 
 export type RecordTrackedPrice = (
   ticker: string,
   price: number,
   sourceName: string,
   updatedAt?: number | null,
-  quoteDetails?: any,
+  quoteDetails?: QuoteDetails,
   requestStartedAt?: number
 ) => boolean;
 
@@ -19,8 +20,11 @@ export async function refreshTrackedQuotes(
 ): Promise<number> {
   if (tickers.length === 0) return 0;
 
-  const responseData = await fetchYahooStockData(tickers.join(', '));
-  const results = normalizeYahooBatchResults(responseData, tickers);
+  const requestedTickers = new Set(tickers.map((ticker) => ticker.trim().toUpperCase()).filter(Boolean));
+  if (requestedTickers.size === 0) return 0;
+
+  const responseData = await fetchYahooStockData([...requestedTickers].join(', '));
+  const results = normalizeYahooBatchResults(responseData, [...requestedTickers]);
   let updatedCount = 0;
 
   for (const data of results) {
@@ -29,7 +33,10 @@ export async function refreshTrackedQuotes(
       continue;
     }
 
-    const ticker = data.symbol.toUpperCase();
+    const ticker = data.symbol.trim().toUpperCase();
+    // Only process symbols requested by this refresh. A malformed or unexpected
+    // provider response must not trigger fallback requests for unrelated tickers.
+    if (!requestedTickers.has(ticker)) continue;
     if (data.error || !data.price) {
       console.warn(`[Quote Warning]: Missing or failed data for ${ticker}`, data.error);
       const fallback = await fetchFallbackPrice(ticker);
@@ -60,11 +67,13 @@ export async function refreshTrackedQuotes(
       suppliedChange: data.price.change ?? data.regularMarketChange,
       marketState
     });
+    const previousClose = Number(previous);
+    const hasPreviousClose = Number.isFinite(previousClose) && previousClose > 0;
     const quoteDetails = {
       marketState,
       price: current,
       change,
-      changePercent: previous ? (change / previous) * 100 : 0
+      changePercent: hasPreviousClose ? (change / previousClose) * 100 : 0
     };
 
     if (recordTrackedPrice(ticker, Number(current), 'Yahoo', Date.now(), quoteDetails, requestStartedAt)) updatedCount++;

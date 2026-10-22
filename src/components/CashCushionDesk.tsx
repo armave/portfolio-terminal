@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
@@ -55,6 +55,8 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
 export function CashCushionDesk({
   onFetchLivePrice,
   onRemoveCashStock,
+  onSaveBalance,
+  onAddCashStock,
   refreshIntervalMs = 60000
 }: CashCushionDeskProps) {
   const state = usePortfolio();
@@ -64,6 +66,10 @@ export function CashCushionDesk({
   const holdings = state.cashCushion?.holdings || [];
 
   const [balanceInput, setBalanceInput] = useState<string>(signedBalance.toFixed(2));
+  const balanceInputRef = useRef<HTMLInputElement | null>(null);
+  const tickerInputRef = useRef<HTMLInputElement | null>(null);
+  const sharesInputRef = useRef<HTMLInputElement | null>(null);
+  const priceInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setBalanceInput(signedBalance.toFixed(2));
@@ -77,15 +83,38 @@ export function CashCushionDesk({
   const totalCushion = freeCash + stocksTotal;
 
   const handleUpdateBalance = () => {
-    if (typeof window !== 'undefined' && typeof (window as any).saveCurrentBalanceFromInput === 'function') {
-      (window as any).saveCurrentBalanceFromInput();
-    }
+    const input = balanceInputRef.current;
+    if (!input || !input.reportValidity()) return;
+    const signedValue = input.valueAsNumber;
+    if (!Number.isFinite(signedValue)) return;
+    onSaveBalance?.(signedValue);
   };
 
   const handleAddStock = () => {
-    if (typeof window !== 'undefined' && typeof (window as any).addCashStockFromUI === 'function') {
-      (window as any).addCashStockFromUI();
+    const tickerInput = tickerInputRef.current;
+    const sharesInput = sharesInputRef.current;
+    const priceInput = priceInputRef.current;
+    if (!tickerInput || !sharesInput || !priceInput) return;
+    if (!tickerInput.reportValidity() || !sharesInput.reportValidity() ||
+      (priceInput.value !== '' && !priceInput.reportValidity())) return;
+
+    const ticker = tickerInput.value.trim().toUpperCase();
+    const shares = sharesInput.valueAsNumber;
+    const manualPrice = priceInput.value === '' ? NaN : priceInput.valueAsNumber;
+    if (!ticker) {
+      tickerInput.setCustomValidity('Enter a valid ticker symbol.');
+      tickerInput.reportValidity();
+      tickerInput.focus();
+      return;
     }
+    tickerInput.setCustomValidity('');
+    if (!Number.isFinite(shares) || shares <= 0 ||
+      (priceInput.value !== '' && (!Number.isFinite(manualPrice) || manualPrice <= 0))) return;
+
+    onAddCashStock?.(ticker, shares, manualPrice);
+    tickerInput.value = '';
+    sharesInput.value = '';
+    priceInput.value = '';
   };
 
   return (
@@ -119,6 +148,7 @@ export function CashCushionDesk({
               step="0.01"
               required
               inputMode="decimal"
+              ref={balanceInputRef}
               value={balanceInput}
               onInput={(e) => setBalanceInput((e.target as HTMLInputElement).value)}
               aria-label="Signed balance or margin debt in US dollars"
@@ -255,6 +285,8 @@ export function CashCushionDesk({
                   <input
                     type="text"
                     id="newCashTicker"
+                    ref={tickerInputRef}
+                    onInput={() => tickerInputRef.current?.setCustomValidity('')}
                     placeholder="TICKER"
                     required
                     aria-label="Stock ticker symbol"
@@ -267,6 +299,7 @@ export function CashCushionDesk({
                   <input
                     type="number"
                     id="newCashShares"
+                    ref={sharesInputRef}
                     placeholder="Shares"
                     min="0.01"
                     step="0.01"
@@ -287,6 +320,7 @@ export function CashCushionDesk({
                     <input
                       type="number"
                       id="newCashPrice"
+                      ref={priceInputRef}
                       placeholder="Auto"
                       min="0.01"
                       step="0.01"
