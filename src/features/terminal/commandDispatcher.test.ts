@@ -105,7 +105,7 @@ describe('terminal command validation and cash routing', () => {
   });
 
   it('routes sold-all commands to the store using the full current share count', () => {
-    const sellStock = vi.spyOn(portfolioStore, 'sellStock').mockImplementation(() => {});
+    const sellStock = vi.spyOn(portfolioStore, 'sellStock').mockImplementation(() => null);
     const state = portfolioStore.getState();
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
       ...state,
