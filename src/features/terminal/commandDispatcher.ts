@@ -616,9 +616,11 @@ export class CommandDispatcher {
       const debtRepaid = Math.min(debt, netProceeds);
       const finalBalance = debt > 0 ? -(debt - debtRepaid) : balance;
       const cashSurplus = debt > 0 ? Math.max(0, netProceeds - debt) : netProceeds;
-      // Net P&L already includes buy/sell commissions and estimated margin interest.
-      // Add it to available starting cash without subtracting fees a second time.
-      const resultingAccountBalance = startingCash + net;
+      // Project post-exit account equity from the actual current account state:
+      // available cash + sale proceeds after sell commission - current margin debt
+      // - estimated interest through the selected exit date. Buy commission is historical
+      // and already reflected in the current account state, so do not deduct it again.
+      const resultingAccountBalance = startingCash + netProceeds - debt - marginFee;
       return { ...s, gross, sellFee, carry, marginFee, net, netProceeds, debtRepaid, finalBalance, cashSurplus, resultingAccountBalance };
     });
     const best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
