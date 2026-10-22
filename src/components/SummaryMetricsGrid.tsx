@@ -7,6 +7,39 @@ import {
   calculateMarginInterest
 } from '../domain/portfolio';
 
+function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string }) {
+  const equity = Number.isFinite(equityPct) ? equityPct : 0;
+  const equityWidth = Math.max(0, Math.min(100, equity));
+  const buffer = Number.isFinite(risk.marginCallBufferPct) ? Math.max(0, Math.min(100, risk.marginCallBufferPct)) : 0;
+  const stopOutBuffer = Number.isFinite(risk.stopOutBufferPct) ? Math.max(0, Math.min(100, risk.stopOutBufferPct)) : 0;
+  return (
+    <section class="margin-risk-gauge-card" aria-label="Margin risk and account equity">
+      <div class="margin-risk-gauge-heading">
+        <div><span class="margin-risk-label">ACCOUNT EQUITY HEALTH</span><strong class="margin-risk-equity">{equityText}</strong></div>
+        <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
+      </div>
+      <div class="margin-risk-meter" role="progressbar" aria-label="Account equity percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth}>
+        <span class="margin-risk-segment-floor"></span><span class="margin-risk-segment-buffer"></span><span class="margin-risk-segment-capacity"></span>
+        <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
+      </div>
+      <div class="margin-risk-legend"><span>10% maintenance</span><span>40% reference</span><span>100%</span></div>
+      <div class="margin-risk-gauge-grid">
+        <div class="margin-risk-gauge-item">
+          <div class="margin-risk-gauge-row"><span class="margin-risk-label">MARGIN-CALL BUFFER</span><strong>{Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct.toFixed(1) + '%' : '—'}</strong></div>
+          <div class="margin-risk-buffer-track" role="progressbar" aria-label="Margin-call buffer" aria-valuemin={0} aria-valuemax={100} aria-valuenow={buffer}><span class={buffer < 30 ? 'danger' : 'warning'} style={{ width: buffer + '%' }}></span></div>
+          <div class="margin-risk-detail"><span>Trigger estimate</span><strong>{risk.showMarginCall ? risk.marginCallText : 'Below trigger estimate'}</strong></div>
+        </div>
+        <div class="margin-risk-gauge-item">
+          <div class="margin-risk-gauge-row"><span class="margin-risk-label">STOP-OUT THRESHOLD</span><strong>{Number.isFinite(risk.stopOutBufferPct) ? risk.stopOutBufferPct.toFixed(1) + '% buffer' : '—'}</strong></div>
+          <div class="margin-risk-buffer-track"><span class={stopOutBuffer < 30 ? 'danger' : 'safe'} style={{ width: stopOutBuffer + '%' }}></span></div>
+          <div class="margin-risk-detail"><span>Trigger estimate</span><strong>{risk.showStopOut ? risk.stopOutText : '—'}</strong></div>
+        </div>
+      </div>
+      <details class="margin-risk-mobile-details"><summary>Equity and collateral details</summary><div class="margin-risk-detail"><span>Account equity</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>Cash / collateral</span><strong>{collateralText}</strong></div><div class="margin-risk-disclaimer">Estimates use configured broker thresholds and are not live broker risk indicators.</div></details>
+    </section>
+  );
+}
+
 export interface SummaryMetricsGridProps {
   state: BoardState;
   rules: BrokerRules;
@@ -62,7 +95,8 @@ function computeMarginRiskDisplay(
       showStopOut: false,
       stopOutText: '',
       showRiskTriggers: false,
-      marginCallBufferPct: 100
+      marginCallBufferPct: 100,
+      stopOutBufferPct: 100
     };
   }
 
@@ -101,6 +135,8 @@ function computeMarginRiskDisplay(
   // the estimated trigger amount, expressed as a percentage of current value.
   const marginCallBufferPct =
     positionValue > 0 ? ((positionValue - marginCallValue) / positionValue) * 100 : -Infinity;
+  const stopOutBufferPct =
+    positionValue > 0 ? ((positionValue - stopOutValue) / positionValue) * 100 : -Infinity;
   const showRiskTriggers = showMarginCall && marginCallBufferPct < 60;
 
   return {
@@ -111,7 +147,8 @@ function computeMarginRiskDisplay(
     showStopOut,
     stopOutText: showStopOut ? formatRiskTrigger(stopOutValue, positionValue) : '',
     showRiskTriggers,
-    marginCallBufferPct
+    marginCallBufferPct,
+    stopOutBufferPct
   };
 }
 
@@ -252,7 +289,8 @@ export function SummaryMetricsGrid({
           </span>
         </div>
 
-        <div class="portfolio-risk-summary flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
+        <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(cushionTotal)} />
+        <div class="portfolio-risk-summary hidden flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
           <div>
             <span class="text-slate-500">Account Equity:</span>{' '}
             <span id="boardEquity" class="text-white font-bold font-mono">
@@ -442,7 +480,8 @@ export function SummaryMetricsGrid({
         </span>
       </div>
 
-      <div class="portfolio-risk-summary flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
+      <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(allocatedCushion)} />
+      <div class="portfolio-risk-summary hidden flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
         <div>
           <span class="text-slate-500">Account Equity:</span>{' '}
           <span id="boardEquity" class="text-white font-bold font-mono">
