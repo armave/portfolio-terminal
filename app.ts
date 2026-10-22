@@ -14,7 +14,6 @@ import {
   processRollovers,
   realizeClosedTrade,
   resolveSaleQuantity,
-  resolveTradeDateTimestamp
 } from './src/domain/portfolio';
 import { evaluateIntent, parseAiIntent } from './src/features/ai/intent';
 import { buildIntentPrompt } from './src/features/ai/prompt';
