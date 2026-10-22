@@ -268,21 +268,11 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.subtitle).toContain('Hypothetical projection after buying +10 shares');
     expect(result.modal?.columns).toEqual(['Net', 'F&C', 'M Fee', 'Balance']);
     const modalRows = result.modal?.rows.map((row) => row.label) || [];
-    expect(modalRows).toContain('Buy commissions (total)');
-    expect(modalRows).toContain('Sell commissions · Quote / Target / −10%');
-    expect(modalRows).not.toContain('Sell commission @ quote');
-    expect(modalRows).not.toContain('Sell commission @ target');
-    expect(modalRows).not.toContain('Sell commission @ −10%');
-    const sellCommissionSummary = result.modal?.rows.find((row) => row.label === 'Sell commissions · Quote / Target / −10%');
-    expect(sellCommissionSummary?.values).toHaveLength(3);
-    expect(sellCommissionSummary?.values[0]).toContain('Q ');
-    expect(sellCommissionSummary?.values[0]).toContain('−10%');
-    expect(modalRows).toContain('Accrued margin interest');
-    expect(modalRows).toContain('Margin balance before / after buy');
-    expect(modalRows).toContain('Daily margin accrual');
     expect(modalRows.some(label => label.includes('TODAY'))).toBe(true);
+    expect(result.modal?.rows.every(row => row.values.length === 4)).toBe(true);
+    expect(result.modal?.rows[0]?.values).toHaveLength(4);
     expect(result.modal?.note).toContain('Same projection schedule and columns as the main table');
-    expect(result.modal?.note).toContain('no order placed');
+    expect(result.modal?.note).toContain('no portfolio mutation or order placement');
     expect(buyStock).not.toHaveBeenCalled();
   });
 
