@@ -622,8 +622,6 @@ export class CommandDispatcher {
       return { ...s, gross, sellFee, carry, marginFee, net, netProceeds, debtRepaid, finalBalance, cashSurplus, resultingAccountBalance };
     });
     const best = rows.reduce((a, b) => b.net > a.net ? b : a, rows[0]);
-    const nextBestNet = rows.filter(r => r !== best).reduce((bestNet, row) => Math.max(bestNet, row.net), Number.NEGATIVE_INFINITY);
-    const bestAdvantage = Number.isFinite(nextBestNet) ? Math.max(0, best.net - nextBestNet) : 0;
     const dayLabel = (days: number) => days === 0 ? 'Today' : days + ' Days';
     const presets = rows.slice(0, -1).map((row, index) => ({
       label: dayLabel(row.days) + ' vs ' + dayLabel(rows[index + 1].days),
