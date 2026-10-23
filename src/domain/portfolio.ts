@@ -68,7 +68,7 @@ export interface ClosedTradeResult {
 }
 
 /** Reject invalid broker fee assumptions instead of silently understating trading costs. */
-export function validateCommissionConfig(rules: CommissionConfig): void {
+function validateCommissionConfig(rules: CommissionConfig): void {
   if (!rules || ![rules.commPerShare, rules.commVolumePct, rules.minCommOrder].every(Number.isFinite) ||
       rules.commPerShare < 0 || rules.commVolumePct < 0 || rules.minCommOrder < 0) {
     throw new RangeError('Commission configuration must contain finite, non-negative rates and minimums.');
