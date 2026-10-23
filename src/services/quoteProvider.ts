@@ -26,6 +26,23 @@ export async function fetchFallbackPrice(symbol: string) {
   return null;
 }
 
+function resolveQuoteProvenance(marketState: string | undefined, sourceTimeSeconds: unknown) {
+  const seconds = Number(sourceTimeSeconds);
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return { freshness: 'unknown' as const, sourceTimestamp: undefined };
+  }
+
+  const sourceTimestamp = seconds * 1000;
+  const ageMs = Date.now() - sourceTimestamp;
+  if (ageMs < 0) return { freshness: 'stale' as const, sourceTimestamp };
+  if (ageMs > 5 * 60 * 1000) {
+    // A closed-market quote can still be the valid last published close, but
+    // must not be described as a live quote.
+    return { freshness: marketState === 'CLOSED' ? 'delayed' as const : 'stale' as const, sourceTimestamp };
+  }
+  return { freshness: 'fresh' as const, sourceTimestamp };
+}
+
 export async function fetchLivePriceFromProviders(symbol: string) {
   symbol = symbol.toUpperCase();
   let price: number | null = null;
@@ -59,11 +76,15 @@ export async function fetchLivePriceFromProviders(symbol: string) {
 
         const previousClose = Number(prevClose);
         const hasPreviousClose = Number.isFinite(previousClose) && previousClose > 0;
+        const sourceTime = marketState === 'PRE'
+          ? (data.price.preMarketTime ?? data.price.regularMarketTime)
+          : marketState === 'POST'
+            ? (data.price.postMarketTime ?? data.price.regularMarketTime)
+            : data.price.regularMarketTime;
+        const provenance = resolveQuoteProvenance(marketState, sourceTime);
         quoteDetails = {
           marketState,
-          // The current proxy payload does not expose a trustworthy source
-          // observation time, so receivedAt must not be mistaken for quote time.
-          freshness: 'unknown',
+          ...provenance,
           receivedAt: Date.now(),
           price: current,
           change,
