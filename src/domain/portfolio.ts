@@ -67,15 +67,24 @@ export interface ClosedTradeResult {
   marginFee: number;
 }
 
+/** Reject invalid broker fee assumptions instead of silently understating trading costs. */
+export function validateCommissionConfig(rules: CommissionConfig): void {
+  if (!rules || ![rules.commPerShare, rules.commVolumePct, rules.minCommOrder].every(Number.isFinite) ||
+      rules.commPerShare < 0 || rules.commVolumePct < 0 || rules.minCommOrder < 0) {
+    throw new RangeError('Commission configuration must contain finite, non-negative rates and minimums.');
+  }
+}
+
 export function calculateCommission(
   shares: number,
   totalVal: number,
   rules: CommissionConfig
 ): number {
+  // Invalid transaction quantities remain a no-op for legacy callers; invalid
+  // broker assumptions are different and must never silently become zero fees.
   if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(totalVal) || totalVal < 0) return 0;
+  validateCommissionConfig(rules);
   const { commPerShare, commVolumePct, minCommOrder } = rules;
-  if (![commPerShare, commVolumePct, minCommOrder].every(Number.isFinite) ||
-      commPerShare < 0 || commVolumePct < 0 || minCommOrder < 0) return 0;
   return Math.max(minCommOrder, (commPerShare * shares) + (commVolumePct * totalVal));
 }
 
