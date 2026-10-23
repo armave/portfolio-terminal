@@ -1172,11 +1172,17 @@ function confirmAiPortfolioAction(action: any) {
     const price = Number(action.price);
     const gross = shares * price;
     const commission = calculateCommission(shares, gross, rules as any);
+    const totalOutlay = gross + commission;
+    const availableCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+    const cashUsed = Math.min(availableCash, totalOutlay);
+    const debtAdded = totalOutlay - cashUsed;
     confirmationLines.push(
       '',
       `Estimated purchase value: ${formatUSD(gross)}`,
       `Estimated commission: ${formatUSD(commission)}`,
-      `Estimated total outlay: ${formatUSD(gross + commission)}`,
+      `Estimated total outlay: ${formatUSD(totalOutlay)}`,
+      `Estimated free cash used: ${formatUSD(cashUsed)}`,
+      `Estimated additional margin debt: ${formatUSD(debtAdded)}`,
       `Tracked shares: ${currentShares} → ${currentShares + shares}`
     );
   } else if (action.action === 'sell') {
