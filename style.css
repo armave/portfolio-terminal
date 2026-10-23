@@ -1725,3 +1725,167 @@ summary:hover {
 }
 
 
+/* UX refinement pass: predictable page rhythm, accessible focus, and safer narrow layouts. */
+#root {
+  padding: clamp(0.75rem, 1.5vw, 1.5rem) clamp(0.5rem, 1.25vw, 1.25rem) 1.5rem;
+}
+
+#mainTerminalView {
+  width: 100%;
+  max-width: 90rem;
+  margin-inline: auto;
+  border-color: rgba(148, 163, 184, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+#boardHeaderBanner {
+  row-gap: 0.75rem;
+}
+
+#tickerTabs {
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 0.125rem 0.125rem 0.5rem;
+}
+
+#tickerTabs > * {
+  flex: 0 0 auto;
+}
+
+#boardTitleActions {
+  min-width: 0;
+  row-gap: 0.5rem;
+}
+
+#portfolioMetricsGrid {
+  gap: 0.625rem;
+}
+
+#portfolioMetricsGrid > * {
+  min-width: 0;
+  border-color: rgba(148, 163, 184, 0.16);
+  box-shadow: none;
+}
+
+.portfolio-metric-label,
+.portfolio-micro-heading {
+  line-height: 1.45;
+}
+
+.portfolio-metric-value,
+.portfolio-micro-row .portfolio-metric-value,
+table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.table-scroll-wrapper,
+#projectionTableContainer {
+  width: 100%;
+  max-width: 100%;
+  text-align: left;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.7) transparent;
+}
+
+#projectionTableContainer table {
+  min-width: 28rem;
+}
+
+#projectionTableContainer table th,
+#projectionTableContainer table td {
+  padding: 0.5rem 0.625rem;
+  white-space: nowrap;
+}
+
+#projectionTableContainer table th {
+  font-size: 0.6875rem;
+}
+
+#tradingConsoleCard,
+#marketInsightsPanel {
+  min-width: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+#terminalLog {
+  overscroll-behavior: contain;
+  line-height: 1.65;
+}
+
+#cmdInput {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+button,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+@media (max-width: 640px) {
+  #root {
+    padding-inline: 0.5rem;
+  }
+
+  #mainTerminalView {
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+  }
+
+  #boardHeaderBanner {
+    align-items: flex-start;
+  }
+
+  #daysToBreakeven {
+    white-space: normal;
+    font-size: 0.75rem;
+  }
+
+  #boardTitleActions {
+    align-items: flex-start;
+  }
+
+  #projectionTableContainer table {
+    min-width: 30rem;
+    table-layout: auto;
+  }
+
+  #projectionTableContainer table th,
+  #projectionTableContainer table td {
+    padding: 0.5rem;
+  }
+
+  #terminalLog {
+    height: 14rem;
+    font-size: 0.75rem;
+  }
+
+  #tradingConsoleCard {
+    padding: 0.875rem;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --border-card: rgba(203, 213, 225, 0.38);
+    --border-subtle: rgba(203, 213, 225, 0.28);
+    --text-muted: #cbd5e1;
+    --text-dim: #a8b4c5;
+  }
+}
