@@ -6,7 +6,7 @@ export function App({ }: AppProps) {
   return (
     <>
       {/* Active Position Header Panel */}
-      <div
+      <main
         id="mainTerminalView"
         aria-label="Portfolio workspace"
         class="border-card p-4 sm:p-6 rounded-xl space-y-2 max-w-6xl mx-auto"
@@ -98,7 +98,7 @@ export function App({ }: AppProps) {
           </div>
 
         </div>
-      </div>
+      </main>
 
       {/* Closed Trade History */}
       <div
