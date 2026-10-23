@@ -16,7 +16,7 @@ export function App({ }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2" id="tickerTabs"></div>
+          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="tablist" aria-label="Portfolio assets"></div>
           <div
             class="text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0"
             id="daysToBreakeven"
