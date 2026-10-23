@@ -11,8 +11,8 @@ export async function fetchFallbackPrice(symbol: string) {
         quoteDetails: {
           // These providers do not reliably return a market-session label or
           // source observation timestamp. Do not present a fallback as live.
-          marketState: 'UNKNOWN',
-          freshness: 'unknown',
+          marketState: 'UNKNOWN' as const,
+          freshness: 'unknown' as const,
           receivedAt: Date.now(),
           price: fallback.price,
           change: fallback.change ?? 0,
