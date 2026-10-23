@@ -1164,7 +1164,9 @@ function confirmAiPortfolioAction(action: any) {
   ];
   const currentPosition = state.positions[ticker] ||
     state.cashCushion?.holdings?.find((holding: any) => holding.ticker === ticker);
-  const currentShares = Number(currentPosition?.shares) || 0;
+  const currentShares = action.action === 'buy'
+    ? Number(state.positions[ticker]?.shares) || 0
+    : Number(currentPosition?.shares) || 0;
   const rules = state.brokerAssumptions || TRADERNET_RULES;
 
   if (action.action === 'buy') {
