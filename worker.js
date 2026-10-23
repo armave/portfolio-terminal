@@ -32,6 +32,33 @@ async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
 }
 
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+const DEFAULT_ALLOWED_ORIGINS = [
+    "https://armave.github.io",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173"
+];
+
+/**
+ * This is a single-owner personal portfolio service, not a multi-tenant API.
+ * Browser origins are allowlisted as defense in depth; the Gateway Secret remains
+ * the authentication boundary. Configure ALLOWED_ORIGINS as a comma-separated
+ * list when using a trusted custom deployment origin.
+ */
+function resolveCorsHeaders(request, env) {
+    const configuredOrigins = typeof env.ALLOWED_ORIGINS === "string" && env.ALLOWED_ORIGINS.trim()
+        ? env.ALLOWED_ORIGINS.split(",").map(origin => origin.trim()).filter(Boolean)
+        : DEFAULT_ALLOWED_ORIGINS;
+    const origin = request.headers.get("Origin");
+    if (origin && !configuredOrigins.includes(origin)) return null;
+    return {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": origin || DEFAULT_ALLOWED_ORIGINS[0],
+        "Vary": "Origin",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match",
+        "Access-Control-Expose-Headers": "ETag"
+    };
+}
 
 export function normalizeMarketState(value) {
     const marketState = typeof value === "string" ? value : "CLOSED";
@@ -72,23 +99,17 @@ async function getYahooCredentials() {
 export default {
     async fetch(request, env) {
 
-        if (request.method === "OPTIONS") {
-            return new Response(null, {
-                headers: {
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match",
-                    "Access-Control-Expose-Headers": "ETag"
-                }
+        const corsHeaders = resolveCorsHeaders(request, env);
+        if (!corsHeaders) {
+            return jsonError("Origin is not allowed.", 403, {
+                "Content-Type": "application/json",
+                "Vary": "Origin"
             });
         }
 
-        const corsHeaders = {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Expose-Headers": "ETag"
-        };
+        if (request.method === "OPTIONS") {
+            return new Response(null, { status: 204, headers: corsHeaders });
+        }
 
         // Reject unsupported methods and oversized bodies before parsing or proxying.
         if (request.method !== "GET" && request.method !== "POST") {
@@ -145,13 +166,24 @@ export default {
                         headers: corsHeaders
                     });
                 }
+                // The app intentionally has one shared personal portfolio across the owner's
+                // devices. Do not change this identity to a client-controlled value.
                 const id = env.PORTFOLIO_STATE_DO.idFromName("portfolio_state");
                 const stub = env.PORTFOLIO_STATE_DO.get(id);
-                return stub.fetch(new Request(request.url, {
+                const stateResponse = await stub.fetch(new Request(request.url, {
                     method: request.method,
                     headers: request.headers,
                     body: request.method === "POST" ? await request.text() : undefined
                 }));
+                // Durable Object responses preserve ETag/revision headers while the
+                // public Worker applies the request's validated CORS policy.
+                const stateHeaders = new Headers(stateResponse.headers);
+                Object.entries(corsHeaders).forEach(([name, value]) => stateHeaders.set(name, value));
+                return new Response(stateResponse.body, {
+                    status: stateResponse.status,
+                    statusText: stateResponse.statusText,
+                    headers: stateHeaders
+                });
             }
 
             // --- ACTION 1: Finnhub Company News ---
