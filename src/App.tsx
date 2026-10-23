@@ -6,7 +6,7 @@ export function App({ }: AppProps) {
   return (
     <>
       {/* Active Position Header Panel */}
-      <div
+      <main
         id="mainTerminalView"
         aria-label="Portfolio workspace"
         class="border-card p-4 sm:p-6 rounded-xl space-y-2 max-w-6xl mx-auto"
@@ -16,7 +16,7 @@ export function App({ }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2" id="tickerTabs"></div>
+          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"></div>
           <div
             class="text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0"
             id="daysToBreakeven"
@@ -98,7 +98,7 @@ export function App({ }: AppProps) {
           </div>
 
         </div>
-      </div>
+      </main>
 
       {/* Closed Trade History */}
       <div

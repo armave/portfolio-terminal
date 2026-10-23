@@ -1889,3 +1889,173 @@ textarea {
     --text-dim: #a8b4c5;
   }
 }
+
+/* UX refinement follow-up — readable density, predictable controls, and mobile navigation. */
+:root {
+  --control-height: 2.75rem;
+  --surface-hover: rgba(148, 163, 184, 0.08);
+}
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+:where(button, input, select, textarea) {
+  accent-color: var(--color-accent);
+}
+
+:where(input, select, textarea) {
+  max-width: 100%;
+}
+
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  min-height: var(--control-height);
+}
+
+:where(button) {
+  min-height: 2.5rem;
+}
+
+:where(button:disabled, input:disabled, select:disabled, textarea:disabled) {
+  cursor: not-allowed;
+}
+
+:where(table) {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+:where(table th) {
+  line-height: 1.35;
+  white-space: normal;
+}
+
+:where(table td) {
+  vertical-align: middle;
+}
+
+:where(table tbody tr:focus-within) {
+  outline: 1px solid var(--border-focus);
+  outline-offset: -1px;
+}
+
+#tickerTabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+#tickerTabs > * {
+  flex: 0 0 auto;
+}
+
+#mainTerminalView {
+  width: min(100%, 88rem);
+  box-sizing: border-box;
+}
+
+#mainTerminalView,
+#mainDeskContainer,
+#tradingWorkspaceGrid,
+.trading-terminal-column,
+#projectionTableContainer,
+.table-scroll-wrapper {
+  min-width: 0;
+}
+
+#projectionTableContainer table {
+  min-width: 34rem;
+}
+
+#projectionTableContainer table th,
+#projectionTableContainer table td {
+  padding: 0.5rem 0.625rem;
+  line-height: 1.4;
+}
+
+.portfolio-metric-value,
+#boardMarginRisk,
+#boardStopOut,
+#daysToBreakeven {
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-toast {
+  max-width: min(28rem, calc(100vw - 2rem));
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+  /* Prevent iOS from zooming into small form fields and keep tap targets usable. */
+  :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    font-size: 16px !important;
+  }
+
+  :where(button, input[type="checkbox"], input[type="radio"], select) {
+    touch-action: manipulation;
+  }
+
+  #tickerTabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0.25rem 0 0.625rem;
+    scroll-snap-type: x proximity;
+  }
+
+  #tickerTabs > * {
+    scroll-snap-align: start;
+  }
+
+  #mainTerminalView {
+    padding: 0.625rem;
+    border-radius: 0.75rem;
+  }
+
+  #projectionTableContainer table th,
+  #projectionTableContainer table td {
+    padding: 0.5rem;
+  }
+
+  .ui-toast {
+    width: calc(100vw - 2rem);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --text-muted: #cbd5e1;
+    --text-dim: #a8b5c7;
+    --border-card: rgba(203, 213, 225, 0.5);
+    --border-subtle: rgba(203, 213, 225, 0.35);
+    --border-focus: #67e8f9;
+  }
+
+  .border-card,
+  .portfolio-metric,
+  #projectionTableContainer,
+  .table-scroll-wrapper {
+    border-color: var(--border-card);
+  }
+
+  :where(button, a, input, select, textarea):focus-visible {
+    outline-width: 3px;
+  }
+}
+
+@media (forced-colors: active) {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  .border-card,
+  .portfolio-metric,
+  #projectionTableContainer,
+  .table-scroll-wrapper {
+    border: 1px solid CanvasText;
+  }
+}
