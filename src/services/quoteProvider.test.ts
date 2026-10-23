@@ -29,6 +29,8 @@ describe('fetchLivePriceFromProviders', () => {
     expect(result.sourceName).toBe('Yahoo');
     expect(result.quoteDetails).toMatchObject({
       marketState: 'REGULAR',
+      freshness: 'unknown',
+      receivedAt: expect.any(Number),
       price: 100,
       change: 5,
       changePercent: expect.any(Number)
@@ -56,7 +58,9 @@ describe('fetchLivePriceFromProviders', () => {
       price: 42,
       sourceName: 'Twelve Data',
       quoteDetails: {
-        marketState: 'REGULAR',
+        marketState: 'UNKNOWN',
+        freshness: 'unknown',
+        receivedAt: expect.any(Number),
         price: 42,
         change: 2,
         changePercent: 5
