@@ -67,6 +67,13 @@ export function ProjectionsTable({
         const net_p = gross - fee_c;
         const dr = b_t * dailyRate;
 
+        // The three added weekly checkpoints are only shown while projected
+        // net P&L remains at or above break-even. Earlier milestones are unchanged.
+        const weeklyCheckpoint = kind === 'weekly'
+          ? projectionItems.slice(0, idx + 1).filter((projection) => projection.kind === 'weekly').length
+          : 0;
+        if (weeklyCheckpoint > 6 && net_p < 0) return null;
+
         const rowClass = kind === 'today' ? 'bg-slate-900/80 font-bold' : 'hover:bg-slate-900/40';
         const netClass = net_p >= 0 ? 'text-emerald-400' : 'text-rose-400';
         const netSign = net_p >= 0 ? '+' : '';
