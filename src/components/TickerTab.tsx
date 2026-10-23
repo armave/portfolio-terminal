@@ -1,13 +1,15 @@
+import { useState } from 'preact/hooks';
 import type { BoardState } from '../types/portfolio';
 import { getCashCushionTotal } from '../domain/portfolioSelectors';
 
 export interface TickerTabsProps {
   state: BoardState;
   onSetActiveView?: (view: string) => void;
-  onRefreshAllLivePrices?: () => void;
+  onRefreshAllLivePrices?: () => void | Promise<void>;
 }
 
 export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: TickerTabsProps) {
+  const [isRefreshingQuotes, setIsRefreshingQuotes] = useState(false);
   const tickers = Object.keys(state.positions || {});
   const isCushionActive =
     state.activeView === 'CASH_CUSHION' || state.activeView === 'BALANCE';
@@ -38,8 +40,15 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
     next.click();
   };
 
-  const handleRefreshQuotes = () => {
-    onRefreshAllLivePrices?.();
+  const handleRefreshQuotes = async () => {
+    if (isRefreshingQuotes) return;
+
+    setIsRefreshingQuotes(true);
+    try {
+      await onRefreshAllLivePrices?.();
+    } finally {
+      setIsRefreshingQuotes(false);
+    }
   };
 
   return (
@@ -50,8 +59,9 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
           type="button"
           title="Update quotes"
           aria-label="Refresh live quotes"
+          disabled={isRefreshingQuotes}
           onClick={handleRefreshQuotes}
-          class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
+          class="h-8 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
         >
           <span>↻</span>
         </button>
