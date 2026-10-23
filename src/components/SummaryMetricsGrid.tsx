@@ -243,51 +243,51 @@ export function SummaryMetricsGrid({
 
     return (
       <>
-        <div class="portfolio-metric px-3 py-1.5">
-          <span class="portfolio-metric-label text-[10px]">Tranches / Holdings</span>
-          <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
-            {tranchesText}
-          </span>
-        </div>
-        <div class="portfolio-metric px-3 py-1.5">
-          <span class="portfolio-metric-label text-[10px]">Total Invested | Avg</span>
-          <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">
-            {investedText}
-          </span>
-        </div>
-        <div class="portfolio-metric px-3 py-1.5">
-          <span class="portfolio-metric-label text-[10px]">Share Price | Mkt Value</span>
-          <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm text-emerald-400">
-            {formatUSD(totalMarketValue)} -{' '}
-            <span class={totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-              {unSign}{formatUSD(totalUnrealized)} ({unSign}
-              {unrealizedPct.toFixed(2)}%)
+        <section class="portfolio-micro-summary" aria-label="Portfolio financial summary">
+          <div class="portfolio-micro-column portfolio-micro-basis">
+            <span class="portfolio-micro-heading">POSITION BASIS</span>
+            <div class="portfolio-micro-row">
+              <span class="portfolio-metric-label text-[10px]">Tranches / Holdings</span>
+              <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">{tranchesText}</span>
+            </div>
+            <div class="portfolio-micro-row">
+              <span class="portfolio-metric-label text-[10px]">Total Invested</span>
+              <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
+            </div>
+          </div>
+          <div class="portfolio-micro-column portfolio-micro-market">
+            <span class="portfolio-micro-heading">MARKET VALUATION</span>
+            <div class="portfolio-micro-row portfolio-micro-market-primary">
+              <span class="portfolio-metric-label text-[10px]">Market Value / Return</span>
+              <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
+                {formatUSD(totalMarketValue)} -{' '}
+                <span class={totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                  {unSign}{formatUSD(totalUnrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
+                </span>
+              </span>
+            </div>
+            <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
+            <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
+              <span aria-hidden="true" class={`inline-block h-1.5 w-1.5 rounded-full ${quoteFreshnessClass}`}></span>
+              {quoteMetaText}
             </span>
-          </span>
-          <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
-          <span id="boardQuoteMeta" class="inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
-            <span aria-hidden="true" class={`inline-block h-1.5 w-1.5 rounded-full ${quoteFreshnessClass}`}></span>
-            {quoteMetaText}
-          </span>
-        </div>
-        <div class="portfolio-metric px-3 py-1.5">
-          <span class="portfolio-metric-label text-[10px]">Margin Debt</span>
-          <span id="boardMargin" class="portfolio-metric-value text-xs sm:text-sm text-rose-300">
-            {marginText}
-          </span>
-        </div>
-        <div class="portfolio-metric px-3 py-1.5">
-          <span class="portfolio-metric-label text-[10px]">Total Commissions</span>
-          <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">
-            {commsText}
-          </span>
-        </div>
-        <div class="portfolio-metric px-3 py-1.5">
-          <span class="portfolio-metric-label text-[10px]">Margin Charged</span>
-          <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">
-            {marginChargedText}
-          </span>
-        </div>
+          </div>
+          <div class="portfolio-micro-column portfolio-micro-costs">
+            <span class="portfolio-micro-heading">DEBT &amp; CARRYING COSTS</span>
+            <div class="portfolio-micro-row">
+              <span class="portfolio-metric-label text-[10px]">Margin Debt</span>
+              <span id="boardMargin" class="portfolio-metric-value text-xs sm:text-sm text-rose-300">{marginText}</span>
+            </div>
+            <div class="portfolio-micro-row">
+              <span class="portfolio-metric-label text-[10px]">Total Commissions</span>
+              <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
+            </div>
+            <div class="portfolio-micro-row">
+              <span class="portfolio-metric-label text-[10px]">Accrued Margin Interest</span>
+              <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
+            </div>
+          </div>
+        </section>
 
         <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(cushionTotal)} />
         <div class="portfolio-risk-summary hidden flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
@@ -429,56 +429,53 @@ export function SummaryMetricsGrid({
 
   return (
     <>
-      <div class="portfolio-metric px-3 py-1.5">
-        <span class="portfolio-metric-label text-[10px]">Tranches / Holdings</span>
-        <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
-          {tranchesText}
-        </span>
-      </div>
-      <div class="portfolio-metric px-3 py-1.5">
-        <span class="portfolio-metric-label text-[10px]">Total Invested | Avg</span>
-        <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">
-          {investedText}
-        </span>
-      </div>
-      <div class="portfolio-metric px-3 py-1.5">
-        <span class="portfolio-metric-label text-[10px]">Share Price | Mkt Value</span>
-        <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm text-emerald-400">
-          {formatUSD(pos.currentPrice)} | {formatUSD(currentMktVal)} –{' '}
-          <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-            {unSign}{formatUSD(unrealized)} ({unSign}
-            {unrealizedPct.toFixed(2)}%)
+      <section class="portfolio-micro-summary" aria-label="Portfolio financial summary">
+        <div class="portfolio-micro-column portfolio-micro-basis">
+          <span class="portfolio-micro-heading">POSITION BASIS</span>
+          <div class="portfolio-micro-row">
+            <span class="portfolio-metric-label text-[10px]">Shares / Tranches</span>
+            <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">{pos.shares.toLocaleString()} shares · {tranchesText}</span>
+          </div>
+          <div class="portfolio-micro-row">
+            <span class="portfolio-metric-label text-[10px]">Invested / Avg. Entry</span>
+            <span id="boardInvested" class="portfolio-metric-value text-xs sm:text-sm">{investedText}</span>
+          </div>
+        </div>
+        <div class="portfolio-micro-column portfolio-micro-market">
+          <span class="portfolio-micro-heading">MARKET VALUATION</span>
+          <div class="portfolio-micro-row portfolio-micro-market-primary">
+            <span class="portfolio-metric-label text-[10px]">Share Price / Market Value</span>
+            <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
+              {formatUSD(pos.currentPrice)} | {formatUSD(currentMktVal)}{' '}
+              <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                {unSign}{formatUSD(unrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
+              </span>
+            </span>
+          </div>
+          <span id="boardDailyQuote" class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}>
+            {dailyQuoteMeta?.text || ''}
+            <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
+              <span aria-hidden="true" class={`inline-block h-1.5 w-1.5 rounded-full ${quoteFreshnessClass}`}></span>
+              {' · ' + quoteMetaText}{pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}
+            </span>
           </span>
-        </span>
-        <span
-          id="boardDailyQuote"
-          class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}
-        >
-          {dailyQuoteMeta?.text || ''}
-          <span id="boardQuoteMeta" class="inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
-            <span aria-hidden="true" class={`inline-block h-1.5 w-1.5 rounded-full ${quoteFreshnessClass}`}></span>
-            {' · ' + quoteMetaText}{pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}
-          </span>
-        </span>
-      </div>
-      <div class="portfolio-metric px-3 py-1.5">
-        <span class="portfolio-metric-label text-[10px]">Margin Debt</span>
-        <span id="boardMargin" class="portfolio-metric-value text-xs sm:text-sm text-rose-300">
-          {marginText}
-        </span>
-      </div>
-      <div class="portfolio-metric px-3 py-1.5">
-        <span class="portfolio-metric-label text-[10px]">Total Commissions</span>
-        <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">
-          {commsText}
-        </span>
-      </div>
-      <div class="portfolio-metric px-3 py-1.5">
-        <span class="portfolio-metric-label text-[10px]">Margin Charged</span>
-        <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">
-          {marginChargedText}
-        </span>
-      </div>
+        </div>
+        <div class="portfolio-micro-column portfolio-micro-costs">
+          <span class="portfolio-micro-heading">DEBT &amp; CARRYING COSTS</span>
+          <div class="portfolio-micro-row">
+            <span class="portfolio-metric-label text-[10px]">Margin Debt</span>
+            <span id="boardMargin" class="portfolio-metric-value text-xs sm:text-sm text-rose-300">{marginText}</span>
+          </div>
+          <div class="portfolio-micro-row">
+            <span class="portfolio-metric-label text-[10px]">Total Commissions</span>
+            <span id="boardComms" class="portfolio-metric-value text-xs sm:text-sm">{commsText}</span>
+          </div>
+          <div class="portfolio-micro-row">
+            <span class="portfolio-metric-label text-[10px]">Accrued Margin Interest</span>
+            <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
+          </div>
+        </div>
+      </section>
 
       <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(allocatedCushion)} />
     </>
