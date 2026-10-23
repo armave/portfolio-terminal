@@ -227,6 +227,12 @@ npm run build
 
 Deployment to GitHub Pages is handled via `.github/workflows/deploy.yml` upon pushing commits to `main`. The deployment workflow runs tests, dead-code validation, and the production build before publishing.
 
+## Deployment origin and ownership model
+
+The hosted app and cloud portfolio currently use a **single-owner** model: authorized devices share one cloud portfolio protected by the Worker Gateway Secret. This is not a multi-user account system, and the Worker does not create separate portfolios for different users. Do not share the Gateway Secret with other people.
+
+The Worker restricts browser requests to `https://armave.github.io` and local Vite development origins by default. For a trusted custom deployment, configure the Cloudflare Worker variable `ALLOWED_ORIGINS` as a comma-separated list of exact origins (scheme and host, with port when applicable). This origin policy is defense in depth, not authentication; the Gateway Secret remains required. If the app becomes multi-user, replace the shared-secret/single-record model with per-user identity, authorization, and isolated state before opening access to other users.
+
 ## Gateway and cloud-sync safety notes
 
 The Cloudflare Worker requires the Gateway Secret and accepts only its documented quote/news, Gemini, and cloud-state actions. Requests are bounded to 64 KB; ticker batches are limited to 10 symbols, Gemini prompts to 12,000 characters, and Gemini model selection is allowlisted. Upstream requests have bounded timeouts. Cloud-state writes require an `If-Match` revision and a non-empty encrypted payload; stale writes return HTTP 409 rather than overwriting newer state.
