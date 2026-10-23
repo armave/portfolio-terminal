@@ -250,6 +250,23 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(await response.json()).toEqual({ encryptedPayload: 'legacy' });
   });
 
+  it('rejects malformed cloud state payloads and oversized bodies', async () => {
+    const store = makeDurableObject();
+    const malformed = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ unexpected: 'plain-text-state' })
+    }));
+    expect(malformed.status).toBe(400);
+
+    const oversized = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload: 'x'.repeat(65 * 1024) })
+    }));
+    expect(oversized.status).toBe(413);
+  });
+
   it('requires a revision for every write', async () => {
     const store = makeDurableObject();
     const response = await store.fetch(new Request('https://worker.test/api/state', {
