@@ -67,15 +67,27 @@ export interface ClosedTradeResult {
   marginFee: number;
 }
 
+/** Reject invalid broker fee assumptions instead of silently understating trading costs. */
+function validateCommissionConfig(rules: CommissionConfig): void {
+  if (!rules || ![rules.commPerShare, rules.commVolumePct, rules.minCommOrder].every(Number.isFinite) ||
+      rules.commPerShare < 0 || rules.commVolumePct < 0 || rules.minCommOrder < 0) {
+    throw new RangeError('Commission configuration must contain finite, non-negative rates and minimums.');
+  }
+}
+
 export function calculateCommission(
   shares: number,
   totalVal: number,
   rules: CommissionConfig
 ): number {
-  if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(totalVal) || totalVal < 0) return 0;
+  // A zero/invalid quantity remains a no-op for legacy callers, but a
+  // positive transaction with an invalid proceeds value must not look free.
+  if (!Number.isFinite(shares) || shares <= 0) return 0;
+  if (!Number.isFinite(totalVal) || totalVal < 0) {
+    throw new RangeError('Commission transaction value must be finite and non-negative.');
+  }
+  validateCommissionConfig(rules);
   const { commPerShare, commVolumePct, minCommOrder } = rules;
-  if (![commPerShare, commVolumePct, minCommOrder].every(Number.isFinite) ||
-      commPerShare < 0 || commVolumePct < 0 || minCommOrder < 0) return 0;
   return Math.max(minCommOrder, (commPerShare * shares) + (commVolumePct * totalVal));
 }
 
@@ -85,8 +97,11 @@ export function calculateTrancheCommissions(
   rules: CommissionConfig
 ): number {
   return tranches.reduce((total, tranche) => {
-    const shares = Number(tranche.qty ?? tranche.shares) || 0;
-    const price = Number(tranche.price) || 0;
+    const shares = Number(tranche.qty ?? tranche.shares);
+    const price = Number(tranche.price);
+    if (!Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) {
+      throw new RangeError('Each commission tranche must have a positive finite quantity and price.');
+    }
     return total + calculateCommission(shares, shares * price, rules);
   }, 0);
 }

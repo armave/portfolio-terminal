@@ -42,34 +42,47 @@ export function formatUSD(val: unknown): string {
   return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export type QuoteFreshness = 'fresh' | 'stale' | 'unavailable';
+export type QuoteFreshness = 'fresh' | 'stale' | 'delayed' | 'unknown' | 'unavailable';
+
+type QuoteFreshnessMetadata = {
+  freshness?: QuoteFreshness;
+  sourceTimestamp?: number;
+  marketState?: string;
+};
 
 export function getQuoteFreshness(
-  holding: { quoteUpdatedAt?: number; quoteSource?: string },
+  holding: { quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: QuoteFreshnessMetadata },
   now = Date.now(),
   refreshIntervalMs = 60000
 ): QuoteFreshness {
-  const updatedAt = Number(holding.quoteUpdatedAt);
-  if (!holding.quoteUpdatedAt || !Number.isFinite(updatedAt) || updatedAt <= 0) return 'unavailable';
+  if (holding.quoteSource === 'Manual' || holding.quoteSource === 'Trade input') return 'unavailable';
+  const sourceTimestamp = Number(holding.quoteDetails?.sourceTimestamp);
+  if (!Number.isFinite(sourceTimestamp) || sourceTimestamp <= 0) {
+    // quoteUpdatedAt is only the client receipt time. It is not evidence of
+    // when the provider observed the market price.
+    return holding.quoteUpdatedAt ? 'unknown' : 'unavailable';
+  }
 
   const staleAfterMs = Math.max(5 * 60 * 1000, refreshIntervalMs * 2);
-  const ageMs = now - updatedAt;
-  // A future timestamp usually indicates a clock/data issue; don't label it fresh.
-  if (ageMs < 0 || ageMs > staleAfterMs) return 'stale';
+  const ageMs = now - sourceTimestamp;
+  if (ageMs < 0) return 'stale';
+  if (ageMs > staleAfterMs) return holding.quoteDetails?.marketState === 'CLOSED' ? 'delayed' : 'stale';
   return 'fresh';
 }
 
 export function formatQuoteMetadata(
-  holding: { quoteUpdatedAt?: number; quoteSource?: string },
+  holding: { quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: QuoteFreshnessMetadata },
   refreshIntervalMs = 60000
 ): string {
   const freshness = getQuoteFreshness(holding, Date.now(), refreshIntervalMs);
   if (freshness === 'unavailable') return holding.quoteSource || 'Not fetched';
-
-  const updatedAt = Number(holding.quoteUpdatedAt);
-  const time = new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const source = holding.quoteSource ? `${holding.quoteSource} · ` : '';
-  return `${freshness === 'stale' ? 'Stale · ' : ''}${source}${time}`;
+  if (freshness === 'unknown') return `Quote time unknown · ${holding.quoteSource || 'source unavailable'}`;
+
+  const sourceTimestamp = Number(holding.quoteDetails?.sourceTimestamp);
+  const time = new Date(sourceTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const freshnessLabel = freshness === 'stale' ? 'Stale · ' : freshness === 'delayed' ? 'Delayed · ' : '';
+  return `${freshnessLabel}${source}${time}`;
 }
 
 export function formatRiskTrigger(triggerValue: number, currentValue: number): string {

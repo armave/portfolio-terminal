@@ -19,6 +19,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - name: Dead-code diagnostics
+      - name: Dead-code validation
         run: npm run validate:dead-code
-        continue-on-error: true
+      - name: Production dependency security audit
+        run: npm audit --omit=dev --audit-level=high

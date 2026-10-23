@@ -22,17 +22,20 @@ describe('display formatters', () => {
   });
 
 
-  it('classifies quote freshness at the configured stale threshold', () => {
+  it('classifies quote freshness from provider observation time, not client receipt time', () => {
     const now = 1_800_000_000_000;
-    expect(getQuoteFreshness({ quoteUpdatedAt: now - 30_000 }, now, 60_000)).toBe('fresh');
-    expect(getQuoteFreshness({ quoteUpdatedAt: now - 300_000 }, now, 60_000)).toBe('fresh');
-    expect(getQuoteFreshness({ quoteUpdatedAt: now - 300_001 }, now, 60_000)).toBe('stale');
-    expect(getQuoteFreshness({ quoteUpdatedAt: now + 1 }, now, 60_000)).toBe('stale');
+    expect(getQuoteFreshness({ quoteUpdatedAt: now, quoteDetails: { sourceTimestamp: now - 30_000 } }, now, 60_000)).toBe('fresh');
+    expect(getQuoteFreshness({ quoteUpdatedAt: now, quoteDetails: { sourceTimestamp: now - 300_000 } }, now, 60_000)).toBe('fresh');
+    expect(getQuoteFreshness({ quoteUpdatedAt: now, quoteDetails: { sourceTimestamp: now - 300_001 } }, now, 60_000)).toBe('stale');
+    expect(getQuoteFreshness({ quoteUpdatedAt: now, quoteDetails: { sourceTimestamp: now + 1 } }, now, 60_000)).toBe('stale');
+    expect(getQuoteFreshness({ quoteUpdatedAt: now }, now, 60_000)).toBe('unknown');
+    expect(getQuoteFreshness({ quoteUpdatedAt: now, quoteDetails: { sourceTimestamp: now - 86_400_000, marketState: 'CLOSED' } }, now, 60_000)).toBe('delayed');
     expect(getQuoteFreshness({}, now, 60_000)).toBe('unavailable');
   });
 
-  it('reports missing quote metadata without a timestamp', () => {
+  it('reports missing and unverified quote timestamps honestly', () => {
     expect(formatQuoteMetadata({ quoteSource: 'Yahoo' })).toBe('Yahoo');
+    expect(formatQuoteMetadata({ quoteSource: 'Twelve Data', quoteUpdatedAt: 1_800_000_000_000 })).toBe('Quote time unknown · Twelve Data');
     expect(formatQuoteMetadata({})).toBe('Not fetched');
   });
 });

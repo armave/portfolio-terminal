@@ -18,6 +18,59 @@ describe('normalizeMarketState', () => {
 });
 
 
+describe('gateway browser-origin boundary', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('allows the hosted app origin and returns an explicit origin rather than a wildcard', async () => {
+    const response = await worker.fetch(
+      new Request('https://worker.test/?action=state', {
+        headers: { Origin: 'https://armave.github.io', 'X-App-Auth': 'test-secret' }
+      }),
+      {
+        GATEWAY_SECRET: 'test-secret',
+        PORTFOLIO_STATE_DO: {
+          idFromName: vi.fn().mockReturnValue('personal-state'),
+          get: vi.fn().mockReturnValue({
+            fetch: vi.fn().mockResolvedValue(new Response(JSON.stringify({ encryptedPayload: 'ciphertext' }), {
+              status: 200, headers: { ETag: '"4"' }
+            }))
+          })
+        }
+      }
+    );
+
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://armave.github.io');
+    expect(response.headers.get('Access-Control-Allow-Origin')).not.toBe('*');
+    expect(response.headers.get('ETag')).toBe('"4"');
+  });
+
+  it('rejects browser origins outside the configured personal-app allowlist', async () => {
+    const response = await worker.fetch(
+      new Request('https://worker.test/?action=state', {
+        headers: { Origin: 'https://untrusted.example', 'X-App-Auth': 'test-secret' }
+      }),
+      { GATEWAY_SECRET: 'test-secret' }
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Origin is not allowed.' });
+  });
+
+  it('supports an explicitly configured trusted deployment origin', async () => {
+    const response = await worker.fetch(
+      new Request('https://worker.test/?action=state', {
+        headers: { Origin: 'https://portfolio.example', 'X-App-Auth': 'test-secret' }
+      }),
+      { GATEWAY_SECRET: 'test-secret', ALLOWED_ORIGINS: 'https://portfolio.example' }
+    );
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://portfolio.example');
+  });
+});
+
 describe('stocktwits proxy', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -195,6 +248,23 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('ETag')).toBe('"1"');
     expect(await response.json()).toEqual({ encryptedPayload: 'legacy' });
+  });
+
+  it('rejects malformed cloud state payloads and oversized bodies', async () => {
+    const store = makeDurableObject();
+    const malformed = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ unexpected: 'plain-text-state' })
+    }));
+    expect(malformed.status).toBe(400);
+
+    const oversized = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload: 'x'.repeat(65 * 1024) })
+    }));
+    expect(oversized.status).toBe(413);
   });
 
   it('requires a revision for every write', async () => {
