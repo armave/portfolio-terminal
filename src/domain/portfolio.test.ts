@@ -569,11 +569,14 @@ describe('financial edge cases', () => {
     vi.useRealTimers();
   });
 
-  it('returns a stable zero for invalid commission inputs and empty tranche lists', () => {
+  it('returns zero for invalid transaction quantities but rejects invalid broker commission assumptions', () => {
     const rules = { commPerShare: 0.01, commVolumePct: 0.001, minCommOrder: 1.5 };
     expect(calculateCommission(-1, 100, rules)).toBe(0);
     expect(calculateCommission(10, -1, rules)).toBe(0);
-    expect(calculateCommission(10, 100, { ...rules, commVolumePct: Number.NaN })).toBe(0);
+    expect(() => calculateCommission(10, 100, { ...rules, commVolumePct: Number.NaN }))
+      .toThrow('Commission configuration must contain finite, non-negative rates and minimums.');
+    expect(() => calculateCommission(10, 100, { ...rules, minCommOrder: -1 }))
+      .toThrow(RangeError);
     expect(calculateTrancheCommissions([], rules)).toBe(0);
   });
 });
