@@ -28,7 +28,7 @@ describe('refreshTrackedQuotes', () => {
     vi.mocked(normalizeYahooBatchResults).mockReturnValue([{ symbol: 'MSFT', error: 'No batch quote' }] as never);
     vi.mocked(fetchFallbackPrice).mockResolvedValue({
       price: 42, sourceName: 'Twelve Data',
-      quoteDetails: { marketState: 'REGULAR', price: 42, change: 2, changePercent: 5 }
+      quoteDetails: { marketState: 'UNKNOWN', freshness: 'unknown', receivedAt: 456, price: 42, change: 2, changePercent: 5 }
     } as never);
     const record = vi.fn().mockReturnValue(true);
 
