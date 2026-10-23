@@ -429,8 +429,8 @@ describe('portfolio domain', () => {
     expect(calculateCommission(0, 100, rules)).toBe(0); // 0 shares
     expect(calculateCommission(Number.NaN, 100, rules)).toBe(0);
     expect(calculateCommission(10, Number.NaN, rules)).toBe(0);
-    expect(calculateCommission(10, 100, { ...rules, minCommOrder: Number.NaN })).toBe(0);
-    expect(calculateCommission(10, 100, { ...rules, commPerShare: -1 })).toBe(0);
+    expect(() => calculateCommission(10, 100, { ...rules, minCommOrder: Number.NaN })).toThrow(RangeError);
+    expect(() => calculateCommission(10, 100, { ...rules, commPerShare: -1 })).toThrow(RangeError);
   });
 
   it('calculates rollover cycles at 04:00 in Asia/Yerevan independent of host timezone', () => {
