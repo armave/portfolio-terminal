@@ -461,6 +461,9 @@ export default {
                             postMarketPrice: result.price?.postMarketPrice?.raw ?? null,
                             postMarketChange: result.price?.postMarketChange?.raw ?? null,
                             postMarketChangePercent: result.price?.postMarketChangePercent?.raw ?? null,
+                            regularMarketTime: result.price?.regularMarketTime?.raw ?? null,
+                            preMarketTime: result.price?.preMarketTime?.raw ?? null,
+                            postMarketTime: result.price?.postMarketTime?.raw ?? null,
 
                             marketState
                         },
