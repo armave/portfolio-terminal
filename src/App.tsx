@@ -57,6 +57,8 @@ export function App({ }: AppProps) {
               class="portfolio-metrics-grid gap-2 text-xs text-slate-300"
             ></div>
 
+            <div id="riskSnapshotContainer" class="pt-3" aria-live="polite"></div>
+
             {/* Projection Table */}
             <div
               class="table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none"
