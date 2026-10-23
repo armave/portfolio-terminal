@@ -8,6 +8,7 @@ export function App({ }: AppProps) {
       {/* Active Position Header Panel */}
       <div
         id="mainTerminalView"
+        aria-label="Portfolio workspace"
         class="border-card p-4 sm:p-6 rounded-xl space-y-2 max-w-6xl mx-auto"
       >
         {/* Asset View Tabs */}
@@ -52,6 +53,7 @@ export function App({ }: AppProps) {
 
             <div
               id="portfolioMetricsGrid"
+              aria-label="Portfolio summary metrics"
               class="portfolio-metrics-grid gap-2 text-xs text-slate-300"
             ></div>
 
@@ -60,14 +62,15 @@ export function App({ }: AppProps) {
               class="table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none"
               id="projectionTableContainer"
             >
-              <table class="w-full min-w-[300px] text-xs border-collapse">
+              <table aria-label="Portfolio projection by date" class="w-full min-w-[300px] text-xs border-collapse">
+                <caption class="sr-only">Projected portfolio net value, fees and commissions, margin fee, and balance by date.</caption>
                 <thead>
                   <tr class="border-b border-slate-800 text-slate-400">
-                    <th class="py-2 px-3 text-left">Date</th>
-                    <th class="py-2 px-3 text-right">Net</th>
-                    <th class="py-2 px-3 text-right">F&amp;C</th>
-                    <th class="py-2 px-3 text-right">M Fee</th>
-                    <th class="py-2 px-3 text-right">Balance</th>
+                    <th scope="col" class="py-2 px-3 text-left">Date</th>
+                    <th scope="col" class="py-2 px-3 text-right">Net</th>
+                    <th scope="col" class="py-2 px-3 text-right">F&amp;C</th>
+                    <th scope="col" class="py-2 px-3 text-right">M Fee</th>
+                    <th scope="col" class="py-2 px-3 text-right">Balance</th>
                   </tr>
                 </thead>
                 <tbody
