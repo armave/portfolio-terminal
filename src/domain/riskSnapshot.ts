@@ -1,9 +1,9 @@
 import type { BoardState, PositionRecord } from '../types/portfolio';
 
-export type DataValidity = 'valid' | 'stale' | 'missing' | 'invalid' | 'unknown';
-export type RiskLevel = 'normal' | 'warning' | 'critical' | 'unknown';
+type DataValidity = 'valid' | 'stale' | 'missing' | 'invalid' | 'unknown';
+type RiskLevel = 'normal' | 'warning' | 'critical' | 'unknown';
 
-export interface RiskMetric<T = number> {
+interface RiskMetric<T = number> {
   value: T | null;
   validity: DataValidity;
   asOf: number | null;
@@ -15,7 +15,7 @@ export interface RiskMetric<T = number> {
  * margin debt, or liquidation thresholds from legacy fields whose semantics
  * differ across import/runtime paths.
  */
-export interface RiskSnapshot {
+interface RiskSnapshot {
   calculatedAt: number;
   equity: RiskMetric;
   grossExposure: RiskMetric;
