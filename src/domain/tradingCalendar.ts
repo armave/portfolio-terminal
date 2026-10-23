@@ -201,7 +201,9 @@ export function getUsEquityProjectionDates(today = new Date(), entryDate?: strin
   const referenceDate = getClosestTradingDay(start);
   const seenKeys = new Set<string>(projections.map((p) => dateKey(p.date)));
 
-  for (const week of [1, 2, 3, 4, 5, 6]) {
+  // Keep three additional weekly checkpoints available for projections,
+  // with the table deciding whether each remains within break-even.
+  for (const week of [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
     const targetDate = addDays(referenceDate, week * 7);
     const projectedDate = rollForwardToTradingDay(targetDate);
     const key = dateKey(projectedDate);
