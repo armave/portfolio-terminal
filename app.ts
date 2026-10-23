@@ -1142,12 +1142,12 @@ function confirmAiPortfolioAction(action: any) {
   }
 
   const details: Record<string, string> = {
-    buy: `Buy ${action.shares} ${ticker} at $${action.price}?`,
-    sell: `Sell ${action.shares == null ? 'all' : action.shares} ${ticker} at $${action.price}?`,
-    set_pt: `Set ${ticker}'s target price to $${action.pt}?`,
-    set_price: `Set ${ticker}'s tracked market price to $${action.price}?`,
-    set_balance: `Set margin debt/balance to ${action.balance}?`,
-    set_free_cash: `Set account balance/debt to ${action.amount}?`,
+    buy: `Buy ${action.shares} ${ticker} at ${action.price}?`,
+    sell: `Sell ${action.shares == null ? 'all' : action.shares} ${ticker} at ${action.price}?`,
+    set_pt: `Set ${ticker}'s target price to ${action.pt}?`,
+    set_price: `Set ${ticker}'s tracked market price to ${action.price}?`,
+    set_balance: `Set signed margin balance to ${action.balance}?`,
+    set_free_cash: `Set free cash to ${action.amount}?`,
     add_cash_stock: `Add ${action.shares} shares of ${ticker} to cash holdings?`,
     remove_cash_stock: `Remove ${ticker} from cash holdings?`
   };
@@ -1156,7 +1156,70 @@ function confirmAiPortfolioAction(action: any) {
     logTerminal(`[AI Action Error]: Unsupported action "${action.action}". No changes were made.`);
     return false;
   }
-  return confirm(`Gemini interpreted your input as this portfolio change:\n\n${message}\n\nApply it?`);
+
+  const confirmationLines = [
+    'Gemini interpreted your input as this portfolio change:',
+    '',
+    message
+  ];
+  const currentPosition = state.positions[ticker] ||
+    state.cashCushion?.holdings?.find((holding: any) => holding.ticker === ticker);
+  const currentShares = action.action === 'buy'
+    ? Number(state.positions[ticker]?.shares) || 0
+    : Number(currentPosition?.shares) || 0;
+  const rules = state.brokerAssumptions || TRADERNET_RULES;
+
+  if (action.action === 'buy') {
+    const shares = Number(action.shares);
+    const price = Number(action.price);
+    const gross = shares * price;
+    const commission = calculateCommission(shares, gross, rules as any);
+    const totalOutlay = gross + commission;
+    const availableCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
+    const cashUsed = Math.min(availableCash, totalOutlay);
+    const debtAdded = totalOutlay - cashUsed;
+    confirmationLines.push(
+      '',
+      `Estimated purchase value: ${formatUSD(gross)}`,
+      `Estimated commission: ${formatUSD(commission)}`,
+      `Estimated total outlay: ${formatUSD(totalOutlay)}`,
+      `Estimated free cash used: ${formatUSD(cashUsed)}`,
+      `Estimated additional margin debt: ${formatUSD(debtAdded)}`,
+      `Tracked shares: ${currentShares} → ${currentShares + shares}`
+    );
+  } else if (action.action === 'sell') {
+    const shares = action.shares == null ? currentShares : Number(action.shares);
+    const price = Number(action.price);
+    const gross = shares * price;
+    const commission = calculateCommission(shares, gross, rules as any);
+    confirmationLines.push(
+      '',
+      `Tracked shares available: ${currentShares}`,
+      `Estimated gross proceeds: ${formatUSD(gross)}`,
+      `Estimated commission: ${formatUSD(commission)}`,
+      `Estimated proceeds after commission: ${formatUSD(gross - commission)}`
+    );
+    if (shares > currentShares) {
+      confirmationLines.push('Warning: requested sale exceeds tracked shares and will be rejected.');
+    } else {
+      confirmationLines.push(`Tracked shares after sale: ${Math.max(0, currentShares - shares)}`);
+    }
+  } else if (action.action === 'set_balance') {
+    confirmationLines.push('Sign convention: positive means available cash; negative means margin debt.');
+  } else if (action.action === 'set_free_cash') {
+    confirmationLines.push('This changes the free-cash cushion; it does not directly change the margin balance.');
+  } else if (action.action === 'set_price') {
+    confirmationLines.push('This sets a manually tracked price; it is not a live quote refresh.');
+  }
+
+  confirmationLines.push(
+    '',
+    'These are portfolio-model estimates only. No broker order is submitted.',
+    'Verify quantities, prices, and fees before applying this change.',
+    '',
+    'Apply this change?'
+  );
+  return confirm(confirmationLines.join('\n'));
 }
 
 function showScenarioModal(data: ScenarioModalData): void {
