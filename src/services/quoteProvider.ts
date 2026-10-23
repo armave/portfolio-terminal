@@ -9,7 +9,11 @@ export async function fetchFallbackPrice(symbol: string) {
         price: fallback.price,
         sourceName: fallback.sourceName,
         quoteDetails: {
-          marketState: 'REGULAR',
+          // These providers do not reliably return a market-session label or
+          // source observation timestamp. Do not present a fallback as live.
+          marketState: 'UNKNOWN',
+          freshness: 'unknown',
+          receivedAt: Date.now(),
           price: fallback.price,
           change: fallback.change ?? 0,
           changePercent: fallback.changePercent ?? 0
@@ -57,6 +61,10 @@ export async function fetchLivePriceFromProviders(symbol: string) {
         const hasPreviousClose = Number.isFinite(previousClose) && previousClose > 0;
         quoteDetails = {
           marketState,
+          // The current proxy payload does not expose a trustworthy source
+          // observation time, so receivedAt must not be mistaken for quote time.
+          freshness: 'unknown',
+          receivedAt: Date.now(),
           price: current,
           change,
           changePercent: hasPreviousClose ? (change / previousClose) * 100 : 0
