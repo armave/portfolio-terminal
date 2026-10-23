@@ -428,7 +428,7 @@ describe('portfolio domain', () => {
     expect(calculateCommission(10, 100, rules)).toBe(1.5); // 0.1 + 0.1 = 0.2 -> min 1.5
     expect(calculateCommission(0, 100, rules)).toBe(0); // 0 shares
     expect(calculateCommission(Number.NaN, 100, rules)).toBe(0);
-    expect(calculateCommission(10, Number.NaN, rules)).toBe(0);
+    expect(() => calculateCommission(10, Number.NaN, rules)).toThrow(RangeError);
     expect(() => calculateCommission(10, 100, { ...rules, minCommOrder: Number.NaN })).toThrow(RangeError);
     expect(() => calculateCommission(10, 100, { ...rules, commPerShare: -1 })).toThrow(RangeError);
   });
