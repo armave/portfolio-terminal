@@ -1,4 +1,3 @@
-import { h } from 'preact';
 import { createRiskSnapshot } from '../domain/riskSnapshot';
 import type { BoardState } from '../types/portfolio';
 import { formatUSD } from '../utils/formatters';
