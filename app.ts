@@ -1211,7 +1211,7 @@ function confirmAiPortfolioAction(action: any) {
     '',
     'Apply this change?'
   );
-  return confirm(confirmationLines.join('\\n'));
+  return confirm(confirmationLines.join('\n'));
 }
 
 function showScenarioModal(data: ScenarioModalData): void {
