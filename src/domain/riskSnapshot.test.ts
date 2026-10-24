@@ -79,4 +79,34 @@ describe('createRiskSnapshot', () => {
     } as unknown as BoardState);
     expect(invalidCash.cash).toMatchObject({ value: null, validity: 'invalid' });
   });
+  it('is deterministic for identical inputs and does not mutate canonical state', () => {
+    const state = {
+      positions: {
+        ABC: position(),
+        XYZ: position({ ticker: 'XYZ', shares: 2, currentPrice: 5 })
+      },
+      cashCushion: { freeCash: 250, holdings: [] },
+      balance: -900
+    } as unknown as BoardState;
+    const before = JSON.stringify(state);
+
+    const first = createRiskSnapshot(state, 456);
+    const second = createRiskSnapshot(state, 456);
+
+    expect(first).toEqual(second);
+    expect(JSON.stringify(state)).toBe(before);
+  });
+
+  it('withholds exposure when multiplication overflows a finite number', () => {
+    const snapshot = createRiskSnapshot({
+      positions: {
+        HUGE: position({ ticker: 'HUGE', shares: Number.MAX_VALUE, currentPrice: 2 })
+      },
+      cashCushion: { freeCash: 0, holdings: [] }
+    } as unknown as BoardState);
+
+    expect(snapshot.grossExposure.value).toBeNull();
+    expect(snapshot.grossExposure.validity).toBe('missing');
+  });
+
 });
