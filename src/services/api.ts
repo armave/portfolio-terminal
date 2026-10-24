@@ -119,7 +119,48 @@ export interface ProxyFetchOptions extends RequestInit {
   state?: Record<string, any> | PortfolioState;
 }
 
-export async function proxyFetch(
+const proxyReadRequests = new Map<string, Promise<any>>();
+const COALESCED_READ_ACTIONS = new Set(['', 'quote', 'provider-quote', 'news', 'stocktwits', 'freedom-quote']);
+
+/**
+ * Share identical in-flight market-data reads across features. This is deliberately
+ * request coalescing only (not a second response cache): failures are not retained,
+ * and writes / cloud state operations are never deduplicated.
+ */
+export function proxyFetch(
+  action = '',
+  queryParams: Record<string, string | number | boolean | undefined | null> = {},
+  fetchOptions: ProxyFetchOptions = {}
+): Promise<any> {
+  const method = (fetchOptions.method || 'GET').toUpperCase();
+  const canCoalesce = fetchOptions.cache !== 'no-store' && COALESCED_READ_ACTIONS.has(action) &&
+    (method === 'GET' || (action === '' && method === 'POST')) &&
+    !fetchOptions.body && !fetchOptions.state;
+  if (!canCoalesce) return performProxyFetch(action, queryParams, fetchOptions);
+
+  const secret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
+  const normalizedParams = Object.entries(queryParams)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .sort(([a], [b]) => a.localeCompare(b));
+  const key = JSON.stringify([action, method, normalizedParams, secret]);
+  const existing = proxyReadRequests.get(key);
+  if (existing) {
+    recordApiMetric('inflight_dedup', { operation: action || 'deep_data' });
+    return existing;
+  }
+
+  const request = performProxyFetch(action, queryParams, fetchOptions);
+  proxyReadRequests.set(key, request);
+  void request.finally(() => {
+    if (proxyReadRequests.get(key) === request) proxyReadRequests.delete(key);
+  }).catch(() => {
+    // The original promise owns error handling; prevent the cleanup chain from
+    // creating an unhandled rejection.
+  });
+  return request;
+}
+
+async function performProxyFetch(
   action = '',
   queryParams: Record<string, string | number | boolean | undefined | null> = {},
   fetchOptions: ProxyFetchOptions = {}
@@ -372,7 +413,7 @@ export async function fetchYahooDeepStockData(ticker: string, force = false): Pr
   if (!force && existing) return existing;
 
   const startedAt = Date.now();
-  const request = proxyFetch('', { symbol }, { method: 'POST' })
+  const request = proxyFetch('', { symbol }, { method: 'POST', ...(force ? { cache: 'no-store' as RequestCache } : {}) })
     .then((data) => {
       const durationMs = Date.now() - startedAt;
       if (data?.error) {

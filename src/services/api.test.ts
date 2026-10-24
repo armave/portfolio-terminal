@@ -43,6 +43,41 @@ async function encryptV2Fixture(value: unknown, secret: string): Promise<string>
   return `aesgcm:v2:${toBase64(nonce)}:${toBase64(new Uint8Array(ciphertext))}`;
 }
 
+describe('proxy request coalescing', () => {
+  it('shares identical concurrent market-data requests', async () => {
+    let resolveFetch!: (value: any) => void;
+    const fetchMock = vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = proxyFetch('news', { symbol: 'AAPL' });
+    const second = proxyFetch('news', { symbol: 'AAPL' });
+    await Promise.resolve();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveFetch({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ articles: [] })
+    });
+    await expect(Promise.all([first, second])).resolves.toEqual([{ articles: [] }, { articles: [] }]);
+  });
+
+  it('does not coalesce requests with different symbols', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ ok: true })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await Promise.all([
+      proxyFetch('news', { symbol: 'AAPL' }),
+      proxyFetch('news', { symbol: 'MSFT' })
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('cloud state sync', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
