@@ -317,6 +317,77 @@ describe('cloud pull revision safety', () => {
 });
 
 
+describe('queued writes during concurrent cloud pulls', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('does not adopt a revision learned from a pull after a queued snapshot was submitted', async () => {
+    let resolveFirstPush!: (response: any) => void;
+    const firstPushResponse = new Promise((resolve) => {
+      resolveFirstPush = resolve;
+    });
+    const secret = 'cloud-encryption-secret';
+    const encryptedPayload = CryptoJS.AES.encrypt(JSON.stringify({
+      activeView: 'CLOUD',
+      balance: 200,
+      lastRolloverTimestamp: Date.now()
+    }), secret).toString();
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => firstPushResponse)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"99"' }),
+        json: async () => ({ encryptedPayload })
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        headers: new Headers({ ETag: '"99"' }),
+        json: async () => ({ error: 'Cloud portfolio changed since this device last synced.' })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const first = pushCloudState({ activeView: 'FIRST', balance: 1 }, {
+      secret, showToast: vi.fn()
+    });
+    const second = pushCloudState({ activeView: 'STALE_QUEUED', balance: 2 }, {
+      secret, showToast: vi.fn()
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 0 },
+      secret,
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    });
+
+    resolveFirstPush({
+      ok: true,
+      status: 200,
+      headers: new Headers({ ETag: '"100"' }),
+      json: async () => ({ success: true })
+    });
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(false);
+
+    const firstHeaders = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    const secondHeaders = fetchMock.mock.calls[2][1].headers as Record<string, string>;
+    expect(secondHeaders['If-Match']).toBe(firstHeaders['If-Match']);
+    expect(secondHeaders['If-Match']).not.toBe('"99"');
+  });
+});
+
 describe('Yahoo deep-data request deduplication', () => {
   afterEach(() => {
     clearYahooDeepStockDataCache();
