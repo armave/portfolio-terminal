@@ -135,6 +135,9 @@ if (typeof window !== 'undefined') {
     portfolioStore.setState({
       brokerAccountInfo: { ...snapshot, receivedAt: Date.now() }
     });
+    // The broker snapshot arrives asynchronously after initial render; refresh the
+    // visible desk so the reconciliation table appears without a manual navigation.
+    renderBoard();
   });
 }
 
