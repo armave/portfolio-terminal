@@ -16,7 +16,10 @@ export function ClosedHistoryDesk() {
       if (Array.isArray(trades)) setBrokerTrades(trades);
     };
     readCurrentTrades();
+    // If the route opens directly, App's initial fetch may already have fired.
+    // Ask App to fetch now as well; both the event and shared cache are supported.
     window.addEventListener('tradenet:executed-trades', onTrades);
+    window.dispatchEvent(new CustomEvent('tradenet:request-executed-trades'));
     return () => window.removeEventListener('tradenet:executed-trades', onTrades);
   }, []);
   const appTrades = (state.closedTrades || []).map((trade, index) => ({ trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const, profit: Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0), fees: Number((trade as any).feesAndCommissions ?? (trade as any).totalCommissions ?? (trade as any).commissions ?? 0) }));
@@ -60,7 +63,42 @@ export function ClosedHistoryDesk() {
     return durationByObject;
   })();
   const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => ({ trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradesWithDuration.get(broker), feesAndCommissions: broker.commission, netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const }, index: -1, source: 'tradenet' as const, profit: broker.profit == null ? null : Number(broker.profit), fees: broker.commission == null ? 0 : Number(broker.commission) }));
-  const trades = [...appTrades, ...brokerRows].sort((a, b) => String((b.trade as any).exitDate ?? '').localeCompare(String((a.trade as any).exitDate ?? '')));
+  // Group same-ticker sell executions that occur within one hour into one closed-history row.
+  // Keep separate groups when the gap from the previous execution exceeds one hour.
+  const groupedBrokerRows = (() => {
+    const sorted = [...brokerRows].sort((a, b) => Date.parse(String((a.trade as any).exitDate ?? '')) - Date.parse(String((b.trade as any).exitDate ?? '')));
+    const groups: typeof brokerRows = [];
+    for (const row of sorted) {
+      const ticker = String((row.trade as any).ticker ?? '').trim().toUpperCase();
+      const time = Date.parse(String((row.trade as any).exitDate ?? ''));
+      const previous = groups[groups.length - 1];
+      const previousTicker = previous ? String((previous.trade as any).ticker ?? '').trim().toUpperCase() : '';
+      const previousTime = previous ? Date.parse(String((previous.trade as any).exitDate ?? '')) : NaN;
+      if (previous && ticker && ticker === previousTicker && Number.isFinite(time) && Number.isFinite(previousTime) && time - previousTime <= 60 * 60 * 1000) {
+        const oldQty = Number((previous.trade as any).shares ?? 0);
+        const newQty = Number((row.trade as any).shares ?? 0);
+        const oldProfit = previous.profit;
+        const newProfit = row.profit;
+        const oldFees = previous.fees;
+        const newFees = row.fees;
+        const oldDuration = (previous.trade as any).holdingDays;
+        const newDuration = (row.trade as any).holdingDays;
+        const totalQty = oldQty + newQty;
+        (previous.trade as any).shares = totalQty;
+        (previous.trade as any).exitDate = (row.trade as any).exitDate;
+        (previous.trade as any).sellDate = (row.trade as any).exitDate;
+        (previous.trade as any).id = String((previous.trade as any).id) + '+' + String((row.trade as any).id);
+        (previous.trade as any).holdingDays = oldDuration != null && newDuration != null && totalQty > 0 ? (Number(oldDuration) * oldQty + Number(newDuration) * newQty) / totalQty : oldDuration ?? newDuration;
+        previous.profit = oldProfit == null || newProfit == null ? null : oldProfit + newProfit;
+        previous.fees = oldFees + newFees;
+        (previous.trade as any).price = totalQty > 0 ? (Number((previous.trade as any).price ?? 0) * oldQty + Number((row.trade as any).price ?? 0) * newQty) / totalQty : (row.trade as any).price;
+      } else {
+        groups.push({ ...row, trade: { ...(row.trade as any) } });
+      }
+    }
+    return groups;
+  })();
+  const trades = [...appTrades, ...groupedBrokerRows].sort((a, b) => String((b.trade as any).exitDate ?? (b.trade as any).sellDate ?? '').localeCompare(String((a.trade as any).exitDate ?? (a.trade as any).sellDate ?? '')));
   const realizedNet = trades.reduce((total, row) => total + (row.profit ?? 0), 0);
   const totalFees = trades.reduce((total, row) => total + (Number.isFinite(row.fees) ? row.fees : 0), 0);
   const profitKnownTrades = trades.filter((row) => row.profit !== null);
