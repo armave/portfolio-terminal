@@ -164,6 +164,87 @@ export async function proxyFetch(
   return data;
 }
 
+const YAHOO_QUOTE_CACHE_TTL_MS = 8 * 1000;
+const yahooQuoteCache = new Map<string, { expiresAt: number; data: any }>();
+const yahooQuoteRequests = new Map<string, Promise<any>>();
+const yahooQuoteQueue = new Map<string, { resolvers: Array<(value: any) => void>; rejecters: Array<(error: unknown) => void> }>();
+let yahooQuoteFlushScheduled = false;
+
+function recordApiMetric(metric: string, details: Record<string, unknown> = {}): void {
+  // Keep metrics low-cardinality: never include credentials or full request URLs.
+  console.info('[api-metric]', JSON.stringify({ metric, ...details }));
+}
+
+async function flushYahooQuoteQueue(): Promise<void> {
+  yahooQuoteFlushScheduled = false;
+  const entries = [...yahooQuoteQueue.entries()];
+  yahooQuoteQueue.clear();
+  if (!entries.length) return;
+  const symbols = entries.map(([symbol]) => symbol);
+  const startedAt = Date.now();
+  try {
+    const response = await proxyFetch('quote', { symbol: symbols.join(',') });
+    const results = normalizeYahooBatchResults(response, symbols);
+    const bySymbol = new Map<string, any>();
+    results.forEach((item: any, index: number) => {
+      const symbol = normalizeYahooSymbol(item?.symbol || symbols[index]);
+      if (symbol) bySymbol.set(symbol, item);
+    });
+    recordApiMetric('provider_request', { provider: 'yahoo', operation: 'quote_batch', count: symbols.length, durationMs: Date.now() - startedAt, success: true });
+    for (const [symbol, pending] of entries) {
+      const data = bySymbol.get(symbol) ?? { symbol, error: 'Yahoo quote missing from batch response' };
+      if (!data.error && data.price && typeof data.price === 'object') {
+        yahooQuoteCache.set(symbol, { expiresAt: Date.now() + YAHOO_QUOTE_CACHE_TTL_MS, data });
+      }
+      yahooQuoteRequests.delete(symbol);
+      pending.resolvers.forEach(resolve => resolve(data));
+    }
+  } catch (error) {
+    recordApiMetric('provider_failure', { provider: 'yahoo', operation: 'quote_batch', count: symbols.length, durationMs: Date.now() - startedAt });
+    for (const [symbol, pending] of entries) {
+      yahooQuoteRequests.delete(symbol);
+      pending.rejecters.forEach(reject => reject(error));
+    }
+  }
+}
+
+/** Lightweight quote path. Calls queued in the same turn are batched by the Worker. */
+export async function fetchYahooQuoteData(ticker: string, force = false): Promise<any> {
+  const symbol = normalizeYahooSymbol(ticker);
+  if (!symbol) return null;
+  const cached = yahooQuoteCache.get(symbol);
+  if (!force && cached && cached.expiresAt > Date.now()) {
+    recordApiMetric('cache_hit', { cache: 'yahoo_quote' });
+    return cached.data;
+  }
+  if (cached) yahooQuoteCache.delete(symbol);
+  const existing = yahooQuoteRequests.get(symbol);
+  if (!force && existing) {
+    recordApiMetric('inflight_dedup', { operation: 'yahoo_quote' });
+    return existing;
+  }
+
+  let resolveRequest!: (value: any) => void;
+  let rejectRequest!: (error: unknown) => void;
+  const request = new Promise<any>((resolve, reject) => {
+    resolveRequest = resolve;
+    rejectRequest = reject;
+  });
+  const pending = yahooQuoteQueue.get(symbol);
+  if (pending && !force) {
+    pending.resolvers.push(resolveRequest);
+    pending.rejecters.push(rejectRequest);
+  } else {
+    yahooQuoteQueue.set(symbol, { resolvers: [resolveRequest], rejecters: [rejectRequest] });
+  }
+  yahooQuoteRequests.set(symbol, request);
+  if (!yahooQuoteFlushScheduled) {
+    yahooQuoteFlushScheduled = true;
+    queueMicrotask(() => { void flushYahooQuoteQueue(); });
+  }
+  return request;
+}
+
 export async function fetchYahooStockData(ticker: string): Promise<any> {
   if (!ticker) return null;
   const cleanTicker = ticker.trim().toUpperCase();
@@ -283,7 +364,7 @@ export async function fetchYahooDeepStockData(ticker: string, force = false): Pr
   }
 
   const existing = yahooDeepDataRequests.get(symbol);
-  if (existing) return existing;
+  if (!force && existing) return existing;
 
   const request = proxyFetch('', { symbol }, { method: 'POST' })
     .then((data) => {
@@ -305,6 +386,10 @@ export async function fetchYahooDeepStockData(ticker: string, force = false): Pr
 export function clearYahooDeepStockDataCache(): void {
   yahooDeepDataCache.clear();
   yahooDeepDataRequests.clear();
+  yahooQuoteCache.clear();
+  yahooQuoteRequests.clear();
+  yahooQuoteQueue.clear();
+  yahooQuoteFlushScheduled = false;
   marketNewsCache.clear();
   marketNewsRequests.clear();
   stocktwitsCache.clear();
