@@ -447,6 +447,23 @@ describe('portfolio domain', () => {
     expect(calculateProjectedDebt(1000, 0.01, Number.NaN)).toBe(0);
   });
 
+  it('matches live rollover cent rounding in projected debt', () => {
+    const dailyRate = 1 / 365;
+    const projectedDebt = calculateProjectedDebt(1.99, dailyRate, 3);
+    vi.useFakeTimers();
+    const state = {
+      balance: -1.99,
+      lastRolloverTimestamp: new Date('2026-01-01T00:00:00Z').getTime(),
+      brokerAssumptions: { annualRate: 1, dayCountBasis: 365, rolloverHour: 4, rolloverMinute: 0 }
+    };
+    vi.setSystemTime(new Date('2026-01-04T00:00:00Z'));
+
+    expect(processRollovers(state)).toBe(true);
+    expect(Math.abs(state.balance)).toBe(2.02);
+    expect(projectedDebt).toBe(2.02);
+    vi.useRealTimers();
+  });
+
   it('calculates accrued fees correctly', () => {
     expect(calculateAccruedFees(10.5, 5.25, 2.25)).toBe(18);
     expect(calculateAccruedFees(0, 0, 0)).toBe(0);
