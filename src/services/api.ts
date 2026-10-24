@@ -2,7 +2,6 @@ import CryptoJS from 'crypto-js';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedState, saveState } from './storage';
 import { PortfolioState } from '../types/portfolio';
-import { fetchFreedomNews } from './freedomMarketData';
 
 const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
@@ -384,7 +383,10 @@ export async function fetchMarketNews(ticker: string, force = false): Promise<an
 
   const request = (async () => {
     try {
-      const freedomItems = await fetchFreedomNews(symbol);
+      const freedomSymbol = symbol.includes('.') ? symbol : `${symbol}.US`;
+      const freedomPayload = await proxyFetch('freedom-news', { symbol: freedomSymbol });
+      const raw = freedomPayload?.data;
+      const freedomItems = Array.isArray(raw) ? raw : Array.isArray(raw?.news) ? raw.news : Array.isArray(raw?.items) ? raw.items : Array.isArray(raw?.stories) ? raw.stories : [];
       const normalized = freedomItems.map((item: any) => ({
         headline: String(item?.headline ?? item?.title ?? item?.name ?? ''),
         summary: String(item?.summary ?? item?.description ?? ''),
