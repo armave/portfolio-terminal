@@ -9,6 +9,7 @@ import {
   normalizeYahooBatchResults,
   validateGatewaySecret,
   fetchYahooDeepStockData,
+  fetchYahooQuoteData,
   fetchMarketNews,
   fetchStocktwitsStream,
   rememberYahooDeepStockData,
@@ -766,5 +767,43 @@ describe('Yahoo batch result normalization', () => {
   it('wraps a single-symbol result in an array', () => {
     const result = { symbol: 'AAPL', price: { current: 100 } };
     expect(normalizeYahooBatchResults(result, ['AAPL'])).toEqual([result]);
+  });
+});
+
+
+describe('lightweight Yahoo quote batching', () => {
+  beforeEach(() => {
+    clearYahooDeepStockDataCache();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('batches distinct symbols requested in the same turn and caches successful quotes', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => [
+        { symbol: 'AAPL', price: { current: 210 } },
+        { symbol: 'MSFT', price: { current: 420 } }
+      ]
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const [aapl, msft] = await Promise.all([
+      fetchYahooQuoteData('aapl'),
+      fetchYahooQuoteData('MSFT')
+    ]);
+
+    expect(aapl.price.current).toBe(210);
+    expect(msft.price.current).toBe(420);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(new URL(fetchMock.mock.calls[0][0]).searchParams.get('symbol')).toBe('AAPL,MSFT');
+
+    const cached = await fetchYahooQuoteData('AAPL');
+    expect(cached.price.current).toBe(210);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
