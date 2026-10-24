@@ -45,7 +45,8 @@
 - [x] Regression test added for the concurrent-pull/queued-write race.
 - [x] Re-run and inspect all CI jobs on the latest code-bearing commit: both Pull Request CI and Validate passed typecheck, tests, build, dead-code validation, and production dependency audit.
 - [ ] Complete financial transaction parity, rollover boundaries, and rounding review with any additional edge-case regression tests. Initial source/test review found broad existing coverage; no further formula change is justified without a proven discrepancy.
-- [ ] Review market-data freshness/fallback semantics and UI async races.
+- [x] Initial market-data provenance review: Yahoo quotes use source observation timestamps; unknown timestamps are not marked fresh, and fallback providers are explicitly marked unknown freshness. No additional confirmed defect found in this pass.
+- [ ] Complete UI async race review and add stale-request ordering tests where needed.
 - [ ] Plan and implement versioned authenticated cloud encryption migration without breaking legacy ciphertext.
 
 ## Confirmed repository observations
