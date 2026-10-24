@@ -179,62 +179,6 @@ export function App({ }: AppProps) {
                 COMBINED PORTFOLIO
               </div>
             </div>
-            <section
-              aria-label="Freedom TradeNet executed trade history"
-              class="rounded-lg border border-sky-900/60 bg-slate-950/70 p-4 space-y-3"
-            >
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 class="text-sm font-bold text-sky-300">Freedom TradeNet · Executed trades</h2>
-                  <p class="text-[11px] text-slate-400">Read-only execution history. Your app's Cash/Margin classification remains unchanged.</p>
-                </div>
-                <div class="flex flex-wrap gap-2">
-                  <button type="button" onClick={loadExecutedTrades} disabled={tradesDebugLoading}
-                    class="rounded border border-sky-800 bg-sky-950 px-3 py-1.5 text-xs font-semibold text-sky-200 hover:bg-sky-900 disabled:opacity-50">
-                    {tradesDebugLoading ? 'Loading…' : executedTrades ? 'Refresh trades' : 'Load executed trades'}
-                  </button>
-                  <button type="button" onClick={loadTradesDebugResponse} disabled={tradesDebugLoading}
-                    class="rounded border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50">
-                    Show raw JSON
-                  </button>
-                </div>
-              </div>
-              {tradesDebugError && <p role="alert" class="text-xs text-rose-300">{tradesDebugError}</p>}
-              {executedTrades !== null && (
-                executedTrades.length === 0
-                  ? <p class="text-xs text-amber-300">No trades found in a recognized response array. Use Show raw JSON to inspect the response.</p>
-                  : <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs">
-                      <thead class="text-[10px] uppercase tracking-wide text-slate-400">
-                        <tr><th class="px-2 py-2">Executed at</th><th class="px-2 py-2">Ticker</th><th class="px-2 py-2">Side</th><th class="px-2 py-2 text-right">Qty</th><th class="px-2 py-2 text-right">Price</th><th class="px-2 py-2">Currency</th><th class="px-2 py-2 text-right">Commission</th><th class="px-2 py-2 text-right">Margin fee</th><th class="px-2 py-2 text-right">Profit after margin fee*</th></tr>
-                      </thead>
-                      <tbody>
-                        {executedTrades.map((trade) => (
-                          <tr key={trade.id} class="border-t border-slate-800">
-                            <td class="whitespace-nowrap px-2 py-2 text-slate-300">{trade.executedAt ? trade.executedAt.replace('T', ' ') : '—'}</td>
-                            <td class="px-2 py-2 font-semibold text-white">{trade.ticker || '—'}</td><td class="px-2 py-2">{trade.side}</td>
-                            <td class="px-2 py-2 text-right font-mono">{trade.quantity ?? '—'}</td>
-                            <td class="px-2 py-2 text-right font-mono">{trade.price === null ? '—' : trade.price.toLocaleString('en-US', { maximumFractionDigits: 6 })}</td>
-                            <td class="px-2 py-2">{trade.currency || '—'}</td>
-                            <td class="px-2 py-2 text-right font-mono">{trade.commission === null ? '—' : trade.commission.toLocaleString('en-US', { maximumFractionDigits: 2 })} {trade.commissionCurrency}</td>
-                            <td class="px-2 py-2 text-right font-mono">{getTradeMarginFee(trade) === null ? '—' : getTradeMarginFee(trade)!.toLocaleString('en-US', { maximumFractionDigits: 2 })} {trade.currency}</td>
-                            <td class="px-2 py-2 text-right font-mono">{trade.profit === null ? '—' : (getTradeMarginFee(trade) === null ? trade.profit : trade.profit - getTradeMarginFee(trade)!).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-              )}
-              {executedTrades !== null && <p class="text-[10px] text-slate-500">* Uses Freedom's reported profit when no fee for the specific stock/trade is available. When TradeNet provides a per-trade margin fee, or exactly one app closed-trade record matches ticker, sell date, and quantity, that fee is subtracted from reported profit. Commissions are shown separately and are not deducted here.</p>}
-              {tradesDebugResponse !== null && (
-                <details class="space-y-2"><summary class="cursor-pointer text-xs text-slate-400">Raw TradeNet response</summary>
-                  <textarea aria-label="Raw TradeNet getTradesHistory response" readOnly rows={8}
-                    value={JSON.stringify(tradesDebugResponse, null, 2)}
-                    class="w-full rounded border border-slate-700 bg-slate-900 p-3 font-mono text-[11px] text-slate-200"
-                    onClick={(event) => (event.currentTarget as HTMLTextAreaElement).select()} />
-                </details>
-              )}
-            </section>
 
             <section
               aria-label="Freedom TradeNet USD portfolio"
