@@ -296,10 +296,12 @@ export default {
                 } catch (error) {
                     return jsonError(error instanceof Error ? error.message : "Invalid TradeNet positions response.", 502, corsHeaders);
                 }
+                // Keep the gateway envelope shallow: the frontend normalizer expects
+                // data.result.ps, not data.data.result.ps.
                 return new Response(JSON.stringify({
                     ok: true,
                     provider: "Freedom TradeNet",
-                    data
+                    data: data.data
                 }), { headers: corsHeaders });
             }
 
