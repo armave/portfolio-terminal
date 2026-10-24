@@ -126,6 +126,18 @@ function setCloudStatus(status: string, text: string) {
   }
 }
 
+// Keep the latest Freedom snapshot in the shared portfolio store so all app
+// views can consume broker quantities/prices without overwriting app-owned lots.
+if (typeof window !== 'undefined') {
+  window.addEventListener('tradenet:account-info', (event: Event) => {
+    const snapshot = (event as CustomEvent).detail;
+    if (!snapshot || snapshot.loaded !== true || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.balances)) return;
+    portfolioStore.setState({
+      brokerAccountInfo: { ...snapshot, receivedAt: Date.now() }
+    });
+  });
+}
+
 portfolioStore.subscribe((nextStoreState) => {
   state = nextStoreState as any;
 });
