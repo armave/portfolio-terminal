@@ -1,4 +1,10 @@
-model: gemini/gemini-pro-latest
+# Primary & Commit Models (Zero-Cost OpenRouter Stack)
+model: openrouter/poolside/laguna-s-2.1:free
+weak-model: openrouter/cohere/north-mini-code:free
+
+# Global Fallback & Zero-Cost Metadata Links
+model-settings-file: ~/.aider.model.settings.yml
+model-metadata-file: ~/.aider.model.metadata.json
 
 # Fully autonomous execution
 yes-always: true
