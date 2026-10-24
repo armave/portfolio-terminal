@@ -289,6 +289,64 @@ export interface RenderBoardOptions extends RenderCashCushionOptions {
   onUpdateLastDeskView?: (view: string) => void;
 }
 
+function renderFreedomAccountSnapshot(state: BoardState): void {
+  const host = document.getElementById('freedomAccountSnapshot');
+  const parent = document.getElementById('mainDeskContainer');
+  if (!parent) return;
+  let section = host;
+  if (!section) {
+    section = document.createElement('section');
+    section.id = 'freedomAccountSnapshot';
+    section.className = 'rounded-lg border border-slate-700 bg-slate-900/50 p-3 space-y-3';
+    section.setAttribute('aria-label', 'Freedom broker account reconciliation');
+    const titleRow = document.getElementById('boardTitleRow');
+    if (titleRow?.parentElement === parent) parent.insertBefore(section, titleRow.nextSibling);
+    else parent.prepend(section);
+  }
+
+  const snapshot = state.brokerAccountInfo;
+  if (!snapshot?.loaded) {
+    section.innerHTML = '<div class="text-xs text-slate-400">Freedom account data is loading. App-owned cash and margin classifications remain unchanged.</div>';
+    return;
+  }
+
+  const money = (value: number | null | undefined) =>
+    value == null || !Number.isFinite(Number(value)) ? '—' :
+      new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(value));
+  const tickerKey = (value: unknown) => String(value || '').trim().toUpperCase();
+  const marginTickers = new Set(Object.keys(state.positions || {}).map(tickerKey));
+  const cashTickers = new Set((state.cashCushion?.holdings || []).map((item: any) => tickerKey(item?.ticker)));
+  const cashStocks = new Set((state.cashStocks || []).map((item: any) => tickerKey(item?.ticker)));
+  const positions = snapshot.positions || [];
+  const matched = positions.filter(p => marginTickers.has(tickerKey(p.ticker)) || cashTickers.has(tickerKey(p.ticker)) || cashStocks.has(tickerKey(p.ticker)));
+  const unmatched = positions.filter(p => !marginTickers.has(tickerKey(p.ticker)) && !cashTickers.has(tickerKey(p.ticker)) && !cashStocks.has(tickerKey(p.ticker)));
+  const balance = (snapshot.balances || []).find(b => b.currency.toUpperCase() === 'USD');
+
+  const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch] as string));
+  const rows = positions.map(p => {
+    const ticker = tickerKey(p.ticker);
+    const category = marginTickers.has(ticker) ? 'App margin'
+      : (cashTickers.has(ticker) || cashStocks.has(ticker)) ? 'App cash' : 'Unmatched';
+    const appQty = marginTickers.has(ticker) ? Number(state.positions?.[ticker]?.shares)
+      : (state.cashCushion?.holdings || []).find((item: any) => tickerKey(item?.ticker) === ticker)?.shares
+        ?? (state.cashStocks || []).find((item: any) => tickerKey(item?.ticker) === ticker)?.shares;
+    const qtyNote = appQty == null || !Number.isFinite(Number(appQty)) ? '—'
+      : Number(appQty) === Number(p.quantity) ? 'Qty matches' : 'Qty differs: app ' + Number(appQty) + ' / broker ' + Number(p.quantity);
+    return '<tr class="border-t border-slate-800"><td class="py-2 pr-3 font-semibold">' + esc(p.ticker) +
+      '</td><td class="py-2 pr-3">' + esc(category) + '</td><td class="py-2 pr-3 text-right font-mono">' + esc(p.quantity) +
+      '</td><td class="py-2 pr-3 text-right font-mono">' + esc(money(p.marketPrice)) +
+      '</td><td class="py-2 pr-3 text-right font-mono">' + esc(money(p.marketValue)) +
+      '</td><td class="py-2 text-xs text-slate-400">' + esc(qtyNote) + '</td></tr>';
+  }).join('');
+
+  section.innerHTML = '<div class="flex flex-wrap items-start justify-between gap-2"><div><h3 class="text-sm font-semibold text-white">Freedom account · USD</h3><p class="text-xs text-slate-400">Broker snapshot reconciled against app-owned classifications; no app positions or balances are overwritten.</p></div><div class="text-right"><div class="text-xs text-slate-400">Broker USD cash</div><div class="font-mono text-sm font-semibold">' + esc(balance ? money(balance.amount) : '—') + '</div></div></div>' +
+    '<div class="flex flex-wrap gap-3 text-xs text-slate-300"><span>' + matched.length + ' matched</span><span>' + unmatched.length + ' unmatched broker position' + (unmatched.length === 1 ? '' : 's') + '</span><span>' + positions.length + ' broker positions</span></div>' +
+    (positions.length ? '<div class="overflow-x-auto"><table class="w-full min-w-[620px] text-xs"><thead><tr class="text-slate-400 text-left"><th class="py-2 pr-3">Ticker</th><th class="py-2 pr-3">App classification</th><th class="py-2 pr-3 text-right">Broker qty</th><th class="py-2 pr-3 text-right">Market price</th><th class="py-2 pr-3 text-right">Market value</th><th class="py-2">Reconciliation</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<p class="text-xs text-slate-400">No USD broker positions were returned.</p>') +
+    '<p class="text-[11px] text-slate-500">Unmatched broker positions are diagnostic only. Assign cash or margin classification in the app before they enter portfolio calculations.</p>';
+}
+
 export function renderBoard(state: BoardState, options: RenderBoardOptions): void {
   const {
     rules,
@@ -312,6 +370,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const tickers = Object.keys(state.positions || {});
   const currentView = resolveActiveView(state);
+  renderFreedomAccountSnapshot(state);
 
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
