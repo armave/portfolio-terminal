@@ -364,7 +364,19 @@ export function calculateProjectedDebt(principal: number, dailyRate: number, day
   const p = Math.abs(rawPrincipal);
   const r = Math.max(0, rawRate);
   const d = Math.max(0, rawDays);
-  const projected = p * Math.pow(1 + r, d);
+  // The live rollover ledger rounds the debt to cents after each daily
+  // rollover. Apply the same rounding per full cycle so projections do not
+  // drift from the amount that will actually be charged.
+  const fullDays = Math.floor(d);
+  const fractionalDay = d - fullDays;
+  let projected = p;
+  for (let day = 0; day < fullDays; day++) {
+    projected = Number((projected * (1 + r)).toFixed(2));
+    if (!Number.isFinite(projected)) return 0;
+  }
+  if (fractionalDay > 0) {
+    projected *= Math.pow(1 + r, fractionalDay);
+  }
   return Number.isFinite(projected) ? Number(projected.toFixed(2)) : 0;
 }
 
