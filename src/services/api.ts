@@ -81,7 +81,10 @@ async function decryptCloudPayload(payload: string, secret: string): Promise<{ p
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) throw new Error('Secure cloud decryption is unavailable in this browser.');
   const key = await deriveCloudEncryptionKey(secret);
-  const plaintext = await subtle.decrypt({ name: 'AES-GCM', iv: nonce, tagLength: 128 }, key, ciphertext);
+  // Copy to standalone ArrayBuffers to satisfy strict DOM BufferSource typing.
+  const iv = nonce.slice().buffer as ArrayBuffer;
+  const encryptedBytes = ciphertext.slice().buffer as ArrayBuffer;
+  const plaintext = await subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, encryptedBytes);
   return { plaintext: new TextDecoder().decode(plaintext), legacy: false };
 }
 
