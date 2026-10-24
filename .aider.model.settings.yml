@@ -1,0 +1,8 @@
+- name: openrouter/poolside/laguna-s-2.1:free
+  edit_format: diff
+  weak_model_name: openrouter/cohere/north-mini-code:free
+  extra_params:
+    extra_body:
+      models:
+        - cohere/north-mini-code:free
+        - nvidia/nemotron-3-ultra-550b-a55b:free

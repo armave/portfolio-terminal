@@ -1,0 +1,26 @@
+{
+  "openrouter/poolside/laguna-s-2.1:free": {
+    "max_tokens": 8192,
+    "max_input_tokens": 262144,
+    "input_cost_per_token": 0,
+    "output_cost_per_token": 0,
+    "litellm_provider": "openrouter",
+    "mode": "chat"
+  },
+  "openrouter/cohere/north-mini-code:free": {
+    "max_tokens": 8192,
+    "max_input_tokens": 256000,
+    "input_cost_per_token": 0,
+    "output_cost_per_token": 0,
+    "litellm_provider": "openrouter",
+    "mode": "chat"
+  },
+  "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": {
+    "max_tokens": 8192,
+    "max_input_tokens": 1000000,
+    "input_cost_per_token": 0,
+    "output_cost_per_token": 0,
+    "litellm_provider": "openrouter",
+    "mode": "chat"
+  }
+}

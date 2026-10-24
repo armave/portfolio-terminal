@@ -7,4 +7,5 @@ dist/
 .aider/*
 .wrangler*
 .github*
-.aider*
+.aider.chat*
+.aider.input*
