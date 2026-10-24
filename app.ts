@@ -136,7 +136,7 @@ if (typeof window !== 'undefined') {
     const current = portfolioStore.getState();
     // TradeNet symbols use exchange suffixes (e.g. GOOGL.US); app holdings
     // use base tickers (GOOGL). Normalize the exchange suffix before comparing.
-    const tickerKey = (value: unknown) => String(value || '').trim().toUpperCase().replace(/\\.(US)$/i, '');
+    const tickerKey = (value: unknown) => String(value || '').trim().toUpperCase().replace(/\.US$/i, '');
     const marginQuantities = new Map<string, number>();
     for (const [key, position] of Object.entries(current.positions || {})) {
       const ticker = tickerKey((position as any)?.ticker || key);
