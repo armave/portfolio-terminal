@@ -368,13 +368,23 @@ export async function fetchYahooDeepStockData(ticker: string, force = false): Pr
   const existing = yahooDeepDataRequests.get(symbol);
   if (!force && existing) return existing;
 
+  const startedAt = Date.now();
   const request = proxyFetch('', { symbol }, { method: 'POST' })
     .then((data) => {
+      const durationMs = Date.now() - startedAt;
+      if (data?.error) {
+        recordApiMetric('provider_failure', { provider: 'yahoo', operation: 'deep_data', durationMs });
+      } else {
+        recordApiMetric('provider_request', { provider: 'yahoo', operation: 'deep_data', durationMs, success: true });
+      }
       if (yahooDeepDataRequests.get(symbol) === request && data && typeof data === 'object' && !data.error) {
         // A superseded request must not overwrite a newer forced refresh in cache.
         rememberYahooDeepStockData(data);
       }
       return data;
+    }, (error) => {
+      recordApiMetric('provider_failure', { provider: 'yahoo', operation: 'deep_data', durationMs: Date.now() - startedAt });
+      throw error;
     })
     .finally(() => {
       if (yahooDeepDataRequests.get(symbol) === request) {
