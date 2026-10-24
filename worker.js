@@ -144,8 +144,8 @@ const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
  * list when using a trusted custom deployment origin.
  */
 function resolveCorsHeaders(request, env) {
-    const configuredOrigins = typeof env.ALLOWED_ORIGINS === "string" && env.ALLOWED_ORIGINS.trim()
-        ? env.ALLOWED_ORIGINS.split(",").map(origin => origin.trim()).filter(Boolean)
+    const configuredOrigins = typeof env.DEFAULT_ALLOWED_ORIGINS === "string" && env.DEFAULT_ALLOWED_ORIGINS.trim()
+        ? env.DEFAULT_ALLOWED_ORIGINS.split(",").map(origin => origin.trim()).filter(Boolean)
         : env.DEFAULT_ALLOWED_ORIGINS;
     const origin = request.headers.get("Origin");
     if (origin && !configuredOrigins.includes(origin)) return null;
