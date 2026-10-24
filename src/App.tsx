@@ -283,6 +283,35 @@ export function App({ }: AppProps) {
                       </tbody>
                     </table>
                   </div>
+                  {(() => {
+                    const brokerTickers = new Set(freedomSnapshot.positions.map((position) => position.ticker.trim().toUpperCase()));
+                    const appPositions = Object.entries((appPortfolioState as any)?.positions ?? {})
+                      .map(([key, value]: [string, any]) => ({ ticker: String(value?.ticker ?? key).trim().toUpperCase(), shares: Number(value?.shares), value }))
+                      .filter((position) => position.ticker && Number.isFinite(position.shares) && Math.abs(position.shares) > 1e-8 && !brokerTickers.has(position.ticker));
+                    const appHoldings = Array.isArray((appPortfolioState as any)?.holdings) ? (appPortfolioState as any).holdings : [];
+                    const cashTickers = new Set([
+                      ...appHoldings.filter((holding: any) => holding?.isMargin === false).map((holding: any) => String(holding.ticker ?? '').trim().toUpperCase()),
+                      ...(Array.isArray((appPortfolioState as any)?.cashStocks) ? (appPortfolioState as any).cashStocks.map((holding: any) => String(holding?.ticker ?? '').trim().toUpperCase()) : [])
+                    ]);
+                    const marginTickers = new Set(appHoldings.filter((holding: any) => holding?.isMargin === true).map((holding: any) => String(holding.ticker ?? '').trim().toUpperCase()));
+                    return <div class="rounded border border-slate-800 bg-slate-900/40 p-3 space-y-2">
+                      <div class="flex items-center justify-between gap-2">
+                        <h3 class="text-xs font-semibold text-slate-300">App positions not returned by TradeNet</h3>
+                        <span class="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">{appPositions.length}</span>
+                      </div>
+                      {appPositions.length === 0
+                        ? <p class="text-[11px] text-slate-500">All nonzero app positions have a matching ticker in the broker snapshot.</p>
+                        : <div class="overflow-x-auto"><table class="w-full text-xs text-left">
+                          <thead class="text-[10px] uppercase text-slate-500"><tr><th class="px-2 py-1">Ticker</th><th class="px-2 py-1">App type</th><th class="px-2 py-1 text-right">App qty</th><th class="px-2 py-1">Status</th></tr></thead>
+                          <tbody>{appPositions.map((position) => <tr key={position.ticker} class="border-t border-slate-800">
+                            <td class="px-2 py-2 font-semibold text-slate-200">{position.ticker}</td>
+                            <td class="px-2 py-2">{cashTickers.has(position.ticker) ? 'Cash' : marginTickers.has(position.ticker) ? 'Margin' : 'Unclassified'}</td>
+                            <td class="px-2 py-2 text-right font-mono">{position.shares.toLocaleString('en-US')}</td>
+                            <td class="px-2 py-2 text-amber-300">Not returned by broker</td>
+                          </tr>)}</tbody>
+                        </table></div>}
+                    </div>;
+                  })()}
                   <p class="text-[10px] text-slate-500">Cash/Margin classification comes from your app's existing holdings and cash-stock lists, not TradeNet. Broker qty minus app qty is shown as Qty diff; a dash means no app position could be matched. Differences are diagnostic only and never overwrite app holdings. Values are broker-reported; no FX conversion is applied.</p>
                 </>
               )}
