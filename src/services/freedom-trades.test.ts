@@ -46,6 +46,7 @@ describe('normalizeFreedomTrades', () => {
               v: 4900.68,
               date: '2024-09-26T17:41:30.000',
               profit: 0,
+              margin_fee: '3.25',
               instr_nm: 'GOOGL.US',
               curr_c: 'USD',
               type: '1',
@@ -78,6 +79,7 @@ describe('normalizeFreedomTrades', () => {
       executedAt: '2024-09-26T17:41:30.000',
       tradeValue: 4900.68,
       profit: 0,
+      marginFee: 3.25,
       commission: 24.86,
       commissionCurrency: 'USD'
     });
