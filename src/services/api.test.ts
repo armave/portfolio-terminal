@@ -800,7 +800,7 @@ describe('lightweight Yahoo quote batching', () => {
     expect(aapl.price.current).toBe(210);
     expect(msft.price.current).toBe(420);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(new URL(fetchMock.mock.calls[0][0]).searchParams.get('symbol')).toBe('AAPL,MSFT');
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('symbol')).toBe('AAPL,MSFT');
 
     const cached = await fetchYahooQuoteData('AAPL');
     expect(cached.price.current).toBe(210);
@@ -844,7 +844,7 @@ describe('Yahoo deep-data forced refresh', () => {
       json: async () => ({ symbol: 'AAPL', price: { current: price } })
     });
     const resolvers: Array<(value: any) => void> = [];
-    const fetchMock = vi.fn(() => new Promise(resolve => { resolvers.push(resolve); }));
+    const fetchMock = vi.fn(() => new Promise<any>(resolve => { resolvers.push(resolve); }));
     vi.stubGlobal('fetch', fetchMock);
 
     const olderRequest = fetchYahooDeepStockData('AAPL');
