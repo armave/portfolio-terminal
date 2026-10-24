@@ -273,6 +273,11 @@ describe('versioned cloud encryption', () => {
         ok: true,
         status: 200,
         headers: new Headers({ ETag: '"71"' })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"72"' })
       });
     vi.stubGlobal('fetch', fetchMock);
     vi.spyOn(storage, 'saveState').mockReturnValue(true);
@@ -288,6 +293,11 @@ describe('versioned cloud encryption', () => {
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     const upgrade = JSON.parse(String(fetchMock.mock.calls[1][1].body));
     expect(upgrade.encryptedPayload).toMatch(/^aesgcm:v2:/);
+    // Drain the background migration write before another test replaces global fetch.
+    await expect(pushCloudState({ activeView: 'AAPL', balance: 1250 }, {
+      secret,
+      showToast: vi.fn()
+    })).resolves.toBe(true);
   });
 });
 
