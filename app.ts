@@ -135,43 +135,66 @@ if (typeof window !== 'undefined') {
     const brokerUsdBalance = snapshot.balances.find((item: any) => String(item.currency).toUpperCase() === 'USD');
     const current = portfolioStore.getState();
     const tickerKey = (value: unknown) => String(value || '').trim().toUpperCase();
-    const appQuantities = new Map<string, number>();
+    const marginQuantities = new Map<string, number>();
     for (const [key, position] of Object.entries(current.positions || {})) {
       const ticker = tickerKey((position as any)?.ticker || key);
-      if (ticker) appQuantities.set(ticker, (appQuantities.get(ticker) || 0) + (Number((position as any)?.shares) || 0));
+      if (ticker) marginQuantities.set(ticker, (marginQuantities.get(ticker) || 0) + (Number((position as any)?.shares) || 0));
     }
-    for (const holding of current.cashCushion?.holdings || []) {
-      const ticker = tickerKey((holding as any)?.ticker);
-      if (ticker) appQuantities.set(ticker, (appQuantities.get(ticker) || 0) + (Number((holding as any)?.shares) || 0));
-    }
-    for (const holding of current.cashStocks || []) {
-      const ticker = tickerKey((holding as any)?.ticker);
-      if (ticker) appQuantities.set(ticker, (appQuantities.get(ticker) || 0) + (Number((holding as any)?.shares) || 0));
-    }
-    const brokerQuantities = new Map<string, number>();
+
+    const brokerByTicker = new Map<string, any>();
     for (const position of snapshot.positions) {
       const ticker = tickerKey(position.ticker);
-      if (ticker) brokerQuantities.set(ticker, (brokerQuantities.get(ticker) || 0) + (Number(position.quantity) || 0));
+      if (!ticker) continue;
+      const previous = brokerByTicker.get(ticker);
+      brokerByTicker.set(ticker, {
+        ...position,
+        ticker,
+        quantity: (Number(previous?.quantity) || 0) + (Number(position.quantity) || 0)
+      });
     }
-    const allTickers = new Set([...appQuantities.keys(), ...brokerQuantities.keys()]);
-    const mismatches = [...allTickers].filter(ticker =>
-      Math.abs((appQuantities.get(ticker) || 0) - (brokerQuantities.get(ticker) || 0)) > 1e-6
-    ).map(ticker => ({
-      ticker,
-      appQuantity: appQuantities.get(ticker) || 0,
-      brokerQuantity: brokerQuantities.get(ticker) || 0
-    }));
+
+    // Margin holdings are app-owned and must not be rewritten from the broker.
+    // Freedom's total quantity is authoritative for cash holdings, so allocate
+    // only the quantity left after the app's margin quantity to cashStocks.
+    const mismatches: Array<{ ticker: string; marginQuantity: number; freedomQuantity: number }> = [];
+    const nextCashStocks: any[] = [];
+    for (const [ticker, brokerPosition] of brokerByTicker) {
+      const marginQuantity = marginQuantities.get(ticker) || 0;
+      const freedomQuantity = Number(brokerPosition.quantity) || 0;
+      if (freedomQuantity + 1e-6 < marginQuantity) {
+        mismatches.push({ ticker, marginQuantity, freedomQuantity });
+        continue;
+      }
+      const cashQuantity = freedomQuantity - marginQuantity;
+      if (cashQuantity > 1e-6) {
+        nextCashStocks.push({
+          ticker,
+          shares: cashQuantity,
+          ...(brokerPosition.marketPrice != null ? { currentPrice: Number(brokerPosition.marketPrice) } : {})
+        });
+      }
+    }
+
+    // Also flag app margin tickers absent from Freedom or with insufficient
+    // broker quantity; never silently reduce an app-owned margin position.
+    for (const [ticker, marginQuantity] of marginQuantities) {
+      if (!brokerByTicker.has(ticker) && marginQuantity > 1e-6) {
+        mismatches.push({ ticker, marginQuantity, freedomQuantity: 0 });
+      }
+    }
+
     portfolioStore.setState({
       brokerAccountInfo: { ...snapshot, receivedAt: Date.now() },
-      ...(brokerUsdBalance ? { balance: brokerUsdBalance.amount } : {})
+      ...(brokerUsdBalance ? { balance: brokerUsdBalance.amount } : {}),
+      cashStocks: nextCashStocks
     });
     if (mismatches.length) {
-      const detail = mismatches.map(item => `${item.ticker}: app ${item.appQuantity}, Freedom ${item.brokerQuantity}`).join('; ');
+      const detail = mismatches.map(item => `${item.ticker}: margin ${item.marginQuantity}, Freedom total ${item.freedomQuantity}`).join('; ');
       console.error('[Freedom quantity reconciliation failed]', mismatches);
       showToast(`Freedom quantity mismatch — ${detail}`, 'error');
-      logTerminal(`[Freedom Error] Position quantity mismatch: ${detail}`);
+      logTerminal(`[Freedom Error] Freedom total quantity is below app margin quantity: ${detail}`);
     } else {
-      logTerminal('[Freedom] Broker position quantities match app totals.');
+      logTerminal('[Freedom] Margin quantities reconciled; cash stocks refreshed from Freedom.');
     }
     renderBoard();
   });
