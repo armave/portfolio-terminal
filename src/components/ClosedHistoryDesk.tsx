@@ -125,7 +125,7 @@ export function ClosedHistoryDesk() {
   };
 
   return (
-    <div class="space-y-4">
+    <section class="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-4" aria-label="Closed trade history">
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
         <div>
           <h2 class="text-base font-black uppercase tracking-wider text-purple-300">
@@ -277,6 +277,6 @@ export function ClosedHistoryDesk() {
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   );
 }
