@@ -11,7 +11,7 @@ export function App({ }: AppProps) {
   const [freedomLoading, setFreedomLoading] = useState(false);
   const [freedomError, setFreedomError] = useState('');
   // App-owned portfolio state is the authority for cash-vs-margin classification.
-  const [appPortfolioState, setAppPortfolioState] = useState(() => loadSavedState());
+  const [, setAppPortfolioState] = useState(loadSavedState());
 
   const refreshFreedomPortfolio = async () => {
     setFreedomLoading(true);
