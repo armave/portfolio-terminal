@@ -167,7 +167,7 @@ export async function proxyFetch(
 const YAHOO_QUOTE_CACHE_TTL_MS = 8 * 1000;
 const yahooQuoteCache = new Map<string, { expiresAt: number; data: any }>();
 const yahooQuoteRequests = new Map<string, Promise<any>>();
-const yahooQuoteQueue = new Map<string, { resolvers: Array<(value: any) => void>; rejecters: Array<(error: unknown) => void> }>();
+const yahooQuoteQueue = new Map<string, { request: Promise<any>; resolvers: Array<(value: any) => void>; rejecters: Array<(error: unknown) => void> }>();
 let yahooQuoteFlushScheduled = false;
 
 function recordApiMetric(metric: string, details: Record<string, unknown> = {}): void {
@@ -196,13 +196,13 @@ async function flushYahooQuoteQueue(): Promise<void> {
       if (!data.error && data.price && typeof data.price === 'object') {
         yahooQuoteCache.set(symbol, { expiresAt: Date.now() + YAHOO_QUOTE_CACHE_TTL_MS, data });
       }
-      yahooQuoteRequests.delete(symbol);
+      if (yahooQuoteRequests.get(symbol) === pending.request) yahooQuoteRequests.delete(symbol);
       pending.resolvers.forEach(resolve => resolve(data));
     }
   } catch (error) {
     recordApiMetric('provider_failure', { provider: 'yahoo', operation: 'quote_batch', count: symbols.length, durationMs: Date.now() - startedAt });
     for (const [symbol, pending] of entries) {
-      yahooQuoteRequests.delete(symbol);
+      if (yahooQuoteRequests.get(symbol) === pending.request) yahooQuoteRequests.delete(symbol);
       pending.rejecters.forEach(reject => reject(error));
     }
   }
@@ -237,9 +237,9 @@ export async function fetchYahooQuoteData(ticker: string, force = false): Promis
     pending.resolvers.push(resolveRequest);
     pending.rejecters.push(rejectRequest);
   } else {
-    yahooQuoteQueue.set(symbol, { resolvers: [resolveRequest], rejecters: [rejectRequest] });
+    yahooQuoteQueue.set(symbol, { request, resolvers: [resolveRequest], rejecters: [rejectRequest] });
+    yahooQuoteRequests.set(symbol, request);
   }
-  yahooQuoteRequests.set(symbol, request);
   if (!yahooQuoteFlushScheduled) {
     yahooQuoteFlushScheduled = true;
     queueMicrotask(() => { void flushYahooQuoteQueue(); });
