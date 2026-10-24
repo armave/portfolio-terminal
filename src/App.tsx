@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { loadSavedState } from './services/storage';
-import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades, type FreedomExecutedTrade, type FreedomPortfolioSnapshot } from './services/api';
+import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades, type FreedomPortfolioSnapshot } from './services/api';
 
 interface AppProps {
   onToggleMarketInsights: () => void;
@@ -11,9 +11,6 @@ export function App({ }: AppProps) {
   const [freedomLoading, setFreedomLoading] = useState(false);
   const [freedomError, setFreedomError] = useState('');
   const [tradesDebugLoading, setTradesDebugLoading] = useState(false);
-  const [tradesDebugError, setTradesDebugError] = useState('');
-  const [tradesDebugResponse, setTradesDebugResponse] = useState<any>(null);
-  const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTrade[] | null>(null);
   // App-owned portfolio state is the authority for cash-vs-margin classification.
   const [appPortfolioState, setAppPortfolioState] = useState(loadSavedState({ holdings: [], cashStocks: [] }));
 
@@ -80,29 +77,11 @@ export function App({ }: AppProps) {
     }
   };
 
-  // Temporary diagnostic button: fetch the raw TradeNet history response for schema verification.
-  const loadTradesDebugResponse = async () => {
-    setTradesDebugLoading(true);
-    setTradesDebugError('');
-    setTradesDebugResponse(null);
-    try {
-      const response = await fetchFreedomTradeNetTrades();
-      setTradesDebugResponse(response);
-    } catch (error) {
-      setTradesDebugError(error instanceof Error ? error.message : 'Unable to fetch TradeNet trade history.');
-    } finally {
-      setTradesDebugLoading(false);
-    }
-  };
-
   const loadExecutedTrades = async () => {
     setTradesDebugLoading(true);
-    setTradesDebugError('');
     try {
       const response = await fetchFreedomTradeNetTrades();
-      setTradesDebugResponse(response);
       const normalizedTrades = normalizeFreedomTrades(response);
-      setExecutedTrades(normalizedTrades);
       // Keep broker executions separate from app-owned ClosedTrade records.
       // ClosedHistoryDesk subscribes to this event and renders the broker data.
       if (typeof window !== 'undefined') {
@@ -110,30 +89,10 @@ export function App({ }: AppProps) {
         window.dispatchEvent(new CustomEvent('tradenet:executed-trades', { detail: normalizedTrades }));
       }
     } catch (error) {
-      setTradesDebugError(error instanceof Error ? error.message : 'Unable to load executed trades.');
+      console.error('Unable to load TradeNet executed trades:', error);
     } finally {
       setTradesDebugLoading(false);
     }
-  };
-
-  // Match app-recorded margin interest only to a specific closing execution.
-  // Ticker-only matches are unsafe: one ticker may have several closed positions.
-  const getTradeMarginFee = (trade: FreedomExecutedTrade): number | null => {
-    if (trade.marginFee !== null) return trade.marginFee;
-    if (trade.side.toUpperCase() !== 'SELL' || !trade.ticker || trade.quantity === null || !trade.executedAt) return null;
-    const state = loadSavedState({ holdings: [], cashStocks: [] }) as any;
-    const closedTrades = Array.isArray(state?.closedTrades) ? state.closedTrades : [];
-    const tradeDay = String(trade.executedAt).slice(0, 10);
-    const matches = closedTrades.filter((closed: any) => {
-      const tickerMatches = String(closed?.ticker ?? '').trim().toUpperCase() === trade.ticker.trim().toUpperCase();
-      const shares = Number(closed?.shares);
-      const sharesMatch = Number.isFinite(shares) && Math.abs(shares - trade.quantity!) < 1e-6;
-      const closeDate = String(closed?.sellDate ?? closed?.exitDate ?? closed?.closedAt ?? closed?.date ?? '').slice(0, 10);
-      const dateMatches = closeDate === tradeDay;
-      return tickerMatches && sharesMatch && dateMatches && Number.isFinite(Number(closed?.marginInterest)) && Number(closed.marginInterest) >= 0;
-    });
-    // Require exactly one precise match. Never allocate a ticker's total fee across unrelated executions.
-    return matches.length === 1 ? Number(matches[0].marginInterest) : null;
   };
 
   const usd = (value: number | null) => value === null
