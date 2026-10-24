@@ -7,17 +7,18 @@ interface TradeNetWorkerEnv {
     FREEDOM_PRIVATE_KEY?: string;
 }
 
-export async function requestTradeNet(env: TradeNetWorkerEnv, command = "getPositionJson"): Promise<Record<string, unknown>> {
+export async function requestTradeNet(env: TradeNetWorkerEnv, command: "getPositionJson" | "getTradesHistory" = "getPositionJson"): Promise<Record<string, unknown>> {
     if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
         throw new Error("Freedom API secrets are missing from this Worker environment.");
     }
-    if (command !== "getPositionJson") {
-        throw new Error("This initial integration only permits getPositionJson.");
+    if (command !== "getPositionJson" && command !== "getTradesHistory") {
+        throw new Error("Unsupported read-only TradeNet command.");
     }
 
     // Match the supplied official Node.js example: POST to /api/<command>,
     // sign the exact JSON body bytes concatenated with the Unix timestamp.
-    const body = JSON.stringify({ cmd: command, params: {} });
+    const params = command === "getTradesHistory" ? { max: 100, sort: 1 } : {};
+    const body = JSON.stringify({ cmd: command, params });
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const key = await crypto.subtle.importKey(
         "raw",
