@@ -215,12 +215,12 @@ export default {
                 if (request.method !== "GET") {
                     return jsonError("Freedom test only supports GET.", 405, corsHeaders);
                 }
-                const data = await requestTradeNet(env);
+                await requestTradeNet(env);
+                // Never expose account positions or balances in a connectivity probe.
                 return new Response(JSON.stringify({
                     ok: true,
                     provider: "Freedom TradeNet",
-                    // Return broker response for the owner's authenticated diagnostic only.
-                    data
+                    message: "Authenticated read-only request succeeded."
                 }), { headers: corsHeaders });
             }
 
