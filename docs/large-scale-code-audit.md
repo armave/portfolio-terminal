@@ -48,6 +48,7 @@
 - [x] Initial market-data provenance review: Yahoo quotes use source observation timestamps; unknown timestamps are not marked fresh, and fallback providers are explicitly marked unknown freshness. No additional confirmed defect found in this pass.
 - [x] Reviewed quote-store async protections: updates apply to the latest store snapshot, older request timestamps are ignored, and quotes started before a trade cannot overwrite that trade.
 - [x] **Quote-ordering tie fix implemented:** each `fetchLivePriceFromProviders` request receives a time-anchored monotonic sequence, carried with quote provenance and recorded by the store. When request timestamps tie, the store rejects lower-sequence responses for positions and cash holdings. The sequence is time-anchored to remain ordered across ordinary page reloads. Added a regression test covering out-of-order responses started in the same millisecond.
+- [x] Inspected latest-head CI failure: typecheck correctly flagged the new quote sequence metadata as missing from the position/cash-holding interfaces. Added optional `quoteRequestSequence` fields to the corresponding types and tightened the request sequence to be strictly monotonic.
 - [ ] Re-run typecheck, tests, build, dead-code validation, and production dependency audit on the newest code-bearing commit; do not merge until all checks pass.
 - [ ] Complete remaining UI async race review and add stale-request ordering tests where needed.
 - [ ] Plan and implement versioned authenticated cloud encryption migration without breaking legacy ciphertext.
