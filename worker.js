@@ -383,7 +383,7 @@ export default {
 
                     } catch (err) {
                         console.error(`[Gemini Proxy Error on ${modelName}]:`, err.message);
-                        lastData = { error: `Model ${modelName} fetch failed: ${err.message}`;
+                        lastData = { error: `Model ${modelName} fetch failed: ${err.message}` };
                     } finally {
                         if (timeoutId !== undefined) clearTimeout(timeoutId);
                     }
