@@ -59,7 +59,7 @@ export function ClosedHistoryDesk() {
     }
     return durationByObject;
   })();
-  const brokerRows = brokerTrades.map((broker: any, index) => ({ trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradesWithDuration.get(broker), feesAndCommissions: broker.commission, netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const }, index: -1, source: 'tradenet' as const, profit: broker.profit == null ? null : Number(broker.profit), fees: broker.commission == null ? 0 : Number(broker.commission) }));
+  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => ({ trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradesWithDuration.get(broker), feesAndCommissions: broker.commission, netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const }, index: -1, source: 'tradenet' as const, profit: broker.profit == null ? null : Number(broker.profit), fees: broker.commission == null ? 0 : Number(broker.commission) }));
   const trades = [...appTrades, ...brokerRows].sort((a, b) => String((b.trade as any).exitDate ?? '').localeCompare(String((a.trade as any).exitDate ?? '')));
   const realizedNet = trades.reduce((total, row) => total + (row.profit ?? 0), 0);
   const totalFees = trades.reduce((total, row) => total + (Number.isFinite(row.fees) ? row.fees : 0), 0);
@@ -86,7 +86,7 @@ export function ClosedHistoryDesk() {
             Closed Trade History
           </h2>
           <p class="text-xs text-slate-400">
-            Realized margin trades, including partial sales. Net profit includes commissions and allocated margin fees.
+            Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.
           </p>
         </div>
         <div class="text-xs font-mono text-slate-500">
