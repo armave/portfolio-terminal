@@ -722,3 +722,56 @@ export async function testFreedomTradeNetConnection(): Promise<any> {
 export async function fetchFreedomTradeNetPositions(): Promise<any> {
   return proxyFetch('freedom-positions');
 }
+
+export interface FreedomCashBalance {
+  currency: string;
+  amount: number;
+  forecastIn: number;
+  forecastOut: number;
+  t2In: number;
+  t2Out: number;
+}
+
+export interface FreedomOpenPosition {
+  ticker: string;
+  name: string;
+  quantity: number;
+  currency: string;
+  marketPrice: number | null;
+  marketValue: number | null;
+  averagePrice: number | null;
+  profitClose: number | null;
+  accountPositionId: number | null;
+}
+
+export interface FreedomPortfolioSnapshot {
+  loaded: boolean;
+  balances: FreedomCashBalance[];
+  positions: FreedomOpenPosition[];
+}
+
+/** Normalize the documented fields without converting currencies or inventing missing values. */
+export function normalizeFreedomPortfolio(response: any): FreedomPortfolioSnapshot {
+  const ps = response?.data?.result?.ps;
+  if (!ps || typeof ps !== 'object') throw new Error('TradeNet response is missing data.result.ps.');
+  const balances = Array.isArray(ps.acc) ? ps.acc.map((item: any) => ({
+    currency: String(item?.curr ?? 'UNKNOWN'),
+    amount: Number.isFinite(Number(item?.currval)) ? Number(item.currval) : 0,
+    forecastIn: Number(item?.forecast_in ?? 0),
+    forecastOut: Number(item?.forecast_out ?? 0),
+    t2In: Number(item?.t2_in ?? 0),
+    t2Out: Number(item?.t2_out ?? 0)
+  })) : [];
+  const positions = Array.isArray(ps.pos) ? ps.pos.map((item: any) => ({
+    ticker: String(item?.i ?? item?.base_contract_code ?? ''),
+    name: String(item?.name ?? item?.name2 ?? item?.i ?? 'Unknown instrument'),
+    quantity: Number(item?.q ?? 0),
+    currency: String(item?.curr ?? item?.base_currency ?? 'UNKNOWN'),
+    marketPrice: Number.isFinite(Number(item?.mkt_price)) ? Number(item.mkt_price) : null,
+    marketValue: Number.isFinite(Number(item?.market_value)) ? Number(item.market_value) : null,
+    averagePrice: Number.isFinite(Number(item?.bal_price_a)) ? Number(item.bal_price_a) : null,
+    profitClose: Number.isFinite(Number(item?.profit_close)) ? Number(item.profit_close) : null,
+    accountPositionId: Number.isFinite(Number(item?.acc_pos_id)) ? Number(item.acc_pos_id) : null
+  })) : [];
+  return { loaded: ps.loaded === true, balances, positions };
+}
