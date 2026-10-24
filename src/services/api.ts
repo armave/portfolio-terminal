@@ -133,7 +133,7 @@ export function proxyFetch(
   fetchOptions: ProxyFetchOptions = {}
 ): Promise<any> {
   const method = (fetchOptions.method || 'GET').toUpperCase();
-  const canCoalesce = COALESCED_READ_ACTIONS.has(action) &&
+  const canCoalesce = fetchOptions.cache !== 'no-store' && COALESCED_READ_ACTIONS.has(action) &&
     (method === 'GET' || (action === '' && method === 'POST')) &&
     !fetchOptions.body && !fetchOptions.state;
   if (!canCoalesce) return performProxyFetch(action, queryParams, fetchOptions);
@@ -413,7 +413,7 @@ export async function fetchYahooDeepStockData(ticker: string, force = false): Pr
   if (!force && existing) return existing;
 
   const startedAt = Date.now();
-  const request = proxyFetch('', { symbol }, { method: 'POST' })
+  const request = proxyFetch('', { symbol }, { method: 'POST', ...(force ? { cache: 'no-store' as RequestCache } : {}) })
     .then((data) => {
       const durationMs = Date.now() - startedAt;
       if (data?.error) {
