@@ -887,7 +887,7 @@ describe('canonical trade lifecycle and persistence', () => {
 
     store.updateLiveQuote('MSFT', { price: 220, requestStartedAt: requestBase + 200, quoteSource: 'Provider B' });
     store.updateLiveQuote('MSFT', { price: 205, requestStartedAt: requestBase + 100, quoteSource: 'Provider A' });
-    expect(store.getState().cashStocks?.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(220);
+    expect(store.getState().cashCushion.holdings.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(220);
   });
 
   it('uses monotonic request sequence to reject out-of-order quotes started in the same millisecond', () => {
