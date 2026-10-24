@@ -148,6 +148,53 @@ async function getYahooCredentials() {
     return { cookie, crumb: crumb.trim() };
 }
 
+/**
+ * Return only the USD account fields consumed by the app. Never forward the
+ * broker's raw response (which includes account identifiers and unrelated data).
+ * Preserve the response envelope expected by normalizeFreedomPortfolio().
+ */
+export function sanitizeFreedomPositions(response) {
+    const ps = response?.data?.result?.ps;
+    if (!ps || typeof ps !== "object" || ps.loaded !== true) {
+        throw new Error("TradeNet returned an invalid or unloaded positions response.");
+    }
+    const usdRows = (rows) => Array.isArray(rows)
+        ? rows.filter(row => String(row?.curr ?? row?.base_currency ?? "").toUpperCase() === "USD")
+        : [];
+    const numberOrNull = value => {
+        if (value === null || value === undefined || value === "") return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    };
+    const acc = usdRows(ps.acc).map(row => ({
+        curr: "USD",
+        s: numberOrNull(row.s),
+        currval: numberOrNull(row.currval),
+        forecast_in: numberOrNull(row.forecast_in) ?? 0,
+        forecast_out: numberOrNull(row.forecast_out) ?? 0,
+        t2_in: numberOrNull(row.t2_in) ?? 0,
+        t2_out: numberOrNull(row.t2_out) ?? 0
+    }));
+    const pos = usdRows(ps.pos).map(row => ({
+        i: String(row.i ?? row.base_contract_code ?? ""),
+        name: String(row.name ?? row.name2 ?? row.i ?? "Unknown instrument"),
+        q: numberOrNull(row.q) ?? 0,
+        curr: "USD",
+        mkt_price: numberOrNull(row.mkt_price),
+        market_value: numberOrNull(row.market_value),
+        bal_price_a: numberOrNull(row.bal_price_a),
+        profit_close: numberOrNull(row.profit_close),
+        acc_pos_id: numberOrNull(row.acc_pos_id)
+    })).filter(row => row.i);
+    return {
+        data: {
+            result: {
+                ps: { loaded: true, acc, pos }
+            }
+        }
+    };
+}
+
 export default {
     async fetch(request, env) {
 
@@ -230,7 +277,13 @@ export default {
                 if (request.method !== "GET") {
                     return jsonError("Freedom positions only supports GET.", 405, corsHeaders);
                 }
-                const data = await requestTradeNet(env, "getPositionJson");
+                const rawData = await requestTradeNet(env, "getPositionJson");
+                let data;
+                try {
+                    data = sanitizeFreedomPositions(rawData);
+                } catch (error) {
+                    return jsonError(error instanceof Error ? error.message : "Invalid TradeNet positions response.", 502, corsHeaders);
+                }
                 return new Response(JSON.stringify({
                     ok: true,
                     provider: "Freedom TradeNet",
