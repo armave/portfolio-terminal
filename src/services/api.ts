@@ -711,3 +711,9 @@ export async function syncCloudState(mode = 'push', options: SyncOptions = {}): 
   }
   return false;
 }
+
+
+/** Read-only connectivity test for Freedom Broker Armenia TradeNet. */
+export async function testFreedomTradeNetConnection(): Promise<any> {
+  return proxyFetch('freedom-test');
+}
