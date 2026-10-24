@@ -21,13 +21,63 @@ async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
     const controller = new AbortController();
     const externalSignal = init.signal;
     const abortFromExternal = () => controller.abort(externalSignal?.reason);
-    externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
-    const timeoutId = setTimeout(() => controller.abort(new Error("Upstream request timed out")), timeoutMs);
-    try {
-        return await fetch(input, { ...init, signal: controller.signal });
-    } finally {
+    if (externalSignal?.aborted) {
+        controller.abort(externalSignal.reason);
+    } else {
+        externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
+    }
+
+    let cleanedUp = false;
+    let timeoutId;
+    const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
         clearTimeout(timeoutId);
         externalSignal?.removeEventListener("abort", abortFromExternal);
+    };
+    timeoutId = setTimeout(() => controller.abort(new Error("Upstream request timed out")), timeoutMs);
+
+    try {
+        const response = await fetch(input, { ...init, signal: controller.signal });
+        if (!response.body) {
+            cleanup();
+            return response;
+        }
+
+        // fetch() resolves when headers arrive, not when the body is consumed.
+        // Keep the timeout and external abort wired until the caller finishes reading.
+        const reader = response.body.getReader();
+        const timedBody = new ReadableStream({
+            async pull(streamController) {
+                try {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        streamController.close();
+                        cleanup();
+                    } else {
+                        streamController.enqueue(value);
+                    }
+                } catch (error) {
+                    cleanup();
+                    streamController.error(error);
+                }
+            },
+            async cancel(reason) {
+                try {
+                    await reader.cancel(reason);
+                } finally {
+                    cleanup();
+                }
+            }
+        });
+        return new Response(timedBody, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers
+        });
+    } catch (error) {
+        cleanup();
+        throw error;
     }
 }
 
