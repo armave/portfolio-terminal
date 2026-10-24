@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { loadSavedState } from './services/storage';
 import { fetchFreedomTradeNetPositions, normalizeFreedomPortfolio, type FreedomPortfolioSnapshot } from './services/api';
 
 interface AppProps {
@@ -9,6 +10,8 @@ export function App({ }: AppProps) {
   const [freedomSnapshot, setFreedomSnapshot] = useState<FreedomPortfolioSnapshot | null>(null);
   const [freedomLoading, setFreedomLoading] = useState(false);
   const [freedomError, setFreedomError] = useState('');
+  // App-owned portfolio state is the authority for cash-vs-margin classification.
+  const [appPortfolioState, setAppPortfolioState] = useState(() => loadSavedState());
 
   const refreshFreedomPortfolio = async () => {
     setFreedomLoading(true);
@@ -16,10 +19,29 @@ export function App({ }: AppProps) {
     try {
       const response = await fetchFreedomTradeNetPositions();
       const snapshot = normalizeFreedomPortfolio(response);
-      if (snapshot.balances.length === 0) {
+      // Refresh the app's own classification before reconciling the broker snapshot.
+      const localState = loadSavedState();
+      setAppPortfolioState(localState);
+      const appHoldings = Array.isArray(localState?.holdings) ? localState.holdings : [];
+      const cashTickers = new Set<string>([
+        ...appHoldings.filter((holding: any) => holding && holding.isMargin === false).map((holding: any) => String(holding.ticker || '').trim().toUpperCase()),
+        ...(Array.isArray(localState?.cashStocks) ? localState.cashStocks.map((holding: any) => String(holding?.ticker || '').trim().toUpperCase()) : [])
+      ].filter(Boolean));
+      const marginTickers = new Set<string>(
+        appHoldings.filter((holding: any) => holding && holding.isMargin === true).map((holding: any) => String(holding.ticker || '').trim().toUpperCase())
+      );
+      // Existing app classification wins; unrecognized broker positions stay unclassified.
+      const classifiedPositions = snapshot.positions.map((position) => {
+        const ticker = position.ticker.trim().toUpperCase();
+        const isCash = cashTickers.has(ticker);
+        const isMargin = marginTickers.has(ticker);
+        return { ...position, appClassification: isCash ? 'Cash' : isMargin ? 'Margin' : 'Unclassified' };
+      });
+      const classifiedSnapshot = { ...snapshot, positions: classifiedPositions };
+      if (classifiedSnapshot.balances.length === 0) {
         throw new Error('TradeNet returned no USD cash balance for the active account.');
       }
-      setFreedomSnapshot(snapshot);
+      setFreedomSnapshot(classifiedSnapshot);
     } catch (error) {
       setFreedomError(error instanceof Error ? error.message : 'Unable to load Freedom TradeNet portfolio.');
     } finally {
@@ -113,6 +135,7 @@ export function App({ }: AppProps) {
                       <caption class="sr-only">Freedom TradeNet USD open positions</caption>
                       <thead><tr class="border-b border-slate-800 text-slate-400">
                         <th scope="col" class="px-2 py-2 text-left">Instrument</th>
+                        <th scope="col" class="px-2 py-2 text-left">App type</th>
                         <th scope="col" class="px-2 py-2 text-right">Qty</th>
                         <th scope="col" class="px-2 py-2 text-right">Avg. price</th>
                         <th scope="col" class="px-2 py-2 text-right">Market price</th>
@@ -126,6 +149,7 @@ export function App({ }: AppProps) {
                               <div class="font-semibold">{position.ticker}</div>
                               <div class="text-[10px] font-normal text-slate-400">{position.name}</div>
                             </th>
+                            <td class="px-2 py-2 text-left text-[10px]">{(position as any).appClassification === 'Cash' ? <span class="text-cyan-300">Cash</span> : (position as any).appClassification === 'Margin' ? <span class="text-amber-300">Margin</span> : <span class="text-slate-400">Unclassified</span>}</td>
                             <td class="px-2 py-2 text-right font-mono">{position.quantity.toLocaleString('en-US')}</td>
                             <td class="px-2 py-2 text-right font-mono">{usd(position.averagePrice)}</td>
                             <td class="px-2 py-2 text-right font-mono">{usd(position.marketPrice)}</td>
@@ -133,11 +157,11 @@ export function App({ }: AppProps) {
                             <td class={`px-2 py-2 text-right font-mono ${(position.profitClose ?? 0) < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>{usd(position.profitClose)}</td>
                           </tr>
                         ))}
-                        {freedomSnapshot.positions.length === 0 && <tr><td colSpan={6} class="px-2 py-4 text-center text-slate-400">No USD open positions returned.</td></tr>}
+                        {freedomSnapshot.positions.length === 0 && <tr><td colSpan={7} class="px-2 py-4 text-center text-slate-400">No USD open positions returned.</td></tr>}
                       </tbody>
                     </table>
                   </div>
-                  <p class="text-[10px] text-slate-500">Values are shown as reported by the broker. No FX conversion is applied. Cash and market value are shown separately and should not be treated as a reconciled account equity figure.</p>
+                  <p class="text-[10px] text-slate-500">Cash/Margin classification comes from your app's existing holdings and cash-stock lists, not TradeNet. Unmatched broker symbols are left Unclassified. Values are broker-reported; no FX conversion is applied.</p>
                 </>
               )}
             </section>
