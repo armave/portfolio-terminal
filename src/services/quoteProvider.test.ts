@@ -34,7 +34,7 @@ describe('fetchLivePriceFromProviders', () => {
     expect(fetchYahooQuoteData).toHaveBeenCalledWith('AAPL');
     resolveFreedom({
       symbol: 'AAPL', price: 210, previousClose: 200, change: 10,
-      changePercent: 5, sourceTimestamp: Date.now(), raw: {}
+      changePercent: 5, sourceTimestamp: (Math.floor(Date.now() / 1000) - 60) * 1000, raw: {}
     });
     resolveYahoo({ symbol: 'AAPL', price: { current: 211, previousClose: 200, regularMarketTime: Math.floor(Date.now() / 1000), marketState: 'REGULAR', change: 11 } });
     const result = await pending;
