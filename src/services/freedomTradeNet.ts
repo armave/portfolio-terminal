@@ -55,8 +55,19 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command = "getPosi
     if (!data || typeof data !== "object") {
         throw new Error("TradeNet returned a non-JSON response.");
     }
-    if (data.errMsg || data.error) {
-        throw new Error("TradeNet rejected the request. Verify API credentials, signing format, and API permissions.");
+    // TradeNet often returns application-level errors with HTTP 200. Surface only
+    // a short, sanitized message so we can diagnose auth/signature/permission issues
+    // without logging or returning the full broker payload.
+    const errorValue = data.errMsg ?? data.error ?? data.message;
+    if (errorValue) {
+        const upstreamMessage = typeof errorValue === "string"
+            ? errorValue
+            : "TradeNet returned an application-level error.";
+        const safeMessage = upstreamMessage
+            .replace(/(public|private)?\s*key\s*[:=]\s*\S+/gi, "$1 key=[redacted]")
+            .replace(/(token|signature|sid|password)\s*[:=]\s*\S+/gi, "$1=[redacted]")
+            .slice(0, 240);
+        throw new Error(`TradeNet API error: ${safeMessage}`);
     }
     return data;
 }
