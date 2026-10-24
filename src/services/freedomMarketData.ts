@@ -67,33 +67,3 @@ export async function fetchFreedomQuote(symbol: string): Promise<FreedomQuote> {
   if (!quote) throw new Error("Freedom TradeNet returned an unsupported quote payload.");
   return quote;
 }
-
-export async function fetchFreedomNews(symbol: string): Promise<unknown[]> {
-  const normalized = symbol.trim().toUpperCase();
-  if (!normalized) return [];
-  const payload = await proxyFetch("freedom-news", { symbol: freedomSymbol(normalized) });
-  const data = payload?.data;
-  if (Array.isArray(data)) return data;
-  if (data && typeof data === "object") {
-    const record = data as Record<string, unknown>;
-    for (const key of ["news", "items", "stories", "result"]) {
-      if (Array.isArray(record[key])) return record[key] as unknown[];
-    }
-  }
-  return [];
-}
-
-export async function fetchFreedomHistory(symbol: string): Promise<unknown[]> {
-  const normalized = symbol.trim().toUpperCase();
-  if (!normalized) return [];
-  const payload = await proxyFetch("freedom-history", { symbol: freedomSymbol(normalized) });
-  const data = payload?.data;
-  if (Array.isArray(data)) return data;
-  if (data && typeof data === "object") {
-    const record = data as Record<string, unknown>;
-    for (const key of ["candles", "hloc", "history", "items", "result"]) {
-      if (Array.isArray(record[key])) return record[key] as unknown[];
-    }
-  }
-  return [];
-}
