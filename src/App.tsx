@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { fetchFreedomTradeNetTrades, normalizeFreedomTrades } from './services/api';
+import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
 interface AppProps {
@@ -8,42 +8,33 @@ interface AppProps {
 
 export function App({ }: AppProps) {
   const [tradesDebugLoading, setTradesDebugLoading] = useState(false);
+  let tradesRequest: Promise<void> | null = null;
+  let accountRequest: Promise<void> | null = null;
 
-  // The app's main navigation is managed outside this component. Load broker
-  // trade history when the user opens Closed History, rather than requiring a
-  // separate diagnostic-button click. Ignore unrelated navigation clicks.
-  useEffect(() => {
-    const isClosedHistoryTarget = (target: EventTarget | null): boolean => {
-      if (!(target instanceof Element)) return false;
-      const element = target.closest('button, a, [role="tab"], [data-tab], [data-view]');
-      if (!element) return false;
-      const label = [
-        element.textContent ?? '',
-        element.getAttribute('aria-label') ?? '',
-        element.getAttribute('href') ?? '',
-        element.getAttribute('data-tab') ?? '',
-        element.getAttribute('data-view') ?? '',
-        element.id ?? ''
-      ].join(' ').toLowerCase();
-      return label.includes('closed history') || label.includes('closed-history') || label.includes('closedhistory');
-    };
-    const onNavigationClick = (event: MouseEvent) => {
-      if (isClosedHistoryTarget(event.target) && !tradesDebugLoading) {
-        void loadExecutedTrades();
-      }
-    };
-    document.addEventListener('click', onNavigationClick, true);
-    return () => document.removeEventListener('click', onNavigationClick, true);
-  }, [tradesDebugLoading]);
-
-
+  // Closed History asks for trade history when mounted; do not also fetch from
+  // a global navigation click listener, which caused duplicate broker requests.
   useEffect(() => {
     const onRequest = () => { void loadExecutedTrades(); };
     window.addEventListener('tradenet:request-executed-trades', onRequest);
     return () => window.removeEventListener('tradenet:request-executed-trades', onRequest);
   }, []);
 
+  const loadFreedomAccount = async () => {
+    if (accountRequest) return accountRequest;
+    accountRequest = (async () => {
+      const secret = await restoreGatewaySecret();
+      if (!secret.trim()) throw new Error('Gateway Secret is not available.');
+      const response = await fetchFreedomTradeNetPositions();
+      const snapshot = normalizeFreedomPortfolio(response);
+      (window as any).__tradenetAccountInfo = snapshot;
+      window.dispatchEvent(new CustomEvent('tradenet:account-info', { detail: snapshot }));
+    })();
+    try { await accountRequest; } finally { accountRequest = null; }
+  };
+
   const loadExecutedTrades = async () => {
+    if (tradesRequest) return tradesRequest;
+    tradesRequest = (async () => {
     setTradesDebugLoading(true);
     try {
       // The saved Gateway Secret is encrypted and restored asynchronously from IndexedDB.
@@ -67,11 +58,14 @@ export function App({ }: AppProps) {
     } finally {
       setTradesDebugLoading(false);
     }
+    })();
+    try { await tradesRequest; } finally { tradesRequest = null; }
   };
 
-  // Load broker trade history automatically on app start.
+  // Load account/balance/position data first on startup. Trade history is fetched
+  // only when Closed History opens.
   useEffect(() => {
-    void loadExecutedTrades();
+    void loadFreedomAccount().catch(error => console.error('Unable to load TradeNet account info:', error));
   }, []);
 
 
