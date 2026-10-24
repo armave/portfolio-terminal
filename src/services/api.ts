@@ -231,7 +231,9 @@ export async function fetchYahooQuoteData(ticker: string, force = false): Promis
     rejectRequest = reject;
   });
   const pending = yahooQuoteQueue.get(symbol);
-  if (pending && !force) {
+  if (pending) {
+    // A forced refresh may join a batch that has not been sent yet; it still
+    // bypasses cached data and never strands an earlier caller's promise.
     pending.resolvers.push(resolveRequest);
     pending.rejecters.push(rejectRequest);
   } else {
