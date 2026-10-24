@@ -199,7 +199,7 @@ export default {
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
-        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test"].includes(action)) {
+        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
@@ -221,6 +221,20 @@ export default {
                     ok: true,
                     provider: "Freedom TradeNet",
                     message: "Authenticated read-only request succeeded."
+                }), { headers: corsHeaders });
+            }
+
+            // Read-only positions retrieval. The command is fixed server-side;
+            // clients cannot pass arbitrary TradeNet commands or order operations.
+            if (action === "freedom-positions") {
+                if (request.method !== "GET") {
+                    return jsonError("Freedom positions only supports GET.", 405, corsHeaders);
+                }
+                const data = await requestTradeNet(env, "getPositionJson");
+                return new Response(JSON.stringify({
+                    ok: true,
+                    provider: "Freedom TradeNet",
+                    data
                 }), { headers: corsHeaders });
             }
 
