@@ -95,13 +95,15 @@ describe('gateway browser-origin boundary', () => {
     vi.unstubAllGlobals();
   });
 
-  it('allows the hosted app origin and returns an explicit origin rather than a wildcard', async () => {
+  it('allows an origin configured through the environment and never returns a wildcard', async () => {
+    const appOrigin = 'https://portfolio.example.test';
     const response = await worker.fetch(
       new Request('https://worker.test/?action=state', {
-        headers: { Origin: 'https://armave.github.io', 'X-App-Auth': 'test-secret' }
+        headers: { Origin: appOrigin, 'X-App-Auth': 'test-secret' }
       }),
       {
         GATEWAY_SECRET: 'test-secret',
+        ALLOWED_ORIGINS: appOrigin,
         PORTFOLIO_STATE_DO: {
           idFromName: vi.fn().mockReturnValue('personal-state'),
           get: vi.fn().mockReturnValue({
@@ -113,7 +115,7 @@ describe('gateway browser-origin boundary', () => {
       }
     );
 
-    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://armave.github.io');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(appOrigin);
     expect(response.headers.get('Access-Control-Allow-Origin')).not.toBe('*');
     expect(response.headers.get('ETag')).toBe('"4"');
   });
@@ -123,7 +125,7 @@ describe('gateway browser-origin boundary', () => {
       new Request('https://worker.test/?action=state', {
         headers: { Origin: 'https://untrusted.example', 'X-App-Auth': 'test-secret' }
       }),
-      { GATEWAY_SECRET: 'test-secret' }
+      { GATEWAY_SECRET: 'test-secret', ALLOWED_ORIGINS: 'https://portfolio.example.test' }
     );
 
     expect(response.status).toBe(403);
