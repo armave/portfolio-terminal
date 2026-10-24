@@ -738,6 +738,8 @@ export interface FreedomExecutedTrade {
   executedAt: string | null;
   tradeValue: number | null;
   profit: number | null;
+  /** Margin financing fee for this specific execution/stock, when supplied by a source. */
+  marginFee: number | null;
   commission: number | null;
   commissionCurrency: string;
   raw: Record<string, unknown>;
@@ -775,6 +777,7 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
     executedAt: row?.date ?? row?.time ?? row?.datetime ?? row?.exec_time ?? null,
     tradeValue: numberOrNull(row?.v ?? row?.summ ?? row?.value),
     profit: numberOrNull(row?.profit ?? row?.pnl),
+    marginFee: numberOrNull(row?.margin_fee ?? row?.marginFee ?? row?.margin_interest ?? row?.marginInterest ?? row?.fee_margin ?? row?.feeMargin),
     commission: numberOrNull(row?.commission ?? row?.fee),
     commissionCurrency: String(row?.commission_currency ?? row?.curr_c ?? row?.currency ?? ''),
     raw: row && typeof row === 'object' ? row : {}
