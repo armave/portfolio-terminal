@@ -551,12 +551,21 @@ export async function pullCloudState(
 }
 
 export function pushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
-  const operation = cloudPushQueue.then(() => performPushCloudState(state, options));
+  // Bind a queued snapshot to the revision current when the caller submitted it.
+  // If another queued operation or a concurrent pull advances the revision before
+  // this write runs, the stale snapshot must conflict rather than inherit that newer
+  // revision and overwrite newer cloud state.
+  const expectedRevision = cloudRevision;
+  const operation = cloudPushQueue.then(() => performPushCloudState(state, options, expectedRevision));
   cloudPushQueue = operation.then(() => undefined, () => undefined);
   return operation;
 }
 
-async function performPushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
+async function performPushCloudState(
+  state: any = undefined,
+  options: SyncOptions = {},
+  expectedRevision: number
+): Promise<boolean> {
   const handlers: SyncOptions = typeof options === 'function' ? {} : options;
   const {
     getState,
@@ -586,7 +595,7 @@ async function performPushCloudState(state?: any, options: SyncOptions = {}): Pr
         'Content-Type': 'application/json',
         'X-App-Auth': currentSecret,
         Authorization: `Bearer ${currentSecret}`,
-        'If-Match': `"${cloudRevision}"`
+        'If-Match': `"${expectedRevision}"`
       },
       body: JSON.stringify(payload)
     });
