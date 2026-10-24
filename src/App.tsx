@@ -1,18 +1,12 @@
 import { useEffect, useState } from 'preact/hooks';
-import { loadSavedState } from './services/storage';
-import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades, type FreedomPortfolioSnapshot } from './services/api';
+import { fetchFreedomTradeNetTrades, normalizeFreedomTrades } from './services/api';
 
 interface AppProps {
   onToggleMarketInsights: () => void;
 }
 
 export function App({ }: AppProps) {
-  const [freedomSnapshot, setFreedomSnapshot] = useState<FreedomPortfolioSnapshot | null>(null);
-  const [freedomLoading, setFreedomLoading] = useState(false);
-  const [freedomError, setFreedomError] = useState('');
   const [tradesDebugLoading, setTradesDebugLoading] = useState(false);
-  // App-owned portfolio state is the authority for cash-vs-margin classification.
-  const [appPortfolioState, setAppPortfolioState] = useState(loadSavedState({ holdings: [], cashStocks: [] }));
 
   // The app's main navigation is managed outside this component. Load broker
   // trade history when the user opens Closed History, rather than requiring a
@@ -41,41 +35,6 @@ export function App({ }: AppProps) {
     return () => document.removeEventListener('click', onNavigationClick, true);
   }, [tradesDebugLoading]);
 
-  const refreshFreedomPortfolio = async () => {
-    setFreedomLoading(true);
-    setFreedomError('');
-    try {
-      const response = await fetchFreedomTradeNetPositions();
-      const snapshot = normalizeFreedomPortfolio(response);
-      // Refresh the app's own classification before reconciling the broker snapshot.
-      const localState = loadSavedState({ holdings: [], cashStocks: [] });
-      setAppPortfolioState(localState);
-      const appHoldings = Array.isArray(localState?.holdings) ? localState.holdings : [];
-      const cashTickers = new Set<string>([
-        ...appHoldings.filter((holding: any) => holding && holding.isMargin === false).map((holding: any) => String(holding.ticker || '').trim().toUpperCase()),
-        ...(Array.isArray(localState?.cashStocks) ? localState.cashStocks.map((holding: any) => String(holding?.ticker || '').trim().toUpperCase()) : [])
-      ].filter(Boolean));
-      const marginTickers = new Set<string>(
-        appHoldings.filter((holding: any) => holding && holding.isMargin === true).map((holding: any) => String(holding.ticker || '').trim().toUpperCase())
-      );
-      // Existing app classification wins; unrecognized broker positions stay unclassified.
-      const classifiedPositions = snapshot.positions.map((position) => {
-        const ticker = position.ticker.trim().toUpperCase();
-        const isCash = cashTickers.has(ticker);
-        const isMargin = marginTickers.has(ticker);
-        return { ...position, appClassification: isCash ? 'Cash' : isMargin ? 'Margin' : 'Unclassified' };
-      });
-      const classifiedSnapshot = { ...snapshot, positions: classifiedPositions };
-      if (classifiedSnapshot.balances.length === 0) {
-        throw new Error('TradeNet returned no USD cash balance for the active account.');
-      }
-      setFreedomSnapshot(classifiedSnapshot);
-    } catch (error) {
-      setFreedomError(error instanceof Error ? error.message : 'Unable to load Freedom TradeNet portfolio.');
-    } finally {
-      setFreedomLoading(false);
-    }
-  };
 
   useEffect(() => {
     const onRequest = () => { void loadExecutedTrades(); };
@@ -109,9 +68,7 @@ export function App({ }: AppProps) {
     void loadExecutedTrades();
   }, []);
 
-  const usd = (value: number | null) => value === null
-    ? '—'
-    : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
+
 
   return (
     <>
