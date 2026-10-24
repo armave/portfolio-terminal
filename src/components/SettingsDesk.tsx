@@ -70,7 +70,8 @@ export function SettingsDesk({
     setTradeNetPositionsPreview('');
     try {
       const result = await fetchFreedomTradeNetPositions();
-      const snapshot = normalizeFreedomPortfolio(result);\n      setTradeNetPositionsPreview(JSON.stringify(snapshot, null, 2).slice(0, 12000));
+      const snapshot = normalizeFreedomPortfolio(result);
+      setTradeNetPositionsPreview(JSON.stringify(snapshot, null, 2).slice(0, 12000));
     } catch (error) {
       setTradeNetPositionsPreview(error instanceof Error ? error.message : 'Failed to retrieve TradeNet positions.');
     } finally {
