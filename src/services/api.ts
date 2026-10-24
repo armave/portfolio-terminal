@@ -381,15 +381,44 @@ export async function fetchMarketNews(ticker: string, force = false): Promise<an
   const existing = marketNewsRequests.get(symbol);
   if (existing) return existing;
 
-  const request = proxyFetch('news', { symbol })
-    .then((data) => {
-      const news = Array.isArray(data) ? data : [];
-      marketNewsCache.set(symbol, {
-        expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS,
-        data: news
+  const request = (async () => {
+    try {
+      const freedomSymbol = symbol.includes('.') ? symbol : `${symbol}.US`;
+      const freedomPayload = await proxyFetch('freedom-news', { symbol: freedomSymbol });
+      const raw = freedomPayload?.data;
+      const freedomItems = Array.isArray(raw) ? raw : Array.isArray(raw?.news) ? raw.news : Array.isArray(raw?.items) ? raw.items : Array.isArray(raw?.stories) ? raw.stories : [];
+      const normalized = freedomItems.map((item: any) => ({
+        headline: String(item?.headline ?? item?.title ?? item?.name ?? ''),
+        summary: String(item?.summary ?? item?.description ?? ''),
+        url: String(item?.url ?? item?.link ?? ''),
+        datetime: Number(item?.datetime ?? item?.time ?? item?.timestamp ?? 0),
+        source: String(item?.source ?? item?.provider ?? 'Freedom TradeNet'),
+        image: String(item?.image ?? item?.imageUrl ?? '')
+      })).filter((item: { headline: string; url: string }) => item.headline && item.url);
+      // Combine Freedom stories with the existing market-news feed instead of
+      // hiding one provider whenever the other has results.
+      const fallbackPayload = await proxyFetch('news', { symbol });
+      const fallbackNews = Array.isArray(fallbackPayload) ? fallbackPayload : [];
+      const combined = [...normalized, ...fallbackNews];
+      const seen = new Set<string>();
+      const deduped = combined.filter((item: any) => {
+        const key = String(item?.url || item?.link || item?.headline || item?.title || '').trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
       });
-      return news;
-    })
+      if (deduped.length) {
+        marketNewsCache.set(symbol, { expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS, data: deduped });
+        return deduped;
+      }
+    } catch (error) {
+      console.warn(`[Freedom News Error for ${symbol}]:`, error instanceof Error ? error.message : error);
+    }
+    const data = await proxyFetch('news', { symbol });
+    const news = Array.isArray(data) ? data : [];
+    marketNewsCache.set(symbol, { expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS, data: news });
+    return news;
+  })()
     .finally(() => {
       if (marketNewsRequests.get(symbol) === request) marketNewsRequests.delete(symbol);
     });

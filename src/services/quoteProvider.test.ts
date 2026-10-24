@@ -1,14 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchFallbackQuote, fetchYahooStockData } from './api';
 import { fetchLivePriceFromProviders } from './quoteProvider';
+import { fetchFreedomQuote } from './freedomMarketData';
 
 vi.mock('./api', () => ({
   fetchYahooStockData: vi.fn(),
   fetchFallbackQuote: vi.fn()
 }));
 
+vi.mock('./freedomMarketData', () => ({ fetchFreedomQuote: vi.fn() }));
+
 describe('fetchLivePriceFromProviders', () => {
   beforeEach(() => {
+    vi.mocked(fetchFreedomQuote).mockRejectedValue(new Error('Freedom unavailable'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -16,6 +20,54 @@ describe('fetchLivePriceFromProviders', () => {
 
   afterEach(() => {
     vi.resetAllMocks();
+  });
+
+  it('uses a valid fresh Freedom quote when Yahoo has no source timestamp', async () => {
+    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+      symbol: 'AAPL',
+      price: 210,
+      previousClose: 200,
+      change: 10,
+      changePercent: 5,
+      sourceTimestamp: Date.now(),
+      raw: {}
+    });
+
+    const result = await fetchLivePriceFromProviders('aapl');
+
+    expect(fetchFreedomQuote).toHaveBeenCalledWith('AAPL');
+    expect(result.price).toBe(210);
+    expect(result.sourceName).toBe('Freedom TradeNet');
+    expect(result.quoteDetails).toMatchObject({ freshness: 'fresh', price: 210, change: 10, changePercent: 5 });
+    expect(fetchYahooStockData).toHaveBeenCalledWith('AAPL');
+  });
+
+  it('prefers Yahoo when its source timestamp is newer than Freedom', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+      symbol: 'AAPL',
+      price: 210,
+      previousClose: 200,
+      change: 10,
+      changePercent: 5,
+      sourceTimestamp: (nowSeconds - 60) * 1000,
+      raw: {}
+    });
+    vi.mocked(fetchYahooStockData).mockResolvedValue({
+      price: {
+        current: 211,
+        previousClose: 200,
+        regularMarketTime: nowSeconds,
+        marketState: 'REGULAR',
+        change: 11
+      }
+    } as never);
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(result.price).toBe(211);
+    expect(result.sourceName).toBe('Yahoo');
+    expect(result.quoteDetails).toMatchObject({ freshness: 'fresh', sourceTimestamp: nowSeconds * 1000 });
   });
 
   it('uses Yahoo market-session price data when available', async () => {

@@ -1,4 +1,5 @@
 import { fetchYahooStockData, fetchFallbackQuote } from './api';
+import { fetchFreedomQuote } from './freedomMarketData';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 
 // Time-anchored and monotonic, including requests started in the same millisecond.
@@ -59,6 +60,15 @@ export async function fetchLivePriceFromProviders(symbol: string) {
   let sourceName = "";
   let quoteDetails: any = null;
 
+  // Collect Freedom first, but compare source timestamps after Yahoo responds.
+  // Provider preference is based on observed quote freshness, not vendor priority.
+  let freedomQuote: Awaited<ReturnType<typeof fetchFreedomQuote>> | null = null;
+  try {
+    freedomQuote = await fetchFreedomQuote(symbol);
+  } catch (error: any) {
+    console.warn(`[Freedom Quote Error for ${symbol}]:`, error?.message || error);
+  }
+
   try {
     const data = await fetchYahooStockData(symbol);
 
@@ -108,6 +118,35 @@ export async function fetchLivePriceFromProviders(symbol: string) {
     console.warn(`[Proxy Quote Error for ${symbol}]:`, e.message);
   }
 
+  if (freedomQuote && Number.isFinite(freedomQuote.price) && freedomQuote.price > 0) {
+    const freedomAge = freedomQuote.sourceTimestamp === null ? null : Date.now() - freedomQuote.sourceTimestamp;
+    const freedomFreshness = freedomAge === null ? 'unknown' as const
+      : freedomAge < 0 ? 'stale' as const
+        : freedomAge > 5 * 60 * 1000 ? 'stale' as const : 'fresh' as const;
+    const yahooFreshness = quoteDetails?.freshness;
+    const yahooTimestamp = quoteDetails?.sourceTimestamp;
+    const yahooIsFresh = yahooFreshness === 'fresh';
+    const freedomIsFresh = freedomFreshness === 'fresh';
+    const yahooIsNewer = typeof yahooTimestamp === 'number'
+      && (freedomQuote.sourceTimestamp === null || yahooTimestamp > freedomQuote.sourceTimestamp);
+    const chooseFreedom = price === null || (freedomIsFresh && (!yahooIsFresh || !yahooIsNewer));
+    if (chooseFreedom) {
+      price = freedomQuote.price;
+      sourceName = 'Freedom TradeNet';
+      quoteDetails = {
+        marketState: 'UNKNOWN',
+        freshness: freedomFreshness,
+        sourceTimestamp: freedomQuote.sourceTimestamp ?? undefined,
+        receivedAt: Date.now(),
+        requestSequence,
+        requestStartedAt,
+        price: freedomQuote.price,
+        change: freedomQuote.change ?? 0,
+        changePercent: freedomQuote.changePercent ?? 0
+      };
+    }
+  }
+
   if (price === null) {
     const fallback = await fetchFallbackPrice(symbol);
     if (fallback) {
@@ -126,6 +165,6 @@ export async function fetchLivePriceFromProviders(symbol: string) {
     requestStartedAt,
     requestSequence,
     quoteDetails,
-    error: price ? null : "Quote unavailable via Yahoo, Finnhub, and Twelve Data"
+    error: price ? null : "Quote unavailable via Freedom TradeNet, Yahoo, Finnhub, and Twelve Data"
   };
 }
