@@ -2,14 +2,15 @@ import { useEffect, useState } from 'preact/hooks';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
+let tradesRequest: Promise<void> | null = null;
+let accountRequest: Promise<void> | null = null;
+
 interface AppProps {
   onToggleMarketInsights: () => void;
 }
 
 export function App({ }: AppProps) {
   const [tradesDebugLoading, setTradesDebugLoading] = useState(false);
-  let tradesRequest: Promise<void> | null = null;
-  let accountRequest: Promise<void> | null = null;
 
   // Closed History asks for trade history when mounted; do not also fetch from
   // a global navigation click listener, which caused duplicate broker requests.
