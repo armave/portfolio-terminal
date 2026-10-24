@@ -185,6 +185,19 @@ describe('portfolio domain', () => {
     expect(Object.getPrototypeOf(normalized.positions)).toBe(Object.prototype);
   });
 
+  it('rejects malformed top-level backup containers instead of silently dropping portfolio data', () => {
+    expect(() => normalizePortfolioBackup({ positions: null }, 10_000))
+      .toThrow('Invalid positions in portfolio backup: expected an object keyed by ticker.');
+    expect(() => normalizePortfolioBackup({ positions: [], holdings: [{ ticker: 'AAPL' }] }, 10_000))
+      .toThrow('Invalid positions in portfolio backup: expected an object keyed by ticker.');
+    expect(() => normalizePortfolioBackup({ holdings: {} }, 10_000))
+      .toThrow('Invalid holdings in portfolio backup: expected an array.');
+    expect(() => normalizePortfolioBackup({ positions: {}, cashCushion: [] }, 10_000))
+      .toThrow('Invalid cashCushion in portfolio backup: expected an object.');
+    expect(() => normalizePortfolioBackup({ positions: {}, closedTrades: {} }, 10_000))
+      .toThrow('Invalid closedTrades in portfolio backup: expected an array.');
+  });
+
   it('accepts recognized portfolio backups and rejects unrelated JSON objects', () => {
     expect(normalizePortfolioBackup({ positions: {} }, 10_000).positions).toEqual({});
     expect(() => normalizePortfolioBackup({ settings: {} }, 10_000)).toThrow('recognized portfolio backup');
