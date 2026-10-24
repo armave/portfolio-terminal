@@ -316,8 +316,36 @@ export default {
                 }
                 const command = action === "freedom-quote" ? "getQuotes" : action === "freedom-news" ? "getNews" : "getHloc";
                 const params = action === "freedom-quote" ? { ticker: symbol } : action === "freedom-news" ? { ticker: symbol, limit: 10 } : { ticker: symbol, interval: "D", limit: 100 };
-                const data = await requestTradeNet(env, command, params);
-                return new Response(JSON.stringify({ ok: true, provider: "Freedom TradeNet", symbol, data }), { headers: corsHeaders });
+                try {
+                    const data = await requestTradeNet(env, command, params);
+                    return new Response(JSON.stringify({ ok: true, provider: "Freedom TradeNet", symbol, data }), { headers: corsHeaders });
+                } catch (error) {
+                    // TradeNet's getNews endpoint currently returns HTTP 404 on some
+                    // deployments/accounts. Keep the news UI usable via the existing
+                    // Finnhub provider, but do not mask quote/history errors.
+                    const message = error instanceof Error ? error.message : "";
+                    if (action !== "freedom-news" || !message.includes("HTTP 404")) throw error;
+                    const finnhubKey = env.FINNHUB_KEY || env.FINNHUB_API_KEY;
+                    if (!finnhubKey) {
+                        return jsonError("TradeNet news is unavailable (HTTP 404), and the Finnhub fallback key is not configured.", 502, corsHeaders);
+                    }
+                    const newsSymbol = symbol.endsWith(".US") ? symbol.slice(0, -3) : symbol;
+                    const toDate = new Date().toISOString().split("T")[0];
+                    const fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+                    const fallbackResponse = await fetchWithTimeout(
+                        `https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(newsSymbol)}&from=${fromDate}&to=${toDate}&token=${encodeURIComponent(finnhubKey)}`
+                    );
+                    const fallbackData = await fallbackResponse.json().catch(() => null);
+                    if (!fallbackResponse.ok || !Array.isArray(fallbackData)) {
+                        return jsonError("TradeNet news returned HTTP 404 and the Finnhub fallback failed.", 502, corsHeaders);
+                    }
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Finnhub fallback (TradeNet news unavailable)",
+                        symbol,
+                        data: fallbackData.slice(0, 10)
+                    }), { headers: corsHeaders });
+                }
             }
             // Read-only executed trade history. Command and query limits are fixed server-side.
             if (action === "freedom-trades") {
