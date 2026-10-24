@@ -163,6 +163,28 @@ describe('portfolio domain', () => {
     expect(backup.balance).toBe(-250);
   });
 
+  it('preserves imported position keys without invoking object prototype setters', () => {
+    const candidate = JSON.parse(JSON.stringify({
+      positions: {
+        AAPL: { shares: 1, tranches: [{ qty: 1, price: 10 }] }
+      }
+    }));
+    Object.defineProperty(candidate.positions, '__proto__', {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: { shares: 2, tranches: [{ qty: 2, price: 20 }] }
+    });
+
+    const normalized = normalizePortfolioBackup(candidate, 10_000);
+    expect(Object.hasOwn(normalized.positions, '__proto__')).toBe(true);
+    expect(normalized.positions['__proto__']).toMatchObject({
+      shares: 2,
+      tranches: [{ qty: 2, price: 20 }]
+    });
+    expect(Object.getPrototypeOf(normalized.positions)).toBe(Object.prototype);
+  });
+
   it('accepts recognized portfolio backups and rejects unrelated JSON objects', () => {
     expect(normalizePortfolioBackup({ positions: {} }, 10_000).positions).toEqual({});
     expect(() => normalizePortfolioBackup({ settings: {} }, 10_000)).toThrow('recognized portfolio backup');
