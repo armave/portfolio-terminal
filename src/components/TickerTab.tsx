@@ -165,7 +165,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
           data-nav-tab="true"
           onKeyDown={handleTabKeyDown}
       >
-        CLOSED HISTORY ({closedTrades.length})
+        CLOSED HISTORY
       </button>
 
       <button
