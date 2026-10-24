@@ -17,7 +17,7 @@ function validSymbolList(symbol) {
         symbols.every(value => /^[A-Z0-9.^=-]{1,20}$/.test(value));
 }
 
-async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
+export async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
     const controller = new AbortController();
     const externalSignal = init.signal;
     const abortFromExternal = () => controller.abort(externalSignal?.reason);
