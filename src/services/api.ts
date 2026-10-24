@@ -723,6 +723,48 @@ export async function fetchFreedomTradeNetPositions(): Promise<any> {
   return proxyFetch('freedom-positions');
 }
 
+/** Fetch a bounded, read-only page of executed TradeNet trades. */
+export async function fetchFreedomTradeNetTrades(): Promise<any> {
+  return proxyFetch('freedom-trades');
+}
+
+export interface FreedomExecutedTrade {
+  id: string;
+  ticker: string;
+  side: string;
+  quantity: number | null;
+  price: number | null;
+  currency: string;
+  executedAt: string | null;
+  raw: Record<string, unknown>;
+}
+
+/** Normalize common TradeNet history field aliases without fabricating missing values. */
+export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
+  const root = response?.data?.result ?? response?.data ?? response?.result ?? response;
+  const rows = Array.isArray(root) ? root
+    : Array.isArray(root?.trades) ? root.trades
+    : Array.isArray(root?.items) ? root.items
+    : Array.isArray(root?.history) ? root.history
+    : Array.isArray(root?.data) ? root.data
+    : [];
+  const numberOrNull = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  return rows.map((row: any, index: number) => ({
+    id: String(row?.id ?? row?.trade_id ?? row?.tradeId ?? row?.order_id ?? index),
+    ticker: String(row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? ''),
+    side: String(row?.operation ?? row?.side ?? row?.type ?? row?.buy_sell ?? 'Unknown'),
+    quantity: numberOrNull(row?.q ?? row?.quantity ?? row?.qty),
+    price: numberOrNull(row?.price ?? row?.p ?? row?.exec_price),
+    currency: String(row?.curr ?? row?.currency ?? row?.base_currency ?? ''),
+    executedAt: row?.time ?? row?.date ?? row?.datetime ?? row?.exec_time ?? null,
+    raw: row && typeof row === 'object' ? row : {}
+  }));
+}
+
 export interface FreedomCashBalance {
   currency: string;
   amount: number;
