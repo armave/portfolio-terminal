@@ -645,13 +645,14 @@ export default {
                     const data = await withProviderCache(cacheProvider, symbol, async () => {
                         const res = await fetchWithTimeout(endpoint);
                         const payload = await res.json().catch(() => null);
-                        if (!res.ok) throw new Error(payload?.error || `${providerName} returned HTTP ${res.status}.`);
+                        if (!res.ok) throw Object.assign(new Error(payload?.error || `${providerName} returned HTTP ${res.status}.`), { status: res.status });
                         if (!payload || typeof payload !== "object") throw new Error(`${providerName} returned an invalid response.`);
                         return payload;
                     });
                     return new Response(JSON.stringify(data), { headers: corsHeaders });
                 } catch (error) {
-                    return jsonError(error instanceof Error ? error.message : `${providerName} quote failed.`, 502, corsHeaders);
+                    const status = Number.isInteger(error?.status) && error.status >= 400 && error.status <= 599 ? error.status : 502;
+                    return jsonError(error instanceof Error ? error.message : `${providerName} quote failed.`, status, corsHeaders);
                 }
             }
 
