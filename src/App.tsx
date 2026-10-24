@@ -102,6 +102,13 @@ export function App({ }: AppProps) {
     }
   };
 
+  // Load the read-only USD broker snapshot automatically on app start.
+  // It remains diagnostic and never overwrites app-owned portfolio data.
+  useEffect(() => {
+    void refreshFreedomPortfolio();
+    void loadExecutedTrades();
+  }, []);
+
   const usd = (value: number | null) => value === null
     ? '—'
     : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
@@ -146,126 +153,7 @@ export function App({ }: AppProps) {
               </div>
             </div>
 
-            <section
-              aria-label="Freedom TradeNet USD portfolio"
-              class="rounded-lg border border-emerald-900/60 bg-slate-950/70 p-4 space-y-3"
-            >
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 class="text-sm font-bold text-emerald-300">Freedom TradeNet · USD account</h2>
-                  <p class="text-[11px] text-slate-400">Read-only USD broker snapshot. Compare broker quantities and market prices against app-owned positions; differences are diagnostic and never overwrite app data.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={refreshFreedomPortfolio}
-                  disabled={freedomLoading}
-                  class="rounded border border-emerald-800 bg-emerald-950 px-3 py-1.5 text-xs font-semibold text-emerald-200 hover:bg-emerald-900 disabled:opacity-50"
-                >
-                  {freedomLoading ? 'Refreshing…' : freedomSnapshot ? 'Refresh broker data' : 'Load broker portfolio'}
-                </button>
-              </div>
-              {freedomError && <p role="alert" class="text-xs text-rose-300">{freedomError}</p>}
-              {!freedomSnapshot && !freedomLoading && !freedomError && (
-                <p class="text-xs text-slate-400">Load your USD cash balance and holdings from Freedom TradeNet.</p>
-              )}
-              {freedomSnapshot && (
-                <>
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div class="rounded border border-slate-800 bg-slate-900/70 p-3">
-                      <p class="text-[10px] uppercase tracking-wide text-slate-400">USD cash balance</p>
-                      <p class="mt-1 font-mono text-lg font-bold text-white">{usd(freedomSnapshot.balances.reduce((sum, balance) => sum + balance.amount, 0))}</p>
-                    </div>
-                    <div class="rounded border border-slate-800 bg-slate-900/70 p-3">
-                      <p class="text-[10px] uppercase tracking-wide text-slate-400">Open positions</p>
-                      <p class="mt-1 font-mono text-lg font-bold text-white">{freedomSnapshot.positions.length}</p>
-                    </div>
-                    <div class="rounded border border-slate-800 bg-slate-900/70 p-3">
-                      <p class="text-[10px] uppercase tracking-wide text-slate-400">Reported market value</p>
-                      <p class="mt-1 font-mono text-lg font-bold text-white">{usd(freedomSnapshot.positions.reduce((sum, position) => sum + (position.marketValue ?? 0), 0))}</p>
-                    </div>
-                  </div>
-                  <div class="overflow-x-auto">
-                    <table class="w-full min-w-[560px] text-xs">
-                      <caption class="sr-only">Freedom TradeNet USD open positions</caption>
-                      <thead><tr class="border-b border-slate-800 text-slate-400">
-                        <th scope="col" class="px-2 py-2 text-left">Instrument</th>
-                        <th scope="col" class="px-2 py-2 text-left">App type</th>
-                        <th scope="col" class="px-2 py-2 text-right">Broker qty</th>
-                        <th scope="col" class="px-2 py-2 text-right">App qty</th>
-                        <th scope="col" class="px-2 py-2 text-right">Qty diff</th>
-                        <th scope="col" class="px-2 py-2 text-right">Avg. price</th>
-                        <th scope="col" class="px-2 py-2 text-right">App price</th>
-                        <th scope="col" class="px-2 py-2 text-right">Market price</th>
-                        <th scope="col" class="px-2 py-2 text-right">Market value</th>
-                        <th scope="col" class="px-2 py-2 text-right">Close P/L</th>
-                      </tr></thead>
-                      <tbody class="divide-y divide-slate-800/70">
-                        {freedomSnapshot.positions.map((position) => (
-                          <tr key={position.ticker} class="text-slate-200">
-                            <th scope="row" class="px-2 py-2 text-left">
-                              <div class="font-semibold">{position.ticker}</div>
-                              <div class="text-[10px] font-normal text-slate-400">{position.name}</div>
-                            </th>
-                            <td class="px-2 py-2 text-left text-[10px]">{(position as any).appClassification === 'Cash' ? <span class="text-cyan-300">Cash</span> : (position as any).appClassification === 'Margin' ? <span class="text-amber-300">Margin</span> : <span class="text-slate-400">Unclassified</span>}</td>
-                            {(() => {
-                              const appPosition = Object.entries((appPortfolioState as any)?.positions ?? {}).find(([key, value]: [string, any]) => key.trim().toUpperCase() === position.ticker.trim().toUpperCase() || String(value?.ticker ?? '').trim().toUpperCase() === position.ticker.trim().toUpperCase())?.[1] as any;
-                              const rawAppQty = appPosition?.shares;
-                              const appQty = rawAppQty === undefined || rawAppQty === null || rawAppQty === '' || !Number.isFinite(Number(rawAppQty)) ? null : Number(rawAppQty);
-                              const difference = appQty === null ? null : position.quantity - appQty;
-                              return <>
-                                <td class="px-2 py-2 text-right font-mono">{position.quantity.toLocaleString('en-US')}</td>
-                                <td class="px-2 py-2 text-right font-mono">{appQty === null ? '—' : appQty.toLocaleString('en-US')}</td>
-                                <td class={'px-2 py-2 text-right font-mono ' + (difference === null ? 'text-slate-500' : Math.abs(difference) < 1e-6 ? 'text-emerald-300' : 'text-amber-300')}>{difference === null ? '—' : difference.toLocaleString('en-US')}</td>
-                              </>;
-                            })()}
-                            <td class="px-2 py-2 text-right font-mono">{usd(position.averagePrice)}</td>
-                            <td class="px-2 py-2 text-right font-mono">{(() => {
-                              const appPosition = Object.entries((appPortfolioState as any)?.positions ?? {}).find(([key, value]: [string, any]) => key.trim().toUpperCase() === position.ticker.trim().toUpperCase() || String(value?.ticker ?? '').trim().toUpperCase() === position.ticker.trim().toUpperCase())?.[1] as any;
-                              const price = Number(appPosition?.currentPrice);
-                              return appPosition && Number.isFinite(price) && price > 0 ? usd(price) : '—';
-                            })()}</td>
-                            <td class="px-2 py-2 text-right font-mono">{usd(position.marketPrice)}</td>
-                            <td class="px-2 py-2 text-right font-mono">{usd(position.marketValue)}</td>
-                            <td class={`px-2 py-2 text-right font-mono ${(position.profitClose ?? 0) < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>{usd(position.profitClose)}</td>
-                          </tr>
-                        ))}
-                        {freedomSnapshot.positions.length === 0 && <tr><td colSpan={9} class="px-2 py-4 text-center text-slate-400">No USD open positions returned.</td></tr>}
-                      </tbody>
-                    </table>
-                  </div>
-                  {(() => {
-                    const brokerTickers = new Set(freedomSnapshot.positions.map((position) => position.ticker.trim().toUpperCase()));
-                    const appPositions = Object.entries((appPortfolioState as any)?.positions ?? {})
-                      .map(([key, value]: [string, any]) => ({ ticker: String(value?.ticker ?? key).trim().toUpperCase(), shares: Number(value?.shares), value }))
-                      .filter((position) => position.ticker && Number.isFinite(position.shares) && Math.abs(position.shares) > 1e-8 && !brokerTickers.has(position.ticker));
-                    const appHoldings = Array.isArray((appPortfolioState as any)?.holdings) ? (appPortfolioState as any).holdings : [];
-                    const cashTickers = new Set([
-                      ...appHoldings.filter((holding: any) => holding?.isMargin === false).map((holding: any) => String(holding.ticker ?? '').trim().toUpperCase()),
-                      ...(Array.isArray((appPortfolioState as any)?.cashStocks) ? (appPortfolioState as any).cashStocks.map((holding: any) => String(holding?.ticker ?? '').trim().toUpperCase()) : [])
-                    ]);
-                    const marginTickers = new Set(appHoldings.filter((holding: any) => holding?.isMargin === true).map((holding: any) => String(holding.ticker ?? '').trim().toUpperCase()));
-                    return <div class="rounded border border-slate-800 bg-slate-900/40 p-3 space-y-2">
-                      <div class="flex items-center justify-between gap-2">
-                        <h3 class="text-xs font-semibold text-slate-300">App positions not returned by TradeNet</h3>
-                        <span class="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">{appPositions.length}</span>
-                      </div>
-                      {appPositions.length === 0
-                        ? <p class="text-[11px] text-slate-500">All nonzero app positions have a matching ticker in the broker snapshot.</p>
-                        : <div class="overflow-x-auto"><table class="w-full text-xs text-left">
-                          <thead class="text-[10px] uppercase text-slate-500"><tr><th class="px-2 py-1">Ticker</th><th class="px-2 py-1">App type</th><th class="px-2 py-1 text-right">App qty</th><th class="px-2 py-1">Status</th></tr></thead>
-                          <tbody>{appPositions.map((position) => <tr key={position.ticker} class="border-t border-slate-800">
-                            <td class="px-2 py-2 font-semibold text-slate-200">{position.ticker}</td>
-                            <td class="px-2 py-2">{cashTickers.has(position.ticker) ? 'Cash' : marginTickers.has(position.ticker) ? 'Margin' : 'Unclassified'}</td>
-                            <td class="px-2 py-2 text-right font-mono">{position.shares.toLocaleString('en-US')}</td>
-                            <td class="px-2 py-2 text-amber-300">Not returned by broker</td>
-                          </tr>)}</tbody>
-                        </table></div>}
-                    </div>;
-                  })()}
-                  <p class="text-[10px] text-slate-500">Cash/Margin classification comes from your app's existing holdings and cash-stock lists, not TradeNet. Broker qty minus app qty is shown as Qty diff; a dash means no app position could be matched. Differences are diagnostic only and never overwrite app holdings. Values are broker-reported; no FX conversion is applied.</p>
-                </>
-              )}
-            </section>
+
 
             <div
               id="boardTitleActions"
