@@ -1,6 +1,9 @@
 import { fetchYahooStockData, fetchFallbackQuote } from './api';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 
+// Monotonic within this runtime, including requests started during the same millisecond.
+let quoteRequestSequence = 0;
+
 export async function fetchFallbackPrice(symbol: string) {
   for (const provider of ['finnhub', 'twelvedata'] as const) {
     try {
@@ -14,6 +17,8 @@ export async function fetchFallbackPrice(symbol: string) {
           marketState: 'UNKNOWN' as const,
           freshness: 'unknown' as const,
           receivedAt: Date.now(),
+          requestSequence,
+          requestStartedAt,
           price: fallback.price,
           change: fallback.change ?? 0,
           changePercent: fallback.changePercent ?? 0
@@ -44,6 +49,8 @@ function resolveQuoteProvenance(marketState: string | undefined, sourceTimeSecon
 }
 
 export async function fetchLivePriceFromProviders(symbol: string) {
+  const requestSequence = ++quoteRequestSequence;
+  const requestStartedAt = Date.now();
   symbol = symbol.toUpperCase();
   let price: number | null = null;
   let sourceName = "";
@@ -86,6 +93,8 @@ export async function fetchLivePriceFromProviders(symbol: string) {
           marketState,
           ...provenance,
           receivedAt: Date.now(),
+          requestSequence,
+          requestStartedAt,
           price: current,
           change,
           changePercent: hasPreviousClose ? (change / previousClose) * 100 : 0
@@ -111,6 +120,8 @@ export async function fetchLivePriceFromProviders(symbol: string) {
     price,
     sourceName,
     updatedAt,
+    requestStartedAt,
+    requestSequence,
     quoteDetails,
     error: price ? null : "Quote unavailable via Yahoo, Finnhub, and Twelve Data"
   };
