@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchFallbackQuote, fetchYahooStockData } from './api';
+import { fetchFallbackQuote, fetchYahooQuoteData } from './api';
 import { fetchLivePriceFromProviders } from './quoteProvider';
 import { fetchFreedomQuote } from './freedomMarketData';
 
 vi.mock('./api', () => ({
-  fetchYahooStockData: vi.fn(),
+  fetchYahooQuoteData: vi.fn(),
   fetchFallbackQuote: vi.fn()
 }));
 
@@ -20,6 +20,26 @@ describe('fetchLivePriceFromProviders', () => {
 
   afterEach(() => {
     vi.resetAllMocks();
+  });
+
+  it('starts Freedom and Yahoo requests concurrently', async () => {
+    let resolveFreedom!: (value: any) => void;
+    let resolveYahoo!: (value: any) => void;
+    vi.mocked(fetchFreedomQuote).mockImplementation(() => new Promise(resolve => { resolveFreedom = resolve; }));
+    vi.mocked(fetchYahooQuoteData).mockImplementation(() => new Promise(resolve => { resolveYahoo = resolve; }));
+
+    const pending = fetchLivePriceFromProviders('AAPL');
+    await Promise.resolve();
+    expect(fetchFreedomQuote).toHaveBeenCalledWith('AAPL');
+    expect(fetchYahooQuoteData).toHaveBeenCalledWith('AAPL');
+    resolveFreedom({
+      symbol: 'AAPL', price: 210, previousClose: 200, change: 10,
+      changePercent: 5, sourceTimestamp: Date.now(), raw: {}
+    });
+    resolveYahoo({ symbol: 'AAPL', price: { current: 211, previousClose: 200, regularMarketTime: Math.floor(Date.now() / 1000), marketState: 'REGULAR', change: 11 } });
+    const result = await pending;
+    expect(result.price).toBe(211);
+    expect(result.sourceName).toBe('Yahoo');
   });
 
   it('uses a valid fresh Freedom quote when Yahoo has no source timestamp', async () => {
@@ -39,7 +59,7 @@ describe('fetchLivePriceFromProviders', () => {
     expect(result.price).toBe(210);
     expect(result.sourceName).toBe('Freedom TradeNet');
     expect(result.quoteDetails).toMatchObject({ freshness: 'fresh', price: 210, change: 10, changePercent: 5 });
-    expect(fetchYahooStockData).toHaveBeenCalledWith('AAPL');
+    expect(fetchYahooQuoteData).toHaveBeenCalledWith('AAPL');
   });
 
   it('prefers Yahoo when its source timestamp is newer than Freedom', async () => {
