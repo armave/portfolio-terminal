@@ -57,7 +57,7 @@ export async function refreshTrackedQuotes(
 
     if (current === null) {
       const fallback = await fetchFallbackPrice(ticker);
-      if (fallback && recordTrackedPrice(ticker, fallback.price, fallback.sourceName, Date.now(), fallback.quoteDetails, requestStartedAt)) updatedCount++;
+      if (fallback && recordTrackedPrice(ticker, fallback.price, fallback.sourceName, Date.now(), { ...fallback.quoteDetails, requestSequence, requestStartedAt }, requestStartedAt)) updatedCount++;
       continue;
     }
 
