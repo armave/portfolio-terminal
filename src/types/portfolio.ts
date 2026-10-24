@@ -176,6 +176,17 @@ export interface PendingMutation {
 export interface PortfolioState {
   // Active runtime properties (used by app.ts & renderBoard.ts)
   positions: Record<string, PositionRecord>;
+  /** Read-only broker snapshot; never replaces app-owned cash/margin classifications. */
+  brokerAccountInfo?: {
+    loaded: boolean;
+    balances: Array<{ currency: string; amount: number; forecastIn: number; forecastOut: number; t2In: number; t2Out: number }>;
+    positions: Array<{
+      ticker: string; name: string; quantity: number; currency: string;
+      marketPrice: number | null; marketValue: number | null; averagePrice: number | null;
+      profitClose: number | null; accountPositionId: number | null;
+    }>;
+    receivedAt: number;
+  };
   cashCushion: CashCushionState;
   balance: number;
   realizedMarginCharged: number;
