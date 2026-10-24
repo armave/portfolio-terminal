@@ -251,8 +251,6 @@ export function sanitizeFreedomPositions(response) {
 export default {
     async fetch(request, env) {
 
-        console.log(env.ALLOWED_ORIGINS);
-
         const corsHeaders = resolveCorsHeaders(request, env);
         if (!corsHeaders) {
             return jsonError("Origin is not allowed.", 403, {
