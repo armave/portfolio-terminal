@@ -166,7 +166,7 @@ export function ClosedHistoryDesk() {
         <table class="w-full text-left text-xs font-mono">
           <thead class="border-b border-slate-800 bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-400">
             <tr>
-              <th class="py-2.5 px-3">Source</th><th class="py-2.5 px-3">Ticker</th>
+              <th class="py-2.5 px-3">Ticker</th>
               <th class="py-2.5 px-3">Date Closed</th>
               <th class="py-2.5 px-3 text-right">Shares</th>
               <th class="py-2.5 px-3 text-right">Duration</th>
@@ -245,7 +245,7 @@ export function ClosedHistoryDesk() {
 
                 return (
                   <tr key={(trade as any).id || (source + "-" + index)} class="hover:bg-slate-900/40 text-slate-300">
-                    <td class="py-2.5 px-3 text-[10px] uppercase text-slate-500">{source === "tradenet" ? "Freedom" : "App"}</td><td class="py-2.5 px-3 font-bold text-white">{(trade as any).ticker || "—"}</td>
+                    <td class="py-2.5 px-3 font-bold text-white">{(trade as any).ticker || "—"}</td>
                     <td class="py-2.5 px-3 whitespace-nowrap">
                       <span>{dateText}</span>
                       {closedDate && !Number.isNaN(closedDate.getTime()) ? (
