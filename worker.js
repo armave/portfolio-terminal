@@ -3,6 +3,55 @@ import { requestTradeNet } from "./src/services/freedomTradeNet.js";
 const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_PROMPT_LENGTH = 12_000;
 const MAX_TICKERS = 10;
+const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, fallback_quote: 5_000 };
+const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, fallback_quote: 5_000 };
+const providerResponseCache = new Map();
+const providerCooldowns = new Map();
+const providerInFlight = new Map();
+
+function providerMetric(metric, fields = {}) {
+    // Do not include credentials, raw upstream URLs, or account data in telemetry.
+    console.info(JSON.stringify({ type: "provider_metric", metric, ...fields }));
+}
+
+async function withProviderCache(provider, key, fetcher) {
+    const cacheKey = `${provider}:${key}`;
+    const now = Date.now();
+    const cached = providerResponseCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+        providerMetric("cache_hit", { provider });
+        return cached.value;
+    }
+    const inFlight = providerInFlight.get(cacheKey);
+    if (inFlight) {
+        providerMetric("inflight_dedup", { provider });
+        return inFlight;
+    }
+    const cooldownUntil = providerCooldowns.get(provider) || 0;
+    if (cooldownUntil > now) {
+        providerMetric("provider_cooldown", { provider });
+        throw new Error(`${provider} provider temporarily cooling down after an upstream failure.`);
+    }
+    const startedAt = now;
+    const request = (async () => {
+        try {
+            const value = await fetcher();
+            providerResponseCache.set(cacheKey, { value, expiresAt: Date.now() + (PROVIDER_CACHE_TTL_MS[provider] || 5_000) });
+            providerCooldowns.delete(provider);
+            providerMetric("provider_request", { provider, durationMs: Date.now() - startedAt, success: true });
+            return value;
+        } catch (error) {
+            providerCooldowns.set(provider, Date.now() + (PROVIDER_COOLDOWN_MS[provider] || 5_000));
+            providerMetric("provider_failure", { provider, durationMs: Date.now() - startedAt });
+            throw error;
+        } finally {
+            providerInFlight.delete(cacheKey);
+        }
+    })();
+    providerInFlight.set(cacheKey, request);
+    return request;
+}
+
 const ALLOWED_GEMINI_MODELS = new Set([
     "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-3.1-flash",
     "gemini-3.1-pro", "gemini-2.5-flash", "gemini-2.5-pro",
@@ -258,13 +307,13 @@ export default {
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
-        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history"].includes(action)) {
+        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
             return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
         }
-        if ((action === "news" || action === "provider-quote" || action === "stocktwits" || action === "freedom-quote" || action === "freedom-news" || action === "freedom-history") && request.method !== "GET") {
+        if ((action === "news" || action === "provider-quote" || action === "stocktwits" || action === "freedom-quote" || action === "freedom-news" || action === "freedom-history" || action === "quote") && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
 
@@ -601,6 +650,60 @@ export default {
                     });
                 }
                 return new Response(JSON.stringify(data), { headers: corsHeaders });
+            }
+
+            // Lightweight Yahoo quote path: chart metadata avoids quoteSummary's
+            // fundamentals/analyst modules for the high-frequency live-price flow.
+            if (action === "quote") {
+                const tickers = symbol.split(",").map(value => value.trim()).filter(Boolean);
+                if (!tickers.length || tickers.length > MAX_TICKERS || !validSymbolList(symbol)) {
+                    return jsonError("No valid symbols provided.", 400, corsHeaders);
+                }
+                const results = await Promise.all(tickers.map(async ticker => {
+                    try {
+                        return await withProviderCache("yahoo_quote", ticker, async () => {
+                            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=1d&interval=1m&includePrePost=true`;
+                            const response = await fetchWithTimeout(yahooUrl, { headers: { "User-Agent": USER_AGENT } });
+                            if (!response.ok) throw new Error(`Yahoo quote returned HTTP ${response.status}`);
+                            const raw = await response.json();
+                            const chart = raw?.chart?.result?.[0];
+                            if (!chart) throw new Error(raw?.chart?.error?.description || "Yahoo returned no chart quote.");
+                            const meta = chart.meta || {};
+                            const timestamps = chart.timestamp || [];
+                            const closes = chart.indicators?.quote?.[0]?.close || [];
+                            let lastPrice = null;
+                            let lastTimestamp = null;
+                            for (let i = closes.length - 1; i >= 0; i--) {
+                                if (Number.isFinite(closes[i]) && closes[i] > 0) {
+                                    lastPrice = closes[i];
+                                    lastTimestamp = timestamps[i] || null;
+                                    break;
+                                }
+                            }
+                            lastPrice = lastPrice ?? meta.regularMarketPrice ?? null;
+                            const marketState = normalizeMarketState(meta.marketState);
+                            if (!Number.isFinite(lastPrice) || lastPrice <= 0) throw new Error("Yahoo returned no valid quote price.");
+                            const previousClose = meta.chartPreviousClose ?? meta.previousClose ?? null;
+                            const change = Number.isFinite(previousClose) ? lastPrice - previousClose : null;
+                            return {
+                                symbol: ticker,
+                                price: {
+                                    current: lastPrice,
+                                    previousClose,
+                                    change,
+                                    changePercent: Number.isFinite(previousClose) && previousClose !== 0 && change !== null ? change / previousClose * 100 : null,
+                                    regularMarketTime: lastTimestamp ?? meta.regularMarketTime ?? null,
+                                    preMarketTime: null,
+                                    postMarketTime: null,
+                                    marketState
+                                }
+                            };
+                        });
+                    } catch (error) {
+                        return { symbol: ticker, error: error instanceof Error ? error.message : "Yahoo quote failed" };
+                    }
+                }));
+                return new Response(JSON.stringify(tickers.length === 1 ? results[0] : results), { headers: corsHeaders });
             }
 
             // --- DEFAULT ACTION: Yahoo Deep Stock Data & Live Quotes (Group Fetch) ---
