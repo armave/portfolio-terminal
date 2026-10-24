@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { fetchWithTimeout, normalizeMarketState } from './worker.js';
+import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 
 describe('upstream timeout coverage', () => {
@@ -23,6 +23,43 @@ describe('upstream timeout coverage', () => {
     await vi.advanceTimersByTimeAsync(51);
     await rejectedBody;
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('sanitizeFreedomPositions', () => {
+  it('keeps only normalized USD balance and position fields', () => {
+    const result = sanitizeFreedomPositions({
+      data: { result: { ps: {
+        loaded: true,
+        key: 'private-account-key',
+        acc: [
+          { curr: 'USD', s: -17053.5, currval: 80.54, forecast_in: 1, forecast_out: 2, t2_in: 3, t2_out: 4, sql_exec_tm: 'timestamp', secret: 'remove' },
+          { curr: 'AED', s: 22.09 }
+        ],
+        pos: [
+          { i: 'GOOGL.US', name: 'Alphabet', q: 81, curr: 'USD', mkt_price: 321.09, market_value: 26001, bal_price_a: 338.01, profit_close: -1212.39, acc_pos_id: 159573060, instr_id: 123, issue_nb: 'secret', sql_exec_tm: 'timestamp' },
+          { i: 'AED.STOCK', q: 1, curr: 'AED' }
+        ]
+      } } }
+    });
+
+    expect(result.data.result.ps.acc).toEqual([{
+      curr: 'USD', s: -17053.5, currval: 80.54,
+      forecast_in: 1, forecast_out: 2, t2_in: 3, t2_out: 4
+    }]);
+    expect(result.data.result.ps.pos).toEqual([{
+      i: 'GOOGL.US', name: 'Alphabet', q: 81, curr: 'USD',
+      mkt_price: 321.09, market_value: 26001,
+      bal_price_a: 338.01, profit_close: -1212.39, acc_pos_id: 159573060
+    }]);
+    expect(JSON.stringify(result)).not.toContain('private-account-key');
+    expect(JSON.stringify(result)).not.toContain('instr_id');
+    expect(JSON.stringify(result)).not.toContain('issue_nb');
+  });
+
+  it('rejects unloaded or malformed positions data', () => {
+    expect(() => sanitizeFreedomPositions({ data: { result: { ps: { loaded: false } } } })).toThrow();
+    expect(() => sanitizeFreedomPositions({})).toThrow();
   });
 });
 
