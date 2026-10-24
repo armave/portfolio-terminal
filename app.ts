@@ -134,7 +134,9 @@ if (typeof window !== 'undefined') {
     if (!snapshot || snapshot.loaded !== true || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.balances)) return;
     const brokerUsdBalance = snapshot.balances.find((item: any) => String(item.currency).toUpperCase() === 'USD');
     const current = portfolioStore.getState();
-    const tickerKey = (value: unknown) => String(value || '').trim().toUpperCase();
+    // TradeNet symbols use exchange suffixes (e.g. GOOGL.US); app holdings
+    // use base tickers (GOOGL). Normalize the exchange suffix before comparing.
+    const tickerKey = (value: unknown) => String(value || '').trim().toUpperCase().replace(/\\.(US)$/i, '');
     const marginQuantities = new Map<string, number>();
     for (const [key, position] of Object.entries(current.positions || {})) {
       const ticker = tickerKey((position as any)?.ticker || key);
