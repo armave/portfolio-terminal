@@ -24,7 +24,6 @@ export function ClosedHistoryDesk() {
   // Match FIFO by ticker; if the broker payload has no usable buy/sell history,
   // leave duration unknown instead of misleadingly displaying zero days.
   const brokerTradesWithDuration = (() => {
-    const byTicker = new Map<string, any[]>();
     const sorted = [...brokerTrades].filter((t: any) => t.ticker && t.executedAt)
       .sort((a: any, b: any) => Date.parse(a.executedAt) - Date.parse(b.executedAt));
     const queues = new Map<string, { date: number; quantity: number }[]>();
