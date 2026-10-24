@@ -4,7 +4,12 @@
  */
 const TRADENET_API_URL = "https://tradernet.com/api/";
 
-export async function requestTradeNet(env, command = "getPositionJson") {
+interface TradeNetWorkerEnv {
+    FREEDOM_PUBLIC_KEY?: string;
+    FREEDOM_PRIVATE_KEY?: string;
+}
+
+export async function requestTradeNet(env: TradeNetWorkerEnv, command = "getPositionJson"): Promise<Record<string, unknown>> {
     if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
         throw new Error("Freedom API secrets are missing from this Worker environment.");
     }
