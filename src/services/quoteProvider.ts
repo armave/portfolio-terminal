@@ -1,6 +1,14 @@
 import { fetchYahooStockData, fetchFallbackQuote } from './api';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 
+// Time-anchored and monotonic, including requests started in the same millisecond.
+// Anchoring to epoch time keeps persisted ordering comparable after ordinary reloads.
+let lastQuoteRequestSequence = 0;
+export function nextQuoteRequestSequence(): number {
+  lastQuoteRequestSequence = Math.max(Date.now() * 1000, lastQuoteRequestSequence + 1);
+  return lastQuoteRequestSequence;
+}
+
 export async function fetchFallbackPrice(symbol: string) {
   for (const provider of ['finnhub', 'twelvedata'] as const) {
     try {
@@ -44,6 +52,8 @@ function resolveQuoteProvenance(marketState: string | undefined, sourceTimeSecon
 }
 
 export async function fetchLivePriceFromProviders(symbol: string) {
+  const requestStartedAt = Date.now();
+  const requestSequence = nextQuoteRequestSequence();
   symbol = symbol.toUpperCase();
   let price: number | null = null;
   let sourceName = "";
@@ -86,6 +96,8 @@ export async function fetchLivePriceFromProviders(symbol: string) {
           marketState,
           ...provenance,
           receivedAt: Date.now(),
+          requestSequence,
+          requestStartedAt,
           price: current,
           change,
           changePercent: hasPreviousClose ? (change / previousClose) * 100 : 0
@@ -101,7 +113,7 @@ export async function fetchLivePriceFromProviders(symbol: string) {
     if (fallback) {
       price = fallback.price;
       sourceName = fallback.sourceName;
-      quoteDetails = fallback.quoteDetails;
+      quoteDetails = { ...fallback.quoteDetails, requestSequence, requestStartedAt };
     }
   }
 
@@ -111,6 +123,8 @@ export async function fetchLivePriceFromProviders(symbol: string) {
     price,
     sourceName,
     updatedAt,
+    requestStartedAt,
+    requestSequence,
     quoteDetails,
     error: price ? null : "Quote unavailable via Yahoo, Finnhub, and Twelve Data"
   };

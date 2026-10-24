@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchFallbackPrice } from './quoteProvider';
+import { fetchFallbackPrice, nextQuoteRequestSequence } from './quoteProvider';
 import { fetchYahooStockData, normalizeYahooBatchResults } from './api';
 import { refreshTrackedQuotes } from './quotePolling';
 
-vi.mock('./quoteProvider', () => ({ fetchFallbackPrice: vi.fn() }));
+vi.mock('./quoteProvider', () => ({ fetchFallbackPrice: vi.fn(), nextQuoteRequestSequence: vi.fn() }));
 vi.mock('./api', () => ({ fetchYahooStockData: vi.fn(), normalizeYahooBatchResults: vi.fn() }));
 
 describe('refreshTrackedQuotes', () => {
   beforeEach(() => {
+    vi.mocked(nextQuoteRequestSequence).mockReturnValue(1234);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -25,7 +26,7 @@ describe('refreshTrackedQuotes', () => {
     await expect(refreshTrackedQuotes(['AAPL'], 123, record)).resolves.toBe(1);
     expect(fetchYahooStockData).toHaveBeenCalledWith('AAPL');
     expect(record).toHaveBeenCalledWith('AAPL', 100, 'Yahoo', expect.any(Number), expect.objectContaining({
-      marketState: 'REGULAR', price: 100, change: 5, changePercent: expect.any(Number)
+      marketState: 'REGULAR', requestSequence: 1234, requestStartedAt: 123, price: 100, change: 5, changePercent: expect.any(Number)
     }), 123);
   });
 
@@ -40,7 +41,7 @@ describe('refreshTrackedQuotes', () => {
 
     await expect(refreshTrackedQuotes(['MSFT'], 456, record)).resolves.toBe(1);
     expect(fetchFallbackPrice).toHaveBeenCalledWith('MSFT');
-    expect(record).toHaveBeenCalledWith('MSFT', 42, 'Twelve Data', expect.any(Number), expect.objectContaining({ price: 42 }), 456);
+    expect(record).toHaveBeenCalledWith('MSFT', 42, 'Twelve Data', expect.any(Number), expect.objectContaining({ price: 42, requestSequence: 1234, requestStartedAt: 456 }), 456);
   });
 
   it('returns zero for no tickers or when returned symbols are not tracked', async () => {
@@ -82,7 +83,7 @@ describe('refreshTrackedQuotes', () => {
     await expect(refreshTrackedQuotes(['AAPL'], 654, record)).resolves.toBe(1);
 
     expect(record).toHaveBeenCalledWith('AAPL', 100, 'Yahoo', expect.any(Number), expect.objectContaining({
-      changePercent: 0
+      requestSequence: 1234, requestStartedAt: 654, changePercent: 0
     }), 654);
   });
 

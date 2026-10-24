@@ -1,4 +1,4 @@
-import { fetchFallbackPrice } from './quoteProvider';
+import { fetchFallbackPrice, nextQuoteRequestSequence } from './quoteProvider';
 import { fetchYahooStockData, normalizeYahooBatchResults } from './api';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 import type { QuoteDetails } from '../types/portfolio';
@@ -22,6 +22,7 @@ export async function refreshTrackedQuotes(
 
   const requestedTickers = new Set(tickers.map((ticker) => ticker.trim().toUpperCase()).filter(Boolean));
   if (requestedTickers.size === 0) return 0;
+  const requestSequence = nextQuoteRequestSequence();
 
   const responseData = await fetchYahooStockData([...requestedTickers].join(', '));
   const results = normalizeYahooBatchResults(responseData, [...requestedTickers]);
@@ -40,7 +41,7 @@ export async function refreshTrackedQuotes(
     if (data.error || !data.price) {
       console.warn(`[Quote Warning]: Missing or failed data for ${ticker}`, data.error);
       const fallback = await fetchFallbackPrice(ticker);
-      if (fallback && recordTrackedPrice(ticker, fallback.price, fallback.sourceName, Date.now(), fallback.quoteDetails, requestStartedAt)) updatedCount++;
+      if (fallback && recordTrackedPrice(ticker, fallback.price, fallback.sourceName, Date.now(), { ...fallback.quoteDetails, requestSequence, requestStartedAt }, requestStartedAt)) updatedCount++;
       continue;
     }
 
@@ -56,7 +57,7 @@ export async function refreshTrackedQuotes(
 
     if (current === null) {
       const fallback = await fetchFallbackPrice(ticker);
-      if (fallback && recordTrackedPrice(ticker, fallback.price, fallback.sourceName, Date.now(), fallback.quoteDetails, requestStartedAt)) updatedCount++;
+      if (fallback && recordTrackedPrice(ticker, fallback.price, fallback.sourceName, Date.now(), { ...fallback.quoteDetails, requestSequence, requestStartedAt }, requestStartedAt)) updatedCount++;
       continue;
     }
 
@@ -71,6 +72,8 @@ export async function refreshTrackedQuotes(
     const hasPreviousClose = Number.isFinite(previousClose) && previousClose > 0;
     const quoteDetails = {
       marketState,
+      requestSequence,
+      requestStartedAt,
       price: current,
       change,
       changePercent: hasPreviousClose ? (change / previousClose) * 100 : 0

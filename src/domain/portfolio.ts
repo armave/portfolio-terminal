@@ -331,16 +331,24 @@ export function calculateMarginInterest(
         trancheTs = Date.parse(String(rawDate)) || now.getTime();
       }
 
-      // Tradernet rollover is evaluated at 04:00 in Asia/Yerevan (UTC+4).
-      // Shift timestamps by four hours, then compare calendar dates in that zone.
+      // Shift timestamps by four hours, then compare calendar dates in Asia/Yerevan.
       const offsetMs = 4 * 60 * 60 * 1000;
       const localTranche = new Date(trancheTs + offsetMs);
       const localNow = new Date(now.getTime() + offsetMs);
       const trancheDay = Date.UTC(localTranche.getUTCFullYear(), localTranche.getUTCMonth(), localTranche.getUTCDate());
       const nowDay = Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate());
       const elapsedCalendarDays = Math.max(0, Math.round((nowDay - trancheDay) / 86400000));
+      const configuredHour = Number(options.rolloverHour);
+      const configuredMinute = Number(options.rolloverMinute);
+      const rolloverHour = Number.isInteger(configuredHour) && configuredHour >= 0 && configuredHour <= 23
+        ? configuredHour
+        : 4;
+      const rolloverMinute = Number.isInteger(configuredMinute) && configuredMinute >= 0 && configuredMinute <= 59
+        ? configuredMinute
+        : 0;
       const localMinutes = localNow.getUTCHours() * 60 + localNow.getUTCMinutes();
-      days = Math.max(0, elapsedCalendarDays - (localMinutes < 240 ? 1 : 0));
+      const cutoffMinutes = rolloverHour * 60 + rolloverMinute;
+      days = Math.max(0, elapsedCalendarDays - (localMinutes < cutoffMinutes ? 1 : 0));
     }
 
     totalInterest += trancheCost * marginRatio * (Math.pow(1 + dailyRate, days) - 1);
@@ -356,7 +364,19 @@ export function calculateProjectedDebt(principal: number, dailyRate: number, day
   const p = Math.abs(rawPrincipal);
   const r = Math.max(0, rawRate);
   const d = Math.max(0, rawDays);
-  const projected = p * Math.pow(1 + r, d);
+  // The live rollover ledger rounds the debt to cents after each daily
+  // rollover. Apply the same rounding per full cycle so projections do not
+  // drift from the amount that will actually be charged.
+  const fullDays = Math.floor(d);
+  const fractionalDay = d - fullDays;
+  let projected = p;
+  for (let day = 0; day < fullDays; day++) {
+    projected = Number((projected * (1 + r)).toFixed(2));
+    if (!Number.isFinite(projected)) return 0;
+  }
+  if (fractionalDay > 0) {
+    projected *= Math.pow(1 + r, fractionalDay);
+  }
   return Number.isFinite(projected) ? Number(projected.toFixed(2)) : 0;
 }
 
@@ -475,14 +495,22 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
         price: finiteNumber(tranche.price, 0)
       }))
       : [];
-    normalizedPositions[ticker] = {
-      ...position,
-      ticker: typeof position.ticker === 'string' ? position.ticker : ticker,
-      shares: finiteNumber(position.shares, 0),
-      tranches,
-      commBuy: finiteNumber(position.commBuy, 0),
-      marginCharged: finiteNumber(position.marginCharged, 0)
-    };
+    // Define the property explicitly: imported JSON can contain a ticker key
+    // named "__proto__", and assignment to that key on a plain object changes
+    // its prototype instead of preserving the position as an enumerable entry.
+    Object.defineProperty(normalizedPositions, ticker, {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: {
+        ...position,
+        ticker: typeof position.ticker === 'string' ? position.ticker : ticker,
+        shares: finiteNumber(position.shares, 0),
+        tranches,
+        commBuy: finiteNumber(position.commBuy, 0),
+        marginCharged: finiteNumber(position.marginCharged, 0)
+      }
+    });
   });
 
   const sourceTimestamp = Number(candidate.lastRolloverTimestamp);
@@ -535,6 +563,23 @@ export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): 
   const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate'];
   if (!recognizedFields.some(field => Object.hasOwn(candidate, field))) {
     throw new Error('File does not contain a recognized portfolio backup.');
+  }
+
+  // Validate top-level container shapes before normalization. A present but
+  // malformed canonical positions field suppresses legacy holdings migration;
+  // silently turning it into {} would make an import appear successful while
+  // discarding the user's positions.
+  if (Object.hasOwn(candidate, 'positions') && !isRecord(candidate.positions)) {
+    throw new Error('Invalid positions in portfolio backup: expected an object keyed by ticker.');
+  }
+  if (Object.hasOwn(candidate, 'holdings') && !Array.isArray(candidate.holdings)) {
+    throw new Error('Invalid holdings in portfolio backup: expected an array.');
+  }
+  if (Object.hasOwn(candidate, 'cashCushion') && !isRecord(candidate.cashCushion)) {
+    throw new Error('Invalid cashCushion in portfolio backup: expected an object.');
+  }
+  if (Object.hasOwn(candidate, 'closedTrades') && !Array.isArray(candidate.closedTrades)) {
+    throw new Error('Invalid closedTrades in portfolio backup: expected an array.');
   }
 
   // Backups are user-supplied data. Do not silently coerce invalid financial

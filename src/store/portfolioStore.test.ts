@@ -887,7 +887,43 @@ describe('canonical trade lifecycle and persistence', () => {
 
     store.updateLiveQuote('MSFT', { price: 220, requestStartedAt: requestBase + 200, quoteSource: 'Provider B' });
     store.updateLiveQuote('MSFT', { price: 205, requestStartedAt: requestBase + 100, quoteSource: 'Provider A' });
-    expect(store.getState().cashStocks?.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(220);
+    expect(store.getState().cashCushion.holdings.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(220);
+  });
+
+  it('uses monotonic request sequence to reject out-of-order quotes started in the same millisecond', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    store.addCashStock('MSFT', 3, 200);
+    const sameMillisecond = Date.now() + 5000;
+
+    store.updateLiveQuote('AAPL', {
+      price: 110,
+      requestStartedAt: sameMillisecond,
+      requestSequence: 42,
+      quoteSource: 'Newer request'
+    });
+    store.updateLiveQuote('AAPL', {
+      price: 105,
+      requestStartedAt: sameMillisecond,
+      requestSequence: 41,
+      quoteSource: 'Older request'
+    });
+    expect(store.getState().positions.AAPL.currentPrice).toBe(110);
+    expect(store.getState().positions.AAPL.quoteSource).toBe('Newer request');
+
+    store.updateLiveQuote('MSFT', {
+      price: 220,
+      requestStartedAt: sameMillisecond,
+      requestSequence: 42,
+      quoteSource: 'Newer request'
+    });
+    store.updateLiveQuote('MSFT', {
+      price: 205,
+      requestStartedAt: sameMillisecond,
+      requestSequence: 41,
+      quoteSource: 'Older request'
+    });
     expect(store.getState().cashCushion.holdings.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(220);
   });
 

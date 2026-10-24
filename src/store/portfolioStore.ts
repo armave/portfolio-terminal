@@ -880,7 +880,7 @@ export class PortfolioStore {
    */
   public updateLiveQuote(
     ticker: string,
-    quote: { price?: number; currentPrice?: number; quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: Record<string, unknown>; requestStartedAt?: number }
+    quote: { price?: number; currentPrice?: number; quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: Record<string, unknown>; requestStartedAt?: number; requestSequence?: number }
   ): void {
     const clean = ticker.trim().toUpperCase();
     const price = Number(quote.currentPrice ?? quote.price);
@@ -901,10 +901,22 @@ export class PortfolioStore {
           .map((holding) => Number(holding.quoteRequestStartedAt) || 0)
       );
       const requestStartedAt = quote.requestStartedAt ?? Date.now();
+      const requestSequence = quote.requestSequence ?? (Number(quote.quoteDetails?.requestSequence) || undefined);
+      const latestRequestSequence = Math.max(
+        Number(position?.quoteRequestSequence) || 0,
+        ...cashHoldings.filter((holding) => holding.ticker.toUpperCase() === clean)
+          .map((holding) => Number(holding.quoteRequestSequence) || 0),
+        ...cashStocks.filter((holding) => holding.ticker.toUpperCase() === clean)
+          .map((holding) => Number(holding.quoteRequestSequence) || 0)
+      );
 
       // Requests can finish out of order. Apply a response only if it started
       // after the last accepted request for this ticker, and never over a trade.
-      if (quote.requestStartedAt !== undefined && quote.requestStartedAt < latestRequestStartedAt) {
+      if (
+        (requestSequence !== undefined && latestRequestSequence > 0 && requestSequence < latestRequestSequence) ||
+        (requestSequence === undefined && quote.requestStartedAt !== undefined && quote.requestStartedAt < latestRequestStartedAt) ||
+        (requestSequence === undefined && quote.requestStartedAt !== undefined && quote.requestStartedAt === latestRequestStartedAt && latestRequestSequence > 0)
+      ) {
         return latestState;
       }
       if (
@@ -921,6 +933,7 @@ export class PortfolioStore {
           currentPrice: price,
           quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
           quoteRequestStartedAt: requestStartedAt,
+          ...(requestSequence !== undefined ? { quoteRequestSequence: requestSequence } : {}),
           quoteSource: quote.quoteSource ?? 'Live quote',
           ...(quote.requestStartedAt === undefined && quote.quoteSource === 'Manual'
             ? { lastTradeAt: requestStartedAt }
@@ -933,13 +946,15 @@ export class PortfolioStore {
         holding.ticker.toUpperCase() === clean
           ? { ...holding, currentPrice: price, price, quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
               quoteRequestStartedAt: requestStartedAt,
+              ...(requestSequence !== undefined ? { quoteRequestSequence: requestSequence } : {}),
               quoteSource: quote.quoteSource ?? 'Live quote',
               ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {}) }
           : holding
       );
       const updatedCashStocks = cashStocks.map((holding) =>
         holding.ticker.toUpperCase() === clean
-          ? { ...holding, currentPrice: price, quoteRequestStartedAt: requestStartedAt }
+          ? { ...holding, currentPrice: price, quoteRequestStartedAt: requestStartedAt,
+              ...(requestSequence !== undefined ? { quoteRequestSequence: requestSequence } : {}) }
           : holding
       );
 

@@ -17,17 +17,67 @@ function validSymbolList(symbol) {
         symbols.every(value => /^[A-Z0-9.^=-]{1,20}$/.test(value));
 }
 
-async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
+export async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
     const controller = new AbortController();
     const externalSignal = init.signal;
     const abortFromExternal = () => controller.abort(externalSignal?.reason);
-    externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
-    const timeoutId = setTimeout(() => controller.abort(new Error("Upstream request timed out")), timeoutMs);
-    try {
-        return await fetch(input, { ...init, signal: controller.signal });
-    } finally {
+    if (externalSignal?.aborted) {
+        controller.abort(externalSignal.reason);
+    } else {
+        externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
+    }
+
+    let cleanedUp = false;
+    let timeoutId;
+    const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
         clearTimeout(timeoutId);
         externalSignal?.removeEventListener("abort", abortFromExternal);
+    };
+    timeoutId = setTimeout(() => controller.abort(new Error("Upstream request timed out")), timeoutMs);
+
+    try {
+        const response = await fetch(input, { ...init, signal: controller.signal });
+        if (!response.body) {
+            cleanup();
+            return response;
+        }
+
+        // fetch() resolves when headers arrive, not when the body is consumed.
+        // Keep the timeout and external abort wired until the caller finishes reading.
+        const reader = response.body.getReader();
+        const timedBody = new ReadableStream({
+            async pull(streamController) {
+                try {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        streamController.close();
+                        cleanup();
+                    } else {
+                        streamController.enqueue(value);
+                    }
+                } catch (error) {
+                    cleanup();
+                    streamController.error(error);
+                }
+            },
+            async cancel(reason) {
+                try {
+                    await reader.cancel(reason);
+                } finally {
+                    cleanup();
+                }
+            }
+        });
+        return new Response(timedBody, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers
+        });
+    } catch (error) {
+        cleanup();
+        throw error;
     }
 }
 
@@ -300,11 +350,11 @@ export default {
                 for (const rawModel of candidateModels) {
                     const modelName = rawModel.startsWith("models/") ? rawModel : `models/${rawModel}`;
 
+                    const controller = new AbortController();
+                    let timeoutId;
                     try {
-                        // 3.5-second timeout per attempt to prevent serverless worker hang
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 3500);
-
+                        // Keep the timeout active until the response body has been consumed.
+                        timeoutId = setTimeout(() => controller.abort(), 3500);
                         const res = await fetch(
                             `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${encodeURIComponent(geminiKey.trim())}`,
                             {
@@ -316,7 +366,6 @@ export default {
                                 signal: controller.signal
                             }
                         );
-                        clearTimeout(timeoutId);
 
                         const data = await res.json().catch(() => null);
 
@@ -335,6 +384,8 @@ export default {
                     } catch (err) {
                         console.error(`[Gemini Proxy Error on ${modelName}]:`, err.message);
                         lastData = { error: `Model ${modelName} fetch failed: ${err.message}` };
+                    } finally {
+                        if (timeoutId !== undefined) clearTimeout(timeoutId);
                     }
                 }
 

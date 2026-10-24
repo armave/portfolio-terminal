@@ -16,6 +16,23 @@ import {
 } from './api';
 import * as storage from './storage';
 
+async function encryptV2Fixture(value: unknown, secret: string): Promise<string> {
+  const nonce = globalThis.crypto.getRandomValues(new Uint8Array(12));
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  const key = await globalThis.crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt']);
+  const ciphertext = await globalThis.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce, tagLength: 128 },
+    key,
+    new TextEncoder().encode(JSON.stringify(value))
+  );
+  const toBase64 = (bytes: Uint8Array) => {
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  };
+  return `aesgcm:v2:${toBase64(nonce)}:${toBase64(new Uint8Array(ciphertext))}`;
+}
+
 describe('cloud state sync', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -75,14 +92,8 @@ describe('cloud state sync', () => {
 
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     const payload = JSON.parse(String(request.body));
-    const decrypted = CryptoJS.AES.decrypt(
-      payload.encryptedPayload,
-      'cloud-encryption-secret'
-    ).toString(CryptoJS.enc.Utf8);
-    expect(JSON.parse(decrypted)).toEqual({
-      activeView: 'AAPL',
-      balance: 1250
-    });
+    expect(payload.encryptedPayload).toMatch(/^aesgcm:v2:[A-Za-z0-9+/]+=*:[A-Za-z0-9+/]+=*$/);
+    expect(payload.encryptedPayload).not.toContain('cloud-encryption-secret');
   });
   it('returns false when a failed cloud pull falls back to a truthy local state', async () => {
     const localState = { activeView: 'AAPL', balance: 1250 };
@@ -209,6 +220,87 @@ describe('cloud pull persistence failures', () => {
 });
 
 
+
+describe('versioned cloud encryption', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('rejects modified AES-GCM ciphertext without persisting it', async () => {
+    const secret = 'cloud-encryption-secret';
+    const validPayload = {
+      encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA=='
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ ETag: '"44"' }),
+      json: async () => validPayload
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const saveSpy = vi.spyOn(storage, 'saveState').mockReturnValue(true);
+    const reportResult = vi.fn();
+    const showToast = vi.fn();
+
+    await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 1000 },
+      secret,
+      showToast,
+      logTerminal: vi.fn()
+    }, reportResult);
+
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(reportResult).toHaveBeenCalledWith(false);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Failed to decrypt cloud state'), 'error');
+  });
+
+  it('reads legacy CryptoJS ciphertext and schedules a versioned encryption upgrade', async () => {
+    const secret = 'cloud-encryption-secret';
+    const legacyPayload = CryptoJS.AES.encrypt(JSON.stringify({
+      activeView: 'AAPL',
+      balance: 1250,
+      lastRolloverTimestamp: Date.now()
+    }), secret).toString();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"70"' }),
+        json: async () => ({ encryptedPayload: legacyPayload })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"71"' })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"72"' })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(storage, 'saveState').mockReturnValue(true);
+
+    const result = await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 0 },
+      secret,
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    });
+
+    expect(result.activeView).toBe('AAPL');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const upgrade = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+    expect(upgrade.encryptedPayload).toMatch(/^aesgcm:v2:/);
+    // Drain the background migration write before another test replaces global fetch.
+    await expect(pushCloudState({ activeView: 'AAPL', balance: 1250 }, {
+      secret,
+      showToast: vi.fn()
+    })).resolves.toBe(true);
+  });
+});
+
 describe('Gateway Secret validation', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -316,6 +408,77 @@ describe('cloud pull revision safety', () => {
   });
 });
 
+
+describe('queued writes during concurrent cloud pulls', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('does not adopt a revision learned from a pull after a queued snapshot was submitted', async () => {
+    let resolveFirstPush!: (response: any) => void;
+    const firstPushResponse = new Promise((resolve) => {
+      resolveFirstPush = resolve;
+    });
+    const secret = 'cloud-encryption-secret';
+    const encryptedPayload = await encryptV2Fixture({
+      activeView: 'CLOUD',
+      balance: 200,
+      lastRolloverTimestamp: Date.now()
+    }, secret);
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => firstPushResponse)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"99"' }),
+        json: async () => ({ encryptedPayload })
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        headers: new Headers({ ETag: '"99"' }),
+        json: async () => ({ error: 'Cloud portfolio changed since this device last synced.' })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const first = pushCloudState({ activeView: 'FIRST', balance: 1 }, {
+      secret, showToast: vi.fn()
+    });
+    const second = pushCloudState({ activeView: 'STALE_QUEUED', balance: 2 }, {
+      secret, showToast: vi.fn()
+    });
+    // AES-GCM encryption is asynchronous; wait until the first write has actually started.
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 0 },
+      secret,
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    });
+
+    resolveFirstPush({
+      ok: true,
+      status: 200,
+      headers: new Headers({ ETag: '"100"' }),
+      json: async () => ({ success: true })
+    });
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(false);
+
+    const firstHeaders = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    const secondHeaders = fetchMock.mock.calls[2][1].headers as Record<string, string>;
+    expect(secondHeaders['If-Match']).toBe(firstHeaders['If-Match']);
+    expect(secondHeaders['If-Match']).not.toBe('"99"');
+  });
+});
 
 describe('Yahoo deep-data request deduplication', () => {
   afterEach(() => {

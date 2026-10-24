@@ -163,6 +163,41 @@ describe('portfolio domain', () => {
     expect(backup.balance).toBe(-250);
   });
 
+  it('preserves imported position keys without invoking object prototype setters', () => {
+    const candidate = JSON.parse(JSON.stringify({
+      positions: {
+        AAPL: { shares: 1, tranches: [{ qty: 1, price: 10 }] }
+      }
+    }));
+    Object.defineProperty(candidate.positions, '__proto__', {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: { shares: 2, tranches: [{ qty: 2, price: 20 }] }
+    });
+
+    const normalized = normalizePortfolioBackup(candidate, 10_000);
+    expect(Object.hasOwn(normalized.positions, '__proto__')).toBe(true);
+    expect(normalized.positions['__proto__']).toMatchObject({
+      shares: 2,
+      tranches: [{ qty: 2, price: 20 }]
+    });
+    expect(Object.getPrototypeOf(normalized.positions)).toBe(Object.prototype);
+  });
+
+  it('rejects malformed top-level backup containers instead of silently dropping portfolio data', () => {
+    expect(() => normalizePortfolioBackup({ positions: null }, 10_000))
+      .toThrow('Invalid positions in portfolio backup: expected an object keyed by ticker.');
+    expect(() => normalizePortfolioBackup({ positions: [], holdings: [{ ticker: 'AAPL' }] }, 10_000))
+      .toThrow('Invalid positions in portfolio backup: expected an object keyed by ticker.');
+    expect(() => normalizePortfolioBackup({ holdings: {} }, 10_000))
+      .toThrow('Invalid holdings in portfolio backup: expected an array.');
+    expect(() => normalizePortfolioBackup({ positions: {}, cashCushion: [] }, 10_000))
+      .toThrow('Invalid cashCushion in portfolio backup: expected an object.');
+    expect(() => normalizePortfolioBackup({ positions: {}, closedTrades: {} }, 10_000))
+      .toThrow('Invalid closedTrades in portfolio backup: expected an array.');
+  });
+
   it('accepts recognized portfolio backups and rejects unrelated JSON objects', () => {
     expect(normalizePortfolioBackup({ positions: {} }, 10_000).positions).toEqual({});
     expect(() => normalizePortfolioBackup({ settings: {} }, 10_000)).toThrow('recognized portfolio backup');
@@ -412,6 +447,23 @@ describe('portfolio domain', () => {
     expect(calculateProjectedDebt(1000, 0.01, Number.NaN)).toBe(0);
   });
 
+  it('matches live rollover cent rounding in projected debt', () => {
+    const dailyRate = 1 / 365;
+    const projectedDebt = calculateProjectedDebt(1.99, dailyRate, 3);
+    vi.useFakeTimers();
+    const state = {
+      balance: -1.99,
+      lastRolloverTimestamp: new Date('2026-01-01T00:00:00Z').getTime(),
+      brokerAssumptions: { annualRate: 1, dayCountBasis: 365, rolloverHour: 4, rolloverMinute: 0 }
+    };
+    vi.setSystemTime(new Date('2026-01-04T00:00:00Z'));
+
+    expect(processRollovers(state)).toBe(true);
+    expect(Math.abs(state.balance)).toBe(2.02);
+    expect(projectedDebt).toBe(2.02);
+    vi.useRealTimers();
+  });
+
   it('calculates accrued fees correctly', () => {
     expect(calculateAccruedFees(10.5, 5.25, 2.25)).toBe(18);
     expect(calculateAccruedFees(0, 0, 0)).toBe(0);
@@ -453,6 +505,23 @@ describe('portfolio domain', () => {
     expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-01T23:00:00Z'))).toBe(0);
     // 05:00 Armenia time the next day, after the cutoff.
     expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-02T01:00:00Z'))).toBe(1);
+  });
+
+  it('uses configured rollover hour and minute for accrued interest', () => {
+    const tranches = [{ qty: 10, price: 100, date: '2026-10-01' }];
+    const options = { annualRate: 0.365, dayCountBasis: 365, rolloverHour: 6, rolloverMinute: 30 };
+
+    // 06:00 Armenia time is before the configured 06:30 cutoff.
+    expect(calculateMarginInterest(tranches, {
+      ...options,
+      now: new Date('2026-10-02T02:00:00Z')
+    })).toBe(0);
+
+    // 07:00 Armenia time is after the configured 06:30 cutoff.
+    expect(calculateMarginInterest(tranches, {
+      ...options,
+      now: new Date('2026-10-02T03:00:00Z')
+    })).toBeCloseTo(1, 8);
   });
 
   it('processes a same-day rollover when the stored baseline is before the 04:00 Armenia cutoff', () => {
