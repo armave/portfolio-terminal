@@ -480,6 +480,37 @@ describe('queued writes during concurrent cloud pulls', () => {
   });
 });
 
+describe('proxyFetch gateway authentication', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('rejects empty credentials before making a network request', async () => {
+    vi.spyOn(storage, 'getGatewaySecret').mockReturnValue('');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(proxyFetch('freedom-trades')).rejects.toThrow('Gateway Secret is not available');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('uses an explicit secret and attaches both gateway authentication headers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(proxyFetch('freedom-trades', {}, { secret: 'test-gateway-secret' })).resolves.toEqual({});
+    const request = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(request.headers).toMatchObject({
+      'X-App-Auth': 'test-gateway-secret',
+      Authorization: 'Bearer test-gateway-secret'
+    });
+  });
+});
+
 describe('Yahoo deep-data request deduplication', () => {
   afterEach(() => {
     clearYahooDeepStockDataCache();
