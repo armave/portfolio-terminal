@@ -768,7 +768,8 @@ export function normalizeFreedomPortfolio(response: any): FreedomPortfolioSnapsh
   };
   const balances = Array.isArray(ps.acc) ? usdRows(ps.acc).map((item: any) => ({
     currency: 'USD',
-    amount: finiteOrNull(item?.currval) ?? 0,
+    // TradeNet `s` matches the USD balance shown in the broker app; `currval` is a different value.
+    amount: finiteOrNull(item?.s) ?? finiteOrNull(item?.currval) ?? 0,
     forecastIn: finiteOrNull(item?.forecast_in) ?? 0,
     forecastOut: finiteOrNull(item?.forecast_out) ?? 0,
     t2In: finiteOrNull(item?.t2_in) ?? 0,
