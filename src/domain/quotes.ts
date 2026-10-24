@@ -23,8 +23,13 @@ export function resolveMarketSessionPrice(input: MarketSessionPriceInput): numbe
       usablePrice(input.postMarketPrice) ??
       regularPrice;
   }
-  if (input.marketState === 'POST' || input.marketState === 'CLOSED') {
+  if (input.marketState === 'POST') {
     return usablePrice(input.postMarketPrice) ?? regularPrice;
+  }
+  if (input.marketState === 'CLOSED') {
+    return usablePrice(input.postMarketPrice) ??
+      usablePrice(input.preMarketPrice) ??
+      regularPrice;
   }
   return regularPrice;
 }

@@ -265,7 +265,18 @@ async function syncCloudState(mode = 'push') {
     getState: () => state,
     pullCloudAndRewriteLocal,
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
-    logTerminal
+    logTerminal,
+    onStatusChange: (status) => {
+      const syncEl = document.getElementById('cloudSyncStatus');
+      if (!syncEl) return;
+      if (status === 'synced') {
+        syncEl.textContent = `Synced: ${new Date().toLocaleTimeString()}`;
+        syncEl.className = 'text-[10px] text-emerald-400 font-mono';
+      } else {
+        syncEl.textContent = 'Sync failed';
+        syncEl.className = 'text-[10px] text-rose-400 font-mono';
+      }
+    }
   });
 }
 
@@ -1806,7 +1817,7 @@ function hideStartupLoading() {
   document.getElementById('startup-loading')?.classList.add('is-hidden');
 }
 
-setSecretGetter(() => state.gatewaySecret || getGatewaySecret());
+setSecretGetter(() => getGatewaySecret());
 
 async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
   const submittedSecret = secret.trim();

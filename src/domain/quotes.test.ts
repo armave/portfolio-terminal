@@ -23,6 +23,14 @@ describe('resolveMarketSessionPrice', () => {
     })).toBe(98.75);
   });
 
+  it('uses an available pre-market price as a closed-session fallback before the regular price', () => {
+    expect(resolveMarketSessionPrice({
+      regularPrice: 100,
+      preMarketPrice: 101.25,
+      marketState: 'CLOSED'
+    })).toBe(101.25);
+  });
+
   it('falls back to the regular price when session-specific prices are missing or invalid', () => {
     expect(resolveMarketSessionPrice({
       regularPrice: 100,

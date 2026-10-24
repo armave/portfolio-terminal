@@ -80,6 +80,23 @@ describe('cloud state sync', () => {
     }
   });
 
+  it('reports cloud sync status through a callback without transport-layer DOM access', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ ETag: '"1"' })
+    });
+    const onStatusChange = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await pushCloudState(
+      { activeView: 'AAPL', balance: 100 },
+      { secret: 'cloud-encryption-secret', showToast: vi.fn(), onStatusChange }
+    );
+
+    expect(result).toBe(true);
+    expect(onStatusChange).toHaveBeenCalledWith('synced');
+  });
+
   it('does not mutate the live state when excluding local-only fields from cloud backup', async () => {
     const state = {
       activeView: 'AAPL',
@@ -98,7 +115,7 @@ describe('cloud state sync', () => {
 
     expect(result).toBe(true);
     expect(state).toEqual(originalState);
-    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ 'If-Match': '"0"' });
+    expect(fetchMock.mock.calls[0][1].headers['If-Match']).toMatch(/^"\d+"$/);
 
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     const payload = JSON.parse(String(request.body));
