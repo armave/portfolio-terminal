@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect } from 'preact/hooks';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
@@ -10,7 +10,6 @@ interface AppProps {
 }
 
 export function App({ }: AppProps) {
-  const [tradesDebugLoading, setTradesDebugLoading] = useState(false);
 
   // Closed History asks for trade history when mounted; do not also fetch from
   // a global navigation click listener, which caused duplicate broker requests.
@@ -36,7 +35,6 @@ export function App({ }: AppProps) {
   const loadExecutedTrades = async () => {
     if (tradesRequest) return tradesRequest;
     tradesRequest = (async () => {
-    setTradesDebugLoading(true);
     try {
       // The saved Gateway Secret is encrypted and restored asynchronously from IndexedDB.
       // Never issue the startup request until restoration has completed.
@@ -57,7 +55,6 @@ export function App({ }: AppProps) {
       console.error('Unable to load TradeNet executed trades:', error);
       if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tradenet:executed-trades-error'));
     } finally {
-      setTradesDebugLoading(false);
     }
     })();
     try { await tradesRequest; } finally { tradesRequest = null; }
