@@ -1,8 +1,20 @@
 import { fetchYahooStockData, fetchFallbackQuote } from './api';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 
-// Monotonic within this runtime, including requests started during the same millisecond.
-let quoteRequestSequence = 0;
+// Time-anchored and monotonic within a millisecond, so persisted quote ordering
+// remains valid after reloads while requests started together still get a tie-breaker.
+let lastRequestTimestamp = 0;
+let requestSequenceWithinMillisecond = 0;
+function nextQuoteRequestSequence(): number {
+  const now = Date.now();
+  if (now === lastRequestTimestamp) {
+    requestSequenceWithinMillisecond += 1;
+  } else {
+    lastRequestTimestamp = now;
+    requestSequenceWithinMillisecond = 0;
+  }
+  return now * 1000 + requestSequenceWithinMillisecond;
+}
 
 export async function fetchFallbackPrice(symbol: string) {
   for (const provider of ['finnhub', 'twelvedata'] as const) {
@@ -47,8 +59,8 @@ function resolveQuoteProvenance(marketState: string | undefined, sourceTimeSecon
 }
 
 export async function fetchLivePriceFromProviders(symbol: string) {
-  const requestSequence = ++quoteRequestSequence;
   const requestStartedAt = Date.now();
+  const requestSequence = nextQuoteRequestSequence();
   symbol = symbol.toUpperCase();
   let price: number | null = null;
   let sourceName = "";
