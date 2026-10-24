@@ -350,11 +350,11 @@ export default {
                 for (const rawModel of candidateModels) {
                     const modelName = rawModel.startsWith("models/") ? rawModel : `models/${rawModel}`;
 
+                    const controller = new AbortController();
+                    let timeoutId;
                     try {
-                        // 3.5-second timeout per attempt to prevent serverless worker hang
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 3500);
-
+                        // Keep the timeout active until the response body has been consumed.
+                        timeoutId = setTimeout(() => controller.abort(), 3500);
                         const res = await fetch(
                             `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${encodeURIComponent(geminiKey.trim())}`,
                             {
@@ -366,7 +366,6 @@ export default {
                                 signal: controller.signal
                             }
                         );
-                        clearTimeout(timeoutId);
 
                         const data = await res.json().catch(() => null);
 
@@ -384,7 +383,9 @@ export default {
 
                     } catch (err) {
                         console.error(`[Gemini Proxy Error on ${modelName}]:`, err.message);
-                        lastData = { error: `Model ${modelName} fetch failed: ${err.message}` };
+                        lastData = { error: `Model ${modelName} fetch failed: ${err.message}`;
+                    } finally {
+                        if (timeoutId !== undefined) clearTimeout(timeoutId);
                     }
                 }
 
