@@ -395,9 +395,21 @@ export async function fetchMarketNews(ticker: string, force = false): Promise<an
         source: String(item?.source ?? item?.provider ?? 'Freedom TradeNet'),
         image: String(item?.image ?? item?.imageUrl ?? '')
       })).filter((item) => item.headline && item.url);
-      if (normalized.length) {
-        marketNewsCache.set(symbol, { expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS, data: normalized });
-        return normalized;
+      // Combine Freedom stories with the existing market-news feed instead of
+      // hiding one provider whenever the other has results.
+      const fallbackPayload = await proxyFetch('news', { symbol });
+      const fallbackNews = Array.isArray(fallbackPayload) ? fallbackPayload : [];
+      const combined = [...normalized, ...fallbackNews];
+      const seen = new Set<string>();
+      const deduped = combined.filter((item: any) => {
+        const key = String(item?.url || item?.link || item?.headline || item?.title || '').trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      if (deduped.length) {
+        marketNewsCache.set(symbol, { expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS, data: deduped });
+        return deduped;
       }
     } catch (error) {
       console.warn(`[Freedom News Error for ${symbol}]:`, error instanceof Error ? error.message : error);
