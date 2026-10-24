@@ -1,14 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchFallbackQuote, fetchYahooStockData } from './api';
 import { fetchLivePriceFromProviders } from './quoteProvider';
+import { fetchFreedomQuote } from './freedomMarketData';
 
 vi.mock('./api', () => ({
   fetchYahooStockData: vi.fn(),
   fetchFallbackQuote: vi.fn()
 }));
 
+vi.mock('./freedomMarketData', () => ({ fetchFreedomQuote: vi.fn() }));
+
 describe('fetchLivePriceFromProviders', () => {
   beforeEach(() => {
+    vi.mocked(fetchFreedomQuote).mockRejectedValue(new Error('Freedom unavailable'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
