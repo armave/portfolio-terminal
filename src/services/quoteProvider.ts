@@ -17,8 +17,6 @@ export async function fetchFallbackPrice(symbol: string) {
           marketState: 'UNKNOWN' as const,
           freshness: 'unknown' as const,
           receivedAt: Date.now(),
-          requestSequence,
-          requestStartedAt,
           price: fallback.price,
           change: fallback.change ?? 0,
           changePercent: fallback.changePercent ?? 0
@@ -110,7 +108,7 @@ export async function fetchLivePriceFromProviders(symbol: string) {
     if (fallback) {
       price = fallback.price;
       sourceName = fallback.sourceName;
-      quoteDetails = fallback.quoteDetails;
+      quoteDetails = { ...fallback.quoteDetails, requestSequence, requestStartedAt };
     }
   }
 
