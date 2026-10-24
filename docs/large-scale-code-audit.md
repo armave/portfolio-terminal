@@ -59,7 +59,7 @@
 - [x] Reviewed quote-store ordering protections: older request sequences and timestamp-only stale responses are rejected, and quote results older than a trade do not overwrite the trade.
 - [x] Reviewed the app's quote refresh entry points and found the batch quote sequence gap described above; addressed it and added regression coverage. No additional confirmed stale-response race was found in the inspected paths.
 - [x] Final source-level audit pass completed for the identified UI async race and debt-rounding mismatch; both workflows passed on the current PR head before this final progress-record update.
-- [ ] Verify both workflows on the final progress-record commit before merge.
+- [x] Both workflows passed on progress-record commit `081dbc4bc6af45654857357d410c808eb3b3a47a`: typecheck, tests, production build, dead-code validation, and production dependency audit.
 - [x] Implemented versioned authenticated cloud encryption: new writes use Web Crypto AES-GCM with a 96-bit random nonce and 128-bit authentication tag; existing CryptoJS ciphertext remains readable.
 - [x] Added regression tests for the AES-GCM envelope, rejecting modified ciphertext before local persistence, and migrating successfully read legacy ciphertext to the versioned format using the existing revision-checked write path.
 - [x] Fixed strict TypeScript `BufferSource` compatibility in AES-GCM decryption by passing standalone `ArrayBuffer` copies.
