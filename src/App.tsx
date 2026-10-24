@@ -82,6 +82,26 @@ export function App({ }: AppProps) {
     }
   };
 
+  // Match app-recorded margin interest only to a specific closing execution.
+  // Ticker-only matches are unsafe: one ticker may have several closed positions.
+  const getTradeMarginFee = (trade: FreedomExecutedTrade): number | null => {
+    if (trade.marginFee !== null) return trade.marginFee;
+    if (trade.side.toUpperCase() !== 'SELL' || !trade.ticker || trade.quantity === null || !trade.executedAt) return null;
+    const state = loadSavedState({ holdings: [], cashStocks: [] }) as any;
+    const closedTrades = Array.isArray(state?.closedTrades) ? state.closedTrades : [];
+    const tradeDay = String(trade.executedAt).slice(0, 10);
+    const matches = closedTrades.filter((closed: any) => {
+      const tickerMatches = String(closed?.ticker ?? '').trim().toUpperCase() === trade.ticker.trim().toUpperCase();
+      const shares = Number(closed?.shares);
+      const sharesMatch = Number.isFinite(shares) && Math.abs(shares - trade.quantity!) < 1e-6;
+      const closeDate = String(closed?.sellDate ?? closed?.exitDate ?? closed?.closedAt ?? closed?.date ?? '').slice(0, 10);
+      const dateMatches = closeDate === tradeDay;
+      return tickerMatches && sharesMatch && dateMatches && Number.isFinite(Number(closed?.marginInterest)) && Number(closed.marginInterest) >= 0;
+    });
+    // Require exactly one precise match. Never allocate a ticker's total fee across unrelated executions.
+    return matches.length === 1 ? Number(matches[0].marginInterest) : null;
+  };
+
   const usd = (value: number | null) => value === null
     ? '—'
     : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
@@ -163,15 +183,15 @@ export function App({ }: AppProps) {
                             <td class="px-2 py-2 text-right font-mono">{trade.price === null ? '—' : trade.price.toLocaleString('en-US', { maximumFractionDigits: 6 })}</td>
                             <td class="px-2 py-2">{trade.currency || '—'}</td>
                             <td class="px-2 py-2 text-right font-mono">{trade.commission === null ? '—' : trade.commission.toLocaleString('en-US', { maximumFractionDigits: 2 })} {trade.commissionCurrency}</td>
-                            <td class="px-2 py-2 text-right font-mono">{trade.marginFee === null ? '—' : trade.marginFee.toLocaleString('en-US', { maximumFractionDigits: 2 })} {trade.currency}</td>
-                            <td class="px-2 py-2 text-right font-mono">{trade.profit === null ? '—' : (trade.marginFee === null ? trade.profit : trade.profit - trade.marginFee).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                            <td class="px-2 py-2 text-right font-mono">{getTradeMarginFee(trade) === null ? '—' : getTradeMarginFee(trade)!.toLocaleString('en-US', { maximumFractionDigits: 2 })} {trade.currency}</td>
+                            <td class="px-2 py-2 text-right font-mono">{trade.profit === null ? '—' : (getTradeMarginFee(trade) === null ? trade.profit : trade.profit - getTradeMarginFee(trade)!).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
               )}
-              {executedTrades !== null && <p class="text-[10px] text-slate-500">* Uses Freedom's reported profit when no fee for the specific stock/trade is available. When a per-trade margin fee is present, it is subtracted from reported profit. Commissions are shown separately and are not deducted here.</p>}
+              {executedTrades !== null && <p class="text-[10px] text-slate-500">* Uses Freedom's reported profit when no fee for the specific stock/trade is available. When TradeNet provides a per-trade margin fee, or exactly one app closed-trade record matches ticker, sell date, and quantity, that fee is subtracted from reported profit. Commissions are shown separately and are not deducted here.</p>}
               {tradesDebugResponse !== null && (
                 <details class="space-y-2"><summary class="cursor-pointer text-xs text-slate-400">Raw TradeNet response</summary>
                   <textarea aria-label="Raw TradeNet getTradesHistory response" readOnly rows={8}
