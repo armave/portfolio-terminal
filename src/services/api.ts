@@ -754,24 +754,36 @@ export interface FreedomPortfolioSnapshot {
 export function normalizeFreedomPortfolio(response: any): FreedomPortfolioSnapshot {
   const ps = response?.data?.result?.ps;
   if (!ps || typeof ps !== 'object') throw new Error('TradeNet response is missing data.result.ps.');
-  const balances = Array.isArray(ps.acc) ? ps.acc.map((item: any) => ({
-    currency: String(item?.curr ?? 'UNKNOWN'),
-    amount: Number.isFinite(Number(item?.currval)) ? Number(item.currval) : 0,
-    forecastIn: Number(item?.forecast_in ?? 0),
-    forecastOut: Number(item?.forecast_out ?? 0),
-    t2In: Number(item?.t2_in ?? 0),
-    t2Out: Number(item?.t2_out ?? 0)
+  if (ps.loaded !== true) throw new Error('TradeNet USD account data is not loaded yet.');
+
+  // This app is intentionally scoped to the active USD account. Do not mix
+  // AED/RUR balances or non-USD positions into the USD portfolio.
+  const usdRows = (rows: any[]) => rows.filter((item) =>
+    String(item?.curr ?? item?.base_currency ?? '').toUpperCase() === 'USD'
+  );
+  const finiteOrNull = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const balances = Array.isArray(ps.acc) ? usdRows(ps.acc).map((item: any) => ({
+    currency: 'USD',
+    amount: finiteOrNull(item?.currval) ?? 0,
+    forecastIn: finiteOrNull(item?.forecast_in) ?? 0,
+    forecastOut: finiteOrNull(item?.forecast_out) ?? 0,
+    t2In: finiteOrNull(item?.t2_in) ?? 0,
+    t2Out: finiteOrNull(item?.t2_out) ?? 0
   })) : [];
-  const positions = Array.isArray(ps.pos) ? ps.pos.map((item: any) => ({
+  const positions = Array.isArray(ps.pos) ? usdRows(ps.pos).map((item: any) => ({
     ticker: String(item?.i ?? item?.base_contract_code ?? ''),
     name: String(item?.name ?? item?.name2 ?? item?.i ?? 'Unknown instrument'),
-    quantity: Number(item?.q ?? 0),
-    currency: String(item?.curr ?? item?.base_currency ?? 'UNKNOWN'),
-    marketPrice: Number.isFinite(Number(item?.mkt_price)) ? Number(item.mkt_price) : null,
-    marketValue: Number.isFinite(Number(item?.market_value)) ? Number(item.market_value) : null,
-    averagePrice: Number.isFinite(Number(item?.bal_price_a)) ? Number(item.bal_price_a) : null,
-    profitClose: Number.isFinite(Number(item?.profit_close)) ? Number(item.profit_close) : null,
-    accountPositionId: Number.isFinite(Number(item?.acc_pos_id)) ? Number(item.acc_pos_id) : null
+    quantity: finiteOrNull(item?.q) ?? 0,
+    currency: 'USD',
+    marketPrice: finiteOrNull(item?.mkt_price),
+    marketValue: finiteOrNull(item?.market_value),
+    averagePrice: finiteOrNull(item?.bal_price_a),
+    profitClose: finiteOrNull(item?.profit_close),
+    accountPositionId: finiteOrNull(item?.acc_pos_id)
   })) : [];
-  return { loaded: ps.loaded === true, balances, positions };
+  return { loaded: true, balances, positions };
 }
