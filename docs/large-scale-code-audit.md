@@ -40,7 +40,7 @@
 - Commission inputs are validated in the financial domain. Date parsing and rollover behavior must remain covered by regression tests.
 - The repository's documented financial and cloud-state model is intentionally single-owner. This audit does not introduce multi-user semantics or change persisted state formats.
 
-## Acceptance criteria
+## Finding addressed in this PR\n\n- **Data integrity — malformed position key can be silently lost during normalization.** Assigning a JSON-provided `__proto__` position key into a normal JavaScript object invokes the legacy prototype setter rather than creating an enumerable position property. That could make a position disappear when the normalized state is serialized.\n- **Fix:** normalized position entries are now created with `Object.defineProperty`, preserving ordinary object behavior while ensuring imported keys become own enumerable data properties.\n- **Regression test:** import a backup containing both a normal position and an explicitly defined `__proto__` position; verify the position survives and the result retains `Object.prototype`.\n- **Severity:** low likelihood / potentially high data-integrity impact for malformed or adversarial backup input. This does not indicate a demonstrated remote exploit; it is a local import/normalization robustness issue.\n## Acceptance criteria
 
 - [ ] Pull requests run typecheck, tests, dead-code validation, production dependency audit, and production build.
 - [ ] No financial formula or persisted schema is changed merely to make the audit appear comprehensive.
