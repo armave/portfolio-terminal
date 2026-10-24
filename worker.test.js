@@ -376,6 +376,38 @@ describe('Worker request hardening', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('keeps the Gemini attempt timeout active until its response body is consumed', async () => {
+    vi.useFakeTimers();
+    let firstSignal;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(async (_input, init) => {
+        firstSignal = init.signal;
+        return new Response(new ReadableStream({
+          start(controller) {
+            init.signal.addEventListener('abort', () => controller.error(new Error('Gemini body aborted')), { once: true });
+          }
+        }), { status: 200 });
+      })
+      .mockResolvedValueOnce(new Response(JSON.stringify({ candidates: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const responsePromise = worker.fetch(authed('https://worker.test/?action=gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'hello' })
+    }), { GATEWAY_SECRET: 'test-secret', GEMINI_KEY: 'provider-key' });
+
+    await vi.advanceTimersByTimeAsync(3500);
+    const response = await responsePromise;
+
+    expect(firstSignal.aborted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(200);
+  });
+
   it('rejects invalid Gemini payloads, oversized prompts, and unapproved models', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
