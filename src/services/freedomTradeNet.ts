@@ -26,10 +26,14 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command = "getPosi
         false,
         ["sign"]
     );
+    // TradeNet's current auth documentation specifies that GET requests
+    // sign the Unix timestamp only; POST/PUT requests sign body + timestamp.
+    // This request uses GET with q in the URL, so signing body + timestamp
+    // causes an authentication failure even when the keys are correct.
     const bytes = await crypto.subtle.sign(
         "HMAC",
         key,
-        new TextEncoder().encode(body + timestamp)
+        new TextEncoder().encode(timestamp)
     );
     const signature = Array.from(new Uint8Array(bytes))
         .map((byte) => byte.toString(16).padStart(2, "0"))
