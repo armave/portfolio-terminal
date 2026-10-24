@@ -199,7 +199,7 @@ export default {
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
-        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions"].includes(action)) {
+        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
@@ -231,6 +231,19 @@ export default {
                     return jsonError("Freedom positions only supports GET.", 405, corsHeaders);
                 }
                 const data = await requestTradeNet(env, "getPositionJson");
+                return new Response(JSON.stringify({
+                    ok: true,
+                    provider: "Freedom TradeNet",
+                    data
+                }), { headers: corsHeaders });
+            }
+
+            // Read-only executed trade history. Command and query limits are fixed server-side.
+            if (action === "freedom-trades") {
+                if (request.method !== "GET") {
+                    return jsonError("Freedom trades only supports GET.", 405, corsHeaders);
+                }
+                const data = await requestTradeNet(env, "getTradesHistory");
                 return new Response(JSON.stringify({
                     ok: true,
                     provider: "Freedom TradeNet",
