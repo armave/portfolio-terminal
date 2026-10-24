@@ -101,7 +101,14 @@ export function App({ }: AppProps) {
     try {
       const response = await fetchFreedomTradeNetTrades();
       setTradesDebugResponse(response);
-      setExecutedTrades(normalizeFreedomTrades(response));
+      const normalizedTrades = normalizeFreedomTrades(response);
+      setExecutedTrades(normalizedTrades);
+      // Keep broker executions separate from app-owned ClosedTrade records.
+      // ClosedHistoryDesk subscribes to this event and renders the broker data.
+      if (typeof window !== 'undefined') {
+        (window as any).__tradenetExecutedTrades = normalizedTrades;
+        window.dispatchEvent(new CustomEvent('tradenet:executed-trades', { detail: normalizedTrades }));
+      }
     } catch (error) {
       setTradesDebugError(error instanceof Error ? error.message : 'Unable to load executed trades.');
     } finally {
