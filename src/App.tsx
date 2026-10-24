@@ -61,10 +61,8 @@ export function App({ }: AppProps) {
     }
   };
 
-  // Load the read-only USD broker snapshot automatically on app start.
-  // It remains diagnostic and never overwrites app-owned portfolio data.
+  // Load broker trade history automatically on app start.
   useEffect(() => {
-    void refreshFreedomPortfolio();
     void loadExecutedTrades();
   }, []);
 
