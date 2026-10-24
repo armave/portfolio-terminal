@@ -80,6 +80,23 @@ describe('cloud state sync', () => {
     }
   });
 
+  it('reports cloud sync status through a callback without transport-layer DOM access', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ ETag: '"1"' })
+    });
+    const onStatusChange = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await pushCloudState(
+      { activeView: 'AAPL', balance: 100 },
+      { secret: 'cloud-encryption-secret', showToast: vi.fn(), onStatusChange }
+    );
+
+    expect(result).toBe(true);
+    expect(onStatusChange).toHaveBeenCalledWith('synced');
+  });
+
   it('does not mutate the live state when excluding local-only fields from cloud backup', async () => {
     const state = {
       activeView: 'AAPL',
