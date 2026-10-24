@@ -209,7 +209,7 @@ export function App({ }: AppProps) {
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 class="text-sm font-bold text-emerald-300">Freedom TradeNet · USD account</h2>
-                  <p class="text-[11px] text-slate-400">Read-only broker snapshot. Other currencies are excluded.</p>
+                  <p class="text-[11px] text-slate-400">Read-only USD broker snapshot. Compare broker quantities and market prices against app-owned positions; differences are diagnostic and never overwrite app data.</p>
                 </div>
                 <button
                   type="button"
@@ -250,6 +250,7 @@ export function App({ }: AppProps) {
                         <th scope="col" class="px-2 py-2 text-right">App qty</th>
                         <th scope="col" class="px-2 py-2 text-right">Qty diff</th>
                         <th scope="col" class="px-2 py-2 text-right">Avg. price</th>
+                        <th scope="col" class="px-2 py-2 text-right">App price</th>
                         <th scope="col" class="px-2 py-2 text-right">Market price</th>
                         <th scope="col" class="px-2 py-2 text-right">Market value</th>
                         <th scope="col" class="px-2 py-2 text-right">Close P/L</th>
@@ -274,6 +275,11 @@ export function App({ }: AppProps) {
                               </>;
                             })()}
                             <td class="px-2 py-2 text-right font-mono">{usd(position.averagePrice)}</td>
+                            <td class="px-2 py-2 text-right font-mono">{(() => {
+                              const appPosition = Object.entries((appPortfolioState as any)?.positions ?? {}).find(([key, value]: [string, any]) => key.trim().toUpperCase() === position.ticker.trim().toUpperCase() || String(value?.ticker ?? '').trim().toUpperCase() === position.ticker.trim().toUpperCase())?.[1] as any;
+                              const price = Number(appPosition?.currentPrice);
+                              return appPosition && Number.isFinite(price) && price > 0 ? usd(price) : '—';
+                            })()}</td>
                             <td class="px-2 py-2 text-right font-mono">{usd(position.marketPrice)}</td>
                             <td class="px-2 py-2 text-right font-mono">{usd(position.marketValue)}</td>
                             <td class={`px-2 py-2 text-right font-mono ${(position.profitClose ?? 0) < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>{usd(position.profitClose)}</td>
