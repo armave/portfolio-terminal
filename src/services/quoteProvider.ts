@@ -1,19 +1,12 @@
 import { fetchYahooStockData, fetchFallbackQuote } from './api';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 
-// Time-anchored and monotonic within a millisecond, so persisted quote ordering
-// remains valid after reloads while requests started together still get a tie-breaker.
-let lastRequestTimestamp = 0;
-let requestSequenceWithinMillisecond = 0;
+// Time-anchored and monotonic, including requests started in the same millisecond.
+// Anchoring to epoch time keeps persisted ordering comparable after ordinary reloads.
+let lastQuoteRequestSequence = 0;
 function nextQuoteRequestSequence(): number {
-  const now = Date.now();
-  if (now === lastRequestTimestamp) {
-    requestSequenceWithinMillisecond += 1;
-  } else {
-    lastRequestTimestamp = now;
-    requestSequenceWithinMillisecond = 0;
-  }
-  return now * 1000 + requestSequenceWithinMillisecond;
+  lastQuoteRequestSequence = Math.max(Date.now() * 1000, lastQuoteRequestSequence + 1);
+  return lastQuoteRequestSequence;
 }
 
 export async function fetchFallbackPrice(symbol: string) {
