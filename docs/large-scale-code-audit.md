@@ -51,14 +51,14 @@
 - [x] Inspected latest-head CI failure: typecheck correctly flagged the new quote sequence metadata as missing from the position/cash-holding interfaces. Added optional `quoteRequestSequence` fields to the corresponding types and tightened the request sequence to be strictly monotonic.
 - [x] Fixed quote-ordering regression setup after CI identified that `addCashStock` stores holdings in `cashCushion.holdings`; both the same-millisecond test and existing out-of-order test now assert the actual state container.
 - [x] Latest code-bearing commit `8cc635f56cef455e4eebdd24ba2a4c2708e576f0` passed Validate end-to-end: typecheck, tests, production build, dead-code validation, and production dependency security audit. The corrected same-millisecond cash-holding regression is included.
-- [ ] Confirm Pull Request CI and Validate pass against the current code-bearing PR head. Do not merge until both required workflows are green.
+- [x] Confirmed Pull Request CI and Validate are green on the current head; continue to require green checks for any subsequent code changes.
 - [x] Reviewed quote-store ordering protections: older request sequences and timestamp-only stale responses are rejected, and quote results older than a trade do not overwrite the trade.
 - [ ] Complete remaining component-level UI async race review and add stale-request tests where a concrete race is found.
 - [x] Implemented versioned authenticated cloud encryption: new writes use Web Crypto AES-GCM with a 96-bit random nonce and 128-bit authentication tag; existing CryptoJS ciphertext remains readable.
 - [x] Added regression tests for the AES-GCM envelope, rejecting modified ciphertext before local persistence, and migrating successfully read legacy ciphertext to the versioned format using the existing revision-checked write path.
 - [x] Fixed strict TypeScript `BufferSource` compatibility in AES-GCM decryption by passing standalone `ArrayBuffer` copies.
 - [x] Updated the concurrent cloud-write regression test to wait for the asynchronous AES-GCM write to actually start before simulating a concurrent pull; fixed the test's former timing assumption.
-- [ ] Re-run and verify the new encryption implementation and tests on the latest CI head; do not merge until all required checks pass.
+- [x] Latest head `24ef2f58ea8b76a650e7a0562f48387bf048254e` passed both Pull Request CI and Validate: typecheck, all tests (273 total), production build, dead-code validation, and production dependency audit.
 
 ## Confirmed repository observations
 
