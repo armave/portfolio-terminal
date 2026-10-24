@@ -16,6 +16,23 @@ import {
 } from './api';
 import * as storage from './storage';
 
+async function encryptV2Fixture(value: unknown, secret: string): Promise<string> {
+  const nonce = globalThis.crypto.getRandomValues(new Uint8Array(12));
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  const key = await globalThis.crypto.subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt']);
+  const ciphertext = await globalThis.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce, tagLength: 128 },
+    key,
+    new TextEncoder().encode(JSON.stringify(value))
+  );
+  const toBase64 = (bytes: Uint8Array) => {
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  };
+  return `aesgcm:v2:${toBase64(nonce)}:${toBase64(new Uint8Array(ciphertext))}`;
+}
+
 describe('cloud state sync', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -394,11 +411,11 @@ describe('queued writes during concurrent cloud pulls', () => {
       resolveFirstPush = resolve;
     });
     const secret = 'cloud-encryption-secret';
-    const encryptedPayload = CryptoJS.AES.encrypt(JSON.stringify({
+    const encryptedPayload = await encryptV2Fixture({
       activeView: 'CLOUD',
       balance: 200,
       lastRolloverTimestamp: Date.now()
-    }), secret).toString();
+    }, secret);
     const fetchMock = vi.fn()
       .mockImplementationOnce(() => firstPushResponse)
       .mockResolvedValueOnce({
