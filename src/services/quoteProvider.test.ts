@@ -25,8 +25,8 @@ describe('fetchLivePriceFromProviders', () => {
   it('starts Freedom and Yahoo requests concurrently', async () => {
     let resolveFreedom!: (value: any) => void;
     let resolveYahoo!: (value: any) => void;
-    vi.mocked(fetchFreedomQuote).mockImplementation(() => new Promise(resolve => { resolveFreedom = resolve; }));
-    vi.mocked(fetchYahooQuoteData).mockImplementation(() => new Promise(resolve => { resolveYahoo = resolve; }));
+    vi.mocked(fetchFreedomQuote).mockImplementation(() => new Promise<any>(resolve => { resolveFreedom = resolve; }));
+    vi.mocked(fetchYahooQuoteData).mockImplementation(() => new Promise<any>(resolve => { resolveYahoo = resolve; }));
 
     const pending = fetchLivePriceFromProviders('AAPL');
     await Promise.resolve();
