@@ -545,6 +545,23 @@ export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): 
     throw new Error('File does not contain a recognized portfolio backup.');
   }
 
+  // Validate top-level container shapes before normalization. A present but
+  // malformed canonical positions field suppresses legacy holdings migration;
+  // silently turning it into {} would make an import appear successful while
+  // discarding the user's positions.
+  if (Object.hasOwn(candidate, 'positions') && !isRecord(candidate.positions)) {
+    throw new Error('Invalid positions in portfolio backup: expected an object keyed by ticker.');
+  }
+  if (Object.hasOwn(candidate, 'holdings') && !Array.isArray(candidate.holdings)) {
+    throw new Error('Invalid holdings in portfolio backup: expected an array.');
+  }
+  if (Object.hasOwn(candidate, 'cashCushion') && !isRecord(candidate.cashCushion)) {
+    throw new Error('Invalid cashCushion in portfolio backup: expected an object.');
+  }
+  if (Object.hasOwn(candidate, 'closedTrades') && !Array.isArray(candidate.closedTrades)) {
+    throw new Error('Invalid closedTrades in portfolio backup: expected an array.');
+  }
+
   // Backups are user-supplied data. Do not silently coerce invalid financial
   // quantities to zero or accept negative shares/prices, which can corrupt
   // position valuation and realized-trade calculations after import.
