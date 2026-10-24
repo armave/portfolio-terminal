@@ -16,6 +16,15 @@ import {
 } from './api';
 import * as storage from './storage';
 
+// Most API tests exercise successful proxy requests; give them a deterministic
+// credential. Tests for missing credentials explicitly override this value.
+beforeEach(() => {
+  storage.setGatewaySecret('test-gateway-secret');
+});
+afterEach(() => {
+  storage.setGatewaySecret('');
+});
+
 async function encryptV2Fixture(value: unknown, secret: string): Promise<string> {
   const nonce = globalThis.crypto.getRandomValues(new Uint8Array(12));
   const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
