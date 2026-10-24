@@ -171,7 +171,7 @@ export function App({ }: AppProps) {
       {/* Closed Trade History */}
       <div
         id="closedHistoryContainer"
-        class="hidden p-6 rounded-lg space-y-4"
+        class="hidden rounded-lg"
       ></div>
 
       {/* Settings */}
