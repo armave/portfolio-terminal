@@ -717,3 +717,8 @@ export async function syncCloudState(mode = 'push', options: SyncOptions = {}): 
 export async function testFreedomTradeNetConnection(): Promise<any> {
   return proxyFetch('freedom-test');
 }
+
+/** Fetch raw read-only TradeNet positions so the actual broker schema can be verified. */
+export async function fetchFreedomTradeNetPositions(): Promise<any> {
+  return proxyFetch('freedom-positions');
+}
