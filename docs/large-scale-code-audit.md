@@ -47,7 +47,7 @@
 - [ ] Complete financial transaction parity, rollover boundaries, and rounding review with any additional edge-case regression tests. Initial source/test review found broad existing coverage; no further formula change is justified without a proven discrepancy.
 - [x] Initial market-data provenance review: Yahoo quotes use source observation timestamps; unknown timestamps are not marked fresh, and fallback providers are explicitly marked unknown freshness. No additional confirmed defect found in this pass.
 - [x] Reviewed quote-store async protections: updates apply to the latest store snapshot, older request timestamps are ignored, and quotes started before a trade cannot overwrite that trade.
-- [ ] Add/decide a tie-breaker for two quote requests started within the same millisecond; current ordering uses millisecond timestamps, so equal timestamps cannot establish which request is newer.
+- [ ] **Confirmed quote-ordering edge case:** `updateLiveQuote` compares only millisecond `requestStartedAt` values. Two requests started in the same millisecond tie, so the store cannot know which response is newer. A correct fix needs a monotonic request sequence/token carried from request initiation through each result (not simply changing `<` to `<=`, which could reject a valid newest response).
 - [ ] Complete remaining UI async race review and add stale-request ordering tests where needed.
 - [ ] Plan and implement versioned authenticated cloud encryption migration without breaking legacy ciphertext.
 
