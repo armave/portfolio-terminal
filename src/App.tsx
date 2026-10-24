@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { loadSavedState } from './services/storage';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades, type FreedomExecutedTrade, type FreedomPortfolioSnapshot } from './services/api';
 
@@ -16,6 +16,33 @@ export function App({ }: AppProps) {
   const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTrade[] | null>(null);
   // App-owned portfolio state is the authority for cash-vs-margin classification.
   const [appPortfolioState, setAppPortfolioState] = useState(loadSavedState({ holdings: [], cashStocks: [] }));
+
+  // The app's main navigation is managed outside this component. Load broker
+  // trade history when the user opens Closed History, rather than requiring a
+  // separate diagnostic-button click. Ignore unrelated navigation clicks.
+  useEffect(() => {
+    const isClosedHistoryTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof Element)) return false;
+      const element = target.closest('button, a, [role="tab"], [data-tab], [data-view]');
+      if (!element) return false;
+      const label = [
+        element.textContent ?? '',
+        element.getAttribute('aria-label') ?? '',
+        element.getAttribute('href') ?? '',
+        element.getAttribute('data-tab') ?? '',
+        element.getAttribute('data-view') ?? '',
+        element.id ?? ''
+      ].join(' ').toLowerCase();
+      return label.includes('closed history') || label.includes('closed-history') || label.includes('closedhistory');
+    };
+    const onNavigationClick = (event: MouseEvent) => {
+      if (isClosedHistoryTarget(event.target) && !tradesDebugLoading) {
+        void loadExecutedTrades();
+      }
+    };
+    document.addEventListener('click', onNavigationClick, true);
+    return () => document.removeEventListener('click', onNavigationClick, true);
+  }, [tradesDebugLoading]);
 
   const refreshFreedomPortfolio = async () => {
     setFreedomLoading(true);
