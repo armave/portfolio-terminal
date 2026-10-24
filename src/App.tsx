@@ -15,7 +15,7 @@ export function App({ }: AppProps) {
   const [tradesDebugResponse, setTradesDebugResponse] = useState<any>(null);
   const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTrade[] | null>(null);
   // App-owned portfolio state is the authority for cash-vs-margin classification.
-  const [, setAppPortfolioState] = useState(loadSavedState({ holdings: [], cashStocks: [] }));
+  const [appPortfolioState, setAppPortfolioState] = useState(loadSavedState({ holdings: [], cashStocks: [] }));
 
   const refreshFreedomPortfolio = async () => {
     setFreedomLoading(true);
@@ -246,7 +246,9 @@ export function App({ }: AppProps) {
                       <thead><tr class="border-b border-slate-800 text-slate-400">
                         <th scope="col" class="px-2 py-2 text-left">Instrument</th>
                         <th scope="col" class="px-2 py-2 text-left">App type</th>
-                        <th scope="col" class="px-2 py-2 text-right">Qty</th>
+                        <th scope="col" class="px-2 py-2 text-right">Broker qty</th>
+                        <th scope="col" class="px-2 py-2 text-right">App qty</th>
+                        <th scope="col" class="px-2 py-2 text-right">Qty diff</th>
                         <th scope="col" class="px-2 py-2 text-right">Avg. price</th>
                         <th scope="col" class="px-2 py-2 text-right">Market price</th>
                         <th scope="col" class="px-2 py-2 text-right">Market value</th>
@@ -260,18 +262,28 @@ export function App({ }: AppProps) {
                               <div class="text-[10px] font-normal text-slate-400">{position.name}</div>
                             </th>
                             <td class="px-2 py-2 text-left text-[10px]">{(position as any).appClassification === 'Cash' ? <span class="text-cyan-300">Cash</span> : (position as any).appClassification === 'Margin' ? <span class="text-amber-300">Margin</span> : <span class="text-slate-400">Unclassified</span>}</td>
-                            <td class="px-2 py-2 text-right font-mono">{position.quantity.toLocaleString('en-US')}</td>
+                            {(() => {
+                              const appPosition = Object.entries((appPortfolioState as any)?.positions ?? {}).find(([key, value]: [string, any]) => key.trim().toUpperCase() === position.ticker.trim().toUpperCase() || String(value?.ticker ?? '').trim().toUpperCase() === position.ticker.trim().toUpperCase())?.[1] as any;
+                              const rawAppQty = appPosition?.shares;
+                              const appQty = rawAppQty === undefined || rawAppQty === null || rawAppQty === '' || !Number.isFinite(Number(rawAppQty)) ? null : Number(rawAppQty);
+                              const difference = appQty === null ? null : position.quantity - appQty;
+                              return <>
+                                <td class="px-2 py-2 text-right font-mono">{position.quantity.toLocaleString('en-US')}</td>
+                                <td class="px-2 py-2 text-right font-mono">{appQty === null ? '—' : appQty.toLocaleString('en-US')}</td>
+                                <td class={'px-2 py-2 text-right font-mono ' + (difference === null ? 'text-slate-500' : Math.abs(difference) < 1e-6 ? 'text-emerald-300' : 'text-amber-300')}>{difference === null ? '—' : difference.toLocaleString('en-US')}</td>
+                              </>;
+                            })()}
                             <td class="px-2 py-2 text-right font-mono">{usd(position.averagePrice)}</td>
                             <td class="px-2 py-2 text-right font-mono">{usd(position.marketPrice)}</td>
                             <td class="px-2 py-2 text-right font-mono">{usd(position.marketValue)}</td>
                             <td class={`px-2 py-2 text-right font-mono ${(position.profitClose ?? 0) < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>{usd(position.profitClose)}</td>
                           </tr>
                         ))}
-                        {freedomSnapshot.positions.length === 0 && <tr><td colSpan={7} class="px-2 py-4 text-center text-slate-400">No USD open positions returned.</td></tr>}
+                        {freedomSnapshot.positions.length === 0 && <tr><td colSpan={9} class="px-2 py-4 text-center text-slate-400">No USD open positions returned.</td></tr>}
                       </tbody>
                     </table>
                   </div>
-                  <p class="text-[10px] text-slate-500">Cash/Margin classification comes from your app's existing holdings and cash-stock lists, not TradeNet. Unmatched broker symbols are left Unclassified. Values are broker-reported; no FX conversion is applied.</p>
+                  <p class="text-[10px] text-slate-500">Cash/Margin classification comes from your app's existing holdings and cash-stock lists, not TradeNet. Broker qty minus app qty is shown as Qty diff; a dash means no app position could be matched. Differences are diagnostic only and never overwrite app holdings. Values are broker-reported; no FX conversion is applied.</p>
                 </>
               )}
             </section>
