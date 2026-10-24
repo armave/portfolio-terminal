@@ -57,6 +57,17 @@ describe('sanitizeFreedomPositions', () => {
     expect(JSON.stringify(result)).not.toContain('issue_nb');
   });
 
+  it.each([
+    ['result.ps envelope', { result: { ps: { loaded: true, acc: [], pos: [] } } }],
+    ['direct ps envelope', { ps: { loaded: 'true', acc: [], pos: [] } }],
+    ['positions without loaded flag', { result: { ps: { acc: [], pos: [] } } }]
+  ])('accepts %s', (_label, input) => {
+    const result = sanitizeFreedomPositions(input);
+    expect(result.data.result.ps.loaded).toBe(true);
+    expect(result.data.result.ps.acc).toEqual([]);
+    expect(result.data.result.ps.pos).toEqual([]);
+  });
+
   it('rejects unloaded or malformed positions data', () => {
     expect(() => sanitizeFreedomPositions({ data: { result: { ps: { loaded: false } } } })).toThrow();
     expect(() => sanitizeFreedomPositions({})).toThrow();
