@@ -152,7 +152,7 @@ export function App({ }: AppProps) {
                   : <div class="overflow-x-auto">
                     <table class="w-full text-left text-xs">
                       <thead class="text-[10px] uppercase tracking-wide text-slate-400">
-                        <tr><th class="px-2 py-2">Executed at</th><th class="px-2 py-2">Ticker</th><th class="px-2 py-2">Side</th><th class="px-2 py-2 text-right">Qty</th><th class="px-2 py-2 text-right">Price</th><th class="px-2 py-2">Currency</th><th class="px-2 py-2 text-right">Commission</th><th class="px-2 py-2 text-right">Profit</th></tr>
+                        <tr><th class="px-2 py-2">Executed at</th><th class="px-2 py-2">Ticker</th><th class="px-2 py-2">Side</th><th class="px-2 py-2 text-right">Qty</th><th class="px-2 py-2 text-right">Price</th><th class="px-2 py-2">Currency</th><th class="px-2 py-2 text-right">Commission</th><th class="px-2 py-2 text-right">Margin fee</th><th class="px-2 py-2 text-right">Profit after margin fee*</th></tr>
                       </thead>
                       <tbody>
                         {executedTrades.map((trade) => (
@@ -163,13 +163,15 @@ export function App({ }: AppProps) {
                             <td class="px-2 py-2 text-right font-mono">{trade.price === null ? '—' : trade.price.toLocaleString('en-US', { maximumFractionDigits: 6 })}</td>
                             <td class="px-2 py-2">{trade.currency || '—'}</td>
                             <td class="px-2 py-2 text-right font-mono">{trade.commission === null ? '—' : trade.commission.toLocaleString('en-US', { maximumFractionDigits: 2 })} {trade.commissionCurrency}</td>
-                            <td class="px-2 py-2 text-right font-mono">{trade.profit === null ? '—' : trade.profit.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                            <td class="px-2 py-2 text-right font-mono">{trade.marginFee === null ? '—' : trade.marginFee.toLocaleString('en-US', { maximumFractionDigits: 2 })} {trade.currency}</td>
+                            <td class="px-2 py-2 text-right font-mono">{trade.profit === null ? '—' : (trade.marginFee === null ? trade.profit : trade.profit - trade.marginFee).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
               )}
+              {executedTrades !== null && <p class="text-[10px] text-slate-500">* Uses Freedom's reported profit when no fee for the specific stock/trade is available. When a per-trade margin fee is present, it is subtracted from reported profit. Commissions are shown separately and are not deducted here.</p>}
               {tradesDebugResponse !== null && (
                 <details class="space-y-2"><summary class="cursor-pointer text-xs text-slate-400">Raw TradeNet response</summary>
                   <textarea aria-label="Raw TradeNet getTradesHistory response" readOnly rows={8}
