@@ -5,7 +5,7 @@ import {
   getQuoteRefreshInterval
 } from '../services/storage';
 import { BrokerRules } from '../types/portfolio';
-import { testFreedomTradeNetConnection, fetchFreedomTradeNetPositions, normalizeFreedomPortfolio } from '../services/api';
+
 
 export interface SettingsDeskProps {
   rules: BrokerRules;
@@ -61,35 +61,6 @@ export function SettingsDesk({
   onResetToBlankState
 }: SettingsDeskProps) {
   const [secretValue, setSecretValue] = useState<string>(() => getGatewaySecret() || '');
-  const [isTestingTradeNet, setIsTestingTradeNet] = useState(false);
-  const [tradeNetTestStatus, setTradeNetTestStatus] = useState('');
-  const [isLoadingTradeNetPositions, setIsLoadingTradeNetPositions] = useState(false);
-  const [tradeNetPositionsPreview, setTradeNetPositionsPreview] = useState('');
-  const handleTradeNetFetchPositions = async () => {
-    setIsLoadingTradeNetPositions(true);
-    setTradeNetPositionsPreview('');
-    try {
-      const result = await fetchFreedomTradeNetPositions();
-      const snapshot = normalizeFreedomPortfolio(result);
-      setTradeNetPositionsPreview(JSON.stringify(snapshot, null, 2).slice(0, 12000));
-    } catch (error) {
-      setTradeNetPositionsPreview(error instanceof Error ? error.message : 'Failed to retrieve TradeNet positions.');
-    } finally {
-      setIsLoadingTradeNetPositions(false);
-    }
-  };
-  const handleTradeNetTest = async () => {
-    setIsTestingTradeNet(true);
-    setTradeNetTestStatus('Testing TradeNet connection…');
-    try {
-      const result = await testFreedomTradeNetConnection();
-      setTradeNetTestStatus(result?.ok ? 'TradeNet connection successful.' : 'TradeNet returned an unexpected response.');
-    } catch (error) {
-      setTradeNetTestStatus(error instanceof Error ? error.message : 'TradeNet connection failed.');
-    } finally {
-      setIsTestingTradeNet(false);
-    }
-  };
   useEffect(() => {
     const handleAuthenticated = (event: Event) => {
       const secret = (event as CustomEvent<{ secret: string }>).detail?.secret || '';
@@ -232,32 +203,6 @@ export function SettingsDesk({
             <span>☁↓</span>
             Pull
           </button>
-          <button
-            type="button"
-            onClick={handleTradeNetTest}
-            disabled={isTestingTradeNet}
-            title="Test the read-only Freedom TradeNet API connection"
-            class="h-8 bg-slate-800 hover:bg-slate-700 border border-cyan-700 text-cyan-300 disabled:opacity-50 text-xs font-bold px-2.5 py-1 rounded transition"
-          >
-            {isTestingTradeNet ? 'Testing…' : 'Test TradeNet'}
-          </button>
-          {tradeNetTestStatus && (
-            <p role="status" aria-live="polite" class="w-full text-center text-[10px] text-slate-300">
-              {tradeNetTestStatus}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={handleTradeNetFetchPositions}
-            disabled={isLoadingTradeNetPositions}
-            title="Retrieve read-only TradeNet positions"
-            class="h-8 bg-slate-800 hover:bg-slate-700 border border-emerald-700 text-emerald-300 disabled:opacity-50 text-xs font-bold px-2.5 py-1 rounded transition"
-          >
-            {isLoadingTradeNetPositions ? 'Loading positions…' : 'Fetch positions'}
-          </button>
-          {tradeNetPositionsPreview && (
-            <pre role="status" aria-live="polite" class="w-full max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-700 bg-slate-950 p-2 text-[10px] text-slate-300">{tradeNetPositionsPreview}</pre>
-          )}
         </div>
 
         {/* Cluster 2: Polling & Backups */}
