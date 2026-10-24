@@ -11,7 +11,7 @@ export function App({ }: AppProps) {
   const [freedomLoading, setFreedomLoading] = useState(false);
   const [freedomError, setFreedomError] = useState('');
   // App-owned portfolio state is the authority for cash-vs-margin classification.
-  const [appPortfolioState, setAppPortfolioState] = useState(() => loadSavedState());
+  const [, setAppPortfolioState] = useState(loadSavedState({ holdings: [], cashStocks: [] }));
 
   const refreshFreedomPortfolio = async () => {
     setFreedomLoading(true);
@@ -20,7 +20,7 @@ export function App({ }: AppProps) {
       const response = await fetchFreedomTradeNetPositions();
       const snapshot = normalizeFreedomPortfolio(response);
       // Refresh the app's own classification before reconciling the broker snapshot.
-      const localState = loadSavedState();
+      const localState = loadSavedState({ holdings: [], cashStocks: [] });
       setAppPortfolioState(localState);
       const appHoldings = Array.isArray(localState?.holdings) ? localState.holdings : [];
       const cashTickers = new Set<string>([
