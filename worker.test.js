@@ -1,6 +1,30 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { normalizeMarketState } from './worker.js';
+import worker, { fetchWithTimeout, normalizeMarketState } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
+
+describe('upstream timeout coverage', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the timeout active until the upstream response body is consumed', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (_input, init) => new Response(new ReadableStream({
+      start(controller) {
+        init.signal.addEventListener('abort', () => controller.error(new Error('upstream aborted')), { once: true });
+      }
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await fetchWithTimeout('https://upstream.test/data', {}, 50);
+    const bodyRead = response.text();
+    const rejectedBody = expect(bodyRead).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(51);
+    await rejectedBody;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('normalizeMarketState', () => {
   it.each([
