@@ -601,25 +601,19 @@ describe('market news request deduplication', () => {
   it('caches news by ticker and refreshes only when explicitly requested', async () => {
     clearYahooDeepStockDataCache();
     let newsRequestCount = 0;
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      const payload = url.includes('action=freedom-news')
-        ? { data: [] }
-        : [{ headline: newsRequestCount++ === 0 ? 'First result' : 'Fresh result' }];
-      return {
-        ok: true,
-        headers: new Headers({ 'Content-Type': 'application/json' }),
-        json: async () => payload
-      } as Response;
-    });
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => ({
+      ok: true,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => [{ headline: newsRequestCount++ === 0 ? 'First result' : 'Fresh result' }]
+    } as Response));
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(fetchMarketNews('aapl')).resolves.toEqual([{ headline: 'First result' }]);
     await expect(fetchMarketNews(' AAPL ')).resolves.toEqual([{ headline: 'First result' }]);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
     await expect(fetchMarketNews('AAPL', true)).resolves.toEqual([{ headline: 'Fresh result' }]);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
