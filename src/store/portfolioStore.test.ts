@@ -924,7 +924,7 @@ describe('canonical trade lifecycle and persistence', () => {
       requestSequence: 41,
       quoteSource: 'Older request'
     });
-    expect(store.getState().cashStocks?.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(220);
+    expect(store.getState().cashCushion.holdings.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(220);
   });
 
   it('persists buys, partial sells, and full exits without resurrecting closed positions on reload', () => {
