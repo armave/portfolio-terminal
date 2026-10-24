@@ -8,6 +8,7 @@ import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
 import { ProjectionsTable } from '../components/ProjectionsTable';
 import { CashCushionDesk } from '../components/CashCushionDesk';
 import { ClosedHistoryDesk } from '../components/ClosedHistoryDesk';
+import { RiskSnapshotPanel } from '../components/RiskSnapshotPanel';
 import { calculateCommission, calculateMarginInterest, collectOpenPositionTranches } from '../domain/portfolio';
 import {
   BrokerRules,
@@ -387,6 +388,8 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const projTableContainer = document.getElementById('projectionTableContainer');
 
   if (tickers.length === 0) {
+    const riskContainer = document.getElementById('riskSnapshotContainer');
+    if (riskContainer) render(null, riskContainer);
     if (emptyPanel) {
       emptyPanel.classList.remove('hidden');
       render(
@@ -432,6 +435,9 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     onRenderExternalLinks,
     onRenderAnalystConsensus
   });
+
+  const riskContainer = document.getElementById('riskSnapshotContainer');
+  if (riskContainer) render(h(RiskSnapshotPanel, { state }), riskContainer);
 
   onRenderExternalLinks();
   onRenderConsoleQuickActions();
