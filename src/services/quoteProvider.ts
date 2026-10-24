@@ -1,4 +1,4 @@
-import { fetchYahooStockData, fetchFallbackQuote } from './api';
+import { fetchYahooQuoteData, fetchFallbackQuote } from './api';
 import { fetchFreedomQuote } from './freedomMarketData';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 
@@ -60,17 +60,22 @@ export async function fetchLivePriceFromProviders(symbol: string) {
   let sourceName = "";
   let quoteDetails: any = null;
 
-  // Collect Freedom first, but compare source timestamps after Yahoo responds.
-  // Provider preference is based on observed quote freshness, not vendor priority.
+  // Start both providers together; selection below is based on source timestamps,
+  // not request completion order or a hard-coded vendor preference.
+  const [freedomResult, yahooResult] = await Promise.allSettled([
+    fetchFreedomQuote(symbol),
+    fetchYahooQuoteData(symbol)
+  ]);
   let freedomQuote: Awaited<ReturnType<typeof fetchFreedomQuote>> | null = null;
-  try {
-    freedomQuote = await fetchFreedomQuote(symbol);
-  } catch (error: any) {
-    console.warn(`[Freedom Quote Error for ${symbol}]:`, error?.message || error);
+  if (freedomResult.status === 'fulfilled') {
+    freedomQuote = freedomResult.value;
+  } else {
+    console.warn(`[Freedom Quote Error for ${symbol}]:`, freedomResult.reason?.message || freedomResult.reason);
   }
 
   try {
-    const data = await fetchYahooStockData(symbol);
+    if (yahooResult.status === 'rejected') throw yahooResult.reason;
+    const data = yahooResult.value;
 
     if (data?.price && typeof data.price === 'object') {
       const regularPrice = data.price.current ?? data.regularMarketPrice;
@@ -115,7 +120,7 @@ export async function fetchLivePriceFromProviders(symbol: string) {
       }
     }
   } catch (e: any) {
-    console.warn(`[Proxy Quote Error for ${symbol}]:`, e.message);
+    console.warn(`[Proxy Quote Error for ${symbol}]:`, e?.message || e);
   }
 
   if (freedomQuote && Number.isFinite(freedomQuote.price) && freedomQuote.price > 0) {
