@@ -22,6 +22,26 @@ describe('fetchLivePriceFromProviders', () => {
     vi.resetAllMocks();
   });
 
+  it('prefers a valid Freedom quote before trying Yahoo', async () => {
+    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+      symbol: 'AAPL',
+      price: 210,
+      previousClose: 200,
+      change: 10,
+      changePercent: 5,
+      sourceTimestamp: Date.now(),
+      raw: {}
+    });
+
+    const result = await fetchLivePriceFromProviders('aapl');
+
+    expect(fetchFreedomQuote).toHaveBeenCalledWith('AAPL');
+    expect(result.price).toBe(210);
+    expect(result.sourceName).toBe('Freedom TradeNet');
+    expect(result.quoteDetails).toMatchObject({ freshness: 'fresh', price: 210, change: 10, changePercent: 5 });
+    expect(fetchYahooStockData).not.toHaveBeenCalled();
+  });
+
   it('uses Yahoo market-session price data when available', async () => {
     vi.mocked(fetchYahooStockData).mockResolvedValue({
       price: {
