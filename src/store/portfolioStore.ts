@@ -901,7 +901,7 @@ export class PortfolioStore {
           .map((holding) => Number(holding.quoteRequestStartedAt) || 0)
       );
       const requestStartedAt = quote.requestStartedAt ?? Date.now();
-      const requestSequence = quote.requestSequence ?? Number(quote.quoteDetails?.requestSequence) || undefined;
+      const requestSequence = quote.requestSequence ?? (Number(quote.quoteDetails?.requestSequence) || undefined);
       const latestRequestSequence = Math.max(
         Number(position?.quoteRequestSequence) || 0,
         ...cashHoldings.filter((holding) => holding.ticker.toUpperCase() === clean)
