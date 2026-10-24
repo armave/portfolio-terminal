@@ -394,7 +394,7 @@ export async function fetchMarketNews(ticker: string, force = false): Promise<an
         datetime: Number(item?.datetime ?? item?.time ?? item?.timestamp ?? 0),
         source: String(item?.source ?? item?.provider ?? 'Freedom TradeNet'),
         image: String(item?.image ?? item?.imageUrl ?? '')
-      })).filter((item) => item.headline && item.url);
+      })).filter((item: { headline: string; url: string }) => item.headline && item.url);
       // Combine Freedom stories with the existing market-news feed instead of
       // hiding one provider whenever the other has results.
       const fallbackPayload = await proxyFetch('news', { symbol });
