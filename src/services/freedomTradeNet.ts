@@ -17,7 +17,9 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command = "getPosi
         throw new Error("This initial integration only permits getPositionJson.");
     }
 
-    const body = JSON.stringify({ cmd: command, params: {} });
+    // Match the supplied official Node.js example: POST to /api/<command>,
+    // sign the exact JSON body bytes concatenated with the Unix timestamp.
+    const body = JSON.stringify({});
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const key = await crypto.subtle.importKey(
         "raw",
@@ -26,31 +28,24 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command = "getPosi
         false,
         ["sign"]
     );
-    // TradeNet's current auth documentation specifies that GET requests
-    // sign the Unix timestamp only; POST/PUT requests sign body + timestamp.
-    // This request uses GET with q in the URL, so signing body + timestamp
-    // causes an authentication failure even when the keys are correct.
     const bytes = await crypto.subtle.sign(
         "HMAC",
         key,
-        new TextEncoder().encode(timestamp)
+        new TextEncoder().encode(body + timestamp)
     );
     const signature = Array.from(new Uint8Array(bytes))
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
 
-    // TradeNet's documented API transport passes the JSON command in the
-    // "q" query parameter (including for getPositionJson), rather than as a
-    // raw JSON POST body. "Invalid 'q' provided" is returned when q is absent.
-    const requestUrl = new URL(TRADENET_API_URL);
-    requestUrl.searchParams.set("q", body);
-    const response = await fetch(requestUrl.toString(), {
-        method: "GET",
+    const response = await fetch(`https://tradernet.com/api/${command}`, {
+        method: "POST",
         headers: {
+            "Content-Type": "application/json",
             "X-NtApi-PublicKey": env.FREEDOM_PUBLIC_KEY,
             "X-NtApi-Sig": signature,
             "X-NtApi-Timestamp": timestamp
         },
+        body,
         signal: AbortSignal.timeout(12000)
     });
 
