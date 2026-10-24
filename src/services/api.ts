@@ -21,6 +21,7 @@ function loadCloudRevision(): number {
 }
 
 let cloudRevision = loadCloudRevision();
+let cloudPullGeneration = 0;
 let cloudPushQueue: Promise<void> = Promise.resolve();
 
 function setCloudRevision(revision: number): void {
@@ -460,7 +461,10 @@ export async function pullCloudState(
 
     if (res.status === 404) {
       // A confirmed empty cloud store is safe to use as the current base revision.
-      if (pulledRevision !== null) setCloudRevision(pulledRevision);
+      if (pulledRevision !== null) {
+        cloudPullGeneration += 1;
+        setCloudRevision(pulledRevision);
+      }
       reportResult?.(false);
       logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
       return loadSavedState(state || {});
@@ -524,7 +528,10 @@ export async function pullCloudState(
 
     // Only trust the cloud revision after its payload was decrypted, validated,
     // and persisted locally. A failed pull must not authorize a later overwrite.
-    if (pulledRevision !== null) setCloudRevision(pulledRevision);
+    if (pulledRevision !== null) {
+      cloudPullGeneration += 1;
+      setCloudRevision(pulledRevision);
+    }
 
     if (wasUpdated) {
       pushCloudState(parsedState, { ...handlers, secret: currentSecret, showToast: () => { } }).catch((err) => {
@@ -555,8 +562,17 @@ export function pushCloudState(state?: any, options: SyncOptions = {}): Promise<
   // If another queued operation or a concurrent pull advances the revision before
   // this write runs, the stale snapshot must conflict rather than inherit that newer
   // revision and overwrite newer cloud state.
-  const expectedRevision = cloudRevision;
-  const operation = cloudPushQueue.then(() => performPushCloudState(state, options, expectedRevision));
+  const submittedRevision = cloudRevision;
+  const submittedPullGeneration = cloudPullGeneration;
+  const operation = cloudPushQueue.then(() => {
+    // Let a queued write follow a preceding queued write from this same tab, but
+    // never let it inherit a revision learned from a concurrent pull after its
+    // snapshot was submitted.
+    const expectedRevision = cloudPullGeneration === submittedPullGeneration
+      ? cloudRevision
+      : submittedRevision;
+    return performPushCloudState(state, options, expectedRevision);
+  });
   cloudPushQueue = operation.then(() => undefined, () => undefined);
   return operation;
 }
