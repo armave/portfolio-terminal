@@ -35,6 +35,56 @@ function setCloudRevision(revision: number): void {
   }
 }
 
+const CLOUD_CIPHERTEXT_V2_PREFIX = 'aesgcm:v2:';
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+async function deriveCloudEncryptionKey(secret: string): Promise<CryptoKey> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) throw new Error('Secure cloud encryption is unavailable in this browser.');
+  const digest = await subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  return subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+async function encryptCloudPayload(plaintext: string, secret: string): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) throw new Error('Secure cloud encryption is unavailable in this browser.');
+  const nonce = globalThis.crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveCloudEncryptionKey(secret);
+  const ciphertext = await subtle.encrypt({ name: 'AES-GCM', iv: nonce, tagLength: 128 }, key, new TextEncoder().encode(plaintext));
+  return CLOUD_CIPHERTEXT_V2_PREFIX + bytesToBase64(nonce) + ':' + bytesToBase64(new Uint8Array(ciphertext));
+}
+
+async function decryptCloudPayload(payload: string, secret: string): Promise<{ plaintext: string; legacy: boolean }> {
+  if (!payload.startsWith(CLOUD_CIPHERTEXT_V2_PREFIX)) {
+    const bytes = CryptoJS.AES.decrypt(payload, secret);
+    const plaintext = bytes ? bytes.toString(CryptoJS.enc.Utf8) : '';
+    if (!plaintext) throw new Error('Legacy decryption failed — verify the Gateway Secret.');
+    return { plaintext, legacy: true };
+  }
+
+  const encoded = payload.slice(CLOUD_CIPHERTEXT_V2_PREFIX.length);
+  const separator = encoded.indexOf(':');
+  if (separator <= 0 || separator === encoded.length - 1) throw new Error('Invalid AES-GCM cloud payload envelope.');
+  const nonce = base64ToBytes(encoded.slice(0, separator));
+  const ciphertext = base64ToBytes(encoded.slice(separator + 1));
+  if (nonce.byteLength !== 12 || ciphertext.byteLength < 16) throw new Error('Invalid AES-GCM cloud payload envelope.');
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) throw new Error('Secure cloud decryption is unavailable in this browser.');
+  const key = await deriveCloudEncryptionKey(secret);
+  const plaintext = await subtle.decrypt({ name: 'AES-GCM', iv: nonce, tagLength: 128 }, key, ciphertext);
+  return { plaintext: new TextDecoder().decode(plaintext), legacy: false };
+}
+
 function readCloudRevision(headers?: Headers | null): number | null {
   const etag = headers?.get('ETag');
   if (!etag) return null;
@@ -484,29 +534,23 @@ export async function pullCloudState(
     }
 
     let parsedState: any;
+    let requiresEncryptionUpgrade = false;
     if (typeof data.encryptedPayload === 'string') {
       try {
-        const bytes = CryptoJS.AES.decrypt(data.encryptedPayload, currentSecret);
-        const decryptedStr = bytes ? bytes.toString(CryptoJS.enc.Utf8) : '';
-        if (!decryptedStr) {
-          console.error('[Sync]: Decryption failed — verify Gateway Secret matches the encryption key.');
-          throw new Error('Decryption failed — verify Gateway Secret matches the encryption key.');
-        }
+        const decrypted = await decryptCloudPayload(data.encryptedPayload, currentSecret);
+        requiresEncryptionUpgrade = decrypted.legacy;
         try {
-          parsedState = JSON.parse(decryptedStr);
+          parsedState = JSON.parse(decrypted.plaintext);
         } catch (parseErr: any) {
-          console.error('[Sync]: Decryption failed — verify Gateway Secret matches the encryption key.');
           throw new Error(`Invalid JSON in decrypted state: ${parseErr.message}`);
         }
       } catch (decryptErr: any) {
-        console.error('[Sync]: Decryption failed — verify Gateway Secret matches the encryption key.');
-        throw new Error(`Failed to decrypt cloud state: ${decryptErr.message}`);
+        console.error('[Sync]: Cloud payload authentication/decryption failed.');
+        throw new Error(`Failed to decrypt cloud state: ${decryptErr instanceof Error ? decryptErr.message : 'invalid ciphertext'}`);
       }
     } else {
       parsedState = data;
-      pushCloudState(parsedState, { ...handlers, secret: currentSecret }).catch((err) => {
-        console.warn('Background encryption upgrade failed:', err);
-      });
+      requiresEncryptionUpgrade = true;
     }
 
     if (!parsedState || typeof parsedState !== 'object') {
@@ -533,9 +577,13 @@ export async function pullCloudState(
       setCloudRevision(pulledRevision);
     }
 
-    if (wasUpdated) {
-      pushCloudState(parsedState, { ...handlers, secret: currentSecret, showToast: () => { } }).catch((err) => {
-        console.warn('Background rollover sync failed:', err);
+    if (wasUpdated || requiresEncryptionUpgrade) {
+      pushCloudState(parsedState, {
+        ...handlers,
+        secret: currentSecret,
+        showToast: () => { }
+      }).catch((err) => {
+        console.warn(wasUpdated ? 'Background rollover sync failed:' : 'Background cloud encryption upgrade failed:', err);
       });
     }
 
@@ -601,7 +649,7 @@ async function performPushCloudState(
     const stateToEncrypt = { ...currentState };
     delete stateToEncrypt.gatewaySecret;
     delete stateToEncrypt.marginBalance;
-    const ciphertext = CryptoJS.AES.encrypt(JSON.stringify(stateToEncrypt), currentSecret).toString();
+    const ciphertext = await encryptCloudPayload(JSON.stringify(stateToEncrypt), currentSecret);
     const payload = { encryptedPayload: ciphertext };
 
     const url = new URL('/api/state', WORKER_PROXY_URL);
