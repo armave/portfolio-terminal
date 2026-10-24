@@ -258,13 +258,13 @@ export default {
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
-        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades"].includes(action)) {
+        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
             return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
         }
-        if ((action === "news" || action === "provider-quote" || action === "stocktwits") && request.method !== "GET") {
+        if ((action === "news" || action === "provider-quote" || action === "stocktwits" || action === "freedom-quote" || action === "freedom-news" || action === "freedom-history") && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
 
@@ -305,6 +305,20 @@ export default {
                 }), { headers: corsHeaders });
             }
 
+            // Read-only market data. Commands are fixed server-side; callers cannot submit
+            // arbitrary TradeNet commands or access trading operations.
+            if (["freedom-quote", "freedom-news", "freedom-history"].includes(action)) {
+                if (!symbol || symbol.includes(",")) {
+                    return jsonError("A single valid symbol is required for Freedom market data.", 400, corsHeaders);
+                }
+                if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
+                    return jsonError("Freedom market-data credentials are not configured in the Worker.", 503, corsHeaders);
+                }
+                const command = action === "freedom-quote" ? "getQuotes" : action === "freedom-news" ? "getNews" : "getHloc";
+                const params = action === "freedom-quote" ? { ticker: symbol } : action === "freedom-news" ? { ticker: symbol, limit: 10 } : { ticker: symbol, interval: "D", limit: 100 };
+                const data = await requestTradeNet(env, command, params);
+                return new Response(JSON.stringify({ ok: true, provider: "Freedom TradeNet", symbol, data }), { headers: corsHeaders });
+            }
             // Read-only executed trade history. Command and query limits are fixed server-side.
             if (action === "freedom-trades") {
                 if (request.method !== "GET") {
