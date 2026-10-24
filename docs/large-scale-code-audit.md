@@ -45,7 +45,8 @@
 - [x] Regression test added for the concurrent-pull/queued-write race.
 - [x] Re-run and inspect all CI jobs on the latest code-bearing commit: both Pull Request CI and Validate passed typecheck, tests, build, dead-code validation, and production dependency audit.
 - [x] Financial review found a concrete rollover-cutoff mismatch: `processRollovers` honored configured `rolloverHour`/`rolloverMinute`, while accrued-interest projection hard-coded 04:00. Updated `calculateMarginInterest` to use the same validated configurable cutoff (default remains 04:00 Asia/Yerevan) and added before/after-cutoff regression coverage.
-- [ ] Continue financial transaction parity and rounding review; change formulas only when a concrete discrepancy and regression evidence justify it.
+- [x] Financial rounding parity: found that `processRollovers` rounds debt to cents after each daily cycle, while `calculateProjectedDebt` rounded only the final compounded result. Changed projected debt to apply per-cycle cent rounding and added a regression case where $1.99 at a 1/365 daily rate reaches $2.02 after three rollovers, matching the ledger.
+- [x] Quote polling async race: the same-millisecond monotonic sequence fix previously covered single-symbol provider requests but not batch `refreshTrackedQuotes` results. Batch responses and both fallback paths now carry the shared request sequence; added assertions for sequence metadata.
 - [x] Initial market-data provenance review: Yahoo quotes use source observation timestamps; unknown timestamps are not marked fresh, and fallback providers are explicitly marked unknown freshness. No additional confirmed defect found in this pass.
 - [x] Reviewed quote-store async protections: updates apply to the latest store snapshot, older request timestamps are ignored, and quotes started before a trade cannot overwrite that trade.
 - [x] **Quote-ordering tie fix implemented:** each `fetchLivePriceFromProviders` request receives a time-anchored monotonic sequence, carried with quote provenance and recorded by the store. When request timestamps tie, the store rejects lower-sequence responses for positions and cash holdings. The sequence is time-anchored to remain ordered across ordinary page reloads. Added a regression test covering out-of-order responses started in the same millisecond.
@@ -53,9 +54,11 @@
 - [x] Fixed quote-ordering regression setup after CI identified that `addCashStock` stores holdings in `cashCushion.holdings`; both the same-millisecond test and existing out-of-order test now assert the actual state container.
 - [x] Latest code-bearing commit `8cc635f56cef455e4eebdd24ba2a4c2708e576f0` passed Validate end-to-end: typecheck, tests, production build, dead-code validation, and production dependency security audit. The corrected same-millisecond cash-holding regression is included.
 - [x] Confirmed Pull Request CI and Validate were green on the previous encryption-only head.
-- [x] Latest code-bearing commit `aae08714064c7a82d7d21e672d2b8b9bb49f3413` passed both workflows: typecheck, tests (including the Gemini stalled-body timeout regression), production build, dead-code validation, and production dependency audit.
+- [x] Latest pre-follow-up code-bearing commit `aae08714064c7a82d7d21e672d2b8b9bb49f3413` passed both workflows: typecheck, tests (including the Gemini stalled-body timeout regression), production build, dead-code validation, and production dependency audit.
+- [ ] The new batch-quote ordering and per-rollover debt-rounding fixes require both workflows to pass on the latest code-bearing head.
 - [x] Reviewed quote-store ordering protections: older request sequences and timestamp-only stale responses are rejected, and quote results older than a trade do not overwrite the trade.
-- [ ] Complete remaining component-level UI async race review and add stale-request tests where a concrete race is found.
+- [x] Reviewed the app's quote refresh entry points and found the batch quote sequence gap described above; addressed it and added regression coverage. No additional confirmed stale-response race was found in the inspected paths.
+- [ ] Final PR review and verify both CI workflows on the newest code-bearing commit.
 - [x] Implemented versioned authenticated cloud encryption: new writes use Web Crypto AES-GCM with a 96-bit random nonce and 128-bit authentication tag; existing CryptoJS ciphertext remains readable.
 - [x] Added regression tests for the AES-GCM envelope, rejecting modified ciphertext before local persistence, and migrating successfully read legacy ciphertext to the versioned format using the existing revision-checked write path.
 - [x] Fixed strict TypeScript `BufferSource` compatibility in AES-GCM decryption by passing standalone `ArrayBuffer` copies.
