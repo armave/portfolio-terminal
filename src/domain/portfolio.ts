@@ -475,14 +475,22 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
         price: finiteNumber(tranche.price, 0)
       }))
       : [];
-    normalizedPositions[ticker] = {
-      ...position,
-      ticker: typeof position.ticker === 'string' ? position.ticker : ticker,
-      shares: finiteNumber(position.shares, 0),
-      tranches,
-      commBuy: finiteNumber(position.commBuy, 0),
-      marginCharged: finiteNumber(position.marginCharged, 0)
-    };
+    // Define the property explicitly: imported JSON can contain a ticker key
+    // named "__proto__", and assignment to that key on a plain object changes
+    // its prototype instead of preserving the position as an enumerable entry.
+    Object.defineProperty(normalizedPositions, ticker, {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: {
+        ...position,
+        ticker: typeof position.ticker === 'string' ? position.ticker : ticker,
+        shares: finiteNumber(position.shares, 0),
+        tranches,
+        commBuy: finiteNumber(position.commBuy, 0),
+        marginCharged: finiteNumber(position.marginCharged, 0)
+      }
+    });
   });
 
   const sourceTimestamp = Number(candidate.lastRolloverTimestamp);
