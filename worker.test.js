@@ -205,6 +205,44 @@ describe('stocktwits proxy', () => {
   });
 });
 
+
+describe('Freedom news fallback', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('falls back to Finnhub when the TradeNet news endpoint returns HTTP 404', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('Not Found', { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([
+        { headline: 'Alphabet earnings update', url: 'https://example.com/news', datetime: 1790000000 }
+      ]), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(
+      new Request('https://worker.test/?action=freedom-news&symbol=GOOGL.US', {
+        headers: { 'X-App-Auth': 'test-secret' }
+      }),
+      {
+        GATEWAY_SECRET: 'test-secret',
+        FREEDOM_PUBLIC_KEY: 'public-key',
+        FREEDOM_PRIVATE_KEY: 'private-key',
+        FINNHUB_KEY: 'finnhub-key'
+      }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      provider: 'Finnhub fallback (TradeNet news unavailable)',
+      symbol: 'GOOGL.US',
+      data: [{ headline: 'Alphabet earnings update' }]
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toContain('symbol=GOOGL');
+  });
+});
+
 describe('provider-quote proxy validation', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
