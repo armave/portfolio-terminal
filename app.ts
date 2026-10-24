@@ -1817,7 +1817,7 @@ function hideStartupLoading() {
   document.getElementById('startup-loading')?.classList.add('is-hidden');
 }
 
-setSecretGetter(() => state.gatewaySecret || getGatewaySecret());
+setSecretGetter(() => getGatewaySecret());
 
 async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
   const submittedSecret = secret.trim();
