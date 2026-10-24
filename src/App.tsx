@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { fetchFreedomTradeNetTrades, normalizeFreedomTrades } from './services/api';
+import { restoreGatewaySecret } from './services/storage';
 
 interface AppProps {
   onToggleMarketInsights: () => void;
@@ -45,6 +46,13 @@ export function App({ }: AppProps) {
   const loadExecutedTrades = async () => {
     setTradesDebugLoading(true);
     try {
+      // The saved Gateway Secret is encrypted and restored asynchronously from IndexedDB.
+      // Never issue the startup request until restoration has completed.
+      const secret = await restoreGatewaySecret();
+      if (!secret.trim()) {
+        if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tradenet:executed-trades-error'));
+        return;
+      }
       const response = await fetchFreedomTradeNetTrades();
       const normalizedTrades = normalizeFreedomTrades(response);
       // Keep broker executions separate from app-owned ClosedTrade records.
