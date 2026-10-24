@@ -50,7 +50,8 @@
 - [x] **Quote-ordering tie fix implemented:** each `fetchLivePriceFromProviders` request receives a time-anchored monotonic sequence, carried with quote provenance and recorded by the store. When request timestamps tie, the store rejects lower-sequence responses for positions and cash holdings. The sequence is time-anchored to remain ordered across ordinary page reloads. Added a regression test covering out-of-order responses started in the same millisecond.
 - [x] Inspected latest-head CI failure: typecheck correctly flagged the new quote sequence metadata as missing from the position/cash-holding interfaces. Added optional `quoteRequestSequence` fields to the corresponding types and tightened the request sequence to be strictly monotonic.
 - [x] Fixed quote-ordering regression setup after CI identified that `addCashStock` stores holdings in `cashCushion.holdings`; both the same-millisecond test and existing out-of-order test now assert the actual state container.
-- [ ] Re-run typecheck, tests, build, dead-code validation, and production dependency audit on the newest code-bearing commit; latest CI exposed a remaining assertion against `cashStocks` in the same-millisecond test, now corrected to `cashCushion.holdings`. Do not merge until all checks pass.
+- [x] Latest code-bearing commit `8cc635f56cef455e4eebdd24ba2a4c2708e576f0` passed Validate end-to-end: typecheck, tests, production build, dead-code validation, and production dependency security audit. The corrected same-millisecond cash-holding regression is included.
+- [ ] Confirm Pull Request CI passes against the current PR head; the corresponding run for the code-bearing commit was cancelled during setup. Do not merge until both required workflows are green.
 - [ ] Complete remaining UI async race review and add stale-request ordering tests where needed.
 - [ ] Plan and implement versioned authenticated cloud encryption migration without breaking legacy ciphertext.
 
