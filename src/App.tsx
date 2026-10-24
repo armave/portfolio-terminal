@@ -77,6 +77,12 @@ export function App({ }: AppProps) {
     }
   };
 
+  useEffect(() => {
+    const onRequest = () => { void loadExecutedTrades(); };
+    window.addEventListener('tradenet:request-executed-trades', onRequest);
+    return () => window.removeEventListener('tradenet:request-executed-trades', onRequest);
+  }, []);
+
   const loadExecutedTrades = async () => {
     setTradesDebugLoading(true);
     try {
