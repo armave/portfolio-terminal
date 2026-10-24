@@ -42,6 +42,8 @@ export interface PositionRecord {
   quoteUpdatedAt?: number;
   /** Local request start time used to reject out-of-order quote responses. */
   quoteRequestStartedAt?: number;
+  /** Monotonic quote request ordering token, time-anchored for reload compatibility. */
+  quoteRequestSequence?: number;
   quoteSource?: string;
   quoteDetails?: QuoteDetails;
   /** Timestamp of the most recent manual trade; protects it from older quote responses. */
@@ -68,6 +70,8 @@ interface CashStock {
   currentPrice?: number;
   /** Local request start time used to reject out-of-order quote responses. */
   quoteRequestStartedAt?: number;
+  /** Monotonic quote request ordering token, time-anchored for reload compatibility. */
+  quoteRequestSequence?: number;
 }
 
 interface CashStockHolding {
@@ -78,6 +82,8 @@ interface CashStockHolding {
   quoteUpdatedAt?: number;
   /** Local request start time used to reject out-of-order quote responses. */
   quoteRequestStartedAt?: number;
+  /** Monotonic quote request ordering token, time-anchored for reload compatibility. */
+  quoteRequestSequence?: number;
   quoteSource?: string;
   quoteDetails?: QuoteDetails;
 }
