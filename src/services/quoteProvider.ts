@@ -1,4 +1,5 @@
 import { fetchYahooStockData, fetchFallbackQuote } from './api';
+import { fetchFreedomQuote } from './freedomMarketData';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 
 // Time-anchored and monotonic, including requests started in the same millisecond.
@@ -58,6 +59,39 @@ export async function fetchLivePriceFromProviders(symbol: string) {
   let price: number | null = null;
   let sourceName = "";
   let quoteDetails: any = null;
+
+  // Prefer Freedom when its server-side credentials and market-data entitlement
+  // are configured. Any unavailable/unsupported response falls through to Yahoo.
+  try {
+    const freedom = await fetchFreedomQuote(symbol);
+    if (Number.isFinite(freedom.price) && freedom.price > 0) {
+      const age = freedom.sourceTimestamp === null ? null : Date.now() - freedom.sourceTimestamp;
+      const freshness = age === null ? 'unknown' as const
+        : age < 0 ? 'stale' as const
+          : age > 5 * 60 * 1000 ? 'stale' as const : 'fresh' as const;
+      return {
+        price: freedom.price,
+        sourceName: 'Freedom TradeNet',
+        updatedAt: Date.now(),
+        requestStartedAt,
+        requestSequence,
+        quoteDetails: {
+          marketState: 'UNKNOWN',
+          freshness,
+          sourceTimestamp: freedom.sourceTimestamp ?? undefined,
+          receivedAt: Date.now(),
+          requestSequence,
+          requestStartedAt,
+          price: freedom.price,
+          change: freedom.change ?? 0,
+          changePercent: freedom.changePercent ?? 0
+        },
+        error: null
+      };
+    }
+  } catch (error: any) {
+    console.warn(`[Freedom Quote Error for ${symbol}]:`, error?.message || error);
+  }
 
   try {
     const data = await fetchYahooStockData(symbol);
@@ -126,6 +160,6 @@ export async function fetchLivePriceFromProviders(symbol: string) {
     requestStartedAt,
     requestSequence,
     quoteDetails,
-    error: price ? null : "Quote unavailable via Yahoo, Finnhub, and Twelve Data"
+    error: price ? null : "Quote unavailable via Freedom TradeNet, Yahoo, Finnhub, and Twelve Data"
   };
 }
