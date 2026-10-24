@@ -137,27 +137,15 @@ export async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
 
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
-/**
- * This is a single-owner personal portfolio service, not a multi-tenant API.
- * Browser origins are allowlisted as defense in depth; the Gateway Secret remains
- * the authentication boundary. Configure ALLOWED_ORIGINS as a comma-separated
- * list when using a trusted custom deployment origin.
- */
-const DEFAULT_ALLOWED_ORIGINS = [
-    "https://armave.github.io",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173"
-];
-
 function resolveCorsHeaders(request, env = {}) {
     const configuredOrigins = typeof env.ALLOWED_ORIGINS === "string" && env.ALLOWED_ORIGINS.trim()
         ? env.ALLOWED_ORIGINS.split(",").map(origin => origin.trim()).filter(Boolean)
-        : DEFAULT_ALLOWED_ORIGINS;
+        : [];
     const origin = request.headers.get("Origin");
     if (origin && !configuredOrigins.includes(origin)) return null;
     return {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": origin || configuredOrigins[0] || DEFAULT_ALLOWED_ORIGINS[0],
+        "Access-Control-Allow-Origin": origin || configuredOrigins[0],
         "Vary": "Origin",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization, X-App-Auth, If-Match",
