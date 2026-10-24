@@ -73,7 +73,7 @@ describe('fetchLivePriceFromProviders', () => {
       sourceTimestamp: (nowSeconds - 60) * 1000,
       raw: {}
     });
-    vi.mocked(fetchYahooStockData).mockResolvedValue({
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue({
       price: {
         current: 211,
         previousClose: 200,
@@ -91,7 +91,7 @@ describe('fetchLivePriceFromProviders', () => {
   });
 
   it('uses Yahoo market-session price data when available', async () => {
-    vi.mocked(fetchYahooStockData).mockResolvedValue({
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue({
       price: {
         current: 100,
         previousClose: 95,
@@ -102,7 +102,7 @@ describe('fetchLivePriceFromProviders', () => {
 
     const result = await fetchLivePriceFromProviders('aapl');
 
-    expect(fetchYahooStockData).toHaveBeenCalledWith('AAPL');
+    expect(fetchYahooQuoteData).toHaveBeenCalledWith('AAPL');
     expect(result.price).toBe(100);
     expect(result.sourceName).toBe('Yahoo');
     expect(result.quoteDetails).toMatchObject({
@@ -118,7 +118,7 @@ describe('fetchLivePriceFromProviders', () => {
   });
 
   it('falls back through supported providers when Yahoo has no usable quote', async () => {
-    vi.mocked(fetchYahooStockData).mockResolvedValue(null as never);
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue(null as never);
     vi.mocked(fetchFallbackQuote)
       .mockRejectedValueOnce(new Error('Finnhub unavailable'))
       .mockResolvedValueOnce({
@@ -149,7 +149,7 @@ describe('fetchLivePriceFromProviders', () => {
 
   it('marks old provider observations stale even when the response was just received', async () => {
     const sourceTime = Math.floor(Date.now() / 1000) - 60 * 60;
-    vi.mocked(fetchYahooStockData).mockResolvedValue({
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue({
       price: {
         current: 100,
         previousClose: 95,
@@ -171,7 +171,7 @@ describe('fetchLivePriceFromProviders', () => {
 
   it('labels an old closed-market observation delayed rather than live', async () => {
     const sourceTime = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
-    vi.mocked(fetchYahooStockData).mockResolvedValue({
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue({
       price: {
         current: 100,
         previousClose: 95,
@@ -190,7 +190,7 @@ describe('fetchLivePriceFromProviders', () => {
   });
 
   it('returns a clear error when every quote provider fails', async () => {
-    vi.mocked(fetchYahooStockData).mockRejectedValue(new Error('Yahoo unavailable'));
+    vi.mocked(fetchYahooQuoteData).mockRejectedValue(new Error('Yahoo unavailable'));
     vi.mocked(fetchFallbackQuote).mockRejectedValue(new Error('Fallback unavailable'));
 
     const result = await fetchLivePriceFromProviders('TSLA');
