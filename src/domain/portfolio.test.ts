@@ -490,6 +490,23 @@ describe('portfolio domain', () => {
     expect(getAccruedRolloverCycles(purchaseDate, new Date('2026-10-02T01:00:00Z'))).toBe(1);
   });
 
+  it('uses configured rollover hour and minute for accrued interest', () => {
+    const tranches = [{ qty: 10, price: 100, date: '2026-10-01' }];
+    const options = { annualRate: 0.365, dayCountBasis: 365, rolloverHour: 6, rolloverMinute: 30 };
+
+    // 06:00 Armenia time is before the configured 06:30 cutoff.
+    expect(calculateMarginInterest(tranches, {
+      ...options,
+      now: new Date('2026-10-02T02:00:00Z')
+    })).toBe(0);
+
+    // 07:00 Armenia time is after the configured 06:30 cutoff.
+    expect(calculateMarginInterest(tranches, {
+      ...options,
+      now: new Date('2026-10-02T03:00:00Z')
+    })).toBeCloseTo(1, 8);
+  });
+
   it('processes a same-day rollover when the stored baseline is before the 04:00 Armenia cutoff', () => {
     vi.useFakeTimers();
     const state = {
