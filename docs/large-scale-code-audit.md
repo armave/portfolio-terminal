@@ -43,8 +43,8 @@
 - [x] Cloud revision conflict handling reviewed; confirmed a race where a queued stale snapshot could inherit a revision learned by a concurrent pull.
 - [x] Cloud write queue now tracks pull-generation changes so a queued snapshot cannot adopt a newer revision from a concurrent pull; queued writes after a successful queued write can still use that write's revision.
 - [x] Regression test added for the concurrent-pull/queued-write race.
-- [ ] Re-run and inspect all CI jobs on the latest code-bearing commit.
-- [ ] Review financial transaction parity, rollover boundaries, and rounding with explicit regression cases.
+- [x] Re-run and inspect all CI jobs on the latest code-bearing commit: both Pull Request CI and Validate passed typecheck, tests, build, dead-code validation, and production dependency audit.
+- [ ] Complete financial transaction parity, rollover boundaries, and rounding review with any additional edge-case regression tests. Initial source/test review found broad existing coverage; no further formula change is justified without a proven discrepancy.
 - [ ] Review market-data freshness/fallback semantics and UI async races.
 - [ ] Plan and implement versioned authenticated cloud encryption migration without breaking legacy ciphertext.
 
@@ -73,6 +73,12 @@
 - **Potential silent data loss:** when a backup explicitly contained a malformed `positions` field (for example `null` or an array), normalization treated it as an empty map. Because the canonical field existed, legacy holdings migration was skipped; an import could appear successful while positions disappeared.
 - **Fix:** backup import now rejects malformed top-level container shapes for `positions`, `holdings`, `cashCushion`, and `closedTrades` instead of silently replacing them with empty defaults.
 - **Regression coverage:** tests exercise malformed object/array/null shapes and assert import errors. A genuinely empty `positions: {}` remains valid.
+## Cloud-sync concurrency finding addressed
+
+- **Race:** a push queued with a stale local snapshot could execute after a concurrent pull advanced the in-memory cloud revision. Reading the mutable revision only when the queued request ran let that stale snapshot claim the newer revision and overwrite newer cloud state.
+- **Fix:** each submitted write records its revision and pull-generation. A queued write may follow the revision advanced by an earlier queued write from the same tab, but if a pull advanced the generation after submission, it uses its original revision and safely receives a conflict instead of overwriting.
+- **Regression test:** queue two writes, complete a cloud pull while the second waits, then verify the second write retains its submitted revision and is rejected.
+
 ## Security risk retained for a versioned migration
 
 - **Cloud payload confidentiality/integrity format:** `src/services/api.ts` encrypts and decrypts the Worker cloud-state payload using `CryptoJS.AES.encrypt/decrypt` with a passphrase. CryptoJS's passphrase API defaults to CBC mode and does not authenticate ciphertext, unlike AES-GCM. The device Gateway Secret protects access to the Worker, but it is also the encryption passphrase; a modified ciphertext may not be detected cryptographically before parsing.
