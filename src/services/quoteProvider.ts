@@ -60,35 +60,11 @@ export async function fetchLivePriceFromProviders(symbol: string) {
   let sourceName = "";
   let quoteDetails: any = null;
 
-  // Prefer Freedom when its server-side credentials and market-data entitlement
-  // are configured. Any unavailable/unsupported response falls through to Yahoo.
+  // Collect Freedom first, but compare source timestamps after Yahoo responds.
+  // Provider preference is based on observed quote freshness, not vendor priority.
+  let freedomQuote: Awaited<ReturnType<typeof fetchFreedomQuote>> | null = null;
   try {
-    const freedom = await fetchFreedomQuote(symbol);
-    if (Number.isFinite(freedom.price) && freedom.price > 0) {
-      const age = freedom.sourceTimestamp === null ? null : Date.now() - freedom.sourceTimestamp;
-      const freshness = age === null ? 'unknown' as const
-        : age < 0 ? 'stale' as const
-          : age > 5 * 60 * 1000 ? 'stale' as const : 'fresh' as const;
-      return {
-        price: freedom.price,
-        sourceName: 'Freedom TradeNet',
-        updatedAt: Date.now(),
-        requestStartedAt,
-        requestSequence,
-        quoteDetails: {
-          marketState: 'UNKNOWN',
-          freshness,
-          sourceTimestamp: freedom.sourceTimestamp ?? undefined,
-          receivedAt: Date.now(),
-          requestSequence,
-          requestStartedAt,
-          price: freedom.price,
-          change: freedom.change ?? 0,
-          changePercent: freedom.changePercent ?? 0
-        },
-        error: null
-      };
-    }
+    freedomQuote = await fetchFreedomQuote(symbol);
   } catch (error: any) {
     console.warn(`[Freedom Quote Error for ${symbol}]:`, error?.message || error);
   }
@@ -140,6 +116,35 @@ export async function fetchLivePriceFromProviders(symbol: string) {
     }
   } catch (e: any) {
     console.warn(`[Proxy Quote Error for ${symbol}]:`, e.message);
+  }
+
+  if (freedomQuote && Number.isFinite(freedomQuote.price) && freedomQuote.price > 0) {
+    const freedomAge = freedomQuote.sourceTimestamp === null ? null : Date.now() - freedomQuote.sourceTimestamp;
+    const freedomFreshness = freedomAge === null ? 'unknown' as const
+      : freedomAge < 0 ? 'stale' as const
+        : freedomAge > 5 * 60 * 1000 ? 'stale' as const : 'fresh' as const;
+    const yahooFreshness = quoteDetails?.freshness;
+    const yahooTimestamp = quoteDetails?.sourceTimestamp;
+    const yahooIsFresh = yahooFreshness === 'fresh';
+    const freedomIsFresh = freedomFreshness === 'fresh';
+    const yahooIsNewer = typeof yahooTimestamp === 'number'
+      && (freedomQuote.sourceTimestamp === null || yahooTimestamp > freedomQuote.sourceTimestamp);
+    const chooseFreedom = price === null || (freedomIsFresh && (!yahooIsFresh || !yahooIsNewer));
+    if (chooseFreedom) {
+      price = freedomQuote.price;
+      sourceName = 'Freedom TradeNet';
+      quoteDetails = {
+        marketState: 'UNKNOWN',
+        freshness: freedomFreshness,
+        sourceTimestamp: freedomQuote.sourceTimestamp ?? undefined,
+        receivedAt: Date.now(),
+        requestSequence,
+        requestStartedAt,
+        price: freedomQuote.price,
+        change: freedomQuote.change ?? 0,
+        changePercent: freedomQuote.changePercent ?? 0
+      };
+    }
   }
 
   if (price === null) {
