@@ -816,7 +816,7 @@ describe('Yahoo deep-data forced refresh', () => {
     vi.restoreAllMocks();
   });
 
-  it('bypasses both cached data and an existing in-flight request on force', async () => {
+  it('bypasses cached data when force is true', async () => {
     const makeResponse = (price: number) => ({
       ok: true,
       headers: new Headers({ 'content-type': 'application/json' }),
@@ -836,4 +836,29 @@ describe('Yahoo deep-data forced refresh', () => {
     expect(refreshed.price.current).toBe(212);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('does not join an in-flight request on force or let the older response overwrite the cache', async () => {
+    const makeResponse = (price: number) => ({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ symbol: 'AAPL', price: { current: price } })
+    });
+    const resolvers: Array<(value: any) => void> = [];
+    const fetchMock = vi.fn(() => new Promise(resolve => { resolvers.push(resolve); }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const olderRequest = fetchYahooDeepStockData('AAPL');
+    const forcedRequest = fetchYahooDeepStockData('AAPL', true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    resolvers[1](makeResponse(212));
+    expect((await forcedRequest).price.current).toBe(212);
+    resolvers[0](makeResponse(210));
+    expect((await olderRequest).price.current).toBe(210);
+
+    const cached = await fetchYahooDeepStockData('AAPL');
+    expect(cached.price.current).toBe(212);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
 });
