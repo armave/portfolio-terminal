@@ -19,7 +19,6 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
     !isCushionActive && !isClosedHistoryActive && !isSettingsActive;
 
   const cushionTotal = getCashCushionTotal(state);
-  const closedTrades = state.closedTrades || [];
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
