@@ -56,7 +56,8 @@
 - [ ] Complete remaining component-level UI async race review and add stale-request tests where a concrete race is found.
 - [x] Implemented versioned authenticated cloud encryption: new writes use Web Crypto AES-GCM with a 96-bit random nonce and 128-bit authentication tag; existing CryptoJS ciphertext remains readable.
 - [x] Added regression tests for the AES-GCM envelope, rejecting modified ciphertext before local persistence, and migrating successfully read legacy ciphertext to the versioned format using the existing revision-checked write path.
-- [ ] Verify the new encryption implementation and tests on the latest CI head; do not merge until all required checks pass.
+- [x] First AES-GCM CI run caught a strict TypeScript `BufferSource` incompatibility in decryption; changed nonce/ciphertext inputs to standalone `ArrayBuffer` copies.
+- [ ] Re-run and verify the new encryption implementation and tests on the latest CI head; do not merge until all required checks pass.
 
 ## Confirmed repository observations
 
