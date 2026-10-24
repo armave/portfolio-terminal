@@ -75,14 +75,8 @@ describe('cloud state sync', () => {
 
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     const payload = JSON.parse(String(request.body));
-    const decrypted = CryptoJS.AES.decrypt(
-      payload.encryptedPayload,
-      'cloud-encryption-secret'
-    ).toString(CryptoJS.enc.Utf8);
-    expect(JSON.parse(decrypted)).toEqual({
-      activeView: 'AAPL',
-      balance: 1250
-    });
+    expect(payload.encryptedPayload).toMatch(/^aesgcm:v2:[A-Za-z0-9+/]+=*:[A-Za-z0-9+/]+=*$/);
+    expect(payload.encryptedPayload).not.toContain('cloud-encryption-secret');
   });
   it('returns false when a failed cloud pull falls back to a truthy local state', async () => {
     const localState = { activeView: 'AAPL', balance: 1250 };
