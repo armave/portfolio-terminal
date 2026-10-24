@@ -132,11 +132,47 @@ if (typeof window !== 'undefined') {
   window.addEventListener('tradenet:account-info', (event: Event) => {
     const snapshot = (event as CustomEvent).detail;
     if (!snapshot || snapshot.loaded !== true || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.balances)) return;
+    const brokerUsdBalance = snapshot.balances.find((item: any) => String(item.currency).toUpperCase() === 'USD');
+    const current = portfolioStore.getState();
+    const tickerKey = (value: unknown) => String(value || '').trim().toUpperCase();
+    const appQuantities = new Map<string, number>();
+    for (const [key, position] of Object.entries(current.positions || {})) {
+      const ticker = tickerKey((position as any)?.ticker || key);
+      if (ticker) appQuantities.set(ticker, (appQuantities.get(ticker) || 0) + (Number((position as any)?.shares) || 0));
+    }
+    for (const holding of current.cashCushion?.holdings || []) {
+      const ticker = tickerKey((holding as any)?.ticker);
+      if (ticker) appQuantities.set(ticker, (appQuantities.get(ticker) || 0) + (Number((holding as any)?.shares) || 0));
+    }
+    for (const holding of current.cashStocks || []) {
+      const ticker = tickerKey((holding as any)?.ticker);
+      if (ticker) appQuantities.set(ticker, (appQuantities.get(ticker) || 0) + (Number((holding as any)?.shares) || 0));
+    }
+    const brokerQuantities = new Map<string, number>();
+    for (const position of snapshot.positions) {
+      const ticker = tickerKey(position.ticker);
+      if (ticker) brokerQuantities.set(ticker, (brokerQuantities.get(ticker) || 0) + (Number(position.quantity) || 0));
+    }
+    const allTickers = new Set([...appQuantities.keys(), ...brokerQuantities.keys()]);
+    const mismatches = [...allTickers].filter(ticker =>
+      Math.abs((appQuantities.get(ticker) || 0) - (brokerQuantities.get(ticker) || 0)) > 1e-6
+    ).map(ticker => ({
+      ticker,
+      appQuantity: appQuantities.get(ticker) || 0,
+      brokerQuantity: brokerQuantities.get(ticker) || 0
+    }));
     portfolioStore.setState({
-      brokerAccountInfo: { ...snapshot, receivedAt: Date.now() }
+      brokerAccountInfo: { ...snapshot, receivedAt: Date.now() },
+      ...(brokerUsdBalance ? { balance: brokerUsdBalance.amount } : {})
     });
-    // The broker snapshot arrives asynchronously after initial render; refresh the
-    // visible desk so the reconciliation table appears without a manual navigation.
+    if (mismatches.length) {
+      const detail = mismatches.map(item => `${item.ticker}: app ${item.appQuantity}, Freedom ${item.brokerQuantity}`).join('; ');
+      console.error('[Freedom quantity reconciliation failed]', mismatches);
+      showToast(`Freedom quantity mismatch — ${detail}`, 'error');
+      logTerminal(`[Freedom Error] Position quantity mismatch: ${detail}`);
+    } else {
+      logTerminal('[Freedom] Broker position quantities match app totals.');
+    }
     renderBoard();
   });
 }
