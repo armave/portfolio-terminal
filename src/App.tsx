@@ -96,6 +96,7 @@ export function App({ }: AppProps) {
       }
     } catch (error) {
       console.error('Unable to load TradeNet executed trades:', error);
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tradenet:executed-trades-error'));
     } finally {
       setTradesDebugLoading(false);
     }
