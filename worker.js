@@ -154,8 +154,20 @@ async function getYahooCredentials() {
  * Preserve the response envelope expected by normalizeFreedomPortfolio().
  */
 export function sanitizeFreedomPositions(response) {
-    const ps = response?.data?.result?.ps;
-    if (!ps || typeof ps !== "object" || ps.loaded !== true) {
+    // The upstream API response can be wrapped differently depending on the
+    // TradeNet gateway/version. Accept only known position-envelope variants.
+    const candidates = [
+        response?.data?.result?.ps,
+        response?.result?.ps,
+        response?.data?.ps,
+        response?.ps,
+        response?.data?.result,
+        response?.result
+    ];
+    const ps = candidates.find(value => value && typeof value === "object"
+        && (Array.isArray(value.acc) || Array.isArray(value.pos)));
+    const loaded = ps?.loaded === true || ps?.loaded === 1 || ps?.loaded === "1" || ps?.loaded === "true";
+    if (!ps || (ps.loaded !== undefined && ps.loaded !== null && !loaded)) {
         throw new Error("TradeNet returned an invalid or unloaded positions response.");
     }
     const usdRows = (rows) => Array.isArray(rows)
