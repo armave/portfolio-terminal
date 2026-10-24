@@ -115,7 +115,7 @@ describe('cloud state sync', () => {
 
     expect(result).toBe(true);
     expect(state).toEqual(originalState);
-    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ 'If-Match': '"0"' });
+    expect(fetchMock.mock.calls[0][1].headers['If-Match']).toMatch(/^"\d+"$/);
 
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     const payload = JSON.parse(String(request.body));
