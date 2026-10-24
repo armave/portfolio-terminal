@@ -1,8 +1,36 @@
+import { useState } from 'preact/hooks';
+import { fetchFreedomTradeNetPositions, normalizeFreedomPortfolio, type FreedomPortfolioSnapshot } from './services/api';
+
 interface AppProps {
   onToggleMarketInsights: () => void;
 }
 
 export function App({ }: AppProps) {
+  const [freedomSnapshot, setFreedomSnapshot] = useState<FreedomPortfolioSnapshot | null>(null);
+  const [freedomLoading, setFreedomLoading] = useState(false);
+  const [freedomError, setFreedomError] = useState('');
+
+  const refreshFreedomPortfolio = async () => {
+    setFreedomLoading(true);
+    setFreedomError('');
+    try {
+      const response = await fetchFreedomTradeNetPositions();
+      const snapshot = normalizeFreedomPortfolio(response);
+      if (snapshot.balances.length === 0) {
+        throw new Error('TradeNet returned no USD cash balance for the active account.');
+      }
+      setFreedomSnapshot(snapshot);
+    } catch (error) {
+      setFreedomError(error instanceof Error ? error.message : 'Unable to load Freedom TradeNet portfolio.');
+    } finally {
+      setFreedomLoading(false);
+    }
+  };
+
+  const usd = (value: number | null) => value === null
+    ? '—'
+    : new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(value);
+
   return (
     <>
       {/* Active Position Header Panel */}
@@ -42,6 +70,78 @@ export function App({ }: AppProps) {
                 COMBINED PORTFOLIO
               </div>
             </div>
+            <section
+              aria-label="Freedom TradeNet USD portfolio"
+              class="rounded-lg border border-emerald-900/60 bg-slate-950/70 p-4 space-y-3"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 class="text-sm font-bold text-emerald-300">Freedom TradeNet · USD account</h2>
+                  <p class="text-[11px] text-slate-400">Read-only broker snapshot. Other currencies are excluded.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={refreshFreedomPortfolio}
+                  disabled={freedomLoading}
+                  class="rounded border border-emerald-800 bg-emerald-950 px-3 py-1.5 text-xs font-semibold text-emerald-200 hover:bg-emerald-900 disabled:opacity-50"
+                >
+                  {freedomLoading ? 'Refreshing…' : freedomSnapshot ? 'Refresh broker data' : 'Load broker portfolio'}
+                </button>
+              </div>
+              {freedomError && <p role="alert" class="text-xs text-rose-300">{freedomError}</p>}
+              {!freedomSnapshot && !freedomLoading && !freedomError && (
+                <p class="text-xs text-slate-400">Load your USD cash balance and holdings from Freedom TradeNet.</p>
+              )}
+              {freedomSnapshot && (
+                <>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div class="rounded border border-slate-800 bg-slate-900/70 p-3">
+                      <p class="text-[10px] uppercase tracking-wide text-slate-400">USD cash balance</p>
+                      <p class="mt-1 font-mono text-lg font-bold text-white">{usd(freedomSnapshot.balances.reduce((sum, balance) => sum + balance.amount, 0))}</p>
+                    </div>
+                    <div class="rounded border border-slate-800 bg-slate-900/70 p-3">
+                      <p class="text-[10px] uppercase tracking-wide text-slate-400">Open positions</p>
+                      <p class="mt-1 font-mono text-lg font-bold text-white">{freedomSnapshot.positions.length}</p>
+                    </div>
+                    <div class="rounded border border-slate-800 bg-slate-900/70 p-3">
+                      <p class="text-[10px] uppercase tracking-wide text-slate-400">Reported market value</p>
+                      <p class="mt-1 font-mono text-lg font-bold text-white">{usd(freedomSnapshot.positions.reduce((sum, position) => sum + (position.marketValue ?? 0), 0))}</p>
+                    </div>
+                  </div>
+                  <div class="overflow-x-auto">
+                    <table class="w-full min-w-[560px] text-xs">
+                      <caption class="sr-only">Freedom TradeNet USD open positions</caption>
+                      <thead><tr class="border-b border-slate-800 text-slate-400">
+                        <th scope="col" class="px-2 py-2 text-left">Instrument</th>
+                        <th scope="col" class="px-2 py-2 text-right">Qty</th>
+                        <th scope="col" class="px-2 py-2 text-right">Avg. price</th>
+                        <th scope="col" class="px-2 py-2 text-right">Market price</th>
+                        <th scope="col" class="px-2 py-2 text-right">Market value</th>
+                        <th scope="col" class="px-2 py-2 text-right">Close P/L</th>
+                      </tr></thead>
+                      <tbody class="divide-y divide-slate-800/70">
+                        {freedomSnapshot.positions.map((position) => (
+                          <tr key={position.ticker} class="text-slate-200">
+                            <th scope="row" class="px-2 py-2 text-left">
+                              <div class="font-semibold">{position.ticker}</div>
+                              <div class="text-[10px] font-normal text-slate-400">{position.name}</div>
+                            </th>
+                            <td class="px-2 py-2 text-right font-mono">{position.quantity.toLocaleString('en-US')}</td>
+                            <td class="px-2 py-2 text-right font-mono">{usd(position.averagePrice)}</td>
+                            <td class="px-2 py-2 text-right font-mono">{usd(position.marketPrice)}</td>
+                            <td class="px-2 py-2 text-right font-mono">{usd(position.marketValue)}</td>
+                            <td class={`px-2 py-2 text-right font-mono ${(position.profitClose ?? 0) < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>{usd(position.profitClose)}</td>
+                          </tr>
+                        ))}
+                        {freedomSnapshot.positions.length === 0 && <tr><td colSpan={6} class="px-2 py-4 text-center text-slate-400">No USD open positions returned.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p class="text-[10px] text-slate-500">Values are shown as reported by the broker. No FX conversion is applied. Cash and market value are shown separately and should not be treated as a reconciled account equity figure.</p>
+                </>
+              )}
+            </section>
+
             <div
               id="boardTitleActions"
               class="board-title-actions flex flex-wrap items-center gap-2"
