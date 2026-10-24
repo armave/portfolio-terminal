@@ -3,8 +3,8 @@ import { requestTradeNet } from "./src/services/freedomTradeNet.js";
 const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_PROMPT_LENGTH = 12_000;
 const MAX_TICKERS = 10;
-const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, fallback_quote: 5_000 };
-const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, fallback_quote: 5_000 };
+const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, finnhub: 5_000, twelvedata: 5_000 };
+const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, finnhub: 5_000, twelvedata: 5_000 };
 const providerResponseCache = new Map();
 const providerCooldowns = new Map();
 const providerInFlight = new Map();
@@ -366,7 +366,9 @@ export default {
                 const command = action === "freedom-quote" ? "getQuotes" : action === "freedom-news" ? "getNews" : "getHloc";
                 const params = action === "freedom-quote" ? { ticker: symbol } : action === "freedom-news" ? { ticker: symbol, limit: 10 } : { ticker: symbol, interval: "D", limit: 100 };
                 try {
-                    const data = await requestTradeNet(env, command, params);
+                    const data = action === "freedom-quote"
+                        ? await withProviderCache("freedom_quote", symbol, () => requestTradeNet(env, command, params))
+                        : await requestTradeNet(env, command, params);
                     return new Response(JSON.stringify({ ok: true, provider: "Freedom TradeNet", symbol, data }), { headers: corsHeaders });
                 } catch (error) {
                     // TradeNet's getNews endpoint currently returns HTTP 404 on some
@@ -635,21 +637,19 @@ export default {
                     });
                 }
 
-                const res = await fetchWithTimeout(endpoint);
-                const data = await res.json().catch(() => null);
-                if (!res.ok) {
-                    return new Response(JSON.stringify(data || { error: `${providerName} returned HTTP ${res.status}.` }), {
-                        status: res.status,
-                        headers: corsHeaders
+                try {
+                    const cacheProvider = provider === "finnhub" ? "finnhub" : "twelvedata";
+                    const data = await withProviderCache(cacheProvider, symbol, async () => {
+                        const res = await fetchWithTimeout(endpoint);
+                        const payload = await res.json().catch(() => null);
+                        if (!res.ok) throw new Error(payload?.error || `${providerName} returned HTTP ${res.status}.`);
+                        if (!payload || typeof payload !== "object") throw new Error(`${providerName} returned an invalid response.`);
+                        return payload;
                     });
+                    return new Response(JSON.stringify(data), { headers: corsHeaders });
+                } catch (error) {
+                    return jsonError(error instanceof Error ? error.message : `${providerName} quote failed.`, 502, corsHeaders);
                 }
-                if (!data || typeof data !== "object") {
-                    return new Response(JSON.stringify({ error: `${providerName} returned an invalid response.` }), {
-                        status: 502,
-                        headers: corsHeaders
-                    });
-                }
-                return new Response(JSON.stringify(data), { headers: corsHeaders });
             }
 
             // Lightweight Yahoo quote path: chart metadata avoids quoteSummary's
