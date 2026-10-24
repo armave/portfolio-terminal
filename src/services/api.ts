@@ -370,7 +370,8 @@ export async function fetchYahooDeepStockData(ticker: string, force = false): Pr
 
   const request = proxyFetch('', { symbol }, { method: 'POST' })
     .then((data) => {
-      if (data && typeof data === 'object' && !data.error) {
+      if (yahooDeepDataRequests.get(symbol) === request && data && typeof data === 'object' && !data.error) {
+        // A superseded request must not overwrite a newer forced refresh in cache.
         rememberYahooDeepStockData(data);
       }
       return data;
