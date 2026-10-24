@@ -75,9 +75,13 @@ describe('normalizeFreedomTrades', () => {
       quantity: 30,
       price: 163.356,
       currency: 'USD',
-      executedAt: '2024-09-26T17:41:30.000'
+      executedAt: '2024-09-26T17:41:30.000',
+      tradeValue: 4900.68,
+      profit: 0,
+      commission: 24.86,
+      commissionCurrency: 'USD'
     });
-    expect(trades[1]).toMatchObject({ ticker: 'SHEL.US', side: 'SELL', profit: undefined });
+    expect(trades[1]).toMatchObject({ ticker: 'SHEL.US', side: 'SELL', profit: 2.26 });
   });
 
   it('returns an empty list for unrecognized response shapes', () => {
