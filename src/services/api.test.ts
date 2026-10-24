@@ -203,6 +203,77 @@ describe('cloud pull persistence failures', () => {
 });
 
 
+
+describe('versioned cloud encryption', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('rejects modified AES-GCM ciphertext without persisting it', async () => {
+    const secret = 'cloud-encryption-secret';
+    const validPayload = {
+      encryptedPayload: 'aesgcm:v2:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA=='
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ ETag: '"44"' }),
+      json: async () => validPayload
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const saveSpy = vi.spyOn(storage, 'saveState').mockReturnValue(true);
+    const reportResult = vi.fn();
+    const showToast = vi.fn();
+
+    await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 1000 },
+      secret,
+      showToast,
+      logTerminal: vi.fn()
+    }, reportResult);
+
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(reportResult).toHaveBeenCalledWith(false);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Failed to decrypt cloud state'), 'error');
+  });
+
+  it('reads legacy CryptoJS ciphertext and schedules a versioned encryption upgrade', async () => {
+    const secret = 'cloud-encryption-secret';
+    const legacyPayload = CryptoJS.AES.encrypt(JSON.stringify({
+      activeView: 'AAPL',
+      balance: 1250,
+      lastRolloverTimestamp: Date.now()
+    }), secret).toString();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"70"' }),
+        json: async () => ({ encryptedPayload: legacyPayload })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: '"71"' })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(storage, 'saveState').mockReturnValue(true);
+
+    const result = await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 0 },
+      secret,
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    });
+
+    expect(result.activeView).toBe('AAPL');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const upgrade = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+    expect(upgrade.encryptedPayload).toMatch(/^aesgcm:v2:/);
+  });
+});
+
 describe('Gateway Secret validation', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
