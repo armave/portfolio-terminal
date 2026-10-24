@@ -31,6 +31,23 @@
 8. **Review and follow-up**
    - Summarize findings by severity, the evidence and tests for each fix, remaining risks, and any compatibility decisions that require maintainer input.
 
+## Live audit progress
+
+**Overall status: in progress — do not merge until the newest CI run is green and remaining high-risk areas are reviewed.**
+
+- [x] Baseline and repository change inventory.
+- [x] PR validation workflow and baseline gates added.
+- [x] Backup import rejects malformed top-level containers that could silently drop data.
+- [x] Position normalization safely preserves prototype-sensitive keys.
+- [x] Upstream timeout remains active through response-body consumption.
+- [x] Cloud revision conflict handling reviewed; confirmed a race where a queued stale snapshot could inherit a revision learned by a concurrent pull.
+- [x] Cloud write queue now tracks pull-generation changes so a queued snapshot cannot adopt a newer revision from a concurrent pull; queued writes after a successful queued write can still use that write's revision.
+- [x] Regression test added for the concurrent-pull/queued-write race.
+- [ ] Re-run and inspect all CI jobs on the latest code-bearing commit.
+- [ ] Review financial transaction parity, rollover boundaries, and rounding with explicit regression cases.
+- [ ] Review market-data freshness/fallback semantics and UI async races.
+- [ ] Plan and implement versioned authenticated cloud encryption migration without breaking legacy ciphertext.
+
 ## Confirmed repository observations
 
 - The package exposes typecheck, test, build, and validate:dead-code scripts.
@@ -40,12 +57,33 @@
 - Commission inputs are validated in the financial domain. Date parsing and rollover behavior must remain covered by regression tests.
 - The repository's documented financial and cloud-state model is intentionally single-owner. This audit does not introduce multi-user semantics or change persisted state formats.
 
-## Finding addressed in this PR\n\n- **Data integrity — malformed position key can be silently lost during normalization.** Assigning a JSON-provided `__proto__` position key into a normal JavaScript object invokes the legacy prototype setter rather than creating an enumerable position property. That could make a position disappear when the normalized state is serialized.\n- **Fix:** normalized position entries are now created with `Object.defineProperty`, preserving ordinary object behavior while ensuring imported keys become own enumerable data properties.\n- **Regression test:** import a backup containing both a normal position and an explicitly defined `__proto__` position; verify the position survives and the result retains `Object.prototype`.\n- **Severity:** low likelihood / potentially high data-integrity impact for malformed or adversarial backup input. This does not indicate a demonstrated remote exploit; it is a local import/normalization robustness issue.\n## Additional reliability finding addressed\n\n- **Upstream timeout ended too early.** The Worker helper originally cleared its abort timer as soon as `fetch()` returned response headers, while callers parsed JSON/text afterward. A stalled upstream response body could therefore outlive the advertised timeout.\n- **Fix:** keep timeout and caller cancellation wired through response-body consumption using a forwarding stream; clean up on end, error, or cancellation, and respect already-aborted external signals.\n- **Regression test:** simulate an upstream response that stalls after headers and verify body consumption rejects when the timeout aborts it.\n## Backup-import integrity finding addressed\n\n- **Potential silent data loss:** when a backup explicitly contained a malformed `positions` field (for example `null` or an array), normalization treated it as an empty map. Because the canonical field existed, legacy holdings migration was skipped; an import could appear successful while positions disappeared.\n- **Fix:** backup import now rejects malformed top-level container shapes for `positions`, `holdings`, `cashCushion`, and `closedTrades` instead of silently replacing them with empty defaults.\n- **Regression coverage:** tests exercise malformed object/array/null shapes and assert import errors. A genuinely empty `positions: {}` remains valid.\n## Security risk retained for a versioned migration\n\n- **Cloud payload confidentiality/integrity format:** `src/services/api.ts` encrypts and decrypts the Worker cloud-state payload using `CryptoJS.AES.encrypt/decrypt` with a passphrase. CryptoJS's passphrase API defaults to CBC mode and does not authenticate ciphertext, unlike AES-GCM. The device Gateway Secret protects access to the Worker, but it is also the encryption passphrase; a modified ciphertext may not be detected cryptographically before parsing.\n- **Disposition:** do not silently switch formats in this audit patch because all existing cloud state uses the legacy ciphertext format. A safe remediation should introduce an explicit versioned AES-GCM envelope, preserve legacy decryption, validate decrypted state before persistence, and migrate only after a successful pull and revision-checked write. Add compatibility tests for old payloads, wrong keys, modified ciphertext, and interrupted migration.\n- **Severity:** security hardening needed; practical impact depends on the Gateway Secret entropy and the cloud threat model. This audit did not attempt a live cloud-data tampering test.\n## Acceptance criteria
+## Finding addressed in this PR
+
+- **Data integrity — malformed position key can be silently lost during normalization.** Assigning a JSON-provided `__proto__` position key into a normal JavaScript object invokes the legacy prototype setter rather than creating an enumerable position property. That could make a position disappear when the normalized state is serialized.
+- **Fix:** normalized position entries are now created with `Object.defineProperty`, preserving ordinary object behavior while ensuring imported keys become own enumerable data properties.
+- **Regression test:** import a backup containing both a normal position and an explicitly defined `__proto__` position; verify the position survives and the result retains `Object.prototype`.
+- **Severity:** low likelihood / potentially high data-integrity impact for malformed or adversarial backup input. This does not indicate a demonstrated remote exploit; it is a local import/normalization robustness issue.
+## Additional reliability finding addressed
+
+- **Upstream timeout ended too early.** The Worker helper originally cleared its abort timer as soon as `fetch()` returned response headers, while callers parsed JSON/text afterward. A stalled upstream response body could therefore outlive the advertised timeout.
+- **Fix:** keep timeout and caller cancellation wired through response-body consumption using a forwarding stream; clean up on end, error, or cancellation, and respect already-aborted external signals.
+- **Regression test:** simulate an upstream response that stalls after headers and verify body consumption rejects when the timeout aborts it.
+## Backup-import integrity finding addressed
+
+- **Potential silent data loss:** when a backup explicitly contained a malformed `positions` field (for example `null` or an array), normalization treated it as an empty map. Because the canonical field existed, legacy holdings migration was skipped; an import could appear successful while positions disappeared.
+- **Fix:** backup import now rejects malformed top-level container shapes for `positions`, `holdings`, `cashCushion`, and `closedTrades` instead of silently replacing them with empty defaults.
+- **Regression coverage:** tests exercise malformed object/array/null shapes and assert import errors. A genuinely empty `positions: {}` remains valid.
+## Security risk retained for a versioned migration
+
+- **Cloud payload confidentiality/integrity format:** `src/services/api.ts` encrypts and decrypts the Worker cloud-state payload using `CryptoJS.AES.encrypt/decrypt` with a passphrase. CryptoJS's passphrase API defaults to CBC mode and does not authenticate ciphertext, unlike AES-GCM. The device Gateway Secret protects access to the Worker, but it is also the encryption passphrase; a modified ciphertext may not be detected cryptographically before parsing.
+- **Disposition:** do not silently switch formats in this audit patch because all existing cloud state uses the legacy ciphertext format. A safe remediation should introduce an explicit versioned AES-GCM envelope, preserve legacy decryption, validate decrypted state before persistence, and migrate only after a successful pull and revision-checked write. Add compatibility tests for old payloads, wrong keys, modified ciphertext, and interrupted migration.
+- **Severity:** security hardening needed; practical impact depends on the Gateway Secret entropy and the cloud threat model. This audit did not attempt a live cloud-data tampering test.
+## Acceptance criteria
 
 - [x] Pull requests run typecheck, tests, dead-code validation, production dependency audit, and production build.
 - [x] No financial formula or persisted schema is changed merely to make the audit appear comprehensive.
 - [x] Existing regression coverage remains in place, with new regression cases for the identified defects.
-- [x] Final-head CI results reviewed: both the new PR workflow and existing validation workflow passed.
+- [ ] Latest code-bearing head CI results reviewed: both the new PR workflow and existing validation workflow must pass before merge.
 - [x] The remaining cloud encryption integrity risk is documented with a versioned migration plan.
 
 ## Scope and limitations
