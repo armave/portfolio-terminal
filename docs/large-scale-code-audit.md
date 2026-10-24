@@ -53,7 +53,7 @@
 - [x] Fixed quote-ordering regression setup after CI identified that `addCashStock` stores holdings in `cashCushion.holdings`; both the same-millisecond test and existing out-of-order test now assert the actual state container.
 - [x] Latest code-bearing commit `8cc635f56cef455e4eebdd24ba2a4c2708e576f0` passed Validate end-to-end: typecheck, tests, production build, dead-code validation, and production dependency security audit. The corrected same-millisecond cash-holding regression is included.
 - [x] Confirmed Pull Request CI and Validate were green on the previous encryption-only head.
-- [ ] Re-run both workflows on the latest financial-cutoff fix before considering this PR merge-ready.
+- [x] Latest code-bearing commit `a2855b5ea056d63c03ffc501bb9cb728cf749b7f` passed both workflows: typecheck, all tests, production build, dead-code validation, and production dependency audit. The current PR head's documentation-only commit also passed both workflows.
 - [x] Reviewed quote-store ordering protections: older request sequences and timestamp-only stale responses are rejected, and quote results older than a trade do not overwrite the trade.
 - [ ] Complete remaining component-level UI async race review and add stale-request tests where a concrete race is found.
 - [x] Implemented versioned authenticated cloud encryption: new writes use Web Crypto AES-GCM with a 96-bit random nonce and 128-bit authentication tag; existing CryptoJS ciphertext remains readable.
