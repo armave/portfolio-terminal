@@ -95,20 +95,23 @@ function readCloudRevision(headers?: Headers | null): number | null {
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
 }
 
-export function setSecretGetter(_getter: () => string): void { }
+let activeSecretGetter: (() => string) | null = null;
+
+export function setSecretGetter(getter: () => string): void {
+  activeSecretGetter = getter;
+}
 
 function getActiveGatewaySecret(): string {
   // Credentials are managed only by the dedicated secret store/input. Portfolio
   // state may come from an imported backup or cloud payload and is never trusted.
   const stored = getGatewaySecret();
   if (stored) return stored;
-  if (typeof document !== 'undefined') {
-    const input =
-      (document.getElementById('headerGatewaySecretInput') as HTMLInputElement | null) ||
-      (document.getElementById('gatewaySecretInput') as HTMLInputElement | null);
-    if (input?.value?.trim()) return input.value.trim();
+  try {
+    const supplied = activeSecretGetter?.();
+    return typeof supplied === 'string' ? supplied.trim() : '';
+  } catch {
+    return '';
   }
-  return '';
 }
 
 export interface ProxyFetchOptions extends RequestInit {
