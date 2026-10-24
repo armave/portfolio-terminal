@@ -20,9 +20,11 @@ export function ClosedHistoryDesk() {
     readCurrentTrades();
     // If the route opens directly, App's initial fetch may already have fired.
     // Ask App to fetch now as well; both the event and shared cache are supported.
+    const onTradesError = () => { setBrokerTradesLoading(false); setBrokerTradesError(true); };
     window.addEventListener('tradenet:executed-trades', onTrades);
+    window.addEventListener('tradenet:executed-trades-error', onTradesError);
     window.dispatchEvent(new CustomEvent('tradenet:request-executed-trades'));
-    return () => window.removeEventListener('tradenet:executed-trades', onTrades);
+    return () => { window.removeEventListener('tradenet:executed-trades', onTrades); window.removeEventListener('tradenet:executed-trades-error', onTradesError); };
   }, []);
   const appTrades = (state.closedTrades || []).map((trade, index) => ({ trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const, profit: Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0), fees: Number((trade as any).feesAndCommissions ?? (trade as any).totalCommissions ?? (trade as any).commissions ?? 0) }));
   // Match buy lots FIFO to sell executions so both entry and exit commissions
