@@ -6,14 +6,16 @@ import { formatRelativeTime } from '../utils/relativeTime';
 export function ClosedHistoryDesk() {
   const state = usePortfolio();
   const [brokerTrades, setBrokerTrades] = useState<any[]>([]);
+  const [brokerTradesLoading, setBrokerTradesLoading] = useState(true);
+  const [brokerTradesError, setBrokerTradesError] = useState(false);
   useEffect(() => {
     const readCurrentTrades = () => {
       const current = (window as any).__tradenetExecutedTrades;
-      if (Array.isArray(current)) setBrokerTrades(current);
+      if (Array.isArray(current)) { setBrokerTrades(current); setBrokerTradesLoading(false); setBrokerTradesError(false); }
     };
     const onTrades = (event: Event) => {
       const trades = (event as CustomEvent).detail;
-      if (Array.isArray(trades)) setBrokerTrades(trades);
+      if (Array.isArray(trades)) { setBrokerTrades(trades); setBrokerTradesLoading(false); setBrokerTradesError(false); }
     };
     readCurrentTrades();
     // If the route opens directly, App's initial fetch may already have fired.
@@ -23,46 +25,50 @@ export function ClosedHistoryDesk() {
     return () => window.removeEventListener('tradenet:executed-trades', onTrades);
   }, []);
   const appTrades = (state.closedTrades || []).map((trade, index) => ({ trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const, profit: Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0), fees: Number((trade as any).feesAndCommissions ?? (trade as any).totalCommissions ?? (trade as any).commissions ?? 0) }));
-  // Calculate holding duration from the matched buy and sell executions.
-  // Match FIFO by ticker; if the broker payload has no usable buy/sell history,
-  // leave duration unknown instead of misleadingly displaying zero days.
-  const brokerTradesWithDuration = (() => {
+  // Match buy lots FIFO to sell executions so both entry and exit commissions
+  // are reflected in the closed-history row. Fees are allocated per share for partial closes.
+  const brokerTradeMetrics = (() => {
     const sorted = [...brokerTrades].filter((t: any) => t.ticker && t.executedAt)
       .sort((a: any, b: any) => Date.parse(a.executedAt) - Date.parse(b.executedAt));
-    const queues = new Map<string, { date: number; quantity: number }[]>();
-    const durationByObject = new Map<any, number>();
+    const queues = new Map<string, { date: number; quantity: number; commissionPerShare: number | null }[]>();
+    const metricsByObject = new Map<any, { holdingDays: number | null; buyCommission: number }>();
     for (const trade of sorted) {
       const ticker = String(trade.ticker).trim().toUpperCase();
       const side = String(trade.side ?? '').toLowerCase();
       const qty = Math.abs(Number(trade.quantity ?? 0));
       const time = Date.parse(trade.executedAt);
       if (!Number.isFinite(time) || !Number.isFinite(qty) || qty <= 0) continue;
-      const isBuy = ['buy', 'b', 'purchase', 'bought'].includes(side);
-      const isSell = ['sell', 's', 'sale', 'sold'].includes(side);
+      const isBuy = ['buy', 'b', 'purchase', 'bought', '1'].includes(side);
+      const isSell = ['sell', 's', 'sale', 'sold', '2'].includes(side);
+      const commission = trade.commission == null ? null : Math.abs(Number(trade.commission));
       if (isBuy) {
         const queue = queues.get(ticker) ?? [];
-        queue.push({ date: time, quantity: qty });
+        queue.push({ date: time, quantity: qty, commissionPerShare: commission !== null && Number.isFinite(commission) ? commission / qty : null });
         queues.set(ticker, queue);
       } else if (isSell) {
         const queue = queues.get(ticker) ?? [];
         let remaining = qty;
         let weightedDays = 0;
         let matched = 0;
+        let buyCommission = 0;
+        let commissionKnown = true;
         while (remaining > 1e-8 && queue.length) {
           const lot = queue[0];
           const used = Math.min(remaining, lot.quantity);
           weightedDays += Math.max(0, time - lot.date) / 86400000 * used;
           matched += used;
+          if (lot.commissionPerShare === null) commissionKnown = false;
+          else buyCommission += lot.commissionPerShare * used;
           remaining -= used;
           lot.quantity -= used;
           if (lot.quantity <= 1e-8) queue.shift();
         }
-        if (matched > 0) durationByObject.set(trade, weightedDays / matched);
+        metricsByObject.set(trade, { holdingDays: matched > 0 ? weightedDays / matched : null, buyCommission: commissionKnown && matched > 0 ? buyCommission : 0 });
       }
     }
-    return durationByObject;
+    return metricsByObject;
   })();
-  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => ({ trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradesWithDuration.get(broker), feesAndCommissions: broker.commission, netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const }, index: -1, source: 'tradenet' as const, profit: broker.profit == null ? null : Number(broker.profit), fees: broker.commission == null ? 0 : Number(broker.commission) }));
+  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => ({ trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: broker.commission == null ? null : Math.abs(Number(broker.commission)) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0), netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const }, index: -1, source: 'tradenet' as const, profit: broker.profit == null ? null : Number(broker.profit), fees: broker.commission == null ? (brokerTradeMetrics.get(broker)?.buyCommission ?? 0) : Math.abs(Number(broker.commission)) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0) }));
   // Group same-ticker sell executions that occur within one hour into one closed-history row.
   // Keep separate groups when the gap from the previous execution exceeds one hour.
   const groupedBrokerRows = (() => {
@@ -168,7 +174,13 @@ export function ClosedHistoryDesk() {
             </tr>
           </thead>
           <tbody id="closedTradesTableBody" class="divide-y divide-slate-800/60">
-            {trades.length === 0 ? (
+            {brokerTradesLoading && brokerTrades.length === 0 ? (
+              <tr><td colSpan={8} class="py-8 text-center text-slate-400">
+                <span class="inline-flex items-center gap-2"><span class="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-purple-400" aria-hidden="true" />Loading closed trade history…</span>
+              </td></tr>
+            ) : brokerTradesError && trades.length === 0 ? (
+              <tr><td colSpan={8} class="py-8 text-center text-rose-400">Unable to load TradeNet history. Please retry.</td></tr>
+            ) : trades.length === 0 ? (
               <tr>
                 <td colSpan={8} class="py-8 text-center text-slate-500 italic">
                   No closed trades recorded yet.
