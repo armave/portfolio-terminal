@@ -454,8 +454,8 @@ describe('queued writes during concurrent cloud pulls', () => {
     const second = pushCloudState({ activeView: 'STALE_QUEUED', balance: 2 }, {
       secret, showToast: vi.fn()
     });
-    await Promise.resolve();
-    await Promise.resolve();
+    // AES-GCM encryption is asynchronous; wait until the first write has actually started.
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
     await pullCloudState({
       state: { activeView: 'LOCAL', balance: 0 },
