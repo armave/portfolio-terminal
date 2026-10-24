@@ -615,6 +615,48 @@ export function resolveSaleQuantity(availableShares: number, requestedShares: nu
   return Math.min(availableShares, requestedShares);
 }
 
+export function resolveTradeDateTimestamp(value: unknown, fallbackTimestamp = Date.now()): number {
+  if (typeof value !== 'string' || !value.trim()) return fallbackTimestamp;
+  const normalizedValue = value.trim();
+  const isoDate = normalizedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDate) {
+    const year = Number(isoDate[1]);
+    const month = Number(isoDate[2]);
+    const day = Number(isoDate[3]);
+    const timestamp = Date.UTC(year, month - 1, day);
+    const parsedDate = new Date(timestamp);
+    if (
+      month < 1 || month > 12 || day < 1 ||
+      parsedDate.getUTCFullYear() !== year ||
+      parsedDate.getUTCMonth() !== month - 1 ||
+      parsedDate.getUTCDate() !== day
+    ) return fallbackTimestamp;
+    return timestamp;
+  }
+
+  const shortDate = normalizedValue.match(/^(\d{1,2})\s+([a-z]{3,})(?:\s+(\d{4}))?$/i);
+  if (shortDate) {
+    const monthIndex = new Date(`${shortDate[2]} 1, 2000`).getMonth();
+    if (!Number.isNaN(monthIndex)) {
+      let year = shortDate[3] ? Number(shortDate[3]) : new Date(fallbackTimestamp).getFullYear();
+      const day = Number(shortDate[1]);
+      let date = new Date(year, monthIndex, day);
+      if (date.getMonth() !== monthIndex || date.getDate() !== day) return fallbackTimestamp;
+      let timestamp = date.getTime();
+      if (!shortDate[3] && timestamp > fallbackTimestamp) {
+        year -= 1;
+        date = new Date(year, monthIndex, day);
+        if (date.getMonth() !== monthIndex || date.getDate() !== day) return fallbackTimestamp;
+        timestamp = date.getTime();
+      }
+      return timestamp;
+    }
+  }
+
+  const parsed = Date.parse(normalizedValue);
+  return Number.isFinite(parsed) ? parsed : fallbackTimestamp;
+}
+
 function resolveTrancheAcquiredAt(tranche: TradeTranche, fallbackDate: string | undefined, now: number): number {
   const acquiredAt = Number(tranche.acquiredAt);
   if (Number.isFinite(acquiredAt) && acquiredAt > 0) return acquiredAt;
