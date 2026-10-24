@@ -22,7 +22,7 @@ describe('fetchLivePriceFromProviders', () => {
     vi.resetAllMocks();
   });
 
-  it('prefers a valid Freedom quote before trying Yahoo', async () => {
+  it('uses a valid fresh Freedom quote when Yahoo has no source timestamp', async () => {
     vi.mocked(fetchFreedomQuote).mockResolvedValue({
       symbol: 'AAPL',
       price: 210,
@@ -39,7 +39,35 @@ describe('fetchLivePriceFromProviders', () => {
     expect(result.price).toBe(210);
     expect(result.sourceName).toBe('Freedom TradeNet');
     expect(result.quoteDetails).toMatchObject({ freshness: 'fresh', price: 210, change: 10, changePercent: 5 });
-    expect(fetchYahooStockData).not.toHaveBeenCalled();
+    expect(fetchYahooStockData).toHaveBeenCalledWith('AAPL');
+  });
+
+  it('prefers Yahoo when its source timestamp is newer than Freedom', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+      symbol: 'AAPL',
+      price: 210,
+      previousClose: 200,
+      change: 10,
+      changePercent: 5,
+      sourceTimestamp: (nowSeconds - 60) * 1000,
+      raw: {}
+    });
+    vi.mocked(fetchYahooStockData).mockResolvedValue({
+      price: {
+        current: 211,
+        previousClose: 200,
+        regularMarketTime: nowSeconds,
+        marketState: 'REGULAR',
+        change: 11
+      }
+    } as never);
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(result.price).toBe(211);
+    expect(result.sourceName).toBe('Yahoo');
+    expect(result.quoteDetails).toMatchObject({ freshness: 'fresh', sourceTimestamp: nowSeconds * 1000 });
   });
 
   it('uses Yahoo market-session price data when available', async () => {
