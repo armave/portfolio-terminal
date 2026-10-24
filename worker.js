@@ -1,3 +1,5 @@
+import { requestTradeNet } from "./src/services/freedomTradeNet.js";
+
 const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_PROMPT_LENGTH = 12_000;
 const MAX_TICKERS = 10;
@@ -197,7 +199,7 @@ export default {
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
-        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits"].includes(action)) {
+        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
@@ -208,6 +210,20 @@ export default {
         }
 
         try {
+            // Read-only Freedom TradeNet connectivity probe. Never accepts a command from the client.
+            if (action === "freedom-test") {
+                if (request.method !== "GET") {
+                    return jsonError("Freedom test only supports GET.", 405, corsHeaders);
+                }
+                await requestTradeNet(env);
+                // Never expose account positions or balances in a connectivity probe.
+                return new Response(JSON.stringify({
+                    ok: true,
+                    provider: "Freedom TradeNet",
+                    message: "Authenticated read-only request succeeded."
+                }), { headers: corsHeaders });
+            }
+
             // --- ACTION 0: Durable Object cloud portfolio state ---
             if (pathname === "/api/state" || action === "state") {
                 if (!env.PORTFOLIO_STATE_DO) {
