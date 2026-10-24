@@ -35,15 +35,18 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command = "getPosi
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
 
-    const response = await fetch(TRADENET_API_URL, {
-        method: "POST",
+    // TradeNet's documented API transport passes the JSON command in the
+    // "q" query parameter (including for getPositionJson), rather than as a
+    // raw JSON POST body. "Invalid 'q' provided" is returned when q is absent.
+    const requestUrl = new URL(TRADENET_API_URL);
+    requestUrl.searchParams.set("q", body);
+    const response = await fetch(requestUrl.toString(), {
+        method: "GET",
         headers: {
-            "Content-Type": "application/json",
             "X-NtApi-PublicKey": env.FREEDOM_PUBLIC_KEY,
             "X-NtApi-Sig": signature,
             "X-NtApi-Timestamp": timestamp
         },
-        body,
         signal: AbortSignal.timeout(12000)
     });
 
