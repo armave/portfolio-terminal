@@ -2,6 +2,7 @@ import CryptoJS from 'crypto-js';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedState, saveState } from './storage';
 import { PortfolioState } from '../types/portfolio';
+import { fetchFreedomNews } from './freedomMarketData';
 
 const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
@@ -381,15 +382,29 @@ export async function fetchMarketNews(ticker: string, force = false): Promise<an
   const existing = marketNewsRequests.get(symbol);
   if (existing) return existing;
 
-  const request = proxyFetch('news', { symbol })
-    .then((data) => {
-      const news = Array.isArray(data) ? data : [];
-      marketNewsCache.set(symbol, {
-        expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS,
-        data: news
-      });
-      return news;
-    })
+  const request = (async () => {
+    try {
+      const freedomItems = await fetchFreedomNews(symbol);
+      const normalized = freedomItems.map((item: any) => ({
+        headline: String(item?.headline ?? item?.title ?? item?.name ?? ''),
+        summary: String(item?.summary ?? item?.description ?? ''),
+        url: String(item?.url ?? item?.link ?? ''),
+        datetime: Number(item?.datetime ?? item?.time ?? item?.timestamp ?? 0),
+        source: String(item?.source ?? item?.provider ?? 'Freedom TradeNet'),
+        image: String(item?.image ?? item?.imageUrl ?? '')
+      })).filter((item) => item.headline && item.url);
+      if (normalized.length) {
+        marketNewsCache.set(symbol, { expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS, data: normalized });
+        return normalized;
+      }
+    } catch (error) {
+      console.warn(`[Freedom News Error for ${symbol}]:`, error instanceof Error ? error.message : error);
+    }
+    const data = await proxyFetch('news', { symbol });
+    const news = Array.isArray(data) ? data : [];
+    marketNewsCache.set(symbol, { expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS, data: news });
+    return news;
+  })()
     .finally(() => {
       if (marketNewsRequests.get(symbol) === request) marketNewsRequests.delete(symbol);
     });
