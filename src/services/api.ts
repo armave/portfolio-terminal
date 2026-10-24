@@ -99,7 +99,10 @@ export async function proxyFetch(
   const data = isJson ? await res.json() : await res.text();
 
   if (!res.ok) {
-    throw new Error(data.error || data.message || `HTTP ${res.status}`);
+    const errorMessage = typeof data === 'object' && data !== null
+      ? (data.error || data.message || `HTTP ${res.status}`)
+      : `HTTP ${res.status}`;
+    throw new Error(errorMessage);
   }
   return data;
 }
@@ -465,7 +468,10 @@ export async function pullCloudState(
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `HTTP ${res.status}`);
+      const errorMessage = typeof errData === 'object' && errData !== null
+        ? (errData.error || errData.message || `HTTP ${res.status}`)
+        : `HTTP ${res.status}`;
+      throw new Error(errorMessage);
     }
 
     const data = await res.json();
@@ -587,7 +593,10 @@ async function performPushCloudState(state?: any, options: SyncOptions = {}): Pr
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `HTTP ${res.status}`);
+      const errorMessage = typeof errData === 'object' && errData !== null
+        ? (errData.error || errData.message || `HTTP ${res.status}`)
+        : `HTTP ${res.status}`;
+      throw new Error(errorMessage);
     }
 
     const savedRevision = readCloudRevision(res.headers);

@@ -44,34 +44,33 @@ export function formatUSD(val: unknown): string {
 
 export type QuoteFreshness = 'fresh' | 'stale' | 'delayed' | 'unknown' | 'unavailable';
 
-type QuoteFreshnessMetadata = {
-  freshness?: QuoteFreshness;
+interface QuoteFreshnessInput {
+  quoteUpdatedAt?: number;
+  quoteSource?: string;
   sourceTimestamp?: number;
   marketState?: string;
-};
+}
 
 export function getQuoteFreshness(
-  holding: { quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: QuoteFreshnessMetadata },
+  holding: QuoteFreshnessInput,
   now = Date.now(),
   refreshIntervalMs = 60000
 ): QuoteFreshness {
   if (holding.quoteSource === 'Manual' || holding.quoteSource === 'Trade input') return 'unavailable';
-  const sourceTimestamp = Number(holding.quoteDetails?.sourceTimestamp);
+  const sourceTimestamp = Number(holding.sourceTimestamp);
   if (!Number.isFinite(sourceTimestamp) || sourceTimestamp <= 0) {
-    // quoteUpdatedAt is only the client receipt time. It is not evidence of
-    // when the provider observed the market price.
     return holding.quoteUpdatedAt ? 'unknown' : 'unavailable';
   }
 
   const staleAfterMs = Math.max(5 * 60 * 1000, refreshIntervalMs * 2);
   const ageMs = now - sourceTimestamp;
   if (ageMs < 0) return 'stale';
-  if (ageMs > staleAfterMs) return holding.quoteDetails?.marketState === 'CLOSED' ? 'delayed' : 'stale';
+  if (ageMs > staleAfterMs) return holding.marketState === 'CLOSED' ? 'delayed' : 'stale';
   return 'fresh';
 }
 
 export function formatQuoteMetadata(
-  holding: { quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: QuoteFreshnessMetadata },
+  holding: QuoteFreshnessInput,
   refreshIntervalMs = 60000
 ): string {
   const freshness = getQuoteFreshness(holding, Date.now(), refreshIntervalMs);
@@ -79,7 +78,7 @@ export function formatQuoteMetadata(
   const source = holding.quoteSource ? `${holding.quoteSource} · ` : '';
   if (freshness === 'unknown') return `Quote time unknown · ${holding.quoteSource || 'source unavailable'}`;
 
-  const sourceTimestamp = Number(holding.quoteDetails?.sourceTimestamp);
+  const sourceTimestamp = Number(holding.sourceTimestamp);
   const time = new Date(sourceTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const freshnessLabel = freshness === 'stale' ? 'Stale · ' : freshness === 'delayed' ? 'Delayed · ' : '';
   return `${freshnessLabel}${source}${time}`;
