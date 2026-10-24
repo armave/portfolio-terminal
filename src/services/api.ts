@@ -135,7 +135,10 @@ export async function proxyFetch(
     }
   });
 
-  const authSecret = fetchOptions.secret || getActiveGatewaySecret();
+  const authSecret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
+  if (!authSecret) {
+    throw new Error('Gateway Secret is not available. Restore or enter the Gateway Secret before requesting broker data.');
+  }
 
   const res = await fetch(url.toString(), {
     ...fetchOptions,
