@@ -761,7 +761,7 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
   };
   return rows.map((row: any, index: number) => ({
     id: String(row?.id ?? row?.trade_id ?? row?.tradeId ?? row?.order_id ?? index),
-    ticker: String(row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? ''),
+    ticker: String(row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? ''),
     // TradeNet example uses type "1" for buy and "2" for sell.
     side: row?.operation != null ? String(row.operation)
       : row?.side != null ? String(row.side)
