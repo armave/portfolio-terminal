@@ -37,6 +37,9 @@ async function withProviderCache(provider, key, fetcher) {
         try {
             const value = await fetcher();
             providerResponseCache.set(cacheKey, { value, expiresAt: Date.now() + (PROVIDER_CACHE_TTL_MS[provider] || 5_000) });
+            if (providerResponseCache.size > 500) {
+                providerResponseCache.delete(providerResponseCache.keys().next().value);
+            }
             providerCooldowns.delete(provider);
             providerMetric("provider_request", { provider, durationMs: Date.now() - startedAt, success: true });
             return value;
@@ -680,21 +683,30 @@ export default {
                                     break;
                                 }
                             }
-                            lastPrice = lastPrice ?? meta.regularMarketPrice ?? null;
                             const marketState = normalizeMarketState(meta.marketState);
-                            if (!Number.isFinite(lastPrice) || lastPrice <= 0) throw new Error("Yahoo returned no valid quote price.");
+                            const regularPrice = meta.regularMarketPrice ?? lastPrice;
+                            const preMarketPrice = meta.preMarketPrice ?? null;
+                            const postMarketPrice = meta.postMarketPrice ?? null;
+                            const sessionPrice = marketState === "PRE"
+                                ? (preMarketPrice ?? lastPrice ?? regularPrice)
+                                : marketState === "POST"
+                                    ? (postMarketPrice ?? lastPrice ?? regularPrice)
+                                    : (regularPrice ?? lastPrice);
+                            if (!Number.isFinite(sessionPrice) || sessionPrice <= 0) throw new Error("Yahoo returned no valid quote price.");
                             const previousClose = meta.chartPreviousClose ?? meta.previousClose ?? null;
-                            const change = Number.isFinite(previousClose) ? lastPrice - previousClose : null;
+                            const change = Number.isFinite(previousClose) ? sessionPrice - previousClose : null;
                             return {
                                 symbol: ticker,
                                 price: {
-                                    current: lastPrice,
+                                    current: sessionPrice,
                                     previousClose,
                                     change,
                                     changePercent: Number.isFinite(previousClose) && previousClose !== 0 && change !== null ? change / previousClose * 100 : null,
-                                    regularMarketTime: lastTimestamp ?? meta.regularMarketTime ?? null,
-                                    preMarketTime: null,
-                                    postMarketTime: null,
+                                    preMarketPrice,
+                                    postMarketPrice,
+                                    regularMarketTime: meta.regularMarketTime ?? lastTimestamp ?? null,
+                                    preMarketTime: meta.preMarketTime ?? lastTimestamp ?? null,
+                                    postMarketTime: meta.postMarketTime ?? lastTimestamp ?? null,
                                     marketState
                                 }
                             };
