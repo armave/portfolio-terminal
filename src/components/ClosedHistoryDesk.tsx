@@ -20,13 +20,54 @@ export function ClosedHistoryDesk() {
     return () => window.removeEventListener('tradenet:executed-trades', onTrades);
   }, []);
   const appTrades = (state.closedTrades || []).map((trade, index) => ({ trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const, profit: Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0), fees: Number((trade as any).feesAndCommissions ?? (trade as any).totalCommissions ?? (trade as any).commissions ?? 0) }));
-  const brokerRows = brokerTrades.map((broker: any, index) => ({ trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, feesAndCommissions: broker.commission, netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const }, index: -1, source: 'tradenet' as const, profit: broker.profit == null ? null : Number(broker.profit), fees: broker.commission == null ? 0 : Number(broker.commission) }));
+  // Calculate holding duration from the matched buy and sell executions.
+  // Match FIFO by ticker; if the broker payload has no usable buy/sell history,
+  // leave duration unknown instead of misleadingly displaying zero days.
+  const brokerTradesWithDuration = (() => {
+    const byTicker = new Map<string, any[]>();
+    const sorted = [...brokerTrades].filter((t: any) => t.ticker && t.executedAt)
+      .sort((a: any, b: any) => Date.parse(a.executedAt) - Date.parse(b.executedAt));
+    const queues = new Map<string, { date: number; quantity: number }[]>();
+    const durationByObject = new Map<any, number>();
+    for (const trade of sorted) {
+      const ticker = String(trade.ticker).trim().toUpperCase();
+      const side = String(trade.side ?? '').toLowerCase();
+      const qty = Math.abs(Number(trade.quantity ?? 0));
+      const time = Date.parse(trade.executedAt);
+      if (!Number.isFinite(time) || !Number.isFinite(qty) || qty <= 0) continue;
+      const isBuy = ['buy', 'b', 'purchase', 'bought'].includes(side);
+      const isSell = ['sell', 's', 'sale', 'sold'].includes(side);
+      if (isBuy) {
+        const queue = queues.get(ticker) ?? [];
+        queue.push({ date: time, quantity: qty });
+        queues.set(ticker, queue);
+      } else if (isSell) {
+        const queue = queues.get(ticker) ?? [];
+        let remaining = qty;
+        let weightedDays = 0;
+        let matched = 0;
+        while (remaining > 1e-8 && queue.length) {
+          const lot = queue[0];
+          const used = Math.min(remaining, lot.quantity);
+          weightedDays += Math.max(0, time - lot.date) / 86400000 * used;
+          matched += used;
+          remaining -= used;
+          lot.quantity -= used;
+          if (lot.quantity <= 1e-8) queue.shift();
+        }
+        if (matched > 0) durationByObject.set(trade, weightedDays / matched);
+      }
+    }
+    return durationByObject;
+  })();
+  const brokerRows = brokerTrades.map((broker: any, index) => ({ trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradesWithDuration.get(broker), feesAndCommissions: broker.commission, netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const }, index: -1, source: 'tradenet' as const, profit: broker.profit == null ? null : Number(broker.profit), fees: broker.commission == null ? 0 : Number(broker.commission) }));
   const trades = [...appTrades, ...brokerRows].sort((a, b) => String((b.trade as any).exitDate ?? '').localeCompare(String((a.trade as any).exitDate ?? '')));
   const realizedNet = trades.reduce((total, row) => total + (row.profit ?? 0), 0);
   const totalFees = trades.reduce((total, row) => total + (Number.isFinite(row.fees) ? row.fees : 0), 0);
   const profitKnownTrades = trades.filter((row) => row.profit !== null);
   const winningTrades = profitKnownTrades.filter((row) => (row.profit ?? 0) > 0).length;
-  const averageHoldingDays = appTrades.length ? appTrades.reduce((total, row) => total + Math.max(0, Number((row.trade as any).holdingDays ?? (row.trade as any).daysHeld ?? 0)), 0) / appTrades.length : 0;
+  const knownDurations = trades.map((row) => Number((row.trade as any).holdingDays ?? (row.trade as any).daysHeld)).filter((days) => Number.isFinite(days) && days >= 0);
+  const averageHoldingDays = knownDurations.length ? knownDurations.reduce((total, days) => total + days, 0) / knownDurations.length : null;
   const winRate = profitKnownTrades.length ? (winningTrades / profitKnownTrades.length) * 100 : 0;
 
   const handleDelete = (index: number) => {
@@ -72,7 +113,7 @@ export function ClosedHistoryDesk() {
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Avg. holding time</div>
-          <div class="mt-1 font-mono text-sm font-bold text-slate-200">{averageHoldingDays.toFixed(1)} days</div>
+          <div class="mt-1 font-mono text-sm font-bold text-slate-200">{averageHoldingDays === null ? '—' : averageHoldingDays.toFixed(1) + ' days'}</div>
         </div>
       </div>
 
@@ -123,11 +164,11 @@ export function ClosedHistoryDesk() {
                     : 'Unknown';
 
                 // 2. Resolve Duration in Days
-                let durationDays = Number(
-                  (trade as any).holdingDays ?? (trade as any).daysHeld ?? 0
-                );
+                const rawDuration = (trade as any).holdingDays ?? (trade as any).daysHeld;
+                let durationDays = rawDuration == null ? null : Number(rawDuration);
+                if (durationDays !== null && (!Number.isFinite(durationDays) || durationDays < 0)) durationDays = null;
                 if (
-                  durationDays <= 0 &&
+                  (durationDays === null || durationDays <= 0) &&
                   ((trade as any).buyDate || (trade as any).purchaseDate) &&
                   ((trade as any).sellDate || (trade as any).exitDate)
                 ) {
@@ -138,7 +179,7 @@ export function ClosedHistoryDesk() {
                     (trade as any).sellDate || (trade as any).exitDate
                   ).getTime();
                   if (!Number.isNaN(bTime) && !Number.isNaN(sTime)) {
-                    durationDays = Math.max(0, Math.round(Math.abs(sTime - bTime) / 86400000));
+                    durationDays = Math.max(0, (sTime - bTime) / 86400000);
                   }
                 }
 
@@ -166,7 +207,7 @@ export function ClosedHistoryDesk() {
                       {(trade as any).shares ?? "—"}
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-400">
-                      {durationDays} {durationDays === 1 ? 'day' : 'days'}
+                      {durationDays === null ? '—' : durationDays < 1 ? Math.round(durationDays * 24) + ' hrs' : durationDays.toFixed(1) + ' days'}
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
                       ${formatUSD(fees)}
