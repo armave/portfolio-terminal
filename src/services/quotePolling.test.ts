@@ -7,6 +7,12 @@ vi.mock('./quoteProvider', () => ({ fetchFallbackPrice: vi.fn() }));
 vi.mock('./api', () => ({ fetchYahooStockData: vi.fn(), normalizeYahooBatchResults: vi.fn() }));
 
 describe('refreshTrackedQuotes', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
   afterEach(() => vi.resetAllMocks());
 
   it('resolves a batch market price and applies it through the current-state callback', async () => {

@@ -29,6 +29,16 @@ const basePosition: MarginPosition = {
 };
 
 describe('portfolio domain', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('creates a backup snapshot without mutating live state or exporting secret fields', () => {
     const source = {
       activeView: 'AAPL',

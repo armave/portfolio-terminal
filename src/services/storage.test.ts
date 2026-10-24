@@ -44,6 +44,9 @@ describe('storage service', () => {
     storageMap.clear();
     vi.clearAllMocks();
     vi.stubGlobal('localStorage', localStorageMock);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
   afterEach(() => {
