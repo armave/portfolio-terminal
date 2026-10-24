@@ -736,6 +736,10 @@ export interface FreedomExecutedTrade {
   price: number | null;
   currency: string;
   executedAt: string | null;
+  tradeValue: number | null;
+  profit: number | null;
+  commission: number | null;
+  commissionCurrency: string;
   raw: Record<string, unknown>;
 }
 
@@ -769,6 +773,10 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
     price: numberOrNull(row?.p ?? row?.price ?? row?.exec_price),
     currency: String(row?.curr_c ?? row?.curr ?? row?.currency ?? row?.base_currency ?? ''),
     executedAt: row?.date ?? row?.time ?? row?.datetime ?? row?.exec_time ?? null,
+    tradeValue: numberOrNull(row?.v ?? row?.summ ?? row?.value),
+    profit: numberOrNull(row?.profit ?? row?.pnl),
+    commission: numberOrNull(row?.commission ?? row?.fee),
+    commissionCurrency: String(row?.commission_currency ?? row?.curr_c ?? row?.currency ?? ''),
     raw: row && typeof row === 'object' ? row : {}
   }));
 }
