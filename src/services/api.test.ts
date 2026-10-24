@@ -807,3 +807,33 @@ describe('lightweight Yahoo quote batching', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('Yahoo deep-data forced refresh', () => {
+  beforeEach(() => clearYahooDeepStockDataCache());
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('bypasses both cached data and an existing in-flight request on force', async () => {
+    const makeResponse = (price: number) => ({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ symbol: 'AAPL', price: { current: price } })
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(makeResponse(210))
+      .mockResolvedValueOnce(makeResponse(212));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = await fetchYahooDeepStockData('AAPL');
+    const cached = await fetchYahooDeepStockData('AAPL');
+    const refreshed = await fetchYahooDeepStockData('AAPL', true);
+
+    expect(first.price.current).toBe(210);
+    expect(cached.price.current).toBe(210);
+    expect(refreshed.price.current).toBe(212);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
