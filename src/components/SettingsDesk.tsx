@@ -5,7 +5,7 @@ import {
   getQuoteRefreshInterval
 } from '../services/storage';
 import { BrokerRules } from '../types/portfolio';
-import { testFreedomTradeNetConnection, fetchFreedomTradeNetPositions } from '../services/api';
+import { testFreedomTradeNetConnection, fetchFreedomTradeNetPositions, normalizeFreedomPortfolio } from '../services/api';
 
 export interface SettingsDeskProps {
   rules: BrokerRules;
@@ -70,7 +70,8 @@ export function SettingsDesk({
     setTradeNetPositionsPreview('');
     try {
       const result = await fetchFreedomTradeNetPositions();
-      setTradeNetPositionsPreview(JSON.stringify(result, null, 2).slice(0, 12000));
+      const snapshot = normalizeFreedomPortfolio(result);
+      setTradeNetPositionsPreview(JSON.stringify(snapshot, null, 2).slice(0, 12000));
     } catch (error) {
       setTradeNetPositionsPreview(error instanceof Error ? error.message : 'Failed to retrieve TradeNet positions.');
     } finally {
