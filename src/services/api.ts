@@ -742,7 +742,9 @@ export interface FreedomExecutedTrade {
 /** Normalize common TradeNet history field aliases without fabricating missing values. */
 export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
   const root = response?.data?.result ?? response?.data ?? response?.result ?? response;
+  // Actual Freedom wrapper shape from example.json: data.trades.trade[]
   const rows = Array.isArray(root) ? root
+    : Array.isArray(root?.trades?.trade) ? root.trades.trade
     : Array.isArray(root?.trades) ? root.trades
     : Array.isArray(root?.items) ? root.items
     : Array.isArray(root?.history) ? root.history
@@ -756,11 +758,17 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
   return rows.map((row: any, index: number) => ({
     id: String(row?.id ?? row?.trade_id ?? row?.tradeId ?? row?.order_id ?? index),
     ticker: String(row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? ''),
-    side: String(row?.operation ?? row?.side ?? row?.type ?? row?.buy_sell ?? 'Unknown'),
+    // TradeNet example uses type "1" for buy and "2" for sell.
+    side: row?.operation != null ? String(row.operation)
+      : row?.side != null ? String(row.side)
+      : row?.buy_sell != null ? String(row.buy_sell)
+      : String(row?.type) === '1' ? 'BUY'
+      : String(row?.type) === '2' ? 'SELL'
+      : 'Unknown',
     quantity: numberOrNull(row?.q ?? row?.quantity ?? row?.qty),
-    price: numberOrNull(row?.price ?? row?.p ?? row?.exec_price),
-    currency: String(row?.curr ?? row?.currency ?? row?.base_currency ?? ''),
-    executedAt: row?.time ?? row?.date ?? row?.datetime ?? row?.exec_time ?? null,
+    price: numberOrNull(row?.p ?? row?.price ?? row?.exec_price),
+    currency: String(row?.curr_c ?? row?.curr ?? row?.currency ?? row?.base_currency ?? ''),
+    executedAt: row?.date ?? row?.time ?? row?.datetime ?? row?.exec_time ?? null,
     raw: row && typeof row === 'object' ? row : {}
   }));
 }
