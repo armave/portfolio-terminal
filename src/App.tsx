@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { loadSavedState } from './services/storage';
-import { fetchFreedomTradeNetPositions, normalizeFreedomPortfolio, type FreedomPortfolioSnapshot } from './services/api';
+import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, type FreedomPortfolioSnapshot } from './services/api';
 
 interface AppProps {
   onToggleMarketInsights: () => void;
@@ -10,6 +10,9 @@ export function App({ }: AppProps) {
   const [freedomSnapshot, setFreedomSnapshot] = useState<FreedomPortfolioSnapshot | null>(null);
   const [freedomLoading, setFreedomLoading] = useState(false);
   const [freedomError, setFreedomError] = useState('');
+  const [tradesDebugLoading, setTradesDebugLoading] = useState(false);
+  const [tradesDebugError, setTradesDebugError] = useState('');
+  const [tradesDebugResponse, setTradesDebugResponse] = useState<any>(null);
   // App-owned portfolio state is the authority for cash-vs-margin classification.
   const [, setAppPortfolioState] = useState(loadSavedState({ holdings: [], cashStocks: [] }));
 
@@ -46,6 +49,21 @@ export function App({ }: AppProps) {
       setFreedomError(error instanceof Error ? error.message : 'Unable to load Freedom TradeNet portfolio.');
     } finally {
       setFreedomLoading(false);
+    }
+  };
+
+  // Temporary diagnostic button: fetch the raw TradeNet history response for schema verification.
+  const loadTradesDebugResponse = async () => {
+    setTradesDebugLoading(true);
+    setTradesDebugError('');
+    setTradesDebugResponse(null);
+    try {
+      const response = await fetchFreedomTradeNetTrades();
+      setTradesDebugResponse(response);
+    } catch (error) {
+      setTradesDebugError(error instanceof Error ? error.message : 'Unable to fetch TradeNet trade history.');
+    } finally {
+      setTradesDebugLoading(false);
     }
   };
 
@@ -92,6 +110,40 @@ export function App({ }: AppProps) {
                 COMBINED PORTFOLIO
               </div>
             </div>
+            <section
+              aria-label="Freedom TradeNet trade history diagnostic"
+              class="rounded-lg border border-sky-900/60 bg-slate-950/70 p-4 space-y-3"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 class="text-sm font-bold text-sky-300">TradeNet trade-history diagnostic</h2>
+                  <p class="text-[11px] text-slate-400">Fetches the raw read-only getTradesHistory response so we can map the real schema.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadTradesDebugResponse}
+                  disabled={tradesDebugLoading}
+                  class="rounded border border-sky-800 bg-sky-950 px-3 py-1.5 text-xs font-semibold text-sky-200 hover:bg-sky-900 disabled:opacity-50"
+                >
+                  {tradesDebugLoading ? 'Fetching…' : 'Fetch getTradesHistory response'}
+                </button>
+              </div>
+              {tradesDebugError && <p role="alert" class="text-xs text-rose-300">{tradesDebugError}</p>}
+              {tradesDebugResponse !== null && (
+                <div class="space-y-2">
+                  <p class="text-xs text-slate-300">Copy the complete JSON below and send it here. Redact any personal identifiers if present; do not include API keys or signatures.</p>
+                  <textarea
+                    aria-label="Raw TradeNet getTradesHistory response"
+                    readOnly
+                    rows={12}
+                    value={JSON.stringify(tradesDebugResponse, null, 2)}
+                    class="w-full rounded border border-slate-700 bg-slate-900 p-3 font-mono text-[11px] text-slate-200"
+                    onClick={(event) => (event.currentTarget as HTMLTextAreaElement).select()}
+                  />
+                </div>
+              )}
+            </section>
+
             <section
               aria-label="Freedom TradeNet USD portfolio"
               class="rounded-lg border border-emerald-900/60 bg-slate-950/70 p-4 space-y-3"
