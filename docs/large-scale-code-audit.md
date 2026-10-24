@@ -44,16 +44,19 @@
 - [x] Cloud write queue now tracks pull-generation changes so a queued snapshot cannot adopt a newer revision from a concurrent pull; queued writes after a successful queued write can still use that write's revision.
 - [x] Regression test added for the concurrent-pull/queued-write race.
 - [x] Re-run and inspect all CI jobs on the latest code-bearing commit: both Pull Request CI and Validate passed typecheck, tests, build, dead-code validation, and production dependency audit.
-- [ ] Complete financial transaction parity, rollover boundaries, and rounding review with any additional edge-case regression tests. Initial source/test review found broad existing coverage; no further formula change is justified without a proven discrepancy.
+- [ ] Complete financial transaction parity, rollover boundaries, and rounding review with any additional edge-case regression tests. Source review confirmed tranche-level commission minimums and timezone-aware rollover boundaries; further formula changes require a proven discrepancy and regression evidence.
 - [x] Initial market-data provenance review: Yahoo quotes use source observation timestamps; unknown timestamps are not marked fresh, and fallback providers are explicitly marked unknown freshness. No additional confirmed defect found in this pass.
 - [x] Reviewed quote-store async protections: updates apply to the latest store snapshot, older request timestamps are ignored, and quotes started before a trade cannot overwrite that trade.
 - [x] **Quote-ordering tie fix implemented:** each `fetchLivePriceFromProviders` request receives a time-anchored monotonic sequence, carried with quote provenance and recorded by the store. When request timestamps tie, the store rejects lower-sequence responses for positions and cash holdings. The sequence is time-anchored to remain ordered across ordinary page reloads. Added a regression test covering out-of-order responses started in the same millisecond.
 - [x] Inspected latest-head CI failure: typecheck correctly flagged the new quote sequence metadata as missing from the position/cash-holding interfaces. Added optional `quoteRequestSequence` fields to the corresponding types and tightened the request sequence to be strictly monotonic.
 - [x] Fixed quote-ordering regression setup after CI identified that `addCashStock` stores holdings in `cashCushion.holdings`; both the same-millisecond test and existing out-of-order test now assert the actual state container.
 - [x] Latest code-bearing commit `8cc635f56cef455e4eebdd24ba2a4c2708e576f0` passed Validate end-to-end: typecheck, tests, production build, dead-code validation, and production dependency security audit. The corrected same-millisecond cash-holding regression is included.
-- [ ] Confirm Pull Request CI passes against the current PR head; the corresponding run for the code-bearing commit was cancelled during setup. Do not merge until both required workflows are green.
-- [ ] Complete remaining UI async race review and add stale-request ordering tests where needed.
-- [ ] Plan and implement versioned authenticated cloud encryption migration without breaking legacy ciphertext.
+- [ ] Confirm Pull Request CI and Validate pass against the current code-bearing PR head. Do not merge until both required workflows are green.
+- [x] Reviewed quote-store ordering protections: older request sequences and timestamp-only stale responses are rejected, and quote results older than a trade do not overwrite the trade.
+- [ ] Complete remaining component-level UI async race review and add stale-request tests where a concrete race is found.
+- [x] Implemented versioned authenticated cloud encryption: new writes use Web Crypto AES-GCM with a 96-bit random nonce and 128-bit authentication tag; existing CryptoJS ciphertext remains readable.
+- [x] Added regression tests for the AES-GCM envelope, rejecting modified ciphertext before local persistence, and migrating successfully read legacy ciphertext to the versioned format using the existing revision-checked write path.
+- [ ] Verify the new encryption implementation and tests on the latest CI head; do not merge until all required checks pass.
 
 ## Confirmed repository observations
 
