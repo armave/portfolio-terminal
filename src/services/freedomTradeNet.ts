@@ -17,7 +17,7 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command = "getPosi
 
     // Match the supplied official Node.js example: POST to /api/<command>,
     // sign the exact JSON body bytes concatenated with the Unix timestamp.
-    const body = JSON.stringify({});
+    const body = JSON.stringify({ cmd: command, params: {} });
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const key = await crypto.subtle.importKey(
         "raw",
