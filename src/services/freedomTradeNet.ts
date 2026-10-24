@@ -2,8 +2,6 @@
  * Minimal read-only TradeNet API probe.
  * Secrets must be configured as Cloudflare Worker secrets.
  */
-const TRADENET_API_URL = "https://tradernet.com/api/";
-
 interface TradeNetWorkerEnv {
     FREEDOM_PUBLIC_KEY?: string;
     FREEDOM_PRIVATE_KEY?: string;
