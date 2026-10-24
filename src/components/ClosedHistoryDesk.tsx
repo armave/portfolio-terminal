@@ -1,9 +1,24 @@
+import { useEffect, useState } from 'preact/hooks';
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 
 export function ClosedHistoryDesk() {
   const state = usePortfolio();
+  const [brokerTrades, setBrokerTrades] = useState<any[]>([]);
+  useEffect(() => {
+    const readCurrentTrades = () => {
+      const current = (window as any).__tradenetExecutedTrades;
+      if (Array.isArray(current)) setBrokerTrades(current);
+    };
+    const onTrades = (event: Event) => {
+      const trades = (event as CustomEvent).detail;
+      if (Array.isArray(trades)) setBrokerTrades(trades);
+    };
+    readCurrentTrades();
+    window.addEventListener('tradenet:executed-trades', onTrades);
+    return () => window.removeEventListener('tradenet:executed-trades', onTrades);
+  }, []);
   const trades = (state.closedTrades || []).map((trade, index) => ({ trade, index }));
   const realizedNet = trades.reduce((total, { trade }) =>
     total + Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0), 0);
@@ -27,6 +42,38 @@ export function ClosedHistoryDesk() {
 
   return (
     <div class="space-y-4">
+      {brokerTrades.length > 0 && (
+        <section class="space-y-2 rounded-lg border border-sky-900/60 bg-slate-950/40 p-3" aria-label="TradeNet closed history">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-sky-300">TradeNet execution history</h3>
+            <span class="text-[10px] text-slate-500">{brokerTrades.length} executions · read-only</span>
+          </div>
+          <p class="text-[10px] text-slate-500">Broker executions are shown separately from app-recorded closed trades and do not overwrite them.</p>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs font-mono">
+              <thead class="text-[10px] uppercase tracking-wider text-slate-500"><tr>
+                <th class="px-2 py-2">Date</th><th class="px-2 py-2">Ticker</th><th class="px-2 py-2">Side</th>
+                <th class="px-2 py-2 text-right">Shares</th><th class="px-2 py-2 text-right">Price</th>
+                <th class="px-2 py-2 text-right">Commission</th><th class="px-2 py-2 text-right">Reported P&amp;L</th>
+              </tr></thead>
+              <tbody class="divide-y divide-slate-800/60">
+                {brokerTrades.map((trade: any) => (
+                  <tr key={trade.id} class="text-slate-300">
+                    <td class="px-2 py-2 whitespace-nowrap">{trade.executedAt ? String(trade.executedAt).replace('T', ' ') : '—'}</td>
+                    <td class="px-2 py-2 font-bold text-white">{trade.ticker || '—'}</td>
+                    <td class="px-2 py-2">{trade.side || '—'}</td>
+                    <td class="px-2 py-2 text-right">{trade.quantity ?? '—'}</td>
+                    <td class="px-2 py-2 text-right">{trade.price === null ? '—' : Number(trade.price).toLocaleString('en-US', { maximumFractionDigits: 6 })}</td>
+                    <td class="px-2 py-2 text-right">{trade.commission === null ? '—' : Number(trade.commission).toLocaleString('en-US', { maximumFractionDigits: 2 })} {trade.commissionCurrency || ''}</td>
+                    <td class="px-2 py-2 text-right">{trade.profit === null ? '—' : formatUSD(Number(trade.profit))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
         <div>
           <h2 class="text-base font-black uppercase tracking-wider text-purple-300">
