@@ -731,7 +731,6 @@ export async function pullCloudState(
     // Migrate legacy history out of the main cloud snapshot. Prefer whichever
     // source has data; the dedicated record is written before the main snapshot
     // is compacted, so a failed history write cannot silently discard records.
-    const localState = loadSavedState(state || {});
     const localHistory = loadSavedHistory();
     const legacyHistory = {
       brokerExecutedTrades: Array.isArray(parsedState.brokerExecutedTrades) && parsedState.brokerExecutedTrades.length
