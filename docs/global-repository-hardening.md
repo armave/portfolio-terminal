@@ -143,3 +143,15 @@ This document records audit scope and implementation requirements. The GitHub AP
 **Next verification**
 - Confirm both workflows pass on the latest PR head, especially the no-body-read assertion and oversized streamed-body tests.
 - Continue auditing Worker action-specific access, financial state and cloud synchronization before making architecture-wide changes.
+
+
+### 2026-10-25 — Pass 6: cloud-state body limits
+
+**New finding and changes**
+- The Durable Object cloud-state endpoint independently used `request.clone().arrayBuffer()` to check the body size, repeating the unbounded tee-buffering risk previously found in the gateway Worker.
+- Replaced that check with streamed byte counting, cancellation above 20 MiB, and reconstruction of the bounded request before JSON parsing.
+- Added an explicit JSON content-type check for cloud writes and a regression test for a chunked oversized cloud-state POST without `Content-Length`.
+
+**Validation**
+- The earlier head `4ea97305656a61ed31f9c9218e77e1aefb41110c` passed both CI workflows in full.
+- The pre-body-authentication change and this cloud-state change are newer than that green head. Their workflow runs must complete successfully before merge readiness.
