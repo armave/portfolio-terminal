@@ -17,12 +17,11 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
         throw new Error("Unsupported read-only TradeNet command.");
     }
 
-    // Match the supplied official Node.js example: POST to /api/<command>,
-    // sign the exact JSON body bytes concatenated with the Unix timestamp.
     const params: Record<string, string | number | boolean> = paramsOverride ?? (command === "getTradesHistory" ? { max: 100, sort: 1 } : {});
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    // Broker-report docs show nonce as the current millisecond timestamp (Date.now()).
-    // Keep the API V2 signature timestamp in Unix seconds, as required by the signing scheme.
+    // The broker-report endpoint documents GET /api/?q=<JSON payload>.
+    // API-key authentication signs GET requests with the Unix timestamp alone;
+    // POST requests sign the exact JSON body followed by that timestamp.
     const requestPayload = command === "getBrokerReport"
         ? { cmd: command, nonce: Date.now(), params }
         : { cmd: command, params };
@@ -34,24 +33,29 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
         false,
         ["sign"]
     );
+    const signatureInput = command === "getBrokerReport" ? timestamp : body + timestamp;
     const bytes = await crypto.subtle.sign(
         "HMAC",
         key,
-        new TextEncoder().encode(body + timestamp)
+        new TextEncoder().encode(signatureInput)
     );
     const signature = Array.from(new Uint8Array(bytes))
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
 
-    const response = await fetch(`https://tradernet.com/api/${command}`, {
-        method: "POST",
+    const isBrokerReport = command === "getBrokerReport";
+    const requestUrl = isBrokerReport
+        ? `https://tradernet.com/api/?q=${encodeURIComponent(body)}`
+        : `https://tradernet.com/api/${command}`;
+    const response = await fetch(requestUrl, {
+        method: isBrokerReport ? "GET" : "POST",
         headers: {
-            "Content-Type": "application/json",
+            ...(isBrokerReport ? {} : { "Content-Type": "application/json" }),
             "X-NtApi-PublicKey": env.FREEDOM_PUBLIC_KEY,
             "X-NtApi-Sig": signature,
             "X-NtApi-Timestamp": timestamp
         },
-        body,
+        ...(isBrokerReport ? {} : { body }),
         signal: AbortSignal.timeout(12000)
     });
 
