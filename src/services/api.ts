@@ -761,7 +761,7 @@ export async function pullCloudState(
     }
 
     reportResult?.(true);
-    console.log('[Sync]: Cloud state ingested and UI re-rendered successfully', parsedState);
+    console.log('[Sync]: Cloud state ingested and UI re-rendered successfully.');
     // showToast('KV cloud state pulled.', 'success');
     // logTerminal('[KV Cloud]: Synced successfully.');
     return parsedState;
