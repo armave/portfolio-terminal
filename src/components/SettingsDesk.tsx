@@ -18,6 +18,7 @@ export interface SettingsDeskProps {
   onExportBackup: () => void;
   onImportBackup: (event: Event) => void;
   onResetToBlankState: () => void;
+  onTestFreedomReport?: (type: 'trades' | 'commissions' | 'cash_flows', dateStart: string, dateEnd: string) => Promise<void>;
 }
 
 export interface BrokerRulesFormValues {
@@ -58,8 +59,21 @@ export function SettingsDesk({
   onChangeRefreshInterval,
   onExportBackup,
   onImportBackup,
-  onResetToBlankState
+  onResetToBlankState,
+  onTestFreedomReport
 }: SettingsDeskProps) {
+  const formatDateInput = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  const [reportEndDate, setReportEndDate] = useState<string>(() => formatDateInput(new Date()));
+  const [reportStartDate, setReportStartDate] = useState<string>(() => {
+    const date = new Date();
+    date.setFullYear(date.getFullYear() - 1);
+    return formatDateInput(date);
+  });
   const [secretValue, setSecretValue] = useState<string>(() => getGatewaySecret() || '');
   useEffect(() => {
     const handleAuthenticated = (event: Event) => {
@@ -254,6 +268,42 @@ export function SettingsDesk({
           </button>
         </div>
       </div>
+
+      {onTestFreedomReport && (
+        <section class="space-y-2 rounded-lg border border-amber-900/50 bg-slate-950/50 p-3" aria-label="Temporary Freedom broker report API tests">
+          <div>
+            <h3 class="text-xs font-bold uppercase tracking-wider text-amber-300">Temporary Freedom API tests</h3>
+            <p class="mt-1 text-[10px] text-slate-500">Choose a date range, click a test button, then inspect the response in DevTools → Network. Responses are not rendered in the app.</p>
+          </div>
+          <div class="flex flex-wrap items-end gap-2">
+            <label class="flex flex-col gap-1 text-[10px] text-slate-400">
+              Start date
+              <input type="date" value={reportStartDate} max={reportEndDate} onInput={(event) => setReportStartDate((event.target as HTMLInputElement).value)} class="h-8 rounded border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200" />
+            </label>
+            <label class="flex flex-col gap-1 text-[10px] text-slate-400">
+              End date
+              <input type="date" value={reportEndDate} min={reportStartDate} max={formatDateInput(new Date())} onInput={(event) => setReportEndDate((event.target as HTMLInputElement).value)} class="h-8 rounded border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200" />
+            </label>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            {([
+              ['trades', 'Test trades report'],
+              ['commissions', 'Test commissions report'],
+              ['cash_flows', 'Test cash flows report']
+            ] as const).map(([type, label]) => (
+              <button
+                key={type}
+                type="button"
+                disabled={!reportStartDate || !reportEndDate || reportStartDate > reportEndDate}
+                onClick={() => { void onTestFreedomReport(type, reportStartDate, reportEndDate); }}
+                class="h-8 rounded border border-amber-800 bg-amber-950/40 px-2.5 text-xs font-bold text-amber-200 hover:bg-amber-900/60 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <details class="space-y-3">
         <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
