@@ -24,7 +24,11 @@ export async function requestTradeNet(
 
     const params: Record<string, string | number | boolean> = paramsOverride ?? (command === "getTradesHistory" ? { max: 100, sort: 1 } : {});
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const requestPayload = { cmd: command, params };
+    // Broker reports use the documented API V2 root endpoint and include a nonce.
+    // Other commands retain the established /api/<command> request route.
+    const requestPayload = command === "getBrokerReport"
+        ? { cmd: command, nonce: Number(timestamp), params }
+        : { cmd: command, params };
     const body = JSON.stringify(requestPayload);
 
     // Keep broker reports on the same API-key authentication flow as the
@@ -39,7 +43,8 @@ export async function requestTradeNet(
     const bytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body + timestamp));
     const signature = Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
 
-    const response = await fetch(`https://tradernet.am/api/${command}`, {
+    const endpoint = command === "getBrokerReport" ? "https://tradernet.am/api/" : `https://tradernet.am/api/${command}`;
+    const response = await fetch(endpoint, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
