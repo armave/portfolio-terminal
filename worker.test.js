@@ -379,6 +379,31 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(oversized.status).toBe(413);
   });
 
+  it('rejects chunked oversized cloud writes without Content-Length', async () => {
+    const store = makeDurableObject();
+    const chunk = new Uint8Array(1024 * 1024);
+    let chunksSent = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        if (chunksSent === 21) {
+          controller.close();
+          return;
+        }
+        chunksSent += 1;
+        controller.enqueue(chunk);
+      }
+    });
+    const response = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body,
+      duplex: 'half'
+    }));
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: 'Cloud state payload exceeds the 20 MB limit.' });
+  });
+
   it('requires a revision for every write', async () => {
     const store = makeDurableObject();
     const response = await store.fetch(new Request('https://worker.test/api/state', {
