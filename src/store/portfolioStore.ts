@@ -230,7 +230,9 @@ export class PortfolioStore {
         : 0,
       tranches: saved?.tranches || [],
       startDate: saved?.startDate || todayIso(),
-      activeView: saved?.activeView || 'COMBINED',
+      // Keep navigation preference local to this device; cloud state must not
+      // overwrite the user's current view on another device.
+      activeView: this.readDeviceActiveView() || saved?.activeView || 'COMBINED',
       closedTrades: Array.isArray(saved?.closedTrades) ? saved!.closedTrades : [],
       brokerExecutedTrades: Array.isArray(saved?.brokerExecutedTrades) ? saved!.brokerExecutedTrades : [],
       cashflows: Array.isArray(saved?.cashflows) ? saved!.cashflows : [],
@@ -374,9 +376,22 @@ export class PortfolioStore {
     }));
   }
 
+  private readDeviceActiveView(): string | null {
+    try {
+      return typeof localStorage !== 'undefined' ? localStorage.getItem('portfolio_active_view') : null;
+    } catch {
+      return null;
+    }
+  }
+
   public setActiveView(view: string): void {
     // Navigation is transient UI state: notify the UI, but don't serialize and
     // upload the entire portfolio just because the user opened a section.
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', view);
+    } catch {
+      // Navigation still works if browser storage is unavailable.
+    }
     this.update((state) => {
       if (state.activeView === view && state.selectedTicker === view) return state;
       return { ...state, activeView: view, selectedTicker: view };
