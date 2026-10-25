@@ -127,7 +127,7 @@ export function ClosedHistoryDesk() {
       );
       const trades = [...(state.closedTrades || [])] as any[];
       const parseTradeDate = (value: unknown): number => {
-        if (typeof value === 'number' || (typeof value === 'string' && /^\\d{4,6}(\\.\\d+)?$/.test(value.trim()))) {
+        if (typeof value === 'number' || (typeof value === 'string' && /^\d{4,6}(\\.\d+)?$/.test(value.trim()))) {
           const serial = Number(value);
           if (serial > 20000 && serial < 100000) return Date.UTC(1899, 11, 30) + serial * 86400000;
         }
@@ -135,12 +135,12 @@ export function ClosedHistoryDesk() {
         if (!text) return NaN;
         // Freedom's exported workbook uses US dates (M/D/YYYY); handle them
         // explicitly rather than accidentally interpreting the month as a day.
-        const us = text.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);
+        const us = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
         if (us) {
           const month = Number(us[1]), day = Number(us[2]), year = Number(us[3]);
           if (month >= 1 && month <= 12 && day >= 1 && day <= 31) return Date.UTC(year, month - 1, day);
         }
-        const dmy = text.match(/^(\\d{1,2})[.-](\\d{1,2})[.-](\\d{4})$/);
+        const dmy = text.match(/^(\d{1,2})[.-](\d{1,2})[.-](\d{4})$/);
         if (dmy) return Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
         const parsed = Date.parse(text);
         return Number.isFinite(parsed) ? Date.UTC(new Date(parsed).getUTCFullYear(), new Date(parsed).getUTCMonth(), new Date(parsed).getUTCDate()) : NaN;
