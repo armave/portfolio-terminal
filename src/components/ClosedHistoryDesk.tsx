@@ -112,7 +112,7 @@ export function ClosedHistoryDesk() {
   useEffect(() => {
     if (brokerTradesLoading || cashflowImporting || !(state.cashflows || []).length) return;
     void handleImportCashflows(null, state.cashflows);
-  }, [brokerTradesLoading, state.cashflows]);
+  }, [brokerTradesLoading, cashflowImporting, state.cashflows]);
   const handleImportCashflows = async (file: File | null, savedRows?: any[]) => {
     setCashflowImporting(true);
     setCashflowImportMessage('');
@@ -236,8 +236,15 @@ export function ClosedHistoryDesk() {
       // trade yet. A later broker refresh can then retry allocation from the store.
       const nextState: Record<string, unknown> = {};
       if (cashflowsChanged) nextState.cashflows = imported;
-      if (updatedTradeCount && brokerExecutions.length) nextState.brokerExecutedTrades = updatedExecutions;
-      else if (updatedTradeCount) nextState.closedTrades = updatedTrades;
+      // Compare the complete recalculated records before writing. This prevents
+      // repeated post-load recalculation from causing redundant Worker syncs.
+      if (updatedTradeCount && brokerExecutions.length &&
+          JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
+        nextState.brokerExecutedTrades = updatedExecutions;
+      } else if (updatedTradeCount && !brokerExecutions.length &&
+          JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
+        nextState.closedTrades = updatedTrades;
+      }
       if (Object.keys(nextState).length) portfolioStore.setState(nextState);
       if (!updatedTradeCount) {
         const validTradeDates = brokerExecutions.filter(trade => Number.isFinite(Date.parse(String(trade.executedAt ?? trade.date ?? '')))).length;
@@ -289,8 +296,8 @@ export function ClosedHistoryDesk() {
       setBrokerTrades(normalized);
       setBrokerTradesLoading(false);
       setBrokerTradesError(false);
-      // The canonical store persists through saveState() and the app's existing
-      // Cloudflare state-sync pipeline. Keep the workbook itself out of state.
+      // Persist the normalized source rows in canonical state so they survive
+      // refresh and can be reapplied after broker history has hydrated.
       const current = portfolioStore.getState().brokerExecutedTrades || [];
       // Compare the complete normalized execution history, not a subset of
       // display fields. Incoming closed-trade metadata must sync just like cashflows.
