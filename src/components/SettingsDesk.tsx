@@ -5,6 +5,8 @@ import {
   getQuoteRefreshInterval
 } from '../services/storage';
 import { BrokerRules } from '../types/portfolio';
+import { fetchFreedomCashflows } from '../services/api';
+import { logTerminal, showToast } from '../ui/notifications';
 
 
 export interface SettingsDeskProps {
@@ -243,6 +245,26 @@ export function SettingsDesk({
               onChange={onImportBackup}
             />
           </label>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                showToast('Fetching cashflows...', 'info');
+                const data = await fetchFreedomCashflows();
+                console.log('Freedom Cashflows:', data);
+                logTerminal('[Freedom Broker] Cashflows fetched successfully. Check console.');
+                showToast('Cashflows fetched!', 'success');
+              } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                console.error(err);
+                logTerminal(`[Freedom Broker Error]: ${message}`, false, true);
+                showToast('Cashflows fetch failed.', 'error');
+              }
+            }}
+            class="h-8 bg-amber-600 hover:bg-amber-500 text-black text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
+          >
+            Test Cashflows
+          </button>
           <button
             type="button"
             onClick={onResetToBlankState}
