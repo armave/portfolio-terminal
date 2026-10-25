@@ -374,7 +374,7 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     const oversized = await store.fetch(new Request('https://worker.test/api/state', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
-      body: JSON.stringify({ encryptedPayload: 'x'.repeat(65 * 1024) })
+      body: JSON.stringify({ encryptedPayload: 'x'.repeat(20 * 1024 * 1024) })
     }));
     expect(oversized.status).toBe(413);
   });
@@ -560,7 +560,7 @@ describe('PortfolioStateDO payload validation', () => {
     const response = await store.fetch(new Request('https://worker.test/api/state', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
-      body: JSON.stringify({ encryptedPayload: 'x'.repeat(70_000) })
+      body: JSON.stringify({ encryptedPayload: 'x'.repeat(20 * 1024 * 1024) })
     }));
     expect(response.status).toBe(413);
     const latest = await store.fetch(new Request('https://worker.test/api/state'));
