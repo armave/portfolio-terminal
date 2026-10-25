@@ -111,7 +111,7 @@ export function ClosedHistoryDesk() {
     setCashflowImporting(true);
     setCashflowImportMessage('');
     try {
-      if (!/\\.xlsx?$/i.test(file.name)) throw new Error('Please select an Excel .xlsx or .xls file.');
+      if (!file.name.toLowerCase().endsWith('.xlsx')) throw new Error('Please select an Excel .xlsx file.');
       const rows = await readXlsxRows(await file.arrayBuffer());
       const imported = normalizeCashflowRows(rows);
       const existing = state.cashflows || [];
