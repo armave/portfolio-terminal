@@ -10,6 +10,17 @@ export interface TickerTabsProps {
 
 export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: TickerTabsProps) {
   const [isRefreshingQuotes, setIsRefreshingQuotes] = useState(false);
+  const selectView = (view: string) => {
+    // Persist at the actual navigation click site as well as through the store,
+    // so a view change is durable even if a later render/hydration races it.
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', view);
+    } catch {
+      // Continue navigation when storage is unavailable.
+    }
+    onSetActiveView?.(view);
+  };
+
   const tickers = Object.keys(state.positions || {});
   const isCushionActive =
     state.activeView === 'CASH_CUSHION' || state.activeView === 'BALANCE';
@@ -71,7 +82,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
           type="button"
           data-nav-tab="true"
           onKeyDown={handleTabKeyDown}
-          onClick={() => onSetActiveView?.('COMBINED')}
+          onClick={() => selectView('COMBINED')}
           aria-pressed={isMarginDeskActive}
           class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
             ? 'bg-emerald-600 text-black'
@@ -85,7 +96,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
       {tickers.length === 1 && (
         <button
           type="button"
-          onClick={() => onSetActiveView?.(tickers[0])}
+          onClick={() => selectView(tickers[0])}
           aria-pressed={state.activeView === tickers[0]}
           class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0] && isMarginDeskActive
             ? 'bg-emerald-600 text-black'
@@ -102,7 +113,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
         <>
           <button
             type="button"
-            onClick={() => onSetActiveView?.('COMBINED')}
+            onClick={() => selectView('COMBINED')}
             aria-pressed={state.activeView === 'COMBINED'}
             class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === 'COMBINED' && isMarginDeskActive
               ? 'bg-emerald-600 text-black'
@@ -118,7 +129,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
             <button
               key={t}
               type="button"
-              onClick={() => onSetActiveView?.(t)}
+              onClick={() => selectView(t)}
               aria-pressed={state.activeView === t}
               class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === t && isMarginDeskActive
                 ? 'bg-emerald-600 text-black'
@@ -135,7 +146,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
 
       <button
         type="button"
-        onClick={() => onSetActiveView?.('BALANCE')}
+        onClick={() => selectView('BALANCE')}
         aria-pressed={isCushionActive}
         class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
           ? 'bg-cyan-500 text-black'
@@ -155,7 +166,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
 
       <button
         type="button"
-        onClick={() => onSetActiveView?.('CLOSED_HISTORY')}
+        onClick={() => selectView('CLOSED_HISTORY')}
         aria-pressed={isClosedHistoryActive}
         class={`px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive
           ? 'bg-purple-500 text-black'
@@ -171,7 +182,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
         id="settingsBtn"
         type="button"
         aria-pressed={isSettingsActive}
-        onClick={() => onSetActiveView?.('SETTINGS')}
+        onClick={() => selectView('SETTINGS')}
         class={
           isSettingsActive
             ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
