@@ -194,7 +194,11 @@ export interface PortfolioState {
   startDate?: string;
   activeView: string;
   closedTrades: ClosedTrade[];
+  /** Persisted raw executed-trade snapshot from the broker, used to reconcile closed history and fee imports. */
+  brokerExecutedTrades?: Array<Record<string, any>>;
   closedHistory?: ClosedTrade[];
+  /** Imported broker cashflows, stored separately from closed trade P&L. */
+  cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw?: Record<string, string> }>;
   brokerAssumptions: BrokerRules;
   lastRolloverTimestamp?: number;
   lastUpdated?: number;
