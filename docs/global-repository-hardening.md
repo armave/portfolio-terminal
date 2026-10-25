@@ -126,3 +126,20 @@ This document records audit scope and implementation requirements. The GitHub AP
 **Corrective action**
 - Updated the invalid-symbol assertion to match the stable message prefix instead of requiring exact text. This is a test expectation correction; production behavior was not weakened.
 - New CI runs should be checked against the latest commit before considering this resolved.
+
+
+### 2026-10-25 — Pass 5: CI green and pre-body authentication
+
+**Observed CI success**
+- For commit `4ea97305656a61ed31f9c9218e77e1aefb41110c`, both the `Validate` and `Pull Request CI` workflows completed successfully.
+- Both workflows passed dependency installation, typecheck, tests, dead-code validation, production dependency audit, and production build. This resolves the prior single test assertion failure for that commit.
+
+**Additional security issue found and fixed after that green run**
+- Source review found POST body size enforcement was performed before gateway authentication. An unauthenticated caller could therefore make the Worker consume up to the request-body limit before receiving 401.
+- Moved gateway-secret validation ahead of POST body reading (while retaining method/origin checks and unauthenticated OPTIONS preflight handling).
+- Removed an unused action hint variable and added a regression test asserting unauthenticated POST bodies are not read.
+- This change is newer than the green CI run; it is not verified until new workflows complete successfully.
+
+**Next verification**
+- Confirm both workflows pass on the latest PR head, especially the no-body-read assertion and oversized streamed-body tests.
+- Continue auditing Worker action-specific access, financial state and cloud synchronization before making architecture-wide changes.
