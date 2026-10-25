@@ -462,7 +462,7 @@ export function ClosedHistoryDesk() {
             }} />
           </label>
           <div class="text-xs font-mono text-slate-500">
-            {trades.length} records ({appTrades.length} app · {brokerRows.length} Freedom)
+            {appTrades.length + brokerRows.length} records ({appTrades.length} app · {brokerRows.length} Freedom)
           </div>
         </div>
       </div>
