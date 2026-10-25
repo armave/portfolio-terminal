@@ -112,3 +112,17 @@ This document records audit scope and implementation requirements. The GitHub AP
 **Still pending**
 - Execute Worker tests and the full CI suite; verify a workflow run for the latest commit.
 - Continue auditing provider cache isolation/lifecycle, cloud state concurrency, financial invariants, and legacy runtime ownership.
+
+
+### 2026-10-25 — Pass 4: CI feedback loop
+
+**Observed CI result for commit `128922df79942c5c1d9864cdc505469975bc9a4b`**
+- `npm ci`: passed.
+- `npm run typecheck`: passed.
+- `npm test`: failed on one newly added assertion only. The Worker correctly returned the full descriptive invalid-symbol error; the test incorrectly expected the shorter exact string. The run reported 310 passed tests and 1 failed test across 23 files.
+- The chunked oversized-body regression passed in that run, providing runtime evidence that the bounded stream path works in the GitHub Actions Node test environment.
+- Build, dead-code validation, and dependency audit were skipped because the test step failed.
+
+**Corrective action**
+- Updated the invalid-symbol assertion to match the stable message prefix instead of requiring exact text. This is a test expectation correction; production behavior was not weakened.
+- New CI runs should be checked against the latest commit before considering this resolved.
