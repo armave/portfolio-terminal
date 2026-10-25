@@ -76,9 +76,37 @@ export class PortfolioStateDO {
     if (Number.isFinite(contentLength) && contentLength > 20 * 1024 * 1024) {
       return jsonResponse({ error: "Cloud state payload exceeds the 20 MB limit." }, 413);
     }
-    const rawBody = await request.clone().arrayBuffer();
-    if (rawBody.byteLength > 20 * 1024 * 1024) {
-      return jsonResponse({ error: "Cloud state payload exceeds the 20 MB limit." }, 413);
+    if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
+      return jsonResponse({ error: "Cloud state writes must use application/json." }, 415);
+    }
+
+    // Bound the actual streamed body too: Content-Length can be omitted, and
+    // cloning/arrayBuffer() can buffer an unbounded tee branch before JSON parsing.
+    const bodyReader = request.body?.getReader();
+    if (bodyReader) {
+      let receivedBytes = 0;
+      const chunks = [];
+      try {
+        while (true) {
+          const { done, value } = await bodyReader.read();
+          if (done) break;
+          receivedBytes += value.byteLength;
+          if (receivedBytes > 20 * 1024 * 1024) {
+            await bodyReader.cancel("Cloud state payload exceeds the configured limit.");
+            return jsonResponse({ error: "Cloud state payload exceeds the 20 MB limit." }, 413);
+          }
+          chunks.push(value);
+        }
+      } finally {
+        bodyReader.releaseLock();
+      }
+      const boundedHeaders = new Headers(request.headers);
+      boundedHeaders.delete("Content-Length");
+      request = new Request(request.url, {
+        method: request.method,
+        headers: boundedHeaders,
+        body: new Blob(chunks)
+      });
     }
 
     const body = await request.json().catch(() => null);
