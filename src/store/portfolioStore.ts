@@ -338,12 +338,12 @@ export class PortfolioStore {
     };
   }
 
-  private notify(): void {
-    saveState(this.state as any);
+  private notify(persist = true): void {
+    if (persist) saveState(this.state as any);
     this.listeners.forEach((listener) => listener(this.state));
   }
 
-  public update(updater: (state: PortfolioState) => PortfolioState): void {
+  public update(updater: (state: PortfolioState) => PortfolioState, persist = true): void {
     const next = updater(this.state);
 
     // Treat a returned current-state reference as an explicit no-op. Besides
@@ -355,7 +355,7 @@ export class PortfolioStore {
       ...next,
       lastUpdated: Date.now()
     });
-    this.notify();
+    this.notify(persist);
   }
 
   public setState(partial: Partial<PortfolioState>): void {
@@ -373,7 +373,12 @@ export class PortfolioStore {
   }
 
   public setActiveView(view: string): void {
-    this.setState({ activeView: view, selectedTicker: view });
+    // Navigation is transient UI state: notify the UI, but don't serialize and
+    // upload the entire portfolio just because the user opened a section.
+    this.update((state) => {
+      if (state.activeView === view && state.selectedTicker === view) return state;
+      return { ...state, activeView: view, selectedTicker: view };
+    }, false);
   }
 
   public selectTicker(ticker: string | null): void {
