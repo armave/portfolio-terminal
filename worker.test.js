@@ -254,7 +254,7 @@ describe('Freedom broker report diagnostic endpoint', () => {
       language: 'en'
     });
     expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
-    expect(fetchMock.mock.calls[0][1].headers['X-NtApi-Timestamp']).toEqual(expect.any(String));
+    expect(fetchMock.mock.calls[0][1].headers['X-NtApi-Timestamp']).toBeUndefined();
     expect(fetchMock.mock.calls[0][1].headers['X-NtApi-Sig']).toEqual(expect.any(String));
   });
 
