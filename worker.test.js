@@ -763,3 +763,27 @@ describe('streamed request body limits', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+
+describe('authenticate before consuming request bodies', () => {
+  it('rejects unauthenticated POSTs without reading their body stream', async () => {
+    let reads = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        reads += 1;
+        controller.enqueue(new TextEncoder().encode('{"prompt":"sensitive"}'));
+      }
+    });
+    const request = new Request('https://worker.test/?action=gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      duplex: 'half'
+    });
+
+    const response = await worker.fetch(request, { GATEWAY_SECRET: 'expected-secret' });
+
+    expect(response.status).toBe(401);
+    expect(reads).toBe(0);
+  });
+});
