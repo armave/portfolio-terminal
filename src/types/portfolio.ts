@@ -195,6 +195,8 @@ export interface PortfolioState {
   activeView: string;
   closedTrades: ClosedTrade[];
   closedHistory?: ClosedTrade[];
+  /** Imported broker cashflows, stored separately from closed trade P&L. */
+  cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw?: Record<string, string> }>;
   brokerAssumptions: BrokerRules;
   lastRolloverTimestamp?: number;
   lastUpdated?: number;
