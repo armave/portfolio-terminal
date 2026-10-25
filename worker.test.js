@@ -248,7 +248,8 @@ describe('Freedom broker report diagnostic endpoint', () => {
       date_end: '2026-01-31',
       time_period: '23:59:59',
       format: 'json',
-      type: 'cash_flows'
+      type: 'cash_flows',
+      language: 'en'
     });
   });
 
@@ -289,7 +290,8 @@ describe('Freedom broker report diagnostic endpoint', () => {
       date_end: '2026-01-31',
       time_period: '23:59:59',
       format: 'json',
-      type: 'account_at_end'
+      type: 'account_at_end',
+      language: 'en'
     });
   });
 
