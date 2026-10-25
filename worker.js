@@ -268,6 +268,17 @@ export default {
             return jsonError("Method not allowed.", 405, corsHeaders);
         }
 
+        // SECURITY CHECK: Validate Gateway Secret
+        const authHeader = request.headers.get("Authorization") || "";
+        const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim();
+        const clientSecret = request.headers.get("X-App-Auth") || bearerToken;
+        if (!env.GATEWAY_SECRET || clientSecret !== env.GATEWAY_SECRET) {
+            return new Response(JSON.stringify({ error: "Unauthorized gateway access." }), {
+                status: 401,
+                headers: corsHeaders
+            });
+        }
+
         // Parse and validate the request contract before reading any POST body.
         // Authenticated but invalid requests should not consume the body budget.
         const url = new URL(request.url);
@@ -284,17 +295,6 @@ export default {
         }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
             return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
-        }
-
-        // SECURITY CHECK: Validate Gateway Secret
-        const authHeader = request.headers.get("Authorization") || "";
-        const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim();
-        const clientSecret = request.headers.get("X-App-Auth") || bearerToken;
-        if (!env.GATEWAY_SECRET || clientSecret !== env.GATEWAY_SECRET) {
-            return new Response(JSON.stringify({ error: "Unauthorized gateway access." }), {
-                status: 401,
-                headers: corsHeaders
-            });
         }
 
         const declaredLength = Number(request.headers.get("Content-Length") || 0);
