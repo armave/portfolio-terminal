@@ -242,6 +242,7 @@ describe('Freedom broker report diagnostic endpoint', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe('https://tradernet.com/api/getBrokerReport');
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.cmd).toBe('getBrokerReport');
+    expect(body.nonce).toEqual(expect.any(Number));
     expect(body.params).toEqual({
       date_start: '2026-01-01',
       date_end: '2026-01-31',
