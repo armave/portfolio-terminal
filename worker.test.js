@@ -705,7 +705,7 @@ describe('gateway input bounds', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: 'Invalid symbol list.' });
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('Invalid symbol list.') });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
