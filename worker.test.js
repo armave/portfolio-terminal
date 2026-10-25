@@ -632,3 +632,57 @@ describe('Freedom cashflows Worker action', () => {
     });
   });
 });
+
+
+describe('gateway authentication and request contract', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ['missing credential', {}],
+    ['incorrect app credential', { 'X-App-Auth': 'wrong-secret' }],
+    ['incorrect bearer credential', { Authorization: 'Bearer wrong-secret' }]
+  ])('rejects %s before invoking an upstream provider', async (_label, headers) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=provider-quote&provider=finnhub&symbol=AAPL', {
+      headers
+    }), {
+      GATEWAY_SECRET: 'expected-secret',
+      FINNHUB_KEY: 'provider-key'
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: 'Unauthorized gateway access.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported methods before proxying', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=quote&symbol=AAPL', {
+      method: 'PUT',
+      headers: { 'X-App-Auth': 'expected-secret' }
+    }), { GATEWAY_SECRET: 'expected-secret' });
+
+    expect(response.status).toBe(405);
+    expect(await response.json()).toEqual({ error: 'Method not allowed.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unknown actions after gateway authentication', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=unknown-action', {
+      headers: { 'X-App-Auth': 'expected-secret' }
+    }), { GATEWAY_SECRET: 'expected-secret' });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Unsupported action.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
