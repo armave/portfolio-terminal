@@ -123,8 +123,8 @@ export function ClosedHistoryDesk() {
         // Exports commonly label the direction in a separate "Direction" column,
         // while the "Operation №" column is only an ID. Inspect every cell so
         // daily negative-cash fees are not missed due to column selection.
-        const isDailyFinancingFee = /negative\\s+cash\\s+balance\\s+fee|fee\\s+for\\s+negative\\s+cash\\s+balance|margin\\s+(?:fee|interest)|(?:daily\\s+)?(?:margin|financing|overnight|rollover|borrow(?:ing)?)\\s+(?:fee|charge|interest)|interest\\s+(?:fee|charge)/i.test(text);
-        const isTradeCommission = /trading\\s+fee|commission\\s+for\\s+trade/i.test(text);
+        const isDailyFinancingFee = /negative\s+cash\s+balance\s+fee|fee\s+for\s+negative\s+cash\s+balance|margin\s+(?:fee|interest)|(?:daily\s+)?(?:margin|financing|overnight|rollover|borrow(?:ing)?)\s+(?:fee|charge|interest)|interest\s+(?:fee|charge)/i.test(text);
+        const isTradeCommission = /trading\s+fee|commission\s+for\s+trade/i.test(text);
         return isDailyFinancingFee && !isTradeCommission;
       });
       const trades = [...(state.closedTrades || [])] as any[];
