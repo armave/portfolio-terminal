@@ -299,7 +299,7 @@ export default {
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
-        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "quote"].includes(action)) {
+        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
@@ -396,6 +396,19 @@ export default {
                     return jsonError("Freedom trades only supports GET.", 405, corsHeaders);
                 }
                 const data = await requestTradeNet(env, "getTradesHistory");
+                return new Response(JSON.stringify({
+                    ok: true,
+                    provider: "Freedom TradeNet",
+                    data
+                }), { headers: corsHeaders });
+            }
+
+            // Read-only Freedom cashflow history. The upstream command is fixed server-side.
+            if (action === "freedom-cashflows") {
+                if (request.method !== "GET") {
+                    return jsonError("Freedom cashflows only supports GET.", 405, corsHeaders);
+                }
+                const data = await requestTradeNet(env, "getCashflows");
                 return new Response(JSON.stringify({
                     ok: true,
                     provider: "Freedom TradeNet",
