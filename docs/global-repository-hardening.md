@@ -192,3 +192,6 @@ This document records audit scope and implementation requirements. The GitHub AP
 
 **Verification note**
 - The new cache bound and regression test require the current-head CI runs to complete before final readiness.
+**Cache lifecycle follow-up to Pass 2**
+- Worker provider response cache is capped at 500 entries; provider cooldown state is keyed by the fixed provider names, and per-request in-flight entries are deleted in a finally block.
+- Browser market-data response caches now have the same 500-entry bound; request-coalescing maps delete settled promises. This closes the previously noted cache lifecycle review item for the inspected Worker/API caches.
