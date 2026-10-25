@@ -118,79 +118,90 @@ export function ClosedHistoryDesk() {
 
       // The uploaded workbook is a one-off calculation input only. Do not add
       // its rows to portfolio state or send the workbook data to Cloudflare.
-      const feeRows = imported.filter(item => /margin|interest|financing|overnight|rollover|borrow|fee|commission|процент|маржин|комис|плата за пользован|տոկոս|մարժին/i.test(
-        [item.type, item.description, ...Object.entries(item.raw).map(([key, value]) => key + ' ' + value)].join(' ')
-      ));
+      const feeRows = imported.filter(item =>
+        /negative cash balance fee|margin|interest|financing|overnight|rollover|borrow|fee for negative cash balance/i.test(
+          [item.type, item.description, ...Object.entries(item.raw).map(([key, value]) => key + ' ' + value)].join(' ')
+        ) && /negative cash balance fee|margin|interest|financing|overnight|rollover|borrow/i.test(
+          [item.type, item.description].join(' ')
+        )
+      );
       const trades = [...(state.closedTrades || [])] as any[];
-      let matchedFees = 0;
-      let updatedTradeCount = 0;
       const parseTradeDate = (value: unknown): number => {
-        if (typeof value === 'number' || (typeof value === 'string' && /^\d{4,6}(\\.\d+)?$/.test(value.trim()))) {
+        if (typeof value === 'number' || (typeof value === 'string' && /^\\d{4,6}(\\.\\d+)?$/.test(value.trim()))) {
           const serial = Number(value);
           if (serial > 20000 && serial < 100000) return Date.UTC(1899, 11, 30) + serial * 86400000;
         }
         const text = String(value ?? '').trim();
         if (!text) return NaN;
-        const dmy = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+        // Freedom's exported workbook uses US dates (M/D/YYYY); handle them
+        // explicitly rather than accidentally interpreting the month as a day.
+        const us = text.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);
+        if (us) {
+          const month = Number(us[1]), day = Number(us[2]), year = Number(us[3]);
+          if (month >= 1 && month <= 12 && day >= 1 && day <= 31) return Date.UTC(year, month - 1, day);
+        }
+        const dmy = text.match(/^(\\d{1,2})[.-](\\d{1,2})[.-](\\d{4})$/);
         if (dmy) return Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
         const parsed = Date.parse(text);
         return Number.isFinite(parsed) ? Date.UTC(new Date(parsed).getUTCFullYear(), new Date(parsed).getUTCMonth(), new Date(parsed).getUTCDate()) : NaN;
       };
-      const feeTicker = (fee: typeof imported[number]) => {
-        const entry = Object.entries(fee.raw).find(([key]) => /ticker|symbol|instrument|asset|security|тикер|инструмент/i.test(key.trim()));
-        return String(entry?.[1] ?? '').trim().toUpperCase();
-      };
-      const feeDate = (fee: typeof imported[number]) => {
-        const raw = Object.entries(fee.raw).find(([key]) => /fee.*date|margin.*date|interest.*date|operation.*date|transaction.*date|date|time|дата/i.test(key.replace(/[ _-]/g, '')));
-        return parseTradeDate(raw?.[1] ?? fee.date);
-      };
-      const updatedTrades = trades.map(trade => {
-        const ticker = String(trade.ticker ?? trade.symbol ?? trade.instrument ?? '').trim().toUpperCase();
-        const buyDate = parseTradeDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate ?? trade.openedAt ?? trade.date);
-        const sellDate = parseTradeDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.closeDate ?? trade.executedAt);
-        if (!ticker || !Number.isFinite(buyDate) || !Number.isFinite(sellDate)) return trade;
-        const matching = feeRows.filter(fee => {
-          const date = feeDate(fee);
-          const symbol = feeTicker(fee);
-          if (!Number.isFinite(date) || date < buyDate || date > sellDate) return false;
-          if (symbol) return symbol === ticker;
-          // Without a symbol, allocate only if a single closed trade covers that date.
-          return trades.filter(other => {
-            const otherBuy = parseTradeDate(other.buyDate ?? other.purchaseDate ?? other.entryDate ?? other.openDate ?? other.openedAt ?? other.date);
-            const otherSell = parseTradeDate(other.sellDate ?? other.exitDate ?? other.closedAt ?? other.closeDate ?? other.executedAt);
-            return Number.isFinite(otherBuy) && Number.isFinite(otherSell) && date >= otherBuy && date <= otherSell;
-          }).length === 1;
-        });
-        if (!matching.length) return trade;
-        const feeAmount = matching.reduce((sum, fee) => {
-          const feeAmountCell = Object.entries(fee.raw).find(([key]) => /margin.?fee|interest|financing|overnight|rollover|borrow.?fee|fee.?amount|commission|комис|процент|маржин|տոկոս|մարժին/i.test(key));
-          const parsedAmount = Number(String(feeAmountCell?.[1] ?? fee.amount).replace(/[^0-9.+-]/g, '').replace(/,(?=\d{3}(?:\D|$))/g, ''));
-          return sum + Math.abs(Number.isFinite(parsedAmount) ? parsedAmount : 0);
-        }, 0);
-        if (!feeAmount) return trade;
-        matchedFees += matching.length;
+      const tradeBuy = (trade: any) => parseTradeDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate ?? trade.openedAt ?? trade.date);
+      const tradeSell = (trade: any) => parseTradeDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.closeDate ?? trade.executedAt);
+      const feeDate = (fee: typeof imported[number]) => parseTradeDate(fee.date);
+      // Account-level negative-cash fees have no ticker. Allocate each daily fee
+      // among the positions open on the balance date, weighted by invested cost
+      // (shares × entry price); fall back to shares when cost is unavailable.
+      // Only the portion attributable to a closed trade's holding interval is
+      // included. No workbook rows are persisted.
+      const allocations = new Map<number, number>();
+      let allocatedDailyFees = 0;
+      for (const fee of feeRows) {
+        const date = feeDate(fee);
+        if (!Number.isFinite(date)) continue;
+        const amount = Math.abs(fee.amount);
+        if (!amount) continue;
+        const open = trades.map((trade, index) => {
+          const buy = tradeBuy(trade), sell = tradeSell(trade);
+          const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
+          const price = Math.abs(Number(trade.entryPrice ?? trade.buyPrice ?? trade.purchasePricePerShare ?? 0));
+          const weight = shares * (price > 0 ? price : 1);
+          return { index, buy, sell, weight };
+        }).filter(t => Number.isFinite(t.buy) && Number.isFinite(t.sell) && date >= t.buy && date <= t.sell && t.weight > 0);
+        if (!open.length) continue;
+        const totalWeight = open.reduce((sum, t) => sum + t.weight, 0);
+        for (const position of open) {
+          const share = amount * position.weight / totalWeight;
+          allocations.set(position.index, (allocations.get(position.index) || 0) + share);
+        }
+        allocatedDailyFees += amount;
+      }
+      let updatedTradeCount = 0;
+      const updatedTrades = trades.map((trade, index) => {
+        const addedFee = Number((allocations.get(index) || 0).toFixed(2));
+        if (addedFee <= 0) return trade;
         updatedTradeCount++;
         const previousMargin = Number(trade.marginInterest ?? trade.marginFee ?? 0) || 0;
-        // Re-importing the same workbook must not add the same fees twice.
+        // Idempotent re-import: replace the previously imported margin amount
+        // with this workbook's newly calculated amount rather than stacking it.
         const baseFees = Math.max(0, (Number(trade.feesAndCommissions ?? trade.totalCommissions ?? trade.commissions ?? 0) || 0) - previousMargin);
         const previousNet = Number(trade.netProfit ?? trade.netRealizedGain ?? trade.grossProfit ?? 0) || 0;
-        const netBeforeMargin = previousNet + previousMargin;
+        const newMargin = addedFee;
         return {
           ...trade,
-          feesAndCommissions: Number((baseFees + previousMargin + feeAmount).toFixed(2)),
-          totalCommissions: Number((baseFees + previousMargin + feeAmount).toFixed(2)),
-          marginInterest: Number((previousMargin + feeAmount).toFixed(2)),
-          marginFee: Number((previousMargin + feeAmount).toFixed(2)),
-          netProfit: Number((netBeforeMargin - previousMargin - feeAmount).toFixed(2)),
-          netRealizedGain: Number((netBeforeMargin - previousMargin - feeAmount).toFixed(2))
+          feesAndCommissions: Number((baseFees + newMargin).toFixed(2)),
+          totalCommissions: Number((baseFees + newMargin).toFixed(2)),
+          marginInterest: newMargin,
+          marginFee: newMargin,
+          netProfit: Number((previousNet + previousMargin - newMargin).toFixed(2)),
+          netRealizedGain: Number((previousNet + previousMargin - newMargin).toFixed(2))
         };
       });
-      if (!matchedFees) {
-        setCashflowImportMessage(`Read ${imported.length} workbook rows; detected ${feeRows.length} possible fee rows, but matched none to closed trades. No state was changed. Check workbook date/ticker columns and trade purchase/sale dates.`);
+      if (!updatedTradeCount) {
+        setCashflowImportMessage(`Read ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows, but none overlapped closed-trade purchase/sale dates. No state was changed.`);
         return;
       }
       portfolioStore.setState({ closedTrades: updatedTrades });
-      setCashflowImportMessage(`Read ${imported.length} workbook rows; detected ${feeRows.length} possible fee rows; applied ${matchedFees} fee rows to ${updatedTradeCount} closed trades. Only updated closed trades were saved; workbook rows were not stored.`);
+      setCashflowImportMessage(`Read ${imported.length} workbook rows; allocated ${allocatedDailyFees.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} closed trades. Allocation uses invested cost (shares × entry price), falling back to shares. Workbook rows were not stored.`);
     } catch (error) {
       setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
     } finally {
