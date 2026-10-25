@@ -234,13 +234,36 @@ export function ClosedHistoryDesk() {
     }
   };
   useEffect(() => {
+    const persistBrokerTrades = (trades: any[]) => {
+      setBrokerTrades(trades);
+      setBrokerTradesLoading(false);
+      setBrokerTradesError(false);
+      // The canonical store persists through saveState() and the app's existing
+      // Cloudflare state-sync pipeline. Keep the workbook itself out of state.
+      const current = portfolioStore.getState().brokerExecutedTrades || [];
+      const fingerprint = (rows: any[]) => rows.map((row) =>
+        [row.id, row.ticker, row.side, row.quantity, row.executedAt, row.price, row.commission, row.profit]
+          .map(value => String(value ?? '')).join('|')
+      ).join('\n');
+      if (fingerprint(current) !== fingerprint(trades)) {
+        portfolioStore.setState({ brokerExecutedTrades: trades.map((trade) => ({ ...trade })) });
+      }
+    };
     const readCurrentTrades = () => {
       const current = (window as any).__tradenetExecutedTrades;
-      if (Array.isArray(current)) { setBrokerTrades(current); setBrokerTradesLoading(false); setBrokerTradesError(false); }
+      if (Array.isArray(current)) persistBrokerTrades(current);
+      else {
+        const saved = portfolioStore.getState().brokerExecutedTrades;
+        if (Array.isArray(saved) && saved.length) {
+          setBrokerTrades(saved);
+          setBrokerTradesLoading(false);
+          setBrokerTradesError(false);
+        }
+      }
     };
     const onTrades = (event: Event) => {
       const trades = (event as CustomEvent).detail;
-      if (Array.isArray(trades)) { setBrokerTrades(trades); setBrokerTradesLoading(false); setBrokerTradesError(false); }
+      if (Array.isArray(trades)) persistBrokerTrades(trades);
     };
     readCurrentTrades();
     // If the route opens directly, App's initial fetch may already have fired.
