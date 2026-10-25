@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js';
 import { processRollovers } from '../domain/portfolio';
-import { getGatewaySecret, loadSavedState, saveState } from './storage';
+import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { PortfolioState } from '../types/portfolio';
 
 const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
@@ -732,11 +732,12 @@ export async function pullCloudState(
     // source has data; the dedicated record is written before the main snapshot
     // is compacted, so a failed history write cannot silently discard records.
     const localState = loadSavedState(state || {});
+    const localHistory = loadSavedHistory();
     const legacyHistory = {
       brokerExecutedTrades: Array.isArray(parsedState.brokerExecutedTrades) && parsedState.brokerExecutedTrades.length
-        ? parsedState.brokerExecutedTrades : (localState.brokerExecutedTrades || []),
+        ? parsedState.brokerExecutedTrades : localHistory.brokerExecutedTrades,
       cashflows: Array.isArray(parsedState.cashflows) && parsedState.cashflows.length
-        ? parsedState.cashflows : (localState.cashflows || [])
+        ? parsedState.cashflows : localHistory.cashflows
     };
     const hasHistory = legacyHistory.brokerExecutedTrades.length > 0 || legacyHistory.cashflows.length > 0;
     if (hasHistory) await pushCloudHistory(legacyHistory, currentSecret);
