@@ -360,7 +360,7 @@ export function ClosedHistoryDesk() {
       trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: tradeFees + marginFee, netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const },
       index: -1,
       source: 'tradenet' as const,
-      profit: broker.profit == null ? null : Number(broker.profit) - marginFee,
+      profit: broker.netProfit != null ? Number(broker.netProfit) : broker.profit == null ? null : Number(broker.profit) - marginFee,
       fees: tradeFees + marginFee
     };
   });
