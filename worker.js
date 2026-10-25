@@ -267,21 +267,6 @@ export default {
         if (request.method !== "GET" && request.method !== "POST") {
             return jsonError("Method not allowed.", 405, corsHeaders);
         }
-        const declaredLength = Number(request.headers.get("Content-Length") || 0);
-        if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
-            return jsonError("Request body exceeds the 20 MB limit.", 413, corsHeaders);
-        }
-        if (request.method === "POST") {
-            const actionHint = new URL(request.url).searchParams.get("action");
-            if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
-                return jsonError("POST requests must use application/json.", 415, corsHeaders);
-            }
-            // Content-Length may be omitted by clients; measure the actual body as well.
-            const rawBody = await request.clone().arrayBuffer();
-            if (rawBody.byteLength > MAX_REQUEST_BYTES) {
-                return jsonError("Request body exceeds the 20 MB limit.", 413, corsHeaders);
-            }
-        }
 
         // SECURITY CHECK: Validate Gateway Secret
         const authHeader = request.headers.get("Authorization") || "";
@@ -294,6 +279,8 @@ export default {
             });
         }
 
+        // Parse and validate the request contract before reading any POST body.
+        // Authenticated but invalid requests should not consume the body budget.
         const url = new URL(request.url);
         const action = url.searchParams.get("action");
         const pathname = url.pathname;
@@ -302,11 +289,52 @@ export default {
         if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"]);
+        if (getOnlyActions.has(action) && request.method !== "GET") {
+            return jsonError("This action only supports GET.", 405, corsHeaders);
+        }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
             return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
         }
-        if ((action === "news" || action === "provider-quote" || action === "stocktwits" || action === "freedom-quote" || action === "freedom-news" || action === "freedom-history" || action === "quote") && request.method !== "GET") {
-            return jsonError("This action only supports GET.", 405, corsHeaders);
+
+        const declaredLength = Number(request.headers.get("Content-Length") || 0);
+        if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+            return jsonError("Request body exceeds the 20 MB limit.", 413, corsHeaders);
+        }
+        if (request.method === "POST") {
+            if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
+                return jsonError("POST requests must use application/json.", 415, corsHeaders);
+            }
+            // Content-Length may be omitted or forged. Consume and count the actual
+            // stream with a hard ceiling, then rebuild the bounded request body for the
+            // action handler. Do not use Request.clone() here: its tee can buffer the
+            // unread branch while an attacker streams an arbitrarily large body.
+            const bodyReader = request.body?.getReader();
+            if (bodyReader) {
+                let receivedBytes = 0;
+                const chunks = [];
+                try {
+                    while (true) {
+                        const { done, value } = await bodyReader.read();
+                        if (done) break;
+                        receivedBytes += value.byteLength;
+                        if (receivedBytes > MAX_REQUEST_BYTES) {
+                            await bodyReader.cancel("Request body exceeds the configured limit.");
+                            return jsonError("Request body exceeds the 20 MB limit.", 413, corsHeaders);
+                        }
+                        chunks.push(value);
+                    }
+                } finally {
+                    bodyReader.releaseLock();
+                }
+                const boundedHeaders = new Headers(request.headers);
+                boundedHeaders.delete("Content-Length");
+                request = new Request(request.url, {
+                    method: request.method,
+                    headers: boundedHeaders,
+                    body: new Blob(chunks)
+                });
+            }
         }
 
         try {

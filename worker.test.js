@@ -379,6 +379,31 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(oversized.status).toBe(413);
   });
 
+  it('rejects chunked oversized cloud writes without Content-Length', async () => {
+    const store = makeDurableObject();
+    const chunk = new Uint8Array(1024 * 1024);
+    let chunksSent = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        if (chunksSent === 21) {
+          controller.close();
+          return;
+        }
+        chunksSent += 1;
+        controller.enqueue(chunk);
+      }
+    });
+    const response = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body,
+      duplex: 'half'
+    }));
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: 'Cloud state payload exceeds the 20 MB limit.' });
+  });
+
   it('requires a revision for every write', async () => {
     const store = makeDurableObject();
     const response = await store.fetch(new Request('https://worker.test/api/state', {
@@ -630,5 +655,181 @@ describe('Freedom cashflows Worker action', () => {
       provider: 'Freedom TradeNet',
       data: { cashflows: [] }
     });
+  });
+});
+
+
+describe('gateway authentication and request contract', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ['missing credential', {}],
+    ['incorrect app credential', { 'X-App-Auth': 'wrong-secret' }],
+    ['incorrect bearer credential', { Authorization: 'Bearer wrong-secret' }]
+  ])('rejects %s before invoking an upstream provider', async (_label, headers) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=provider-quote&provider=finnhub&symbol=AAPL', {
+      headers
+    }), {
+      GATEWAY_SECRET: 'expected-secret',
+      FINNHUB_KEY: 'provider-key'
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: 'Unauthorized gateway access.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported methods before proxying', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=quote&symbol=AAPL', {
+      method: 'PUT',
+      headers: { 'X-App-Auth': 'expected-secret' }
+    }), { GATEWAY_SECRET: 'expected-secret' });
+
+    expect(response.status).toBe(405);
+    expect(await response.json()).toEqual({ error: 'Method not allowed.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unknown actions after gateway authentication', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=unknown-action', {
+      headers: { 'X-App-Auth': 'expected-secret' }
+    }), { GATEWAY_SECRET: 'expected-secret' });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Unsupported action.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('gateway input bounds', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects invalid provider symbols before making upstream requests', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=provider-quote&provider=finnhub&symbol=%3Cscript%3E', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      FINNHUB_KEY: 'provider-key'
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('Invalid symbol list.') });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects declared oversized request bodies before provider access', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=provider-quote&provider=finnhub&symbol=AAPL', {
+      headers: {
+        'X-App-Auth': 'test-secret',
+        'Content-Length': String(20 * 1024 * 1024 + 1)
+      }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      FINNHUB_KEY: 'provider-key'
+    });
+
+    expect(response.status).toBe(413);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('streamed request body limits', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects a chunked oversized POST even when Content-Length is absent', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const chunk = new Uint8Array(1024 * 1024);
+    let chunksSent = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        if (chunksSent === 21) {
+          controller.close();
+          return;
+        }
+        chunksSent += 1;
+        controller.enqueue(chunk);
+      }
+    });
+    const request = new Request('https://worker.test/?action=gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Auth': 'test-secret' },
+      body,
+      duplex: 'half'
+    });
+
+    const response = await worker.fetch(request, { GATEWAY_SECRET: 'test-secret' });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: 'Request body exceeds the 20 MB limit.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('authenticate before consuming request bodies', () => {
+  it('rejects unauthenticated POSTs without reading their body stream', async () => {
+    let reads = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        reads += 1;
+        controller.enqueue(new TextEncoder().encode('{"prompt":"sensitive"}'));
+      }
+    }, { highWaterMark: 0 });
+    const request = new Request('https://worker.test/?action=gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      duplex: 'half'
+    });
+
+    const response = await worker.fetch(request, { GATEWAY_SECRET: 'expected-secret' });
+
+    expect(response.status).toBe(401);
+    expect(reads).toBe(0);
+  });
+
+  it('rejects authenticated POSTs to GET-only actions before reading their body stream', async () => {
+    let reads = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        reads += 1;
+        controller.enqueue(new TextEncoder().encode('{"unused":true}'));
+      }
+    }, { highWaterMark: 0 });
+    const request = new Request('https://worker.test/?action=provider-quote&provider=finnhub&symbol=AAPL', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Auth': 'expected-secret' },
+      body,
+      duplex: 'half'
+    });
+
+    const response = await worker.fetch(request, { GATEWAY_SECRET: 'expected-secret' });
+
+    expect(response.status).toBe(405);
+    expect(reads).toBe(0);
   });
 });

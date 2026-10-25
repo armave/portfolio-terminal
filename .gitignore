@@ -5,8 +5,8 @@ dist/
 .aider.input.history
 .aider.tags.cache.v4
 .aider/*
-.wrangler*
-.github*
+.wrangler/
+.wrangler-*
 .aider.chat*
 .aider.input*
 .aider*

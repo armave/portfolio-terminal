@@ -208,6 +208,16 @@ async function performProxyFetch(
   return data;
 }
 
+const MAX_API_CACHE_ENTRIES = 500;
+
+function setBoundedCache<T>(cache: Map<string, T>, key: string, value: T): void {
+  cache.set(key, value);
+  if (cache.size > MAX_API_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey !== undefined) cache.delete(oldestKey);
+  }
+}
+
 const YAHOO_QUOTE_CACHE_TTL_MS = 8 * 1000;
 const yahooQuoteCache = new Map<string, { expiresAt: number; data: any }>();
 const yahooQuoteRequests = new Map<string, Promise<any>>();
@@ -238,7 +248,7 @@ async function flushYahooQuoteQueue(): Promise<void> {
     for (const [symbol, pending] of entries) {
       const data = bySymbol.get(symbol) ?? { symbol, error: 'Yahoo quote missing from batch response' };
       if (!data.error && data.price && typeof data.price === 'object') {
-        yahooQuoteCache.set(symbol, { expiresAt: Date.now() + YAHOO_QUOTE_CACHE_TTL_MS, data });
+        setBoundedCache(yahooQuoteCache, symbol, { expiresAt: Date.now() + YAHOO_QUOTE_CACHE_TTL_MS, data });
       }
       if (yahooQuoteRequests.get(symbol) === pending.request) yahooQuoteRequests.delete(symbol);
       pending.resolvers.forEach(resolve => resolve(data));
@@ -389,7 +399,7 @@ export function rememberYahooDeepStockData(value: unknown): void {
   const data = value && typeof value === 'object' ? value as Record<string, any> : null;
   const symbol = normalizeYahooSymbol(data?.symbol);
   if (!data || !symbol || data.error) return;
-  yahooDeepDataCache.set(symbol, {
+  setBoundedCache(yahooDeepDataCache, symbol, {
     expiresAt: Date.now() + YAHOO_DEEP_DATA_CACHE_TTL_MS,
     data
   });
@@ -500,7 +510,7 @@ export async function fetchStocktwitsStream(ticker: string, force = false): Prom
           ? data.streamUrl
           : `https://stocktwits.com/symbol/${encodeURIComponent(symbol)}`
       };
-      stocktwitsCache.set(symbol, { expiresAt: Date.now() + STOCKTWITS_CACHE_TTL_MS, data: stream });
+      setBoundedCache(stocktwitsCache, symbol, { expiresAt: Date.now() + STOCKTWITS_CACHE_TTL_MS, data: stream });
       return stream;
     })
     .finally(() => {
@@ -529,7 +539,7 @@ export async function fetchMarketNews(ticker: string, force = false): Promise<an
     try {
       const data = await proxyFetch('news', { symbol });
       const news = Array.isArray(data) ? data : [];
-      marketNewsCache.set(symbol, { expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS, data: news });
+      setBoundedCache(marketNewsCache, symbol, { expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS, data: news });
       return news;
     } catch (error) {
       console.warn(`[Market News Error for ${symbol}]:`, error instanceof Error ? error.message : error);
@@ -761,7 +771,7 @@ export async function pullCloudState(
     }
 
     reportResult?.(true);
-    console.log('[Sync]: Cloud state ingested and UI re-rendered successfully', parsedState);
+    console.log('[Sync]: Cloud state ingested and UI re-rendered successfully.');
     // showToast('KV cloud state pulled.', 'success');
     // logTerminal('[KV Cloud]: Synced successfully.');
     return parsedState;
