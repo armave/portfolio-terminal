@@ -96,3 +96,19 @@ This document records audit scope and implementation requirements. The GitHub AP
 - No local test/build execution has been performed through the GitHub file-editing connector.
 - The available workflow-run lookup returned no run for the earlier PR head; verify checks again after the latest commit.
 - Do not mark any security finding fixed solely because a regression test has been added.
+
+
+### 2026-10-25 — Pass 3: streamed request body bound
+
+**Implemented in branch**
+- Replaced unbounded `request.clone().arrayBuffer()` inspection with streamed byte counting capped at `MAX_REQUEST_BYTES`.
+- The bounded request is reconstructed from at most the configured limit so downstream POST handlers can still parse it. The original `Content-Length` is removed before reconstruction so a stale or forged declared size is not reused.
+- Added a regression test for a chunked POST body that exceeds the limit without a `Content-Length` header.
+
+**Security reasoning**
+- `Request.clone()` tees the stream; consuming one branch while leaving the original branch unread can buffer data in the other branch. The implementation therefore consumes the original stream, enforces the limit, then rebuilds a bounded request for the handler.
+- This is a source-level fix and test addition, not yet a verified runtime result. Confirm Cloudflare Workers' Request/Blob behavior with the Worker test suite and deployment-compatible runtime before considering this closed.
+
+**Still pending**
+- Execute Worker tests and the full CI suite; verify a workflow run for the latest commit.
+- Continue auditing provider cache isolation/lifecycle, cloud state concurrency, financial invariants, and legacy runtime ownership.
