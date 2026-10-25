@@ -870,6 +870,16 @@ export async function fetchFreedomTradeNetTrades(): Promise<any> {
   return proxyFetch('freedom-trades');
 }
 
+/** Fetch the raw read-only Freedom Broker cashflows response for temporary integration testing. */
+export async function fetchFreedomCashflows(): Promise<any> {
+  try {
+    return await proxyFetch('freedom-cashflows', {}, { cache: 'no-store' });
+  } catch (error) {
+    if (error instanceof Error) throw error;
+    throw new Error('Failed to fetch Freedom Broker cashflows due to a network error.');
+  }
+}
+
 export interface FreedomExecutedTrade {
   id: string;
   ticker: string;
