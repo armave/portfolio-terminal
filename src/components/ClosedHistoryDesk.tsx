@@ -3,11 +3,129 @@ import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 
+type ImportedCashflow = { id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw: Record<string, string> };
+
+function xmlText(node: Element | null): string {
+  return node?.textContent ?? '';
+}
+
+function columnIndex(cellRef: string): number {
+  const letters = (cellRef.match(/^[A-Z]+/) || ['A'])[0];
+  return letters.split('').reduce((n, char) => n * 26 + char.charCodeAt(0) - 64, 0) - 1;
+}
+
+// Minimal XLSX reader for the workbook's first worksheet, using the browser's ZIP and XML APIs.
+async function readXlsxRows(buffer: ArrayBuffer): Promise<string[][]> {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  const decoder = new TextDecoder();
+  const entries = new Map<string, Uint8Array>();
+  const inflate = async (data: Uint8Array, method: number) => {
+    if (method === 0) return data;
+    if (method !== 8 || typeof DecompressionStream === 'undefined') throw new Error('This browser cannot unpack the XLSX workbook.');
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw' as CompressionFormat));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  };
+  let offset = 0;
+  while (offset + 30 < bytes.length && view.getUint32(offset, true) === 0x04034b50) {
+    const method = view.getUint16(offset + 8, true);
+    const compressedSize = view.getUint32(offset + 18, true);
+    const nameLength = view.getUint16(offset + 26, true);
+    const extraLength = view.getUint16(offset + 28, true);
+    const name = decoder.decode(bytes.slice(offset + 30, offset + 30 + nameLength));
+    const start = offset + 30 + nameLength + extraLength;
+    if (compressedSize === 0xffffffff) throw new Error('Unsupported XLSX ZIP64 archive.');
+    entries.set(name, await inflate(bytes.slice(start, start + compressedSize), method));
+    offset = start + compressedSize;
+  }
+  const parseXml = (name: string) => {
+    const data = entries.get(name);
+    if (!data) return null;
+    return new DOMParser().parseFromString(decoder.decode(data), 'application/xml');
+  };
+  const sharedDoc = parseXml('xl/sharedStrings.xml');
+  const shared = sharedDoc ? Array.from(sharedDoc.getElementsByTagName('si')).map(si =>
+    Array.from(si.getElementsByTagName('t')).map(t => t.textContent || '').join('')
+  ) : [];
+  const sheet = parseXml('xl/worksheets/sheet1.xml');
+  if (!sheet) throw new Error('The workbook has no first worksheet.');
+  const rows: string[][] = [];
+  for (const row of Array.from(sheet.getElementsByTagName('row'))) {
+    const values: string[] = [];
+    for (const cell of Array.from(row.children).filter(el => el.localName === 'c')) {
+      const idx = columnIndex(cell.getAttribute('r') || 'A1');
+      const type = cell.getAttribute('t');
+      const value = xmlText(cell.getElementsByTagName('v')[0] || null);
+      values[idx] = type === 's' ? (shared[Number(value)] ?? '') : type === 'inlineStr'
+        ? Array.from(cell.getElementsByTagName('t')).map(t => t.textContent || '').join('')
+        : value;
+    }
+    rows.push(values.map(value => value ?? ''));
+  }
+  return rows.filter(row => row.some(value => value.trim() !== ''));
+}
+
+function normalizeCashflowRows(rows: string[][]): ImportedCashflow[] {
+  if (rows.length < 2) throw new Error('The workbook contains no transaction rows.');
+  const headers = rows[0].map(value => value.trim().toLowerCase());
+  const find = (...names: string[]) => headers.findIndex(header => names.includes(header.replace(/[ _-]+/g, '')));
+  const dateIdx = find('date', 'datetime', 'operationdate', 'transactiondate', 'timestamp');
+  const amountIdx = find('amount', 'sum', 'value', 'operationamount', 'cashflow');
+  const typeIdx = find('type', 'operation', 'operationtype', 'transactiontype', 'kind');
+  const currencyIdx = find('currency', 'curr');
+  const descIdx = find('description', 'comment', 'details', 'name', 'purpose');
+  if (dateIdx < 0 || amountIdx < 0) {
+    throw new Error('Could not identify date and amount columns. Workbook columns: ' + rows[0].join(', '));
+  }
+  const seen = new Set<string>();
+  const result: ImportedCashflow[] = [];
+  for (const row of rows.slice(1)) {
+    const date = (row[dateIdx] || '').trim();
+    const amountText = (row[amountIdx] || '').trim().replace(/\s/g, '').replace(',', '.');
+    if (!date && !amountText) continue;
+    const amount = Number(amountText.replace(/[^0-9.+-]/g, ''));
+    if (!date || !Number.isFinite(amount)) continue;
+    const raw: Record<string, string> = {};
+    rows[0].forEach((header, i) => { raw[header.trim()] = row[i] ?? ''; });
+    const type = typeIdx >= 0 ? (row[typeIdx] || 'Cashflow').trim() : 'Cashflow';
+    const description = descIdx >= 0 ? (row[descIdx] || '').trim() : '';
+    const currency = currencyIdx >= 0 ? (row[currencyIdx] || '').trim() : '';
+    const fingerprint = [date, type, amount.toFixed(8), currency, description].join('|').toLowerCase();
+    if (seen.has(fingerprint)) continue;
+    seen.add(fingerprint);
+    result.push({ id: 'cashflow-' + fingerprint, date, type, amount, currency: currency || undefined, description: description || undefined, raw });
+  }
+  if (!result.length) throw new Error('No valid cashflow rows were found. Check the workbook columns.');
+  return result;
+}
+
+
 export function ClosedHistoryDesk() {
   const state = usePortfolio();
   const [brokerTrades, setBrokerTrades] = useState<any[]>([]);
   const [brokerTradesLoading, setBrokerTradesLoading] = useState(true);
   const [brokerTradesError, setBrokerTradesError] = useState(false);
+  const [cashflowImporting, setCashflowImporting] = useState(false);
+  const [cashflowImportMessage, setCashflowImportMessage] = useState('');
+  const handleImportCashflows = async () => {
+    setCashflowImporting(true);
+    setCashflowImportMessage('');
+    try {
+      const response = await fetch('/tradernet_table%20(1).xlsx', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Could not load the cashflows workbook from public/.');
+      const rows = await readXlsxRows(await response.arrayBuffer());
+      const imported = normalizeCashflowRows(rows);
+      const existing = state.cashflows || [];
+      const existingIds = new Set(existing.map(item => item.id));
+      const fresh = imported.filter(item => !existingIds.has(item.id));
+      if (fresh.length) portfolioStore.setState({ cashflows: [...fresh, ...existing] });
+      setCashflowImportMessage(`Imported ${fresh.length}; skipped ${imported.length - fresh.length} duplicates. Total saved: ${existing.length + fresh.length}.`);
+    } catch (error) {
+      setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
+    } finally {
+      setCashflowImporting(false);
+    }
+  };
   useEffect(() => {
     const readCurrentTrades = () => {
       const current = (window as any).__tradenetExecutedTrades;
@@ -140,7 +258,7 @@ export function ClosedHistoryDesk() {
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
+      {cashflowImportMessage && <p role="status" class="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300">{cashflowImportMessage}</p>}\n      <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Realized net P&amp;L</div>
           <div class={`mt-1 font-mono text-sm font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
