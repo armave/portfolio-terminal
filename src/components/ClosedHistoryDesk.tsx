@@ -114,8 +114,9 @@ export function ClosedHistoryDesk() {
     void handleImportCashflows(null, state.cashflows);
   }, [brokerTradesLoading, cashflowImporting, state.cashflows]);
   const handleImportCashflows = async (file: File | null, savedRows?: any[]) => {
+    const showImportMessage = !savedRows;
     setCashflowImporting(true);
-    setCashflowImportMessage('');
+    if (showImportMessage) setCashflowImportMessage('');
     try {
       if (!savedRows && (!file || !file.name.toLowerCase().endsWith('.xlsx'))) throw new Error('Please select an Excel .xlsx file.');
       const rows = savedRows ?? normalizeCashflowRows(await readXlsxRows(await file!.arrayBuffer()));
@@ -253,13 +254,13 @@ export function ClosedHistoryDesk() {
         const tradeRange = executions.map(row => row.time).filter(Number.isFinite);
         const feeSpan = feeRange.length ? new Date(Math.min(...feeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...feeRange)).toISOString().slice(0, 10) : 'unparseable';
         const tradeSpan = tradeRange.length ? new Date(Math.min(...tradeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...tradeRange)).toISOString().slice(0, 10) : 'unparseable';
-        setCashflowImportMessage(`Saved ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows (${validFeeDates} with valid dates; ${feeSpan}), but none overlapped ${segments.length} FIFO-matched closed trade segments from ${validTradeDates} dated broker executions (${tradeSpan}). Cashflow data is saved; check the date ranges and broker execution data to allocate fees.`);
+        if (showImportMessage) setCashflowImportMessage(`Saved ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows (${validFeeDates} with valid dates; ${feeSpan}), but none overlapped ${segments.length} FIFO-matched closed trade segments from ${validTradeDates} dated broker executions (${tradeSpan}). Cashflow data is saved; check the date ranges and broker execution data to allocate fees.`);
         return;
       }
       setBrokerTrades(brokerExecutions.length ? updatedExecutions : brokerTrades);
-      setCashflowImportMessage(`Saved ${imported.length} cashflow rows; allocated ${allocatedDailyFees.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} closed trade rows (${matchedFeeRows} fee dates matched). Saved rows can be reused after refresh.`);
+      if (showImportMessage) setCashflowImportMessage(`Saved ${imported.length} cashflow rows; allocated ${allocatedDailyFees.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} closed trade rows (${matchedFeeRows} fee dates matched). Saved rows can be reused after refresh.`);
     } catch (error) {
-      setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
+      if (showImportMessage) setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
     } finally {
       setCashflowImporting(false);
     }
@@ -466,7 +467,7 @@ export function ClosedHistoryDesk() {
         </div>
       </div>
 
-      {cashflowImportMessage && <p role="status" class="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300">{cashflowImportMessage}</p>}
+      {cashflowImportMessage && <p role="status" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300 transition-all">{cashflowImportMessage}</p>}
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Realized net P&amp;L</div>
