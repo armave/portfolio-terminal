@@ -298,9 +298,11 @@ export default {
                 } finally {
                     bodyReader.releaseLock();
                 }
+                const boundedHeaders = new Headers(request.headers);
+                boundedHeaders.delete("Content-Length");
                 request = new Request(request.url, {
                     method: request.method,
-                    headers: request.headers,
+                    headers: boundedHeaders,
                     body: new Blob(chunks)
                 });
             }
