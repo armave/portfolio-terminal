@@ -299,13 +299,13 @@ export default {
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
-        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "quote"].includes(action)) {
+        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-report", "freedom-quote", "freedom-news", "freedom-history", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
             return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
         }
-        if ((action === "news" || action === "provider-quote" || action === "stocktwits" || action === "freedom-quote" || action === "freedom-news" || action === "freedom-history" || action === "quote") && request.method !== "GET") {
+        if ((action === "news" || action === "provider-quote" || action === "stocktwits" || action === "freedom-quote" || action === "freedom-news" || action === "freedom-history" || action === "freedom-trades" || action === "freedom-report" || action === "quote") && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
 
@@ -399,6 +399,46 @@ export default {
                 return new Response(JSON.stringify({
                     ok: true,
                     provider: "Freedom TradeNet",
+                    data
+                }), { headers: corsHeaders });
+            }
+
+            // Read-only broker-report slices for inspecting historical trades and charges.
+            // The command and report type are allowlisted server-side; clients cannot invoke arbitrary TradeNet commands.
+            if (action === "freedom-report") {
+                if (request.method !== "GET") {
+                    return jsonError("Freedom broker reports only support GET.", 405, corsHeaders);
+                }
+                const dateStart = url.searchParams.get("date_start") || "";
+                const dateEnd = url.searchParams.get("date_end") || "";
+                const reportType = url.searchParams.get("type") || "";
+                const allowedReportTypes = new Set(["trades", "commissions", "cash_flows"]);
+                const isIsoDate = (value) => {
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+                    const parsed = new Date(`${value}T00:00:00.000Z`);
+                    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+                };
+                if (!isIsoDate(dateStart) || !isIsoDate(dateEnd) || dateStart > dateEnd) {
+                    return jsonError("Valid date_start and date_end are required in YYYY-MM-DD format, with start not after end.", 400, corsHeaders);
+                }
+                if (!allowedReportTypes.has(reportType)) {
+                    return jsonError("Unsupported report type. Use trades, commissions, or cash_flows.", 400, corsHeaders);
+                }
+                const params = {
+                    date_start: dateStart,
+                    date_end: dateEnd,
+                    time_period: "23:59:59",
+                    format: "json",
+                    language: "en",
+                    type: reportType
+                };
+                const data = await requestTradeNet(env, "getBrokerReport", params);
+                return new Response(JSON.stringify({
+                    ok: true,
+                    provider: "Freedom TradeNet",
+                    reportType,
+                    dateStart,
+                    dateEnd,
                     data
                 }), { headers: corsHeaders });
             }
