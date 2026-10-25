@@ -38,7 +38,12 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
 
-    const response = await fetch(`https://tradernet.com/api/${command}`, {
+    // Freedom Broker Armenia documents cashflows at this regional endpoint.
+    // Keep the command path fixed and server-side; never accept an upstream URL from clients.
+    const endpoint = command === "getCashflows"
+        ? "https://tradernet.am/tradernet-api/get-cashflows"
+        : `https://tradernet.com/api/${command}`;
+    const response = await fetch(endpoint, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
