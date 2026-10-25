@@ -802,6 +802,27 @@ async function performPushCloudState(
     const stateToEncrypt = { ...currentState };
     delete stateToEncrypt.gatewaySecret;
     delete stateToEncrypt.marginBalance;
+    // Broker API rows may contain a large duplicated raw payload. Cloud sync
+    // only needs normalized execution fields and fee-allocation metadata.
+    if (Array.isArray(stateToEncrypt.brokerExecutedTrades)) {
+      stateToEncrypt.brokerExecutedTrades = stateToEncrypt.brokerExecutedTrades.map((trade: any) => ({
+        id: trade?.id,
+        ticker: trade?.ticker,
+        side: trade?.side,
+        quantity: trade?.quantity,
+        price: trade?.price,
+        currency: trade?.currency,
+        executedAt: trade?.executedAt,
+        tradeValue: trade?.tradeValue,
+        profit: trade?.profit,
+        marginFee: trade?.marginFee,
+        commission: trade?.commission,
+        commissionCurrency: trade?.commissionCurrency,
+        marginFeeAllocations: trade?.marginFeeAllocations,
+        feesAndCommissions: trade?.feesAndCommissions,
+        netProfit: trade?.netProfit
+      }));
+    }
     const ciphertext = await encryptCloudPayload(JSON.stringify(stateToEncrypt), currentSecret);
     const payload = { encryptedPayload: ciphertext };
 
