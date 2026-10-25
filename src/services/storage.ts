@@ -285,17 +285,37 @@ export function saveState(
   const storage = getBrowserStorage();
   if (!storage) return false;
 
+  let stateChanged = true;
   try {
+    const previousRaw = storage.getItem(STORAGE_KEY_STATE);
+    let previousComparable = '';
+    if (previousRaw) {
+      try {
+        const previous = JSON.parse(previousRaw);
+        delete previous.lastUpdated;
+        delete previous.gatewaySecret;
+        previousComparable = JSON.stringify(previous);
+      } catch {
+        // Corrupt/legacy storage should be repaired and synced by this save.
+      }
+    }
+
     state.lastUpdated = Date.now();
     const persistedState = { ...state };
     delete persistedState.gatewaySecret;
+    const nextComparable = JSON.stringify(persistedState, (key, value) =>
+      key === 'lastUpdated' ? undefined : value
+    );
+    stateChanged = previousComparable !== nextComparable;
     storage.setItem(STORAGE_KEY_STATE, JSON.stringify(persistedState));
   } catch (err) {
     console.error('Failed to save state:', err);
     return false;
   }
 
-  if (typeof onPushToGist === 'function') {
+  // Opening a section or re-saving an identical state must not trigger a full
+  // cloud write. Sync only when persisted portfolio data actually changed.
+  if (stateChanged && typeof onPushToGist === 'function') {
     try {
       onPushToGist(false);
     } catch (err) {
