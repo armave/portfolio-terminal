@@ -268,6 +268,24 @@ export default {
             return jsonError("Method not allowed.", 405, corsHeaders);
         }
 
+        // Parse and validate the request contract before reading any POST body.
+        // Authenticated but invalid requests should not consume the body budget.
+        const url = new URL(request.url);
+        const action = url.searchParams.get("action");
+        const pathname = url.pathname;
+        const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
+
+        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"].includes(action)) {
+            return jsonError("Unsupported action.", 400, corsHeaders);
+        }
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"]);
+        if (getOnlyActions.has(action) && request.method !== "GET") {
+            return jsonError("This action only supports GET.", 405, corsHeaders);
+        }
+        if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
+            return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
+        }
+
         // SECURITY CHECK: Validate Gateway Secret
         const authHeader = request.headers.get("Authorization") || "";
         const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim();
@@ -317,21 +335,6 @@ export default {
                     body: new Blob(chunks)
                 });
             }
-        }
-
-        const url = new URL(request.url);
-        const action = url.searchParams.get("action");
-        const pathname = url.pathname;
-        const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
-
-        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"].includes(action)) {
-            return jsonError("Unsupported action.", 400, corsHeaders);
-        }
-        if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
-            return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
-        }
-        if ((action === "news" || action === "provider-quote" || action === "stocktwits" || action === "freedom-quote" || action === "freedom-news" || action === "freedom-history" || action === "quote") && request.method !== "GET") {
-            return jsonError("This action only supports GET.", 405, corsHeaders);
         }
 
         try {
