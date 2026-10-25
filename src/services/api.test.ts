@@ -627,6 +627,27 @@ describe('Yahoo deep-data request deduplication', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('evicts the oldest deep-data cache entry after the cache reaches its bound', async () => {
+    clearYahooDeepStockDataCache();
+    for (let index = 0; index <= 500; index += 1) {
+      rememberYahooDeepStockData({ symbol: `CACHE${String(index).padStart(3, '0')}`, marker: index });
+    }
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => ({ symbol: 'CACHE000', marker: 'refetched' })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchYahooDeepStockData('CACHE000')).resolves.toEqual({
+      symbol: 'CACHE000',
+      marker: 'refetched'
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('does not cache failed ticker payloads', async () => {
     clearYahooDeepStockDataCache();
     const fetchMock = vi.fn().mockResolvedValue({
