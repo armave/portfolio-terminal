@@ -811,4 +811,25 @@ describe('authenticate before consuming request bodies', () => {
     expect(response.status).toBe(401);
     expect(reads).toBe(0);
   });
+
+  it('rejects authenticated POSTs to GET-only actions before reading their body stream', async () => {
+    let reads = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        reads += 1;
+        controller.enqueue(new TextEncoder().encode('{"unused":true}'));
+      }
+    }, { highWaterMark: 0 });
+    const request = new Request('https://worker.test/?action=provider-quote&provider=finnhub&symbol=AAPL', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Auth': 'expected-secret' },
+      body,
+      duplex: 'half'
+    });
+
+    const response = await worker.fetch(request, { GATEWAY_SECRET: 'expected-secret' });
+
+    expect(response.status).toBe(405);
+    expect(reads).toBe(0);
+  });
 });
