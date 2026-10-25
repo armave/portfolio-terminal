@@ -240,11 +240,13 @@ describe('Freedom broker report diagnostic endpoint', () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const upstreamUrl = new URL(String(fetchMock.mock.calls[0][0]));
-    expect(upstreamUrl.origin + upstreamUrl.pathname).toBe('https://tradernet.am/api/');
-    expect(fetchMock.mock.calls[0][1].method).toBe('GET');
-    const body = JSON.parse(upstreamUrl.searchParams.get('q'));
+    expect(upstreamUrl.origin + upstreamUrl.pathname).toBe('https://tradernet.am/api/getBrokerReport');
+    const requestOptions = fetchMock.mock.calls[0][1];
+    expect(requestOptions.method).toBe('POST');
+    expect(requestOptions.headers['Content-Type']).toBe('application/json');
+    expect(requestOptions.headers['X-NtApi-Timestamp']).toEqual(expect.any(String));
+    const body = JSON.parse(requestOptions.body);
     expect(body.cmd).toBe('getBrokerReport');
-    expect(body.nonce).toEqual(expect.any(Number));
     expect(body.params).toEqual({
       date_start: '2026-01-01',
       date_end: '2026-01-31',
@@ -253,9 +255,7 @@ describe('Freedom broker report diagnostic endpoint', () => {
       type: 'cash_flows',
       language: 'en'
     });
-    expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
-    expect(fetchMock.mock.calls[0][1].headers['X-NtApi-Timestamp']).toBeUndefined();
-    expect(fetchMock.mock.calls[0][1].headers['X-NtApi-Sig']).toEqual(expect.any(String));
+    expect(requestOptions.headers['X-NtApi-Sig']).toEqual(expect.any(String));
   });
 
   it('surfaces only a sanitized upstream error message for HTTP 400 responses', async () => {
@@ -289,7 +289,10 @@ describe('Freedom broker report diagnostic endpoint', () => {
     );
     expect(response.status).toBe(200);
     const upstreamUrl = new URL(String(fetchMock.mock.calls[0][0]));
-    const body = JSON.parse(upstreamUrl.searchParams.get('q'));
+    expect(upstreamUrl.origin + upstreamUrl.pathname).toBe('https://tradernet.am/api/getBrokerReport');
+    const requestOptions = fetchMock.mock.calls[0][1];
+    expect(requestOptions.method).toBe('POST');
+    const body = JSON.parse(requestOptions.body);
     expect(body.cmd).toBe('getBrokerReport');
     expect(body.params).toEqual({
       date_start: '2026-01-01',
@@ -314,8 +317,10 @@ describe('Freedom broker report diagnostic endpoint', () => {
     );
     expect(response.status).toBe(200);
     const upstreamUrl = new URL(String(fetchMock.mock.calls[0][0]));
-    const body = JSON.parse(upstreamUrl.searchParams.get('q'));
-    expect(fetchMock.mock.calls[0][1].method).toBe('GET');
+    expect(upstreamUrl.origin + upstreamUrl.pathname).toBe('https://tradernet.am/api/getBrokerReport');
+    const requestOptions = fetchMock.mock.calls[0][1];
+    expect(requestOptions.method).toBe('POST');
+    const body = JSON.parse(requestOptions.body);
     expect(body.cmd).toBe('getBrokerReport');
     expect(body.params).toEqual({
       date_start: '2026-01-01',
