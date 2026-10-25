@@ -107,13 +107,12 @@ export function ClosedHistoryDesk() {
   const [brokerTradesError, setBrokerTradesError] = useState(false);
   const [cashflowImporting, setCashflowImporting] = useState(false);
   const [cashflowImportMessage, setCashflowImportMessage] = useState('');
-  const handleImportCashflows = async () => {
+  const handleImportCashflows = async (file: File) => {
     setCashflowImporting(true);
     setCashflowImportMessage('');
     try {
-      const response = await fetch('/tradernet_table%20(1).xlsx', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Could not load the cashflows workbook from public/.');
-      const rows = await readXlsxRows(await response.arrayBuffer());
+      if (!/\\.xlsx?$/i.test(file.name)) throw new Error('Please select an Excel .xlsx or .xls file.');
+      const rows = await readXlsxRows(await file.arrayBuffer());
       const imported = normalizeCashflowRows(rows);
       const existing = state.cashflows || [];
       const existingIds = new Set(existing.map(item => item.id));
@@ -254,9 +253,15 @@ export function ClosedHistoryDesk() {
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <button type="button" disabled={cashflowImporting} onClick={handleImportCashflows} class="h-8 rounded border border-amber-600 bg-amber-600 px-3 text-xs font-bold text-black hover:bg-amber-500 disabled:opacity-50">
+          <label class="h-8 rounded border border-amber-600 bg-amber-600 px-3 text-xs font-bold text-black hover:bg-amber-500 cursor-pointer inline-flex items-center justify-center">
             {cashflowImporting ? "Importing…" : "Import Cashflows"}
-          </button>
+            <input type="file" accept=".xlsx,.xls" disabled={cashflowImporting} class="sr-only" onChange={(event) => {
+              const input = event.currentTarget as HTMLInputElement;
+              const file = input.files?.[0];
+              if (file) void handleImportCashflows(file);
+              input.value = "";
+            }} />
+          </label>
           <div class="text-xs font-mono text-slate-500">
             {trades.length} records ({appTrades.length} app · {brokerRows.length} Freedom)
           </div>
