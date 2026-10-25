@@ -73,3 +73,26 @@ Also inspect the final diff, GitHub Actions results for the exact PR head, Worke
 ## Verification status
 
 This document records audit scope and implementation requirements. The GitHub API changes alone do not execute the project test suite or constitute a penetration test. Report actual local/CI results before declaring the full audit complete.
+
+
+## Progress log
+
+### 2026-10-25 — Pass 2: repository and Worker boundary review
+
+**Completed in branch**
+- Added gateway tests for missing credentials, wrong X-App-Auth, wrong Bearer credentials, unsupported methods, and unknown actions. The tests assert rejected requests do not call the upstream fetch mock.
+- Added tests for invalid provider symbols and declared request bodies over the configured 20 MiB limit, also asserting no upstream request occurs.
+- Confirmed the existing PR CI workflow already runs on pull requests and pushes to main, uses Node 22 and npm ci, and runs typecheck, tests, dead-code validation, production dependency audit, and production build. It also declares read-only repository permissions and workflow concurrency cancellation. Avoid duplicating these existing gates without a demonstrated gap.
+
+**Review notes / not yet resolved**
+- The Worker maintains module-level provider response, in-flight, and cooldown maps. Response cache entries are capped at 500, but cooldown and in-flight maps need lifecycle review under high-cardinality traffic; cache keys and account isolation must be verified for each provider/action.
+- The Worker enforces gateway authentication for non-OPTIONS requests and validates supported actions and symbols. The new tests characterize these expected contracts but have not been executed in this editing session.
+- The existing upstream timeout helper keeps cancellation wired through response-body consumption. Continue checking each response parsing path and ensure cancellation/size handling is consistent.
+- React/Preact overlap is not yet changed: remove dependencies only after confirming imports, JSX runtime, tests, and production build behavior.
+- Financial-state, encrypted cloud sync, and deployment permissions still require targeted review and actual CI results.
+
+**Validation status**
+- GitHub PR metadata confirms the working PR is open and draft.
+- No local test/build execution has been performed through the GitHub file-editing connector.
+- The available workflow-run lookup returned no run for the earlier PR head; verify checks again after the latest commit.
+- Do not mark any security finding fixed solely because a regression test has been added.
