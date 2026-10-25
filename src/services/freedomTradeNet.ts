@@ -43,16 +43,19 @@ export async function requestTradeNet(
     const bytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body + timestamp));
     const signature = Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
 
-    const endpoint = command === "getBrokerReport" ? "https://tradernet.am/api/" : `https://tradernet.am/api/${command}`;
+    const isBrokerReport = command === "getBrokerReport";
+    const endpoint = isBrokerReport
+        ? `https://tradernet.am/api/?q=${encodeURIComponent(body)}`
+        : `https://tradernet.am/api/${command}`;
     const response = await fetch(endpoint, {
-        method: "POST",
+        method: isBrokerReport ? "GET" : "POST",
         headers: {
             "Content-Type": "application/json",
             "X-NtApi-PublicKey": env.FREEDOM_PUBLIC_KEY,
             "X-NtApi-Sig": signature,
             "X-NtApi-Timestamp": timestamp
         },
-        body,
+        ...(isBrokerReport ? {} : { body }),
         signal: AbortSignal.timeout(12000)
     });
 
