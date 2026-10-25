@@ -187,7 +187,16 @@ export function ClosedHistoryDesk() {
         const persisted = { ...(trade.marginFeeAllocations || {}) } as Record<string, number>;
         Object.entries(incoming).forEach(([id, amount]) => { persisted[id] = Number(amount.toFixed(6)); });
         const marginFee = Number(Object.values(persisted).reduce((sum, amount) => sum + (Number(amount) || 0), 0).toFixed(2));
-        updatedTradeCount++; return { ...trade, marginFeeAllocations: persisted, marginFee };
+        updatedTradeCount++;
+        const commission = Math.abs(Number(trade.commission ?? 0)) || 0;
+        const profit = trade.profit == null ? null : Number(trade.profit);
+        return {
+          ...trade,
+          marginFeeAllocations: persisted,
+          marginFee,
+          feesAndCommissions: Number((commission + marginFee).toFixed(2)),
+          netProfit: profit == null ? null : Number((profit - marginFee).toFixed(2))
+        };
       });
       let updatedTrades = appTrades;
       if (!brokerExecutions.length) {
