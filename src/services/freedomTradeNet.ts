@@ -45,8 +45,8 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
 
     const isBrokerReport = command === "getBrokerReport";
     const requestUrl = isBrokerReport
-        ? `https://tradernet.com/api/?q=${encodeURIComponent(body)}`
-        : `https://tradernet.com/api/${command}`;
+        ? `https://tradernet.am/api/?q=${encodeURIComponent(body)}`
+        : `https://tradernet.am/api/${command}`;
     const response = await fetch(requestUrl, {
         method: isBrokerReport ? "GET" : "POST",
         headers: {
