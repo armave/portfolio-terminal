@@ -19,9 +19,9 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
 
     const params: Record<string, string | number | boolean> = paramsOverride ?? (command === "getTradesHistory" ? { max: 100, sort: 1 } : {});
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    // The broker-report endpoint documents GET /api/?q=<JSON payload>.
-    // API-key authentication signs GET requests with the Unix timestamp alone;
-    // POST requests sign the exact JSON body followed by that timestamp.
+    // Broker-report GET uses the documented q=<JSON payload> format.
+    // The supplied broker-report API example signs the exact serialized payload;
+    // existing POST commands retain their current body + timestamp signing scheme.
     const requestPayload = command === "getBrokerReport"
         ? { cmd: command, nonce: Date.now(), params }
         : { cmd: command, params };
@@ -33,7 +33,7 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
         false,
         ["sign"]
     );
-    const signatureInput = command === "getBrokerReport" ? timestamp : body + timestamp;
+    const signatureInput = command === "getBrokerReport" ? body : body + timestamp;
     const bytes = await crypto.subtle.sign(
         "HMAC",
         key,
@@ -53,7 +53,7 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
             ...(isBrokerReport ? {} : { "Content-Type": "application/json" }),
             "X-NtApi-PublicKey": env.FREEDOM_PUBLIC_KEY,
             "X-NtApi-Sig": signature,
-            "X-NtApi-Timestamp": timestamp
+            ...(isBrokerReport ? {} : { "X-NtApi-Timestamp": timestamp })
         },
         ...(isBrokerReport ? {} : { body }),
         signal: AbortSignal.timeout(12000)
