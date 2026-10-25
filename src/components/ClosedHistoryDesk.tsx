@@ -71,7 +71,7 @@ function normalizeCashflowRows(rows: string[][]): ImportedCashflow[] {
   const find = (...names: string[]) => headers.findIndex(header => names.includes(header.replace(/[ _-]+/g, '')));
   const dateIdx = headers.findIndex(header => /date|time|дата|ժամանակ|датаоперации/.test(header.replace(/[ _-]+/g, '')));
   const amountIdx = headers.findIndex(header => /amount|sum|value|cashflow|fee|interest|commission|сумма|начислен|списан|процент|комис|տոկոս|գումար/.test(header.replace(/[ _-]+/g, '')));
-  const typeIdx = headers.findIndex(header => /type|operation|kind|description|comment|details|назначение|операц|тип|описан|մեկնաբան|գործարք/.test(header.replace(/[ _-]+/g, '')));
+  const typeIdx = headers.findIndex(header => /type|direction|operation|kind|description|comment|details|назначение|операц|тип|описан|մեկնաբան|գործարք/.test(header.replace(/[ _-]+/g, '')));
   const currencyIdx = find('currency', 'curr');
   const descIdx = headers.findIndex(header => /description|comment|details|name|purpose|ticker|symbol|instrument|asset|назначение|описан|коммент|тикер|инструмент|ценнаябумага|актив|մեկնաբան|գործիք/.test(header.replace(/[ _-]+/g, '')));
   if (dateIdx < 0 || amountIdx < 0) {
@@ -118,13 +118,15 @@ export function ClosedHistoryDesk() {
 
       // The uploaded workbook is a one-off calculation input only. Do not add
       // its rows to portfolio state or send the workbook data to Cloudflare.
-      const feeRows = imported.filter(item =>
-        /negative cash balance fee|margin|interest|financing|overnight|rollover|borrow|fee for negative cash balance/i.test(
-          [item.type, item.description, ...Object.entries(item.raw).map(([key, value]) => key + ' ' + value)].join(' ')
-        ) && /negative cash balance fee|margin|interest|financing|overnight|rollover|borrow/i.test(
-          [item.type, item.description].join(' ')
-        )
-      );
+      const feeRows = imported.filter(item => {
+        const text = [item.type, item.description, ...Object.values(item.raw)].join(' ').toLowerCase();
+        // Exports commonly label the direction in a separate "Direction" column,
+        // while the "Operation №" column is only an ID. Inspect every cell so
+        // daily negative-cash fees are not missed due to column selection.
+        const isDailyFinancingFee = /negative\\s+cash\\s+balance\\s+fee|fee\\s+for\\s+negative\\s+cash\\s+balance|margin\\s+(?:fee|interest)|(?:daily\\s+)?(?:margin|financing|overnight|rollover|borrow(?:ing)?)\\s+(?:fee|charge|interest)|interest\\s+(?:fee|charge)/i.test(text);
+        const isTradeCommission = /trading\\s+fee|commission\\s+for\\s+trade/i.test(text);
+        return isDailyFinancingFee && !isTradeCommission;
+      });
       const trades = [...(state.closedTrades || [])] as any[];
       const parseTradeDate = (value: unknown): number => {
         if (typeof value === 'number' || (typeof value === 'string' && /^\d{4,6}(\\.\d+)?$/.test(value.trim()))) {
