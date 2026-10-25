@@ -429,7 +429,6 @@ export default {
                     date_end: dateEnd,
                     time_period: "23:59:59",
                     format: "json",
-                    language: "en",
                     type: reportType
                 };
                 const data = await requestTradeNet(env, "getBrokerReport", params);
