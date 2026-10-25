@@ -115,60 +115,63 @@ export function ClosedHistoryDesk() {
       if (!file.name.toLowerCase().endsWith('.xlsx')) throw new Error('Please select an Excel .xlsx file.');
       const rows = await readXlsxRows(await file.arrayBuffer());
       const imported = normalizeCashflowRows(rows);
-      const existing = state.cashflows || [];
-      const existingIds = new Set(existing.map(item => item.id));
-      const fresh = imported.filter(item => !existingIds.has(item.id));
-      if (!fresh.length) {
-        setCashflowImportMessage(`No new rows imported; skipped ${imported.length} duplicates.`);
-        return;
-      }
+      if (!imported.length) throw new Error('No cashflow rows were found in this workbook.');
 
-      // Identify margin-fee rows and apply each fee to the closed trade(s)
-      // whose purchase-to-sale interval contains the fee's transaction date.
-      const feeRows = fresh.filter(item => /margin|interest|financing|overnight|rollover|borrow|fee|commission|процент|маржин|комис|плата за пользован|տոկոս|մարժին/i.test(
+      // The uploaded workbook is a one-off calculation input only. Do not add
+      // its rows to portfolio state or send the workbook data to Cloudflare.
+      const feeRows = imported.filter(item => /margin|interest|financing|overnight|rollover|borrow|fee|commission|процент|маржин|комис|плата за пользован|տոկոս|մարժին/i.test(
         [item.type, item.description, ...Object.entries(item.raw).map(([key, value]) => key + ' ' + value)].join(' ')
       ));
       const trades = [...(state.closedTrades || [])] as any[];
       let matchedFees = 0;
+      let updatedTradeCount = 0;
+      const parseTradeDate = (value: unknown): number => {
+        if (typeof value === 'number' || (typeof value === 'string' && /^\\d{4,6}(\\.\\d+)?$/.test(value.trim()))) {
+          const serial = Number(value);
+          if (serial > 20000 && serial < 100000) return Date.UTC(1899, 11, 30) + serial * 86400000;
+        }
+        const text = String(value ?? '').trim();
+        if (!text) return NaN;
+        const dmy = text.match(/^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})$/);
+        if (dmy) return Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+        const parsed = Date.parse(text);
+        return Number.isFinite(parsed) ? Date.UTC(new Date(parsed).getUTCFullYear(), new Date(parsed).getUTCMonth(), new Date(parsed).getUTCDate()) : NaN;
+      };
+      const feeTicker = (fee: typeof imported[number]) => {
+        const entry = Object.entries(fee.raw).find(([key]) => /^(ticker|symbol|instrument|asset|security|тикер|инструмент)$/i.test(key.trim()));
+        return String(entry?.[1] ?? '').trim().toUpperCase();
+      };
+      const feeDate = (fee: typeof imported[number]) => {
+        const raw = Object.entries(fee.raw).find(([key]) => /date|time|дата/i.test(key.replace(/[ _-]/g, '')));
+        return parseTradeDate(raw?.[1] ?? fee.date);
+      };
       const updatedTrades = trades.map(trade => {
         const ticker = String(trade.ticker ?? trade.symbol ?? trade.instrument ?? '').trim().toUpperCase();
-        const parseTradeDate = (value: unknown): number => {
-          if (typeof value === 'number' || (typeof value === 'string' && /^\\d{4,6}(\\.\\d+)?$/.test(value.trim()))) {
-            const serial = Number(value);
-            if (serial > 20000 && serial < 100000) return Date.UTC(1899, 11, 30) + serial * 86400000;
-          }
-          const text = String(value ?? '').trim();
-          if (!text) return NaN;
-          const iso = Date.parse(text);
-          if (Number.isFinite(iso)) return Date.UTC(new Date(iso).getUTCFullYear(), new Date(iso).getUTCMonth(), new Date(iso).getUTCDate());
-          const match = text.match(/^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})$/);
-          return match ? Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1])) : NaN;
-        };
         const buyDate = parseTradeDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate ?? trade.openedAt ?? trade.date);
         const sellDate = parseTradeDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.closeDate ?? trade.executedAt);
         if (!ticker || !Number.isFinite(buyDate) || !Number.isFinite(sellDate)) return trade;
         const matching = feeRows.filter(fee => {
-          const rawEntries = Object.entries(fee.raw);
-          const feeTicker = rawEntries.find(([key]) => /^(ticker|symbol|instrument|asset|security)$/i.test(key.trim()))?.[1]?.trim().toUpperCase();
-          const feeDate = parseTradeDate(fee.date);
-          return Number.isFinite(feeDate) && feeDate >= buyDate && feeDate <= sellDate &&
-            (!feeTicker || feeTicker === ticker) &&
-            (feeTicker ? true : trades.filter(other => {
-              const otherBuy = parseTradeDate(other.buyDate ?? other.purchaseDate ?? other.entryDate ?? other.openDate ?? other.openedAt ?? other.date);
-              const otherSell = parseTradeDate(other.sellDate ?? other.exitDate ?? other.closedAt ?? other.closeDate ?? other.executedAt);
-              return other !== trade && feeDate >= otherBuy && feeDate <= otherSell;
-            }).length === 0);
+          const date = feeDate(fee);
+          const symbol = feeTicker(fee);
+          if (!Number.isFinite(date) || date < buyDate || date > sellDate) return false;
+          if (symbol) return symbol === ticker;
+          // Without a symbol, allocate only if a single closed trade covers that date.
+          return trades.filter(other => {
+            const otherBuy = parseTradeDate(other.buyDate ?? other.purchaseDate ?? other.entryDate ?? other.openDate ?? other.openedAt ?? other.date);
+            const otherSell = parseTradeDate(other.sellDate ?? other.exitDate ?? other.closedAt ?? other.closeDate ?? other.executedAt);
+            return Number.isFinite(otherBuy) && Number.isFinite(otherSell) && date >= otherBuy && date <= otherSell;
+          }).length === 1;
         });
         if (!matching.length) return trade;
-        const feeAmount = matching.reduce((sum, fee) => sum + Math.abs(fee.amount), 0);
+        const feeAmount = matching.reduce((sum, fee) => sum + Math.abs(Number(fee.amount) || 0), 0);
+        if (!feeAmount) return trade;
         matchedFees += matching.length;
-        const previousMargin = Number(trade.marginInterest ?? trade.marginFee ?? 0) || 0;
+        updatedTradeCount++;
         const previousFees = Number(trade.feesAndCommissions ?? trade.totalCommissions ?? trade.commissions ?? 0) || 0;
+        const previousMargin = Number(trade.marginInterest ?? trade.marginFee ?? 0) || 0;
         const previousNet = Number(trade.netProfit ?? trade.netRealizedGain ?? trade.grossProfit ?? 0) || 0;
         return {
           ...trade,
-          // The Closed History table reads feesAndCommissions first; add the
-          // margin charge there so it appears in the visible Fees & Comm. column.
           feesAndCommissions: Number((previousFees + feeAmount).toFixed(2)),
           totalCommissions: Number((Number(trade.totalCommissions ?? previousFees) + feeAmount).toFixed(2)),
           marginInterest: Number((previousMargin + feeAmount).toFixed(2)),
@@ -177,17 +180,12 @@ export function ClosedHistoryDesk() {
           netRealizedGain: Number((previousNet - feeAmount).toFixed(2))
         };
       });
-      // Persist every imported row (including raw source columns) in the canonical
-      // portfolio state, then explicitly push that exact snapshot to the Cloudflare state API.
-      const nextCashflows = [...fresh, ...existing];
-      portfolioStore.setState({ cashflows: nextCashflows, ...(matchedFees ? { closedTrades: updatedTrades } : {}) });
-      const cloudSynced = await syncCloudState('push', {
-        state: portfolioStore.getState(),
-        onStatusChange: status => {
-          if (status === 'error') setCashflowImportMessage('Cashflows saved locally, but Cloudflare sync failed. Check your Gateway Secret and try syncing again.');
-        }
-      });
-      setCashflowImportMessage(`Imported ${fresh.length} new cashflows (${nextCashflows.length} stored in portfolio state). ${cloudSynced ? 'Cloudflare sync successful.' : 'Saved locally; Cloudflare sync not confirmed.'} Detected ${feeRows.length} possible margin-fee rows and matched ${matchedFees} to closed trades; skipped ${imported.length - fresh.length} duplicates.${feeRows.length === 0 ? ` Check fee-description/type columns. Detected headers: ${Object.keys(imported[0]?.raw || {}).join(', ')}` : ''}`);
+      if (!matchedFees) {
+        setCashflowImportMessage(`Read ${imported.length} workbook rows; detected ${feeRows.length} possible fee rows, but matched none to closed trades. No state was changed. Check workbook date/ticker columns and trade purchase/sale dates.`);
+        return;
+      }
+      portfolioStore.setState({ closedTrades: updatedTrades });
+      setCashflowImportMessage(`Read ${imported.length} workbook rows; detected ${feeRows.length} possible fee rows; applied ${matchedFees} fee rows to ${updatedTradeCount} closed trades. Only updated closed trades were saved; workbook rows were not stored.`);
     } catch (error) {
       setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
     } finally {
