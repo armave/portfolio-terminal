@@ -70,10 +70,10 @@ function normalizeCashflowRows(rows: string[][]): ImportedCashflow[] {
   const headers = rows[0].map(value => value.trim().toLowerCase());
   const find = (...names: string[]) => headers.findIndex(header => names.includes(header.replace(/[ _-]+/g, '')));
   const dateIdx = find('date', 'datetime', 'operationdate', 'transactiondate', 'timestamp');
-  const amountIdx = find('amount', 'sum', 'value', 'operationamount', 'cashflow');
-  const typeIdx = find('type', 'operation', 'operationtype', 'transactiontype', 'kind');
+  const amountIdx = find('amount', 'sum', 'value', 'operationamount', 'cashflow', 'marginfee', 'fee', 'interest', 'commission');
+  const typeIdx = find('type', 'operation', 'operationtype', 'transactiontype', 'kind', 'operationname');
   const currencyIdx = find('currency', 'curr');
-  const descIdx = find('description', 'comment', 'details', 'name', 'purpose');
+  const descIdx = find('description', 'comment', 'details', 'name', 'purpose', 'ticker', 'symbol', 'instrument', 'asset');
   if (dateIdx < 0 || amountIdx < 0) {
     throw new Error('Could not identify date and amount columns. Workbook columns: ' + rows[0].join(', '));
   }
@@ -117,8 +117,50 @@ export function ClosedHistoryDesk() {
       const existing = state.cashflows || [];
       const existingIds = new Set(existing.map(item => item.id));
       const fresh = imported.filter(item => !existingIds.has(item.id));
-      if (fresh.length) portfolioStore.setState({ cashflows: [...fresh, ...existing] });
-      setCashflowImportMessage(`Imported ${fresh.length}; skipped ${imported.length - fresh.length} duplicates. Total saved: ${existing.length + fresh.length}.`);
+      if (!fresh.length) {
+        setCashflowImportMessage(`No new rows imported; skipped ${imported.length} duplicates.`);
+        return;
+      }
+
+      // Identify margin-fee rows and apply each fee to the closed trade(s)
+      // whose purchase-to-sale interval contains the fee's transaction date.
+      const feeRows = fresh.filter(item => /margin|interest|financing|overnight|rollover/i.test(
+        [item.type, item.description, ...Object.entries(item.raw).map(([key, value]) => key + ' ' + value)].join(' ')
+      ));
+      const trades = [...(state.closedTrades || [])] as any[];
+      let matchedFees = 0;
+      const updatedTrades = trades.map(trade => {
+        const ticker = String(trade.ticker ?? trade.symbol ?? '').trim().toUpperCase();
+        const buyDate = Date.parse(String(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? '').slice(0, 10));
+        const sellDate = Date.parse(String(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? '').slice(0, 10));
+        if (!ticker || !Number.isFinite(buyDate) || !Number.isFinite(sellDate)) return trade;
+        const matching = feeRows.filter(fee => {
+          const rawEntries = Object.entries(fee.raw);
+          const feeTicker = rawEntries.find(([key]) => /^(ticker|symbol|instrument|asset|security)$/i.test(key.trim()))?.[1]?.trim().toUpperCase();
+          const feeDate = Date.parse(fee.date.slice(0, 10));
+          return Number.isFinite(feeDate) && feeDate >= buyDate && feeDate <= sellDate &&
+            (!feeTicker || feeTicker === ticker) &&
+            (feeTicker ? true : trades.filter(other => {
+              const otherBuy = Date.parse(String(other.buyDate ?? other.purchaseDate ?? other.entryDate ?? '').slice(0, 10));
+              const otherSell = Date.parse(String(other.sellDate ?? other.exitDate ?? other.closedAt ?? '').slice(0, 10));
+              return other !== trade && feeDate >= otherBuy && feeDate <= otherSell;
+            }).length === 0);
+        });
+        if (!matching.length) return trade;
+        const feeAmount = matching.reduce((sum, fee) => sum + Math.abs(fee.amount), 0);
+        matchedFees += matching.length;
+        const previousMargin = Number(trade.marginInterest ?? trade.marginFee ?? 0) || 0;
+        const previousNet = Number(trade.netProfit ?? trade.netRealizedGain ?? trade.grossProfit ?? 0) || 0;
+        return {
+          ...trade,
+          marginInterest: Number((previousMargin + feeAmount).toFixed(2)),
+          marginFee: Number((previousMargin + feeAmount).toFixed(2)),
+          netProfit: Number((previousNet - feeAmount).toFixed(2)),
+          netRealizedGain: Number((previousNet - feeAmount).toFixed(2))
+        };
+      });
+      portfolioStore.setState({ cashflows: [...fresh, ...existing], ...(matchedFees ? { closedTrades: updatedTrades } : {}) });
+      setCashflowImportMessage(`Imported ${fresh.length} cashflows; matched ${matchedFees} margin-fee rows to closed trades; skipped ${imported.length - fresh.length} duplicates.`);
     } catch (error) {
       setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
     } finally {
