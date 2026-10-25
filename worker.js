@@ -1,6 +1,8 @@
 import { requestTradeNet } from "./src/services/freedomTradeNet.js";
 
-const MAX_REQUEST_BYTES = 64 * 1024;
+// Encrypted portfolio snapshots include imported broker cashflows and can exceed 64 KB.
+// Keep a bounded limit while allowing normal multi-thousand-row histories.
+const MAX_REQUEST_BYTES = 5 * 1024 * 1024;
 const MAX_PROMPT_LENGTH = 12_000;
 const MAX_TICKERS = 10;
 const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, finnhub: 5_000, twelvedata: 5_000 };
@@ -269,7 +271,7 @@ export default {
         }
         const declaredLength = Number(request.headers.get("Content-Length") || 0);
         if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
-            return jsonError("Request body exceeds the 64 KB limit.", 413, corsHeaders);
+            return jsonError("Request body exceeds the 5 MB limit.", 413, corsHeaders);
         }
         if (request.method === "POST") {
             const actionHint = new URL(request.url).searchParams.get("action");
