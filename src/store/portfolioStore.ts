@@ -385,8 +385,8 @@ export class PortfolioStore {
   }
 
   public setActiveView(view: string): void {
-    // Navigation is transient UI state: notify the UI, but don't serialize and
-    // upload the entire portfolio just because the user opened a section.
+    // Keep the preference on this device for immediate restoration, and also
+    // persist it in canonical portfolio state so the existing Worker sync saves it.
     try {
       if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', view);
     } catch {
@@ -395,7 +395,7 @@ export class PortfolioStore {
     this.update((state) => {
       if (state.activeView === view && state.selectedTicker === view) return state;
       return { ...state, activeView: view, selectedTicker: view };
-    }, false);
+    });
   }
 
   public selectTicker(ticker: string | null): void {
