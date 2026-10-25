@@ -138,11 +138,11 @@ export function ClosedHistoryDesk() {
         return Number.isFinite(parsed) ? Date.UTC(new Date(parsed).getUTCFullYear(), new Date(parsed).getUTCMonth(), new Date(parsed).getUTCDate()) : NaN;
       };
       const feeTicker = (fee: typeof imported[number]) => {
-        const entry = Object.entries(fee.raw).find(([key]) => /^(ticker|symbol|instrument|asset|security|тикер|инструмент)$/i.test(key.trim()));
+        const entry = Object.entries(fee.raw).find(([key]) => /ticker|symbol|instrument|asset|security|тикер|инструмент/i.test(key.trim()));
         return String(entry?.[1] ?? '').trim().toUpperCase();
       };
       const feeDate = (fee: typeof imported[number]) => {
-        const raw = Object.entries(fee.raw).find(([key]) => /date|time|дата/i.test(key.replace(/[ _-]/g, '')));
+        const raw = Object.entries(fee.raw).find(([key]) => /fee.*date|margin.*date|interest.*date|operation.*date|transaction.*date|date|time|дата/i.test(key.replace(/[ _-]/g, '')));
         return parseTradeDate(raw?.[1] ?? fee.date);
       };
       const updatedTrades = trades.map(trade => {
@@ -163,21 +163,27 @@ export function ClosedHistoryDesk() {
           }).length === 1;
         });
         if (!matching.length) return trade;
-        const feeAmount = matching.reduce((sum, fee) => sum + Math.abs(Number(fee.amount) || 0), 0);
+        const feeAmount = matching.reduce((sum, fee) => {
+          const feeAmountCell = Object.entries(fee.raw).find(([key]) => /margin.?fee|interest|financing|overnight|rollover|borrow.?fee|fee.?amount|commission|комис|процент|маржин|տոկոս|մարժին/i.test(key));
+          const parsedAmount = Number(String(feeAmountCell?.[1] ?? fee.amount).replace(/[^0-9.+-]/g, '').replace(/,(?=\d{3}(?:\D|$))/g, ''));
+          return sum + Math.abs(Number.isFinite(parsedAmount) ? parsedAmount : 0);
+        }, 0);
         if (!feeAmount) return trade;
         matchedFees += matching.length;
         updatedTradeCount++;
-        const previousFees = Number(trade.feesAndCommissions ?? trade.totalCommissions ?? trade.commissions ?? 0) || 0;
         const previousMargin = Number(trade.marginInterest ?? trade.marginFee ?? 0) || 0;
+        // Re-importing the same workbook must not add the same fees twice.
+        const baseFees = Math.max(0, (Number(trade.feesAndCommissions ?? trade.totalCommissions ?? trade.commissions ?? 0) || 0) - previousMargin);
         const previousNet = Number(trade.netProfit ?? trade.netRealizedGain ?? trade.grossProfit ?? 0) || 0;
+        const netBeforeMargin = previousNet + previousMargin;
         return {
           ...trade,
-          feesAndCommissions: Number((previousFees + feeAmount).toFixed(2)),
-          totalCommissions: Number((Number(trade.totalCommissions ?? previousFees) + feeAmount).toFixed(2)),
+          feesAndCommissions: Number((baseFees + previousMargin + feeAmount).toFixed(2)),
+          totalCommissions: Number((baseFees + previousMargin + feeAmount).toFixed(2)),
           marginInterest: Number((previousMargin + feeAmount).toFixed(2)),
           marginFee: Number((previousMargin + feeAmount).toFixed(2)),
-          netProfit: Number((previousNet - feeAmount).toFixed(2)),
-          netRealizedGain: Number((previousNet - feeAmount).toFixed(2))
+          netProfit: Number((netBeforeMargin - previousMargin - feeAmount).toFixed(2)),
+          netRealizedGain: Number((netBeforeMargin - previousMargin - feeAmount).toFixed(2))
         };
       });
       if (!matchedFees) {
