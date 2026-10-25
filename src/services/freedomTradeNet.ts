@@ -21,10 +21,10 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
     // sign the exact JSON body bytes concatenated with the Unix timestamp.
     const params: Record<string, string | number | boolean> = paramsOverride ?? (command === "getTradesHistory" ? { max: 100, sort: 1 } : {});
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    // The broker-report API V2 example includes a top-level nonce alongside cmd and params.
-    // Use the current Unix timestamp as documented; the signature uses the same timestamp.
+    // Broker-report docs show nonce as the current millisecond timestamp (Date.now()).
+    // Keep the API V2 signature timestamp in Unix seconds, as required by the signing scheme.
     const requestPayload = command === "getBrokerReport"
-        ? { cmd: command, nonce: Number(timestamp), params }
+        ? { cmd: command, nonce: Date.now(), params }
         : { cmd: command, params };
     const body = JSON.stringify(requestPayload);
     const key = await crypto.subtle.importKey(
