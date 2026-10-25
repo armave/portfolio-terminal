@@ -276,10 +276,24 @@ export default {
             if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
                 return jsonError("POST requests must use application/json.", 415, corsHeaders);
             }
-            // Content-Length may be omitted by clients; measure the actual body as well.
-            const rawBody = await request.clone().arrayBuffer();
-            if (rawBody.byteLength > MAX_REQUEST_BYTES) {
-                return jsonError("Request body exceeds the 20 MB limit.", 413, corsHeaders);
+            // Content-Length may be omitted or forged. Count streamed bytes with a hard
+            // ceiling instead of arrayBuffer(), which would buffer an unbounded body.
+            const bodyReader = request.clone().body?.getReader();
+            if (bodyReader) {
+                let receivedBytes = 0;
+                try {
+                    while (true) {
+                        const { done, value } = await bodyReader.read();
+                        if (done) break;
+                        receivedBytes += value.byteLength;
+                        if (receivedBytes > MAX_REQUEST_BYTES) {
+                            await bodyReader.cancel("Request body exceeds the configured limit.");
+                            return jsonError("Request body exceeds the 20 MB limit.", 413, corsHeaders);
+                        }
+                    }
+                } finally {
+                    bodyReader.releaseLock();
+                }
             }
         }
 
