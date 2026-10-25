@@ -52,8 +52,20 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
 
     const data = await response.json().catch(() => null);
     if (!response.ok) {
-        // Do not return upstream response bodies, which may contain account details.
-        throw new Error(`TradeNet returned HTTP ${response.status}.`);
+        // Expose only a short, sanitized upstream error field for diagnostics; never return the full body.
+        const errorValue = data && typeof data === "object"
+            ? (data as Record<string, unknown>).errMsg
+                ?? (data as Record<string, unknown>).error
+                ?? (data as Record<string, unknown>).message
+            : null;
+        const upstreamMessage = typeof errorValue === "string"
+            ? errorValue
+            : "No upstream error message was provided.";
+        const safeMessage = upstreamMessage
+            .replace(/(public|private)?\\s*key\\s*[:=]\\s*\\S+/gi, "$1 key=[redacted]")
+            .replace(/(token|signature|sid|password)\\s*[:=]\\s*\\S+/gi, "$1=[redacted]")
+            .slice(0, 240);
+        throw new Error(`TradeNet returned HTTP ${response.status}: ${safeMessage}`);
     }
     if (!data || typeof data !== "object") {
         throw new Error("TradeNet returned a non-JSON response.");
