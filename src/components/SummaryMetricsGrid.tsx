@@ -290,67 +290,6 @@ export function SummaryMetricsGrid({
         </section>
 
         <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(cushionTotal)} />
-        <div class="portfolio-risk-summary hidden flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-300">
-          <div>
-            <span class="text-slate-500">Account Equity:</span>{' '}
-            <span id="boardEquity" class="text-white font-bold font-mono">
-              {equityText}
-            </span>
-          </div>
-          <div>
-            <span class="text-slate-500">
-              Cash / Collateral Cushion:
-            </span>{' '}
-            <span id="boardCushionMetric" class="text-cyan-400 font-bold font-mono">
-              +{formatUSD(cushionTotal)}
-            </span>
-          </div>
-          <div title="Estimated from portfolio equity and configured margin thresholds; not a live broker risk indicator.">
-            <span class="text-slate-500">Margin Risk:</span>{' '}
-            <span id="boardMarginRisk" class={risk.summaryClass}>
-              {risk.summaryText}
-            </span>
-          </div>
-          <div
-            class={risk.showRiskTriggers ? 'w-full rounded-md border border-amber-900/70 bg-slate-950/60 px-3 py-2' : 'hidden'}
-            aria-label="Margin-call risk buffer"
-            title="Estimated buffer to the margin-call trigger. This is a model estimate, not a live broker risk indicator."
-          >
-            <div class="mb-1.5 flex items-center justify-between gap-3">
-              <span class="text-slate-400 font-semibold">Risk buffer</span>
-              <span class={risk.marginCallBufferPct < 30 ? 'font-mono font-bold text-rose-400' : 'font-mono font-bold text-amber-300'}>
-                {Number.isFinite(risk.marginCallBufferPct) ? `${risk.marginCallBufferPct.toFixed(1)}%` : '—'}
-              </span>
-            </div>
-            <div class="h-2 overflow-hidden rounded-full bg-slate-800" role="progressbar" aria-label="Margin-call buffer percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Number.isFinite(risk.marginCallBufferPct) ? Math.max(0, Math.min(100, risk.marginCallBufferPct)) : 0}>
-              <div class={risk.marginCallBufferPct < 30 ? 'h-full rounded-full bg-rose-500' : 'h-full rounded-full bg-amber-400'} style={{ width: `${Math.max(0, Math.min(100, Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct : 0))}%` }}></div>
-            </div>
-            <div class="mt-1 flex justify-between text-[9px] text-slate-500">
-              <span>0% · Trigger</span>
-              <span>60% · Display threshold</span>
-            </div>
-          </div>
-          <div
-            id="boardMarginCallRow"
-            class={risk.showRiskTriggers ? '' : 'hidden'}
-            title="Estimate assumes the configured maintenance-margin ratio and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ."
-          >
-            <span class="text-slate-500">Margin-call trigger:</span>{' '}
-            <span id="boardMarginCall" class="text-amber-400 font-bold font-mono">
-              {risk.marginCallText}
-            </span>
-          </div>
-          <div
-            id="boardStopOutRow"
-            class={risk.showRiskTriggers && risk.showStopOut ? '' : 'hidden'}
-            title="Estimate assumes the configured stop-out threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ."
-          >
-            <span class="text-slate-500">Stop-out trigger:</span>{' '}
-            <span id="boardStopOut" class="text-rose-400 font-bold font-mono">
-              {risk.stopOutText}
-            </span>
-          </div>
-        </div>
       </>
     );
   }
