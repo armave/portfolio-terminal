@@ -412,7 +412,7 @@ export default {
                 const dateStart = url.searchParams.get("date_start") || "";
                 const dateEnd = url.searchParams.get("date_end") || "";
                 const reportType = url.searchParams.get("type") || "";
-                const allowedReportTypes = new Set(["account_at_end", "trades", "commissions", "cash_flows"]);
+                const allowedReportTypes = new Set(["account_at_end", "trades", "commissions", "cash_flows", "securities_flows"]);
                 const isIsoDate = (value) => {
                     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
                     const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -422,7 +422,7 @@ export default {
                     return jsonError("Valid date_start and date_end are required in YYYY-MM-DD format, with start not after end.", 400, corsHeaders);
                 }
                 if (!allowedReportTypes.has(reportType)) {
-                    return jsonError("Unsupported report type. Use account_at_end, trades, commissions, or cash_flows.", 400, corsHeaders);
+                    return jsonError("Unsupported report type. Use account_at_end, trades, commissions, cash_flows, or securities_flows.", 400, corsHeaders);
                 }
                 const params = {
                     date_start: dateStart,
