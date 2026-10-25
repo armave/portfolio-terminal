@@ -175,3 +175,11 @@ This document records audit scope and implementation requirements. The GitHub AP
 **Still pending**
 - Verify CI on the documentation-updated final head.
 - Continue final diff review for compatibility, cloud revision behavior, and deployment configuration. Keep the PR draft until final checks are green.
+### 2026-10-25 — Pass 8: keep portfolio data out of console logs
+
+**Privacy hardening**
+- Removed full decrypted cloud-state and full local portfolio objects from successful-sync console messages. Logs retain the success event without dumping balances, holdings, trade history, or other state into the browser console.
+- This is a logging-only change; sync payload handling and portfolio behavior are unchanged.
+
+**Verification note**
+- The previous code head passed both workflows. This logging change and its documentation are newer and require fresh CI on the final head.
