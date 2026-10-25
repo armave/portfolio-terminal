@@ -788,18 +788,28 @@ export async function pullCloudState(
  * Closed-history data uses its own encrypted Durable Object record so normal
  * portfolio sync never transfers the large historical arrays.
  */
+let lastSyncedBrokerTrades: any[] | undefined;
+let lastSyncedCashflows: any[] | undefined;
+
 export async function pushCloudHistory(history: { brokerExecutedTrades?: any[]; cashflows?: any[] }, secret = getActiveGatewaySecret()): Promise<boolean> {
   const brokerExecutedTrades = Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [];
   const cashflows = Array.isArray(history.cashflows) ? history.cashflows : [];
   if (!secret || (!brokerExecutedTrades.length && !cashflows.length)) return false;
+  if (brokerExecutedTrades === lastSyncedBrokerTrades && cashflows === lastSyncedCashflows) return false;
+  const url = new URL('/api/history', WORKER_PROXY_URL).toString();
+  const current = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}` } });
+  const revision = readCloudRevision(current.headers) ?? 0;
+  if (!current.ok && current.status !== 404) throw new Error(`Closed history revision check failed (HTTP ${current.status}).`);
   const plaintext = JSON.stringify({ brokerExecutedTrades, cashflows });
   const encryptedPayload = await encryptCloudPayload(plaintext, secret);
-  const res = await fetch(new URL('/api/history', WORKER_PROXY_URL).toString(), {
+  const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}`, 'If-Match': '*' },
+    headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}`, 'If-Match': `"${revision}"` },
     body: JSON.stringify({ encryptedPayload })
   });
   if (!res.ok) throw new Error(`Closed history sync failed (HTTP ${res.status}).`);
+  lastSyncedBrokerTrades = brokerExecutedTrades;
+  lastSyncedCashflows = cashflows;
   return true;
 }
 
