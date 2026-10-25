@@ -73,12 +73,12 @@ export class PortfolioStateDO {
     }
 
     const contentLength = Number(request.headers.get("Content-Length") || 0);
-    if (Number.isFinite(contentLength) && contentLength > 64 * 1024) {
-      return jsonResponse({ error: "Cloud state payload exceeds the 64 KB limit." }, 413);
+    if (Number.isFinite(contentLength) && contentLength > 20 * 1024 * 1024) {
+      return jsonResponse({ error: "Cloud state payload exceeds the 20 MB limit." }, 413);
     }
     const rawBody = await request.clone().arrayBuffer();
-    if (rawBody.byteLength > 64 * 1024) {
-      return jsonResponse({ error: "Cloud state payload exceeds the 64 KB limit." }, 413);
+    if (rawBody.byteLength > 20 * 1024 * 1024) {
+      return jsonResponse({ error: "Cloud state payload exceeds the 20 MB limit." }, 413);
     }
 
     const body = await request.json().catch(() => null);

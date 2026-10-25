@@ -309,7 +309,21 @@ export function ClosedHistoryDesk() {
     window.dispatchEvent(new CustomEvent('tradenet:request-executed-trades'));
     return () => { window.removeEventListener('tradenet:executed-trades', onTrades); window.removeEventListener('tradenet:executed-trades-error', onTradesError); };
   }, []);
-  const appTrades = (state.closedTrades || []).map((trade, index) => ({ trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const, profit: Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0), fees: Number((trade as any).feesAndCommissions ?? (trade as any).totalCommissions ?? (trade as any).commissions ?? 0) }));
+  const appTrades = (state.closedTrades || []).map((trade, index) => {
+    const marginFee = Math.abs(Number((trade as any).marginFee ?? (trade as any).marginInterest ?? 0)) || 0;
+    const baseProfit = Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0);
+    const existingFees = Number((trade as any).feesAndCommissions ?? (trade as any).totalCommissions ?? (trade as any).commissions ?? 0);
+    // External cash-flow margin fees are tracked separately from broker commissions.
+    // Add them to both displayed costs and net P&L exactly once.
+    const profitAlreadyIncludesMargin = Boolean((trade as any).marginFeeIncludedInNetProfit);
+    return {
+      trade: { ...(trade as any), source: 'app' as const },
+      index,
+      source: 'app' as const,
+      profit: baseProfit - (profitAlreadyIncludesMargin ? 0 : marginFee),
+      fees: existingFees + ((trade as any).marginFeeIncludedInFees ? 0 : marginFee)
+    };
+  });
   // Match buy lots FIFO to sell executions so both entry and exit commissions
   // are reflected in the closed-history row. Fees are allocated per share for partial closes.
   const brokerTradeMetrics = (() => {
@@ -354,6 +368,16 @@ export function ClosedHistoryDesk() {
     return metricsByObject;
   })();
   const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => ({ trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: broker.commission == null ? null : Math.abs(Number(broker.commission)) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0), netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const }, index: -1, source: 'tradenet' as const, profit: broker.profit == null ? null : Number(broker.profit) - (broker.marginFee == null ? 0 : Math.abs(Number(broker.marginFee))), fees: (broker.commission == null ? 0 : Math.abs(Number(broker.commission))) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0) + (broker.marginFee == null ? 0 : Math.abs(Number(broker.marginFee))) }));
+    const marginFee = Math.abs(Number(broker.marginFee ?? 0)) || 0;
+    const tradeFees = (broker.commission == null ? 0 : Math.abs(Number(broker.commission))) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0);
+    return {
+      trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: tradeFees + marginFee, netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const },
+      index: -1,
+      source: 'tradenet' as const,
+      profit: broker.profit == null ? null : Number(broker.profit) - marginFee,
+      fees: tradeFees + marginFee
+    };
+  });
   // Group same-ticker sell executions that occur within one hour into one closed-history row.
   // Keep separate groups when the gap from the previous execution exceeds one hour.
   const groupedBrokerRows = (() => {

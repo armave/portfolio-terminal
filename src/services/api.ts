@@ -804,6 +804,9 @@ async function performPushCloudState(
     delete stateToEncrypt.marginBalance;
     // Broker API rows may contain a large duplicated raw payload. Cloud sync
     // only needs normalized execution fields and fee-allocation metadata.
+    // A previous build may have persisted full TradeNet rows (including their
+    // duplicated raw API payload). Keep only normalized fields required for
+    // closed-history display and financing-fee reconciliation before cloud sync.
     if (Array.isArray(stateToEncrypt.brokerExecutedTrades)) {
       stateToEncrypt.brokerExecutedTrades = stateToEncrypt.brokerExecutedTrades.map((trade: any) => ({
         id: trade?.id,
@@ -853,6 +856,8 @@ async function performPushCloudState(
         holdingDays: trade?.holdingDays
       }));
     }
+    // closedTrades is the canonical editable history; do not upload a second
+    // potentially stale copy of the same rows.
     delete stateToEncrypt.closedHistory;
     const serializedState = JSON.stringify(stateToEncrypt);
     const serializedBytes = new TextEncoder().encode(serializedState).byteLength;
