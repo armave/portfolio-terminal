@@ -240,7 +240,7 @@ describe('Freedom broker report diagnostic endpoint', () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const upstreamUrl = new URL(String(fetchMock.mock.calls[0][0]));
-    expect(upstreamUrl.origin + upstreamUrl.pathname).toBe('https://tradernet.com/api/');
+    expect(upstreamUrl.origin + upstreamUrl.pathname).toBe('https://tradernet.am/api/');
     expect(fetchMock.mock.calls[0][1].method).toBe('GET');
     const body = JSON.parse(upstreamUrl.searchParams.get('q'));
     expect(body.cmd).toBe('getBrokerReport');
