@@ -252,6 +252,25 @@ describe('Freedom broker report diagnostic endpoint', () => {
     });
   });
 
+  it('surfaces only a sanitized upstream error message for HTTP 400 responses', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      errMsg: 'Invalid report type: type=bad key=secret-value',
+      account: 'do-not-expose'
+    }), { status: 400, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(
+      request('type=cash_flows&date_start=2026-01-01&date_end=2026-01-31'),
+      { GATEWAY_SECRET: 'test-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key' }
+    );
+
+    expect(response.status).toBe(500);
+    const payload = await response.json();
+    expect(payload.error).toContain('TradeNet returned HTTP 400: Invalid report type');
+    expect(payload.error).not.toContain('secret-value');
+    expect(JSON.stringify(payload)).not.toContain('do-not-expose');
+  });
+
   it.each([
     ['unsupported type', 'type=unknown&date_start=2026-01-01&date_end=2026-01-31'],
     ['invalid date', 'type=trades&date_start=2026-02-30&date_end=2026-03-01'],
