@@ -286,11 +286,9 @@ export function ClosedHistoryDesk() {
       // The canonical store persists through saveState() and the app's existing
       // Cloudflare state-sync pipeline. Keep the workbook itself out of state.
       const current = portfolioStore.getState().brokerExecutedTrades || [];
-      const fingerprint = (rows: any[]) => rows.map((row) =>
-        [row.id, row.ticker, row.side, row.quantity, row.executedAt, row.price, row.commission, row.profit,
-          row.marginFee, JSON.stringify(row.marginFeeAllocations ?? {}), row.feesAndCommissions, row.netProfit]
-          .map(value => String(value ?? '')).join('|')
-      ).join('\n');
+      // Compare the complete normalized execution history, not a subset of
+      // display fields. Incoming closed-trade metadata must sync just like cashflows.
+      const fingerprint = (rows: any[]) => JSON.stringify(rows);
       if (fingerprint(current) !== fingerprint(normalized)) {
         portfolioStore.setState({ brokerExecutedTrades: normalized.map((trade) => ({ ...trade })) });
       }
