@@ -286,14 +286,14 @@ export default {
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
-        if (action && !["state", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
         const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
-        if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && symbol && !validSymbolList(symbol)) {
+        if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && pathname !== "/api/history" && symbol && !validSymbolList(symbol)) {
             return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
         }
 
@@ -445,7 +445,7 @@ export default {
             }
 
             // --- ACTION 0: Durable Object cloud portfolio state ---
-            if (pathname === "/api/state" || action === "state") {
+            if (pathname === "/api/state" || pathname === "/api/history" || action === "state" || action === "history") {
                 if (!env.PORTFOLIO_STATE_DO) {
                     return new Response(JSON.stringify({ error: "PORTFOLIO_STATE_DO binding is missing." }), {
                         status: 500,

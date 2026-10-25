@@ -1,4 +1,6 @@
 const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
+const STORAGE_KEY_CLOSED_HISTORY = 'portfolio_closed_history_v1';
+let lastPersistedHistory: { brokerExecutedTrades: any[]; cashflows: any[] } | null = null;
 const STORAGE_KEY_LEGACY_STATE = 'portfolio_state';
 const STORAGE_KEY_GW_AUTH = '_gw_auth';
 const STORAGE_KEY_GW_AUTH_ENCRYPTED = 'gateway_secret_encrypted_v1';
@@ -285,6 +287,23 @@ export function saveState(
   const storage = getBrowserStorage();
   if (!storage) return false;
 
+  // Keep large history in a separate localStorage entry. Avoid serializing it
+  // during unrelated quote/portfolio updates.
+  const brokerExecutedTrades = Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades : [];
+  const cashflows = Array.isArray(state.cashflows) ? state.cashflows : [];
+  if (brokerExecutedTrades.length || cashflows.length) {
+    if (!lastPersistedHistory ||
+        lastPersistedHistory.brokerExecutedTrades !== brokerExecutedTrades ||
+        lastPersistedHistory.cashflows !== cashflows) {
+      try {
+        storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify({ brokerExecutedTrades, cashflows }));
+        lastPersistedHistory = { brokerExecutedTrades, cashflows };
+      } catch (err) {
+        console.error('Failed to save closed history:', err);
+      }
+    }
+  }
+
   let stateChanged = true;
   try {
     const previousRaw = storage.getItem(STORAGE_KEY_STATE);
@@ -303,6 +322,8 @@ export function saveState(
     state.lastUpdated = Date.now();
     const persistedState = { ...state };
     delete persistedState.gatewaySecret;
+    delete persistedState.brokerExecutedTrades;
+    delete persistedState.cashflows;
     const nextComparable = JSON.stringify(persistedState, (key, value) =>
       key === 'lastUpdated' ? undefined : value
     );
@@ -358,8 +379,10 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
 
       const persistedState = { ...(parsed as Record<string, unknown>) };
-      // Credentials must never be restored from portfolio snapshots.
+      // Credentials and independently persisted history are not part of the startup snapshot.
       delete persistedState.gatewaySecret;
+      delete persistedState.brokerExecutedTrades;
+      delete persistedState.cashflows;
       return { ...fallback, ...persistedState };
     }
 
@@ -367,6 +390,47 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
   } catch (err) {
     console.warn('Storage unavailable; using in-memory portfolio state:', err);
     return fallback;
+  }
+}
+
+/** Load large closed-history collections only when the history section needs them. */
+export function loadSavedHistory(): { brokerExecutedTrades: any[]; cashflows: any[] } {
+  const storage = getBrowserStorage();
+  if (!storage) return { brokerExecutedTrades: [], cashflows: [] };
+  try {
+    let raw = storage.getItem(STORAGE_KEY_CLOSED_HISTORY);
+    // One-time migration from older snapshots that stored history inline.
+    if (!raw) {
+      for (const key of [STORAGE_KEY_STATE, STORAGE_KEY_LEGACY_STATE]) {
+        try {
+          const legacyRaw = storage.getItem(key);
+          if (!legacyRaw) continue;
+          const legacy = JSON.parse(legacyRaw);
+          if (Array.isArray(legacy?.brokerExecutedTrades) || Array.isArray(legacy?.cashflows)) {
+            const migrated = {
+              brokerExecutedTrades: Array.isArray(legacy.brokerExecutedTrades) ? legacy.brokerExecutedTrades : [],
+              cashflows: Array.isArray(legacy.cashflows) ? legacy.cashflows : []
+            };
+            raw = JSON.stringify(migrated);
+            storage.setItem(STORAGE_KEY_CLOSED_HISTORY, raw);
+            break;
+          }
+        } catch {
+          // Continue to the next legacy snapshot if one is malformed.
+        }
+      }
+    }
+    if (!raw) return { brokerExecutedTrades: [], cashflows: [] };
+    const parsed = JSON.parse(raw);
+    const history = {
+      brokerExecutedTrades: Array.isArray(parsed?.brokerExecutedTrades) ? parsed.brokerExecutedTrades : [],
+      cashflows: Array.isArray(parsed?.cashflows) ? parsed.cashflows : []
+    };
+    lastPersistedHistory = history;
+    return history;
+  } catch (err) {
+    console.warn('Failed to parse saved closed history:', err);
+    return { brokerExecutedTrades: [], cashflows: [] };
   }
 }
 

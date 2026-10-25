@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js';
 import { processRollovers } from '../domain/portfolio';
-import { getGatewaySecret, loadSavedState, saveState } from './storage';
+import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { PortfolioState } from '../types/portfolio';
 
 const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
@@ -728,21 +728,28 @@ export async function pullCloudState(
       parsedState.lastRolloverTimestamp = Date.now();
     }
 
-    // Cloud can lag behind local imports/API hydration (for example, if a
-    // browser was offline during an upload). Preserve locally known source
-    // histories when cloud has no data or an older/different snapshot, then
-    // write the merged canonical state back to cloud below.
-    const localState = loadSavedState(state || {});
-    const exactData = (value: unknown) => JSON.stringify(value ?? null);
-    let mergedLocalData = false;
-    for (const key of ['cashflows', 'brokerExecutedTrades', 'closedTrades'] as const) {
-      const localRows = localState?.[key];
-      const cloudRows = parsedState?.[key];
-      if (Array.isArray(localRows) && localRows.length > 0 && exactData(localRows) !== exactData(cloudRows)) {
-        parsedState[key] = localRows;
-        mergedLocalData = true;
-      }
+    // Migrate legacy history out of the main cloud snapshot. Prefer whichever
+    // source has data; the dedicated record is written before the main snapshot
+    // is compacted, so a failed history write cannot silently discard records.
+    const localHistory = loadSavedHistory();
+    const legacyHistory = {
+      brokerExecutedTrades: Array.isArray(parsedState.brokerExecutedTrades) && parsedState.brokerExecutedTrades.length
+        ? parsedState.brokerExecutedTrades : localHistory.brokerExecutedTrades,
+      cashflows: Array.isArray(parsedState.cashflows) && parsedState.cashflows.length
+        ? parsedState.cashflows : localHistory.cashflows
+    };
+    const hasHistory = legacyHistory.brokerExecutedTrades.length > 0 || legacyHistory.cashflows.length > 0;
+    const hasLegacyCloudHistory =
+      (Array.isArray(parsedState.brokerExecutedTrades) && parsedState.brokerExecutedTrades.length > 0) ||
+      (Array.isArray(parsedState.cashflows) && parsedState.cashflows.length > 0);
+    let historyMigrationComplete = false;
+    try { historyMigrationComplete = localStorage.getItem(CLOSED_HISTORY_MIGRATION_KEY) === '1'; } catch { /* migrate safely when storage is unavailable */ }
+    if (hasHistory && (hasLegacyCloudHistory || !historyMigrationComplete)) {
+      await pushCloudHistory(legacyHistory, currentSecret);
     }
+    delete parsedState.brokerExecutedTrades;
+    delete parsedState.cashflows;
+    const mergedLocalData = hasHistory;
 
     const wasUpdated = processRollovers(parsedState);
     if (!saveState(parsedState)) {
@@ -782,6 +789,55 @@ export async function pullCloudState(
     logTerminal(`[KV Cloud Error]: ${err.message}. Retaining local state.`);
     return loadSavedState(state || {});
   }
+}
+
+/**
+ * Closed-history data uses its own encrypted Durable Object record so normal
+ * portfolio sync never transfers the large historical arrays.
+ */
+let lastSyncedBrokerTrades: any[] | undefined;
+let lastSyncedCashflows: any[] | undefined;
+const CLOSED_HISTORY_MIGRATION_KEY = 'closed_history_cloud_migrated_v1';
+
+export async function pushCloudHistory(history: { brokerExecutedTrades?: any[]; cashflows?: any[] }, secret = getActiveGatewaySecret()): Promise<boolean> {
+  const brokerExecutedTrades = Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [];
+  const cashflows = Array.isArray(history.cashflows) ? history.cashflows : [];
+  if (!secret || (!brokerExecutedTrades.length && !cashflows.length)) return false;
+  if (brokerExecutedTrades === lastSyncedBrokerTrades && cashflows === lastSyncedCashflows) return false;
+  const url = new URL('/api/history', WORKER_PROXY_URL).toString();
+  const current = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}` } });
+  const revision = readCloudRevision(current.headers) ?? 0;
+  if (!current.ok && current.status !== 404) throw new Error(`Closed history revision check failed (HTTP ${current.status}).`);
+  const plaintext = JSON.stringify({ brokerExecutedTrades, cashflows });
+  const encryptedPayload = await encryptCloudPayload(plaintext, secret);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}`, 'If-Match': `"${revision}"` },
+    body: JSON.stringify({ encryptedPayload })
+  });
+  if (!res.ok) throw new Error(`Closed history sync failed (HTTP ${res.status}).`);
+  lastSyncedBrokerTrades = brokerExecutedTrades;
+  lastSyncedCashflows = cashflows;
+  try { localStorage.setItem(CLOSED_HISTORY_MIGRATION_KEY, '1'); } catch { /* session cache remains valid */ }
+  return true;
+}
+
+export async function pullCloudHistory(secret = getActiveGatewaySecret()): Promise<{ brokerExecutedTrades: any[]; cashflows: any[] } | null> {
+  if (!secret) return null;
+  const res = await fetch(new URL('/api/history', WORKER_PROXY_URL).toString(), {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}` }
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Closed history load failed (HTTP ${res.status}).`);
+  const envelope = await res.json();
+  if (typeof envelope?.encryptedPayload !== 'string') throw new Error('Invalid closed history payload.');
+  const decrypted = await decryptCloudPayload(envelope.encryptedPayload, secret);
+  const parsed = JSON.parse(decrypted.plaintext);
+  return {
+    brokerExecutedTrades: Array.isArray(parsed.brokerExecutedTrades) ? parsed.brokerExecutedTrades : [],
+    cashflows: Array.isArray(parsed.cashflows) ? parsed.cashflows : []
+  };
 }
 
 export function pushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
@@ -824,10 +880,20 @@ async function performPushCloudState(
   }
 
   try {
-    // Sanitize a shallow copy so syncing never deletes fields from live app state.
+    // Keep the bulky history out of the startup-critical portfolio payload.
+    // Sync it independently, then encrypt only the compact main-state snapshot.
     const stateToEncrypt = { ...currentState };
     delete stateToEncrypt.gatewaySecret;
     delete stateToEncrypt.marginBalance;
+    if ((Array.isArray(stateToEncrypt.brokerExecutedTrades) && stateToEncrypt.brokerExecutedTrades.length) ||
+        (Array.isArray(stateToEncrypt.cashflows) && stateToEncrypt.cashflows.length)) {
+      await pushCloudHistory({
+        brokerExecutedTrades: stateToEncrypt.brokerExecutedTrades,
+        cashflows: stateToEncrypt.cashflows
+      }, currentSecret);
+    }
+    delete stateToEncrypt.brokerExecutedTrades;
+    delete stateToEncrypt.cashflows;
     // Broker API rows may contain a large duplicated raw payload. Cloud sync
     // only needs normalized execution fields and fee-allocation metadata.
     // A previous build may have persisted full TradeNet rows (including their

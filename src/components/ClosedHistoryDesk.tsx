@@ -2,6 +2,8 @@ import { useEffect, useState } from 'preact/hooks';
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
+import { pullCloudHistory } from '../services/api';
+import { loadSavedHistory } from '../services/storage';
 
 type ImportedCashflow = { id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw: Record<string, string> };
 
@@ -107,6 +109,29 @@ export function ClosedHistoryDesk() {
   const [brokerTradesError, setBrokerTradesError] = useState(false);
   const [cashflowImporting, setCashflowImporting] = useState(false);
   const [cashflowImportMessage, setCashflowImportMessage] = useState('');
+  // Large cloud history is fetched only when this section mounts. The main
+  // portfolio hydration intentionally excludes these two history collections.
+  useEffect(() => {
+    let active = true;
+    void pullCloudHistory().then(history => {
+      if (!active) return;
+      const resolved = history || loadSavedHistory();
+      portfolioStore.setState({
+        brokerExecutedTrades: resolved.brokerExecutedTrades,
+        cashflows: resolved.cashflows
+      });
+    }).catch(error => {
+      console.error('Unable to load closed history from cloud:', error);
+      if (active) {
+        const localHistory = loadSavedHistory();
+        portfolioStore.setState({
+          brokerExecutedTrades: localHistory.brokerExecutedTrades,
+          cashflows: localHistory.cashflows
+        });
+      }
+    });
+    return () => { active = false; };
+  }, []);
   // Once broker executions have loaded, re-run allocations from the persisted
   // normalized workbook rows. The import handler only writes state when data differs.
   useEffect(() => {
