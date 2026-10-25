@@ -208,6 +208,66 @@ describe('stocktwits proxy', () => {
 });
 
 
+describe('Freedom broker report diagnostic endpoint', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const request = (query) => new Request(`https://worker.test/?action=freedom-report&${query}`, {
+    headers: { 'X-App-Auth': 'test-secret' }
+  });
+
+  it('calls the fixed broker-report command with the requested report slice and returns the payload', async () => {
+    const upstream = { report: { cash_flows: [{ date: '2026-01-05', operation: 'margin interest', amount: -4.25 }] } };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(upstream), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(
+      request('type=cash_flows&date_start=2026-01-01&date_end=2026-01-31'),
+      { GATEWAY_SECRET: 'test-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key' }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      reportType: 'cash_flows',
+      dateStart: '2026-01-01',
+      dateEnd: '2026-01-31',
+      data: upstream
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://tradernet.com/api/getBrokerReport');
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.cmd).toBe('getBrokerReport');
+    expect(body.params).toEqual({
+      date_start: '2026-01-01',
+      date_end: '2026-01-31',
+      time_period: '23:59:59',
+      format: 'json',
+      language: 'en',
+      type: 'cash_flows'
+    });
+  });
+
+  it.each([
+    ['unsupported type', 'type=unknown&date_start=2026-01-01&date_end=2026-01-31'],
+    ['invalid date', 'type=trades&date_start=2026-02-30&date_end=2026-03-01'],
+    ['reversed date range', 'type=commissions&date_start=2026-02-01&date_end=2026-01-01']
+  ])('rejects %s before calling TradeNet', async (_label, query) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(
+      request(query),
+      { GATEWAY_SECRET: 'test-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key' }
+    );
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('Freedom news fallback', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
