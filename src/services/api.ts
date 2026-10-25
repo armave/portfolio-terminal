@@ -802,6 +802,28 @@ async function performPushCloudState(
     const stateToEncrypt = { ...currentState };
     delete stateToEncrypt.gatewaySecret;
     delete stateToEncrypt.marginBalance;
+    // A previous build may have persisted full TradeNet rows (including their
+    // duplicated raw API payload). Keep only normalized fields required for
+    // closed-history display and financing-fee reconciliation before cloud sync.
+    if (Array.isArray(stateToEncrypt.brokerExecutedTrades)) {
+      stateToEncrypt.brokerExecutedTrades = stateToEncrypt.brokerExecutedTrades.map((trade: any) => ({
+        id: trade?.id,
+        ticker: trade?.ticker,
+        side: trade?.side,
+        quantity: trade?.quantity,
+        price: trade?.price,
+        currency: trade?.currency,
+        executedAt: trade?.executedAt,
+        tradeValue: trade?.tradeValue,
+        profit: trade?.profit,
+        marginFee: trade?.marginFee,
+        commission: trade?.commission,
+        commissionCurrency: trade?.commissionCurrency,
+        marginFeeAllocations: trade?.marginFeeAllocations,
+        feesAndCommissions: trade?.feesAndCommissions,
+        netProfit: trade?.netProfit
+      }));
+    }
     const ciphertext = await encryptCloudPayload(JSON.stringify(stateToEncrypt), currentSecret);
     const payload = { encryptedPayload: ciphertext };
 
