@@ -243,10 +243,11 @@ describe('Freedom broker report diagnostic endpoint', () => {
     const upstreamUrl = new URL(String(fetchMock.mock.calls[0][0]));
     expect(upstreamUrl.origin + upstreamUrl.pathname).toBe('https://tradernet.am/api/');
     const requestOptions = fetchMock.mock.calls[0][1];
-    expect(requestOptions.method).toBe('POST');
-    expect(requestOptions.headers['Content-Type']).toBe('application/json');
+    expect(requestOptions.method).toBe('GET');
+    expect(upstreamUrl.searchParams.get('q')).toBeTruthy();
     expect(requestOptions.headers['X-NtApi-Timestamp']).toEqual(expect.any(String));
-    const body = JSON.parse(requestOptions.body);
+    expect(requestOptions.body).toBeUndefined();
+    const body = JSON.parse(upstreamUrl.searchParams.get('q'));
     expect(body.cmd).toBe('getBrokerReport');
     expect(body.nonce).toEqual(expect.any(Number));
     expect(body.params).toEqual({
@@ -293,8 +294,10 @@ describe('Freedom broker report diagnostic endpoint', () => {
     const upstreamUrl = new URL(String(fetchMock.mock.calls[0][0]));
     expect(upstreamUrl.origin + upstreamUrl.pathname).toBe('https://tradernet.am/api/');
     const requestOptions = fetchMock.mock.calls[0][1];
-    expect(requestOptions.method).toBe('POST');
-    const body = JSON.parse(requestOptions.body);
+    expect(requestOptions.method).toBe('GET');
+    expect(upstreamUrl.searchParams.get('q')).toBeTruthy();
+    expect(requestOptions.body).toBeUndefined();
+    const body = JSON.parse(upstreamUrl.searchParams.get('q'));
     expect(body.cmd).toBe('getBrokerReport');
     expect(body.nonce).toEqual(expect.any(Number));
     expect(body.params).toEqual({
@@ -322,8 +325,10 @@ describe('Freedom broker report diagnostic endpoint', () => {
     const upstreamUrl = new URL(String(fetchMock.mock.calls[0][0]));
     expect(upstreamUrl.origin + upstreamUrl.pathname).toBe('https://tradernet.am/api/');
     const requestOptions = fetchMock.mock.calls[0][1];
-    expect(requestOptions.method).toBe('POST');
-    const body = JSON.parse(requestOptions.body);
+    expect(requestOptions.method).toBe('GET');
+    expect(upstreamUrl.searchParams.get('q')).toBeTruthy();
+    expect(requestOptions.body).toBeUndefined();
+    const body = JSON.parse(upstreamUrl.searchParams.get('q'));
     expect(body.cmd).toBe('getBrokerReport');
     expect(body.nonce).toEqual(expect.any(Number));
     expect(body.params).toEqual({
