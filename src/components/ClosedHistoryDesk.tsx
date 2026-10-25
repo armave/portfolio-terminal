@@ -107,13 +107,19 @@ export function ClosedHistoryDesk() {
   const [brokerTradesError, setBrokerTradesError] = useState(false);
   const [cashflowImporting, setCashflowImporting] = useState(false);
   const [cashflowImportMessage, setCashflowImportMessage] = useState('');
-  const handleImportCashflows = async (file: File) => {
+  // Once broker executions have loaded, re-run allocations from the persisted
+  // normalized workbook rows. The import handler only writes state when data differs.
+  useEffect(() => {
+    if (brokerTradesLoading || cashflowImporting || !(state.cashflows || []).length) return;
+    void handleImportCashflows(null, state.cashflows);
+  }, [brokerTradesLoading, state.cashflows, brokerTrades]);
+  const handleImportCashflows = async (file: File | null, savedRows?: any[]) => {
     setCashflowImporting(true);
     setCashflowImportMessage('');
     try {
-      if (!file.name.toLowerCase().endsWith('.xlsx')) throw new Error('Please select an Excel .xlsx file.');
-      const rows = await readXlsxRows(await file.arrayBuffer());
-      const imported = normalizeCashflowRows(rows);
+      if (!savedRows && (!file || !file.name.toLowerCase().endsWith('.xlsx'))) throw new Error('Please select an Excel .xlsx file.');
+      const rows = savedRows ?? normalizeCashflowRows(await readXlsxRows(await file!.arrayBuffer()));
+      const imported = savedRows ? savedRows as ReturnType<typeof normalizeCashflowRows> : rows as ReturnType<typeof normalizeCashflowRows>;
       if (!imported.length) throw new Error('No cashflow rows were found in this workbook.');
 
       // Persist normalized cashflow rows as the source of truth. This lets the
