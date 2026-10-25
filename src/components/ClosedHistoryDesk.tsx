@@ -112,7 +112,7 @@ export function ClosedHistoryDesk() {
   useEffect(() => {
     if (brokerTradesLoading || cashflowImporting || !(state.cashflows || []).length) return;
     void handleImportCashflows(null, state.cashflows);
-  }, [brokerTradesLoading, state.cashflows, brokerTrades]);
+  }, [brokerTradesLoading, state.cashflows]);
   const handleImportCashflows = async (file: File | null, savedRows?: any[]) => {
     setCashflowImporting(true);
     setCashflowImportMessage('');
