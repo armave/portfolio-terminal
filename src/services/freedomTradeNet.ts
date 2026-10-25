@@ -62,8 +62,8 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
             ? errorValue
             : "No upstream error message was provided.";
         const safeMessage = upstreamMessage
-            .replace(/(public|private)?\\s*key\\s*[:=]\\s*\\S+/gi, "$1 key=[redacted]")
-            .replace(/(token|signature|sid|password)\\s*[:=]\\s*\\S+/gi, "$1=[redacted]")
+            .replace(/(public|private)?\s*key\s*[:=]\s*\S+/gi, "$1 key=[redacted]")
+            .replace(/(token|signature|sid|password)\s*[:=]\s*\S+/gi, "$1=[redacted]")
             .slice(0, 240);
         throw new Error(`TradeNet returned HTTP ${response.status}: ${safeMessage}`);
     }
