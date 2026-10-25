@@ -276,11 +276,14 @@ export default {
             if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
                 return jsonError("POST requests must use application/json.", 415, corsHeaders);
             }
-            // Content-Length may be omitted or forged. Count streamed bytes with a hard
-            // ceiling instead of arrayBuffer(), which would buffer an unbounded body.
-            const bodyReader = request.clone().body?.getReader();
+            // Content-Length may be omitted or forged. Consume and count the actual
+            // stream with a hard ceiling, then rebuild the bounded request body for the
+            // action handler. Do not use Request.clone() here: its tee can buffer the
+            // unread branch while an attacker streams an arbitrarily large body.
+            const bodyReader = request.body?.getReader();
             if (bodyReader) {
                 let receivedBytes = 0;
+                const chunks = [];
                 try {
                     while (true) {
                         const { done, value } = await bodyReader.read();
@@ -290,10 +293,16 @@ export default {
                             await bodyReader.cancel("Request body exceeds the configured limit.");
                             return jsonError("Request body exceeds the 20 MB limit.", 413, corsHeaders);
                         }
+                        chunks.push(value);
                     }
                 } finally {
                     bodyReader.releaseLock();
                 }
+                request = new Request(request.url, {
+                    method: request.method,
+                    headers: request.headers,
+                    body: new Blob(chunks)
+                });
             }
         }
 
