@@ -824,7 +824,45 @@ async function performPushCloudState(
         netProfit: trade?.netProfit
       }));
     }
-    const ciphertext = await encryptCloudPayload(JSON.stringify(stateToEncrypt), currentSecret);
+    // Persist closed trades as compact canonical records. Older builds could
+    // carry arbitrary broker/raw fields or duplicate the same records in
+    // closedHistory, inflating every cloud sync even when history was unchanged.
+    if (Array.isArray(stateToEncrypt.closedTrades)) {
+      stateToEncrypt.closedTrades = stateToEncrypt.closedTrades.map((trade: any) => ({
+        id: trade?.id,
+        ticker: trade?.ticker,
+        shares: trade?.shares,
+        avgBuyPrice: trade?.avgBuyPrice,
+        entryPrice: trade?.entryPrice,
+        sellPrice: trade?.sellPrice,
+        exitPrice: trade?.exitPrice,
+        buyDate: trade?.buyDate,
+        purchaseDate: trade?.purchaseDate,
+        sellDate: trade?.sellDate,
+        exitDate: trade?.exitDate,
+        date: trade?.date,
+        closedAt: trade?.closedAt,
+        grossProfit: trade?.grossProfit,
+        commissions: trade?.commissions,
+        feesAndCommissions: trade?.feesAndCommissions,
+        totalCommissions: trade?.totalCommissions,
+        marginInterest: trade?.marginInterest,
+        marginFee: trade?.marginFee,
+        marginFeeAllocations: trade?.marginFeeAllocations,
+        netProfit: trade?.netProfit,
+        netRealizedGain: trade?.netRealizedGain,
+        holdingDays: trade?.holdingDays
+      }));
+    }
+    // closedTrades is the canonical editable history; do not upload a second
+    // potentially stale copy of the same rows.
+    delete stateToEncrypt.closedHistory;
+    const serializedState = JSON.stringify(stateToEncrypt);
+    const serializedBytes = new TextEncoder().encode(serializedState).byteLength;
+    if (serializedBytes > 4 * 1024 * 1024) {
+      throw new Error(`Cloud state is still too large after compacting (${(serializedBytes / 1024 / 1024).toFixed(2)} MB). Check large state fields before syncing.`);
+    }
+    const ciphertext = await encryptCloudPayload(serializedState, currentSecret);
     const payload = { encryptedPayload: ciphertext };
 
     const url = new URL('/api/state', WORKER_PROXY_URL);
