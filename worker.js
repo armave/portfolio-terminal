@@ -267,12 +267,23 @@ export default {
         if (request.method !== "GET" && request.method !== "POST") {
             return jsonError("Method not allowed.", 405, corsHeaders);
         }
+
+        // SECURITY CHECK: Validate Gateway Secret
+        const authHeader = request.headers.get("Authorization") || "";
+        const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim();
+        const clientSecret = request.headers.get("X-App-Auth") || bearerToken;
+        if (!env.GATEWAY_SECRET || clientSecret !== env.GATEWAY_SECRET) {
+            return new Response(JSON.stringify({ error: "Unauthorized gateway access." }), {
+                status: 401,
+                headers: corsHeaders
+            });
+        }
+
         const declaredLength = Number(request.headers.get("Content-Length") || 0);
         if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
             return jsonError("Request body exceeds the 20 MB limit.", 413, corsHeaders);
         }
         if (request.method === "POST") {
-            const actionHint = new URL(request.url).searchParams.get("action");
             if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
                 return jsonError("POST requests must use application/json.", 415, corsHeaders);
             }
@@ -306,17 +317,6 @@ export default {
                     body: new Blob(chunks)
                 });
             }
-        }
-
-        // SECURITY CHECK: Validate Gateway Secret
-        const authHeader = request.headers.get("Authorization") || "";
-        const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim();
-        const clientSecret = request.headers.get("X-App-Auth") || bearerToken;
-        if (!env.GATEWAY_SECRET || clientSecret !== env.GATEWAY_SECRET) {
-            return new Response(JSON.stringify({ error: "Unauthorized gateway access." }), {
-                status: 401,
-                headers: corsHeaders
-            });
         }
 
         const url = new URL(request.url);
