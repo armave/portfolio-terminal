@@ -24,16 +24,11 @@ export async function requestTradeNet(
 
     const params: Record<string, string | number | boolean> = paramsOverride ?? (command === "getTradesHistory" ? { max: 100, sort: 1 } : {});
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const isBrokerReport = command === "getBrokerReport";
-
-    // HTTP 400 Fix: Broker reports require a nonce inside the payload and must be sent via GET inside the 'q' parameter.
-    const requestPayload = isBrokerReport
-        ? { cmd: command, nonce: Date.now(), params }
-        : { cmd: command, params };
-
+    const requestPayload = { cmd: command, params };
     const body = JSON.stringify(requestPayload);
 
-    // Web Crypto HMAC SHA-256 generation
+    // Keep broker reports on the same API-key authentication flow as the
+    // working getTradesHistory request instead of using a separate legacy path.
     const key = await crypto.subtle.importKey(
         "raw",
         new TextEncoder().encode(env.FREEDOM_PRIVATE_KEY),
@@ -41,25 +36,18 @@ export async function requestTradeNet(
         false,
         ["sign"]
     );
-
-    // API V1 (Broker Report) signs just the body. API V2 (Other commands) signs the body + timestamp.
-    const signatureInput = isBrokerReport ? body : body + timestamp;
-    const bytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signatureInput));
+    const bytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body + timestamp));
     const signature = Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
 
-    const requestUrl = isBrokerReport
-        ? `https://tradernet.am/api/?q=${encodeURIComponent(body)}`
-        : `https://tradernet.am/api/${command}`;
-
-    const response = await fetch(requestUrl, {
-        method: isBrokerReport ? "GET" : "POST",
+    const response = await fetch(`https://tradernet.am/api/${command}`, {
+        method: "POST",
         headers: {
-            ...(isBrokerReport ? {} : { "Content-Type": "application/json" }),
+            "Content-Type": "application/json",
             "X-NtApi-PublicKey": env.FREEDOM_PUBLIC_KEY,
             "X-NtApi-Sig": signature,
-            ...(isBrokerReport ? {} : { "X-NtApi-Timestamp": timestamp })
+            "X-NtApi-Timestamp": timestamp
         },
-        ...(isBrokerReport ? {} : { body }),
+        body,
         signal: AbortSignal.timeout(12000)
     });
 
