@@ -22,6 +22,7 @@ import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
+  fetchFreedomBrokerReport,
   fetchYahooDeepStockData,
   proxyFetch,
   setSecretGetter,
@@ -1803,7 +1804,15 @@ function renderSettingsPanel(force = false) {
       onChangeRefreshInterval: (val: string) => setQuoteRefreshInterval(val),
       onExportBackup: exportBackupJSON,
       onImportBackup: importBackupJSON,
-      onResetToBlankState: resetToBlankState
+      onResetToBlankState: resetToBlankState,
+      onTestFreedomReport: async (type, dateStart, dateEnd) => {
+        try {
+          await fetchFreedomBrokerReport(type, dateStart, dateEnd);
+        } catch (error) {
+          // Keep the response out of the UI; DevTools Network contains the request payload and response.
+          console.error(`[Freedom report test] ${type} request failed:`, error);
+        }
+      }
     }),
     container
   );
