@@ -147,8 +147,25 @@ export function ClosedHistoryDesk() {
         const parsed = Date.parse(text);
         return Number.isFinite(parsed) ? Date.UTC(new Date(parsed).getUTCFullYear(), new Date(parsed).getUTCMonth(), new Date(parsed).getUTCDate()) : NaN;
       };
-      const tradeBuy = (trade: any) => parseTradeDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate ?? trade.openedAt ?? trade.date);
-      const tradeSell = (trade: any) => parseTradeDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.closeDate ?? trade.executedAt);
+      const tradeSell = (trade: any) => parseTradeDate(
+        trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.closeDate ??
+        trade.dateClosed ?? trade.closedDate ?? trade.executedAt ?? trade.date
+      );
+      const tradeBuy = (trade: any) => {
+        const explicit = parseTradeDate(
+          trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate ??
+          trade.openedAt ?? trade.startDate ?? trade.firstPurchaseDate
+        );
+        if (Number.isFinite(explicit)) return explicit;
+        // Some stored/legacy closed rows keep the holding duration but not the
+        // original entry-date field. Recover the start of the holding interval.
+        const sell = tradeSell(trade);
+        const duration = Number(trade.holdingDays ?? trade.daysHeld ?? trade.durationDays);
+        if (Number.isFinite(sell) && Number.isFinite(duration) && duration >= 0) {
+          return sell - duration * 86400000;
+        }
+        return NaN;
+      };
       const feeDate = (fee: typeof imported[number]) => parseTradeDate(fee.date);
       // Account-level negative-cash fees have no ticker. Allocate each daily fee
       // among the positions open on the balance date, weighted by invested cost
@@ -199,7 +216,13 @@ export function ClosedHistoryDesk() {
         };
       });
       if (!updatedTradeCount) {
-        setCashflowImportMessage(`Read ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows, but none overlapped closed-trade purchase/sale dates. No state was changed.`);
+        const validTradeDates = trades.filter(trade => Number.isFinite(tradeBuy(trade)) && Number.isFinite(tradeSell(trade))).length;
+        const validFeeDates = feeRows.filter(fee => Number.isFinite(feeDate(fee))).length;
+        const feeRange = feeRows.map(fee => feeDate(fee)).filter(Number.isFinite);
+        const tradeRange = trades.flatMap(trade => [tradeBuy(trade), tradeSell(trade)]).filter(Number.isFinite);
+        const feeSpan = feeRange.length ? new Date(Math.min(...feeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...feeRange)).toISOString().slice(0, 10) : 'unparseable';
+        const tradeSpan = tradeRange.length ? new Date(Math.min(...tradeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...tradeRange)).toISOString().slice(0, 10) : 'unparseable';
+        setCashflowImportMessage(`Read ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows (${validFeeDates} with valid dates; ${feeSpan}), but none overlapped ${validTradeDates}/${trades.length} closed trades with valid purchase/sale dates (${tradeSpan}). No state was changed. Check the date ranges and trade date fields.`);
         return;
       }
       portfolioStore.setState({ closedTrades: updatedTrades });
