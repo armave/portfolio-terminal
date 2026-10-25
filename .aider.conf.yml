@@ -1,10 +1,6 @@
 # Primary & Commit Models (Zero-Cost OpenRouter Stack)
-model: openrouter/poolside/laguna-s-2.1:free
-weak-model: openrouter/cohere/north-mini-code:free
-
-# Global Fallback & Zero-Cost Metadata Links
-model-settings-file: ~/.aider.model.settings.yml
-model-metadata-file: ~/.aider.model.metadata.json
+model: ollama/qwen2.5-coder:7b 
+weak-model: ollama/qwen2.5-coder:7b 
 
 # Fully autonomous execution
 yes-always: true
