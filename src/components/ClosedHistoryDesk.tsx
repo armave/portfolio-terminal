@@ -3,6 +3,7 @@ import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { pullCloudHistory } from '../services/api';
+import { loadSavedHistory } from '../services/storage';
 
 type ImportedCashflow = { id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw: Record<string, string> };
 
@@ -113,13 +114,21 @@ export function ClosedHistoryDesk() {
   useEffect(() => {
     let active = true;
     void pullCloudHistory().then(history => {
-      if (!active || !history) return;
+      if (!active) return;
+      const resolved = history || loadSavedHistory();
       portfolioStore.setState({
-        brokerExecutedTrades: history.brokerExecutedTrades,
-        cashflows: history.cashflows
+        brokerExecutedTrades: resolved.brokerExecutedTrades,
+        cashflows: resolved.cashflows
       });
     }).catch(error => {
-      console.error('Unable to load closed history:', error);
+      console.error('Unable to load closed history from cloud:', error);
+      if (active) {
+        const localHistory = loadSavedHistory();
+        portfolioStore.setState({
+          brokerExecutedTrades: localHistory.brokerExecutedTrades,
+          cashflows: localHistory.cashflows
+        });
+      }
     });
     return () => { active = false; };
   }, []);
