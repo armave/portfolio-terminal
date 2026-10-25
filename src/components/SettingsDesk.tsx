@@ -18,7 +18,7 @@ export interface SettingsDeskProps {
   onExportBackup: () => void;
   onImportBackup: (event: Event) => void;
   onResetToBlankState: () => void;
-  onTestFreedomReport?: (type: 'account_at_end' | 'trades' | 'commissions' | 'cash_flows', dateStart: string, dateEnd: string) => Promise<void>;
+  onTestFreedomReport?: (type: 'account_at_end' | 'trades' | 'commissions' | 'cash_flows' | 'securities_flows', dateStart: string, dateEnd: string) => Promise<void>;
 }
 
 export interface BrokerRulesFormValues {
@@ -290,7 +290,8 @@ export function SettingsDesk({
               ['account_at_end', 'Test account-at-end report'],
               ['trades', 'Test trades report'],
               ['commissions', 'Test commissions report'],
-              ['cash_flows', 'Test cash flows report']
+              ['cash_flows', 'Test cash flows report'],
+              ['securities_flows', 'Test securities flows report']
             ] as const).map(([type, label]) => (
               <button
                 key={type}
