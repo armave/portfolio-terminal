@@ -804,6 +804,9 @@ async function performPushCloudState(
     delete stateToEncrypt.marginBalance;
     // Broker API rows may contain a large duplicated raw payload. Cloud sync
     // only needs normalized execution fields and fee-allocation metadata.
+    // A previous build may have persisted full TradeNet rows (including their
+    // duplicated raw API payload). Keep only normalized fields required for
+    // closed-history display and financing-fee reconciliation before cloud sync.
     if (Array.isArray(stateToEncrypt.brokerExecutedTrades)) {
       stateToEncrypt.brokerExecutedTrades = stateToEncrypt.brokerExecutedTrades.map((trade: any) => ({
         id: trade?.id,
