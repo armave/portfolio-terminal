@@ -131,19 +131,31 @@ export function ClosedHistoryDesk() {
       const trades = [...(state.closedTrades || [])] as any[];
       let matchedFees = 0;
       const updatedTrades = trades.map(trade => {
-        const ticker = String(trade.ticker ?? trade.symbol ?? '').trim().toUpperCase();
-        const buyDate = Date.parse(String(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.date ?? '').slice(0, 10));
-        const sellDate = Date.parse(String(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? '').slice(0, 10));
+        const ticker = String(trade.ticker ?? trade.symbol ?? trade.instrument ?? '').trim().toUpperCase();
+        const parseTradeDate = (value: unknown): number => {
+          if (typeof value === 'number' || (typeof value === 'string' && /^\\d{4,6}(\\.\\d+)?$/.test(value.trim()))) {
+            const serial = Number(value);
+            if (serial > 20000 && serial < 100000) return Date.UTC(1899, 11, 30) + serial * 86400000;
+          }
+          const text = String(value ?? '').trim();
+          if (!text) return NaN;
+          const iso = Date.parse(text);
+          if (Number.isFinite(iso)) return Date.UTC(new Date(iso).getUTCFullYear(), new Date(iso).getUTCMonth(), new Date(iso).getUTCDate());
+          const match = text.match(/^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})$/);
+          return match ? Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1])) : NaN;
+        };
+        const buyDate = parseTradeDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate ?? trade.openedAt ?? trade.date);
+        const sellDate = parseTradeDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.closeDate ?? trade.executedAt);
         if (!ticker || !Number.isFinite(buyDate) || !Number.isFinite(sellDate)) return trade;
         const matching = feeRows.filter(fee => {
           const rawEntries = Object.entries(fee.raw);
           const feeTicker = rawEntries.find(([key]) => /^(ticker|symbol|instrument|asset|security)$/i.test(key.trim()))?.[1]?.trim().toUpperCase();
-          const feeDate = Date.parse(fee.date.slice(0, 10));
+          const feeDate = parseTradeDate(fee.date);
           return Number.isFinite(feeDate) && feeDate >= buyDate && feeDate <= sellDate &&
             (!feeTicker || feeTicker === ticker) &&
             (feeTicker ? true : trades.filter(other => {
-              const otherBuy = Date.parse(String(other.buyDate ?? other.purchaseDate ?? other.entryDate ?? '').slice(0, 10));
-              const otherSell = Date.parse(String(other.sellDate ?? other.exitDate ?? other.closedAt ?? '').slice(0, 10));
+              const otherBuy = parseTradeDate(other.buyDate ?? other.purchaseDate ?? other.entryDate ?? other.openDate ?? other.openedAt ?? other.date);
+              const otherSell = parseTradeDate(other.sellDate ?? other.exitDate ?? other.closedAt ?? other.closeDate ?? other.executedAt);
               return other !== trade && feeDate >= otherBuy && feeDate <= otherSell;
             }).length === 0);
         });
@@ -151,9 +163,14 @@ export function ClosedHistoryDesk() {
         const feeAmount = matching.reduce((sum, fee) => sum + Math.abs(fee.amount), 0);
         matchedFees += matching.length;
         const previousMargin = Number(trade.marginInterest ?? trade.marginFee ?? 0) || 0;
+        const previousFees = Number(trade.feesAndCommissions ?? trade.totalCommissions ?? trade.commissions ?? 0) || 0;
         const previousNet = Number(trade.netProfit ?? trade.netRealizedGain ?? trade.grossProfit ?? 0) || 0;
         return {
           ...trade,
+          // The Closed History table reads feesAndCommissions first; add the
+          // margin charge there so it appears in the visible Fees & Comm. column.
+          feesAndCommissions: Number((previousFees + feeAmount).toFixed(2)),
+          totalCommissions: Number((Number(trade.totalCommissions ?? previousFees) + feeAmount).toFixed(2)),
           marginInterest: Number((previousMargin + feeAmount).toFixed(2)),
           marginFee: Number((previousMargin + feeAmount).toFixed(2)),
           netProfit: Number((previousNet - feeAmount).toFixed(2)),
