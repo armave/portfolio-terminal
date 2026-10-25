@@ -312,7 +312,10 @@ export class PortfolioStore {
         )
       : [];
 
-    const requestedView = typeof raw.activeView === 'string' ? raw.activeView : 'COMBINED';
+    // Cloud hydration runs after the initial constructor state and can otherwise
+    // overwrite the device's chosen desk with an older cloud activeView.
+    const deviceView = this.readDeviceActiveView();
+    const requestedView = deviceView || (typeof raw.activeView === 'string' ? raw.activeView : 'COMBINED');
     const supportedViews = ['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'];
     const activeView = supportedViews.includes(requestedView) || positions[requestedView]
       ? requestedView
