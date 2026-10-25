@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { syncCloudState } from '../services/api';
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
@@ -159,8 +160,17 @@ export function ClosedHistoryDesk() {
           netRealizedGain: Number((previousNet - feeAmount).toFixed(2))
         };
       });
-      portfolioStore.setState({ cashflows: [...fresh, ...existing], ...(matchedFees ? { closedTrades: updatedTrades } : {}) });
-      setCashflowImportMessage(`Imported ${fresh.length} cashflows; detected ${feeRows.length} possible margin-fee rows and matched ${matchedFees} to closed trades; skipped ${imported.length - fresh.length} duplicates.${feeRows.length === 0 ? ` Check fee-description/type columns. Detected headers: ${Object.keys(imported[0]?.raw || {}).join(', ')}` : ''}`);
+      // Persist every imported row (including raw source columns) in the canonical
+      // portfolio state, then explicitly push that exact snapshot to the Cloudflare state API.
+      const nextCashflows = [...fresh, ...existing];
+      portfolioStore.setState({ cashflows: nextCashflows, ...(matchedFees ? { closedTrades: updatedTrades } : {}) });
+      const cloudSynced = await syncCloudState('push', {
+        state: portfolioStore.getState(),
+        onStatusChange: status => {
+          if (status === 'error') setCashflowImportMessage('Cashflows saved locally, but Cloudflare sync failed. Check your Gateway Secret and try syncing again.');
+        }
+      });
+      setCashflowImportMessage(`Imported ${fresh.length} new cashflows (${nextCashflows.length} stored in portfolio state). ${cloudSynced ? 'Cloudflare sync successful.' : 'Saved locally; Cloudflare sync not confirmed.'} Detected ${feeRows.length} possible margin-fee rows and matched ${matchedFees} to closed trades; skipped ${imported.length - fresh.length} duplicates.${feeRows.length === 0 ? ` Check fee-description/type columns. Detected headers: ${Object.keys(imported[0]?.raw || {}).join(', ')}` : ''}`);
     } catch (error) {
       setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
     } finally {
