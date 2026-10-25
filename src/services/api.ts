@@ -718,6 +718,22 @@ export async function pullCloudState(
       parsedState.lastRolloverTimestamp = Date.now();
     }
 
+    // Cloud can lag behind local imports/API hydration (for example, if a
+    // browser was offline during an upload). Preserve locally known source
+    // histories when cloud has no data or an older/different snapshot, then
+    // write the merged canonical state back to cloud below.
+    const localState = loadSavedState(state || {});
+    const exactData = (value: unknown) => JSON.stringify(value ?? null);
+    let mergedLocalData = false;
+    for (const key of ['cashflows', 'brokerExecutedTrades', 'closedTrades'] as const) {
+      const localRows = localState?.[key];
+      const cloudRows = parsedState?.[key];
+      if (Array.isArray(localRows) && localRows.length > 0 && exactData(localRows) !== exactData(cloudRows)) {
+        parsedState[key] = localRows;
+        mergedLocalData = true;
+      }
+    }
+
     const wasUpdated = processRollovers(parsedState);
     if (!saveState(parsedState)) {
       throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
@@ -730,7 +746,7 @@ export async function pullCloudState(
       setCloudRevision(pulledRevision);
     }
 
-    if (wasUpdated || requiresEncryptionUpgrade) {
+    if (wasUpdated || requiresEncryptionUpgrade || mergedLocalData) {
       pushCloudState(parsedState, {
         ...handlers,
         secret: currentSecret,
