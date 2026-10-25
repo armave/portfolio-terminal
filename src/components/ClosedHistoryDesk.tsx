@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'preact/hooks';
-import { syncCloudState } from '../services/api';
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
