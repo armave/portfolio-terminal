@@ -872,7 +872,7 @@ export async function fetchFreedomTradeNetTrades(): Promise<any> {
 
 /** Fetch one allowlisted read-only broker-report section for diagnostic inspection. */
 export async function fetchFreedomBrokerReport(
-  type: 'account_at_end' | 'trades' | 'commissions' | 'cash_flows',
+  type: 'account_at_end' | 'trades' | 'commissions' | 'cash_flows' | 'securities_flows',
   dateStart: string,
   dateEnd: string
 ): Promise<any> {
