@@ -309,21 +309,7 @@ export function ClosedHistoryDesk() {
     window.dispatchEvent(new CustomEvent('tradenet:request-executed-trades'));
     return () => { window.removeEventListener('tradenet:executed-trades', onTrades); window.removeEventListener('tradenet:executed-trades-error', onTradesError); };
   }, []);
-  const appTrades = (state.closedTrades || []).map((trade, index) => {
-    const marginFee = Math.abs(Number((trade as any).marginFee ?? (trade as any).marginInterest ?? 0)) || 0;
-    const baseProfit = Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0);
-    const existingFees = Number((trade as any).feesAndCommissions ?? (trade as any).totalCommissions ?? (trade as any).commissions ?? 0);
-    // External cash-flow margin fees are tracked separately from broker commissions.
-    // Add them to both displayed costs and net P&L exactly once.
-    const profitAlreadyIncludesMargin = Boolean((trade as any).marginFeeIncludedInNetProfit);
-    return {
-      trade: { ...(trade as any), source: 'app' as const },
-      index,
-      source: 'app' as const,
-      profit: baseProfit - (profitAlreadyIncludesMargin ? 0 : marginFee),
-      fees: existingFees + ((trade as any).marginFeeIncludedInFees ? 0 : marginFee)
-    };
-  });
+  const appTrades = (state.closedTrades || []).map((trade, index) => ({ trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const, profit: Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0), fees: Number((trade as any).feesAndCommissions ?? (trade as any).totalCommissions ?? (trade as any).commissions ?? 0) }));
   // Match buy lots FIFO to sell executions so both entry and exit commissions
   // are reflected in the closed-history row. Fees are allocated per share for partial closes.
   const brokerTradeMetrics = (() => {

@@ -856,8 +856,6 @@ async function performPushCloudState(
         holdingDays: trade?.holdingDays
       }));
     }
-    // closedTrades is the canonical editable history; do not upload a second
-    // potentially stale copy of the same rows.
     delete stateToEncrypt.closedHistory;
     const serializedState = JSON.stringify(stateToEncrypt);
     const serializedBytes = new TextEncoder().encode(serializedState).byteLength;
