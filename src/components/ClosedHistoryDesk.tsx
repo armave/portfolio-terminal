@@ -249,7 +249,26 @@ export function ClosedHistoryDesk() {
       const storedById = new Map<string, any>(stored.map((trade: any) => [String(trade.id ?? ''), trade] as [string, any]));
       const normalized = trades.map((trade: any) => {
         const previous = storedById.get(String(trade.id ?? ''));
-        return previous ? { ...trade, marginFeeAllocations: previous.marginFeeAllocations, marginFee: previous.marginFee } : trade;
+        // Keep only the fields needed for closed-history rendering and fee matching.
+        // TradeNet's raw response can be large and must not be copied into synced state.
+        const compact = {
+          id: String(trade?.id ?? ''),
+          ticker: String(trade?.ticker ?? ''),
+          side: String(trade?.side ?? ''),
+          quantity: trade?.quantity ?? null,
+          price: trade?.price ?? null,
+          currency: String(trade?.currency ?? ''),
+          executedAt: trade?.executedAt ?? null,
+          tradeValue: trade?.tradeValue ?? null,
+          profit: trade?.profit ?? null,
+          marginFee: previous?.marginFee ?? trade?.marginFee ?? null,
+          commission: trade?.commission ?? null,
+          commissionCurrency: String(trade?.commissionCurrency ?? ''),
+          marginFeeAllocations: previous?.marginFeeAllocations ?? trade?.marginFeeAllocations,
+          feesAndCommissions: trade?.feesAndCommissions,
+          netProfit: trade?.netProfit
+        };
+        return compact;
       });
       setBrokerTrades(normalized);
       setBrokerTradesLoading(false);
