@@ -740,7 +740,14 @@ export async function pullCloudState(
         ? parsedState.cashflows : localHistory.cashflows
     };
     const hasHistory = legacyHistory.brokerExecutedTrades.length > 0 || legacyHistory.cashflows.length > 0;
-    if (hasHistory) await pushCloudHistory(legacyHistory, currentSecret);
+    const hasLegacyCloudHistory =
+      (Array.isArray(parsedState.brokerExecutedTrades) && parsedState.brokerExecutedTrades.length > 0) ||
+      (Array.isArray(parsedState.cashflows) && parsedState.cashflows.length > 0);
+    let historyMigrationComplete = false;
+    try { historyMigrationComplete = localStorage.getItem(CLOSED_HISTORY_MIGRATION_KEY) === '1'; } catch { /* migrate safely when storage is unavailable */ }
+    if (hasHistory && (hasLegacyCloudHistory || !historyMigrationComplete)) {
+      await pushCloudHistory(legacyHistory, currentSecret);
+    }
     delete parsedState.brokerExecutedTrades;
     delete parsedState.cashflows;
     const mergedLocalData = hasHistory;
@@ -791,6 +798,7 @@ export async function pullCloudState(
  */
 let lastSyncedBrokerTrades: any[] | undefined;
 let lastSyncedCashflows: any[] | undefined;
+const CLOSED_HISTORY_MIGRATION_KEY = 'closed_history_cloud_migrated_v1';
 
 export async function pushCloudHistory(history: { brokerExecutedTrades?: any[]; cashflows?: any[] }, secret = getActiveGatewaySecret()): Promise<boolean> {
   const brokerExecutedTrades = Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [];
@@ -811,6 +819,7 @@ export async function pushCloudHistory(history: { brokerExecutedTrades?: any[]; 
   if (!res.ok) throw new Error(`Closed history sync failed (HTTP ${res.status}).`);
   lastSyncedBrokerTrades = brokerExecutedTrades;
   lastSyncedCashflows = cashflows;
+  try { localStorage.setItem(CLOSED_HISTORY_MIGRATION_KEY, '1'); } catch { /* session cache remains valid */ }
   return true;
 }
 
