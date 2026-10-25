@@ -236,7 +236,13 @@ export function ClosedHistoryDesk() {
   };
   useEffect(() => {
     const persistBrokerTrades = (trades: any[]) => {
-      setBrokerTrades(trades);
+      const stored = portfolioStore.getState().brokerExecutedTrades || [];
+      const storedById = new Map(stored.map((trade: any) => [String(trade.id ?? ''), trade]));
+      const normalized = trades.map((trade: any) => {
+        const previous = storedById.get(String(trade.id ?? ''));
+        return previous ? { ...trade, marginFeeAllocations: previous.marginFeeAllocations, marginFee: previous.marginFee } : trade;
+      });
+      setBrokerTrades(normalized);
       setBrokerTradesLoading(false);
       setBrokerTradesError(false);
       // The canonical store persists through saveState() and the app's existing
@@ -246,8 +252,8 @@ export function ClosedHistoryDesk() {
         [row.id, row.ticker, row.side, row.quantity, row.executedAt, row.price, row.commission, row.profit]
           .map(value => String(value ?? '')).join('|')
       ).join('\n');
-      if (fingerprint(current) !== fingerprint(trades)) {
-        portfolioStore.setState({ brokerExecutedTrades: trades.map((trade) => ({ ...trade })) });
+      if (fingerprint(current) !== fingerprint(normalized)) {
+        portfolioStore.setState({ brokerExecutedTrades: normalized.map((trade) => ({ ...trade })) });
       }
     };
     const readCurrentTrades = () => {
@@ -319,7 +325,7 @@ export function ClosedHistoryDesk() {
     }
     return metricsByObject;
   })();
-  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => ({ trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: broker.commission == null ? null : Math.abs(Number(broker.commission)) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0), netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const }, index: -1, source: 'tradenet' as const, profit: broker.profit == null ? null : Number(broker.profit) - (broker.marginFee == null ? 0 : Math.abs(Number(broker.marginFee))), fees: broker.commission == null ? (brokerTradeMetrics.get(broker)?.buyCommission ?? 0) : Math.abs(Number(broker.commission)) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0) }));
+  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => ({ trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: broker.commission == null ? null : Math.abs(Number(broker.commission)) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0), netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const }, index: -1, source: 'tradenet' as const, profit: broker.profit == null ? null : Number(broker.profit) - (broker.marginFee == null ? 0 : Math.abs(Number(broker.marginFee))), fees: (broker.commission == null ? 0 : Math.abs(Number(broker.commission))) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0) + (broker.marginFee == null ? 0 : Math.abs(Number(broker.marginFee))) }));
   // Group same-ticker sell executions that occur within one hour into one closed-history row.
   // Keep separate groups when the gap from the previous execution exceeds one hour.
   const groupedBrokerRows = (() => {
