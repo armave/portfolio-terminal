@@ -859,7 +859,7 @@ async function performPushCloudState(
     delete stateToEncrypt.closedHistory;
     const serializedState = JSON.stringify(stateToEncrypt);
     const serializedBytes = new TextEncoder().encode(serializedState).byteLength;
-    if (serializedBytes > 4 * 1024 * 1024) {
+    if (serializedBytes > 3500 * 1024) {
       throw new Error(`Cloud state is still too large after compacting (${(serializedBytes / 1024 / 1024).toFixed(2)} MB). Check large state fields before syncing.`);
     }
     const ciphertext = await encryptCloudPayload(serializedState, currentSecret);
