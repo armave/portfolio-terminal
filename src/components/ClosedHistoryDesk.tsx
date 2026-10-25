@@ -246,7 +246,7 @@ export function ClosedHistoryDesk() {
   useEffect(() => {
     const persistBrokerTrades = (trades: any[]) => {
       const stored = portfolioStore.getState().brokerExecutedTrades || [];
-      const storedById = new Map(stored.map((trade: any) => [String(trade.id ?? ''), trade]));
+      const storedById = new Map<string, any>(stored.map((trade: any) => [String(trade.id ?? ''), trade] as [string, any]));
       const normalized = trades.map((trade: any) => {
         const previous = storedById.get(String(trade.id ?? ''));
         return previous ? { ...trade, marginFeeAllocations: previous.marginFeeAllocations, marginFee: previous.marginFee } : trade;
