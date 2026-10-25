@@ -870,6 +870,19 @@ export async function fetchFreedomTradeNetTrades(): Promise<any> {
   return proxyFetch('freedom-trades');
 }
 
+/** Fetch one allowlisted read-only broker-report section for diagnostic inspection. */
+export async function fetchFreedomBrokerReport(
+  type: 'trades' | 'commissions' | 'cash_flows',
+  dateStart: string,
+  dateEnd: string
+): Promise<any> {
+  return proxyFetch('freedom-report', {
+    type,
+    date_start: dateStart,
+    date_end: dateEnd
+  });
+}
+
 export interface FreedomExecutedTrade {
   id: string;
   ticker: string;
