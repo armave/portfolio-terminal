@@ -40,10 +40,12 @@ export async function requestTradeNet(
         false,
         ["sign"]
     );
-    const bytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body + timestamp));
-    const signature = Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
-
     const isBrokerReport = command === "getBrokerReport";
+    // TradeNet's API-key signing rules differ by HTTP method:
+    // POST signs JSON body + timestamp; GET signs the timestamp only.
+    const signatureInput = isBrokerReport ? timestamp : body + timestamp;
+    const bytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signatureInput));
+    const signature = Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
     const endpoint = isBrokerReport
         ? `https://tradernet.am/api/?q=${encodeURIComponent(body)}`
         : `https://tradernet.am/api/${command}`;
