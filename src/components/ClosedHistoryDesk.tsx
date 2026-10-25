@@ -23,7 +23,7 @@ async function readXlsxRows(buffer: ArrayBuffer): Promise<string[][]> {
   const inflate = async (data: Uint8Array, method: number) => {
     if (method === 0) return data;
     if (method !== 8 || typeof DecompressionStream === 'undefined') throw new Error('This browser cannot unpack the XLSX workbook.');
-    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw' as CompressionFormat));
+    const stream = new Blob([data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer]).stream().pipeThrough(new DecompressionStream('deflate-raw' as CompressionFormat));
     return new Uint8Array(await new Response(stream).arrayBuffer());
   };
   let offset = 0;
@@ -253,12 +253,18 @@ export function ClosedHistoryDesk() {
             Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.
           </p>
         </div>
-        <div class="text-xs font-mono text-slate-500">
-          {trades.length} records ({appTrades.length} app · {brokerRows.length} Freedom)
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" disabled={cashflowImporting} onClick={handleImportCashflows} class="h-8 rounded border border-amber-600 bg-amber-600 px-3 text-xs font-bold text-black hover:bg-amber-500 disabled:opacity-50">
+            {cashflowImporting ? "Importing…" : "Import Cashflows"}
+          </button>
+          <div class="text-xs font-mono text-slate-500">
+            {trades.length} records ({appTrades.length} app · {brokerRows.length} Freedom)
+          </div>
         </div>
       </div>
 
-      {cashflowImportMessage && <p role="status" class="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300">{cashflowImportMessage}</p>}\n      <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
+      {cashflowImportMessage && <p role="status" class="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300">{cashflowImportMessage}</p>}
+      <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Realized net P&amp;L</div>
           <div class={`mt-1 font-mono text-sm font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
