@@ -778,9 +778,6 @@ export async function pullCloudState(
     }
 
     reportResult?.(true);
-    console.log('[Sync]: Cloud state ingested and UI re-rendered successfully.');
-    // showToast('KV cloud state pulled.', 'success');
-    // logTerminal('[KV Cloud]: Synced successfully.');
     return parsedState;
   } catch (err: any) {
     reportResult?.(false);
@@ -886,7 +883,7 @@ async function performPushCloudState(
     delete stateToEncrypt.gatewaySecret;
     delete stateToEncrypt.marginBalance;
     if ((Array.isArray(stateToEncrypt.brokerExecutedTrades) && stateToEncrypt.brokerExecutedTrades.length) ||
-        (Array.isArray(stateToEncrypt.cashflows) && stateToEncrypt.cashflows.length)) {
+      (Array.isArray(stateToEncrypt.cashflows) && stateToEncrypt.cashflows.length)) {
       await pushCloudHistory({
         brokerExecutedTrades: stateToEncrypt.brokerExecutedTrades,
         cashflows: stateToEncrypt.cashflows
@@ -1055,11 +1052,11 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
   // Actual Freedom wrapper shape from example.json: data.trades.trade[]
   const rows = Array.isArray(root) ? root
     : Array.isArray(root?.trades?.trade) ? root.trades.trade
-    : Array.isArray(root?.trades) ? root.trades
-    : Array.isArray(root?.items) ? root.items
-    : Array.isArray(root?.history) ? root.history
-    : Array.isArray(root?.data) ? root.data
-    : [];
+      : Array.isArray(root?.trades) ? root.trades
+        : Array.isArray(root?.items) ? root.items
+          : Array.isArray(root?.history) ? root.history
+            : Array.isArray(root?.data) ? root.data
+              : [];
   const numberOrNull = (v: unknown): number | null => {
     if (v === null || v === undefined || v === '') return null;
     const n = Number(v);
@@ -1071,10 +1068,10 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
     // TradeNet example uses type "1" for buy and "2" for sell.
     side: row?.operation != null ? String(row.operation)
       : row?.side != null ? String(row.side)
-      : row?.buy_sell != null ? String(row.buy_sell)
-      : String(row?.type) === '1' ? 'BUY'
-      : String(row?.type) === '2' ? 'SELL'
-      : 'Unknown',
+        : row?.buy_sell != null ? String(row.buy_sell)
+          : String(row?.type) === '1' ? 'BUY'
+            : String(row?.type) === '2' ? 'SELL'
+              : 'Unknown',
     quantity: numberOrNull(row?.q ?? row?.quantity ?? row?.qty),
     price: numberOrNull(row?.p ?? row?.price ?? row?.exec_price),
     currency: String(row?.curr_c ?? row?.curr ?? row?.currency ?? row?.base_currency ?? ''),

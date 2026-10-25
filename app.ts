@@ -250,7 +250,7 @@ function pullCloudAndRewriteLocal(parsedState: any) {
   portfolioStore.importState(loadSavedState(mergedState));
   state = portfolioStore.getState();
   switchView(state.activeView);
-  console.log("[Sync]: Cloud state ingested and UI re-rendered successfully.");
+  console.log("[Sync]: Cloud state ingested and UI re-rendered successfully.", state);
   setTimeout(() => {
     const mainView = document.getElementById('mainTerminalView');
     if (mainView) {
