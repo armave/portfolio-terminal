@@ -146,20 +146,20 @@ export function ClosedHistoryDesk() {
       }
       const appTrades = [...(state.closedTrades || [])] as any[];
       const parseTradeDate = (value: unknown): number => {
-        if (typeof value === 'number' || (typeof value === 'string' && /^\\d{4,6}(\\.\\d+)?$/.test(value.trim()))) {
+        if (typeof value === 'number' || (typeof value === 'string' && /^\d{4,6}(\.\d+)?$/.test(value.trim()))) {
           const serial = Number(value); if (serial > 20000 && serial < 100000) return Date.UTC(1899, 11, 30) + serial * 86400000;
         }
         const text = String(value ?? '').trim(); if (!text) return NaN;
-        const us = text.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);
+        const us = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
         if (us) return Date.UTC(Number(us[3]), Number(us[1]) - 1, Number(us[2]));
-        const dmy = text.match(/^(\\d{1,2})[.-](\\d{1,2})[.-](\\d{4})$/);
+        const dmy = text.match(/^(\d{1,2})[.-](\d{1,2})[.-](\d{4})$/);
         if (dmy) return Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
         const parsed = Date.parse(text);
         return Number.isFinite(parsed) ? Date.UTC(new Date(parsed).getUTCFullYear(), new Date(parsed).getUTCMonth(), new Date(parsed).getUTCDate()) : NaN;
       };
       const feeDate = (fee: typeof imported[number]) => {
         const parsed = parseTradeDate(fee.date); if (Number.isFinite(parsed)) return parsed;
-        const match = [fee.description, ...Object.values(fee.raw)].join(' ').match(/balance as at (\\d{4}-\\d{2}-\\d{2})/i);
+        const match = [fee.description, ...Object.values(fee.raw)].join(' ').match(/balance as at (\d{4}-\d{2}-\d{2})/i);
         return match ? parseTradeDate(match[1]) : NaN;
       };
       const allocationsBySell = new Map<number, Record<string, number>>();
