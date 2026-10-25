@@ -239,8 +239,10 @@ describe('Freedom broker report diagnostic endpoint', () => {
       data: upstream
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toBe('https://tradernet.com/api/getBrokerReport');
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const upstreamUrl = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(upstreamUrl.origin + upstreamUrl.pathname).toBe('https://tradernet.com/api/');
+    expect(fetchMock.mock.calls[0][1].method).toBe('GET');
+    const body = JSON.parse(upstreamUrl.searchParams.get('q'));
     expect(body.cmd).toBe('getBrokerReport');
     expect(body.nonce).toEqual(expect.any(Number));
     expect(body.params).toEqual({
@@ -251,6 +253,9 @@ describe('Freedom broker report diagnostic endpoint', () => {
       type: 'cash_flows',
       language: 'en'
     });
+    expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
+    expect(fetchMock.mock.calls[0][1].headers['X-NtApi-Timestamp']).toEqual(expect.any(String));
+    expect(fetchMock.mock.calls[0][1].headers['X-NtApi-Sig']).toEqual(expect.any(String));
   });
 
   it('surfaces only a sanitized upstream error message for HTTP 400 responses', async () => {
@@ -283,7 +288,9 @@ describe('Freedom broker report diagnostic endpoint', () => {
       { GATEWAY_SECRET: 'test-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key' }
     );
     expect(response.status).toBe(200);
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const upstreamUrl = new URL(String(fetchMock.mock.calls[0][0]));
+    const body = JSON.parse(upstreamUrl.searchParams.get('q'));
+    expect(fetchMock.mock.calls[0][1].method).toBe('GET');
     expect(body.cmd).toBe('getBrokerReport');
     expect(body.params).toEqual({
       date_start: '2026-01-01',
