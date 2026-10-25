@@ -269,7 +269,7 @@ export default {
         }
         const declaredLength = Number(request.headers.get("Content-Length") || 0);
         if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
-            return jsonError("Request body exceeds the 64 KB limit.", 413, corsHeaders);
+            return jsonError("Request body exceeds the 5 MB limit.", 413, corsHeaders);
         }
         if (request.method === "POST") {
             const actionHint = new URL(request.url).searchParams.get("action");
