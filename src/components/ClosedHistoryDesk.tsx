@@ -126,13 +126,13 @@ export function ClosedHistoryDesk() {
       let matchedFees = 0;
       let updatedTradeCount = 0;
       const parseTradeDate = (value: unknown): number => {
-        if (typeof value === 'number' || (typeof value === 'string' && /^\\d{4,6}(\\.\\d+)?$/.test(value.trim()))) {
+        if (typeof value === 'number' || (typeof value === 'string' && /^\d{4,6}(\\.\d+)?$/.test(value.trim()))) {
           const serial = Number(value);
           if (serial > 20000 && serial < 100000) return Date.UTC(1899, 11, 30) + serial * 86400000;
         }
         const text = String(value ?? '').trim();
         if (!text) return NaN;
-        const dmy = text.match(/^(\\d{1,2})[./-](\\d{1,2})[./-](\\d{4})$/);
+        const dmy = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
         if (dmy) return Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
         const parsed = Date.parse(text);
         return Number.isFinite(parsed) ? Date.UTC(new Date(parsed).getUTCFullYear(), new Date(parsed).getUTCMonth(), new Date(parsed).getUTCDate()) : NaN;
