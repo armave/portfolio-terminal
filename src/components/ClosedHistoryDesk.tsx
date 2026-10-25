@@ -367,7 +367,7 @@ export function ClosedHistoryDesk() {
     }
     return metricsByObject;
   })();
-  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => ({ trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: broker.commission == null ? null : Math.abs(Number(broker.commission)) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0), netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const }, index: -1, source: 'tradenet' as const, profit: broker.profit == null ? null : Number(broker.profit) - (broker.marginFee == null ? 0 : Math.abs(Number(broker.marginFee))), fees: (broker.commission == null ? 0 : Math.abs(Number(broker.commission))) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0) + (broker.marginFee == null ? 0 : Math.abs(Number(broker.marginFee))) }));
+  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => {
     const marginFee = Math.abs(Number(broker.marginFee ?? 0)) || 0;
     const tradeFees = (broker.commission == null ? 0 : Math.abs(Number(broker.commission))) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0);
     return {
