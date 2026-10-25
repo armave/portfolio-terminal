@@ -277,6 +277,31 @@ describe('Freedom broker report diagnostic endpoint', () => {
     expect(JSON.stringify(payload)).not.toContain('do-not-expose');
   });
 
+  it('accepts the securities_flows report type for dated securities movements', async () => {
+    const upstream = { report: { securities_flows: [{ date: '2026-01-05', ticker: 'AAPL', quantity: 10 }] } };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(upstream), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(
+      request('type=securities_flows&date_start=2026-01-01&date_end=2026-01-31'),
+      { GATEWAY_SECRET: 'test-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key' }
+    );
+    expect(response.status).toBe(200);
+    const upstreamUrl = new URL(String(fetchMock.mock.calls[0][0]));
+    const body = JSON.parse(upstreamUrl.searchParams.get('q'));
+    expect(body.cmd).toBe('getBrokerReport');
+    expect(body.params).toEqual({
+      date_start: '2026-01-01',
+      date_end: '2026-01-31',
+      time_period: '23:59:59',
+      format: 'json',
+      type: 'securities_flows',
+      language: 'en'
+    });
+    await expect(response.json()).resolves.toMatchObject({ reportType: 'securities_flows', data: upstream });
+  });
+
   it('accepts the documented account_at_end report type with JSON format', async () => {
     const upstream = { report: { account_at_end: { equity: 1000 } } };
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(upstream), {
