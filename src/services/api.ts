@@ -802,9 +802,8 @@ async function performPushCloudState(
     const stateToEncrypt = { ...currentState };
     delete stateToEncrypt.gatewaySecret;
     delete stateToEncrypt.marginBalance;
-    // A previous build may have persisted full TradeNet rows (including their
-    // duplicated raw API payload). Keep only normalized fields required for
-    // closed-history display and financing-fee reconciliation before cloud sync.
+    // Broker API rows may contain a large duplicated raw payload. Cloud sync
+    // only needs normalized execution fields and fee-allocation metadata.
     if (Array.isArray(stateToEncrypt.brokerExecutedTrades)) {
       stateToEncrypt.brokerExecutedTrades = stateToEncrypt.brokerExecutedTrades.map((trade: any) => ({
         id: trade?.id,
@@ -854,8 +853,6 @@ async function performPushCloudState(
         holdingDays: trade?.holdingDays
       }));
     }
-    // closedTrades is the canonical editable history; do not upload a second
-    // potentially stale copy of the same rows.
     delete stateToEncrypt.closedHistory;
     const serializedState = JSON.stringify(stateToEncrypt);
     const serializedBytes = new TextEncoder().encode(serializedState).byteLength;
@@ -928,6 +925,16 @@ export async function fetchFreedomTradeNetPositions(): Promise<any> {
 /** Fetch a bounded, read-only page of executed TradeNet trades. */
 export async function fetchFreedomTradeNetTrades(): Promise<any> {
   return proxyFetch('freedom-trades');
+}
+
+/** Fetch the raw read-only Freedom Broker cashflows response for temporary integration testing. */
+export async function fetchFreedomCashflows(): Promise<any> {
+  try {
+    return await proxyFetch('freedom-cashflows', {}, { cache: 'no-store' });
+  } catch (error) {
+    if (error instanceof Error) throw error;
+    throw new Error('Failed to fetch Freedom Broker cashflows due to a network error.');
+  }
 }
 
 export interface FreedomExecutedTrade {
