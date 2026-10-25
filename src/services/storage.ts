@@ -398,7 +398,28 @@ export function loadSavedHistory(): { brokerExecutedTrades: any[]; cashflows: an
   const storage = getBrowserStorage();
   if (!storage) return { brokerExecutedTrades: [], cashflows: [] };
   try {
-    const raw = storage.getItem(STORAGE_KEY_CLOSED_HISTORY);
+    let raw = storage.getItem(STORAGE_KEY_CLOSED_HISTORY);
+    // One-time migration from older snapshots that stored history inline.
+    if (!raw) {
+      for (const key of [STORAGE_KEY_STATE, STORAGE_KEY_LEGACY_STATE]) {
+        try {
+          const legacyRaw = storage.getItem(key);
+          if (!legacyRaw) continue;
+          const legacy = JSON.parse(legacyRaw);
+          if (Array.isArray(legacy?.brokerExecutedTrades) || Array.isArray(legacy?.cashflows)) {
+            const migrated = {
+              brokerExecutedTrades: Array.isArray(legacy.brokerExecutedTrades) ? legacy.brokerExecutedTrades : [],
+              cashflows: Array.isArray(legacy.cashflows) ? legacy.cashflows : []
+            };
+            raw = JSON.stringify(migrated);
+            storage.setItem(STORAGE_KEY_CLOSED_HISTORY, raw);
+            break;
+          }
+        } catch {
+          // Continue to the next legacy snapshot if one is malformed.
+        }
+      }
+    }
     if (!raw) return { brokerExecutedTrades: [], cashflows: [] };
     const parsed = JSON.parse(raw);
     const history = {
