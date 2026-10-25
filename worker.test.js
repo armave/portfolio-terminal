@@ -209,6 +209,7 @@ describe('stocktwits proxy', () => {
 
 
 describe('Freedom broker report diagnostic endpoint', () => {
+  // These assertions mirror requestTradeNet's shared POST/HMAC auth flow.
   afterEach(() => {
     vi.unstubAllGlobals();
   });
