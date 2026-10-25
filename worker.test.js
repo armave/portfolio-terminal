@@ -776,7 +776,7 @@ describe('streamed request body limits', () => {
     });
     const request = new Request('https://worker.test/?action=gemini', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-App-Auth': 'test-secret' },
       body,
       duplex: 'half'
     });
@@ -798,7 +798,7 @@ describe('authenticate before consuming request bodies', () => {
         reads += 1;
         controller.enqueue(new TextEncoder().encode('{"prompt":"sensitive"}'));
       }
-    });
+    }, { highWaterMark: 0 });
     const request = new Request('https://worker.test/?action=gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
