@@ -135,7 +135,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
 
       <button
         type="button"
-        onClick={() => onSetActiveView?.('CASH_CUSHION')}
+        onClick={() => onSetActiveView?.('BALANCE')}
         aria-pressed={isCushionActive}
         class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
           ? 'bg-cyan-500 text-black'
