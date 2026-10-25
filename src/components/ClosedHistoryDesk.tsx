@@ -69,11 +69,11 @@ function normalizeCashflowRows(rows: string[][]): ImportedCashflow[] {
   if (rows.length < 2) throw new Error('The workbook contains no transaction rows.');
   const headers = rows[0].map(value => value.trim().toLowerCase());
   const find = (...names: string[]) => headers.findIndex(header => names.includes(header.replace(/[ _-]+/g, '')));
-  const dateIdx = find('date', 'datetime', 'operationdate', 'transactiondate', 'timestamp');
-  const amountIdx = find('amount', 'sum', 'value', 'operationamount', 'cashflow', 'marginfee', 'fee', 'interest', 'commission');
-  const typeIdx = find('type', 'operation', 'operationtype', 'transactiontype', 'kind', 'operationname');
+  const dateIdx = headers.findIndex(header => /date|time|дата|ժամանակ|датаоперации/.test(header.replace(/[ _-]+/g, '')));
+  const amountIdx = headers.findIndex(header => /amount|sum|value|cashflow|fee|interest|commission|сумма|начислен|списан|процент|комис|տոկոս|գումար/.test(header.replace(/[ _-]+/g, '')));
+  const typeIdx = headers.findIndex(header => /type|operation|kind|description|comment|details|назначение|операц|тип|описан|մեկնաբան|գործարք/.test(header.replace(/[ _-]+/g, '')));
   const currencyIdx = find('currency', 'curr');
-  const descIdx = find('description', 'comment', 'details', 'name', 'purpose', 'ticker', 'symbol', 'instrument', 'asset');
+  const descIdx = headers.findIndex(header => /description|comment|details|name|purpose|ticker|symbol|instrument|asset|назначение|описан|коммент|тикер|инструмент|ценнаябумага|актив|մեկնաբան|գործիք/.test(header.replace(/[ _-]+/g, '')));
   if (dateIdx < 0 || amountIdx < 0) {
     throw new Error('Could not identify date and amount columns. Workbook columns: ' + rows[0].join(', '));
   }
@@ -124,14 +124,14 @@ export function ClosedHistoryDesk() {
 
       // Identify margin-fee rows and apply each fee to the closed trade(s)
       // whose purchase-to-sale interval contains the fee's transaction date.
-      const feeRows = fresh.filter(item => /margin|interest|financing|overnight|rollover/i.test(
+      const feeRows = fresh.filter(item => /margin|interest|financing|overnight|rollover|borrow|fee|commission|процент|маржин|комис|плата за пользован|տոկոս|մարժին/i.test(
         [item.type, item.description, ...Object.entries(item.raw).map(([key, value]) => key + ' ' + value)].join(' ')
       ));
       const trades = [...(state.closedTrades || [])] as any[];
       let matchedFees = 0;
       const updatedTrades = trades.map(trade => {
         const ticker = String(trade.ticker ?? trade.symbol ?? '').trim().toUpperCase();
-        const buyDate = Date.parse(String(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? '').slice(0, 10));
+        const buyDate = Date.parse(String(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.date ?? '').slice(0, 10));
         const sellDate = Date.parse(String(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? '').slice(0, 10));
         if (!ticker || !Number.isFinite(buyDate) || !Number.isFinite(sellDate)) return trade;
         const matching = feeRows.filter(fee => {
@@ -160,7 +160,7 @@ export function ClosedHistoryDesk() {
         };
       });
       portfolioStore.setState({ cashflows: [...fresh, ...existing], ...(matchedFees ? { closedTrades: updatedTrades } : {}) });
-      setCashflowImportMessage(`Imported ${fresh.length} cashflows; matched ${matchedFees} margin-fee rows to closed trades; skipped ${imported.length - fresh.length} duplicates.`);
+      setCashflowImportMessage(`Imported ${fresh.length} cashflows; detected ${feeRows.length} possible margin-fee rows and matched ${matchedFees} to closed trades; skipped ${imported.length - fresh.length} duplicates.${feeRows.length === 0 ? ` Check fee-description/type columns. Detected headers: ${Object.keys(imported[0]?.raw || {}).join(', ')}` : ''}`);
     } catch (error) {
       setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
     } finally {
