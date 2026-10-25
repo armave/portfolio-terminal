@@ -271,6 +271,29 @@ describe('Freedom broker report diagnostic endpoint', () => {
     expect(JSON.stringify(payload)).not.toContain('do-not-expose');
   });
 
+  it('accepts the documented account_at_end report type with JSON format', async () => {
+    const upstream = { report: { account_at_end: { equity: 1000 } } };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(upstream), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(
+      request('type=account_at_end&date_start=2026-01-01&date_end=2026-01-31'),
+      { GATEWAY_SECRET: 'test-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key' }
+    );
+    expect(response.status).toBe(200);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.cmd).toBe('getBrokerReport');
+    expect(body.params).toEqual({
+      date_start: '2026-01-01',
+      date_end: '2026-01-31',
+      time_period: '23:59:59',
+      format: 'json',
+      language: 'en',
+      type: 'account_at_end'
+    });
+  });
+
   it.each([
     ['unsupported type', 'type=unknown&date_start=2026-01-01&date_end=2026-01-31'],
     ['invalid date', 'type=trades&date_start=2026-02-30&date_end=2026-03-01'],
