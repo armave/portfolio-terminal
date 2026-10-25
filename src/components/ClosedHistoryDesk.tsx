@@ -264,9 +264,11 @@ export function ClosedHistoryDesk() {
           marginFee: previous?.marginFee ?? trade?.marginFee ?? null,
           commission: trade?.commission ?? null,
           commissionCurrency: String(trade?.commissionCurrency ?? ''),
+          // Cashflow-upload calculations are local persisted metadata, not fields
+          // returned by the broker API. Preserve them when fresh executions arrive.
           marginFeeAllocations: previous?.marginFeeAllocations ?? trade?.marginFeeAllocations,
-          feesAndCommissions: trade?.feesAndCommissions,
-          netProfit: trade?.netProfit
+          feesAndCommissions: previous?.feesAndCommissions ?? trade?.feesAndCommissions,
+          netProfit: previous?.netProfit ?? trade?.netProfit
         };
         return compact;
       });
@@ -277,7 +279,8 @@ export function ClosedHistoryDesk() {
       // Cloudflare state-sync pipeline. Keep the workbook itself out of state.
       const current = portfolioStore.getState().brokerExecutedTrades || [];
       const fingerprint = (rows: any[]) => rows.map((row) =>
-        [row.id, row.ticker, row.side, row.quantity, row.executedAt, row.price, row.commission, row.profit]
+        [row.id, row.ticker, row.side, row.quantity, row.executedAt, row.price, row.commission, row.profit,
+          row.marginFee, JSON.stringify(row.marginFeeAllocations ?? {}), row.feesAndCommissions, row.netProfit]
           .map(value => String(value ?? '')).join('|')
       ).join('\n');
       if (fingerprint(current) !== fingerprint(normalized)) {
