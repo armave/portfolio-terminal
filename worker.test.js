@@ -686,3 +686,44 @@ describe('gateway authentication and request contract', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+
+describe('gateway input bounds', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects invalid provider symbols before making upstream requests', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=provider-quote&provider=finnhub&symbol=%3Cscript%3E', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      FINNHUB_KEY: 'provider-key'
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: 'Invalid symbol list.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects declared oversized request bodies before provider access', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=provider-quote&provider=finnhub&symbol=AAPL', {
+      headers: {
+        'X-App-Auth': 'test-secret',
+        'Content-Length': String(20 * 1024 * 1024 + 1)
+      }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      FINNHUB_KEY: 'provider-key'
+    });
+
+    expect(response.status).toBe(413);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
