@@ -224,6 +224,15 @@ export function ClosedHistoryDesk() {
           return { ...trade, feesAndCommissions: fees, totalCommissions: fees, marginInterest: addedFee, marginFee: addedFee, netProfit: Number((net + previousMargin - addedFee).toFixed(2)), netRealizedGain: Number((net + previousMargin - addedFee).toFixed(2)) };
         });
       }
+      const currentCashflows = portfolioStore.getState().cashflows || [];
+      const cashflowsChanged = JSON.stringify(currentCashflows) !== JSON.stringify(imported);
+      // Persist the uploaded source rows even when no fee date overlaps a closed
+      // trade yet. A later broker refresh can then retry allocation from the store.
+      const nextState: Record<string, unknown> = {};
+      if (cashflowsChanged) nextState.cashflows = imported;
+      if (updatedTradeCount && brokerExecutions.length) nextState.brokerExecutedTrades = updatedExecutions;
+      else if (updatedTradeCount) nextState.closedTrades = updatedTrades;
+      if (Object.keys(nextState).length) portfolioStore.setState(nextState);
       if (!updatedTradeCount) {
         const validTradeDates = brokerExecutions.filter(trade => Number.isFinite(Date.parse(String(trade.executedAt ?? trade.date ?? '')))).length;
         const validFeeDates = feeRows.filter(fee => Number.isFinite(feeDate(fee))).length;
@@ -231,12 +240,9 @@ export function ClosedHistoryDesk() {
         const tradeRange = executions.map(row => row.time).filter(Number.isFinite);
         const feeSpan = feeRange.length ? new Date(Math.min(...feeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...feeRange)).toISOString().slice(0, 10) : 'unparseable';
         const tradeSpan = tradeRange.length ? new Date(Math.min(...tradeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...tradeRange)).toISOString().slice(0, 10) : 'unparseable';
-        setCashflowImportMessage(`Read ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows (${validFeeDates} with valid dates; ${feeSpan}), but none overlapped ${segments.length} FIFO-matched closed trade segments from ${validTradeDates} dated broker executions (${tradeSpan}). No state was changed. Check the date ranges and broker execution data.`);
+        setCashflowImportMessage(`Saved ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows (${validFeeDates} with valid dates; ${feeSpan}), but none overlapped ${segments.length} FIFO-matched closed trade segments from ${validTradeDates} dated broker executions (${tradeSpan}). Cashflow data is saved; check the date ranges and broker execution data to allocate fees.`);
         return;
       }
-      portfolioStore.setState(brokerExecutions.length
-        ? { brokerExecutedTrades: updatedExecutions, cashflows: imported }
-        : { closedTrades: updatedTrades, cashflows: imported });
       setBrokerTrades(brokerExecutions.length ? updatedExecutions : brokerTrades);
       setCashflowImportMessage(`Saved ${imported.length} cashflow rows; allocated ${allocatedDailyFees.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} closed trade rows (${matchedFeeRows} fee dates matched). Saved rows can be reused after refresh.`);
     } catch (error) {
