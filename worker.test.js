@@ -727,3 +727,39 @@ describe('gateway input bounds', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+
+describe('streamed request body limits', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects a chunked oversized POST even when Content-Length is absent', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const chunk = new Uint8Array(1024 * 1024);
+    let chunksSent = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        if (chunksSent === 21) {
+          controller.close();
+          return;
+        }
+        chunksSent += 1;
+        controller.enqueue(chunk);
+      }
+    });
+    const request = new Request('https://worker.test/?action=gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      duplex: 'half'
+    });
+
+    const response = await worker.fetch(request, { GATEWAY_SECRET: 'test-secret' });
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: 'Request body exceeds the 20 MB limit.' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
