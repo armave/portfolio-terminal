@@ -183,3 +183,12 @@ This document records audit scope and implementation requirements. The GitHub AP
 
 **Verification note**
 - The previous code head passed both workflows. This logging change and its documentation are newer and require fresh CI on the final head.
+### 2026-10-25 — Pass 9: bound browser market-data caches
+
+**Finding and fix**
+- The browser API service had TTLs for Yahoo quote/deep-data, market-news, and Stocktwits caches, but expired entries were only removed when the same ticker was requested again. Repeated unique symbols could therefore accumulate stale entries for the lifetime of the tab.
+- Added a shared 500-entry bound with oldest-entry eviction for each of those caches. Existing TTLs and in-flight request deduplication remain unchanged.
+- Added a regression test proving the oldest deep-data cache entry is fetched again after the bound is exceeded.
+
+**Verification note**
+- The new cache bound and regression test require the current-head CI runs to complete before final readiness.
