@@ -155,3 +155,23 @@ This document records audit scope and implementation requirements. The GitHub AP
 **Validation**
 - The earlier head `4ea97305656a61ed31f9c9218e77e1aefb41110c` passed both CI workflows in full.
 - The pre-body-authentication change and this cloud-state change are newer than that green head. Their workflow runs must complete successfully before merge readiness.
+### 2026-10-25 — Pass 7: reject invalid requests before body buffering
+
+**Worker request contract**
+- Kept gateway authentication ahead of action validation and any POST body consumption.
+- Moved supported-action, GET-only method, and symbol-list validation ahead of bounded body reads. Authenticated requests that cannot be handled no longer spend the body-buffering budget; unauthenticated requests still receive 401 before those checks.
+- Added a regression test that a credentialed POST to a GET-only provider action is rejected without pulling its request body.
+- Fixed the previous CI failures in the new tests: the oversized-body case now supplies the required gateway credential, and the unauthenticated stream test uses a zero-high-water-mark stream so it measures consumer reads rather than automatic stream prefetch.
+
+**Workflow least privilege**
+- Scoped the Pages deployment token permissions to the deploy job rather than the build job.
+- Added the typecheck gate to the Pages build so deployment cannot proceed solely because tests/build pass while TypeScript checking fails.
+- Explicitly restricted the validation workflow token to contents: read and added job timeouts.
+
+**Observed CI result**
+- Both Validate and Pull Request CI passed on commit 85c41554d683cef113325cf2b334135c5b7b39f1, including typecheck, tests, build, dead-code validation, and production dependency audit.
+- The documentation update itself will trigger another set of workflows; final status must be checked against the resulting latest head.
+
+**Still pending**
+- Verify CI on the documentation-updated final head.
+- Continue final diff review for compatibility, cloud revision behavior, and deployment configuration. Keep the PR draft until final checks are green.
