@@ -116,8 +116,8 @@ export function ClosedHistoryDesk() {
       const imported = normalizeCashflowRows(rows);
       if (!imported.length) throw new Error('No cashflow rows were found in this workbook.');
 
-      // The uploaded workbook is a one-off calculation input only. Do not add
-      // its rows to portfolio state or send the workbook data to Cloudflare.
+      // Persist normalized cashflow rows as the source of truth. This lets the
+      // application re-run allocations after refresh without requiring the file again.
       const feeRows = imported.filter(item => {
         const text = [item.type, item.description, ...Object.values(item.raw)].join(' ').toLowerCase();
         // Exports commonly label the direction in a separate "Direction" column,
@@ -234,9 +234,11 @@ export function ClosedHistoryDesk() {
         setCashflowImportMessage(`Read ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows (${validFeeDates} with valid dates; ${feeSpan}), but none overlapped ${segments.length} FIFO-matched closed trade segments from ${validTradeDates} dated broker executions (${tradeSpan}). No state was changed. Check the date ranges and broker execution data.`);
         return;
       }
-      portfolioStore.setState(brokerExecutions.length ? { brokerExecutedTrades: updatedExecutions } : { closedTrades: updatedTrades });
+      portfolioStore.setState(brokerExecutions.length
+        ? { brokerExecutedTrades: updatedExecutions, cashflows: imported }
+        : { closedTrades: updatedTrades, cashflows: imported });
       setBrokerTrades(brokerExecutions.length ? updatedExecutions : brokerTrades);
-      setCashflowImportMessage(`Read ${imported.length} workbook rows; allocated ${allocatedDailyFees.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} closed trade rows (${matchedFeeRows} fee dates matched). Allocation uses invested cost (shares × buy execution price). Workbook rows were not stored.`);
+      setCashflowImportMessage(`Saved ${imported.length} cashflow rows; allocated ${allocatedDailyFees.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} closed trade rows (${matchedFeeRows} fee dates matched). Saved rows can be reused after refresh.`);
     } catch (error) {
       setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
     } finally {
