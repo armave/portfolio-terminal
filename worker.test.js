@@ -603,3 +603,32 @@ describe('legacy Yahoo quote POST compatibility', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+ 
+describe('Freedom cashflows Worker action', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('returns the read-only cashflows payload as JSON with CORS headers', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ cashflows: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })));
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows', {
+      headers: { 'X-App-Auth': 'test-secret', Origin: 'https://app.test' }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      ALLOWED_ORIGINS: 'https://app.test',
+      FREEDOM_PUBLIC_KEY: 'public-test-key',
+      FREEDOM_PRIVATE_KEY: 'private-test-key'
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.test');
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      data: { cashflows: [] }
+    });
+  });
+});
