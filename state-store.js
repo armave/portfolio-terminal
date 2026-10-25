@@ -51,9 +51,10 @@ export class PortfolioStateDO {
     }
 
     await this.ensureInitialized();
+    const recordKey = new URL(request.url).pathname === "/api/history" ? "historyRecord" : "record";
 
     if (request.method === "GET") {
-      const record = await this.ctx.storage.get("record");
+      const record = await this.ctx.storage.get(recordKey);
       if (!record) {
         return jsonResponse({ error: "Portfolio state not found." }, 404, 0);
       }
@@ -119,13 +120,13 @@ export class PortfolioStateDO {
     }
 
     const result = await this.ctx.storage.transaction(async (txn) => {
-      const current = await txn.get("record");
+      const current = await txn.get(recordKey);
       const currentRevision = current?.revision ?? 0;
       if (currentRevision !== expectedRevision) {
         return { conflict: true, revision: currentRevision };
       }
       const nextRevision = currentRevision + 1;
-      await txn.put("record", { payload: JSON.stringify(body), revision: nextRevision });
+      await txn.put(recordKey, { payload: JSON.stringify(body), revision: nextRevision });
       return { conflict: false, revision: nextRevision };
     });
 
