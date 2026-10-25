@@ -232,6 +232,7 @@ export class PortfolioStore {
       startDate: saved?.startDate || todayIso(),
       activeView: saved?.activeView || 'COMBINED',
       closedTrades: Array.isArray(saved?.closedTrades) ? saved!.closedTrades : [],
+      cashflows: Array.isArray(saved?.cashflows) ? saved!.cashflows : [],
       brokerAssumptions: {
         ...DEFAULT_BROKER_ASSUMPTIONS,
         ...(saved?.brokerAssumptions || {}),
