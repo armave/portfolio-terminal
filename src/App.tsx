@@ -64,6 +64,8 @@ export function App({ }: AppProps) {
   // only when Closed History opens.
   useEffect(() => {
     void loadFreedomAccount().catch(error => console.error('Unable to load TradeNet account info:', error));
+    // Fetch a bounded execution page for lot-level basis where it fully reconciles.
+    void loadExecutedTrades();
   }, []);
 
 
@@ -124,6 +126,18 @@ export function App({ }: AppProps) {
               aria-label="Portfolio summary metrics"
               class="portfolio-metrics-grid gap-2 text-xs text-slate-300"
             ></div>
+
+            <section class="portfolio-micro-column portfolio-micro-basis rounded-lg border border-slate-800 bg-slate-900/40 p-3" aria-label="Position basis">
+              <span class="portfolio-micro-heading text-[10px] font-semibold tracking-wider text-slate-400">POSITION BASIS</span>
+              <div class="portfolio-micro-row mt-2 flex items-start justify-between gap-3">
+                <span class="portfolio-metric-label text-[10px] text-slate-400">Shares / Tranches</span>
+                <span id="boardTranches" class="portfolio-metric-value text-right text-xs sm:text-sm font-mono text-slate-200">—</span>
+              </div>
+              <div class="portfolio-micro-row mt-1 flex items-start justify-between gap-3">
+                <span class="portfolio-metric-label text-[10px] text-slate-400">Invested / Avg. Entry</span>
+                <span id="boardInvested" class="portfolio-metric-value text-right text-xs sm:text-sm font-mono text-slate-200">—</span>
+              </div>
+            </section>
 
             {/* Projection Table */}
             <div
