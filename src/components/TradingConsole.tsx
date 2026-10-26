@@ -155,13 +155,6 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       display: `sell today for ${priceText} vs sell 14 days later for ${comparisonPrice}`
     },
     {
-      category: 'Ladder Exit',
-      badgeColor: 'text-purple-400 border-purple-900/60 bg-purple-950/30',
-      id: 'hintLadderExit',
-      command: `sell ${halfShares} ${hasPosition ? ticker : '[TICKER]'} for ${priceText} today and ${halfShares} for ${comparisonPrice} in 7 days`,
-      display: `sell ${halfShares} ${hasPosition ? ticker : '[TICKER]'} for ${priceText} today and ${halfShares} for ${comparisonPrice} in 7d`
-    },
-    {
       category: 'Live / Manual Quote',
       badgeColor: 'text-amber-400 border-amber-900/60 bg-amber-950/30',
       id: 'hintLiveQuote',
