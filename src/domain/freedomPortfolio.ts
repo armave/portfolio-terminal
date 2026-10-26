@@ -14,7 +14,7 @@ export interface FreedomQuantityMismatch {
 export interface FreedomReconciliationResult {
   brokerUsdBalance?: { amount: number };
   positions: Record<string, any>;
-  cashStocks: Array<Record<string, any>>;
+  cashStocks: any[];
   mismatches: FreedomQuantityMismatch[];
 }
 
@@ -36,7 +36,7 @@ function positiveFinite(value: unknown): number | null {
 export function reconcileFreedomPortfolio(
   snapshot: FreedomPortfolioSnapshotLike,
   sourcePositions: Record<string, any>,
-  sourceCashStocks: Array<Record<string, any>>,
+  sourceCashStocks: any[],
   receivedAt = Date.now()
 ): FreedomReconciliationResult {
   const usdBalance = snapshot.balances.find(
