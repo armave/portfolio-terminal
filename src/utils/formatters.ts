@@ -81,7 +81,7 @@ export function formatQuoteMetadata(
   const freshness = getQuoteFreshness(holding, Date.now(), refreshIntervalMs);
   if (freshness === 'unavailable') return holding.quoteSource || 'Not fetched';
   const source = holding.quoteSource ? `${holding.quoteSource} · ` : '';
-  if (freshness === 'unknown') return `Quote time unknown · ${holding.quoteSource || 'source unavailable'}`;
+  if (freshness === 'unknown') return `${holding.quoteSource || 'source unavailable'}`;
 
   const sourceTimestamp = Number(holding.sourceTimestamp ?? holding.quoteDetails?.sourceTimestamp);
   const time = new Date(sourceTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

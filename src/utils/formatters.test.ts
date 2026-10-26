@@ -35,7 +35,7 @@ describe('display formatters', () => {
 
   it('reports missing and unverified quote timestamps honestly', () => {
     expect(formatQuoteMetadata({ quoteSource: 'Yahoo' })).toBe('Yahoo');
-    expect(formatQuoteMetadata({ quoteSource: 'Twelve Data', quoteUpdatedAt: 1_800_000_000_000 })).toBe('Quote time unknown · Twelve Data');
+    expect(formatQuoteMetadata({ quoteSource: 'Twelve Data', quoteUpdatedAt: 1_800_000_000_000 })).toBe('Twelve Data');
     expect(formatQuoteMetadata({})).toBe('Not fetched');
   });
 });

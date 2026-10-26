@@ -563,7 +563,7 @@ export function ClosedHistoryDesk() {
                     ? closedDate.toLocaleDateString('en-GB', {
                       day: '2-digit',
                       month: 'short',
-                      year: 'numeric'
+                      year: '2-digit'
                     })
                     : 'Unknown';
 
@@ -598,7 +598,7 @@ export function ClosedHistoryDesk() {
 
                 return (
                   <tr key={(trade as any).id || (source + "-" + index)} class="hover:bg-slate-900/40 text-slate-300">
-                    <td class="py-2.5 px-3 font-bold text-white">{(trade as any).ticker || "—"}</td>
+                    <td class="py-2.5 px-3 font-bold text-white">{(trade as any).ticker?.replace('.US', '') || "—"}</td>
                     <td class="py-2.5 px-3 whitespace-nowrap">
                       <span>{dateText}</span>
                       {closedDate && !Number.isNaN(closedDate.getTime()) ? (
