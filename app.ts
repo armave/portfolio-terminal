@@ -134,13 +134,29 @@ if (typeof window !== 'undefined') {
     const snapshot = (event as CustomEvent).detail;
     if (!snapshot || snapshot.loaded !== true || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.balances)) return;
     const current = portfolioStore.getState();
-    const reconciled = reconcileFreedomPortfolio(snapshot, current.positions || {}, current.cashStocks || []);
+    // CashCushionDesk consumes cashCushion.holdings; keep the legacy cashStocks
+    // projection in sync, but reconcile from the canonical store-owned holdings.
+    const reconciled = reconcileFreedomPortfolio(
+      snapshot,
+      current.positions || {},
+      current.cashCushion?.holdings || []
+    );
+    const brokerCashHoldings = reconciled.cashStocks.map((holding: any) => ({
+      ...holding,
+      ...(Number.isFinite(Number(holding.currentPrice ?? holding.price))
+        ? { price: Number(holding.currentPrice ?? holding.price) }
+        : {})
+    }));
 
     portfolioStore.setState({
       brokerAccountInfo: { ...snapshot, receivedAt: Date.now(), status: 'current' },
       ...(reconciled.brokerUsdBalance ? { balance: reconciled.brokerUsdBalance.amount } : {}),
       positions: reconciled.positions,
-      cashStocks: reconciled.cashStocks
+      cashStocks: brokerCashHoldings,
+      cashCushion: {
+        ...(current.cashCushion || { freeCash: 0, holdings: [] }),
+        holdings: brokerCashHoldings
+      }
     });
 
     if (reconciled.mismatches.length) {

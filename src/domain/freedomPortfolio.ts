@@ -36,7 +36,7 @@ function positiveFinite(value: unknown): number | null {
 export function reconcileFreedomPortfolio(
   snapshot: FreedomPortfolioSnapshotLike,
   sourcePositions: Record<string, any>,
-  sourceCashStocks: any[],
+  sourceCashHoldings: any[],
   receivedAt = Date.now()
 ): FreedomReconciliationResult {
   const usdBalance = snapshot.balances.find(
@@ -92,7 +92,7 @@ export function reconcileFreedomPortfolio(
   const mismatches: FreedomQuantityMismatch[] = [];
   const cashStocks: Array<Record<string, any>> = [];
   const priorCashByTicker = new Map<string, Record<string, any>>();
-  for (const holding of Array.isArray(sourceCashStocks) ? sourceCashStocks : []) {
+  for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
     const ticker = tickerKey(holding?.ticker);
     if (ticker && !priorCashByTicker.has(ticker)) priorCashByTicker.set(ticker, holding);
   }
@@ -121,6 +121,10 @@ export function reconcileFreedomPortfolio(
   for (const [ticker, marginQuantity] of marginQuantities) {
     if (!brokerByTicker.has(ticker) && marginQuantity > 1e-6) {
       mismatches.push({ ticker, marginQuantity, freedomQuantity: 0 });
+      const priorCash = priorCashByTicker.get(ticker);
+      if (priorCash && !cashStocks.some(holding => tickerKey(holding.ticker) === ticker)) {
+        cashStocks.push(priorCash);
+      }
     }
   }
 

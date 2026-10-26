@@ -41,6 +41,19 @@ describe('reconcileFreedomPortfolio', () => {
     expect(result.cashStocks).toEqual([{ ticker: 'AAPL', shares: 3, currentPrice: 185 }]);
   });
 
+  it('preserves cash holdings for a margin ticker missing from the broker snapshot', () => {
+    const result = reconcileFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: []
+    }, {
+      AAPL: { ticker: 'AAPL', shares: 10 }
+    }, [{ ticker: 'AAPL', shares: 2, currentPrice: 190 }]);
+
+    expect(result.mismatches).toEqual([{ ticker: 'AAPL', marginQuantity: 10, freedomQuantity: 0 }]);
+    expect(result.cashStocks).toEqual([{ ticker: 'AAPL', shares: 2, currentPrice: 190 }]);
+  });
+
   it('aggregates duplicate broker instrument rows and rejects invalid prices', () => {
     const result = reconcileFreedomPortfolio({
       loaded: true,
