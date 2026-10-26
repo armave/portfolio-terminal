@@ -1078,7 +1078,7 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
     executedAt: row?.date ?? row?.time ?? row?.datetime ?? row?.exec_time ?? null,
     tradeValue: numberOrNull(row?.v ?? row?.summ ?? row?.value),
     profit: numberOrNull(row?.profit ?? row?.pnl),
-    marginFee: numberOrNull(row?.margin_fee ?? row?.marginFee ?? row?.margin_interest ?? row?.marginInterest ?? row?.fee_margin ?? row?.feeMargin),
+    marginFee: numberOrNull(row?.margin_fee ?? row?.marginFee ?? row?.margin_interest ?? row?.marginInterest ?? row?.fee_margin ?? row?.feeMargin ?? row?.margin_commission ?? row?.margin_commiss),
     commission: numberOrNull(row?.commission ?? row?.commiss ?? row?.commissions ?? row?.fee ?? row?.commiss_exchange),
     commissionCurrency: String(row?.commission_currency ?? row?.curr_c ?? row?.currency ?? ''),
     raw: row && typeof row === 'object' ? row : {}
