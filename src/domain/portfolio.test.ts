@@ -451,6 +451,35 @@ describe('portfolio domain', () => {
     expect(inconsistent).toEqual(original);
   });
 
+  it('blocks sales when cost-basis lots are missing or understate the open quantity', () => {
+    const withoutLots: MarginPosition = { ...basePosition, tranches: [] };
+    const undercounted: MarginPosition = {
+      ...basePosition,
+      shares: 10,
+      tranches: [{ qty: 8, price: 10, buyCommission: 2 }]
+    };
+    expect(() => realizeClosedTrade(withoutLots, 'TEST', 1, 12, 1, 10_000))
+      .toThrow('Position has no cost-basis tranches');
+    expect(() => realizeClosedTrade(undercounted, 'TEST', 1, 12, 1, 10_000))
+      .toThrow('Recorded open shares (10) do not match tranche total (8)');
+  });
+
+  it('blocks sales when a tranche has an invalid entry price or fees exceed the aggregate commission', () => {
+    const invalidPrice: MarginPosition = {
+      ...basePosition,
+      tranches: [{ qty: 10, price: 0, buyCommission: 2 }]
+    };
+    const invalidFees: MarginPosition = {
+      ...basePosition,
+      commBuy: 1,
+      tranches: [{ qty: 10, price: 10, buyCommission: 2 }]
+    };
+    expect(() => realizeClosedTrade(invalidPrice, 'TEST', 1, 12, 1, 10_000))
+      .toThrow('invalid cost-basis tranche');
+    expect(() => realizeClosedTrade(invalidFees, 'TEST', 1, 12, 1, 10_000))
+      .toThrow('Tranche entry commissions exceed');
+  });
+
   it('projects debt with the same daily compounding model as accrued margin interest', () => {
     // 1000 * (1 + 0.01)^5 = 1051.01005, rounded to cents.
     expect(calculateProjectedDebt(1000, 0.01, 5)).toBe(1051.01);
