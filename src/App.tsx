@@ -14,6 +14,9 @@ export function App({ }: AppProps) {
   // Closed History asks for trade history when mounted; do not also fetch from
   // a global navigation click listener, which caused duplicate broker requests.
   useEffect(() => {
+    // Load broker executions so margin commissions can use Freedom-reported fees
+    // when present; local commission rules remain the fallback.
+    void loadExecutedTrades();
     const onRequest = () => { void loadExecutedTrades(); };
     window.addEventListener('tradenet:request-executed-trades', onRequest);
     return () => window.removeEventListener('tradenet:request-executed-trades', onRequest);
