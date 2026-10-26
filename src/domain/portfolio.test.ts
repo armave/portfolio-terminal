@@ -529,6 +529,14 @@ describe('portfolio domain', () => {
     expect(calculateBreakevenDays(100, -1000, 0.01)).toBeNull();
   });
 
+  it('uses the cent-rounded ledger rather than the logarithmic estimate at small balances', () => {
+    const principal = 1.99;
+    const dailyRate = 1 / 365;
+    expect(calculateProjectedDebt(principal, dailyRate, 2) - principal).toBeLessThan(0.03);
+    expect(calculateProjectedDebt(principal, dailyRate, 3) - principal).toBeGreaterThanOrEqual(0.03);
+    expect(calculateBreakevenDays(0.03, principal, dailyRate)).toBe(3);
+  });
+
   it('calculates commission based on rules', () => {
     const rules = { commPerShare: 0.01, commVolumePct: 0.001, minCommOrder: 1.5 };
     expect(calculateCommission(100, 1000, rules)).toBe(2); // 100*0.01 + 1000*0.001 = 1 + 1 = 2
