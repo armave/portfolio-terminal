@@ -185,6 +185,8 @@ export interface PortfolioState {
       marketPrice: number | null; marketValue: number | null; averagePrice: number | null;
       profitClose: number | null; accountPositionId: number | null;
     }>;
+    /** Current when the latest API refresh succeeded; stale after a failed refresh. */
+    status?: 'current' | 'stale' | 'unavailable';
     receivedAt: number;
   };
   cashCushion: CashCushionState;

@@ -434,7 +434,50 @@ describe('portfolio domain', () => {
     expect(() => realizeClosedTrade(basePosition, 'TEST', 0, 12, 1, 10_000)).toThrow();
     expect(() => realizeClosedTrade(basePosition, 'TEST', 11, 12, 1, 10_000)).toThrow();
     expect(() => realizeClosedTrade(basePosition, 'TEST', 1, Number.NaN, 1, 10_000)).toThrow();
+    expect(() => realizeClosedTrade(basePosition, 'TEST', 1, 12, Number.NaN, 10_000)).toThrow();
+    expect(() => realizeClosedTrade({ ...basePosition, shares: Number.NaN }, 'TEST', 1, 12, 1, 10_000)).toThrow();
     expect(basePosition).toEqual(original);
+  });
+
+  it('rejects materially inconsistent open shares and tranche totals before realizing a sale', () => {
+    const inconsistent: MarginPosition = {
+      ...basePosition,
+      shares: 10,
+      tranches: [{ qty: 12, price: 10, buyCommission: 2 }]
+    };
+    const original = structuredClone(inconsistent);
+    expect(() => realizeClosedTrade(inconsistent, 'TEST', 1, 12, 1, 10_000))
+      .toThrow('Position tranche total (12) exceeds recorded open shares (10)');
+    expect(inconsistent).toEqual(original);
+  });
+
+  it('blocks sales when cost-basis lots are missing or understate the open quantity', () => {
+    const withoutLots: MarginPosition = { ...basePosition, tranches: [] };
+    const undercounted: MarginPosition = {
+      ...basePosition,
+      shares: 10,
+      tranches: [{ qty: 8, price: 10, buyCommission: 2 }]
+    };
+    expect(() => realizeClosedTrade(withoutLots, 'TEST', 1, 12, 1, 10_000))
+      .toThrow('Position has no cost-basis tranches');
+    expect(() => realizeClosedTrade(undercounted, 'TEST', 1, 12, 1, 10_000))
+      .toThrow('Recorded open shares (10) do not match tranche total (8)');
+  });
+
+  it('blocks sales when a tranche has an invalid entry price or fees exceed the aggregate commission', () => {
+    const invalidPrice: MarginPosition = {
+      ...basePosition,
+      tranches: [{ qty: 10, price: 0, buyCommission: 2 }]
+    };
+    const invalidFees: MarginPosition = {
+      ...basePosition,
+      commBuy: 1,
+      tranches: [{ qty: 10, price: 10, buyCommission: 2 }]
+    };
+    expect(() => realizeClosedTrade(invalidPrice, 'TEST', 1, 12, 1, 10_000))
+      .toThrow('invalid cost-basis tranche');
+    expect(() => realizeClosedTrade(invalidFees, 'TEST', 1, 12, 1, 10_000))
+      .toThrow('Tranche entry commissions exceed');
   });
 
   it('projects debt with the same daily compounding model as accrued margin interest', () => {
@@ -480,8 +523,18 @@ describe('portfolio domain', () => {
     expect(calculateProjectedDebt(1000, 0.005, 20) - 1000).toBeGreaterThanOrEqual(100);
     expect(calculateBreakevenDays(-10, 1000, 0.01)).toBe(0); // <= 0 profit
     expect(calculateBreakevenDays(100, 0, 0.01)).toBe(0); // 0 debt
-    expect(calculateBreakevenDays(100, 1000, 0)).toBe(0); // no ongoing interest
+    expect(calculateBreakevenDays(100, 1000, 0)).toBeNull(); // positive target is unreachable without interest
     expect(calculateBreakevenDays(Number.POSITIVE_INFINITY, 1000, 0.01)).toBeNull();
+    expect(calculateBreakevenDays(100, 1000, -0.01)).toBeNull();
+    expect(calculateBreakevenDays(100, -1000, 0.01)).toBeNull();
+  });
+
+  it('uses the cent-rounded ledger rather than the logarithmic estimate at small balances', () => {
+    const principal = 1.99;
+    const dailyRate = 1 / 365;
+    expect(calculateProjectedDebt(principal, dailyRate, 2) - principal).toBeLessThan(0.03);
+    expect(calculateProjectedDebt(principal, dailyRate, 3) - principal).toBeGreaterThanOrEqual(0.03);
+    expect(calculateBreakevenDays(0.03, principal, dailyRate)).toBe(3);
   });
 
   it('calculates commission based on rules', () => {

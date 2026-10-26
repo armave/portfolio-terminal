@@ -53,11 +53,9 @@ Supported intents:
 {"intent":"simulation","ticker":"JBL","simPrice":300,"daysOffset":0,"label":"Today"}
 11. Compare exactly two hypothetical exits:
 {"intent":"comparison","ticker":"JBL","scenarios":[{"label":"Today","price":300,"days":0},{"label":"10 days","price":310,"days":10}]}
-12. Simulate a laddered scale-out without executing it:
-{"intent":"ladder","ticker":"JBL","steps":[{"shares":10,"price":305,"days":0,"label":"Today"},{"shares":10,"price":315,"days":7,"label":"7 days"}]}
-13. Answer a general question without changing portfolio state:
+12. Answer a general question without changing portfolio state:
 {"intent":"chat","response":"..."}
 
-Use only these intent and action names. Never invent prices, quantities, dates, or balances that the user did not provide. A ticker from the supplied active-position or viewed-asset context is allowed. If a quote, simulation, comparison, or ladder request omits its ticker, use the viewed asset when it is an active position; otherwise return null. When required details are unclear, return a chat intent asking one concise clarification instead of guessing. For actions, include every field shown in that action's example; use null only where allowed. Simulation and comparison are estimates and must never be represented as completed trades.
+Use only these intent and action names. Never invent prices, quantities, dates, or balances that the user did not provide. A ticker from the supplied active-position or viewed-asset context is allowed. If a quote, simulation, comparison request omits its ticker, use the viewed asset when it is an active position; otherwise return null. When required details are unclear, return a chat intent asking one concise clarification instead of guessing. For actions, include every field shown in that action's example; use null only where allowed. Simulation and comparison are estimates and must never be represented as completed trades.
 `;
 }

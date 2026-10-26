@@ -25,6 +25,8 @@ It is **not** a broker connection, order-entry system, source of official accoun
 
 * **Multi-Provider Market Data:** Streams live prices, premarket indicators, and analyst targets via Finnhub, Twelve Data, Alpha Vantage, RapidAPI Yahoo Finance, and Stooq.
 
+* **Freedom Broker Account Reconciliation:** When the authenticated read-only Freedom TradeNet account API returns a valid snapshot, the app prioritizes the broker's USD balance, aggregate share quantities, and available broker-reported prices. App-owned trade lots and cost basis remain separate; quantity mismatches are surfaced instead of silently rewriting lots.
+
 
 * **Conversational Trading Console:** Evaluates natural-language portfolio entries and exit scenario modeling using Google Gemini with an explicit confirmation safeguard.
 
@@ -127,6 +129,12 @@ sell 5 AAPL today for 195 and 5 in 7 days for 205
 *Note:* All AI-interpreted portfolio mutations require user confirmation before committing state. Margin sales exceeding open tranche quantities are blocked.
 
 ---
+
+## Freedom Broker data priority
+
+Freedom TradeNet account data is the preferred source for the broker-reported USD balance, aggregate account positions, and market prices included in the account snapshot when valid data is available. The app keeps its own trade lots, targets, commissions, and cost basis separate so a broker snapshot cannot silently rewrite local accounting. Broker aggregate quantities are reconciled against locally tracked margin quantities to derive cash holdings. If quantities do not reconcile, the app reports the discrepancy and preserves the affected local cash quantity rather than guessing.
+
+If Freedom account data is unavailable or the Gateway Secret has not been configured, locally saved portfolio data remains available and the app surfaces a warning. A previously loaded broker snapshot is marked stale after a failed refresh; it must not be presented as a current broker balance. Quote freshness is marked unknown when the broker snapshot does not provide a verifiable market observation timestamp.
 
 ## Market Data & API Keys
 

@@ -53,10 +53,9 @@ export function App({ }: AppProps) {
       if (typeof window !== 'undefined') {
         (window as any).__tradenetExecutedTrades = normalizedTrades;
         window.dispatchEvent(new CustomEvent('tradenet:executed-trades', { detail: normalizedTrades }));
-        const accountSnapshot = (window as any).__tradenetAccountInfo;
-        if (accountSnapshot?.loaded === true) {
-          window.dispatchEvent(new CustomEvent('tradenet:account-info', { detail: accountSnapshot }));
-        }
+        // Account snapshots are emitted only after a successful account API
+        // request. Re-emitting the cached global here would falsely refresh its
+        // timestamp and could mark stale broker data as current.
       }
     } catch (error) {
       console.error('Unable to load TradeNet executed trades:', error);
@@ -70,7 +69,13 @@ export function App({ }: AppProps) {
   // Load account/balance/position data first on startup. Trade history is fetched
   // only when Closed History opens.
   useEffect(() => {
-    void loadFreedomAccount().catch(error => console.error('Unable to load TradeNet account info:', error));
+    void loadFreedomAccount().catch(() => {
+      // Keep the saved portfolio intact, but notify the app shell so stale
+      // broker data is never mistaken for a successful current snapshot.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('tradenet:account-info-error'));
+      }
+    });
   }, []);
 
 

@@ -593,7 +593,7 @@ summary:hover {
   -webkit-overflow-scrolling: touch;
   max-width: 960px;
   margin: 0 auto;
-  width: 103%;
+  width: 100%;
   border-radius: 0.5rem;
   border: 1px solid var(--border-subtle);
   background: var(--bg-surface-subtle);
@@ -677,7 +677,8 @@ summary:hover {
   input[type="password"],
   input[type="time"],
   select {
-    font-size: 12px !important;
+    /* 16px prevents iOS Safari from zooming the page on form focus. */
+    font-size: 16px !important;
   }
 
   body {
@@ -770,6 +771,38 @@ summary:hover {
   #cashCushionContainer>.bg-slate-900\/60>div:last-child {
     align-items: flex-end;
     justify-content: space-between;
+  }
+}
+
+/* Touch controls stay comfortable without inflating desktop controls. */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+  }
+
+  button,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 420px) {
+  #mainTerminalView {
+    padding-inline: 0.5rem;
+  }
+
+  .table-scroll-wrapper,
+  #projectionTableContainer {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+  }
+
+  #terminalLog {
+    overflow-wrap: anywhere;
   }
 }
 

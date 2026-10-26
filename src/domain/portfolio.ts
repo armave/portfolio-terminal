@@ -162,7 +162,7 @@ export function getAccruedRolloverCycles(purchaseDateStr?: string, now: Date = n
 }
 
 /**
- * Calculates accrued margin interest using simple daily interest.
+ * Calculates accrued margin interest using daily compounding.
  * Supports:
  * 1. calculateMarginInterest(debt: number, dailyRate: number, days: number): number
  * 2. calculateMarginInterest(principal: number, options: MarginInterestOptions, days?: number): number
@@ -398,13 +398,25 @@ export function calculateBreakevenDays(
   totalDebt: number,
   dailyRate: number
 ): number | null {
-  if (totalDebt <= 0 || netTargetProfit <= 0 || dailyRate <= 0) return 0;
   if (![netTargetProfit, totalDebt, dailyRate].every(Number.isFinite)) return null;
+  if (netTargetProfit <= 0 || totalDebt === 0) return 0;
+  if (totalDebt < 0 || dailyRate < 0) return null;
+  // Positive interest coverage is impossible without a positive daily rate.
+  if (dailyRate === 0) return null;
 
-  // Match calculateProjectedDebt's daily compounding model:
-  // debt * ((1 + dailyRate) ** days - 1) >= netTargetProfit.
-  const days = Math.log1p(netTargetProfit / totalDebt) / Math.log1p(dailyRate);
-  return Number.isFinite(days) ? Math.ceil(days) : null;
+  // Search the same cent-rounded daily ledger used by projected debt. A closed
+  // form logarithm can be off by a day because each rollover rounds to cents.
+  const principal = Number(totalDebt.toFixed(2));
+  let projected = principal;
+  for (let day = 1; day <= 1_000_000; day++) {
+    const next = Number((projected * (1 + dailyRate)).toFixed(2));
+    if (!Number.isFinite(next) || next <= 0) return null;
+    if (next - principal >= netTargetProfit - 1e-9) return day;
+    // Cent rounding can make very small balances stationary indefinitely.
+    if (next === projected) return null;
+    projected = next;
+  }
+  return null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -716,37 +728,71 @@ export function realizeClosedTrade(
   sellCommission: number,
   closedAt: number
 ): ClosedTradeResult {
-  if (!Number.isFinite(shares) || shares <= 0 || shares > position.shares) {
+  if (!Number.isFinite(position.shares) || position.shares <= 0 ||
+      !Number.isFinite(shares) || shares <= 0 || shares - position.shares > 1e-8) {
     throw new Error('Closed share quantity must be positive and no greater than the open position.');
   }
   if (!Number.isFinite(sellPrice) || sellPrice <= 0) {
     throw new Error('Sale price must be a finite positive number.');
   }
+  if (!Number.isFinite(sellCommission) || sellCommission < 0) {
+    throw new Error('Sale commission must be a finite non-negative number.');
+  }
+  if (!Number.isFinite(closedAt)) {
+    throw new Error('Close timestamp must be finite.');
+  }
 
-  const originalShares = Number(position.shares) || 0;
+  const originalShares = Number(position.shares);
   const sourceTranches = Array.isArray(position.tranches) ? position.tranches : [];
-  const trancheShares = sourceTranches.reduce((total, tranche) => total + Math.max(0, Number(tranche.qty) || 0), 0);
+  if (sourceTranches.length === 0) {
+    throw new Error('Position has no cost-basis tranches; reconcile its entry cost before selling.');
+  }
+
+  const lots = sourceTranches.map((tranche) => {
+    const qty = Number(tranche.qty);
+    const price = Number(tranche.price);
+    const buyCommission = tranche.buyCommission === undefined ? 0 : Number(tranche.buyCommission);
+    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0 ||
+        !Number.isFinite(buyCommission) || buyCommission < 0) {
+      throw new Error('Position contains an invalid cost-basis tranche; reconcile lots before selling.');
+    }
+    return { ...tranche, qty, price, buyCommission };
+  });
+
+  const trancheShares = lots.reduce((total, tranche) => total + tranche.qty, 0);
+  const shareTolerance = Math.max(1e-8, Math.abs(originalShares) * 1e-8);
+  if (trancheShares - originalShares > shareTolerance) {
+    throw new Error(
+      `Position tranche total (${trancheShares}) exceeds recorded open shares (${originalShares}); reconcile lots before selling.`
+    );
+  }
+  if (originalShares - trancheShares > shareTolerance) {
+    throw new Error(
+      `Recorded open shares (${originalShares}) do not match tranche total (${trancheShares}); reconcile lots before selling.`
+    );
+  }
+
+  // Normalize only sub-tolerance floating-point drift after validating the ledger.
   const scale = trancheShares > originalShares && trancheShares > 0 ? originalShares / trancheShares : 1;
-  const lots = sourceTranches
-    .map(tranche => ({
-      ...tranche,
-      qty: Math.max(0, Number(tranche.qty) || 0) * scale,
-      price: Math.max(0, Number(tranche.price) || 0),
-      buyCommission: Math.max(0, Number(tranche.buyCommission) || 0) * scale
-    }))
-    .filter(tranche => tranche.qty > 0);
-  const scaledCommission = scale < 1 ? (Number(position.commBuy) || 0) * scale : Number(position.commBuy) || 0;
-  const scaledTrancheShares = lots.reduce((total, tranche) => total + tranche.qty, 0);
-  const fallbackShares = Math.max(0, originalShares - scaledTrancheShares);
-  if (fallbackShares > 0) {
-    lots.push({
-      qty: fallbackShares,
-      price: scaledTrancheShares > 0
-        ? lots.reduce((total, tranche) => total + (tranche.qty * tranche.price), 0) / scaledTrancheShares
-        : 0,
-      buyCommission: 0,
-      acquiredAt: resolveTradeDateTimestamp(position.startDate, closedAt)
+  if (scale < 1) {
+    lots.forEach((tranche) => {
+      tranche.qty *= scale;
+      tranche.buyCommission *= scale;
     });
+  }
+
+  const rawCommission = Number(position.commBuy);
+  if (!Number.isFinite(rawCommission) || rawCommission < 0) {
+    throw new Error('Position entry commission must be finite and non-negative.');
+  }
+  const scaledCommission = scale < 1 ? rawCommission * scale : rawCommission;
+  const lotCommissionTotal = lots.reduce((total, tranche) => total + tranche.buyCommission, 0);
+  if (lotCommissionTotal - scaledCommission > 0.01) {
+    throw new Error('Tranche entry commissions exceed the recorded position commission; reconcile fees before selling.');
+  }
+  const rawMarginCharged = position.marginCharged === undefined ? 0 : Number(position.marginCharged);
+  if (!Number.isFinite(rawMarginCharged) || rawMarginCharged < 0) {
+    throw new Error('Position financing charges must be finite and non-negative.');
   }
 
   const lotBuyCommissions = lots.reduce((total, tranche) => total + Math.max(0, Number(tranche.buyCommission) || 0), 0);
@@ -784,7 +830,7 @@ export function realizeClosedTrade(
     ? Math.floor(durationWeightedMs / closedShares / 86400000)
     : 0;
   const marginFee = originalShares > 0
-    ? (Number(position.marginCharged) || 0) * (closedShares / originalShares)
+    ? rawMarginCharged * (closedShares / originalShares)
     : 0;
   const feesAndCommissions = buyCommission + sellCommission + marginFee;
   const trade = closedShares > 0
@@ -804,7 +850,7 @@ export function realizeClosedTrade(
       shares: Math.max(0, originalShares - closedShares),
       tranches: remainingLots,
       commBuy: Math.max(0, scaledCommission - buyCommission),
-      marginCharged: Math.max(0, (Number(position.marginCharged) || 0) - marginFee)
+      marginCharged: Math.max(0, rawMarginCharged - marginFee)
     },
     trade,
     marginFee
