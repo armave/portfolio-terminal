@@ -53,10 +53,9 @@ export function App({ }: AppProps) {
       if (typeof window !== 'undefined') {
         (window as any).__tradenetExecutedTrades = normalizedTrades;
         window.dispatchEvent(new CustomEvent('tradenet:executed-trades', { detail: normalizedTrades }));
-        const accountSnapshot = (window as any).__tradenetAccountInfo;
-        if (accountSnapshot?.loaded === true) {
-          window.dispatchEvent(new CustomEvent('tradenet:account-info', { detail: accountSnapshot }));
-        }
+        // Account snapshots are emitted only after a successful account API
+        // request. Re-emitting the cached global here would falsely refresh its
+        // timestamp and could mark stale broker data as current.
       }
     } catch (error) {
       console.error('Unable to load TradeNet executed trades:', error);
