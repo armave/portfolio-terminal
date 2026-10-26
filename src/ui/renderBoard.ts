@@ -208,7 +208,7 @@ function renderPositionBasis(state: BoardState, currentView: string, tickers: st
   }
 
   const average = displayInvested / displayShares;
-  tranchesEl.textContent = `${displayShares} shares · ${displayLots.map((lot) => {
+  tranchesEl.textContent = `${displayLots.map((lot) => {
     const shortDate = formatShortDate(lot.date);
     return `${lot.qty} @ ${formatPrice(lot.price)}${shortDate ? ` (${shortDate})` : ''}`;
   }).join(' + ')}`;
