@@ -99,7 +99,7 @@ function parseTagAndStyle(rawMessage: string, isError: boolean) {
       rowClass: 'border-l-2 border-rose-500/80 bg-rose-950/20 text-rose-200'
     };
   }
-  if (upperTag.includes('SIM') || upperTag.includes('COMPARISON') || upperTag.includes('LADDER')) {
+  if (upperTag.includes('SIM') || upperTag.includes('COMPARISON')) {
     return {
       badge: rawTag,
       badgeClass: 'bg-purple-950/90 text-purple-300 border border-purple-800/80',
@@ -144,7 +144,6 @@ function scenarioReportText(message: string): string | null {
     firstLine.startsWith('[EXIT COMPARISON:') ||
     firstLine.startsWith('[MULTI-DATE EXIT COMPARISON:') ||
     firstLine.startsWith('[HYPOTHETICAL BUY:') ||
-    firstLine.startsWith('[LADDER EXIT:') ||
     firstLine.startsWith('[STAGED EXIT:');
   return isReport ? report : null;
 }

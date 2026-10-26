@@ -154,13 +154,6 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
       selectText: targetPrice,
       color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/60',
       title: `Update ${position.ticker} price target`
-    },
-    {
-      text: '🪜 Ladder…',
-      command: `ladder ${position.ticker} ${priceText}, ${comparisonPriceText}`,
-      selectText: comparisonPriceText,
-      color: 'text-purple-300 border-purple-900/70 hover:bg-purple-950/60',
-      title: 'Simulate scaling out across multiple price targets'
     }
   ];
 

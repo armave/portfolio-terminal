@@ -26,16 +26,6 @@ describe('AI intent parsing', () => {
     expect(() => parseAiIntent(JSON.stringify({ intent: 'arbitrary', value: true }))).toThrow('Unsupported intent');
   });
 
-  it('validates and retains all supported analysis shapes', () => {
-    expect(parseAiIntent(JSON.stringify({
-      intent: 'ladder',
-      ticker: 'AAPL',
-      steps: [{ shares: 2, price: 110, days: 0 }]
-    })).intent).toBe('ladder');
-    expect(parseAiIntent(JSON.stringify({
-      intent: 'simulation', ticker: null, simPrice: 110, daysOffset: 1, label: 'Tomorrow'
-    })).intent).toBe('simulation');
-  });
 });
 
 describe('AI prompt construction', () => {

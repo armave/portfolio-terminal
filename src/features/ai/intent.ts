@@ -1,9 +1,3 @@
-interface LadderIntent {
-  intent: 'ladder';
-  ticker: string | null;
-  steps: Array<{ shares: number; price: number; days: number; label?: string }>;
-}
-
 interface ComparisonIntent {
   intent: 'comparison';
   ticker: string | null;
@@ -39,7 +33,6 @@ interface ChatIntent {
 }
 
 export type AiIntent =
-  | LadderIntent
   | ComparisonIntent
   | SimulationIntent
   | FetchQuoteIntent
@@ -173,26 +166,6 @@ export function parseAiIntent(
           assert(isPositiveNumber(scenario.price), 'Comparison scenario price must be positive.');
           assert(isFiniteNumber(scenario.days) && Number.isInteger(scenario.days) && scenario.days >= 0, 'Comparison scenario days must be a non-negative integer.');
           return { label: scenario.label, price: scenario.price, days: scenario.days };
-        })
-      };
-    case 'ladder':
-      assert(isOptionalTicker(value.ticker), 'Ladder requires a valid ticker or null.');
-      assert(Array.isArray(value.steps) && value.steps.length > 0 && value.steps.length <= 20, 'Ladder requires between 1 and 20 steps.');
-      return {
-        intent: 'ladder',
-        ticker: value.ticker,
-        steps: value.steps.map(step => {
-          assert(isRecord(step), 'Ladder step must be an object.');
-          assert(isPositiveNumber(step.shares), 'Ladder shares must be positive.');
-          assert(isPositiveNumber(step.price), 'Ladder price must be positive.');
-          assert(isFiniteNumber(step.days) && Number.isInteger(step.days) && step.days >= 0, 'Ladder days must be a non-negative integer.');
-          assert(step.label === undefined || (typeof step.label === 'string' && step.label.length <= 120), 'Ladder label must be a short string.');
-          return {
-            shares: step.shares,
-            price: step.price,
-            days: step.days,
-            ...(typeof step.label === 'string' ? { label: step.label } : {})
-          };
         })
       };
     case 'chat':
