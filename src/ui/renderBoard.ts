@@ -168,6 +168,86 @@ interface RenderSummaryCardsOptions {
   onRenderAnalystConsensus?: (ticker: string) => void;
 }
 
+
+function renderPositionBasis(state: BoardState, currentView: string, tickers: string[]): void {
+  const tranchesEl = document.getElementById('boardTranches');
+  const investedEl = document.getElementById('boardInvested');
+  if (!tranchesEl || !investedEl) return;
+  const isCombined = currentView === 'COMBINED' || !state.positions?.[currentView];
+  const positions = isCombined ? tickers.map((ticker) => state.positions?.[ticker]).filter(Boolean) as PositionRecord[] : [state.positions![currentView]];
+  const position = !isCombined ? positions[0] : undefined;
+  const tickerKey = (value: unknown) => String(value || '').trim().toUpperCase().replace(/\.US$/i, '');
+  const brokerSnapshot = (state as any).brokerAccountInfo || (window as any).__tradenetAccountInfo;
+  const executedTrades = (window as any).__tradenetExecutedTrades;
+  let displayLots: Array<{ qty: number; price: number; date?: string }> = [];
+  let displayShares = 0;
+  let displayInvested = 0;
+  let usedBrokerData = false;
+
+  // Trade history is bounded. Use lot-level broker executions only if the
+  // reconstructed open quantity exactly reconciles with Freedom's live position.
+  if (position && Array.isArray(executedTrades) && brokerSnapshot?.loaded === true) {
+    const ticker = tickerKey(position.ticker);
+    const brokerPosition = (brokerSnapshot.positions || []).find((item: any) => tickerKey(item.ticker) === ticker);
+    const trades = executedTrades
+      .filter((trade: any) => tickerKey(trade.ticker) === ticker && Number(trade.quantity) > 0 && Number(trade.price) > 0)
+      .map((trade: any) => ({ ...trade, time: trade.executedAt ? Date.parse(trade.executedAt) : NaN }))
+      .filter((trade: any) => Number.isFinite(trade.time))
+      .sort((a: any, b: any) => a.time - b.time);
+    const lots: Array<{ qty: number; price: number; date?: string }> = [];
+    let historyIsUsable = trades.length > 0;
+    for (const trade of trades) {
+      const side = String(trade.side || '').trim().toUpperCase();
+      const isBuy = side === 'BUY' || side === 'B' || side === '1' || side.includes('BUY');
+      const isSell = side === 'SELL' || side === 'S' || side === '2' || side.includes('SELL');
+      const qty = Math.abs(Number(trade.quantity));
+      if (isBuy) {
+        lots.push({ qty, price: Number(trade.price), date: new Date(trade.time).toISOString().slice(0, 10) });
+      } else if (isSell) {
+        let remaining = qty;
+        while (remaining > 1e-8 && lots.length) {
+          const lot = lots[0];
+          const consumed = Math.min(lot.qty, remaining);
+          lot.qty -= consumed;
+          remaining -= consumed;
+          if (lot.qty <= 1e-8) lots.shift();
+        }
+        if (remaining > 1e-6) historyIsUsable = false;
+      } else historyIsUsable = false;
+    }
+    const openLots = lots.filter((lot) => lot.qty > 1e-8);
+    const historyQty = openLots.reduce((sum, lot) => sum + lot.qty, 0);
+    const brokerQty = Number(brokerPosition?.quantity);
+    if (historyIsUsable && Number.isFinite(brokerQty) && Math.abs(historyQty - brokerQty) < 1e-6) {
+      displayLots = openLots;
+      displayShares = brokerQty;
+      displayInvested = openLots.reduce((sum, lot) => sum + lot.qty * lot.price, 0);
+      usedBrokerData = true;
+    } else if (brokerPosition && Number.isFinite(brokerQty) && brokerQty > 0 && Number(brokerPosition.averagePrice) > 0) {
+      displayLots = [{ qty: brokerQty, price: Number(brokerPosition.averagePrice) }];
+      displayShares = brokerQty;
+      displayInvested = brokerQty * Number(brokerPosition.averagePrice);
+      usedBrokerData = true;
+    }
+  }
+  if (!usedBrokerData) {
+    displayLots = positions.flatMap((pos) => (pos.tranches || []).map((lot) => ({
+      qty: Number(lot.qty) || 0, price: Number(lot.price) || 0, date: lot.date
+    })).filter((lot) => lot.qty > 0 && lot.price > 0));
+    displayShares = positions.reduce((sum, pos) => sum + (Number(pos.shares) || 0), 0);
+    displayInvested = displayLots.reduce((sum, lot) => sum + lot.qty * lot.price, 0);
+  }
+  const formatPrice = (value: number) => value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const average = displayShares > 0 ? displayInvested / displayShares : 0;
+  if (displayShares <= 0 || displayLots.length === 0) {
+    tranchesEl.textContent = 'No open lots';
+    investedEl.textContent = '—';
+    return;
+  }
+  tranchesEl.textContent = `${displayShares} shares · ${displayLots.map((lot) => `${lot.qty} @ ${formatPrice(lot.price)}${lot.date ? ` (${lot.date})` : ''}`).join(' + ')}`;
+  investedEl.textContent = `${formatPrice(displayInvested)} | ${formatPrice(average)}`;
+}
+
 function renderSummaryCards(
   state: BoardState,
   options: RenderSummaryCardsOptions
@@ -425,6 +505,8 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     workspaceGrid.classList.remove('lg:grid-cols-1');
     workspaceGrid.classList.add('lg:grid-cols-[3fr_7fr]');
   }
+
+  renderPositionBasis(state, currentView, tickers);
 
   renderSummaryCards(state, {
     rules,
