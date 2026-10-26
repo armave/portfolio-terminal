@@ -147,38 +147,6 @@ function parseRelativeExitDays(rawDate: string): number {
 
 export class CommandDispatcher {
 
-  private static evaluateScheduledLadder(
-    tickerArg: string | undefined,
-    legsInput: Array<{ qty: number; price: number; days: number }>
-  ): CommandOutput {
-    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
-    const rules = this.getRules(state);
-    const totalShares = Number(pos.shares);
-    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
-    const avgEntry = costBasis / (totalShares || 1);
-    const totalDebt = Math.abs(Number(state.balance) || 0);
-
-    let totalNet = 0;
-    const summaries: string[] = [];
-
-    legsInput.forEach((leg, i) => {
-      const gross = leg.qty * leg.price;
-      const legCost = leg.qty * avgEntry;
-      const sellComm = calculateCommission(leg.qty, gross, rules as any);
-      const extraCarry = totalDebt * rules.dailyRate * leg.days * (leg.qty / (totalShares || 1));
-      const legNet = gross - legCost - sellComm - extraCarry;
-      totalNet += legNet;
-      summaries.push(
-        `Leg ${i + 1} (${leg.days === 0 ? 'Today' : `+${leg.days}d`}): ${leg.qty} sh @ $${leg.price.toFixed(2)} → ${legNet >= 0 ? '+' : '-'}$${Math.abs(legNet).toFixed(2)}`
-      );
-    });
-
-    return {
-      type: 'res',
-      text: `[Sim ${sym} Staged Exit]: ${summaries.join(' | ')} → Combined Net P&L: ${totalNet >= 0 ? '+' : '-'}$${Math.abs(totalNet).toFixed(2)}`
-    };
-  }
-
   static execute(input: string): CommandOutput {
     // An untouched optional target-price placeholder means "use the default".
     let raw = input.trim().replace(/,\s*(?:pt|target)\s+\[[^\]]+\]/gi, '').trim();
@@ -210,7 +178,6 @@ export class CommandDispatcher {
             '  • cash remove <ticker>                   (e.g. cash remove MSFT)',
             '  • sell today for <p1> vs sell <N> days later for <p2>',
             '  • sim [ticker] <price> in <days> days    (e.g. sim AAPL 205 in 14d)',
-            '  • ladder [ticker] <p1>, <p2>, <p3>       (e.g. ladder AAPL 195, 200, 205)',
             '  • compare exits [ticker] today at <p>, tomorrow at <p>, after 4 days at <p>, 1 week later at <p>',
             '  • buy scenario <shares> <ticker> at <price> (read-only add-on purchase simulation)',
             '  • view <ticker|combined|cash> | refresh | clear'
@@ -310,18 +277,6 @@ export class CommandDispatcher {
         return this.evaluateSingleSim(tickerArg, price, days);
       }
 
-      // 5. LADDER SIMULATION: "ladder AAPL 190, 200, 210"
-      const ladderMatch = raw.match(/^ladder\s+(?:([a-zA-Z]+)\s+)?([$0-9.,\s]+)$/i);
-      if (ladderMatch) {
-        const prices = ladderMatch[2]
-          .split(/[\s,]+/)
-          .map(cleanNumber)
-          .filter((n) => Number.isFinite(n) && n > 0);
-        if (prices.length > 0) {
-          return this.evaluateLadder(ladderMatch[1], prices);
-        }
-      }
-
       // 9. SELL POSITION (PARTIAL OR ALL): "sold 5 AAPL for $190" or "sold all AAPL for $190"
       const sellMatch = raw.match(/^(?:sold|sell|close)\s+(all|[0-9.,]+)\s+([a-zA-Z]+)\s+(?:for|at|@)\s*([$0-9.,]+)$/i);
       if (sellMatch) {
@@ -373,23 +328,6 @@ export class CommandDispatcher {
           type: 'cmd',
           sideEffect: { type: 'FETCH_QUOTE', ticker: sym }
         };
-      }
-
-      // A. NATURAL 2-LEG LADDER EXIT: "sell 5 AAPL for 180 today and 5 for 190 in 7 days"
-      const naturalLadderMatch = raw.match(
-        /^sell\s+([0-9.,]+)\s+(?:([a-zA-Z]+)\s+)?(?:for|at|@)\s*([$0-9.,]+)\s+today\s+and\s+([0-9.,]+)\s+(?:[a-zA-Z]+\s+)?(?:for|at|@)\s*([$0-9.,]+)\s+in\s+(\d+)\s*d(?:ays?)?$/i
-      );
-      if (naturalLadderMatch) {
-        const qty1 = cleanNumber(naturalLadderMatch[1]);
-        const tickerArg = naturalLadderMatch[2];
-        const p1 = cleanNumber(naturalLadderMatch[3]);
-        const qty2 = cleanNumber(naturalLadderMatch[4]);
-        const p2 = cleanNumber(naturalLadderMatch[5]);
-        const days2 = parseInt(naturalLadderMatch[6], 10);
-        return this.evaluateScheduledLadder(tickerArg, [
-          { qty: qty1, price: p1, days: 0 },
-          { qty: qty2, price: p2, days: days2 }
-        ]);
       }
 
       // 6. CASH CUSHION STOCKS: "cash add 10 MSFT for 420" / "add cash stock 10 MSFT at 420"
@@ -777,53 +715,6 @@ export class CommandDispatcher {
     return { type: 'res', text: lines.join('\n'), modal };
   }
 
-  private static evaluateLadder(tickerArg: string | undefined, prices: number[]): CommandOutput {
-    const { sym, pos, state } = this.resolveActivePosition(tickerArg);
-    const rules = this.getRules(state);
-    const totalShares = Number(pos.shares);
-    const trancheShares = totalShares / prices.length;
-    const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
-
-    let totalGross = 0;
-    let totalSellComm = 0;
-    const legs: string[] = [];
-
-    prices.forEach((p, idx) => {
-      const legVal = trancheShares * p;
-      const legComm = calculateCommission(trancheShares, legVal, rules as any);
-      totalGross += legVal;
-      totalSellComm += legComm;
-      legs.push(`Leg ${idx + 1}: ${trancheShares.toFixed(2)} sh @ $${p.toFixed(2)}`);
-    });
-
-    const avgExit = totalGross / totalShares;
-    const buyCommission = Math.max(0, Number(pos.commBuy) || 0);
-    const netBeforeMargin = totalGross - costBasis - buyCommission - totalSellComm;
-    const totalDebt = Math.abs(Number(state.balance) || 0);
-    const marginCharged = calculateMarginInterest(pos.tranches || [], {
-      dailyRate: rules.dailyRate,
-      marginDebt: totalDebt,
-      totalDebt
-    } as any);
-    const netAfterMargin = netBeforeMargin - marginCharged;
-    const netPct = costBasis > 0 ? (netAfterMargin / costBasis) * 100 : 0;
-    const money = (value: number) => (value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
-    const signedMoney = (value: number) => (value > 0 ? '+$' : value < 0 ? '-$' : '$') + Math.abs(value).toFixed(2);
-    const signedPercent = (value: number) => (value > 0 ? '+' : '') + value.toFixed(2) + '%';
-
-    return {
-      type: 'res',
-      text: [
-        `[LADDER EXIT: ${sym}] ${totalShares.toLocaleString()} shares across ${prices.length} equal legs`,
-        ...legs,
-        `Average exit: ${money(avgExit)} | Gross proceeds: ${money(totalGross)}`,
-        `Cost basis: -${money(costBasis)} | Buy commissions: -${money(buyCommission)} | Sell commissions: -${money(totalSellComm)}`,
-        `Estimated margin interest to date: -${money(marginCharged)}`,
-        `NET P&L after estimated costs: ${signedMoney(netAfterMargin)} (${signedPercent(netPct)} on cost basis)`,
-        'Estimate only; equal share allocation per leg, current broker rules and current margin debt assumed.'
-      ].join('\n')
-    };
-  }
 
 
 }

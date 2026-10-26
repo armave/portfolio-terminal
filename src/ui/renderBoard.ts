@@ -168,6 +168,53 @@ interface RenderSummaryCardsOptions {
   onRenderAnalystConsensus?: (ticker: string) => void;
 }
 
+
+function renderPositionBasis(state: BoardState, currentView: string, tickers: string[]): void {
+  const tranchesEl = document.getElementById('boardTranches');
+  const investedEl = document.getElementById('boardInvested');
+  if (!tranchesEl || !investedEl) return;
+
+  // POSITION BASIS represents only the app's current open margin tranches.
+  // Do not substitute broker positions or executed-trade history here.
+  const isCombined = currentView === 'COMBINED' || !state.positions?.[currentView];
+  const positions = isCombined
+    ? tickers.map((ticker) => state.positions?.[ticker]).filter(Boolean) as PositionRecord[]
+    : [state.positions![currentView]];
+  const displayLots = positions.flatMap((pos) => (pos.tranches || []).map((lot) => ({
+    qty: Number(lot.qty) || 0,
+    price: Number(lot.price) || 0,
+    date: lot.date
+  })).filter((lot) => lot.qty > 0 && lot.price > 0));
+
+  const displayShares = displayLots.reduce((sum, lot) => sum + lot.qty, 0);
+  const displayInvested = displayLots.reduce((sum, lot) => sum + lot.qty * lot.price, 0);
+  const formatPrice = (value: number) => value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+  const formatShortDate = (value?: string) => {
+    if (!value) return '';
+    const parsed = /^\\d{4}-\\d{2}-\\d{2}$/.test(value)
+      ? new Date(value + 'T12:00:00')
+      : new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  };
+
+  if (displayShares <= 0 || displayLots.length === 0) {
+    tranchesEl.textContent = 'No open margin tranches';
+    investedEl.textContent = '—';
+    return;
+  }
+
+  const average = displayInvested / displayShares;
+  tranchesEl.textContent = `${displayShares} shares · ${displayLots.map((lot) => {
+    const shortDate = formatShortDate(lot.date);
+    return `${lot.qty} @ ${formatPrice(lot.price)}${shortDate ? ` (${shortDate})` : ''}`;
+  }).join(' + ')}`;
+  investedEl.textContent = `${formatPrice(displayInvested)} | ${formatPrice(average)}`;
+}
+
 function renderSummaryCards(
   state: BoardState,
   options: RenderSummaryCardsOptions
@@ -425,6 +472,8 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     workspaceGrid.classList.remove('lg:grid-cols-1');
     workspaceGrid.classList.add('lg:grid-cols-[3fr_7fr]');
   }
+
+  renderPositionBasis(state, currentView, tickers);
 
   renderSummaryCards(state, {
     rules,

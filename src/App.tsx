@@ -14,6 +14,9 @@ export function App({ }: AppProps) {
   // Closed History asks for trade history when mounted; do not also fetch from
   // a global navigation click listener, which caused duplicate broker requests.
   useEffect(() => {
+    // Load broker executions so margin commissions can use Freedom-reported fees
+    // when present; local commission rules remain the fallback.
+    void loadExecutedTrades();
     const onRequest = () => { void loadExecutedTrades(); };
     window.addEventListener('tradenet:request-executed-trades', onRequest);
     return () => window.removeEventListener('tradenet:request-executed-trades', onRequest);
@@ -50,6 +53,10 @@ export function App({ }: AppProps) {
       if (typeof window !== 'undefined') {
         (window as any).__tradenetExecutedTrades = normalizedTrades;
         window.dispatchEvent(new CustomEvent('tradenet:executed-trades', { detail: normalizedTrades }));
+        const accountSnapshot = (window as any).__tradenetAccountInfo;
+        if (accountSnapshot?.loaded === true) {
+          window.dispatchEvent(new CustomEvent('tradenet:account-info', { detail: accountSnapshot }));
+        }
       }
     } catch (error) {
       console.error('Unable to load TradeNet executed trades:', error);
