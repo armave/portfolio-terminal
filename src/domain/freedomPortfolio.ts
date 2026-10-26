@@ -5,7 +5,7 @@ export interface FreedomPortfolioSnapshotLike {
   [key: string]: unknown;
 }
 
-export interface FreedomQuantityMismatch {
+interface FreedomQuantityMismatch {
   ticker: string;
   marginQuantity: number;
   freedomQuantity: number;
