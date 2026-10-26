@@ -70,7 +70,13 @@ export function App({ }: AppProps) {
   // Load account/balance/position data first on startup. Trade history is fetched
   // only when Closed History opens.
   useEffect(() => {
-    void loadFreedomAccount().catch(error => console.error('Unable to load TradeNet account info:', error));
+    void loadFreedomAccount().catch(() => {
+      // Keep the saved portfolio intact, but notify the app shell so stale
+      // broker data is never mistaken for a successful current snapshot.
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('tradenet:account-info-error'));
+      }
+    });
   }, []);
 
 

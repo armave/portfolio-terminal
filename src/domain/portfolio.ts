@@ -162,7 +162,7 @@ export function getAccruedRolloverCycles(purchaseDateStr?: string, now: Date = n
 }
 
 /**
- * Calculates accrued margin interest using simple daily interest.
+ * Calculates accrued margin interest using daily compounding.
  * Supports:
  * 1. calculateMarginInterest(debt: number, dailyRate: number, days: number): number
  * 2. calculateMarginInterest(principal: number, options: MarginInterestOptions, days?: number): number

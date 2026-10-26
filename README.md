@@ -134,7 +134,7 @@ sell 5 AAPL today for 195 and 5 in 7 days for 205
 
 Freedom TradeNet account data is the preferred source for the broker-reported USD balance, aggregate account positions, and market prices included in the account snapshot when valid data is available. The app keeps its own trade lots, targets, commissions, and cost basis separate so a broker snapshot cannot silently rewrite local accounting. Broker aggregate quantities are reconciled against locally tracked margin quantities to derive cash holdings. If quantities do not reconcile, the app reports the discrepancy and preserves the affected local cash quantity rather than guessing.
 
-If Freedom account data is unavailable or the Gateway Secret has not been configured, locally saved portfolio data remains available. The app should clearly identify that the broker snapshot is unavailable; it must not imply stale local data is a current broker balance. Quote freshness is marked unknown when the broker snapshot does not provide a verifiable market observation timestamp.
+If Freedom account data is unavailable or the Gateway Secret has not been configured, locally saved portfolio data remains available and the app surfaces a warning. A previously loaded broker snapshot is marked stale after a failed refresh; it must not be presented as a current broker balance. Quote freshness is marked unknown when the broker snapshot does not provide a verifiable market observation timestamp.
 
 ## Market Data & API Keys
 

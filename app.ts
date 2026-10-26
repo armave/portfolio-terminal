@@ -137,7 +137,7 @@ if (typeof window !== 'undefined') {
     const reconciled = reconcileFreedomPortfolio(snapshot, current.positions || {}, current.cashStocks || []);
 
     portfolioStore.setState({
-      brokerAccountInfo: { ...snapshot, receivedAt: Date.now() },
+      brokerAccountInfo: { ...snapshot, receivedAt: Date.now(), status: 'current' },
       ...(reconciled.brokerUsdBalance ? { balance: reconciled.brokerUsdBalance.amount } : {}),
       positions: reconciled.positions,
       cashStocks: reconciled.cashStocks
@@ -154,6 +154,17 @@ if (typeof window !== 'undefined') {
       logTerminal('[Freedom] Account balance, quantities and available broker prices refreshed.');
     }
     renderBoard();
+  });
+
+  window.addEventListener('tradenet:account-info-error', () => {
+    const current = portfolioStore.getState();
+    if (current.brokerAccountInfo) {
+      portfolioStore.setState({
+        brokerAccountInfo: { ...current.brokerAccountInfo, status: 'stale' }
+      });
+    }
+    showToast('Freedom account data unavailable — saved portfolio data is being retained.', 'warning');
+    logTerminal('[Freedom Warning] Account refresh failed; retained local data and marked the last broker snapshot stale.');
   });
 }
 
