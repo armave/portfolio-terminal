@@ -437,6 +437,18 @@ describe('portfolio domain', () => {
     expect(basePosition).toEqual(original);
   });
 
+  it('rejects materially inconsistent open shares and tranche totals before realizing a sale', () => {
+    const inconsistent: MarginPosition = {
+      ...basePosition,
+      shares: 10,
+      tranches: [{ qty: 12, price: 10, buyCommission: 2 }]
+    };
+    const original = structuredClone(inconsistent);
+    expect(() => realizeClosedTrade(inconsistent, 'TEST', 1, 12, 1, 10_000))
+      .toThrow('Position tranche total (12) exceeds recorded open shares (10)');
+    expect(inconsistent).toEqual(original);
+  });
+
   it('projects debt with the same daily compounding model as accrued margin interest', () => {
     // 1000 * (1 + 0.01)^5 = 1051.01005, rounded to cents.
     expect(calculateProjectedDebt(1000, 0.01, 5)).toBe(1051.01);
@@ -480,8 +492,10 @@ describe('portfolio domain', () => {
     expect(calculateProjectedDebt(1000, 0.005, 20) - 1000).toBeGreaterThanOrEqual(100);
     expect(calculateBreakevenDays(-10, 1000, 0.01)).toBe(0); // <= 0 profit
     expect(calculateBreakevenDays(100, 0, 0.01)).toBe(0); // 0 debt
-    expect(calculateBreakevenDays(100, 1000, 0)).toBe(0); // no ongoing interest
+    expect(calculateBreakevenDays(100, 1000, 0)).toBeNull(); // positive target is unreachable without interest
     expect(calculateBreakevenDays(Number.POSITIVE_INFINITY, 1000, 0.01)).toBeNull();
+    expect(calculateBreakevenDays(100, 1000, -0.01)).toBeNull();
+    expect(calculateBreakevenDays(100, -1000, 0.01)).toBeNull();
   });
 
   it('calculates commission based on rules', () => {

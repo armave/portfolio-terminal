@@ -398,13 +398,24 @@ export function calculateBreakevenDays(
   totalDebt: number,
   dailyRate: number
 ): number | null {
-  if (totalDebt <= 0 || netTargetProfit <= 0 || dailyRate <= 0) return 0;
   if (![netTargetProfit, totalDebt, dailyRate].every(Number.isFinite)) return null;
+  if (netTargetProfit <= 0 || totalDebt === 0) return 0;
+  if (totalDebt < 0 || dailyRate < 0) return null;
+  // Positive interest coverage is impossible without a positive daily rate.
+  if (dailyRate === 0) return null;
 
-  // Match calculateProjectedDebt's daily compounding model:
-  // debt * ((1 + dailyRate) ** days - 1) >= netTargetProfit.
-  const days = Math.log1p(netTargetProfit / totalDebt) / Math.log1p(dailyRate);
-  return Number.isFinite(days) ? Math.ceil(days) : null;
+  // Search the same cent-rounded daily ledger used by projected debt. A closed
+  // form logarithm can be off by a day because each rollover rounds to cents.
+  let projected = Number(totalDebt.toFixed(2));
+  for (let day = 1; day <= 1_000_000; day++) {
+    const next = Number((projected * (1 + dailyRate)).toFixed(2));
+    if (!Number.isFinite(next) || next <= 0) return null;
+    if (next - totalDebt >= netTargetProfit - 1e-9) return day;
+    // Cent rounding can make very small balances stationary indefinitely.
+    if (next === projected) return null;
+    projected = next;
+  }
+  return null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -726,6 +737,13 @@ export function realizeClosedTrade(
   const originalShares = Number(position.shares) || 0;
   const sourceTranches = Array.isArray(position.tranches) ? position.tranches : [];
   const trancheShares = sourceTranches.reduce((total, tranche) => total + Math.max(0, Number(tranche.qty) || 0), 0);
+  const shareTolerance = Math.max(1e-8, Math.abs(originalShares) * 1e-8);
+  if (trancheShares - originalShares > shareTolerance) {
+    throw new Error(
+      `Position tranche total (${trancheShares}) exceeds recorded open shares (${originalShares}); reconcile lots before selling.`
+    );
+  }
+  // Absorb only floating-point drift; never silently scale materially inconsistent lots.
   const scale = trancheShares > originalShares && trancheShares > 0 ? originalShares / trancheShares : 1;
   const lots = sourceTranches
     .map(tranche => ({
