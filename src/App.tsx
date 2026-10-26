@@ -68,8 +68,6 @@ export function App({ }: AppProps) {
   // only when Closed History opens.
   useEffect(() => {
     void loadFreedomAccount().catch(error => console.error('Unable to load TradeNet account info:', error));
-    // Fetch a bounded execution page for lot-level basis where it fully reconciles.
-    void loadExecutedTrades();
   }, []);
 
 
