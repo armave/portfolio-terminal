@@ -132,9 +132,18 @@ export async function fetchLivePriceFromProviders(symbol: string) {
     const yahooTimestamp = quoteDetails?.sourceTimestamp;
     const yahooIsFresh = yahooFreshness === 'fresh';
     const freedomIsFresh = freedomFreshness === 'fresh';
-    const yahooIsNewer = typeof yahooTimestamp === 'number'
-      && (freedomQuote.sourceTimestamp === null || yahooTimestamp > freedomQuote.sourceTimestamp);
-    const chooseFreedom = price === null || (freedomIsFresh && (!yahooIsFresh || !yahooIsNewer));
+    const freedomTimestamp = freedomQuote.sourceTimestamp;
+    const hasFreedomTimestamp = typeof freedomTimestamp === 'number' && Number.isFinite(freedomTimestamp);
+    const hasYahooTimestamp = typeof yahooTimestamp === 'number' && Number.isFinite(yahooTimestamp);
+    const bothHaveSourceTimestamps = hasFreedomTimestamp && hasYahooTimestamp;
+    const yahooIsNewer = hasYahooTimestamp && (!hasFreedomTimestamp || yahooTimestamp > freedomTimestamp!);
+
+    // When both providers give observation timestamps, compare those timestamps
+    // directly. Freshness labels are useful metadata, but must not override the
+    // relative age of two otherwise valid quotes.
+    const chooseFreedom = price === null || (bothHaveSourceTimestamps
+      ? freedomTimestamp! >= yahooTimestamp!
+      : freedomIsFresh && (!yahooIsFresh || !yahooIsNewer));
     if (chooseFreedom) {
       price = freedomQuote.price;
       sourceName = 'Freedom TradeNet';

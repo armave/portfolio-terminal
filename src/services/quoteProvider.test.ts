@@ -90,6 +90,73 @@ describe('fetchLivePriceFromProviders', () => {
     expect(result.quoteDetails).toMatchObject({ freshness: 'fresh', sourceTimestamp: nowSeconds * 1000 });
   });
 
+
+  it('always chooses Yahoo when its observation timestamp is newer than Freedom', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const freedomTimestamp = (nowSeconds - 120) * 1000;
+    const yahooTimestamp = (nowSeconds - 60) * 1000;
+    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+      symbol: 'AAPL',
+      price: 210,
+      previousClose: 200,
+      change: 10,
+      changePercent: 5,
+      sourceTimestamp: freedomTimestamp,
+      raw: {}
+    });
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue({
+      price: {
+        current: 211,
+        previousClose: 200,
+        regularMarketTime: yahooTimestamp / 1000,
+        marketState: 'REGULAR',
+        change: 11
+      }
+    } as never);
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(result.price).toBe(211);
+    expect(result.sourceName).toBe('Yahoo');
+    expect(result.quoteDetails).toMatchObject({
+      sourceTimestamp: yahooTimestamp,
+      price: 211
+    });
+  });
+
+  it('keeps Freedom when its observation timestamp is newer than Yahoo', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const freedomTimestamp = (nowSeconds - 30) * 1000;
+    const yahooTimestamp = (nowSeconds - 60) * 1000;
+    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+      symbol: 'AAPL',
+      price: 212,
+      previousClose: 200,
+      change: 12,
+      changePercent: 6,
+      sourceTimestamp: freedomTimestamp,
+      raw: {}
+    });
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue({
+      price: {
+        current: 211,
+        previousClose: 200,
+        regularMarketTime: yahooTimestamp / 1000,
+        marketState: 'REGULAR',
+        change: 11
+      }
+    } as never);
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(result.price).toBe(212);
+    expect(result.sourceName).toBe('Freedom TradeNet');
+    expect(result.quoteDetails).toMatchObject({
+      sourceTimestamp: freedomTimestamp,
+      price: 212
+    });
+  });
+
   it('uses Yahoo market-session price data when available', async () => {
     vi.mocked(fetchYahooQuoteData).mockResolvedValue({
       price: {
