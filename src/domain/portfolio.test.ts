@@ -434,6 +434,8 @@ describe('portfolio domain', () => {
     expect(() => realizeClosedTrade(basePosition, 'TEST', 0, 12, 1, 10_000)).toThrow();
     expect(() => realizeClosedTrade(basePosition, 'TEST', 11, 12, 1, 10_000)).toThrow();
     expect(() => realizeClosedTrade(basePosition, 'TEST', 1, Number.NaN, 1, 10_000)).toThrow();
+    expect(() => realizeClosedTrade(basePosition, 'TEST', 1, 12, Number.NaN, 10_000)).toThrow();
+    expect(() => realizeClosedTrade({ ...basePosition, shares: Number.NaN }, 'TEST', 1, 12, 1, 10_000)).toThrow();
     expect(basePosition).toEqual(original);
   });
 

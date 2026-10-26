@@ -406,11 +406,12 @@ export function calculateBreakevenDays(
 
   // Search the same cent-rounded daily ledger used by projected debt. A closed
   // form logarithm can be off by a day because each rollover rounds to cents.
-  let projected = Number(totalDebt.toFixed(2));
+  const principal = Number(totalDebt.toFixed(2));
+  let projected = principal;
   for (let day = 1; day <= 1_000_000; day++) {
     const next = Number((projected * (1 + dailyRate)).toFixed(2));
     if (!Number.isFinite(next) || next <= 0) return null;
-    if (next - totalDebt >= netTargetProfit - 1e-9) return day;
+    if (next - principal >= netTargetProfit - 1e-9) return day;
     // Cent rounding can make very small balances stationary indefinitely.
     if (next === projected) return null;
     projected = next;
@@ -727,11 +728,18 @@ export function realizeClosedTrade(
   sellCommission: number,
   closedAt: number
 ): ClosedTradeResult {
-  if (!Number.isFinite(shares) || shares <= 0 || shares > position.shares) {
+  if (!Number.isFinite(position.shares) || position.shares <= 0 ||
+      !Number.isFinite(shares) || shares <= 0 || shares - position.shares > 1e-8) {
     throw new Error('Closed share quantity must be positive and no greater than the open position.');
   }
   if (!Number.isFinite(sellPrice) || sellPrice <= 0) {
     throw new Error('Sale price must be a finite positive number.');
+  }
+  if (!Number.isFinite(sellCommission) || sellCommission < 0) {
+    throw new Error('Sale commission must be a finite non-negative number.');
+  }
+  if (!Number.isFinite(closedAt)) {
+    throw new Error('Close timestamp must be finite.');
   }
 
   const originalShares = Number(position.shares) || 0;
