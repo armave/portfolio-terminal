@@ -485,3 +485,387 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   onRenderExternalLinks();
   onRenderConsoleQuickActions();
 }
+function calculateCombinedMetrics(state: BoardState, rules: BrokerRules, tickers: string[], dailyRate: number) {
+  let totalInvested = 0;
+  let totalCommBuy = 0;
+  let totalCommSell = 0;
+  let totalGrossTarget = 0;
+
+  tickers.forEach((t) => {
+    const pos = state.positions![t];
+    const cost = (pos.tranches || []).reduce((sum, tr) => sum + tr.qty * tr.price, 0);
+    totalInvested += cost;
+    totalCommBuy += pos.commBuy;
+    const valSell = pos.shares * pos.pt;
+    totalCommSell += calculateCommission(pos.shares, valSell, rules as any);
+    totalGrossTarget += valSell - cost;
+  });
+
+  const tranchesForCombined = collectOpenPositionTranches(state.positions || {});
+
+  const totalDebt = Math.abs(Number(state.balance) || 0);
+  const openMarginCharged = calculateMarginInterest(tranchesForCombined as any, {
+    dailyRate,
+    marginDebt: totalDebt,
+    totalDebt: totalDebt
+  } as any);
+
+  const totalMarginCharged = (state.realizedMarginCharged || 0) + openMarginCharged;
+  const totalComms = totalCommBuy + totalCommSell;
+  const net0 = totalGrossTarget - totalComms - totalMarginCharged;
+  const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
+
+  return { totalInvested, totalGrossTarget, totalComms, totalMarginCharged, totalDebt, netPct };
+}
+
+function calculatePositionMetrics(state: BoardState, pos: PositionRecord, rules: BrokerRules, dailyRate: number) {
+  const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + t.qty * t.price, 0);
+  const valSell = pos.shares * pos.pt;
+  const commSell = calculateCommission(pos.shares, valSell, rules as any);
+  const totalComms = pos.commBuy + commSell;
+  const gross = valSell - totalInvested;
+
+  const portfolioInvested = getTotalPortfolioInvested(state);
+  const weight = portfolioInvested > 0 ? totalInvested / portfolioInvested : 1;
+
+  const totalAccountDebt = Math.abs(Number(state.balance) || 0);
+  const allocatedDebt = totalAccountDebt * weight;
+
+  const tranches = pos.tranches || [];
+
+  const posMarginCharged = calculateMarginInterest(tranches as any, {
+    dailyRate,
+    marginDebt: allocatedDebt,
+    totalDebt: totalAccountDebt
+  } as any);
+
+  const net0 = gross - totalComms - posMarginCharged;
+  const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
+
+  return { gross, totalComms, allocatedDebt, posMarginCharged, netPct };
+}
+
+interface RenderSummaryCardsOptions {
+  rules: BrokerRules;
+  refreshIntervalMs?: number;
+  onRenderExternalLinks?: () => void;
+  onRenderAnalystConsensus?: (ticker: string) => void;
+}
+
+
+function renderPositionBasis(state: BoardState, currentView: string, tickers: string[]): void {
+  const tranchesEl = document.getElementById('boardTranches');
+  const investedEl = document.getElementById('boardInvested');
+  if (!tranchesEl || !investedEl) return;
+
+  // POSITION BASIS represents only the app's current open margin tranches.
+  // Do not substitute broker positions or executed-trade history here.
+  const isCombined = currentView === 'COMBINED' || !state.positions?.[currentView];
+  const positions = isCombined
+    ? tickers.map((ticker) => state.positions?.[ticker]).filter(Boolean) as PositionRecord[]
+    : [state.positions![currentView]];
+  const displayLots = positions.flatMap((pos) => (pos.tranches || []).map((lot) => ({
+    qty: Number(lot.qty) || 0,
+    price: Number(lot.price) || 0,
+    date: lot.date
+  })).filter((lot) => lot.qty > 0 && lot.price > 0));
+
+  const displayShares = displayLots.reduce((sum, lot) => sum + lot.qty, 0);
+  const displayInvested = displayLots.reduce((sum, lot) => sum + lot.qty * lot.price, 0);
+  const formatPrice = (value: number) => value.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+  const formatShortDate = (value?: string) => {
+    if (!value) return '';
+    const parsed = /^\\d{4}-\\d{2}-\\d{2}$/.test(value)
+      ? new Date(value + 'T12:00:00')
+      : new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  };
+
+  if (displayShares <= 0 || displayLots.length === 0) {
+    tranchesEl.textContent = 'No open margin tranches';
+    investedEl.textContent = '—';
+    return;
+  }
+
+  const average = displayInvested / displayShares;
+  tranchesEl.textContent = `${displayShares} shares · ${displayLots.map((lot) => {
+    const shortDate = formatShortDate(lot.date);
+    return `${lot.qty} @ ${formatPrice(lot.price)}${shortDate ? ` (${shortDate})` : ''}`;
+  }).join(' + ')}`;
+  investedEl.textContent = `${formatPrice(displayInvested)} | ${formatPrice(average)}`;
+}
+
+function renderSummaryCards(
+  state: BoardState,
+  options: RenderSummaryCardsOptions
+): void {
+  const { rules, onRenderAnalystConsensus, refreshIntervalMs = 60000 } = options;
+  if (!rules) return;
+
+  const dailyRate = rules.annualRate / rules.dayCountBasis;
+  const tickers = Object.keys(state.positions || {});
+  const isCombined = state.activeView === 'COMBINED' || (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
+
+  const metricsGridContainer = document.querySelector('.portfolio-metrics-grid');
+  if (metricsGridContainer) {
+    render(
+      h(SummaryMetricsGrid, { state, rules, refreshIntervalMs }),
+      metricsGridContainer
+    );
+  }
+
+  const titleEl = document.getElementById('boardTitle');
+  const moveEl = document.getElementById('boardDailyMove');
+
+  if (isCombined) {
+    const metrics = calculateCombinedMetrics(state, rules, tickers, dailyRate);
+
+    if (titleEl) {
+      titleEl.innerText = tickers.length > 0
+        ? `COMBINED PORTFOLIO (${tickers.length} Positions | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`
+        : `NO ACTIVE MARGIN POSITIONS`;
+    }
+    if (moveEl) moveEl.classList.remove('hidden');
+
+    if (typeof onRenderAnalystConsensus === 'function' && tickers[0]) {
+      onRenderAnalystConsensus(tickers[0]);
+    }
+
+    renderPositionsTable(
+      metrics.totalGrossTarget,
+      metrics.totalComms,
+      metrics.totalDebt,
+      metrics.totalMarginCharged,
+      state.startDate,
+      dailyRate
+    );
+  } else {
+    const pos = (state.activeView ? state.positions?.[state.activeView] : undefined) || state.positions?.[tickers[0]];
+    if (!pos) return;
+
+    const metrics = calculatePositionMetrics(state, pos, rules, dailyRate);
+
+    if (titleEl) {
+      titleEl.innerText = `${pos.ticker} (${pos.shares} Shares @ ${formatUSD(pos.pt)} PT | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`;
+    }
+
+    if (typeof onRenderAnalystConsensus === 'function') {
+      onRenderAnalystConsensus(pos.ticker);
+    }
+
+    renderPositionsTable(
+      metrics.gross,
+      metrics.totalComms,
+      metrics.allocatedDebt,
+      metrics.posMarginCharged,
+      pos.startDate || state.startDate,
+      dailyRate
+    );
+  }
+}
+
+function hideAllDesks() {
+  const desks = ['mainDeskContainer', 'cashCushionContainer', 'closedHistoryContainer', 'settings'];
+  desks.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.add('hidden');
+      el.classList.remove('ui-view-enter');
+    }
+  });
+}
+
+function prefillTerminalCommand(command: string): void {
+  const input = document.getElementById('cmdInput') as HTMLInputElement | null;
+  if (!input) return;
+
+  input.value = command;
+  // Notify Preact's controlled input so its internal command state stays in sync.
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.focus();
+
+  const start = input.value.indexOf('[');
+  const end = start >= 0 ? input.value.indexOf(']', start) + 1 : -1;
+  if (start >= 0 && end > start) {
+    requestAnimationFrame(() => input.setSelectionRange(start, end));
+  }
+}
+
+function showDesk(id: string) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.classList.remove('hidden');
+    // Trigger reflow to restart animation
+    void el.offsetWidth;
+    el.classList.add('ui-view-enter');
+  }
+}
+
+export interface RenderBoardOptions extends RenderCashCushionOptions {
+  rules: BrokerRules;
+  onSetActiveView?: (view: string) => void;
+  onRefreshAllLivePrices?: () => void | Promise<void>;
+  onRenderClosedHistory?: () => void;
+  onRenderSettingsPanel?: () => void;
+  onRenderAnalystConsensus?: (ticker: string) => void;
+  onRenderExternalLinks?: () => void;
+  onRenderConsoleQuickActions?: () => void;
+  onUpdateCombinedBreakeven?: () => void;
+  onSyncMarketInsightsPanel?: () => void;
+  lastDeskView?: string | null;
+  onUpdateLastDeskView?: (view: string) => void;
+}
+
+export function renderBoard(state: BoardState, options: RenderBoardOptions): void {
+  const {
+    rules,
+    onSetActiveView = () => { },
+    onRefreshAllLivePrices = () => { },
+    onRenderClosedHistory = () => { },
+    onRenderSettingsPanel = () => { },
+    onRenderAnalystConsensus = () => { },
+    onFetchLivePrice = () => { },
+    onRemoveCashStock = () => { },
+    onRenderExternalLinks = () => { },
+    onRenderConsoleQuickActions = () => { },
+    onUpdateCombinedBreakeven = () => { },
+    onSyncMarketInsightsPanel = () => { },
+    refreshIntervalMs = 60000,
+    lastDeskView = null,
+    onUpdateLastDeskView = () => { }
+  } = options;
+
+  if (!rules) return;
+
+  const tickers = Object.keys(state.positions || {});
+  const currentView = resolveActiveView(state);
+
+  const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
+  const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
+  const isSettingsActive = currentView === 'SETTINGS';
+  const viewChanged = currentView !== lastDeskView;
+
+  const tabsContainer = document.getElementById('tickerTabs');
+  if (tabsContainer) {
+    render(h(TickerTabs, { state, onSetActiveView, onRefreshAllLivePrices }), tabsContainer);
+  }
+
+  const closedTrades = state.closedTrades || [];
+  const closedTradesCount = document.getElementById('closedTradesCount');
+  if (closedTradesCount) {
+    closedTradesCount.textContent = `${closedTrades.length} realized exit${closedTrades.length === 1 ? '' : 's'}`;
+  }
+
+  // Hidden desks do not need their derived metrics or insights panel refreshed.
+  // They will be updated when the user returns to a position/combined desk.
+  if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) {
+    onUpdateCombinedBreakeven();
+    onSyncMarketInsightsPanel();
+  }
+
+  const daysEl = document.getElementById('daysToBreakeven');
+  if (viewChanged) hideAllDesks();
+
+  const consoleCard = document.getElementById('tradingConsoleCard');
+  if (consoleCard) {
+    consoleCard.classList.toggle('hidden', isClosedHistoryActive || isSettingsActive);
+  }
+  const marketInsightsPanel = document.getElementById('marketInsightsPanel');
+  if (marketInsightsPanel) {
+    marketInsightsPanel.classList.toggle('hidden', isCushionActive || isClosedHistoryActive || isSettingsActive);
+  }
+
+  if (isCushionActive) {
+    if (viewChanged) showDesk('cashCushionContainer');
+    if (daysEl) daysEl.classList.add('hidden');
+    onUpdateLastDeskView('CASH_CUSHION');
+    renderCashCushion(state, { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs });
+    onRenderConsoleQuickActions();
+    return;
+  }
+
+  if (isClosedHistoryActive) {
+    if (viewChanged) showDesk('closedHistoryContainer');
+    const closedDesk = document.getElementById('closedHistoryContainer');
+    if (closedDesk) render(h(ClosedHistoryDesk, {}), closedDesk);
+    if (daysEl) daysEl.classList.add('hidden');
+    onUpdateLastDeskView('CLOSED_HISTORY');
+    onRenderClosedHistory();
+    return;
+  }
+
+  if (isSettingsActive) {
+    if (viewChanged) showDesk('settings');
+    onRenderSettingsPanel();
+    if (daysEl) daysEl.classList.add('hidden');
+    onUpdateLastDeskView('SETTINGS');
+    return;
+  }
+
+  if (viewChanged) showDesk('mainDeskContainer');
+  if (consoleCard) consoleCard.classList.remove('hidden');
+  if (daysEl) daysEl.classList.remove('hidden');
+  onUpdateLastDeskView(currentView);
+
+  const emptyPanel = document.getElementById('emptyStatePanel');
+  const titleRow = document.getElementById('boardTitleRow');
+  const metricsGrid = document.querySelector('.portfolio-metrics-grid');
+  const workspaceGrid = document.querySelector('.desktop-workspace-grid');
+  const projTableContainer = document.getElementById('projectionTableContainer');
+
+  if (tickers.length === 0) {
+    if (emptyPanel) {
+      emptyPanel.classList.remove('hidden');
+      render(
+        h(EmptyStatePanel, {
+          onQuickBuy: () => {
+            const todayIso = new Date().toISOString().split('T')[0];
+            prefillTerminalCommand(`bought [shares] [TICKER] for [price] on [${todayIso}]`);
+          },
+          onAddCashStock: () => {
+            prefillTerminalCommand('add cash stock [shares] [TICKER] for [price]');
+          },
+          onImportBackup: () => {
+            document.getElementById('importFileInput')?.click();
+          }
+        }),
+        emptyPanel
+      );
+    }
+    if (titleRow) titleRow.classList.add('hidden');
+    if (metricsGrid) metricsGrid.classList.add('hidden');
+    if (projTableContainer) projTableContainer.classList.add('hidden');
+    if (workspaceGrid) {
+      workspaceGrid.classList.remove('lg:grid-cols-[3fr_7fr]');
+      workspaceGrid.classList.add('lg:grid-cols-1');
+    }
+    if (daysEl) daysEl.innerText = 'No Active Positions';
+    onRenderConsoleQuickActions();
+    return;
+  }
+
+  if (emptyPanel) emptyPanel.classList.add('hidden');
+  if (titleRow) titleRow.classList.remove('hidden');
+  if (metricsGrid) metricsGrid.classList.remove('hidden');
+  if (projTableContainer) projTableContainer.classList.remove('hidden');
+  if (workspaceGrid) {
+    workspaceGrid.classList.remove('lg:grid-cols-1');
+    workspaceGrid.classList.add('lg:grid-cols-[3fr_7fr]');
+  }
+
+  renderPositionBasis(state, currentView, tickers);
+
+  renderSummaryCards(state, {
+    rules,
+    refreshIntervalMs,
+    onRenderExternalLinks,
+    onRenderAnalystConsensus
+  });
+
+  onRenderExternalLinks();
+  onRenderConsoleQuickActions();
+}
