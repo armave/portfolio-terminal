@@ -50,6 +50,10 @@ export function App({ }: AppProps) {
       if (typeof window !== 'undefined') {
         (window as any).__tradenetExecutedTrades = normalizedTrades;
         window.dispatchEvent(new CustomEvent('tradenet:executed-trades', { detail: normalizedTrades }));
+        const accountSnapshot = (window as any).__tradenetAccountInfo;
+        if (accountSnapshot?.loaded === true) {
+          window.dispatchEvent(new CustomEvent('tradenet:account-info', { detail: accountSnapshot }));
+        }
       }
     } catch (error) {
       console.error('Unable to load TradeNet executed trades:', error);
