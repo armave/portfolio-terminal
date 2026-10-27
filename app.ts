@@ -60,10 +60,7 @@ import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { reconcileFreedomPortfolio } from './src/domain/freedomPortfolio';
-import { BoardExternalLinks } from './src/components/BoardExternalLinks';
-import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
 import { InsightSection } from './src/components/MarketInsightsPanel';
-import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
@@ -473,22 +470,13 @@ function setActiveView(view: string) {
 const switchView = setActiveView;
 
 function renderConsoleQuickActions() {
-  const pos = state.positions[state.activeView];
-  const cardContainer = document.getElementById('tradingConsoleCard');
-  if (cardContainer) {
-    renderInto(
-      h(TradingConsole, {
-        position: pos,
-        onExecuteCommand: (command?: string) => executeCommand(command)
-      }),
-      cardContainer
-    );
-    return;
-  }
-
-  const container = document.getElementById('consoleQuickActions');
-  if (!container) return;
-  renderInto(h(ConsoleQuickActions, { position: pos }), container);
+  const position = state.positions[state.activeView];
+  window.dispatchEvent(new CustomEvent('terminal:trading-console-props', {
+    detail: {
+      position,
+      onExecuteCommand: (command?: string) => executeCommand(command)
+    } satisfies import('./src/components/TradingConsole').TradingConsoleProps
+  }));
 }
 
 function updateCombinedBreakeven() {
@@ -556,9 +544,9 @@ function updateCombinedBreakeven() {
 
 function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
-  const stockPageLinks = document.getElementById('boardExternalLinks');
-  if (!stockPageLinks) return;
-  renderInto(h(BoardExternalLinks, { ticker: activeTicker }), stockPageLinks);
+  window.dispatchEvent(new CustomEvent('terminal:external-links-props', {
+    detail: { ticker: activeTicker } satisfies import('./src/components/BoardExternalLinks').BoardExternalLinksProps
+  }));
 }
 
 function renderBoard() {
