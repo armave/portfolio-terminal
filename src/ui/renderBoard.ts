@@ -57,22 +57,6 @@ function renderPositionsTable(
   entryDate?: string,
   dailyRate: number = 0
 ): void {
-  const tableBody = document.getElementById('projectionTableBody');
-  if (!tableBody) return;
-
-  const table = tableBody.closest('table');
-  if (table) {
-    const parent = table.parentElement;
-    if (parent && parent.id === 'projectionTableContainer') {
-      parent.classList.add('table-scroll-wrapper');
-    } else if (parent && !parent.classList.contains('table-scroll-wrapper')) {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'table-scroll-wrapper';
-      parent.insertBefore(wrapper, table);
-      wrapper.appendChild(table);
-    }
-  }
-
   window.dispatchEvent(new CustomEvent('terminal:projections-props', {
     detail: { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate }
   }));
