@@ -169,9 +169,8 @@ export class CommandDispatcher {
           type: 'res',
           text: [
             'Available Frontend Commands (Zero AI/API Latency):',
-            '  • bought <shares> <ticker> for <price>   (e.g. bought 10 AAPL for $185.50)',
-            '  • sold <shares|all> <ticker> for <price> (e.g. sold all AAPL for $195)',
-            '  • target <ticker> <price>                (e.g. target AAPL 210)',
+            '  • Margin stock quantities and fill prices sync automatically from Freedom Broker.',
+            '  • Manual buy/sell entries and target prices are not required for margin holdings.',
             '  • quote <ticker> [manual_price]          (e.g. quote AAPL or quote AAPL 190)',
             '  • balance <amount> | debt <amount>       (e.g. balance 5000 or debt 1200)',
             '  • cash add <shares> <ticker> [price]     (e.g. cash add 5 MSFT 420)',
