@@ -13,6 +13,10 @@ export interface TrancheItem {
   date?: string;
   acquiredAt?: number;
   buyCommission?: number;
+  /** Local allocation marker; these shares were moved from cash, not bought again. */
+  classificationTransfer?: boolean;
+  /** Broker trade ID watermark; only later sells consume this transferred tranche. */
+  afterTradeId?: string;
 }
 
 export interface QuoteDetails {
