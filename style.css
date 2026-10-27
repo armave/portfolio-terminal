@@ -2216,3 +2216,57 @@ textarea {
   opacity: 1;
   transform: translateY(0) scale(1);
 }
+
+
+/* Navigation: animate only visible, newly selected sections. */
+.desk-view-transition:not(.hidden) {
+  animation: insights-panel-enter 180ms ease-out both;
+}
+
+/* Table hover feedback remains compositor-friendly and does not affect row sizing. */
+table tbody tr {
+  transition: opacity 140ms ease-out, transform 140ms ease-out, background-color 140ms ease-out;
+}
+
+table tbody tr:hover {
+  transform: translateY(-1px);
+}
+
+/* Ensure auth modal closing fades both layers before becoming non-interactive. */
+#auth-container.auth-overlay {
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease-out, visibility 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay .auth-card {
+  opacity: 0;
+  transform: translateY(4px) scale(0.985);
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay.auth-overlay-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#auth-container.auth-overlay.auth-overlay-open .auth-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desk-view-transition:not(.hidden),
+  table tbody tr,
+  #auth-container.auth-overlay,
+  #auth-container.auth-overlay .auth-card {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
