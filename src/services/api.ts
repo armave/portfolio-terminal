@@ -1036,6 +1036,48 @@ export async function fetchFreedomTradeNetTrades(options: {
   }, { cache: 'no-store' });
 }
 
+/**
+ * Retrieve executed-trade history in bounded pages. A caller must still inspect
+ * the upstream total/count metadata before treating the returned set as complete.
+ */
+export async function fetchAllFreedomTradeNetTrades(options: {
+  pageSize?: number;
+  maxPages?: number;
+} = {}): Promise<{ trades: FreedomExecutedTrade[]; complete: boolean; pagesFetched: number }> {
+  const pageSize = Math.max(1, Math.min(1000, Math.trunc(Number(options.pageSize) || 500)));
+  const maxPages = Math.max(1, Math.min(100, Math.trunc(Number(options.maxPages) || 20)));
+  const collected = new Map<string, FreedomExecutedTrade>();
+  let previousLastId: string | null = null;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const response = await fetchFreedomTradeNetTrades({ max: pageSize, sort: 0 });
+    const rows = normalizeFreedomTrades(response);
+    for (const trade of rows) collected.set(trade.id, trade);
+
+    const root = response?.data?.result ?? response?.data ?? response?.result ?? response;
+    const totalRaw = root?.total ?? root?.count ?? root?.total_count ?? root?.trades?.total;
+    const total = Number(totalRaw);
+    if (Number.isFinite(total) && total >= 0 && collected.size >= total) {
+      return { trades: [...collected.values()], complete: true, pagesFetched: page + 1 };
+    }
+    if (rows.length < pageSize) {
+      return { trades: [...collected.values()], complete: true, pagesFetched: page + 1 };
+    }
+    const lastId = rows.length ? rows[rows.length - 1].id : null;
+    // The current TradeNet endpoint exposes tradeId as a starting point rather
+    // than an offset. Do not guess cursor direction if the response repeats.
+    if (!lastId || lastId === previousLastId) {
+      return { trades: [...collected.values()], complete: false, pagesFetched: page + 1 };
+    }
+    previousLastId = lastId;
+    // Until the upstream's cursor semantics are verified, a full page is not
+    // proof that the next request advances. Do not issue overlapping pages.
+    return { trades: [...collected.values()], complete: false, pagesFetched: page + 1 };
+  }
+
+  return { trades: [...collected.values()], complete: false, pagesFetched: maxPages };
+}
+
 /** Fetch the raw read-only Freedom Broker cashflows response for temporary integration testing. */
 export async function fetchFreedomCashflows(): Promise<any> {
   try {
