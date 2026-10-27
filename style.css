@@ -2300,3 +2300,46 @@ table tbody tr:hover {
     transition: none !important;
   }
 }
+
+
+/* News and Stocktwits: animate feed entry and item hover without affecting layout. */
+.news-feed-enter,
+.stocktwits-feed-enter {
+  animation: insights-panel-enter 180ms ease-out both;
+}
+
+.news-feed-item,
+.stocktwits-feed-item {
+  transition: opacity 160ms ease-out, transform 160ms ease-out, border-color 160ms ease-out, background-color 160ms ease-out;
+}
+
+.news-feed-item:hover,
+.stocktwits-feed-item:hover {
+  transform: translateY(-1px);
+}
+
+.news-feed-list,
+.stocktwits-feed-list {
+  overscroll-behavior: contain;
+}
+
+.news-modal-enter {
+  animation: auth-backdrop-enter 180ms ease-out both;
+}
+
+.news-dialog-enter {
+  animation: auth-dialog-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .news-feed-enter,
+  .stocktwits-feed-enter,
+  .news-feed-item,
+  .stocktwits-feed-item,
+  .news-modal-enter,
+  .news-dialog-enter {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
