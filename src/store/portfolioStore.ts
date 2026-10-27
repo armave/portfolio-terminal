@@ -1120,7 +1120,7 @@ export class PortfolioStore {
       if (destination === 'margin') {
         const available = Number(cashHolding?.shares) || 0;
         const quantity = Math.min(available, sharesToMove);
-        const price = Number(cashHolding?.currentPrice ?? cashHolding?.price) || Number(marginPosition?.currentPrice) || 0;
+        const price = Number(cashHolding?.price ?? cashHolding?.currentPrice) || Number(marginPosition?.currentPrice) || 0;
         if (quantity <= 0 || price <= 0) return state;
         const date = todayIso();
         const existingTranches = marginPosition?.tranches || [];
