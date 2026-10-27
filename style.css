@@ -2270,3 +2270,33 @@ table tbody tr:hover {
     transform: none !important;
   }
 }
+
+
+/* Scenario comparison modal: preserve the closing frame until the exit finishes. */
+.scenario-modal-backdrop {
+  animation: auth-backdrop-enter 180ms ease-out both;
+  transition: opacity 180ms ease-out;
+}
+
+.scenario-modal-dialog {
+  animation: auth-dialog-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+}
+
+.scenario-modal-backdrop.scenario-modal-closing {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scenario-modal-closing .scenario-modal-dialog {
+  opacity: 0;
+  transform: translateY(4px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scenario-modal-backdrop,
+  .scenario-modal-dialog {
+    animation: none !important;
+    transition: none !important;
+  }
+}
