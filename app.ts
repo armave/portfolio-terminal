@@ -109,22 +109,7 @@ const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
 // ==========================================
 function setCloudStatus(status: string, text: string) {
-  const dot = document.getElementById('cloudStatusDot');
-  const label = document.getElementById('cloudStatusText');
-  if (!dot || !label) return;
-
-  label.innerText = `KV: ${text.toUpperCase()}`;
-  dot.className = "w-1.5 h-1.5 rounded-full";
-
-  if (status === 'syncing') {
-    dot.classList.add('bg-amber-400', 'animate-pulse');
-  } else if (status === 'synced') {
-    dot.classList.add('bg-emerald-400');
-  } else if (status === 'error') {
-    dot.classList.add('bg-rose-400');
-  } else {
-    dot.classList.add('bg-slate-500');
-  }
+  window.dispatchEvent(new CustomEvent('terminal:cloud-status', { detail: { status, text } }));
 }
 
 // Freedom is authoritative for broker-reported account balance, aggregate
@@ -249,15 +234,11 @@ async function syncCloudState(mode = 'push') {
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logTerminal,
     onStatusChange: (status) => {
-      const syncEl = document.getElementById('cloudSyncStatus');
-      if (!syncEl) return;
-      if (status === 'synced') {
-        syncEl.textContent = `Synced: ${new Date().toLocaleTimeString()}`;
-        syncEl.className = 'text-[10px] text-emerald-400 font-mono';
-      } else {
-        syncEl.textContent = 'Sync failed';
-        syncEl.className = 'text-[10px] text-rose-400 font-mono';
-      }
+      window.dispatchEvent(new CustomEvent('terminal:cloud-sync-status', {
+        detail: status === 'synced'
+          ? { text: `Synced: ${new Date().toLocaleTimeString()}`, status: 'synced' }
+          : { text: 'Sync failed', status: 'error' }
+      }));
     }
   });
 }
@@ -1408,7 +1389,7 @@ function renderSettingsPanel(force = false) {
 let appInitialized = false;
 
 function hideStartupLoading() {
-  document.getElementById('startup-loading')?.classList.add('is-hidden');
+  window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: false, failed: false } }));
 }
 
 setSecretGetter(() => getGatewaySecret());
@@ -1535,32 +1516,17 @@ async function initApp() {
 }
 
 function showStartupFailure() {
-  const loader = document.getElementById('startup-loading');
-  if (!loader) return;
-  const message = loader.querySelector('.startup-loading__message');
-  const hint = loader.querySelector('.startup-loading__hint');
-  const track = loader.querySelector('.startup-loading__track');
-  const actions = loader.querySelector('.startup-loading__actions');
-  if (message) message.textContent = 'Could not finish initializing the app.';
-  if (hint) hint.textContent = 'Check your connection, then retry or continue offline.';
-  if (track) (track as HTMLElement).style.display = 'none';
-  if (actions) (actions as HTMLElement).hidden = false;
-  const retryButton = document.getElementById('startup-retry');
-  const offlineButton = document.getElementById('startup-continue-offline');
-  if (retryButton) retryButton.onclick = () => {
-    const message = loader.querySelector('.startup-loading__message');
-    const hint = loader.querySelector('.startup-loading__hint');
-    const track = loader.querySelector('.startup-loading__track');
-    if (message) message.textContent = 'Initializing your portfolio…';
-    if (hint) hint.textContent = 'Restoring saved data and market connections';
-    if (track) (track as HTMLElement).style.display = '';
-    if (actions) (actions as HTMLElement).hidden = true;
-    loader.classList.remove('is-hidden');
-    void initApp();
-  };
-  if (offlineButton) offlineButton.onclick = () => { void continueStartupOffline(); };
-  loader.classList.remove('is-hidden');
+  window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: true, failed: true } }));
 }
+
+function bindStartupActions() {
+  window.addEventListener('terminal:startup-retry', () => {
+    window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: true, failed: false } }));
+    void initApp();
+  });
+  window.addEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
+}
+bindStartupActions();
 
 async function continueStartupOffline() {
   appInitialized = true;
