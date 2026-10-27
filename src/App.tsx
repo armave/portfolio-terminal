@@ -42,6 +42,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [showDailyMove, setShowDailyMove] = useState(false);
   const [breakevenText, setBreakevenText] = useState('Combined Breakeven: 0 days');
   const [analystConsensus, setAnalystConsensus] = useState({ text: '', title: '', className: 'hidden' });
+  const [cloudStatus, setCloudStatusState] = useState({ status: 'idle', text: 'OFFLINE' });
+  const [cloudSyncStatus, setCloudSyncStatus] = useState({ status: 'idle', text: '' });
+  const [startupState, setStartupState] = useState({ visible: true, failed: false });
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
 
@@ -113,6 +116,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         setShowDailyMove(detail.showDailyMove);
       }
     };
+    const handleCloudStatus = (event: Event) => { const detail = (event as CustomEvent<{status:string;text:string}>).detail; if (detail) setCloudStatusState(detail); };
+    const handleCloudSyncStatus = (event: Event) => { const detail = (event as CustomEvent<{status:string;text:string}>).detail; if (detail) setCloudSyncStatus(detail); };
+    const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
     const handleAnalystConsensus = (event: Event) => {
       const detail = (event as CustomEvent<{ text: string; title: string; className: string }>).detail;
       if (detail) setAnalystConsensus(detail);
@@ -125,6 +131,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     window.addEventListener('terminal:board-title', handleBoardTitle);
     window.addEventListener('terminal:breakeven-text', handleBreakevenText);
     window.addEventListener('terminal:analyst-consensus', handleAnalystConsensus);
+    window.addEventListener('terminal:cloud-status', handleCloudStatus);
+    window.addEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
+    window.addEventListener('terminal:startup-state', handleStartupState);
     return () => {
       window.removeEventListener('terminal:scenario-modal', handleScenarioModal);
       window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
@@ -141,6 +150,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       window.removeEventListener('terminal:board-title', handleBoardTitle);
       window.removeEventListener('terminal:breakeven-text', handleBreakevenText);
       window.removeEventListener('terminal:analyst-consensus', handleAnalystConsensus);
+      window.removeEventListener('terminal:cloud-status', handleCloudStatus);
+      window.removeEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
+      window.removeEventListener('terminal:startup-state', handleStartupState);
     };
   }, []);
 
@@ -327,6 +339,24 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
       {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} />}
+      <div id="cloudStatus" class="flex items-center gap-2 text-[10px] font-mono text-slate-400" aria-live="polite">
+        <span class={`w-1.5 h-1.5 rounded-full ${cloudStatus.status === 'syncing' ? 'bg-amber-400 animate-pulse' : cloudStatus.status === 'synced' ? 'bg-emerald-400' : cloudStatus.status === 'error' ? 'bg-rose-400' : 'bg-slate-500'}`} />
+        <span>KV: {cloudStatus.text.toUpperCase()}</span>
+        {cloudSyncStatus.text && <span class={`ml-2 ${cloudSyncStatus.status === 'synced' ? 'text-emerald-400' : 'text-rose-400'}`}>{cloudSyncStatus.text}</span>}
+      </div>
+      {startupState.visible && <div class="startup-loading fixed inset-0 z-[100] flex items-center justify-center" role="status" aria-live="polite">
+        <div class="startup-loading__content">
+          <div class="startup-loading__mark" aria-hidden="true">PT</div>
+          <div class="startup-loading__title">PORTFOLIO TERMINAL</div>
+          <div class="startup-loading__message">{startupState.failed ? 'Could not finish initializing the app.' : 'Initializing your portfolio…'}</div>
+          {!startupState.failed && <div class="startup-loading__track" aria-hidden="true"><span /></div>}
+          <div class="startup-loading__hint">{startupState.failed ? 'Check your connection, then retry or continue offline.' : 'Restoring saved data and market connections'}</div>
+          {startupState.failed && <div class="startup-loading__actions">
+            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('terminal:startup-retry'))}>Retry</button>
+            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('terminal:startup-offline'))}>Continue offline</button>
+          </div>}
+        </div>
+      </div>}
     </>
   );
 }
