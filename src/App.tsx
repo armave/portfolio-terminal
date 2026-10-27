@@ -4,6 +4,8 @@ import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
 import { CashCushionDesk, type CashCushionDeskProps } from './components/CashCushionDesk';
 import { SettingsDesk, type SettingsDeskProps } from './components/SettingsDesk';
 import { TickerTabs, type TickerTabsProps } from './components/TickerTab';
+import { SummaryMetricsGrid, type SummaryMetricsGridProps } from './components/SummaryMetricsGrid';
+import { ProjectionsTable, type ProjectionsTableProps } from './components/ProjectionsTable';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
@@ -24,6 +26,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
   const [settingsProps, setSettingsProps] = useState<SettingsDeskProps | null>(null);
   const [tickerTabsProps, setTickerTabsProps] = useState<TickerTabsProps | null>(null);
+  const [summaryMetricsProps, setSummaryMetricsProps] = useState<SummaryMetricsGridProps | null>(null);
+  const [projectionsProps, setProjectionsProps] = useState<ProjectionsTableProps | null>(null);
 
   useEffect(() => {
     const handleAuthVisibility = (event: Event) => {
@@ -55,13 +59,25 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       if (detail) setTickerTabsProps(detail);
     };
     window.addEventListener('terminal:settings-props', handleSettingsProps);
+    const handleSummaryMetricsProps = (event: Event) => {
+      const detail = (event as CustomEvent<SummaryMetricsGridProps>).detail;
+      if (detail) setSummaryMetricsProps(detail);
+    };
+    const handleProjectionsProps = (event: Event) => {
+      const detail = (event as CustomEvent<ProjectionsTableProps>).detail;
+      if (detail) setProjectionsProps(detail);
+    };
     window.addEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
+    window.addEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
+    window.addEventListener('terminal:projections-props', handleProjectionsProps);
     return () => {
       window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
       window.removeEventListener('terminal:active-view', handleDeskView);
       window.removeEventListener('terminal:cash-cushion-props', handleCashCushionProps);
       window.removeEventListener('terminal:settings-props', handleSettingsProps);
       window.removeEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
+      window.removeEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
+      window.removeEventListener('terminal:projections-props', handleProjectionsProps);
     };
   }, []);
 
@@ -189,7 +205,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               id="portfolioMetricsGrid"
               aria-label="Portfolio summary metrics"
               class="portfolio-metrics-grid gap-2 text-xs text-slate-300"
-            ></div>
+            >{summaryMetricsProps && <SummaryMetricsGrid {...summaryMetricsProps} />}</div>
 
             {/* Projection Table */}
             <div
@@ -210,7 +226,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 <tbody
                   id="projectionTableBody"
                   class="divide-y divide-slate-800/60 font-mono"
-                ></tbody>
+                >{projectionsProps && <ProjectionsTable {...projectionsProps} />}</tbody>
               </table>
             </div>
           </div>
