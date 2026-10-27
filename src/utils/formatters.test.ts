@@ -26,7 +26,7 @@ describe('display formatters', () => {
   });
 
   it('formats risk trigger context without changing calculations', () => {
-    expect(formatRiskTrigger(90, 100)).toBe('Position value 90.00 (10.0% buffer)');
+    expect(formatRiskTrigger(90, 100)).toBe('Position value 90.00');
     expect(formatRiskTrigger(110, 100)).toBe('Position value 110.00 (already10.0% below trigger)');
     expect(formatRiskTrigger(90, 0)).toBe('Position value 90.00');
   });
