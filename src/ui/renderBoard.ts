@@ -13,7 +13,6 @@ import { TickerTabs } from '../components/TickerTab';
 import { EmptyStatePanel } from '../components/EmptyStatePanel';
 import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
 import { ProjectionsTable } from '../components/ProjectionsTable';
-import { CashCushionDesk } from '../components/CashCushionDesk';
 import { calculateCommission, calculateMarginInterest, collectOpenPositionTranches } from '../domain/portfolio';
 import {
   BrokerRules,
@@ -55,19 +54,11 @@ function renderCashCushion(
     onAddCashStock,
     refreshIntervalMs = 60000
   } = options;
-  const container = document.getElementById('cashCushionContainer');
-  if (container) {
-    renderInto(
-      h(CashCushionDesk, {
-        onFetchLivePrice,
-        onRemoveCashStock,
-        onSaveBalance,
-        onAddCashStock,
-        refreshIntervalMs
-      }),
-      container
-    );
-  }
+  // The App component owns this desk's Preact instance. Send changing action
+  // handlers as props rather than mounting a second renderer into its container.
+  window.dispatchEvent(new CustomEvent('terminal:cash-cushion-props', {
+    detail: { onFetchLivePrice, onRemoveCashStock, onSaveBalance, onAddCashStock, refreshIntervalMs }
+  }));
 }
 
 function renderPositionsTable(
