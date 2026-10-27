@@ -184,9 +184,26 @@ if (typeof window !== 'undefined') {
         const mergedTrades = history.complete
           ? incomingTrades
           : [...new Map([...currentTrades, ...incomingTrades].map(trade => [String(trade.id), trade])).values()];
-        const ledger = history.complete
-          ? buildFreedomMarginLedger(history.trades, portfolioStore.getState().positions || {})
+        const latestState = portfolioStore.getState();
+        let ledger = history.complete
+          ? buildFreedomMarginLedger(history.trades, latestState.positions || {})
           : { reliable: false, positions: {}, reason: 'Trade history response was not complete.' };
+        // The trade ledger must never claim more margin shares than the live
+        // Freedom account actually holds (the broker positions also include cash).
+        if (ledger.reliable && latestState.brokerAccountInfo?.status === 'current') {
+          const brokerTotals = new Map<string, number>();
+          for (const item of latestState.brokerAccountInfo.positions || []) {
+            const ticker = String(item.ticker || '').trim().toUpperCase().replace(/\\.US$/i, '');
+            if (ticker) brokerTotals.set(ticker, (brokerTotals.get(ticker) || 0) + Number(item.quantity || 0));
+          }
+          const mismatch = Object.values(ledger.positions).find(position => {
+            const ticker = String(position.ticker || '').trim().toUpperCase().replace(/\\.US$/i, '');
+            return position.shares > (brokerTotals.get(ticker) || 0) + 1e-6;
+          });
+          if (mismatch) {
+            ledger = { reliable: false, positions: {}, reason: `Ledger margin shares exceed Freedom's current total for ${mismatch.ticker}.` };
+          }
+        }
         portfolioStore.setState({
           brokerExecutedTrades: mergedTrades,
           brokerTradeHistoryStatus: history.complete ? (ledger.reliable ? 'current' : 'unclassified') : 'incomplete',
