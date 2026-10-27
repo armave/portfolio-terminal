@@ -350,7 +350,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
   const isSettingsActive = currentView === 'SETTINGS';
-  const viewChanged = currentView !== lastDeskView;
 
   const tabsContainer = document.getElementById('tickerTabs');
   if (tabsContainer) {
