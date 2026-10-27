@@ -344,17 +344,8 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const daysEl = document.getElementById('daysToBreakeven');
 
-  const consoleCard = document.getElementById('tradingConsoleCard');
-  if (consoleCard) {
-    consoleCard.classList.toggle('hidden', isClosedHistoryActive || isSettingsActive);
-  }
-  const marketInsightsPanel = document.getElementById('marketInsightsPanel');
-  if (marketInsightsPanel) {
-    marketInsightsPanel.classList.toggle('hidden', isCushionActive || isClosedHistoryActive || isSettingsActive);
-  }
-
   if (isCushionActive) {
-    if (daysEl) daysEl.classList.add('hidden');
+    
     onUpdateLastDeskView('CASH_CUSHION');
     renderCashCushion(state, { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs });
     onRenderConsoleQuickActions();
@@ -376,7 +367,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (consoleCard) consoleCard.classList.remove('hidden');
-  if (daysEl) daysEl.classList.remove('hidden');
   onUpdateLastDeskView(currentView);
 
   const emptyPanel = document.getElementById('emptyStatePanel');
