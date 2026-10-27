@@ -79,6 +79,34 @@ export function buildFreedomMarginLedger(
     ledger.set(ticker, row);
   }
 
+  const transferredByTicker = new Map<string, NonNullable<PositionRecord['tranches']>>();
+  for (const [key, previous] of Object.entries(currentPositions || {})) {
+    const ticker = String(previous.ticker || key).trim().toUpperCase().replace(/\\.US$/i, '');
+    const transfers = (previous.tranches || [])
+      .filter(tranche => tranche.classificationTransfer)
+      .map(tranche => ({ ...tranche, qty: Math.max(0, Number(tranche.qty) || 0) }));
+    if (!ticker || transfers.length === 0) continue;
+    for (const tranche of transfers) {
+      const watermark = Number(tranche.afterTradeId || 0);
+      const laterSells = ordered.filter(trade => {
+        const tradeTicker = String(trade.ticker ?? '').trim().toUpperCase().replace(/\\.US$/i, '');
+        const side = String(trade.side ?? '').trim().toUpperCase();
+        const id = Number(trade.id);
+        return tradeTicker === ticker && ['SELL', '2'].includes(side) &&
+          Number.isFinite(id) && id > watermark;
+      });
+      let remaining = Math.max(0, Number(tranche.qty) || 0);
+      for (const sale of laterSells) {
+        const sold = Number(sale.quantity);
+        if (Number.isFinite(sold) && sold > 0) remaining = Math.max(0, remaining - sold);
+        if (remaining <= 1e-6) break;
+      }
+      tranche.qty = remaining;
+    }
+    const active = transfers.filter(tranche => tranche.qty > 1e-6);
+    if (active.length) transferredByTicker.set(ticker, active);
+  }
+
   const positions: Record<string, PositionRecord> = {};
   for (const [ticker, row] of ledger) {
     if (row.quantity <= 1e-6) continue;
@@ -96,6 +124,28 @@ export function buildFreedomMarginLedger(
       ...(previous?.tranches ? { tranches: previous.tranches } : {}),
       quoteSource: previous?.quoteSource,
       ...(previous?.quoteDetails ? { quoteDetails: previous.quoteDetails } : {})
+    };
+  }
+  // Manual cash-to-margin allocations are persisted tranches, not broker buys.
+  // Add their surviving quantities after applying only post-transfer sells.
+  for (const [ticker, tranches] of transferredByTicker) {
+    const transferShares = tranches.reduce((sum, tranche) => sum + tranche.qty, 0);
+    if (transferShares <= 1e-6) continue;
+    const existing = positions[ticker];
+    const previous = Object.values(currentPositions).find(position =>
+      String(position.ticker ?? '').trim().toUpperCase().replace(/\\.US$/i, '') === ticker
+    );
+    const brokerTranches = (existing?.tranches || []).filter(tranche => !tranche.classificationTransfer);
+    const allTranches = [...brokerTranches, ...tranches];
+    const shares = (existing?.shares || 0) + transferShares;
+    positions[ticker] = {
+      ...(existing || previous || { ticker, pt: 0, commBuy: 0, currentPrice: 0 }),
+      ticker,
+      shares,
+      tranches: allTranches,
+      currentPrice: Number(existing?.currentPrice || previous?.currentPrice) ||
+        (tranches.reduce((sum, tranche) => sum + tranche.qty * Number(tranche.price || 0), 0) / transferShares),
+      pt: Number(existing?.pt) || 0
     };
   }
   return { reliable: true, positions };
