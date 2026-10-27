@@ -1147,7 +1147,6 @@ export class PortfolioStore {
         const tranches = [...(marginPosition?.tranches || [])];
         const costBasis = tranches.reduce((sum, t) => sum + Math.max(0, Number(t.qty) || 0) * Math.max(0, Number(t.price) || 0), 0);
         if (quantity <= 0 || costBasis <= 0) return state;
-        const price = costBasis / Math.max(available, 1e-9);
         let remainingToMove = quantity;
         const movedTranches: TrancheItem[] = [];
         const remainingTranches: TrancheItem[] = [];
@@ -1180,7 +1179,7 @@ export class PortfolioStore {
       return {
         ...state,
         positions,
-        cashStocks: holdings.map(h => ({ ...h, shares: Number(h.shares) || 0 })),
+        cashStocks: holdings.map(h => ({ ...h, shares: Number(h.shares) || 0, currentPrice: Number(h.currentPrice ?? h.price) || 0 })),
         cashCushion: { ...(state.cashCushion || { freeCash: 0, holdings: [] }), holdings }
       };
     });
