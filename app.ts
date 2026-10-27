@@ -1,4 +1,10 @@
-import { render, h } from 'preact';
+import { render, h, type ComponentChild } from 'preact';
+
+/** Single mount boundary for legacy shell containers. New UI should move into
+ * the application tree; this helper makes remaining container mounts auditable. */
+function renderInto(vnode: ComponentChild, container: Element): void {
+  render(vnode, container);
+}
 import { ClosedHistoryDesk } from './src/components/ClosedHistoryDesk';
 
 import {
@@ -473,7 +479,7 @@ function renderConsoleQuickActions() {
   const pos = state.positions[state.activeView];
   const cardContainer = document.getElementById('tradingConsoleCard');
   if (cardContainer) {
-    render(
+    renderInto(
       h(TradingConsole, {
         position: pos,
         onExecuteCommand: (command?: string) => executeCommand(command)
@@ -485,7 +491,7 @@ function renderConsoleQuickActions() {
 
   const container = document.getElementById('consoleQuickActions');
   if (!container) return;
-  render(h(ConsoleQuickActions, { position: pos }), container);
+  renderInto(h(ConsoleQuickActions, { position: pos }), container);
 }
 
 function updateCombinedBreakeven() {
@@ -555,7 +561,7 @@ function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
   const stockPageLinks = document.getElementById('boardExternalLinks');
   if (!stockPageLinks) return;
-  render(h(BoardExternalLinks, { ticker: activeTicker }), stockPageLinks);
+  renderInto(h(BoardExternalLinks, { ticker: activeTicker }), stockPageLinks);
 }
 
 function renderBoard() {
@@ -589,7 +595,7 @@ function renderMarketInsightsComponent() {
   if (!panel) return;
   const ticker = getMarketInsightsTicker();
 
-  render(
+  renderInto(
     h(MarketInsightsPanel, {
       ticker,
       isOpen: true,
@@ -639,7 +645,7 @@ function toggleMarketInsights() {
 function renderClosedHistoryPanel() {
   const container = document.getElementById('closedHistoryContainer');
   if (!container) return;
-  render(h(ClosedHistoryDesk, null), container);
+  renderInto(h(ClosedHistoryDesk, null), container);
 }
 
 async function fetchBoardAnalystTarget(ticker: string, force = false) {
@@ -1765,7 +1771,7 @@ function renderSettingsPanel(force = false) {
   const rulesSignature = JSON.stringify(rules);
   if (settingsPanelMounted && !force && rulesSignature === lastSettingsRulesSignature) return;
 
-  render(
+  renderInto(
     h(SettingsDesk, {
       rules,
       defaultRefreshIntervalMs: DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
@@ -1833,7 +1839,7 @@ function renderAuthModal(isOpen: boolean) {
   const container = document.getElementById('auth-container');
   if (!container) return;
   container.style.display = isOpen ? 'flex' : 'none';
-  render(
+  renderInto(
     h(AuthModal, {
       isOpen,
       onSaveSecret: handleSaveGatewaySecret
@@ -1899,7 +1905,7 @@ async function initApp() {
 
   const rootEl = document.getElementById('root');
   if (rootEl && !document.getElementById('mainTerminalView')) {
-    render(h(App, { onToggleMarketInsights: toggleMarketInsights }), rootEl);
+    renderInto(h(App, { onToggleMarketInsights: toggleMarketInsights }), rootEl);
   }
 
   try {
