@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
 import { CashCushionDesk, type CashCushionDeskProps } from './components/CashCushionDesk';
@@ -42,6 +42,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [showDailyMove, setShowDailyMove] = useState(false);
   const [breakevenText, setBreakevenText] = useState('Combined Breakeven: 0 days');
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
+  const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
 
   useEffect(() => {
     const handleAuthVisibility = (event: Event) => {
@@ -318,7 +319,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       <div id="auth-container" class="auth-overlay" style={{ display: authOpen ? 'flex' : 'none' }}>
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
-      {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={() => setScenarioModalData(null)} />}
+      {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} />}
     </>
   );
 }
