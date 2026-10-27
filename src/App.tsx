@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
+import { CashCushionDesk, type CashCushionDeskProps } from './components/CashCushionDesk';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
@@ -16,6 +17,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
   const [activeDeskView, setActiveDeskView] = useState('COMBINED');
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
+  const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
+  const [cashCushionProps, setCashCushionProps] = useState<CashCushionDeskProps>({});
 
   useEffect(() => {
     const handleAuthVisibility = (event: Event) => {
@@ -27,13 +30,20 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       if (detail?.view) {
         setActiveDeskView(detail.view);
         if (detail.view === 'CLOSED_HISTORY') setHasOpenedClosedHistory(true);
+        if (detail.view === 'CASH_CUSHION' || detail.view === 'BALANCE') setHasOpenedCashCushion(true);
       }
     };
     window.addEventListener('terminal:auth-visibility', handleAuthVisibility);
+    const handleCashCushionProps = (event: Event) => {
+      const detail = (event as CustomEvent<CashCushionDeskProps>).detail;
+      if (detail) setCashCushionProps(detail);
+    };
     window.addEventListener('terminal:active-view', handleDeskView);
+    window.addEventListener('terminal:cash-cushion-props', handleCashCushionProps);
     return () => {
       window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
       window.removeEventListener('terminal:active-view', handleDeskView);
+      window.removeEventListener('terminal:cash-cushion-props', handleCashCushionProps);
     };
   }, []);
 
@@ -188,7 +198,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           </div>
 
           {/* Cash Cushion Management Panel */}
-          <div id="cashCushionContainer" class={"space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}></div>
+          <div id="cashCushionContainer" class={"space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk {...cashCushionProps} />}</div>
 
           {/* Keep the command console available on both Margin and Cash desks. */}
           <div id="tradingTerminalColumn" class="trading-terminal-column">
