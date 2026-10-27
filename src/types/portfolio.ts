@@ -15,6 +15,8 @@ export interface TrancheItem {
   buyCommission?: number;
   /** Local allocation marker; these shares were moved from cash, not bought again. */
   classificationTransfer?: boolean;
+  /** Original moved quantity; prevents reapplying the same historical sells on every refresh. */
+  transferQty?: number;
   /** Broker trade ID watermark; only later sells consume this transferred tranche. */
   afterTradeId?: string;
 }
