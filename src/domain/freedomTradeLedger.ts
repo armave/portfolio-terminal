@@ -20,6 +20,13 @@ export function buildFreedomMarginLedger(
   if (!Array.isArray(trades)) {
     return { reliable: false, positions: {}, reason: 'Trade history is not an array.' };
   }
+  // An empty response is not sufficient evidence that the account has no
+  // open margin positions: TradeNet can return an empty/unexpected history
+  // shape while the live Balance snapshot still contains holdings. Never turn
+  // an empty history payload into an authoritative liquidation of the portfolio.
+  if (trades.length === 0) {
+    return { reliable: false, positions: {}, reason: 'TradeNet returned no executions; refusing to infer that all margin positions are closed.' };
+  }
   if (trades.some(trade => trade.marginClassification === 'unknown')) {
     return { reliable: false, positions: {}, reason: 'One or more executions lack TradeNet margin classification.' };
   }
