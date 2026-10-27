@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
 import { CashCushionDesk, type CashCushionDeskProps } from './components/CashCushionDesk';
+import { SettingsDesk, type SettingsDeskProps } from './components/SettingsDesk';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
@@ -19,6 +20,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [cashCushionProps, setCashCushionProps] = useState<CashCushionDeskProps>({});
+  const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
+  const [settingsProps, setSettingsProps] = useState<SettingsDeskProps | null>(null);
 
   useEffect(() => {
     const handleAuthVisibility = (event: Event) => {
@@ -31,6 +34,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         setActiveDeskView(detail.view);
         if (detail.view === 'CLOSED_HISTORY') setHasOpenedClosedHistory(true);
         if (detail.view === 'CASH_CUSHION' || detail.view === 'BALANCE') setHasOpenedCashCushion(true);
+        if (detail.view === 'SETTINGS') setHasOpenedSettings(true);
       }
     };
     window.addEventListener('terminal:auth-visibility', handleAuthVisibility);
@@ -39,11 +43,17 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       if (detail) setCashCushionProps(detail);
     };
     window.addEventListener('terminal:active-view', handleDeskView);
+    const handleSettingsProps = (event: Event) => {
+      const detail = (event as CustomEvent<SettingsDeskProps>).detail;
+      if (detail) setSettingsProps(detail);
+    };
     window.addEventListener('terminal:cash-cushion-props', handleCashCushionProps);
+    window.addEventListener('terminal:settings-props', handleSettingsProps);
     return () => {
       window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
       window.removeEventListener('terminal:active-view', handleDeskView);
       window.removeEventListener('terminal:cash-cushion-props', handleCashCushionProps);
+      window.removeEventListener('terminal:settings-props', handleSettingsProps);
     };
   }, []);
 
@@ -223,7 +233,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       >{hasOpenedClosedHistory && <ClosedHistoryDesk />}</div>
 
       {/* Settings */}
-      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings"></div>
+      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && settingsProps && <SettingsDesk {...settingsProps} />}</div>
 
       {/* Authentication is part of the application tree, not a second Preact root. */}
       <div id="auth-container" class="auth-overlay" style={{ display: authOpen ? 'flex' : 'none' }}>
