@@ -130,52 +130,6 @@ interface RenderSummaryCardsOptions {
 }
 
 
-function renderPositionBasis(state: BoardState, currentView: string, tickers: string[]): void {
-  const tranchesEl = document.getElementById('boardTranches');
-  const investedEl = document.getElementById('boardInvested');
-  if (!tranchesEl || !investedEl) return;
-
-  // POSITION BASIS represents only the app's current open margin tranches.
-  // Do not substitute broker positions or executed-trade history here.
-  const isCombined = currentView === 'COMBINED' || !state.positions?.[currentView];
-  const positions = isCombined
-    ? tickers.map((ticker) => state.positions?.[ticker]).filter(Boolean) as PositionRecord[]
-    : [state.positions![currentView]];
-  const displayLots = positions.flatMap((pos) => (pos.tranches || []).map((lot) => ({
-    qty: Number(lot.qty) || 0,
-    price: Number(lot.price) || 0,
-    date: lot.date
-  })).filter((lot) => lot.qty > 0 && lot.price > 0));
-
-  const displayShares = displayLots.reduce((sum, lot) => sum + lot.qty, 0);
-  const displayInvested = displayLots.reduce((sum, lot) => sum + lot.qty * lot.price, 0);
-  const formatPrice = (value: number) => value.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-  const formatShortDate = (value?: string) => {
-    if (!value) return '';
-    const parsed = /^\\d{4}-\\d{2}-\\d{2}$/.test(value)
-      ? new Date(value + 'T12:00:00')
-      : new Date(value);
-    if (Number.isNaN(parsed.getTime())) return '';
-    return parsed.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-  };
-
-  if (displayShares <= 0 || displayLots.length === 0) {
-    tranchesEl.textContent = 'No open margin tranches';
-    investedEl.textContent = '—';
-    return;
-  }
-
-  const average = displayInvested / displayShares;
-  tranchesEl.textContent = `${displayLots.map((lot) => {
-    const shortDate = formatShortDate(lot.date);
-    return `${lot.qty} @ ${formatPrice(lot.price)}${shortDate ? ` (${shortDate})` : ''}`;
-  }).join(' + ')}`;
-  investedEl.textContent = `${formatPrice(displayInvested)} | ${formatPrice(average)}`;
-}
-
 function renderSummaryCards(
   state: BoardState,
   options: RenderSummaryCardsOptions
@@ -303,12 +257,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     detail: { state, onSetActiveView, onRefreshAllLivePrices }
   }));
 
-  const closedTrades = state.closedTrades || [];
-  const closedTradesCount = document.getElementById('closedTradesCount');
-  if (closedTradesCount) {
-    closedTradesCount.textContent = `${closedTrades.length} realized exit${closedTrades.length === 1 ? '' : 's'}`;
-  }
-
   // Hidden desks do not need their derived metrics or insights panel refreshed.
   // They will be updated when the user returns to a position/combined desk.
   if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) {
@@ -360,8 +308,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   window.dispatchEvent(new CustomEvent('terminal:empty-state-props', { detail: null }));
-
-  renderPositionBasis(state, currentView, tickers);
 
   renderSummaryCards(state, {
     rules,
