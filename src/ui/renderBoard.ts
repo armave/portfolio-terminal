@@ -207,18 +207,16 @@ function renderSummaryCards(
     detail: { state, rules, refreshIntervalMs }
   }));
 
-  const titleEl = document.getElementById('boardTitle');
-  const moveEl = document.getElementById('boardDailyMove');
 
   if (isCombined) {
     const metrics = calculateCombinedMetrics(state, rules, tickers, dailyRate);
 
-    if (titleEl) {
-      titleEl.innerText = tickers.length > 0
+    window.dispatchEvent(new CustomEvent('terminal:board-title', { detail: {
+      title: tickers.length > 0
         ? `COMBINED PORTFOLIO (${tickers.length} Positions | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`
-        : `NO ACTIVE MARGIN POSITIONS`;
-    }
-    if (moveEl) moveEl.classList.remove('hidden');
+        : 'NO ACTIVE MARGIN POSITIONS',
+      showDailyMove: true
+    } }));
 
     if (typeof onRenderAnalystConsensus === 'function' && tickers[0]) {
       onRenderAnalystConsensus(tickers[0]);
@@ -238,9 +236,10 @@ function renderSummaryCards(
 
     const metrics = calculatePositionMetrics(state, pos, rules, dailyRate);
 
-    if (titleEl) {
-      titleEl.innerText = `${pos.ticker} (${pos.shares} Shares @ ${formatUSD(pos.pt)} PT | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`;
-    }
+    window.dispatchEvent(new CustomEvent('terminal:board-title', { detail: {
+      title: `${pos.ticker} (${pos.shares} Shares @ ${formatUSD(pos.pt)} PT | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`,
+      showDailyMove: false
+    } }));
 
     if (typeof onRenderAnalystConsensus === 'function') {
       onRenderAnalystConsensus(pos.ticker);
@@ -315,7 +314,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
   const isSettingsActive = currentView === 'SETTINGS';
-  const daysEl = document.getElementById('daysToBreakeven');
 
   window.dispatchEvent(new CustomEvent('terminal:ticker-tabs-props', {
     detail: { state, onSetActiveView, onRefreshAllLivePrices }
@@ -373,7 +371,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
         }
       } satisfies import('../components/EmptyStatePanel').EmptyStatePanelProps
     }));
-    if (daysEl) daysEl.innerText = 'No Active Positions';
     onRenderConsoleQuickActions();
     return;
   }
