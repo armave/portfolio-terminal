@@ -13,7 +13,9 @@ import {
   fetchMarketNews,
   fetchStocktwitsStream,
   rememberYahooDeepStockData,
-  clearYahooDeepStockDataCache
+  clearYahooDeepStockDataCache,
+  fetchFreedomTradeNetTrades,
+  fetchAllFreedomTradeNetTrades
 } from './api';
 import * as storage from './storage';
 
@@ -42,6 +44,43 @@ async function encryptV2Fixture(value: unknown, secret: string): Promise<string>
   };
   return `aesgcm:v2:${toBase64(nonce)}:${toBase64(new Uint8Array(ciphertext))}`;
 }
+
+describe('Freedom executed trade history', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('forwards bounded history params and disables cache', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ ok: true, data: { trades: { trade: [] } } })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchFreedomTradeNetTrades({ max: 250, sort: 1, tradeId: 42 });
+
+    const [url, options] = fetchMock.mock.calls[0] as any;
+    expect(url).toContain('action=freedom-trades');
+    expect(url).toContain('max=250');
+    expect(url).toContain('sort=1');
+    expect(url).toContain('tradeId=42');
+    expect(options.cache).toBe('no-store');
+  });
+
+  it('does not call an empty or malformed history response complete', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ ok: true, data: { unexpected: true } })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchAllFreedomTradeNetTrades({ pageSize: 10 })).resolves.toMatchObject({
+      trades: [],
+      complete: false,
+      pagesFetched: 1
+    });
+  });
+});
 
 describe('proxy request coalescing', () => {
   it('shares identical concurrent market-data requests', async () => {
