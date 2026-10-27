@@ -331,16 +331,21 @@ export class CommandDispatcher {
       }
 
       // Reclassify existing holdings without simulating a buy/sell or changing cash/debt.
-      const moveStockMatch = raw.match(/^move\\s+([0-9.,]+)\\s+([a-zA-Z]+)\\s+to\\s+(margin|cash)$/i);
+      const moveStockMatch = raw.match(/^move\s+([0-9.,]+)\s+([a-zA-Z]+)\s+to\s+(margin|cash)$/i);
       if (moveStockMatch) {
         const qty = cleanNumber(moveStockMatch[1]);
         const sym = moveStockMatch[2].toUpperCase();
         const destination = moveStockMatch[3].toLowerCase() as 'margin' | 'cash';
         if (!Number.isFinite(qty) || qty <= 0) throw new Error('Usage: move <shares> <ticker> to <margin|cash>');
         const moved = portfolioStore.moveStockClassification(sym, qty, destination);
-        if (!moved) throw new Error(`Could not move shares: verify ${sym} has enough active shares in the source bucket and a valid cost/market price.`);
+        if (!moved) throw new Error(\`Could not move shares: verify \${sym} has enough active shares in the source bucket and a valid cost/market price.\`);
         return {
-          text: `Moved ${moved.shares} ${sym} to ${destination} at recorded basis $ ${moved.price.toFixed(2)} per share. No broker order was placed; cash/debt unchanged.`.replace('$ ', '
+          text: \`Moved \${moved.shares} \${sym} to \${destination} at recorded basis $\${moved.price.toFixed(2)} per share. No broker order was placed; cash/debt unchanged.\`,
+          type: 'res',
+          sideEffect: { type: 'SYNC_CLOUD' }
+        };
+      }
+
       const cashAddMatch = raw.match(
         /^(?:cash\s+(?:add|buy|bought)|add\s+cash(?:\s+stock)?)\s+([0-9.,]+)\s+([a-zA-Z]+)(?:\s+(?:for|at|@)?\s*([$0-9.,]+))?$/i
       );
