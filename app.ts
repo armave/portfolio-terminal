@@ -1341,8 +1341,7 @@ async function executeCommand(commandText?: string) {
   }
 
   const aiQuery = text.replace(/^(ai|ask)\s*:?\s*/i, '');
-  const statusEl = document.getElementById("aiStatus");
-  if (statusEl) statusEl.innerText = "CONNECTING...";
+  window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'CONNECTING...' }));
 
   try {
     const targetState: any = portfolioStore.getState();
@@ -1365,10 +1364,10 @@ async function executeCommand(commandText?: string) {
       logTerminal(`[AI Advisor]: ${parsed.response || 'Executed.'}`);
     }
 
-    if (statusEl) statusEl.innerText = "READY";
+    window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'READY' }));
   } catch (err: any) {
     logTerminal(`[Error]: ${err.message}`);
-    if (statusEl) statusEl.innerText = "READY";
+    window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'READY' }));
   }
 }
 
