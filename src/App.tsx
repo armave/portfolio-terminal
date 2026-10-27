@@ -1,4 +1,5 @@
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
+import { AuthModal } from './components/AuthModal';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
@@ -7,9 +8,20 @@ let accountRequest: Promise<void> | null = null;
 
 interface AppProps {
   onToggleMarketInsights: () => void;
+  onSaveGatewaySecret: (secret: string) => Promise<boolean>;
 }
 
-export function App({ }: AppProps) {
+export function App({ onSaveGatewaySecret }: AppProps) {
+  const [authOpen, setAuthOpen] = useState(false);
+
+  useEffect(() => {
+    const handleAuthVisibility = (event: Event) => {
+      const detail = (event as CustomEvent<{ isOpen?: boolean }>).detail;
+      setAuthOpen(Boolean(detail?.isOpen));
+    };
+    window.addEventListener('terminal:auth-visibility', handleAuthVisibility);
+    return () => window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
+  }, []);
 
   // Closed History asks for trade history when mounted; do not also fetch from
   // a global navigation click listener, which caused duplicate broker requests.
@@ -188,6 +200,11 @@ export function App({ }: AppProps) {
 
       {/* Settings */}
       <div class="hidden p-4 sm:p-6 rounded-xl space-y-4" id="settings"></div>
+
+      {/* Authentication is part of the application tree, not a second Preact root. */}
+      <div id="auth-container" class="auth-overlay" style={{ display: authOpen ? 'flex' : 'none' }}>
+        <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
+      </div>
     </>
   );
 }
