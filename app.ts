@@ -61,6 +61,7 @@ import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { reconcileFreedomPortfolio } from './src/domain/freedomPortfolio';
+import { buildFreedomMarginLedger } from './src/domain/freedomTradeLedger';
 import { InsightSection } from './src/components/MarketInsightsPanel';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
@@ -165,7 +166,7 @@ if (typeof window !== 'undefined') {
     const generation = ++freedomTradeSyncGeneration;
     void (async () => {
       try {
-        const history = await fetchAllFreedomTradeNetTrades({ pageSize: 1000 });
+        const history = await fetchAllFreedomTradeNetTrades();
         if (generation !== freedomTradeSyncGeneration) return;
         const storedTrades = portfolioStore.getState().brokerExecutedTrades;
         const currentTrades: Record<string, any>[] = Array.isArray(storedTrades)
@@ -183,13 +184,19 @@ if (typeof window !== 'undefined') {
         const mergedTrades = history.complete
           ? incomingTrades
           : [...new Map([...currentTrades, ...incomingTrades].map(trade => [String(trade.id), trade])).values()];
+        const ledger = history.complete
+          ? buildFreedomMarginLedger(history.trades, portfolioStore.getState().positions || {})
+          : { reliable: false, positions: {}, reason: 'Trade history response was not complete.' };
         portfolioStore.setState({
           brokerExecutedTrades: mergedTrades,
-          brokerTradeHistoryStatus: history.complete ? 'current' : 'incomplete'
+          brokerTradeHistoryStatus: history.complete ? (ledger.reliable ? 'current' : 'unclassified') : 'incomplete',
+          ...(history.complete && ledger.reliable ? { positions: ledger.positions } : {})
         } as any);
-        logTerminal(history.complete
-          ? `[Freedom] Imported ${history.trades.length} executed-trade records from TradeNet.`
-          : `[Freedom Warning] Imported ${history.trades.length} TradeNet records, but history completeness is unverified; active positions were not rewritten.`);
+        if (history.complete && ledger.reliable) {
+          logTerminal(`[Freedom] Imported ${history.trades.length} executed trades and rebuilt ${Object.keys(ledger.positions).length} active margin positions from broker fills.`);
+        } else {
+          logTerminal(`[Freedom Warning] Trade history imported, but margin positions were left unchanged: ${ledger.reason || 'history is incomplete'}`);
+        }
       } catch (error: any) {
         if (generation !== freedomTradeSyncGeneration) return;
         portfolioStore.setState({ brokerTradeHistoryStatus: 'stale' } as any);
