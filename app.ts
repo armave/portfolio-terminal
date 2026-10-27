@@ -65,7 +65,6 @@ import { BoardExternalLinks } from './src/components/BoardExternalLinks';
 import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
 import { InsightSection, MarketInsightsPanel } from './src/components/MarketInsightsPanel';
 import { SettingsDesk } from './src/components/SettingsDesk';
-import { AuthModal } from './src/components/AuthModal';
 import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
@@ -1836,16 +1835,11 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
 }
 
 function renderAuthModal(isOpen: boolean) {
-  const container = document.getElementById('auth-container');
-  if (!container) return;
-  container.style.display = isOpen ? 'flex' : 'none';
-  renderInto(
-    h(AuthModal, {
-      isOpen,
-      onSaveSecret: handleSaveGatewaySecret
-    }),
-    container
-  );
+  // App owns the auth overlay inside the main Preact tree. Communicate visibility
+  // as state rather than mounting a second Preact root into a sibling container.
+  window.dispatchEvent(new CustomEvent('terminal:auth-visibility', {
+    detail: { isOpen }
+  }));
 }
 
 function showAuthContainer() {
@@ -1905,7 +1899,10 @@ async function initApp() {
 
   const rootEl = document.getElementById('root');
   if (rootEl && !document.getElementById('mainTerminalView')) {
-    renderInto(h(App, { onToggleMarketInsights: toggleMarketInsights }), rootEl);
+    renderInto(h(App, {
+      onToggleMarketInsights: toggleMarketInsights,
+      onSaveGatewaySecret: handleSaveGatewaySecret
+    }), rootEl);
   }
 
   try {
