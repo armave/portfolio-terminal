@@ -140,6 +140,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       window.removeEventListener('terminal:empty-state-props', handleEmptyStateProps);
       window.removeEventListener('terminal:board-title', handleBoardTitle);
       window.removeEventListener('terminal:breakeven-text', handleBreakevenText);
+      window.removeEventListener('terminal:analyst-consensus', handleAnalystConsensus);
     };
   }, []);
 
