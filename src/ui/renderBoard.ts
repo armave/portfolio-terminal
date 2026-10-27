@@ -337,7 +337,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     onUpdateCombinedBreakeven = () => { },
     onSyncMarketInsightsPanel = () => { },
     refreshIntervalMs = 60000,
-    lastDeskView = null,
     onUpdateLastDeskView = () => { }
   } = options;
 
