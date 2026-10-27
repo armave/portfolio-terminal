@@ -194,6 +194,10 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
     }
   ];
 
+  const visibleGuideItems = guideItems.filter(item =>
+    !['hintBuyShares', 'hintClosePosition', 'hintTargetPrice'].includes(item.id)
+  );
+
   return (
     <>
       {/* Console Header */}
@@ -241,7 +245,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
             SYSTEM
           </span>
           <span>
-            Portfolio CLI ready. Execute trades, run exit comparisons, or click any quick action below.
+            Portfolio CLI ready. Margin positions, fills, and active quantities sync from Freedom Broker; use scenarios to compare exits.
           </span>
         </div>
       </div>
@@ -307,7 +311,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
           </summary>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
-            {guideItems.map((item) => (
+            {visibleGuideItems.map((item) => (
               <button
                 key={item.category}
                 type="button"
