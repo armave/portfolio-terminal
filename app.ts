@@ -480,8 +480,7 @@ function renderConsoleQuickActions() {
 }
 
 function updateCombinedBreakeven() {
-  const beEl = document.getElementById('daysToBreakeven');
-  if (!beEl) return;
+  const setText = (text: string) => window.dispatchEvent(new CustomEvent('terminal:breakeven-text', { detail: { text } }));
 
   const tickers = Object.keys(state.positions);
   const totalDebt = Math.abs(state.balance);
@@ -514,22 +513,22 @@ function updateCombinedBreakeven() {
   const netTargetProfit = totalGrossTarget - totalComms - totalMarginCharged;
 
   if (tickers.length === 0 || totalInvested === 0) {
-    beEl.innerText = "Combined Breakeven: No active trades";
+    setText("Combined Breakeven: No active trades");
     return;
   }
 
   if (totalDebt <= 0) {
-    beEl.innerText = "Combined Breakeven: No margin debt";
+    setText("Combined Breakeven: No margin debt");
     return;
   }
 
   if (netTargetProfit <= 0) {
-    beEl.innerText = "Combined Breakeven: 0 days (Net Target ≤ $0)";
+    setText("Combined Breakeven: 0 days (Net Target ≤ $0)");
     return;
   }
 
   if (getDailyRate() === 0) {
-    beEl.innerText = "Combined Breakeven: 0 days (no ongoing margin interest)";
+    setText("Combined Breakeven: 0 days (no ongoing margin interest)");
     return;
   }
 
@@ -539,7 +538,7 @@ function updateCombinedBreakeven() {
   beDate.setDate(beDate.getDate() + beDays);
   const beDateStr = beDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-  beEl.innerText = `Combined Breakeven: ${beDays} days (${beDateStr})`;
+  setText(`Combined Breakeven: ${beDays} days (${beDateStr})`);
 }
 
 function renderBoardExternalLinks() {
