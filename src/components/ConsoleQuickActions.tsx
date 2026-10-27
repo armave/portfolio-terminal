@@ -70,6 +70,12 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
         title: 'Set margin debt balance'
       },
       {
+        text: '⇄ Move Shares…',
+        command: 'move [shares] [TICKER] to margin',
+        color: 'text-fuchsia-300 border-fuchsia-900/70 hover:bg-fuchsia-950/60',
+        title: 'Reclassify existing shares between cash and margin without placing a broker order'
+      },
+      {
         text: '+ Cash Stock…',
         command: 'add cash stock [shares] [TICKER] at [price]',
         color: 'text-purple-300 border-purple-900/70 hover:bg-purple-950/60',
