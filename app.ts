@@ -658,13 +658,8 @@ async function fetchBoardAnalystTarget(ticker: string, force = false) {
 }
 
 function renderBoardAnalystConsensus(ticker: string, force = false) {
-  const container = document.getElementById('boardAnalystConsensus');
-  if (!container) return;
-  const hideConsensus = () => {
-    container.textContent = '';
-    container.removeAttribute('title');
-    container.className = 'hidden';
-  };
+  const publish = (text: string, title = '', className = 'hidden') => window.dispatchEvent(new CustomEvent('terminal:analyst-consensus', { detail: { text, title, className } }));
+  const hideConsensus = () => publish('');
   if (!ticker || !state.positions[ticker]) {
     hideConsensus();
     return;
@@ -683,28 +678,20 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
         : upside < 0
           ? 'border-rose-800 bg-rose-950/40 text-rose-300'
           : 'border-slate-700 bg-slate-900 text-slate-300';
-      container.textContent = `${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`;
-      container.title = `Target from ${snapshot.source}: ${formatUSD(snapshot.targetPrice)} versus current price ${formatUSD(currentPrice)}.`;
-      container.className = `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`;
+      publish(`${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`, `Target from ${snapshot.source}: ${formatUSD(snapshot.targetPrice)} versus current price ${formatUSD(currentPrice)}.`, `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`);
     } else {
-      container.textContent = `${snapshot.source} price target · ${formatUSD(snapshot.targetPrice)} · current price unavailable`;
-      container.title = `Price target from ${snapshot.source}.`;
-      container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300';
+      publish(`${snapshot.source} price target · ${formatUSD(snapshot.targetPrice)} · current price unavailable`, `Price target from ${snapshot.source}.`, 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300');
     }
     return;
   }
 
   if (!force && error && now - error.failedAt < BOARD_ANALYST_RETRY_MS) {
-    container.textContent = 'Analyst target unavailable';
-    container.title = error.message;
-    container.className = 'rounded border border-amber-800 bg-amber-950/30 px-2.5 py-1 text-[10px] font-semibold text-amber-300';
+    publish('Analyst target unavailable', error.message, 'rounded border border-amber-800 bg-amber-950/30 px-2.5 py-1 text-[10px] font-semibold text-amber-300');
     return;
   }
 
   if (initialQuoteRefreshPending && !snapshot) {
-    container.textContent = 'Loading analyst target…';
-    container.title = 'Waiting for the initial batch quote refresh.';
-    container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
+    publish('Loading analyst target…', 'Waiting for the initial batch quote refresh.', 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400');
     return;
   }
 
@@ -712,9 +699,7 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
     return;
   }
 
-  container.textContent = 'Checking analyst target…';
-  container.removeAttribute('title');
-  container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
+  publish('Checking analyst target…', '', 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400');
 
   const request = fetchBoardAnalystTarget(ticker, force).then(result => {
     boardAnalystSnapshots.set(ticker, { ...result, fetchedAt: Date.now() });
