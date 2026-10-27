@@ -59,6 +59,14 @@ describe('buildFreedomMarginLedger', () => {
     expect(result.reason).toContain('exceeds known active margin shares');
   });
 
+  it('does not treat an empty history response as proof all margin positions were sold', () => {
+    const result = buildFreedomMarginLedger([], {
+      AAPL: { ticker: 'AAPL', shares: 10, currentPrice: 100, pt: 0, commBuy: 0 }
+    });
+    expect(result.reliable).toBe(false);
+    expect(result.reason).toContain('no executions');
+  });
+
   it('does not count cash executions as margin positions', () => {
     const result = buildFreedomMarginLedger([
       trade({ id: '1', side: 'BUY', quantity: 10, price: 100, marginClassification: 'cash' })
