@@ -84,7 +84,7 @@ export function buildFreedomMarginLedger(
     const ticker = String(previous.ticker || key).trim().toUpperCase().replace(/\\.US$/i, '');
     const transfers = (previous.tranches || [])
       .filter(tranche => tranche.classificationTransfer)
-      .map(tranche => ({ ...tranche, qty: Math.max(0, Number(tranche.qty) || 0) }));
+      .map(tranche => ({ ...tranche, qty: Math.max(0, Number(tranche.transferQty ?? tranche.qty) || 0) }));
     if (!ticker || transfers.length === 0) continue;
     for (const tranche of transfers) {
       const watermark = Number(tranche.afterTradeId || 0);
