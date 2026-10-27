@@ -10,7 +10,7 @@ type SideEffectAction =
   | { type: 'CLEAR_TERMINAL' };
 
 export interface CommandOutput {
-  text: string;,
+  text: string;
   type: 'cmd' | 'res' | 'err' | 'confirm' | 'unrecognized';
   sideEffect?: SideEffectAction;
   modal?: ScenarioModalData;
@@ -340,7 +340,7 @@ export class CommandDispatcher {
         const moved = portfolioStore.moveStockClassification(sym, qty, destination);
         if (!moved) throw new Error(\`Could not move shares: verify \${sym} has enough active shares in the source bucket and a valid cost/market price.\`);
         return {
-          text: \`Moved \${moved.shares} \${sym} to \${destination} at recorded basis $\${moved.price.toFixed(2)} per share. No broker order was placed; cash/debt unchanged.\`,
+          text: `Moved ${moved.shares} ${sym} to ${destination} at recorded basis ${moved.price.toFixed(2)} per share. No broker order was placed; cash/debt unchanged.`,
           type: 'res',
           sideEffect: { type: 'SYNC_CLOUD' }
         };
