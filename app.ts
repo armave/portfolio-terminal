@@ -405,7 +405,7 @@ function renderConsoleQuickActions() {
   window.dispatchEvent(new CustomEvent('terminal:trading-console-props', {
     detail: {
       position,
-      onExecuteCommand: (command?: string) => executeCommand(command)
+      onExecuteCommand: (command?: string) => executeCommand(command ?? '')
     } satisfies import('./src/components/TradingConsole').TradingConsoleProps
   }));
 }
