@@ -1015,8 +1015,44 @@ export async function fetchFreedomTradeNetPositions(): Promise<any> {
 }
 
 /** Fetch a bounded, read-only page of executed TradeNet trades. */
-export async function fetchFreedomTradeNetTrades(): Promise<any> {
-  return proxyFetch('freedom-trades');
+export async function fetchFreedomTradeNetTrades(options: {
+  max?: number;
+  sort?: 0 | 1;
+  tradeId?: string | number;
+} = {}): Promise<any> {
+  const max = Math.max(1, Math.min(1000, Math.trunc(Number(options.max) || 1000)));
+  const sort = options.sort === 1 ? 1 : 0;
+  return proxyFetch('freedom-trades', {
+    max,
+    sort,
+    ...(options.tradeId !== undefined ? { tradeId: options.tradeId } : {})
+  }, { cache: 'no-store' });
+}
+
+/**
+ * Read a bounded history snapshot and report whether the upstream response
+ * appears complete. TradeNet's tradeId cursor semantics are not established
+ * here, so a full page is never treated as complete or silently paginated.
+ */
+export async function fetchAllFreedomTradeNetTrades(options: {
+  pageSize?: number;
+  maxPages?: number;
+} = {}): Promise<{ trades: FreedomExecutedTrade[]; complete: boolean; pagesFetched: number }> {
+  const pageSize = Math.max(1, Math.min(1000, Math.trunc(Number(options.pageSize) || 1000)));
+  const response = await fetchFreedomTradeNetTrades({ max: pageSize, sort: 0 });
+  const root = response?.data?.result ?? response?.data ?? response?.result ?? response;
+  const hasRows = Array.isArray(root) || Array.isArray(root?.trades?.trade) ||
+    Array.isArray(root?.trades) || Array.isArray(root?.items) ||
+    Array.isArray(root?.history) || Array.isArray(root?.data);
+  const trades = normalizeFreedomTrades(response);
+  if (!hasRows) return { trades: [], complete: false, pagesFetched: 1 };
+
+  const totalRaw = root?.total ?? root?.count ?? root?.total_count ?? root?.trades?.total;
+  const total = Number(totalRaw);
+  const complete = Number.isFinite(total) && total >= 0
+    ? trades.length >= total
+    : trades.length < pageSize;
+  return { trades, complete, pagesFetched: 1 };
 }
 
 /** Fetch the raw read-only Freedom Broker cashflows response for temporary integration testing. */
