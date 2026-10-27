@@ -1114,11 +1114,19 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
     tradeValue: numberOrNull(row?.v ?? row?.summ ?? row?.value),
     profit: numberOrNull(row?.profit ?? row?.pnl),
     marginInitialRequirement: numberOrNull(row?.go_sum ?? row?.goSum ?? row?.initial_margin),
-    marginClassification: (row?.go_sum ?? row?.goSum ?? row?.initial_margin) === undefined ||
-      (row?.go_sum ?? row?.goSum ?? row?.initial_margin) === null ||
-      (row?.go_sum ?? row?.goSum ?? row?.initial_margin) === ''
-      ? 'unknown'
-      : Number(row?.go_sum ?? row?.goSum ?? row?.initial_margin) > 0 ? 'margin' : 'cash',
+    // TradeNet responses seen in production contain go_sum: "0" for
+    // both buys and sells, including executions that must be reconciled with
+    // live holdings. Zero is therefore not reliable proof that an execution
+    // was cash-financed. Only a positive initial-margin amount proves margin;
+    // zero/missing/invalid values remain unclassified rather than silently
+    // putting every execution into the cash bucket.
+    marginClassification: (() => {
+      const rawMargin = row?.go_sum ?? row?.goSum ?? row?.initial_margin;
+      if (rawMargin === undefined || rawMargin === null || rawMargin === '') return 'unknown' as const;
+      const marginAmount = Number(rawMargin);
+      if (!Number.isFinite(marginAmount) || marginAmount < 0) return 'unknown' as const;
+      return marginAmount > 0 ? 'margin' as const : 'unknown' as const;
+    })(),
     marginFee: numberOrNull(row?.margin_fee ?? row?.marginFee ?? row?.margin_interest ?? row?.marginInterest ?? row?.fee_margin ?? row?.feeMargin ?? row?.margin_commission ?? row?.margin_commiss),
     commission: numberOrNull(row?.commission ?? row?.commiss ?? row?.commissions ?? row?.fee ?? row?.commiss_exchange),
     commissionCurrency: String(row?.commission_currency ?? row?.curr_c ?? row?.currency ?? ''),
