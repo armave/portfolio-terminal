@@ -291,17 +291,6 @@ function renderSummaryCards(
   }
 }
 
-function hideAllDesks() {
-  const desks = ['mainDeskContainer', 'cashCushionContainer', 'closedHistoryContainer', 'settings'];
-  desks.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.classList.add('hidden');
-      el.classList.remove('ui-view-enter');
-    }
-  });
-}
-
 function prefillTerminalCommand(command: string): void {
   const input = document.getElementById('cmdInput') as HTMLInputElement | null;
   if (!input) return;
@@ -315,16 +304,6 @@ function prefillTerminalCommand(command: string): void {
   const end = start >= 0 ? input.value.indexOf(']', start) + 1 : -1;
   if (start >= 0 && end > start) {
     requestAnimationFrame(() => input.setSelectionRange(start, end));
-  }
-}
-
-function showDesk(id: string) {
-  const el = document.getElementById(id);
-  if (el) {
-    el.classList.remove('hidden');
-    // Trigger reflow to restart animation
-    void el.offsetWidth;
-    el.classList.add('ui-view-enter');
   }
 }
 
@@ -366,6 +345,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const tickers = Object.keys(state.positions || {});
   const currentView = resolveActiveView(state);
+  window.dispatchEvent(new CustomEvent('terminal:active-view', { detail: { view: currentView } }));
 
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
@@ -391,7 +371,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   const daysEl = document.getElementById('daysToBreakeven');
-  if (viewChanged) hideAllDesks();
 
   const consoleCard = document.getElementById('tradingConsoleCard');
   if (consoleCard) {
@@ -403,7 +382,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isCushionActive) {
-    if (viewChanged) showDesk('cashCushionContainer');
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('CASH_CUSHION');
     renderCashCushion(state, { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs });
@@ -412,7 +390,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isClosedHistoryActive) {
-    if (viewChanged) showDesk('closedHistoryContainer');
     const closedDesk = document.getElementById('closedHistoryContainer');
     if (closedDesk) renderInto(h(ClosedHistoryDesk, {}), closedDesk);
     if (daysEl) daysEl.classList.add('hidden');
@@ -422,14 +399,12 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isSettingsActive) {
-    if (viewChanged) showDesk('settings');
     onRenderSettingsPanel();
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('SETTINGS');
     return;
   }
 
-  if (viewChanged) showDesk('mainDeskContainer');
   if (consoleCard) consoleCard.classList.remove('hidden');
   if (daysEl) daysEl.classList.remove('hidden');
   onUpdateLastDeskView(currentView);
