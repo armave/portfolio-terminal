@@ -535,6 +535,7 @@ export function MarketInsightsPanel({
       </div>
 
       <div
+        key={activeSection}
         id="marketInsightsContent"
         class="min-h-24 rounded-lg border border-slate-800/80 bg-slate-950/70 p-3 text-xs text-slate-300"
         role="tabpanel"
