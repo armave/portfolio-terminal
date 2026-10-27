@@ -98,3 +98,38 @@ export function formatRiskTrigger(triggerValue: number, currentValue: number): s
   }
   return `Position value ${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
 }
+
+
+/**
+ * Decode HTML character references in plain text without parsing HTML.
+ * Unknown entities are preserved, and decoding happens only once.
+ */
+export function decodeHtmlEntities(text: string): string {
+  const namedEntities: Record<string, string> = {
+    amp: '&', apos: "'", quot: '"', lt: '<', gt: '>',
+    nbsp: '\u00a0', copy: '\u00a9', reg: '\u00ae', trade: '\u2122',
+    hellip: '\u2026', ndash: '\u2013', mdash: '\u2014',
+    lsquo: '\u2018', rsquo: '\u2019', ldquo: '\u201c', rdquo: '\u201d',
+    bull: '\u2022', euro: '\u20ac', pound: '\u00a3', yen: '\u00a5',
+    cent: '\u00a2', deg: '\u00b0', plusmn: '\u00b1', times: '\u00d7',
+    divide: '\u00f7', acute: '\u00b4', laquo: '\u00ab', raquo: '\u00bb',
+    sect: '\u00a7', para: '\u00b6', middot: '\u00b7',
+  };
+
+  return text.replace(/&(#(?:x[\da-f]+|\d+)|[a-z][a-z\d]+);/gi, (entity, reference: string) => {
+    if (reference[0] !== '#') return namedEntities[reference.toLowerCase()] ?? entity;
+
+    const isHex = reference[1]?.toLowerCase() === 'x';
+    const codePoint = Number.parseInt(reference.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+    if (
+      !Number.isInteger(codePoint) ||
+      codePoint <= 0 ||
+      codePoint > 0x10ffff ||
+      (codePoint >= 0xd800 && codePoint <= 0xdfff)
+    ) {
+      return '\ufffd';
+    }
+
+    return String.fromCodePoint(codePoint);
+  });
+}

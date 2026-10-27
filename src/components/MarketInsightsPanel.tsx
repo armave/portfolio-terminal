@@ -1,4 +1,5 @@
 import { formatRelativeTime } from '../utils/relativeTime';
+import { decodeHtmlEntities } from '../utils/formatters';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type StocktwitsStream } from '../services/api';
 
@@ -599,7 +600,7 @@ export function MarketInsightsPanel({
                       {sentiment && <span class={`rounded border px-1.5 py-0.5 font-bold uppercase ${sentimentClass}`}>{sentiment}</span>}
                       {typeof message.likes?.total === 'number' && <span>♥ {message.likes.total}</span>}
                     </div>
-                    <p class="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-200">{renderStocktwitsBody(typeof message.body === 'string' ? message.body : '')}</p>
+                    <p class="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-200">{renderStocktwitsBody(decodeHtmlEntities(typeof message.body === 'string' ? message.body : ''))}</p>
                   </article>
                 );
               })}
