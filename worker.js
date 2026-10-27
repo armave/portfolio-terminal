@@ -424,14 +424,19 @@ export default {
                 if (request.method !== "GET") {
                     return jsonError("Freedom trades only supports GET.", 405, corsHeaders);
                 }
-                const requestedMax = Number(url.searchParams.get("max") || 100);
-                const max = Number.isFinite(requestedMax)
-                    ? Math.max(1, Math.min(1000, Math.trunc(requestedMax)))
-                    : 100;
+                const requestedMax = url.searchParams.get("max");
+                const params = {};
+                // With sort=0 and max omitted, TradeNet returns the full history.
+                // When callers explicitly ask for a page, enforce a server-side cap.
+                if (requestedMax !== null) {
+                    const parsedMax = Number(requestedMax);
+                    params.max = Number.isFinite(parsedMax)
+                        ? Math.max(1, Math.min(1000, Math.trunc(parsedMax)))
+                        : 100;
+                }
                 const requestedSort = url.searchParams.get("sort");
-                const sort = requestedSort === "0" ? 0 : 1;
+                params.sort = requestedSort === "1" ? 1 : 0;
                 const tradeId = url.searchParams.get("tradeId");
-                const params = { max, sort };
                 if (tradeId && /^[0-9]+$/.test(tradeId)) params.tradeId = Number(tradeId);
                 const data = await requestTradeNet(env, "getTradesHistory", params);
                 return new Response(JSON.stringify({
