@@ -86,6 +86,18 @@ describe('normalizeFreedomTrades', () => {
     expect(trades[1]).toMatchObject({ ticker: 'SHEL.US', side: 'SELL', profit: 2.26 });
   });
 
+  it('classifies margin and cash executions only from TradeNet go_sum', () => {
+    const trades = normalizeFreedomTrades({
+      data: { result: { trades: { trade: [
+        { id: 1, instr_nm: 'AAPL.US', type: 1, q: 2, p: 100, go_sum: '25.00' },
+        { id: 2, instr_nm: 'MSFT.US', type: 1, q: 2, p: 100, go_sum: '0.00' },
+        { id: 3, instr_nm: 'TSLA.US', type: 1, q: 2, p: 100 }
+      ] } } }
+    });
+    expect(trades.map(trade => trade.marginClassification)).toEqual(['margin', 'cash', 'unknown']);
+    expect(trades[0].marginInitialRequirement).toBe(25);
+  });
+
   it('returns an empty list for unrecognized response shapes', () => {
     expect(normalizeFreedomTrades({ ok: true, data: { result: { ps: {} } } })).toEqual([]);
   });
