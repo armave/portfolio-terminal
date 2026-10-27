@@ -831,7 +831,7 @@ function setQuoteRefreshInterval(interval: number | string) {
 
   if (intervalMs > 0) {
     quoteRefreshTimer = setInterval(() => {
-      if (!document.hidden) document.getElementById('refreshQuotesButton')?.click();
+      if (!document.hidden) void refreshAllLivePrices();
     }, intervalMs);
   }
 }
@@ -1189,13 +1189,11 @@ function showScenarioModal(data: ScenarioModalData): void {
   window.dispatchEvent(new CustomEvent('terminal:scenario-modal', { detail: data }));
 }
 
-async function executeCommand(commandText?: string) {
-  const input = document.getElementById("cmdInput") as HTMLInputElement | null;
-  const text = (commandText ?? input?.value ?? '').trim();
+async function executeCommand(commandText: string) {
+  const text = commandText.trim();
   if (!text) return;
 
   logTerminal(text, true);
-  if (input && commandText === undefined) input.value = "";
 
   // Ensure any due rollover is reflected in debt before a buy/sell command mutates it.
   applyOvernightRollover();
