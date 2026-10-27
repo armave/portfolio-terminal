@@ -63,7 +63,6 @@ import { reconcileFreedomPortfolio } from './src/domain/freedomPortfolio';
 import { BoardExternalLinks } from './src/components/BoardExternalLinks';
 import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
 import { InsightSection, MarketInsightsPanel } from './src/components/MarketInsightsPanel';
-import { SettingsDesk } from './src/components/SettingsDesk';
 import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
@@ -1760,15 +1759,14 @@ async function executeCommand(commandText?: string) {
 }
 
 function renderSettingsPanel(force = false) {
-  const container = document.getElementById('settings');
-  if (!container) return;
-
   const rules = { ...TRADERNET_RULES };
   const rulesSignature = JSON.stringify(rules);
   if (settingsPanelMounted && !force && rulesSignature === lastSettingsRulesSignature) return;
 
-  renderInto(
-    h(SettingsDesk, {
+  // SettingsDesk is owned by App. Send current callbacks/rules as props instead
+  // of creating a separate Preact root in the settings container.
+  window.dispatchEvent(new CustomEvent('terminal:settings-props', {
+    detail: {
       rules,
       defaultRefreshIntervalMs: DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
       onSaveBrokerRules: saveBrokerRuleInputs,
@@ -1788,9 +1786,8 @@ function renderSettingsPanel(force = false) {
       onExportBackup: exportBackupJSON,
       onImportBackup: importBackupJSON,
       onResetToBlankState: resetToBlankState
-    }),
-    container
-  );
+    } satisfies import('./src/components/SettingsDesk').SettingsDeskProps
+  }));
   settingsPanelMounted = true;
   lastSettingsRulesSignature = rulesSignature;
 }
