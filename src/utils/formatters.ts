@@ -96,7 +96,7 @@ export function formatRiskTrigger(triggerValue: number, currentValue: number): s
   if (bufferPct < 0) {
     return `Position value ${formatUSD(triggerValue)} (already${Math.abs(bufferPct).toFixed(1)}% below trigger)`;
   }
-  return `Position value ${formatUSD(triggerValue)} (${bufferPct.toFixed(1)}% buffer)`;
+  return `Position value ${formatUSD(triggerValue)}`;
 }
 
 

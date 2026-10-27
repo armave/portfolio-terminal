@@ -231,11 +231,6 @@ export function SummaryMetricsGrid({
     const quoteFreshness = latestQuote
       ? getQuoteFreshness(latestQuote, Date.now(), refreshIntervalMs)
       : 'unavailable';
-    const quoteFreshnessClass = quoteFreshness === 'fresh'
-      ? 'bg-emerald-400'
-      : quoteFreshness === 'stale'
-        ? 'bg-amber-400'
-        : 'bg-slate-500';
 
     const totalAccountEquity = totalMarketValue + cushionTotal - totalDebt;
     const totalAccountAssets = totalMarketValue + cushionTotal;
@@ -271,7 +266,6 @@ export function SummaryMetricsGrid({
             </div>
             <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
             <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
-              <span aria-hidden="true" class={`inline-block h-1.5 w-1.5 rounded-full ${quoteFreshnessClass}`}></span>
               {quoteMetaText}
             </span>
           </div>
@@ -361,11 +355,6 @@ export function SummaryMetricsGrid({
   const marginChargedText = `${formatUSD(posMarginCharged)} (Position To Date)`;
   const quoteMetaText = formatQuoteMetadata(pos, refreshIntervalMs);
   const quoteFreshness = getQuoteFreshness(pos, Date.now(), refreshIntervalMs);
-  const quoteFreshnessClass = quoteFreshness === 'fresh'
-    ? 'bg-emerald-400'
-    : quoteFreshness === 'stale'
-      ? 'bg-amber-400'
-      : 'bg-slate-500';
 
   const positionAssets = currentMktVal + allocatedCushion;
   const positionEquity = positionAssets - allocatedDebt;
@@ -402,7 +391,6 @@ export function SummaryMetricsGrid({
           <span id="boardDailyQuote" class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}>
             {dailyQuoteMeta?.text || ''}
             <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
-              <span aria-hidden="true" class={`inline-block h-1.5 w-1.5 rounded-full ${quoteFreshnessClass}`}></span>
               {' · ' + quoteMetaText}{pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}
             </span>
           </span>
