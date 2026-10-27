@@ -167,12 +167,23 @@ if (typeof window !== 'undefined') {
       try {
         const history = await fetchAllFreedomTradeNetTrades({ pageSize: 1000 });
         if (generation !== freedomTradeSyncGeneration) return;
+        const currentTrades = Array.isArray(portfolioStore.getState().brokerExecutedTrades)
+          ? portfolioStore.getState().brokerExecutedTrades
+          : [];
+        const importedAt = Date.now();
+        const incomingTrades = history.trades.map(trade => ({
+          ...trade,
+          source: 'Freedom TradeNet',
+          importedAt
+        }));
+        // A truncated page must not erase executions imported on an earlier run.
+        // A complete response is authoritative; an incomplete response only adds
+        // or refreshes the records it actually returned.
+        const mergedTrades = history.complete
+          ? incomingTrades
+          : [...new Map([...currentTrades, ...incomingTrades].map(trade => [String(trade.id), trade])).values()];
         portfolioStore.setState({
-          brokerExecutedTrades: history.trades.map(trade => ({
-            ...trade,
-            source: 'Freedom TradeNet',
-            importedAt: Date.now()
-          })),
+          brokerExecutedTrades: mergedTrades,
           brokerTradeHistoryStatus: history.complete ? 'current' : 'incomplete'
         } as any);
         logTerminal(history.complete
