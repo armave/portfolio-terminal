@@ -14,7 +14,6 @@ import { EmptyStatePanel } from '../components/EmptyStatePanel';
 import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
 import { ProjectionsTable } from '../components/ProjectionsTable';
 import { CashCushionDesk } from '../components/CashCushionDesk';
-import { ClosedHistoryDesk } from '../components/ClosedHistoryDesk';
 import { calculateCommission, calculateMarginInterest, collectOpenPositionTranches } from '../domain/portfolio';
 import {
   BrokerRules,
@@ -388,8 +387,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isClosedHistoryActive) {
-    const closedDesk = document.getElementById('closedHistoryContainer');
-    if (closedDesk) renderInto(h(ClosedHistoryDesk, {}), closedDesk);
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('CLOSED_HISTORY');
     onRenderClosedHistory();
