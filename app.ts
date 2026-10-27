@@ -167,8 +167,9 @@ if (typeof window !== 'undefined') {
       try {
         const history = await fetchAllFreedomTradeNetTrades({ pageSize: 1000 });
         if (generation !== freedomTradeSyncGeneration) return;
-        const currentTrades = Array.isArray(portfolioStore.getState().brokerExecutedTrades)
-          ? portfolioStore.getState().brokerExecutedTrades
+        const storedTrades = portfolioStore.getState().brokerExecutedTrades;
+        const currentTrades: Record<string, any>[] = Array.isArray(storedTrades)
+          ? storedTrades
           : [];
         const importedAt = Date.now();
         const incomingTrades = history.trades.map(trade => ({
