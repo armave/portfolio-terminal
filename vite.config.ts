@@ -64,7 +64,7 @@ function startupCriticalCssPlugin(): Plugin {
         if (!html.includes(marker)) {
           throw new Error('Missing STARTUP_CRITICAL_CSS marker in index.html');
         }
-        return html.replace(marker, '<style id="startup-critical-styles">\\n' + css + '\\n</style>');
+        return html.replace(marker, '<style id="startup-critical-styles">\n' + css + '\n</style>');
       }
     }
   };
@@ -91,8 +91,17 @@ export default defineConfig({
         start_url: '/portfolio-terminal/',
         scope: '/portfolio-terminal/',
         icons: [
-          { src: 'ico.svg', sizes: '192x192', type: 'image/svg+xml' },
-          { src: 'ico.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' }
+          {
+            src: 'ico.svg',
+            sizes: '192x192',
+            type: 'image/svg+xml'
+          },
+          {
+            src: 'ico.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'any maskable'
+          }
         ]
       },
       workbox: {
@@ -102,7 +111,13 @@ export default defineConfig({
     })
   ],
   server: {
-    watch: { usePolling: true, interval: 100 }
+    watch: {
+      usePolling: true,
+      interval: 100
+    }
   },
-  build: { target: 'es2022', emptyOutDir: true }
+  build: {
+    target: 'es2022',
+    emptyOutDir: true
+  }
 });
