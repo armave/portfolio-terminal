@@ -1036,7 +1036,6 @@ export async function fetchFreedomTradeNetTrades(options: {
  */
 export async function fetchAllFreedomTradeNetTrades(options: {
   pageSize?: number;
-  maxPages?: number;
 } = {}): Promise<{ trades: FreedomExecutedTrade[]; complete: boolean; pagesFetched: number }> {
   const pageSize = Math.max(1, Math.min(1000, Math.trunc(Number(options.pageSize) || 1000)));
   const response = await fetchFreedomTradeNetTrades({ max: pageSize, sort: 0 });
