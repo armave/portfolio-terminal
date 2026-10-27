@@ -74,7 +74,7 @@ describe('Freedom executed trade history', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(fetchAllFreedomTradeNetTrades({ pageSize: 10 })).resolves.toMatchObject({
+    await expect(fetchAllFreedomTradeNetTrades()).resolves.toMatchObject({
       trades: [],
       complete: false,
       pagesFetched: 1
