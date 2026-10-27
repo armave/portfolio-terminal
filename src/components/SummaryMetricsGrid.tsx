@@ -22,10 +22,10 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
       </div>
       <div class="margin-risk-meter" role="progressbar" aria-label="Account equity percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth}>
-        <span class="margin-risk-segment-floor"></span><span class="margin-risk-segment-buffer"></span><span class="margin-risk-segment-capacity"></span>
+        <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceMarginRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, 40 - Math.min(100, Math.max(0, rules.maintenanceMarginRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
         <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
       </div>
-      <div class="margin-risk-legend"><span>10% maintenance</span><span>40% reference</span><span>100%</span></div>
+      <div class="margin-risk-legend"><span>{(rules.maintenanceMarginRatio * 100).toFixed(1)}% maintenance</span><span>40% reference</span><span>100% assets</span></div>
       <div class="margin-risk-gauge-grid">
         <div class="margin-risk-gauge-item">
           <div class="margin-risk-gauge-row"><span class="margin-risk-label">MARGIN-CALL BUFFER</span><strong>{Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct.toFixed(1) + '%' : '—'}</strong></div>
@@ -239,9 +239,8 @@ export function SummaryMetricsGrid({
 
     const totalAccountEquity = totalMarketValue + cushionTotal - totalDebt;
     const totalAccountAssets = totalMarketValue + cushionTotal;
-    const equityPct =
-      totalAccountAssets > 0 ? (totalAccountEquity / totalAccountAssets) * 100 : 0;
-    const equityText = `${formatUSD(totalAccountEquity)} (${equityPct.toFixed(2)}%)`;
+    const equityPct = totalAccountAssets > 0 ? (totalAccountEquity / totalAccountAssets) * 100 : Number.NaN;
+    const equityText = `${formatUSD(totalAccountEquity)} (${Number.isFinite(equityPct) ? equityPct.toFixed(2) + "%" : "N/A"})`;
 
     const risk = computeMarginRiskDisplay(totalDebt, totalMarketValue, cushionTotal, rules);
 
@@ -370,8 +369,8 @@ export function SummaryMetricsGrid({
 
   const positionAssets = currentMktVal + allocatedCushion;
   const positionEquity = positionAssets - allocatedDebt;
-  const equityPct = positionAssets > 0 ? (positionEquity / positionAssets) * 100 : 0;
-  const equityText = `${formatUSD(positionEquity)} (${equityPct.toFixed(2)}%)`;
+  const equityPct = positionAssets > 0 ? (positionEquity / positionAssets) * 100 : Number.NaN;
+  const equityText = `${formatUSD(positionEquity)} (${Number.isFinite(equityPct) ? equityPct.toFixed(2) + "%" : "N/A"})`;
 
   const risk = computeMarginRiskDisplay(allocatedDebt, currentMktVal, allocatedCushion, rules);
 
