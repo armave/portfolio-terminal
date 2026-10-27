@@ -28,7 +28,7 @@ describe('reconcileFreedomPortfolio', () => {
     });
   });
 
-  it('preserves affected local cash quantity when broker and app margin quantities conflict', () => {
+  it('excludes stale cash quantity when broker and app margin quantities conflict', () => {
     const result = reconcileFreedomPortfolio({
       loaded: true,
       balances: [],
@@ -38,10 +38,10 @@ describe('reconcileFreedomPortfolio', () => {
     }, [{ ticker: 'AAPL', shares: 3, currentPrice: 185 }, { ticker: 'MSFT', shares: 2 }]);
 
     expect(result.mismatches).toEqual([{ ticker: 'AAPL', marginQuantity: 10, freedomQuantity: 5 }]);
-    expect(result.cashStocks).toEqual([{ ticker: 'AAPL', shares: 3, currentPrice: 185 }]);
+    expect(result.cashStocks).toEqual([]);
   });
 
-  it('preserves cash holdings for a margin ticker missing from the broker snapshot', () => {
+  it('excludes stale cash holdings for a margin ticker missing from the broker snapshot', () => {
     const result = reconcileFreedomPortfolio({
       loaded: true,
       balances: [],
@@ -51,7 +51,7 @@ describe('reconcileFreedomPortfolio', () => {
     }, [{ ticker: 'AAPL', shares: 2, currentPrice: 190 }]);
 
     expect(result.mismatches).toEqual([{ ticker: 'AAPL', marginQuantity: 10, freedomQuantity: 0 }]);
-    expect(result.cashStocks).toEqual([{ ticker: 'AAPL', shares: 2, currentPrice: 190 }]);
+    expect(result.cashStocks).toEqual([]);
   });
 
   it('aggregates duplicate broker instrument rows and rejects invalid prices', () => {
@@ -65,6 +65,22 @@ describe('reconcileFreedomPortfolio', () => {
     }, {}, []);
 
     expect(result.cashStocks).toEqual([expect.objectContaining({ ticker: 'GOOGL', shares: 5, currentPrice: 100 })]);
+  });
+
+  it('filters inactive and invalid margin positions from the active portfolio', () => {
+    const result = reconcileFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: []
+    }, {
+      AAPL: { ticker: 'AAPL', shares: 4 },
+      MSFT: { ticker: 'MSFT', shares: 0 },
+      TSLA: { ticker: 'TSLA', shares: -2 },
+      NVDA: { ticker: 'NVDA', shares: Number.NaN }
+    }, []);
+
+    expect(Object.keys(result.positions)).toEqual(['AAPL']);
+    expect(result.mismatches).toEqual([{ ticker: 'AAPL', marginQuantity: 4, freedomQuantity: 0 }]);
   });
 
   it('does not invent a USD balance when Freedom has no usable USD row', () => {
