@@ -7,6 +7,9 @@ import { TickerTabs, type TickerTabsProps } from './components/TickerTab';
 import { SummaryMetricsGrid, type SummaryMetricsGridProps } from './components/SummaryMetricsGrid';
 import { ProjectionsTable, type ProjectionsTableProps } from './components/ProjectionsTable';
 import { MarketInsightsPanel, type MarketInsightsPanelProps } from './components/MarketInsightsPanel';
+import { TradingConsole, type TradingConsoleProps } from './components/TradingConsole';
+import { BoardExternalLinks, type BoardExternalLinksProps } from './components/BoardExternalLinks';
+import { EmptyStatePanel, type EmptyStatePanelProps } from './components/EmptyStatePanel';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
@@ -30,6 +33,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [summaryMetricsProps, setSummaryMetricsProps] = useState<SummaryMetricsGridProps | null>(null);
   const [projectionsProps, setProjectionsProps] = useState<ProjectionsTableProps | null>(null);
   const [marketInsightsProps, setMarketInsightsProps] = useState<MarketInsightsPanelProps | null>(null);
+  const [tradingConsoleProps, setTradingConsoleProps] = useState<TradingConsoleProps | null>(null);
+  const [externalLinksProps, setExternalLinksProps] = useState<BoardExternalLinksProps | null>(null);
+  const [emptyStateProps, setEmptyStateProps] = useState<EmptyStatePanelProps | null>(null);
 
   useEffect(() => {
     const handleAuthVisibility = (event: Event) => {
@@ -76,7 +82,21 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       if (detail) setMarketInsightsProps(detail);
     };
     window.addEventListener('terminal:projections-props', handleProjectionsProps);
+    const handleTradingConsoleProps = (event: Event) => {
+      const detail = (event as CustomEvent<TradingConsoleProps>).detail;
+      if (detail) setTradingConsoleProps(detail);
+    };
+    const handleExternalLinksProps = (event: Event) => {
+      const detail = (event as CustomEvent<BoardExternalLinksProps>).detail;
+      if (detail) setExternalLinksProps(detail);
+    };
+    const handleEmptyStateProps = (event: Event) => {
+      setEmptyStateProps((event as CustomEvent<EmptyStatePanelProps | null>).detail);
+    };
     window.addEventListener('terminal:market-insights-props', handleMarketInsightsProps);
+    window.addEventListener('terminal:trading-console-props', handleTradingConsoleProps);
+    window.addEventListener('terminal:external-links-props', handleExternalLinksProps);
+    window.addEventListener('terminal:empty-state-props', handleEmptyStateProps);
     return () => {
       window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
       window.removeEventListener('terminal:active-view', handleDeskView);
@@ -86,6 +106,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       window.removeEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
       window.removeEventListener('terminal:projections-props', handleProjectionsProps);
       window.removeEventListener('terminal:market-insights-props', handleMarketInsightsProps);
+      window.removeEventListener('terminal:trading-console-props', handleTradingConsoleProps);
+      window.removeEventListener('terminal:external-links-props', handleExternalLinksProps);
+      window.removeEventListener('terminal:empty-state-props', handleEmptyStateProps);
     };
   }, []);
 
@@ -181,17 +204,17 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         </div>
 
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
-        <div id="tradingWorkspaceGrid" class="trading-workspace-grid">
+        <div id="tradingWorkspaceGrid" class={"trading-workspace-grid " + (emptyStateProps ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
           <div id="mainDeskContainer" class={"space-y-4 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
             <div
               id="emptyStatePanel"
-              class="hidden border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4"
-            ></div>
+              class={"border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4 " + (emptyStateProps ? "" : "hidden")}
+            >{emptyStateProps && <EmptyStatePanel {...emptyStateProps} />}</div>
 
             <div
               id="boardTitleRow"
-              class="board-title-row flex flex-wrap items-center justify-between gap-2"
+              class={"board-title-row flex flex-wrap items-center justify-between gap-2 " + (emptyStateProps ? "hidden" : "")}
             >
               <div class="min-w-0 flex-1 text-lg font-bold text-white" id="boardTitle">
                 COMBINED PORTFOLIO
@@ -206,18 +229,18 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             >
               <div id="boardDailyMove" class="hidden"></div>
               <div id="boardAnalystConsensus" class="hidden"></div>
-              <div id="boardExternalLinks" class="flex items-center gap-2"></div>
+              <div id="boardExternalLinks" class="flex items-center gap-2">{externalLinksProps && <BoardExternalLinks {...externalLinksProps} />}</div>
             </div>
 
             <div
               id="portfolioMetricsGrid"
               aria-label="Portfolio summary metrics"
-              class="portfolio-metrics-grid gap-2 text-xs text-slate-300"
+              class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateProps ? "hidden" : "")}
             >{summaryMetricsProps && <SummaryMetricsGrid {...summaryMetricsProps} />}</div>
 
             {/* Projection Table */}
             <div
-              class="table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none"
+              class={"table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none " + (emptyStateProps ? "hidden" : "")}
               id="projectionTableContainer"
             >
               <table aria-label="Portfolio projection by date" class="w-full min-w-[300px] text-xs border-collapse">
@@ -252,7 +275,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             <div
               id="tradingConsoleCard"
               class={"trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
-            ></div>
+            >{tradingConsoleProps && <TradingConsole {...tradingConsoleProps} />}</div>
           </div>
 
         </div>
