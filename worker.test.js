@@ -513,7 +513,9 @@ describe('Worker request hardening', () => {
       body: JSON.stringify({ prompt: 'hello' })
     }), { GATEWAY_SECRET: 'test-secret', GEMINI_KEY: 'provider-key' });
 
-    await vi.advanceTimersByTimeAsync(3500);
+    // Advancing async fake timers can wait on the intentionally stalled response
+    // stream itself. Advance the timeout synchronously, then let the request settle.
+    vi.advanceTimersByTime(3500);
     const response = await responsePromise;
 
     expect(firstSignal.aborted).toBe(true);
