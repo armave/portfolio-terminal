@@ -3,6 +3,7 @@ import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
 import { CashCushionDesk, type CashCushionDeskProps } from './components/CashCushionDesk';
 import { SettingsDesk, type SettingsDeskProps } from './components/SettingsDesk';
+import { TickerTabs, type TickerTabsProps } from './components/TickerTab';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
@@ -22,6 +23,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [cashCushionProps, setCashCushionProps] = useState<CashCushionDeskProps>({});
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
   const [settingsProps, setSettingsProps] = useState<SettingsDeskProps | null>(null);
+  const [tickerTabsProps, setTickerTabsProps] = useState<TickerTabsProps | null>(null);
 
   useEffect(() => {
     const handleAuthVisibility = (event: Event) => {
@@ -48,12 +50,18 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       if (detail) setSettingsProps(detail);
     };
     window.addEventListener('terminal:cash-cushion-props', handleCashCushionProps);
+    const handleTickerTabsProps = (event: Event) => {
+      const detail = (event as CustomEvent<TickerTabsProps>).detail;
+      if (detail) setTickerTabsProps(detail);
+    };
     window.addEventListener('terminal:settings-props', handleSettingsProps);
+    window.addEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
     return () => {
       window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
       window.removeEventListener('terminal:active-view', handleDeskView);
       window.removeEventListener('terminal:cash-cushion-props', handleCashCushionProps);
       window.removeEventListener('terminal:settings-props', handleSettingsProps);
+      window.removeEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
     };
   }, []);
 
@@ -139,7 +147,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"></div>
+          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets">{tickerTabsProps && <TickerTabs {...tickerTabsProps} />}</div>
           <div
             class="text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0"
             id="daysToBreakeven"
