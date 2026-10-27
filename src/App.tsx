@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
 import { CashCushionDesk, type CashCushionDeskProps } from './components/CashCushionDesk';
@@ -48,7 +48,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
 
-  useEffect(() => {
+  // Register startup/auth event listeners synchronously during commit. app.ts
+  // initializes immediately after mounting; a passive useEffect can miss the
+  // one-shot auth-visibility event and leave the startup overlay spinning.
+  useLayoutEffect(() => {
     const handleAuthVisibility = (event: Event) => {
       const detail = (event as CustomEvent<{ isOpen?: boolean }>).detail;
       setAuthOpen(Boolean(detail?.isOpen));
