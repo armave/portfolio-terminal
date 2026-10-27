@@ -10,7 +10,7 @@ type SideEffectAction =
   | { type: 'CLEAR_TERMINAL' };
 
 export interface CommandOutput {
-  text: string;
+  text: string;,
   type: 'cmd' | 'res' | 'err' | 'confirm' | 'unrecognized';
   sideEffect?: SideEffectAction;
   modal?: ScenarioModalData;
