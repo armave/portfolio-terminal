@@ -1,15 +1,6 @@
-import { render, h, type ComponentChild } from 'preact';
-
-/** Centralize Preact mount calls for board UI. This keeps mount ownership explicit
- * while legacy shell containers are migrated into a single application tree. */
-function renderInto(vnode: ComponentChild, container: Element): void {
-  render(vnode, container);
-}
-
 import { formatUSD } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatUSD } from '../utils/formatters';
-import { EmptyStatePanel } from '../components/EmptyStatePanel';
 import { calculateCommission, calculateMarginInterest, collectOpenPositionTranches } from '../domain/portfolio';
 import {
   BrokerRules,
@@ -366,51 +357,28 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   onUpdateLastDeskView(currentView);
 
-  const emptyPanel = document.getElementById('emptyStatePanel');
-  const titleRow = document.getElementById('boardTitleRow');
-  const metricsGrid = document.querySelector('.portfolio-metrics-grid');
-  const workspaceGrid = document.querySelector('.desktop-workspace-grid');
-  const projTableContainer = document.getElementById('projectionTableContainer');
 
   if (tickers.length === 0) {
-    if (emptyPanel) {
-      emptyPanel.classList.remove('hidden');
-      renderInto(
-        h(EmptyStatePanel, {
-          onQuickBuy: () => {
-            const todayIso = new Date().toISOString().split('T')[0];
-            prefillTerminalCommand(`bought [shares] [TICKER] for [price] on [${todayIso}]`);
-          },
-          onAddCashStock: () => {
-            prefillTerminalCommand('add cash stock [shares] [TICKER] for [price]');
-          },
-          onImportBackup: () => {
-            document.getElementById('importFileInput')?.click();
-          }
-        }),
-        emptyPanel
-      );
-    }
-    if (titleRow) titleRow.classList.add('hidden');
-    if (metricsGrid) metricsGrid.classList.add('hidden');
-    if (projTableContainer) projTableContainer.classList.add('hidden');
-    if (workspaceGrid) {
-      workspaceGrid.classList.remove('lg:grid-cols-[3fr_7fr]');
-      workspaceGrid.classList.add('lg:grid-cols-1');
-    }
+    window.dispatchEvent(new CustomEvent('terminal:empty-state-props', {
+      detail: {
+        onQuickBuy: () => {
+          const todayIso = new Date().toISOString().split('T')[0];
+          prefillTerminalCommand(`bought [shares] [TICKER] for [price] on [${todayIso}]`);
+        },
+        onAddCashStock: () => {
+          prefillTerminalCommand('add cash stock [shares] [TICKER] for [price]');
+        },
+        onImportBackup: () => {
+          document.getElementById('importFileInput')?.click();
+        }
+      } satisfies import('../components/EmptyStatePanel').EmptyStatePanelProps
+    }));
     if (daysEl) daysEl.innerText = 'No Active Positions';
     onRenderConsoleQuickActions();
     return;
   }
 
-  if (emptyPanel) emptyPanel.classList.add('hidden');
-  if (titleRow) titleRow.classList.remove('hidden');
-  if (metricsGrid) metricsGrid.classList.remove('hidden');
-  if (projTableContainer) projTableContainer.classList.remove('hidden');
-  if (workspaceGrid) {
-    workspaceGrid.classList.remove('lg:grid-cols-1');
-    workspaceGrid.classList.add('lg:grid-cols-[3fr_7fr]');
-  }
+  window.dispatchEvent(new CustomEvent('terminal:empty-state-props', { detail: null }));
 
   renderPositionBasis(state, currentView, tickers);
 
