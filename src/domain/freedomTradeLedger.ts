@@ -41,7 +41,7 @@ export function buildFreedomMarginLedger(
     seen.add(String(trade.id));
     if (trade.marginClassification !== 'margin') continue;
 
-    const ticker = String(trade.ticker ?? '').trim().toUpperCase().replace(/\\.US$/i, '');
+    const ticker = String(trade.ticker ?? '').trim().toUpperCase().replace(/\.US$/i, '');
     const quantity = Number(trade.quantity);
     const price = Number(trade.price);
     const side = String(trade.side ?? '').trim().toUpperCase();
@@ -76,7 +76,7 @@ export function buildFreedomMarginLedger(
   for (const [ticker, row] of ledger) {
     if (row.quantity <= 1e-6) continue;
     const previous = Object.values(currentPositions).find(position =>
-      String(position.ticker ?? '').trim().toUpperCase().replace(/\\.US$/i, '') === ticker
+      String(position.ticker ?? '').trim().toUpperCase().replace(/\.US$/i, '') === ticker
     );
     const price = Number(previous?.currentPrice);
     positions[ticker] = {
