@@ -313,13 +313,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           <div id="tradingTerminalColumn" class="trading-terminal-column">
             <section
               id="marketInsightsPanel"
-              key={activeDeskView}
+              key={`market-insights-${activeDeskView}`}
               class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
               aria-label="Market insights"
             >{marketInsightsProps && <MarketInsightsPanel {...marketInsightsProps} />}</section>
             <div
               id="tradingConsoleCard"
-              key={activeDeskView}
+              key={`trading-console-${activeDeskView}`}
               class={"desk-view-transition trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             >{tradingConsoleProps && <TradingConsole {...tradingConsoleProps} />}</div>
           </div>
