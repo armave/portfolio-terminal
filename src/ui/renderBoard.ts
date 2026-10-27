@@ -9,7 +9,6 @@ function renderInto(vnode: ComponentChild, container: Element): void {
 import { formatUSD } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatUSD } from '../utils/formatters';
-import { TickerTabs } from '../components/TickerTab';
 import { EmptyStatePanel } from '../components/EmptyStatePanel';
 import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
 import { ProjectionsTable } from '../components/ProjectionsTable';
@@ -340,10 +339,9 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
   const isSettingsActive = currentView === 'SETTINGS';
 
-  const tabsContainer = document.getElementById('tickerTabs');
-  if (tabsContainer) {
-    renderInto(h(TickerTabs, { state, onSetActiveView, onRefreshAllLivePrices }), tabsContainer);
-  }
+  window.dispatchEvent(new CustomEvent('terminal:ticker-tabs-props', {
+    detail: { state, onSetActiveView, onRefreshAllLivePrices }
+  }));
 
   const closedTrades = state.closedTrades || [];
   const closedTradesCount = document.getElementById('closedTradesCount');
