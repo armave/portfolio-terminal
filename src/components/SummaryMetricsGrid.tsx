@@ -394,7 +394,7 @@ export function SummaryMetricsGrid({
           <div class="portfolio-micro-row portfolio-micro-market-primary">
             <span class="portfolio-metric-label text-[10px]">Share Price / Market Value</span>
             <span key={`${pos.ticker}-${pos.currentPrice}`} id="boardPrice" class={`portfolio-metric-value text-xs sm:text-sm ${priceFlashClass}`}>
-              {formatUSD(pos.currentPrice} | {formatUSD(currentMktVal)}{' '}
+              {formatUSD(pos.currentPrice)} | {formatUSD(currentMktVal)}{' '}
               <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                 {unSign}{formatUSD(unrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
               </span>
