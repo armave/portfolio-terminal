@@ -41,6 +41,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [boardTitle, setBoardTitle] = useState('COMBINED PORTFOLIO');
   const [showDailyMove, setShowDailyMove] = useState(false);
   const [breakevenText, setBreakevenText] = useState('Combined Breakeven: 0 days');
+  const [analystConsensus, setAnalystConsensus] = useState({ text: '', title: '', className: 'hidden' });
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
 
@@ -112,6 +113,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         setShowDailyMove(detail.showDailyMove);
       }
     };
+    const handleAnalystConsensus = (event: Event) => {
+      const detail = (event as CustomEvent<{ text: string; title: string; className: string }>).detail;
+      if (detail) setAnalystConsensus(detail);
+    };
     const handleBreakevenText = (event: Event) => {
       const detail = (event as CustomEvent<{ text: string }>).detail;
       if (detail) setBreakevenText(detail.text);
@@ -119,6 +124,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     window.addEventListener('terminal:empty-state-props', handleEmptyStateProps);
     window.addEventListener('terminal:board-title', handleBoardTitle);
     window.addEventListener('terminal:breakeven-text', handleBreakevenText);
+    window.addEventListener('terminal:analyst-consensus', handleAnalystConsensus);
     return () => {
       window.removeEventListener('terminal:scenario-modal', handleScenarioModal);
       window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
@@ -253,7 +259,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               class="board-title-actions flex flex-wrap items-center gap-2"
             >
               <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
-              <div id="boardAnalystConsensus" class="hidden"></div>
+              <div id="boardAnalystConsensus" class={analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
               <div id="boardExternalLinks" class="flex items-center gap-2">{externalLinksProps && <BoardExternalLinks {...externalLinksProps} />}</div>
             </div>
 
