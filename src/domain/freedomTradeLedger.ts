@@ -27,10 +27,6 @@ export function buildFreedomMarginLedger(
   if (trades.length === 0) {
     return { reliable: false, positions: {}, reason: 'TradeNet returned no executions; refusing to infer that all margin positions are closed.' };
   }
-  if (trades.some(trade => trade.marginClassification === 'unknown')) {
-    return { reliable: false, positions: {}, reason: 'One or more executions lack TradeNet margin classification.' };
-  }
-
   const ordered = [...trades].sort((a, b) => {
     const aid = Number(a.id);
     const bid = Number(b.id);
