@@ -43,11 +43,20 @@ export function reconcileFreedomPortfolio(
     item => String(item.currency ?? '').toUpperCase() === 'USD' && Number.isFinite(Number(item.amount))
   );
 
-  const positions: Record<string, any> = { ...sourcePositions };
+  // Margin is the app-managed side of the portfolio. Only positive open
+  // quantities are active; fully sold/invalid positions must not leak into
+  // the Margin desk or be subtracted from Freedom's cash holdings.
+  const activeSourcePositions = Object.fromEntries(
+    Object.entries(sourcePositions || {}).filter(([, position]) => {
+      const shares = Number(position?.shares);
+      return Number.isFinite(shares) && shares > 1e-6;
+    })
+  );
+  const positions: Record<string, any> = { ...activeSourcePositions };
   const marginQuantities = new Map<string, number>();
   const marginPositionKeys = new Map<string, string[]>();
 
-  for (const [key, position] of Object.entries(sourcePositions || {})) {
+  for (const [key, position] of Object.entries(activeSourcePositions)) {
     const ticker = tickerKey(position?.ticker || key);
     const shares = Number(position?.shares);
     if (!ticker || !Number.isFinite(shares) || shares <= 0) continue;
@@ -101,9 +110,9 @@ export function reconcileFreedomPortfolio(
     const marginQuantity = marginQuantities.get(ticker) || 0;
     const freedomQuantity = brokerPosition.quantity;
     if (freedomQuantity + 1e-6 < marginQuantity) {
+      // Broker total cannot support a trustworthy cash remainder. Report the
+      // discrepancy, but do not display stale locally cached cash quantities.
       mismatches.push({ ticker, marginQuantity, freedomQuantity });
-      const priorCash = priorCashByTicker.get(ticker);
-      if (priorCash) cashStocks.push(priorCash);
       continue;
     }
 
@@ -120,11 +129,9 @@ export function reconcileFreedomPortfolio(
 
   for (const [ticker, marginQuantity] of marginQuantities) {
     if (!brokerByTicker.has(ticker) && marginQuantity > 1e-6) {
+      // Absence from the latest broker snapshot is not evidence of an open
+      // cash holding; retain the mismatch for diagnostics without stale shares.
       mismatches.push({ ticker, marginQuantity, freedomQuantity: 0 });
-      const priorCash = priorCashByTicker.get(ticker);
-      if (priorCash && !cashStocks.some(holding => tickerKey(holding.ticker) === ticker)) {
-        cashStocks.push(priorCash);
-      }
     }
   }
 
