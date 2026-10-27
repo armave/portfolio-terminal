@@ -263,7 +263,7 @@ export function SummaryMetricsGrid({
             <span class="portfolio-micro-heading">MARKET VALUATION</span>
             <div class="portfolio-micro-row portfolio-micro-market-primary">
               <span class="portfolio-metric-label text-[10px]">Market Value / Return</span>
-              <span key={`${pos.ticker}-${pos.currentPrice}`} id="boardPrice" class={`portfolio-metric-value text-xs sm:text-sm ${priceFlashClass}`}>
+              <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
                 {formatUSD(totalMarketValue)} -{' '}
                 <span class={totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                   {unSign}{formatUSD(totalUnrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
@@ -393,8 +393,8 @@ export function SummaryMetricsGrid({
           <span class="portfolio-micro-heading">MARKET VALUATION</span>
           <div class="portfolio-micro-row portfolio-micro-market-primary">
             <span class="portfolio-metric-label text-[10px]">Share Price / Market Value</span>
-            <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
-              {formatUSD(pos.currentPrice)} | {formatUSD(currentMktVal)}{' '}
+            <span key={`${pos.ticker}-${pos.currentPrice}`} id="boardPrice" class={`portfolio-metric-value text-xs sm:text-sm ${priceFlashClass}`}>
+              {formatUSD(pos.currentPrice} | {formatUSD(currentMktVal)}{' '}
               <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                 {unSign}{formatUSD(unrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
               </span>
