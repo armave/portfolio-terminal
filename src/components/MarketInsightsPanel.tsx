@@ -355,19 +355,19 @@ export function MarketInsightsPanel({
         <div>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 border-b border-slate-800/60 pb-3">
             <div>
-              <span class="text-slate-500 block text-[10px]">Mean Target</span>
+              <span class="text-slate-500 block text-[10px]">Mean</span>
               <span class="text-emerald-400 font-bold">
                 ${t.mean ? Number(t.mean).toFixed(2) : '—'}
               </span>
             </div>
             <div>
-              <span class="text-slate-500 block text-[10px]">High Target</span>
+              <span class="text-slate-500 block text-[10px]">High</span>
               <span class="text-emerald-400 font-bold">
                 ${t.high ? Number(t.high).toFixed(2) : '—'}
               </span>
             </div>
             <div>
-              <span class="text-slate-500 block text-[10px]">Low Target</span>
+              <span class="text-slate-500 block text-[10px]">Low</span>
               <span class="text-rose-400 font-bold">
                 ${t.low ? Number(t.low).toFixed(2) : '—'}
               </span>
