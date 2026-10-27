@@ -36,6 +36,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [tradingConsoleProps, setTradingConsoleProps] = useState<TradingConsoleProps | null>(null);
   const [externalLinksProps, setExternalLinksProps] = useState<BoardExternalLinksProps | null>(null);
   const [emptyStateProps, setEmptyStateProps] = useState<EmptyStatePanelProps | null>(null);
+  const [boardTitle, setBoardTitle] = useState('COMBINED PORTFOLIO');
+  const [showDailyMove, setShowDailyMove] = useState(false);
+  const [breakevenText, setBreakevenText] = useState('Combined Breakeven: 0 days');
 
   useEffect(() => {
     const handleAuthVisibility = (event: Event) => {
@@ -96,7 +99,20 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     window.addEventListener('terminal:market-insights-props', handleMarketInsightsProps);
     window.addEventListener('terminal:trading-console-props', handleTradingConsoleProps);
     window.addEventListener('terminal:external-links-props', handleExternalLinksProps);
+    const handleBoardTitle = (event: Event) => {
+      const detail = (event as CustomEvent<{ title: string; showDailyMove: boolean }>).detail;
+      if (detail) {
+        setBoardTitle(detail.title);
+        setShowDailyMove(detail.showDailyMove);
+      }
+    };
+    const handleBreakevenText = (event: Event) => {
+      const detail = (event as CustomEvent<{ text: string }>).detail;
+      if (detail) setBreakevenText(detail.text);
+    };
     window.addEventListener('terminal:empty-state-props', handleEmptyStateProps);
+    window.addEventListener('terminal:board-title', handleBoardTitle);
+    window.addEventListener('terminal:breakeven-text', handleBreakevenText);
     return () => {
       window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
       window.removeEventListener('terminal:active-view', handleDeskView);
@@ -109,6 +125,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       window.removeEventListener('terminal:trading-console-props', handleTradingConsoleProps);
       window.removeEventListener('terminal:external-links-props', handleExternalLinksProps);
       window.removeEventListener('terminal:empty-state-props', handleEmptyStateProps);
+      window.removeEventListener('terminal:board-title', handleBoardTitle);
+      window.removeEventListener('terminal:breakeven-text', handleBreakevenText);
     };
   }, []);
 
@@ -227,7 +245,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               id="boardTitleActions"
               class="board-title-actions flex flex-wrap items-center gap-2"
             >
-              <div id="boardDailyMove" class="hidden"></div>
+              <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
               <div id="boardAnalystConsensus" class="hidden"></div>
               <div id="boardExternalLinks" class="flex items-center gap-2">{externalLinksProps && <BoardExternalLinks {...externalLinksProps} />}</div>
             </div>
