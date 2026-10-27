@@ -12,6 +12,7 @@ import {
   fetchYahooQuoteData,
   fetchMarketNews,
   fetchStocktwitsStream,
+  fetchFreedomTradeNetTrades,
   rememberYahooDeepStockData,
   clearYahooDeepStockDataCache
 } from './api';
@@ -42,6 +43,26 @@ async function encryptV2Fixture(value: unknown, secret: string): Promise<string>
   };
   return `aesgcm:v2:${toBase64(nonce)}:${toBase64(new Uint8Array(ciphertext))}`;
 }
+
+describe('Freedom executed-trade history', () => {
+  it('requests an oldest-first bounded trade-history page without using a cached response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ trades: { trade: [] } })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchFreedomTradeNetTrades({ max: 500, sort: 0, tradeId: 123 });
+
+    const requestUrl = String(fetchMock.mock.calls[0][0]);
+    expect(requestUrl).toContain('freedom-trades');
+    expect(requestUrl).toContain('max=500');
+    expect(requestUrl).toContain('sort=0');
+    expect(requestUrl).toContain('tradeId=123');
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ cache: 'no-store' });
+  });
+});
 
 describe('proxy request coalescing', () => {
   it('shares identical concurrent market-data requests', async () => {
