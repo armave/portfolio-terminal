@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
+import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
@@ -14,6 +15,7 @@ interface AppProps {
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
   const [activeDeskView, setActiveDeskView] = useState('COMBINED');
+  const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
 
   useEffect(() => {
     const handleAuthVisibility = (event: Event) => {
@@ -22,7 +24,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     };
     const handleDeskView = (event: Event) => {
       const detail = (event as CustomEvent<{ view?: string }>).detail;
-      if (detail?.view) setActiveDeskView(detail.view);
+      if (detail?.view) {
+        setActiveDeskView(detail.view);
+        if (detail.view === 'CLOSED_HISTORY') setHasOpenedClosedHistory(true);
+      }
     };
     window.addEventListener('terminal:auth-visibility', handleAuthVisibility);
     window.addEventListener('terminal:active-view', handleDeskView);
@@ -205,7 +210,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       <div
         id="closedHistoryContainer"
         class={"rounded-lg " + (activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
-      ></div>
+      >{hasOpenedClosedHistory && <ClosedHistoryDesk />}</div>
 
       {/* Settings */}
       <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings"></div>
