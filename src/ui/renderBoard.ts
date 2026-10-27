@@ -324,6 +324,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
   const isSettingsActive = currentView === 'SETTINGS';
+  const daysEl = document.getElementById('daysToBreakeven');
 
   window.dispatchEvent(new CustomEvent('terminal:ticker-tabs-props', {
     detail: { state, onSetActiveView, onRefreshAllLivePrices }
@@ -359,7 +360,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   if (isSettingsActive) {
     onRenderSettingsPanel();
-    if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('SETTINGS');
     return;
   }
