@@ -1,4 +1,11 @@
-import { render, h } from 'preact';
+import { render, h, type ComponentChild } from 'preact';
+
+/** Centralize Preact mount calls for board UI. This keeps mount ownership explicit
+ * while legacy shell containers are migrated into a single application tree. */
+function renderInto(vnode: ComponentChild, container: Element): void {
+  render(vnode, container);
+}
+
 import { formatUSD } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatUSD } from '../utils/formatters';
@@ -51,7 +58,7 @@ function renderCashCushion(
   } = options;
   const container = document.getElementById('cashCushionContainer');
   if (container) {
-    render(
+    renderInto(
       h(CashCushionDesk, {
         onFetchLivePrice,
         onRemoveCashStock,
@@ -88,7 +95,7 @@ function renderPositionsTable(
     }
   }
 
-  render(
+  renderInto(
     h(ProjectionsTable, {
       gross,
       totalComms,
@@ -228,7 +235,7 @@ function renderSummaryCards(
 
   const metricsGridContainer = document.querySelector('.portfolio-metrics-grid');
   if (metricsGridContainer) {
-    render(
+    renderInto(
       h(SummaryMetricsGrid, { state, rules, refreshIntervalMs }),
       metricsGridContainer
     );
@@ -367,7 +374,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const tabsContainer = document.getElementById('tickerTabs');
   if (tabsContainer) {
-    render(h(TickerTabs, { state, onSetActiveView, onRefreshAllLivePrices }), tabsContainer);
+    renderInto(h(TickerTabs, { state, onSetActiveView, onRefreshAllLivePrices }), tabsContainer);
   }
 
   const closedTrades = state.closedTrades || [];
@@ -407,7 +414,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   if (isClosedHistoryActive) {
     if (viewChanged) showDesk('closedHistoryContainer');
     const closedDesk = document.getElementById('closedHistoryContainer');
-    if (closedDesk) render(h(ClosedHistoryDesk, {}), closedDesk);
+    if (closedDesk) renderInto(h(ClosedHistoryDesk, {}), closedDesk);
     if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('CLOSED_HISTORY');
     onRenderClosedHistory();
@@ -436,7 +443,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   if (tickers.length === 0) {
     if (emptyPanel) {
       emptyPanel.classList.remove('hidden');
-      render(
+      renderInto(
         h(EmptyStatePanel, {
           onQuickBuy: () => {
             const todayIso = new Date().toISOString().split('T')[0];
