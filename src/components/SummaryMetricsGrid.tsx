@@ -1,4 +1,5 @@
 import { formatRelativeTime } from '../utils/relativeTime';
+import { useRef } from 'preact/hooks';
 import type { BoardState, BrokerRules, QuoteDetails } from '../types/portfolio';
 import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
@@ -159,6 +160,7 @@ export function SummaryMetricsGrid({
   rules,
   refreshIntervalMs = 60000
 }: SummaryMetricsGridProps) {
+  const previousPricesRef = useRef<Record<string, number>>({});
   const dailyRate = rules.annualRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
   const isCombined =
@@ -327,6 +329,11 @@ export function SummaryMetricsGrid({
   } as any);
 
   const currentMktVal = pos.shares * pos.currentPrice;
+  const previousPrice = previousPricesRef.current[pos.ticker];
+  const priceFlashClass = previousPrice === undefined || previousPrice === pos.currentPrice
+    ? ''
+    : pos.currentPrice > previousPrice ? 'quote-flash-up' : 'quote-flash-down';
+  previousPricesRef.current[pos.ticker] = pos.currentPrice;
   const unrealized = currentMktVal - totalInvested;
   const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
 
@@ -386,7 +393,7 @@ export function SummaryMetricsGrid({
           <span class="portfolio-micro-heading">MARKET VALUATION</span>
           <div class="portfolio-micro-row portfolio-micro-market-primary">
             <span class="portfolio-metric-label text-[10px]">Share Price / Market Value</span>
-            <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
+            <span key={`${pos.ticker}-${pos.currentPrice}`} id="boardPrice" class={`portfolio-metric-value text-xs sm:text-sm ${priceFlashClass}`}>
               {formatUSD(pos.currentPrice)} | {formatUSD(currentMktVal)}{' '}
               <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                 {unSign}{formatUSD(unrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)

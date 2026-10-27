@@ -2091,3 +2091,255 @@ textarea {
     border: 1px solid CanvasText;
   }
 }
+
+
+/* Native motion polish: keep animated work to compositor-friendly properties. */
+:where(a, button, [role="tab"], .insight-tab) {
+  transition-property: opacity, transform, color, background-color, border-color;
+  transition-duration: 160ms;
+  transition-timing-function: ease-out;
+}
+
+:where(button, [role="tab"]):active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+:where(tbody tr) {
+  transition: opacity 140ms ease-out;
+}
+
+#marketInsightsContent {
+  animation: insights-panel-enter 180ms ease-out both;
+}
+
+@keyframes insights-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#auth-container {
+  animation: auth-backdrop-enter 180ms ease-out both;
+}
+
+#auth-container .auth-card {
+  animation: auth-dialog-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes auth-backdrop-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes auth-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Opt-in hooks for quote renderers to signal direction without changing layout. */
+.quote-flash-up {
+  animation: quote-flash-up 240ms ease-out;
+}
+
+.quote-flash-down {
+  animation: quote-flash-down 240ms ease-out;
+}
+
+@keyframes quote-flash-up {
+  0% { opacity: 0.72; transform: translateY(1px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes quote-flash-down {
+  0% { opacity: 0.72; transform: translateY(-1px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .ui-view-enter,
+  .ui-toast-enter,
+  .ui-toast-exit,
+  #marketInsightsContent,
+  #auth-container,
+  #auth-container .auth-card,
+  .quote-flash-up,
+  .quote-flash-down {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+
+/* Keep the auth overlay mounted so its exit transition can finish cleanly. */
+#auth-container.auth-overlay {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease-out, visibility 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay .auth-card {
+  opacity: 0;
+  transform: translateY(4px) scale(0.985);
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay.auth-overlay-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#auth-container.auth-overlay.auth-overlay-open .auth-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+
+/* Navigation: animate only visible, newly selected sections. */
+.desk-view-transition:not(.hidden) {
+  animation: insights-panel-enter 180ms ease-out both;
+}
+
+/* Table hover feedback remains compositor-friendly and does not affect row sizing. */
+table tbody tr {
+  transition: opacity 140ms ease-out, transform 140ms ease-out, background-color 140ms ease-out;
+}
+
+table tbody tr:hover {
+  transform: translateY(-1px);
+}
+
+/* Ensure auth modal closing fades both layers before becoming non-interactive. */
+#auth-container.auth-overlay {
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease-out, visibility 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay .auth-card {
+  opacity: 0;
+  transform: translateY(4px) scale(0.985);
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay.auth-overlay-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#auth-container.auth-overlay.auth-overlay-open .auth-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desk-view-transition:not(.hidden),
+  table tbody tr,
+  #auth-container.auth-overlay,
+  #auth-container.auth-overlay .auth-card {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+
+/* Scenario comparison modal: preserve the closing frame until the exit finishes. */
+.scenario-modal-backdrop {
+  animation: auth-backdrop-enter 180ms ease-out both;
+  transition: opacity 180ms ease-out;
+}
+
+.scenario-modal-dialog {
+  animation: auth-dialog-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+}
+
+.scenario-modal-backdrop.scenario-modal-closing {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scenario-modal-closing .scenario-modal-dialog {
+  opacity: 0;
+  transform: translateY(4px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scenario-modal-backdrop,
+  .scenario-modal-dialog {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+
+/* News and Stocktwits: animate feed entry and item hover without affecting layout. */
+.news-feed-enter,
+.stocktwits-feed-enter {
+  animation: insights-panel-enter 180ms ease-out both;
+}
+
+.news-feed-item,
+.stocktwits-feed-item {
+  transition: opacity 160ms ease-out, transform 160ms ease-out, border-color 160ms ease-out, background-color 160ms ease-out;
+}
+
+.news-feed-item:hover,
+.stocktwits-feed-item:hover {
+  transform: translateY(-1px);
+}
+
+.news-feed-list,
+.stocktwits-feed-list {
+  overscroll-behavior: contain;
+}
+
+.news-modal-enter {
+  animation: auth-backdrop-enter 180ms ease-out both;
+}
+
+.news-dialog-enter {
+  animation: auth-dialog-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .news-feed-enter,
+  .stocktwits-feed-enter,
+  .news-feed-item,
+  .stocktwits-feed-item,
+  .news-modal-enter,
+  .news-dialog-enter {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}

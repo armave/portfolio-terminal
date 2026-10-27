@@ -307,18 +307,20 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           </div>
 
           {/* Cash Cushion Management Panel */}
-          <div id="cashCushionContainer" class={"space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk {...cashCushionProps} />}</div>
+          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk {...cashCushionProps} />}</div>
 
           {/* Keep the command console available on both Margin and Cash desks. */}
           <div id="tradingTerminalColumn" class="trading-terminal-column">
             <section
               id="marketInsightsPanel"
+              key={`market-insights-${activeDeskView}`}
               class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
               aria-label="Market insights"
             >{marketInsightsProps && <MarketInsightsPanel {...marketInsightsProps} />}</section>
             <div
               id="tradingConsoleCard"
-              class={"trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
+              key={`trading-console-${activeDeskView}`}
+              class={"desk-view-transition trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             >{tradingConsoleProps && <TradingConsole {...tradingConsoleProps} />}</div>
           </div>
 
@@ -328,14 +330,15 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       {/* Closed Trade History */}
       <div
         id="closedHistoryContainer"
-        class={"rounded-lg " + (activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
+       
+        class={"desk-view-transition rounded-lg " + (activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
       >{hasOpenedClosedHistory && <ClosedHistoryDesk />}</div>
 
       {/* Settings */}
       <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && settingsProps && <SettingsDesk {...settingsProps} />}</div>
 
       {/* Authentication is part of the application tree, not a second Preact root. */}
-      <div id="auth-container" class="auth-overlay" style={{ display: authOpen ? 'flex' : 'none' }}>
+      <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
       {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} />}

@@ -271,17 +271,17 @@ export function MarketInsightsPanel({
         return <div class="py-3 text-slate-500 text-xs">No recent news found.</div>;
       }
       return (
-        <div class="space-y-2 mt-2">
+        <div class="news-feed-enter space-y-2 mt-2">
           {newsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded news.</p>}
           <p class="text-[10px] text-slate-500">{newsUpdatedAt ? `Updated ${formatRelativeTime(Math.floor(newsUpdatedAt / 1000) * 1000)}` : ''}{newsLoading ? ' · Refreshing…' : ''}</p>
-          <div class="h-[240px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Company news articles">
+          <div class="news-feed-list h-[240px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Company news articles">
             {newsData.map((n: any, idx: number) => (
               <button
                 key={n.id || n.url || idx}
                 type="button"
                 onClick={() => setSelectedNews(n)}
                 aria-label={`Read news: ${n.headline || 'Untitled article'}`}
-                class="block w-full text-left bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
+                class="news-feed-item block w-full text-left bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
               >
                 <div class="text-[10px] text-cyan-400 mb-1">
                   {formatRelativeTime(Number(n.datetime) * 1000)} · {n.source || 'News'}
@@ -535,6 +535,7 @@ export function MarketInsightsPanel({
       </div>
 
       <div
+        key={activeSection}
         id="marketInsightsContent"
         class="min-h-24 rounded-lg border border-slate-800/80 bg-slate-950/70 p-3 text-xs text-slate-300"
         role="tabpanel"
@@ -576,10 +577,10 @@ export function MarketInsightsPanel({
         ) : !stocktwitsData?.messages.length ? (
           <p class="py-2 text-xs text-slate-500">No recent Stocktwits messages found.</p>
         ) : (
-          <div class="space-y-2">
+          <div class="stocktwits-feed-enter space-y-2">
             <p class="text-[10px] text-slate-500">{stocktwitsUpdatedAt ? `Updated ${formatRelativeTime(stocktwitsUpdatedAt)}` : ''}{stocktwitsLoading ? ' · Refreshing…' : ''}</p>
             {stocktwitsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded messages.</p>}
-            <div class="h-[306px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Stocktwits messages">
+            <div class="stocktwits-feed-list h-[306px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Stocktwits messages">
               {filteredStocktwitsMessages.length === 0 ? (
                 <p class="rounded border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">No single-ticker messages found.</p>
               ) : filteredStocktwitsMessages.map((message, idx) => {
@@ -591,7 +592,7 @@ export function MarketInsightsPanel({
                     : 'text-slate-400 border-slate-700';
                 const createdAt = Date.parse(message.created_at);
                 return (
-                  <article key={message.id || idx} class="rounded border border-slate-800 bg-slate-900/50 p-2.5">
+                  <article key={message.id || idx} class="stocktwits-feed-item rounded border border-slate-800 bg-slate-900/50 p-2.5">
                     <div class="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
                       <span class="font-semibold text-slate-300">@{message.user?.username || message.user?.name || 'user'}</span>
                       {Number.isFinite(createdAt) && <span>{formatRelativeTime(createdAt)}</span>}
@@ -609,12 +610,12 @@ export function MarketInsightsPanel({
 
       {selectedNews && (
         <div
-          class="news-article-modal fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-sm sm:p-6"
+          class="news-article-modal news-modal-enter fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-3 backdrop-blur-sm sm:p-6"
           role="presentation"
           onClick={() => setSelectedNews(null)}
         >
           <section
-            class="news-article-dialog w-full max-w-3xl overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl"
+            class="news-article-dialog news-dialog-enter w-full max-w-3xl overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="newsArticleModalTitle"
