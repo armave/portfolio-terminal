@@ -10,6 +10,8 @@ import { MarketInsightsPanel, type MarketInsightsPanelProps } from './components
 import { TradingConsole, type TradingConsoleProps } from './components/TradingConsole';
 import { BoardExternalLinks, type BoardExternalLinksProps } from './components/BoardExternalLinks';
 import { EmptyStatePanel, type EmptyStatePanelProps } from './components/EmptyStatePanel';
+import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
+import type { ScenarioModalData } from './features/terminal/commandDispatcher';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
@@ -39,6 +41,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [boardTitle, setBoardTitle] = useState('COMBINED PORTFOLIO');
   const [showDailyMove, setShowDailyMove] = useState(false);
   const [breakevenText, setBreakevenText] = useState('Combined Breakeven: 0 days');
+  const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
 
   useEffect(() => {
     const handleAuthVisibility = (event: Event) => {
@@ -54,6 +57,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         if (detail.view === 'SETTINGS') setHasOpenedSettings(true);
       }
     };
+    const handleScenarioModal = (event: Event) => setScenarioModalData((event as CustomEvent<ScenarioModalData | null>).detail ?? null);
+    window.addEventListener('terminal:scenario-modal', handleScenarioModal);
     window.addEventListener('terminal:auth-visibility', handleAuthVisibility);
     const handleCashCushionProps = (event: Event) => {
       const detail = (event as CustomEvent<CashCushionDeskProps>).detail;
@@ -114,6 +119,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     window.addEventListener('terminal:board-title', handleBoardTitle);
     window.addEventListener('terminal:breakeven-text', handleBreakevenText);
     return () => {
+      window.removeEventListener('terminal:scenario-modal', handleScenarioModal);
       window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
       window.removeEventListener('terminal:active-view', handleDeskView);
       window.removeEventListener('terminal:cash-cushion-props', handleCashCushionProps);
@@ -312,6 +318,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       <div id="auth-container" class="auth-overlay" style={{ display: authOpen ? 'flex' : 'none' }}>
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
+      {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={() => setScenarioModalData(null)} />}
     </>
   );
 }
