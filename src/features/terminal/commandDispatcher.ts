@@ -728,11 +728,6 @@ export class CommandDispatcher {
 
 
 }
-),
-          type: 'res',
-          sideEffect: { type: 'SYNC_CLOUD' }
-        };
-      }
 
       // 6. CASH CUSHION STOCKS: "cash add 10 MSFT for 420" / "add cash stock 10 MSFT at 420"
       const cashAddMatch = raw.match(
