@@ -6,6 +6,7 @@ import { SettingsDesk, type SettingsDeskProps } from './components/SettingsDesk'
 import { TickerTabs, type TickerTabsProps } from './components/TickerTab';
 import { SummaryMetricsGrid, type SummaryMetricsGridProps } from './components/SummaryMetricsGrid';
 import { ProjectionsTable, type ProjectionsTableProps } from './components/ProjectionsTable';
+import { MarketInsightsPanel, type MarketInsightsPanelProps } from './components/MarketInsightsPanel';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
@@ -28,6 +29,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [tickerTabsProps, setTickerTabsProps] = useState<TickerTabsProps | null>(null);
   const [summaryMetricsProps, setSummaryMetricsProps] = useState<SummaryMetricsGridProps | null>(null);
   const [projectionsProps, setProjectionsProps] = useState<ProjectionsTableProps | null>(null);
+  const [marketInsightsProps, setMarketInsightsProps] = useState<MarketInsightsPanelProps | null>(null);
 
   useEffect(() => {
     const handleAuthVisibility = (event: Event) => {
@@ -69,7 +71,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     };
     window.addEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
     window.addEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
+    const handleMarketInsightsProps = (event: Event) => {
+      const detail = (event as CustomEvent<MarketInsightsPanelProps>).detail;
+      if (detail) setMarketInsightsProps(detail);
+    };
     window.addEventListener('terminal:projections-props', handleProjectionsProps);
+    window.addEventListener('terminal:market-insights-props', handleMarketInsightsProps);
     return () => {
       window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
       window.removeEventListener('terminal:active-view', handleDeskView);
@@ -78,6 +85,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       window.removeEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
       window.removeEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
       window.removeEventListener('terminal:projections-props', handleProjectionsProps);
+      window.removeEventListener('terminal:market-insights-props', handleMarketInsightsProps);
     };
   }, []);
 
@@ -240,7 +248,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               id="marketInsightsPanel"
               class="market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10"
               aria-label="Market insights"
-            ></section>
+            >{marketInsightsProps && <MarketInsightsPanel {...marketInsightsProps} />}</section>
             <div
               id="tradingConsoleCard"
               class="trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full"
