@@ -342,7 +342,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     onSyncMarketInsightsPanel();
   }
 
-  const daysEl = document.getElementById('daysToBreakeven');
 
   if (isCushionActive) {
     
@@ -353,7 +352,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isClosedHistoryActive) {
-    if (daysEl) daysEl.classList.add('hidden');
     onUpdateLastDeskView('CLOSED_HISTORY');
     onRenderClosedHistory();
     return;
@@ -366,7 +364,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     return;
   }
 
-  if (consoleCard) consoleCard.classList.remove('hidden');
   onUpdateLastDeskView(currentView);
 
   const emptyPanel = document.getElementById('emptyStatePanel');
