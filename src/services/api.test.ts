@@ -92,7 +92,7 @@ describe('Freedom executed trade history', () => {
     await expect(fetchAllFreedomTradeNetTrades()).resolves.toMatchObject({
       trades: [],
       complete: false,
-      pagesFetched: 1
+      pagesFetched: 0
     });
   });
 });
