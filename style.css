@@ -2188,3 +2188,31 @@ textarea {
     transform: none !important;
   }
 }
+
+
+/* Keep the auth overlay mounted so its exit transition can finish cleanly. */
+#auth-container.auth-overlay {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease-out, visibility 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay .auth-card {
+  opacity: 0;
+  transform: translateY(4px) scale(0.985);
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay.auth-overlay-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#auth-container.auth-overlay.auth-overlay-open .auth-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
