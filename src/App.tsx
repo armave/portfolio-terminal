@@ -217,7 +217,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             id="daysToBreakeven"
           >
-            Combined Breakeven: 0 days
+            {breakevenText}
           </div>
         </div>
 
@@ -235,7 +235,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               class={"board-title-row flex flex-wrap items-center justify-between gap-2 " + (emptyStateProps ? "hidden" : "")}
             >
               <div class="min-w-0 flex-1 text-lg font-bold text-white" id="boardTitle">
-                COMBINED PORTFOLIO
+                {boardTitle}
               </div>
             </div>
 
