@@ -62,7 +62,7 @@ import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/sto
 import { reconcileFreedomPortfolio } from './src/domain/freedomPortfolio';
 import { BoardExternalLinks } from './src/components/BoardExternalLinks';
 import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
-import { InsightSection, MarketInsightsPanel } from './src/components/MarketInsightsPanel';
+import { InsightSection } from './src/components/MarketInsightsPanel';
 import { TradingConsole } from './src/components/TradingConsole';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
@@ -588,12 +588,9 @@ function renderBoard() {
 }
 
 function renderMarketInsightsComponent() {
-  const panel = document.getElementById('marketInsightsPanel');
-  if (!panel) return;
   const ticker = getMarketInsightsTicker();
-
-  renderInto(
-    h(MarketInsightsPanel, {
+  window.dispatchEvent(new CustomEvent('terminal:market-insights-props', {
+    detail: {
       ticker,
       isOpen: true,
       activeSection: activeInsightSection as InsightSection,
@@ -602,9 +599,8 @@ function renderMarketInsightsComponent() {
         activeInsightSection = section;
         renderMarketInsightsComponent();
       }
-    }),
-    panel
-  );
+    } satisfies import('./src/components/MarketInsightsPanel').MarketInsightsPanelProps
+  }));
 }
 
 function getMarketInsightsTicker() {
