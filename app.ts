@@ -92,7 +92,6 @@ let lastRenderedDeskView: string | null = null;
 let settingsPanelMounted = false;
 let lastSettingsRulesSignature: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
-let marketInsightsOpen = true;
 let activeInsightSection = 'news';
 let insightRequestId = 0;
 let initialQuoteRefreshPending = false;
@@ -574,18 +573,12 @@ function getMarketInsightsTicker() {
 }
 
 function syncMarketInsightsPanel() {
-  const panel = document.getElementById('marketInsightsPanel');
-  if (!panel) return;
-
-  // Market Insights is a permanent part of the Margin workspace, not a toggleable panel.
-  marketInsightsOpen = true;
+  // Visibility is owned by App's active-desk JSX; this function only refreshes data props.
   renderMarketInsightsComponent();
 }
 
 function toggleMarketInsights() {
-  const ticker = getMarketInsightsTicker();
-  if (!ticker) return;
-  marketInsightsOpen = !marketInsightsOpen;
+  // Market Insights is a permanent part of the Margin workspace, not a toggleable panel.
   syncMarketInsightsPanel();
 }
 
