@@ -7,13 +7,15 @@ import {
   calculateMarginInterest
 } from '../domain/portfolio';
 
-function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string }) {
+function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string; rules: BrokerRules }) {
+  const stopOutTitle = `Estimate assumes the configured ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
+  const marginRiskTitle = `Estimated from portfolio equity and configured thresholds: ${(rules.maintenanceMarginRatio * 100).toFixed(2)}% maintenance equity and ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity. Not a live broker risk indicator.`;
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
   const equityWidth = Math.max(0, Math.min(100, equity));
   const buffer = Number.isFinite(risk.marginCallBufferPct) ? Math.max(0, Math.min(100, risk.marginCallBufferPct)) : 0;
   const stopOutBuffer = Number.isFinite(risk.stopOutBufferPct) ? Math.max(0, Math.min(100, risk.stopOutBufferPct)) : 0;
   return (
-    <section class="margin-risk-gauge-card" aria-label="Margin risk and account equity">
+    <section class="margin-risk-gauge-card" aria-label="Margin risk and account equity" title={marginRiskTitle}>
       <div class="margin-risk-gauge-heading">
         <div><span class="margin-risk-label">ACCOUNT EQUITY HEALTH</span><strong class="margin-risk-equity">{equityText}</strong></div>
         <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
@@ -30,7 +32,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText }: { 
           <div class="margin-risk-detail"><span>Trigger estimate</span><strong>{risk.showMarginCall ? risk.marginCallText : 'Below trigger estimate'}</strong></div>
         </div>
         <div class="margin-risk-gauge-item">
-          <div class="margin-risk-gauge-row"><span class="margin-risk-label">STOP-OUT THRESHOLD</span><strong>{Number.isFinite(risk.stopOutBufferPct) ? risk.stopOutBufferPct.toFixed(1) + '% buffer' : '—'}</strong></div>
+          <div class="margin-risk-gauge-row" title={stopOutTitle}><span class="margin-risk-label">STOP-OUT THRESHOLD</span><strong>{Number.isFinite(risk.stopOutBufferPct) ? risk.stopOutBufferPct.toFixed(1) + '% buffer' : '—'}</strong></div>
           <div class="margin-risk-buffer-track"><span class={stopOutBuffer < 30 ? 'danger' : 'safe'} style={{ width: stopOutBuffer + '%' }}></span></div>
           <div class="margin-risk-detail"><span>Trigger estimate</span><strong>{risk.showStopOut ? risk.stopOutText : '—'}</strong></div>
         </div>
@@ -289,7 +291,7 @@ export function SummaryMetricsGrid({
           </div>
         </section>
 
-        <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(cushionTotal)} />
+        <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(cushionTotal)} rules={rules} />
       </>
     );
   }
@@ -416,7 +418,7 @@ export function SummaryMetricsGrid({
         </div>
       </section>
 
-      <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(allocatedCushion)} />
+      <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(allocatedCushion)} rules={rules} />
     </>
   );
 }

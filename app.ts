@@ -1,5 +1,10 @@
-import { render, h } from 'preact';
-import { ClosedHistoryDesk } from './src/components/ClosedHistoryDesk';
+import { render, h, type ComponentChild } from 'preact';
+
+/** Single mount boundary for legacy shell containers. New UI should move into
+ * the application tree; this helper makes remaining container mounts auditable. */
+function renderInto(vnode: ComponentChild, container: Element): void {
+  render(vnode, container);
+}
 
 import {
   calculateBreakevenDays,
@@ -55,12 +60,7 @@ import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { reconcileFreedomPortfolio } from './src/domain/freedomPortfolio';
-import { BoardExternalLinks } from './src/components/BoardExternalLinks';
-import { ConsoleQuickActions } from './src/components/ConsoleQuickActions';
-import { InsightSection, MarketInsightsPanel } from './src/components/MarketInsightsPanel';
-import { SettingsDesk } from './src/components/SettingsDesk';
-import { AuthModal } from './src/components/AuthModal';
-import { TradingConsole } from './src/components/TradingConsole';
+import { InsightSection } from './src/components/MarketInsightsPanel';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
@@ -92,7 +92,6 @@ let lastRenderedDeskView: string | null = null;
 let settingsPanelMounted = false;
 let lastSettingsRulesSignature: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
-let marketInsightsOpen = true;
 let activeInsightSection = 'news';
 let insightRequestId = 0;
 let initialQuoteRefreshPending = false;
@@ -109,22 +108,7 @@ const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
 // ==========================================
 function setCloudStatus(status: string, text: string) {
-  const dot = document.getElementById('cloudStatusDot');
-  const label = document.getElementById('cloudStatusText');
-  if (!dot || !label) return;
-
-  label.innerText = `KV: ${text.toUpperCase()}`;
-  dot.className = "w-1.5 h-1.5 rounded-full";
-
-  if (status === 'syncing') {
-    dot.classList.add('bg-amber-400', 'animate-pulse');
-  } else if (status === 'synced') {
-    dot.classList.add('bg-emerald-400');
-  } else if (status === 'error') {
-    dot.classList.add('bg-rose-400');
-  } else {
-    dot.classList.add('bg-slate-500');
-  }
+  window.dispatchEvent(new CustomEvent('terminal:cloud-status', { detail: { status, text } }));
 }
 
 // Freedom is authoritative for broker-reported account balance, aggregate
@@ -249,15 +233,11 @@ async function syncCloudState(mode = 'push') {
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logTerminal,
     onStatusChange: (status) => {
-      const syncEl = document.getElementById('cloudSyncStatus');
-      if (!syncEl) return;
-      if (status === 'synced') {
-        syncEl.textContent = `Synced: ${new Date().toLocaleTimeString()}`;
-        syncEl.className = 'text-[10px] text-emerald-400 font-mono';
-      } else {
-        syncEl.textContent = 'Sync failed';
-        syncEl.className = 'text-[10px] text-rose-400 font-mono';
-      }
+      window.dispatchEvent(new CustomEvent('terminal:cloud-sync-status', {
+        detail: status === 'synced'
+          ? { text: `Synced: ${new Date().toLocaleTimeString()}`, status: 'synced' }
+          : { text: 'Sync failed', status: 'error' }
+      }));
     }
   });
 }
@@ -314,59 +294,25 @@ function loadTradernetRules() {
   }
 }
 
-function setBrokerRuleInputs() {
-  const annualInput = document.getElementById('annualMarginRateInput') as HTMLInputElement | null;
-  const dayCountInput = document.getElementById('interestDayCountInput') as HTMLInputElement | null;
-  const maintInput = document.getElementById('maintenanceMarginInput') as HTMLInputElement | null;
-  const stopOutInput = document.getElementById('stopOutRatioInput') as HTMLInputElement | null;
-  const rolloverInput = document.getElementById('rolloverTimeInput') as HTMLInputElement | null;
-  const commShareInput = document.getElementById('commissionPerShareInput') as HTMLInputElement | null;
-  const commVolInput = document.getElementById('commissionVolumeInput') as HTMLInputElement | null;
-  const minCommInput = document.getElementById('minimumCommissionInput') as HTMLInputElement | null;
-
-  if (annualInput) annualInput.value = (TRADERNET_RULES.annualRate * 100).toFixed(2);
-  if (dayCountInput) dayCountInput.value = String(TRADERNET_RULES.dayCountBasis);
-  if (maintInput) maintInput.value = (TRADERNET_RULES.maintenanceMarginRatio * 100).toFixed(2);
-  if (stopOutInput) {
-    stopOutInput.value = (TRADERNET_RULES.stopOutRatio * 100).toFixed(2);
-    stopOutInput.setCustomValidity('');
-  }
-  if (rolloverInput) {
-    rolloverInput.value = `${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')}`;
-  }
-  if (commShareInput) commShareInput.value = String(TRADERNET_RULES.commPerShare);
-  if (commVolInput) commVolInput.value = (TRADERNET_RULES.commVolumePct * 100).toFixed(2);
-  if (minCommInput) minCommInput.value = TRADERNET_RULES.minCommOrder.toFixed(2);
-}
-
-function saveBrokerRuleInputs(event: Event) {
-  event.preventDefault();
-  const form = event.currentTarget as HTMLFormElement;
-  const stopOutInput = document.getElementById('stopOutRatioInput') as HTMLInputElement;
-  stopOutInput.setCustomValidity('');
-  if (!form.reportValidity()) return;
-
-  const rolloverInput = document.getElementById('rolloverTimeInput') as HTMLInputElement;
-  const [rolloverHour, rolloverMinute] = rolloverInput.value.split(':').map(Number);
+function saveBrokerRuleInputs(values: import('./src/components/SettingsDesk').BrokerRulesFormValues) {
+  const [rolloverHour, rolloverMinute] = values.rolloverTime.split(':').map(Number);
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   const updatedRules = {
     ...TRADERNET_RULES,
-    annualRate: Number((document.getElementById('annualMarginRateInput') as HTMLInputElement).value) / 100,
-    dayCountBasis: Number((document.getElementById('interestDayCountInput') as HTMLInputElement).value),
-    maintenanceMarginRatio: Number((document.getElementById('maintenanceMarginInput') as HTMLInputElement).value) / 100,
-    stopOutRatio: Number(stopOutInput.value) / 100,
+    annualRate: Number(values.annualRate) / 100,
+    dayCountBasis: Number(values.dayCountBasis),
+    maintenanceMarginRatio: Number(values.maintenanceMargin) / 100,
+    stopOutRatio: Number(values.stopOutRatio) / 100,
     rolloverHour,
     rolloverMinute,
-    commPerShare: Number((document.getElementById('commissionPerShareInput') as HTMLInputElement).value),
-    commVolumePct: Number((document.getElementById('commissionVolumeInput') as HTMLInputElement).value) / 100,
-    minCommOrder: Number((document.getElementById('minimumCommissionInput') as HTMLInputElement).value)
+    commPerShare: Number(values.commPerShare),
+    commVolumePct: Number(values.commVolumePct) / 100,
+    minCommOrder: Number(values.minCommOrder)
   };
   if (updatedRules.stopOutRatio > updatedRules.maintenanceMarginRatio) {
-    stopOutInput.setCustomValidity('Stop-out equity must not exceed maintenance equity.');
-    stopOutInput.reportValidity();
+    showToast('Stop-out equity must not exceed maintenance equity.', 'error');
     return;
   }
-  stopOutInput.setCustomValidity('');
   Object.assign(TRADERNET_RULES, updatedRules);
   portfolioStore.updateAssumptions(updatedRules as any);
   saveBrokerRules(updatedRules);
@@ -377,14 +323,13 @@ function saveBrokerRuleInputs(event: Event) {
   }
   verifyTradernetRulesOnload();
   renderBoard();
+  renderSettingsPanel(true);
 }
-
 function resetBrokerRules() {
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   Object.assign(TRADERNET_RULES, DEFAULT_TRADERNET_RULES);
   portfolioStore.updateAssumptions(DEFAULT_TRADERNET_RULES as any);
   clearBrokerRules();
-  setBrokerRuleInputs();
   if (previousRollover !== `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`) {
     portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
     saveState(state, pushStateToGist);
@@ -400,22 +345,8 @@ function verifyTradernetRulesOnload() {
   const rolloverTime = `${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')}`;
   const saveMsg =
     `Broker model: ${ratePct}% p.a. (${dailyPct}%/d, /${TRADERNET_RULES.dayCountBasis}) | ${rolloverTime} Armenia time compounding | Maintenance equity ${maintenancePct}%`;
-  updateRiskAssumptionTitles();
 
   logTerminal(saveMsg);
-}
-
-function updateRiskAssumptionTitles() {
-  const stopOutRow = document.getElementById('boardStopOutRow');
-  if (stopOutRow) {
-    stopOutRow.title =
-      `Estimate assumes the configured ${(TRADERNET_RULES.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
-  }
-  const marginRiskEl = document.getElementById('boardMarginRisk');
-  if (marginRiskEl && marginRiskEl.parentElement) {
-    marginRiskEl.parentElement.title =
-      `Estimated from portfolio equity and configured thresholds: ${(TRADERNET_RULES.maintenanceMarginRatio * 100).toFixed(2)}% maintenance equity and ${(TRADERNET_RULES.stopOutRatio * 100).toFixed(2)}% stop-out equity. Not a live broker risk indicator.`;
-  }
 }
 
 function applyOvernightRollover() {
@@ -470,27 +401,17 @@ function setActiveView(view: string) {
 const switchView = setActiveView;
 
 function renderConsoleQuickActions() {
-  const pos = state.positions[state.activeView];
-  const cardContainer = document.getElementById('tradingConsoleCard');
-  if (cardContainer) {
-    render(
-      h(TradingConsole, {
-        position: pos,
-        onExecuteCommand: (command?: string) => executeCommand(command)
-      }),
-      cardContainer
-    );
-    return;
-  }
-
-  const container = document.getElementById('consoleQuickActions');
-  if (!container) return;
-  render(h(ConsoleQuickActions, { position: pos }), container);
+  const position = state.positions[state.activeView];
+  window.dispatchEvent(new CustomEvent('terminal:trading-console-props', {
+    detail: {
+      position,
+      onExecuteCommand: (command?: string) => executeCommand(command ?? '')
+    } satisfies import('./src/components/TradingConsole').TradingConsoleProps
+  }));
 }
 
 function updateCombinedBreakeven() {
-  const beEl = document.getElementById('daysToBreakeven');
-  if (!beEl) return;
+  const setText = (text: string) => window.dispatchEvent(new CustomEvent('terminal:breakeven-text', { detail: { text } }));
 
   const tickers = Object.keys(state.positions);
   const totalDebt = Math.abs(state.balance);
@@ -523,22 +444,22 @@ function updateCombinedBreakeven() {
   const netTargetProfit = totalGrossTarget - totalComms - totalMarginCharged;
 
   if (tickers.length === 0 || totalInvested === 0) {
-    beEl.innerText = "Combined Breakeven: No active trades";
+    setText("Combined Breakeven: No active trades");
     return;
   }
 
   if (totalDebt <= 0) {
-    beEl.innerText = "Combined Breakeven: No margin debt";
+    setText("Combined Breakeven: No margin debt");
     return;
   }
 
   if (netTargetProfit <= 0) {
-    beEl.innerText = "Combined Breakeven: 0 days (Net Target ≤ $0)";
+    setText("Combined Breakeven: 0 days (Net Target ≤ $0)");
     return;
   }
 
   if (getDailyRate() === 0) {
-    beEl.innerText = "Combined Breakeven: 0 days (no ongoing margin interest)";
+    setText("Combined Breakeven: 0 days (no ongoing margin interest)");
     return;
   }
 
@@ -548,14 +469,14 @@ function updateCombinedBreakeven() {
   beDate.setDate(beDate.getDate() + beDays);
   const beDateStr = beDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-  beEl.innerText = `Combined Breakeven: ${beDays} days (${beDateStr})`;
+  setText(`Combined Breakeven: ${beDays} days (${beDateStr})`);
 }
 
 function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
-  const stockPageLinks = document.getElementById('boardExternalLinks');
-  if (!stockPageLinks) return;
-  render(h(BoardExternalLinks, { ticker: activeTicker }), stockPageLinks);
+  window.dispatchEvent(new CustomEvent('terminal:external-links-props', {
+    detail: { ticker: activeTicker } satisfies import('./src/components/BoardExternalLinks').BoardExternalLinksProps
+  }));
 }
 
 function renderBoard() {
@@ -585,12 +506,9 @@ function renderBoard() {
 }
 
 function renderMarketInsightsComponent() {
-  const panel = document.getElementById('marketInsightsPanel');
-  if (!panel) return;
   const ticker = getMarketInsightsTicker();
-
-  render(
-    h(MarketInsightsPanel, {
+  window.dispatchEvent(new CustomEvent('terminal:market-insights-props', {
+    detail: {
       ticker,
       isOpen: true,
       activeSection: activeInsightSection as InsightSection,
@@ -599,9 +517,8 @@ function renderMarketInsightsComponent() {
         activeInsightSection = section;
         renderMarketInsightsComponent();
       }
-    }),
-    panel
-  );
+    } satisfies import('./src/components/MarketInsightsPanel').MarketInsightsPanelProps
+  }));
 }
 
 function getMarketInsightsTicker() {
@@ -621,25 +538,17 @@ function getMarketInsightsTicker() {
 }
 
 function syncMarketInsightsPanel() {
-  const panel = document.getElementById('marketInsightsPanel');
-  if (!panel) return;
-
-  // Market Insights is a permanent part of the Margin workspace, not a toggleable panel.
-  marketInsightsOpen = true;
+  // Visibility is owned by App's active-desk JSX; this function only refreshes data props.
   renderMarketInsightsComponent();
 }
 
 function toggleMarketInsights() {
-  const ticker = getMarketInsightsTicker();
-  if (!ticker) return;
-  marketInsightsOpen = !marketInsightsOpen;
+  // Market Insights is a permanent part of the Margin workspace, not a toggleable panel.
   syncMarketInsightsPanel();
 }
 
 function renderClosedHistoryPanel() {
-  const container = document.getElementById('closedHistoryContainer');
-  if (!container) return;
-  render(h(ClosedHistoryDesk, null), container);
+  // ClosedHistoryDesk is owned by App and mounts when the view is first opened.
 }
 
 async function fetchBoardAnalystTarget(ticker: string, force = false) {
@@ -674,13 +583,8 @@ async function fetchBoardAnalystTarget(ticker: string, force = false) {
 }
 
 function renderBoardAnalystConsensus(ticker: string, force = false) {
-  const container = document.getElementById('boardAnalystConsensus');
-  if (!container) return;
-  const hideConsensus = () => {
-    container.textContent = '';
-    container.removeAttribute('title');
-    container.className = 'hidden';
-  };
+  const publish = (text: string, title = '', className = 'hidden') => window.dispatchEvent(new CustomEvent('terminal:analyst-consensus', { detail: { text, title, className } }));
+  const hideConsensus = () => publish('');
   if (!ticker || !state.positions[ticker]) {
     hideConsensus();
     return;
@@ -699,28 +603,20 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
         : upside < 0
           ? 'border-rose-800 bg-rose-950/40 text-rose-300'
           : 'border-slate-700 bg-slate-900 text-slate-300';
-      container.textContent = `${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`;
-      container.title = `Target from ${snapshot.source}: ${formatUSD(snapshot.targetPrice)} versus current price ${formatUSD(currentPrice)}.`;
-      container.className = `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`;
+      publish(`${snapshot.source} · ${formatUSD(snapshot.targetPrice)} · ${upside >= 0 ? '+' : ''}${upside.toFixed(2)}%`, `Target from ${snapshot.source}: ${formatUSD(snapshot.targetPrice)} versus current price ${formatUSD(currentPrice)}.`, `rounded border px-2.5 py-1 text-[10px] font-semibold ${color}`);
     } else {
-      container.textContent = `${snapshot.source} price target · ${formatUSD(snapshot.targetPrice)} · current price unavailable`;
-      container.title = `Price target from ${snapshot.source}.`;
-      container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300';
+      publish(`${snapshot.source} price target · ${formatUSD(snapshot.targetPrice)} · current price unavailable`, `Price target from ${snapshot.source}.`, 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-300');
     }
     return;
   }
 
   if (!force && error && now - error.failedAt < BOARD_ANALYST_RETRY_MS) {
-    container.textContent = 'Analyst target unavailable';
-    container.title = error.message;
-    container.className = 'rounded border border-amber-800 bg-amber-950/30 px-2.5 py-1 text-[10px] font-semibold text-amber-300';
+    publish('Analyst target unavailable', error.message, 'rounded border border-amber-800 bg-amber-950/30 px-2.5 py-1 text-[10px] font-semibold text-amber-300');
     return;
   }
 
   if (initialQuoteRefreshPending && !snapshot) {
-    container.textContent = 'Loading analyst target…';
-    container.title = 'Waiting for the initial batch quote refresh.';
-    container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
+    publish('Loading analyst target…', 'Waiting for the initial batch quote refresh.', 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400');
     return;
   }
 
@@ -728,9 +624,7 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
     return;
   }
 
-  container.textContent = 'Checking analyst target…';
-  container.removeAttribute('title');
-  container.className = 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400';
+  publish('Checking analyst target…', '', 'rounded border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-slate-400');
 
   const request = fetchBoardAnalystTarget(ticker, force).then(result => {
     boardAnalystSnapshots.set(ticker, { ...result, fetchedAt: Date.now() });
@@ -937,7 +831,7 @@ function setQuoteRefreshInterval(interval: number | string) {
 
   if (intervalMs > 0) {
     quoteRefreshTimer = setInterval(() => {
-      if (!document.hidden) document.getElementById('refreshQuotesButton')?.click();
+      if (!document.hidden) void refreshAllLivePrices();
     }, intervalMs);
   }
 }
@@ -1292,370 +1186,14 @@ function confirmAiPortfolioAction(action: any) {
 }
 
 function showScenarioModal(data: ScenarioModalData): void {
-  document.getElementById('scenarioComparisonModal')?.remove();
-
-  const overlay = document.createElement('div');
-  overlay.id = 'scenarioComparisonModal';
-  overlay.className = 'fixed inset-0 z-[1000] flex items-center justify-center p-2 sm:p-4';
-  overlay.style.background = 'rgba(10, 15, 25, 0.78)';
-  overlay.style.backdropFilter = 'blur(8px)';
-  overlay.style.setProperty('-webkit-backdrop-filter', 'blur(8px)');
-
-  const dialog = document.createElement('section');
-  dialog.className = 'w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-xl flex flex-col';
-  dialog.style.background = '#0b0f17';
-  dialog.style.border = '1px solid rgba(255,255,255,0.12)';
-  dialog.style.borderRadius = '10px';
-  dialog.style.boxShadow = '0 25px 50px -12px rgba(0,0,0,0.75)';
-  dialog.setAttribute('role', 'dialog');
-  dialog.setAttribute('aria-modal', 'true');
-  dialog.setAttribute('aria-labelledby', 'scenarioComparisonTitle');
-
-  const header = document.createElement('div');
-  header.className = 'sticky top-0 z-20 flex items-start justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-4';
-  header.style.background = 'rgba(11,15,23,0.94)';
-  header.style.backdropFilter = 'blur(8px)';
-  header.style.setProperty('-webkit-backdrop-filter', 'blur(8px)');
-  const headingWrap = document.createElement('div');
-  headingWrap.className = 'min-w-0';
-  const title = document.createElement('h2');
-  title.id = 'scenarioComparisonTitle';
-  title.className = 'text-base sm:text-lg font-bold text-white';
-  title.textContent = data.title;
-  const subtitle = document.createElement('p');
-  subtitle.className = 'mt-1 text-[11px] font-medium text-slate-400';
-  subtitle.textContent = data.subtitle;
-  headingWrap.append(title, subtitle);
-  const closeButton = document.createElement('button');
-  closeButton.type = 'button';
-  closeButton.className = 'shrink-0 rounded-md border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white';
-  closeButton.textContent = 'Close · Esc';
-  closeButton.setAttribute('aria-label', 'Close scenario comparison');
-  header.append(headingWrap, closeButton);
-
-  const toolbar = document.createElement('div');
-  toolbar.className = 'flex flex-wrap items-center gap-1.5 border-b border-slate-800 px-3 py-2';
-  const tableWrap = document.createElement('div');
-  tableWrap.className = 'overflow-auto px-2 py-2 sm:px-3';
-  const table = document.createElement('table');
-  table.className = 'w-full border-collapse text-xs';
-  table.style.fontVariantNumeric = 'tabular-nums';
-  const mobileCards = document.createElement('div');
-  mobileCards.className = 'flex flex-col gap-2';
-  const isExit = data.kind === 'exit-comparison';
-  const isBuyMore = data.kind === 'buy-more';
-  const isMobile = () => window.matchMedia('(max-width: 767px)').matches;
-  let activeColumns = data.columns.map((_, index) => index);
-  let activePreset = 0;
-
-  // Add thousands separators to standalone numeric values while leaving dates,
-  // already-grouped numbers, identifiers, and decimal precision intact.
-  const formatModalNumberGroups = (text: string): string =>
-    text.replace(/(?<![\w.,/-])(-?\d{4,})(\.\d+)?(?![\w/-])/g, (_match, integer: string, fraction = '') => {
-      const sign = integer.startsWith('-') ? '-' : '';
-      const digits = sign ? integer.slice(1) : integer;
-      return sign + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + fraction;
-    });
-
-  const formatScenarioButton = (index: number) => {
-    const row = data.rows.find(item => item.label === 'Net P&L');
-    const isBest = row?.values[index]?.includes('BEST') ?? false;
-    const value = formatModalNumberGroups(row?.values[index]?.split(' · ')[0] ?? '');
-    return { label: data.columns[index] + ' · ' + value + (isBest ? ' BEST' : ''), isBest };
-  };
-
-  function renderTable(columnIndexes: number[]): void {
-    activeColumns = columnIndexes;
-    table.replaceChildren();
-    const thead = document.createElement('thead');
-    const headRow = document.createElement('tr');
-    headRow.className = 'border-b border-slate-700 text-slate-300';
-    const firstHead = document.createElement('th');
-    firstHead.className = 'px-2 py-2 text-left font-semibold';
-    firstHead.textContent = isBuyMore ? 'Projection Date' : 'Metric';
-    headRow.appendChild(firstHead);
-    const shownColumns = isBuyMore ? data.columns.map((_, index) => index) : columnIndexes;
-    shownColumns.forEach((columnIndex) => {
-      const th = document.createElement('th');
-      th.className = 'min-w-[90px] px-2 py-2 text-right font-semibold whitespace-nowrap';
-      if (isBuyMore && columnIndex % 2 === 1) {
-        // Apply the accent directly so it survives competing table/header styles
-        // and Tailwind content-scanning or class-generation differences.
-        th.style.color = '#6ee7b7';
-      }
-      th.textContent = data.columns[columnIndex];
-      headRow.appendChild(th);
-    });
-    thead.appendChild(headRow);
-    const tbody = document.createElement('tbody');
-    data.rows.forEach((row) => {
-      const tr = document.createElement('tr');
-      tr.className = row.kind === 'result'
-        ? 'border-b border-emerald-900/70 bg-emerald-950/25 font-semibold text-emerald-300'
-        : row.kind === 'risk'
-          ? 'border-b border-rose-900/60 bg-rose-950/20 text-rose-300'
-          : row.kind === 'balance'
-            ? 'border-b border-cyan-900/50 bg-cyan-950/20 text-cyan-200'
-            : 'border-b border-slate-800/80 text-slate-300';
-      const labelCell = document.createElement('th');
-      labelCell.className = 'px-2 py-2 text-left font-medium whitespace-nowrap';
-      labelCell.textContent = row.label;
-      tr.appendChild(labelCell);
-      shownColumns.forEach((columnIndex) => {
-        const td = document.createElement('td');
-        td.className = 'px-2 py-2 text-right font-mono whitespace-nowrap ' + (isBuyMore ? (columnIndex % 2 === 0 ? 'text-slate-400 bg-slate-950/30' : 'text-emerald-200 bg-emerald-950/20 border-l border-emerald-900/40') : '');
-        td.style.fontVariantNumeric = 'tabular-nums';
-        const value = document.createElement('span');
-        value.textContent = formatModalNumberGroups(row.values[columnIndex] ?? '—');
-        td.appendChild(value);
-        const delta = row.deltas?.[columnIndex];
-        if (delta) {
-          const badge = document.createElement('span');
-          badge.className = 'ml-1.5 inline-flex rounded px-1.5 py-0.5 align-middle text-[9px] font-semibold ' +
-            (delta.includes('BEST') ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400');
-          badge.textContent = formatModalNumberGroups(delta);
-          td.appendChild(badge);
-        }
-        tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    });
-    table.append(thead, tbody);
-    renderMobileCards(columnIndexes);
-    renderToolbar();
-  }
-
-  function renderMobileCards(columnIndexes: number[]): void {
-    mobileCards.replaceChildren();
-    if (isBuyMore) {
-      data.rows.forEach((row) => {
-        const card = document.createElement('section');
-        card.className = 'rounded-lg border border-slate-700 bg-slate-900/50 p-3';
-        const heading = document.createElement('h3');
-        heading.className = 'mb-2 border-b border-slate-800 pb-2 text-xs font-semibold text-white';
-        heading.textContent = row.label;
-        card.appendChild(heading);
-        data.columns.forEach((column, index) => {
-          const line = document.createElement('div');
-          line.className = 'flex items-start justify-between gap-3 border-b border-slate-800/70 py-2 last:border-0';
-          const label = document.createElement('span');
-          label.className = 'text-[11px] text-slate-400';
-          label.textContent = column;
-          const value = document.createElement('span');
-          value.className = 'text-right font-mono text-xs font-semibold ' + (isBuyMore ? (index % 2 === 0 ? 'text-slate-400' : 'text-emerald-200') : 'text-slate-200');
-          value.textContent = formatModalNumberGroups(row.values[index] ?? '—');
-          if (index === 0 && row.kind === 'result') value.className += ' text-emerald-300';
-          if (index === 3) value.className += ' text-cyan-200';
-          line.append(label, value);
-          card.appendChild(line);
-        });
-        mobileCards.appendChild(card);
-      });
-      return;
-    }
-    columnIndexes.forEach((columnIndex) => {
-      const card = document.createElement('section');
-      card.className = 'rounded-lg border border-slate-700 bg-slate-900/50 p-3';
-      const cardHeading = document.createElement('div');
-      cardHeading.className = 'mb-2 flex items-start justify-between gap-2 border-b border-slate-800 pb-2';
-      const scenarioTitle = document.createElement('h3');
-      scenarioTitle.className = 'text-xs font-semibold text-white';
-      scenarioTitle.textContent = data.columns[columnIndex];
-      const netRow = data.rows.find(row => row.label === 'Net P&L');
-      const netValue = netRow?.values[columnIndex] ?? '—';
-      const best = netValue.includes('BEST');
-      const bestBadge = document.createElement('span');
-      bestBadge.className = best ? 'rounded bg-emerald-950 px-2 py-1 text-[10px] font-bold text-emerald-300' : 'hidden';
-      bestBadge.textContent = 'BEST';
-      cardHeading.append(scenarioTitle, bestBadge);
-      card.appendChild(cardHeading);
-      data.rows.forEach((row) => {
-        const line = document.createElement('div');
-        line.className = 'flex items-start justify-between gap-3 border-b border-slate-800/70 py-2 last:border-0';
-        const label = document.createElement('span');
-        label.className = 'text-[11px] text-slate-400';
-        label.textContent = row.label;
-        const value = document.createElement('span');
-        value.className = 'text-right font-mono text-xs font-semibold text-slate-200';
-        value.style.fontVariantNumeric = 'tabular-nums';
-        value.textContent = formatModalNumberGroups(row.values[columnIndex] ?? '—');
-        if (row.kind === 'result') value.className += ' text-emerald-300';
-        if (row.kind === 'balance') value.className += ' text-cyan-200';
-        value.style.fontVariantNumeric = 'tabular-nums';
-        const delta = row.deltas?.[columnIndex];
-        if (delta) {
-          const badge = document.createElement('span');
-          badge.className = 'mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-semibold ' +
-            (delta.includes('BEST') ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-slate-400');
-          badge.textContent = formatModalNumberGroups(delta);
-          value.appendChild(document.createElement('br'));
-          value.appendChild(badge);
-        }
-        line.append(label, value);
-        card.appendChild(line);
-      });
-      mobileCards.appendChild(card);
-    });
-  }
-
-  function renderToolbar(): void {
-    toolbar.replaceChildren();
-    const hasQuickActions = isExit && Boolean(data.quickActions?.length);
-    const hasPresets = isExit && Boolean(data.presets?.length);
-    if (!hasQuickActions && !hasPresets) {
-      toolbar.className = 'hidden';
-      return;
-    }
-    toolbar.className = 'flex flex-wrap items-center gap-1.5 border-b border-slate-800 px-3 py-2';
-
-    if (hasQuickActions) {
-      data.quickActions!.forEach((action) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'rounded-full border border-cyan-900/80 bg-cyan-950/30 px-2.5 py-1.5 text-[10px] font-semibold text-cyan-200 hover:bg-cyan-900/50';
-        button.textContent = action.label;
-        button.addEventListener('click', () => {
-          if (action.command) {
-            const input = document.getElementById('cmdInput') as HTMLInputElement | null;
-            if (!input) return;
-            input.value = action.command;
-            input.focus();
-            input.setSelectionRange(input.value.length, input.value.length);
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            close();
-            return;
-          }
-          if (action.invert) {
-            renderTable([...activeColumns].reverse());
-            return;
-          }
-          if (action.columnIndexes?.length) {
-            activePreset = data.presets?.findIndex(preset =>
-              preset.columnIndexes.length === action.columnIndexes!.length &&
-              preset.columnIndexes.every((value, index) => value === action.columnIndexes![index])
-            ) ?? activePreset;
-            renderTable(action.columnIndexes);
-          }
-        });
-        toolbar.appendChild(button);
-      });
-    }
-
-    if (isMobile()) {
-      data.columns.forEach((_, index) => {
-        const scenario = formatScenarioButton(index);
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'rounded-full border px-3 py-1.5 text-[11px] font-semibold ' +
-          (activeColumns.includes(index) ? 'border-cyan-600 bg-cyan-950/60 text-cyan-100' : 'border-slate-700 text-slate-400');
-        button.textContent = scenario.label;
-        button.addEventListener('click', () => {
-          activePreset = index;
-          renderTable([index]);
-        });
-        toolbar.appendChild(button);
-      });
-      return;
-    }
-
-    if (hasPresets) {
-      const label = document.createElement('span');
-      label.className = 'mr-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500';
-      label.textContent = 'Compare';
-      toolbar.appendChild(label);
-      data.presets!.forEach((preset, presetIndex) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'rounded-md border px-2 py-1 text-[10px] font-medium ' +
-          (activePreset === presetIndex ? 'border-cyan-700 bg-cyan-950/50 text-cyan-200' : 'border-slate-700 text-slate-300');
-        button.textContent = preset.label;
-        button.addEventListener('click', () => {
-          activePreset = presetIndex;
-          renderTable(preset.columnIndexes);
-        });
-        toolbar.appendChild(button);
-      });
-    }
-  }
-
-  function renderLayout(): void {
-    const mobile = isMobile();
-    if (!mobile && isExit && data.presets?.length) {
-      activePreset = Math.min(activePreset, data.presets.length - 1);
-      activeColumns = data.presets[activePreset]?.columnIndexes ?? activeColumns;
-    }
-    tableWrap.replaceChildren();
-    if (isExit && mobile) {
-      tableWrap.appendChild(mobileCards);
-    } else {
-      tableWrap.appendChild(table);
-    }
-    renderToolbar();
-  }
-
-  dialog.append(header, toolbar, tableWrap);
-  overlay.appendChild(dialog);
-
-  const previouslyFocused = document.activeElement instanceof HTMLElement
-    ? document.activeElement
-    : null;
-  const previousBodyOverflow = document.body.style.overflow;
-  document.body.style.overflow = 'hidden';
-  document.body.appendChild(overlay);
-
-  const close = () => {
-    if (!overlay.isConnected) return;
-    overlay.remove();
-    document.removeEventListener('keydown', handleKeyDown);
-    window.removeEventListener('resize', renderLayout);
-    document.body.style.overflow = previousBodyOverflow;
-    if (previouslyFocused?.isConnected) previouslyFocused.focus();
-  };
-  const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      close();
-      return;
-    }
-    if (event.key !== 'Tab') return;
-
-    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
-      'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
-    )).filter((element) => element.getAttribute('aria-hidden') !== 'true');
-    if (!focusable.length) {
-      event.preventDefault();
-      dialog.focus();
-      return;
-    }
-
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-  closeButton.addEventListener('click', close);
-  overlay.addEventListener('click', (event) => {
-    if (event.target === overlay) close();
-  });
-  document.addEventListener('keydown', handleKeyDown);
-  closeButton.focus();
-  renderTable(data.columns.map((_, index) => index));
-  renderLayout();
-  window.addEventListener('resize', renderLayout, { passive: true });
+  window.dispatchEvent(new CustomEvent('terminal:scenario-modal', { detail: data }));
 }
 
-async function executeCommand(commandText?: string) {
-  const input = document.getElementById("cmdInput") as HTMLInputElement | null;
-  const text = (commandText ?? input?.value ?? '').trim();
+async function executeCommand(commandText: string) {
+  const text = commandText.trim();
   if (!text) return;
 
   logTerminal(text, true);
-  if (input && commandText === undefined) input.value = "";
 
   // Ensure any due rollover is reflected in debt before a buy/sell command mutates it.
   applyOvernightRollover();
@@ -1726,8 +1264,7 @@ async function executeCommand(commandText?: string) {
   }
 
   const aiQuery = text.replace(/^(ai|ask)\s*:?\s*/i, '');
-  const statusEl = document.getElementById("aiStatus");
-  if (statusEl) statusEl.innerText = "CONNECTING...";
+  window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'CONNECTING...' }));
 
   try {
     const targetState: any = portfolioStore.getState();
@@ -1750,23 +1287,22 @@ async function executeCommand(commandText?: string) {
       logTerminal(`[AI Advisor]: ${parsed.response || 'Executed.'}`);
     }
 
-    if (statusEl) statusEl.innerText = "READY";
+    window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'READY' }));
   } catch (err: any) {
     logTerminal(`[Error]: ${err.message}`);
-    if (statusEl) statusEl.innerText = "READY";
+    window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'READY' }));
   }
 }
 
 function renderSettingsPanel(force = false) {
-  const container = document.getElementById('settings');
-  if (!container) return;
-
   const rules = { ...TRADERNET_RULES };
   const rulesSignature = JSON.stringify(rules);
   if (settingsPanelMounted && !force && rulesSignature === lastSettingsRulesSignature) return;
 
-  render(
-    h(SettingsDesk, {
+  // SettingsDesk is owned by App. Send current callbacks/rules as props instead
+  // of creating a separate Preact root in the settings container.
+  window.dispatchEvent(new CustomEvent('terminal:settings-props', {
+    detail: {
       rules,
       defaultRefreshIntervalMs: DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
       onSaveBrokerRules: saveBrokerRuleInputs,
@@ -1786,9 +1322,8 @@ function renderSettingsPanel(force = false) {
       onExportBackup: exportBackupJSON,
       onImportBackup: importBackupJSON,
       onResetToBlankState: resetToBlankState
-    }),
-    container
-  );
+    } satisfies import('./src/components/SettingsDesk').SettingsDeskProps
+  }));
   settingsPanelMounted = true;
   lastSettingsRulesSignature = rulesSignature;
 }
@@ -1796,7 +1331,7 @@ function renderSettingsPanel(force = false) {
 let appInitialized = false;
 
 function hideStartupLoading() {
-  document.getElementById('startup-loading')?.classList.add('is-hidden');
+  window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: false, failed: false } }));
 }
 
 setSecretGetter(() => getGatewaySecret());
@@ -1830,16 +1365,11 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
 }
 
 function renderAuthModal(isOpen: boolean) {
-  const container = document.getElementById('auth-container');
-  if (!container) return;
-  container.style.display = isOpen ? 'flex' : 'none';
-  render(
-    h(AuthModal, {
-      isOpen,
-      onSaveSecret: handleSaveGatewaySecret
-    }),
-    container
-  );
+  // App owns the auth overlay inside the main Preact tree. Communicate visibility
+  // as state rather than mounting a second Preact root into a sibling container.
+  window.dispatchEvent(new CustomEvent('terminal:auth-visibility', {
+    detail: { isOpen }
+  }));
 }
 
 function showAuthContainer() {
@@ -1859,13 +1389,7 @@ async function startApp(secret: string) {
 
   if (secret) await syncCloudState('pull');
 
-  const quoteRefreshInterval = document.getElementById('quoteRefreshInterval') as HTMLSelectElement | null;
   const initialQuoteRefreshInterval = getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS);
-
-  if (quoteRefreshInterval) {
-    quoteRefreshInterval.value = String(initialQuoteRefreshInterval);
-    quoteRefreshInterval.addEventListener('change', () => setQuoteRefreshInterval(quoteRefreshInterval.value));
-  }
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
 
   if (rolloverTimer !== null) clearInterval(rolloverTimer);
@@ -1876,7 +1400,6 @@ async function startApp(secret: string) {
     if (!document.hidden) applyOvernightRollover();
   });
 
-  setBrokerRuleInputs();
 
   // Avoid launching a duplicate per-ticker analyst request while the initial
   // batch already contains the same deep Yahoo data for all tracked symbols.
@@ -1899,7 +1422,10 @@ async function initApp() {
 
   const rootEl = document.getElementById('root');
   if (rootEl && !document.getElementById('mainTerminalView')) {
-    render(h(App, { onToggleMarketInsights: toggleMarketInsights }), rootEl);
+    renderInto(h(App, {
+      onToggleMarketInsights: toggleMarketInsights,
+      onSaveGatewaySecret: handleSaveGatewaySecret
+    }), rootEl);
   }
 
   try {
@@ -1925,32 +1451,17 @@ async function initApp() {
 }
 
 function showStartupFailure() {
-  const loader = document.getElementById('startup-loading');
-  if (!loader) return;
-  const message = loader.querySelector('.startup-loading__message');
-  const hint = loader.querySelector('.startup-loading__hint');
-  const track = loader.querySelector('.startup-loading__track');
-  const actions = loader.querySelector('.startup-loading__actions');
-  if (message) message.textContent = 'Could not finish initializing the app.';
-  if (hint) hint.textContent = 'Check your connection, then retry or continue offline.';
-  if (track) (track as HTMLElement).style.display = 'none';
-  if (actions) (actions as HTMLElement).hidden = false;
-  const retryButton = document.getElementById('startup-retry');
-  const offlineButton = document.getElementById('startup-continue-offline');
-  if (retryButton) retryButton.onclick = () => {
-    const message = loader.querySelector('.startup-loading__message');
-    const hint = loader.querySelector('.startup-loading__hint');
-    const track = loader.querySelector('.startup-loading__track');
-    if (message) message.textContent = 'Initializing your portfolio…';
-    if (hint) hint.textContent = 'Restoring saved data and market connections';
-    if (track) (track as HTMLElement).style.display = '';
-    if (actions) (actions as HTMLElement).hidden = true;
-    loader.classList.remove('is-hidden');
-    void initApp();
-  };
-  if (offlineButton) offlineButton.onclick = () => { void continueStartupOffline(); };
-  loader.classList.remove('is-hidden');
+  window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: true, failed: true } }));
 }
+
+function bindStartupActions() {
+  window.addEventListener('terminal:startup-retry', () => {
+    window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: true, failed: false } }));
+    void initApp();
+  });
+  window.addEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
+}
+bindStartupActions();
 
 async function continueStartupOffline() {
   appInitialized = true;

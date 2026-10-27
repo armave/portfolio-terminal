@@ -3,8 +3,6 @@ import fs from 'node:fs';
 // @ts-ignore
 import path from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
-// @ts-ignore
-import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import preact from '@preact/preset-vite';
 
