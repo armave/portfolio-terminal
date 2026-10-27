@@ -1097,6 +1097,97 @@ export class PortfolioStore {
   }
 
   /**
+   * Reclassifies existing shares between cash and margin buckets without
+   * recording a buy/sell or changing cash/debt. This is a local allocation
+   * command only; it does not submit an order to Freedom Broker.
+   */
+  public moveStockClassification(
+    ticker: string,
+    sharesToMove: number,
+    destination: 'margin' | 'cash'
+  ): { ticker: string; shares: number; destination: 'margin' | 'cash'; price: number } | null {
+    const clean = ticker.trim().toUpperCase();
+    if (!clean || !Number.isFinite(sharesToMove) || sharesToMove <= 0) return null;
+    let result: { ticker: string; shares: number; destination: 'margin' | 'cash'; price: number } | null = null;
+
+    this.update((state) => {
+      const positions = { ...(state.positions || {}) };
+      const holdings = [...(state.cashCushion?.holdings || [])];
+      const cashIndex = holdings.findIndex(h => h.ticker.trim().toUpperCase() === clean);
+      const cashHolding = cashIndex >= 0 ? holdings[cashIndex] : undefined;
+      const marginPosition = positions[clean];
+
+      if (destination === 'margin') {
+        const available = Number(cashHolding?.shares) || 0;
+        const quantity = Math.min(available, sharesToMove);
+        const price = Number(cashHolding?.currentPrice ?? cashHolding?.price) || Number(marginPosition?.currentPrice) || 0;
+        if (quantity <= 0 || price <= 0) return state;
+        const date = todayIso();
+        const existingTranches = marginPosition?.tranches || [];
+        const tranche = { qty: quantity, price, date, buyCommission: 0 };
+        const tranches = [...existingTranches, tranche];
+        const nextShares = (Number(marginPosition?.shares) || 0) + quantity;
+        positions[clean] = {
+          ...marginPosition,
+          ticker: clean,
+          shares: nextShares,
+          currentPrice: Number(marginPosition?.currentPrice) || price,
+          pt: Number(marginPosition?.pt) || 0,
+          commBuy: Number(marginPosition?.commBuy) || 0,
+          startDate: marginPosition?.startDate || date,
+          tranches
+        };
+        const remaining = available - quantity;
+        if (remaining <= 1e-6) holdings.splice(cashIndex, 1);
+        else holdings[cashIndex] = { ...cashHolding!, shares: remaining };
+        result = { ticker: clean, shares: quantity, destination, price };
+      } else {
+        const available = Number(marginPosition?.shares) || 0;
+        const quantity = Math.min(available, sharesToMove);
+        const tranches = [...(marginPosition?.tranches || [])];
+        const costBasis = tranches.reduce((sum, t) => sum + Math.max(0, Number(t.qty) || 0) * Math.max(0, Number(t.price) || 0), 0);
+        if (quantity <= 0 || costBasis <= 0) return state;
+        const price = costBasis / Math.max(available, 1e-9);
+        let remainingToMove = quantity;
+        const movedTranches: TrancheItem[] = [];
+        const remainingTranches: TrancheItem[] = [];
+        for (const tranche of tranches) {
+          const qty = Math.max(0, Number(tranche.qty) || 0);
+          const take = Math.min(qty, remainingToMove);
+          if (take > 0) movedTranches.push({ ...tranche, qty: take, buyCommission: 0 });
+          if (qty - take > 1e-6) remainingTranches.push({ ...tranche, qty: qty - take });
+          remainingToMove -= take;
+        }
+        const movedQty = movedTranches.reduce((sum, t) => sum + t.qty, 0);
+        if (movedQty <= 0) return state;
+        const movedPrice = movedTranches.reduce((sum, t) => sum + t.qty * t.price, 0) / movedQty;
+        const remainingShares = Math.max(0, available - movedQty);
+        if (remainingShares <= 1e-6) delete positions[clean];
+        else positions[clean] = { ...marginPosition, shares: remainingShares, tranches: remainingTranches };
+        if (cashIndex >= 0) {
+          const previous = holdings[cashIndex];
+          const previousShares = Number(previous.shares) || 0;
+          const previousPrice = Number(previous.price ?? previous.currentPrice) || movedPrice;
+          const totalShares = previousShares + movedQty;
+          const averagePrice = (previousShares * previousPrice + movedQty * movedPrice) / totalShares;
+          holdings[cashIndex] = { ...previous, shares: totalShares, price: averagePrice, currentPrice: Number(previous.currentPrice) || averagePrice };
+        } else {
+          holdings.push({ ticker: clean, shares: movedQty, price: movedPrice, currentPrice: Number(marginPosition.currentPrice) || movedPrice });
+        }
+        result = { ticker: clean, shares: movedQty, destination, price: movedPrice };
+      }
+
+      return {
+        ...state,
+        positions,
+        cashStocks: holdings.map(h => ({ ...h, shares: Number(h.shares) || 0 })),
+        cashCushion: { ...(state.cashCushion || { freeCash: 0, holdings: [] }), holdings }
+      };
+    });
+    return result;
+  }
+
+  /**
    * Sells a cash-cushion holding as one atomic balance transition. Unlike a
    * margin-position exit, this does not create a margin closed-trade record.
    */
