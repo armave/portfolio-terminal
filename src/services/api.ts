@@ -1014,9 +1014,26 @@ export async function fetchFreedomTradeNetPositions(): Promise<any> {
   return proxyFetch('freedom-positions');
 }
 
-/** Fetch a bounded, read-only page of executed TradeNet trades. */
-export async function fetchFreedomTradeNetTrades(): Promise<any> {
-  return proxyFetch('freedom-trades');
+/**
+ * Fetch read-only TradeNet executed-trade history.
+ *
+ * TradeNet exposes max/sort/tradeId query parameters. Use a large oldest-first
+ * page by default so consumers can detect truncation instead of silently
+ * treating a recent page as the complete ledger. tradeId can be supplied by
+ * callers for incremental sync where the proxy supports forwarding it.
+ */
+export async function fetchFreedomTradeNetTrades(options: {
+  max?: number;
+  sort?: 0 | 1;
+  tradeId?: string | number;
+} = {}): Promise<any> {
+  const max = Math.max(1, Math.min(1000, Math.trunc(Number(options.max) || 1000)));
+  const sort = options.sort === 1 ? 1 : 0;
+  return proxyFetch('freedom-trades', {
+    max,
+    sort,
+    ...(options.tradeId !== undefined ? { tradeId: options.tradeId } : {})
+  }, { cache: 'no-store' });
 }
 
 /** Fetch the raw read-only Freedom Broker cashflows response for temporary integration testing. */

@@ -28,6 +28,8 @@ import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
   fetchYahooDeepStockData,
+  fetchFreedomTradeNetTrades,
+  normalizeFreedomTrades,
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
@@ -154,6 +156,43 @@ if (typeof window !== 'undefined') {
       logTerminal('[Freedom] Account balance, quantities and available broker prices refreshed.');
     }
     renderBoard();
+  });
+
+  // Keep the broker's executed-trade feed in sync alongside each successful
+  // account refresh. This is a read-only import: it never submits orders.
+  // A capped response is stored for audit but is not treated as complete enough
+  // to reconstruct/delete local positions.
+  let freedomTradesSyncGeneration = 0;
+  window.addEventListener('tradenet:account-info', () => {
+    const generation = ++freedomTradesSyncGeneration;
+    void (async () => {
+      try {
+        const response = await fetchFreedomTradeNetTrades({ max: 1000, sort: 0 });
+        if (generation !== freedomTradesSyncGeneration) return;
+        const trades = normalizeFreedomTrades(response);
+        const root = response?.data?.result ?? response?.data ?? response?.result ?? response;
+        const requestedLimit = 1000;
+        const potentiallyTruncated = trades.length >= requestedLimit ||
+          Number(root?.total ?? root?.count ?? root?.total_count) > trades.length;
+        portfolioStore.setState({
+          brokerExecutedTrades: trades.map(trade => ({
+            ...trade,
+            source: 'Freedom TradeNet',
+            importedAt: Date.now()
+          })),
+          brokerTradeHistoryStatus: potentiallyTruncated ? 'incomplete' : 'current'
+        } as any);
+        if (potentiallyTruncated) {
+          logTerminal('[Freedom Warning] Trade history reached the request limit; it is not safe to rebuild the margin ledger until all pages are available.');
+        } else {
+          logTerminal(`[Freedom] Imported ${trades.length} executed-trade records from TradeNet.`);
+        }
+      } catch (error: any) {
+        if (generation !== freedomTradesSyncGeneration) return;
+        portfolioStore.setState({ brokerTradeHistoryStatus: 'stale' } as any);
+        logTerminal(`[Freedom Warning] Executed-trade sync failed; existing positions were not changed (${error?.message || 'unknown error'}).`);
+      }
+    })();
   });
 
   window.addEventListener('tradenet:account-info-error', () => {
