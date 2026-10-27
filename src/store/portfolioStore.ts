@@ -1131,6 +1131,7 @@ export class PortfolioStore {
         const tranche = {
           qty: quantity, price, date, buyCommission: 0,
           classificationTransfer: true,
+          transferQty: quantity,
           afterTradeId: String(latestTradeId)
         };
         const tranches = [...existingTranches, tranche];
