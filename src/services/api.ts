@@ -1020,10 +1020,12 @@ export async function fetchFreedomTradeNetTrades(options: {
   sort?: 0 | 1;
   tradeId?: string | number;
 } = {}): Promise<any> {
-  const max = Math.max(1, Math.min(1000, Math.trunc(Number(options.max) || 1000)));
+  const max = options.max === undefined
+    ? undefined
+    : Math.max(1, Math.min(1000, Math.trunc(Number(options.max) || 1000)));
   const sort = options.sort === 1 ? 1 : 0;
   return proxyFetch('freedom-trades', {
-    max,
+    ...(max !== undefined ? { max } : {}),
     sort,
     ...(options.tradeId !== undefined ? { tradeId: options.tradeId } : {})
   }, { cache: 'no-store' });
@@ -1034,24 +1036,18 @@ export async function fetchFreedomTradeNetTrades(options: {
  * appears complete. TradeNet's tradeId cursor semantics are not established
  * here, so a full page is never treated as complete or silently paginated.
  */
-export async function fetchAllFreedomTradeNetTrades(options: {
-  pageSize?: number;
-} = {}): Promise<{ trades: FreedomExecutedTrade[]; complete: boolean; pagesFetched: number }> {
-  const pageSize = Math.max(1, Math.min(1000, Math.trunc(Number(options.pageSize) || 1000)));
-  const response = await fetchFreedomTradeNetTrades({ max: pageSize, sort: 0 });
+export async function fetchAllFreedomTradeNetTrades(): Promise<{ trades: FreedomExecutedTrade[]; complete: boolean; pagesFetched: number }> {
+  // TradeNet documents that sort=0 with max omitted returns the full history
+  // count. Supplying max would silently truncate the ledger at the page limit.
+  const response = await fetchFreedomTradeNetTrades({ sort: 0 });
   const root = response?.data?.result ?? response?.data ?? response?.result ?? response;
   const hasRows = Array.isArray(root) || Array.isArray(root?.trades?.trade) ||
     Array.isArray(root?.trades) || Array.isArray(root?.items) ||
     Array.isArray(root?.history) || Array.isArray(root?.data);
   const trades = normalizeFreedomTrades(response);
-  if (!hasRows) return { trades: [], complete: false, pagesFetched: 1 };
-
-  const totalRaw = root?.total ?? root?.count ?? root?.total_count ?? root?.trades?.total;
-  const total = Number(totalRaw);
-  const complete = Number.isFinite(total) && total >= 0
-    ? trades.length >= total
-    : trades.length < pageSize;
-  return { trades, complete, pagesFetched: 1 };
+  const complete = hasRows && !response?.error && !response?.errMsg &&
+    response?.ok !== false && response?.data?.ok !== false;
+  return { trades, complete, pagesFetched: complete ? 1 : 0 };
 }
 
 /** Fetch the raw read-only Freedom Broker cashflows response for temporary integration testing. */
@@ -1074,6 +1070,10 @@ export interface FreedomExecutedTrade {
   executedAt: string | null;
   tradeValue: number | null;
   profit: number | null;
+  /** TradeNet go_sum: initial margin required for this execution. */
+  marginInitialRequirement: number | null;
+  /** Derived only when TradeNet explicitly supplies go_sum. */
+  marginClassification: 'margin' | 'cash' | 'unknown';
   /** Margin financing fee for this specific execution/stock, when supplied by a source. */
   marginFee: number | null;
   commission: number | null;
@@ -1113,6 +1113,12 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
     executedAt: row?.date ?? row?.time ?? row?.datetime ?? row?.exec_time ?? null,
     tradeValue: numberOrNull(row?.v ?? row?.summ ?? row?.value),
     profit: numberOrNull(row?.profit ?? row?.pnl),
+    marginInitialRequirement: numberOrNull(row?.go_sum ?? row?.goSum ?? row?.initial_margin),
+    marginClassification: (row?.go_sum ?? row?.goSum ?? row?.initial_margin) === undefined ||
+      (row?.go_sum ?? row?.goSum ?? row?.initial_margin) === null ||
+      (row?.go_sum ?? row?.goSum ?? row?.initial_margin) === ''
+      ? 'unknown'
+      : Number(row?.go_sum ?? row?.goSum ?? row?.initial_margin) > 0 ? 'margin' : 'cash',
     marginFee: numberOrNull(row?.margin_fee ?? row?.marginFee ?? row?.margin_interest ?? row?.marginInterest ?? row?.fee_margin ?? row?.feeMargin ?? row?.margin_commission ?? row?.margin_commiss),
     commission: numberOrNull(row?.commission ?? row?.commiss ?? row?.commissions ?? row?.fee ?? row?.commiss_exchange),
     commissionCurrency: String(row?.commission_currency ?? row?.curr_c ?? row?.currency ?? ''),
