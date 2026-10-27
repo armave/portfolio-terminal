@@ -381,22 +381,8 @@ function verifyTradernetRulesOnload() {
   const rolloverTime = `${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')}`;
   const saveMsg =
     `Broker model: ${ratePct}% p.a. (${dailyPct}%/d, /${TRADERNET_RULES.dayCountBasis}) | ${rolloverTime} Armenia time compounding | Maintenance equity ${maintenancePct}%`;
-  updateRiskAssumptionTitles();
 
   logTerminal(saveMsg);
-}
-
-function updateRiskAssumptionTitles() {
-  const stopOutRow = document.getElementById('boardStopOutRow');
-  if (stopOutRow) {
-    stopOutRow.title =
-      `Estimate assumes the configured ${(TRADERNET_RULES.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
-  }
-  const marginRiskEl = document.getElementById('boardMarginRisk');
-  if (marginRiskEl && marginRiskEl.parentElement) {
-    marginRiskEl.parentElement.title =
-      `Estimated from portfolio equity and configured thresholds: ${(TRADERNET_RULES.maintenanceMarginRatio * 100).toFixed(2)}% maintenance equity and ${(TRADERNET_RULES.stopOutRatio * 100).toFixed(2)}% stop-out equity. Not a live broker risk indicator.`;
-  }
 }
 
 function applyOvernightRollover() {
