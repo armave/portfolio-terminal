@@ -30,8 +30,8 @@ function positiveFinite(value: unknown): number | null {
 /**
  * Prefer Freedom's live account snapshot without rewriting app-owned trade lots.
  * Broker quantities represent account totals; app-managed margin lots are
- * subtracted to derive cash holdings. Ambiguous quantity mismatches preserve
- * affected local cash quantities and are reported instead of guessed.
+ * subtracted to derive cash holdings. Ambiguous quantity mismatches are reported
+ * and stale local cash quantities are excluded rather than guessed.
  */
 export function reconcileFreedomPortfolio(
   snapshot: FreedomPortfolioSnapshotLike,
