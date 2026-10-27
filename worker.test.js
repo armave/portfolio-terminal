@@ -513,8 +513,9 @@ describe('Worker request hardening', () => {
       body: JSON.stringify({ prompt: 'hello' })
     }), { GATEWAY_SECRET: 'test-secret', GEMINI_KEY: 'provider-key' });
 
-    // Advancing async fake timers can wait on the intentionally stalled response
-    // stream itself. Advance the timeout synchronously, then let the request settle.
+    // Let the request reach the upstream fetch before advancing its timeout.
+    // The worker performs async request parsing before starting the Gemini attempt.
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1), { timeout: 1000 });
     vi.advanceTimersByTime(3500);
     const response = await responsePromise;
 
