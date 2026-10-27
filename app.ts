@@ -165,7 +165,7 @@ if (typeof window !== 'undefined') {
     const generation = ++freedomTradeSyncGeneration;
     void (async () => {
       try {
-        const history = await fetchAllFreedomTradeNetTrades({ pageSize: 1000, maxPages: 20 });
+        const history = await fetchAllFreedomTradeNetTrades({ pageSize: 1000 });
         if (generation !== freedomTradeSyncGeneration) return;
         portfolioStore.setState({
           brokerExecutedTrades: history.trades.map(trade => ({
