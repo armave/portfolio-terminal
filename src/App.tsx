@@ -335,7 +335,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && settingsProps && <SettingsDesk {...settingsProps} />}</div>
 
       {/* Authentication is part of the application tree, not a second Preact root. */}
-      <div id="auth-container" class="auth-overlay" style={{ display: authOpen ? 'flex' : 'none' }}>
+      <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
       {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} />}
