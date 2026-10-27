@@ -423,7 +423,19 @@ export default {
                 if (request.method !== "GET") {
                     return jsonError("Freedom trades only supports GET.", 405, corsHeaders);
                 }
-                const data = await requestTradeNet(env, "getTradesHistory");
+                // Allow only documented, bounded read-only history parameters.
+                // These are passed to the fixed getTradesHistory command; no client
+                // input can select a different upstream command or place an order.
+                const requestedMax = Number(url.searchParams.get("max") || 100);
+                const max = Number.isFinite(requestedMax)
+                    ? Math.max(1, Math.min(1000, Math.trunc(requestedMax)))
+                    : 100;
+                const requestedSort = url.searchParams.get("sort");
+                const sort = requestedSort === "0" ? 0 : 1;
+                const tradeId = url.searchParams.get("tradeId");
+                const params = { max, sort };
+                if (tradeId && /^[0-9]+$/.test(tradeId)) params.tradeId = Number(tradeId);
+                const data = await requestTradeNet(env, "getTradesHistory", params);
                 return new Response(JSON.stringify({
                     ok: true,
                     provider: "Freedom TradeNet",
