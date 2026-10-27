@@ -13,14 +13,23 @@ interface AppProps {
 
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
+  const [activeDeskView, setActiveDeskView] = useState('COMBINED');
 
   useEffect(() => {
     const handleAuthVisibility = (event: Event) => {
       const detail = (event as CustomEvent<{ isOpen?: boolean }>).detail;
       setAuthOpen(Boolean(detail?.isOpen));
     };
+    const handleDeskView = (event: Event) => {
+      const detail = (event as CustomEvent<{ view?: string }>).detail;
+      if (detail?.view) setActiveDeskView(detail.view);
+    };
     window.addEventListener('terminal:auth-visibility', handleAuthVisibility);
-    return () => window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
+    window.addEventListener('terminal:active-view', handleDeskView);
+    return () => {
+      window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
+      window.removeEventListener('terminal:active-view', handleDeskView);
+    };
   }, []);
 
   // Closed History asks for trade history when mounted; do not also fetch from
@@ -117,7 +126,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
         <div id="tradingWorkspaceGrid" class="trading-workspace-grid">
           {/* Main Board Content */}
-          <div id="mainDeskContainer" class="space-y-4">
+          <div id="mainDeskContainer" class={"space-y-4 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
             <div
               id="emptyStatePanel"
               class="hidden border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4"
@@ -174,7 +183,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           </div>
 
           {/* Cash Cushion Management Panel */}
-          <div id="cashCushionContainer" class="hidden space-y-3"></div>
+          <div id="cashCushionContainer" class={"space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}></div>
 
           {/* Keep the command console available on both Margin and Cash desks. */}
           <div id="tradingTerminalColumn" class="trading-terminal-column">
@@ -195,11 +204,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       {/* Closed Trade History */}
       <div
         id="closedHistoryContainer"
-        class="hidden rounded-lg"
+        class={"rounded-lg " + (activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
       ></div>
 
       {/* Settings */}
-      <div class="hidden p-4 sm:p-6 rounded-xl space-y-4" id="settings"></div>
+      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings"></div>
 
       {/* Authentication is part of the application tree, not a second Preact root. */}
       <div id="auth-container" class="auth-overlay" style={{ display: authOpen ? 'flex' : 'none' }}>
