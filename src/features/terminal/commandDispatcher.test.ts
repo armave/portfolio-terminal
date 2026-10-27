@@ -7,6 +7,29 @@ describe('terminal command validation and cash routing', () => {
     vi.restoreAllMocks();
   });
 
+  it('routes move-to-margin and move-to-cash commands through share reclassification', () => {
+    const move = vi.spyOn(portfolioStore, 'moveStockClassification').mockReturnValue({
+      ticker: 'GOOGL', shares: 10, destination: 'margin', price: 321
+    });
+    const toMargin = CommandDispatcher.execute('move 10 GOOGL to margin');
+    expect(toMargin.type).toBe('res');
+    expect(move).toHaveBeenCalledWith('GOOGL', 10, 'margin');
+    expect(toMargin.text).toContain('No broker order was placed');
+    expect(toMargin.sideEffect).toEqual({ type: 'SYNC_CLOUD' });
+
+    move.mockReturnValue({ ticker: 'GOOGL', shares: 4, destination: 'cash', price: 315 });
+    const toCash = CommandDispatcher.execute('move 4 GOOGL to cash');
+    expect(toCash.type).toBe('res');
+    expect(move).toHaveBeenCalledWith('GOOGL', 4, 'cash');
+  });
+
+  it('rejects invalid quantities for share reclassification', () => {
+    const move = vi.spyOn(portfolioStore, 'moveStockClassification').mockImplementation(() => null);
+    const result = CommandDispatcher.execute('move 0 GOOGL to margin');
+    expect(result.type).toBe('err');
+    expect(move).not.toHaveBeenCalled();
+  });
+
   it('routes cash commands to free cash without calling the margin-balance setter', () => {
     const setFreeCash = vi.spyOn(portfolioStore, 'setFreeCash').mockImplementation(() => {});
     const setCashBalance = vi.spyOn(portfolioStore, 'setCashBalance').mockImplementation(() => {});
