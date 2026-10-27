@@ -174,7 +174,6 @@ if (typeof window !== 'undefined') {
         const requestedLimit = 1000;
         const potentiallyTruncated = trades.length >= requestedLimit ||
           Number(root?.total ?? root?.count ?? root?.total_count) > trades.length;
-        const latest = portfolioStore.getState();
         portfolioStore.setState({
           brokerExecutedTrades: trades.map(trade => ({
             ...trade,
@@ -190,7 +189,6 @@ if (typeof window !== 'undefined') {
         }
       } catch (error: any) {
         if (generation !== freedomTradesSyncGeneration) return;
-        const latest = portfolioStore.getState();
         portfolioStore.setState({ brokerTradeHistoryStatus: 'stale' } as any);
         logTerminal(`[Freedom Warning] Executed-trade sync failed; existing positions were not changed (${error?.message || 'unknown error'}).`);
       }
