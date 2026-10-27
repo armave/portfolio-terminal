@@ -66,6 +66,21 @@ describe('Freedom executed trade history', () => {
     expect(options.cache).toBe('no-store');
   });
 
+  it('requests the full TradeNet history without a max cap', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ ok: true, data: { trades: { trade: [] } } })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchAllFreedomTradeNetTrades();
+
+    const [url] = fetchMock.mock.calls[0] as any;
+    expect(url).toContain('sort=0');
+    expect(url).not.toContain('max=');
+  });
+
   it('does not call an empty or malformed history response complete', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
