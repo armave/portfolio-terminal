@@ -86,7 +86,7 @@ describe('normalizeFreedomTrades', () => {
     expect(trades[1]).toMatchObject({ ticker: 'SHEL.US', side: 'SELL', profit: 2.26 });
   });
 
-  it('classifies margin and cash executions only from TradeNet go_sum', () => {
+  it('classifies positive margin requirements and leaves zero/missing requirements unclassified', () => {
     const trades = normalizeFreedomTrades({
       data: { result: { trades: { trade: [
         { id: 1, instr_nm: 'AAPL.US', type: 1, q: 2, p: 100, go_sum: '25.00' },
@@ -94,8 +94,21 @@ describe('normalizeFreedomTrades', () => {
         { id: 3, instr_nm: 'TSLA.US', type: 1, q: 2, p: 100 }
       ] } } }
     });
-    expect(trades.map(trade => trade.marginClassification)).toEqual(['margin', 'cash', 'unknown']);
+    expect(trades.map(trade => trade.marginClassification)).toEqual(['margin', 'unknown', 'unknown']);
     expect(trades[0].marginInitialRequirement).toBe(25);
+  });
+
+
+  it('does not classify zero go_sum values in the supplied Freedom production shape as cash', () => {
+    const trades = normalizeFreedomTrades({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      data: { trades: { trade: [
+        { id: '442648855', instr_nm: 'GOOGL.US', type: '1', q: '30.00000000', p: '163.35600000', go_sum: '.00000000' },
+        { id: '703813234', instr_nm: 'WDC.US', type: '2', q: '33.00000000', p: '436.00000000', go_sum: '.00000000' }
+      ] } }
+    });
+    expect(trades.map(trade => trade.marginClassification)).toEqual(['unknown', 'unknown']);
   });
 
   it('returns an empty list for unrecognized response shapes', () => {
