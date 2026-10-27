@@ -1389,13 +1389,7 @@ async function startApp(secret: string) {
 
   if (secret) await syncCloudState('pull');
 
-  const quoteRefreshInterval = document.getElementById('quoteRefreshInterval') as HTMLSelectElement | null;
   const initialQuoteRefreshInterval = getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS);
-
-  if (quoteRefreshInterval) {
-    quoteRefreshInterval.value = String(initialQuoteRefreshInterval);
-    quoteRefreshInterval.addEventListener('change', () => setQuoteRefreshInterval(quoteRefreshInterval.value));
-  }
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
 
   if (rolloverTimer !== null) clearInterval(rolloverTimer);
@@ -1406,7 +1400,6 @@ async function startApp(secret: string) {
     if (!document.hidden) applyOvernightRollover();
   });
 
-  setBrokerRuleInputs();
 
   // Avoid launching a duplicate per-ticker analyst request while the initial
   // batch already contains the same deep Yahoo data for all tracked symbols.
