@@ -41,13 +41,13 @@ describe('buildFreedomMarginLedger', () => {
     expect(result.positions.AAPL).toMatchObject({ ticker: 'AAPL', shares: 15, currentPrice: 110, pt: 0 });
   });
 
-  it('does not overwrite positions when a trade has unknown margin classification', () => {
+  it('keeps unclassified buys out of the margin ledger without blocking transferred shares', () => {
     const result = buildFreedomMarginLedger([
       trade({ id: '1', side: 'BUY', quantity: 10, price: 100, marginClassification: 'unknown', marginInitialRequirement: null })
     ], { AAPL: { ticker: 'AAPL', shares: 10, currentPrice: 101, pt: 120, commBuy: 0 } });
 
-    expect(result.reliable).toBe(false);
-    expect(result.reason).toContain('lack TradeNet margin classification');
+    expect(result.reliable).toBe(true);
+    expect(result.positions).toEqual({});
   });
 
   it('fails closed when a sell exceeds known margin shares', () => {
@@ -57,6 +57,41 @@ describe('buildFreedomMarginLedger', () => {
 
     expect(result.reliable).toBe(false);
     expect(result.reason).toContain('exceeds known active margin shares');
+  });
+
+  it('preserves cash-transferred tranches across rebuilds and subtracts only later sells', () => {
+    const current = {
+      AAPL: {
+        ticker: 'AAPL', shares: 10, currentPrice: 100, pt: 0, commBuy: 0,
+        tranches: [{
+          qty: 6, transferQty: 10, price: 100, date: '2026-10-01',
+          classificationTransfer: true, afterTradeId: '100'
+        }]
+      }
+    };
+    const trades = [
+      trade({ id: '90', side: 'SELL', quantity: 4, price: 110, marginClassification: 'unknown', executedAt: '2026-09-30T10:00:00' }),
+      trade({ id: '101', side: 'SELL', quantity: 3, price: 110, marginClassification: 'unknown', executedAt: '2026-10-02T10:00:00' })
+    ];
+    const result = buildFreedomMarginLedger(trades, current);
+    expect(result.reliable).toBe(true);
+    expect(result.positions.AAPL.shares).toBe(7);
+    expect(result.positions.AAPL.tranches).toEqual([
+      expect.objectContaining({ classificationTransfer: true, transferQty: 10, qty: 7 })
+    ]);
+  });
+
+  it('removes transferred shares after a full broker sale', () => {
+    const result = buildFreedomMarginLedger([
+      trade({ id: '101', side: 'SELL', quantity: 10, price: 110, marginClassification: 'unknown' })
+    ], {
+      AAPL: {
+        ticker: 'AAPL', shares: 10, currentPrice: 100, pt: 0, commBuy: 0,
+        tranches: [{ qty: 10, transferQty: 10, price: 100, classificationTransfer: true, afterTradeId: '100' }]
+      }
+    });
+    expect(result.reliable).toBe(true);
+    expect(result.positions).toEqual({});
   });
 
   it('does not treat an empty history response as proof all margin positions were sold', () => {
