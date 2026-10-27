@@ -307,7 +307,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           </div>
 
           {/* Cash Cushion Management Panel */}
-          <div id="cashCushionContainer" key={activeDeskView} class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk {...cashCushionProps} />}</div>
+          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk {...cashCushionProps} />}</div>
 
           {/* Keep the command console available on both Margin and Cash desks. */}
           <div id="tradingTerminalColumn" class="trading-terminal-column">
@@ -330,12 +330,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       {/* Closed Trade History */}
       <div
         id="closedHistoryContainer"
-        key={activeDeskView}
+       
         class={"desk-view-transition rounded-lg " + (activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
       >{hasOpenedClosedHistory && <ClosedHistoryDesk />}</div>
 
       {/* Settings */}
-      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} key={activeDeskView} id="settings">{hasOpenedSettings && settingsProps && <SettingsDesk {...settingsProps} />}</div>
+      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && settingsProps && <SettingsDesk {...settingsProps} />}</div>
 
       {/* Authentication is part of the application tree, not a second Preact root. */}
       <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>
