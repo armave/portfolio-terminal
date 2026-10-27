@@ -1124,7 +1124,15 @@ export class PortfolioStore {
         if (quantity <= 0 || price <= 0) return state;
         const date = todayIso();
         const existingTranches = marginPosition?.tranches || [];
-        const tranche = { qty: quantity, price, date, buyCommission: 0 };
+        const latestTradeId = (state.brokerExecutedTrades || [])
+          .map(trade => Number(trade.id))
+          .filter(Number.isFinite)
+          .reduce((max, id) => Math.max(max, id), 0);
+        const tranche = {
+          qty: quantity, price, date, buyCommission: 0,
+          classificationTransfer: true,
+          afterTradeId: String(latestTradeId)
+        };
         const tranches = [...existingTranches, tranche];
         const nextShares = (Number(marginPosition?.shares) || 0) + quantity;
         positions[clean] = {
