@@ -294,59 +294,25 @@ function loadTradernetRules() {
   }
 }
 
-function setBrokerRuleInputs() {
-  const annualInput = document.getElementById('annualMarginRateInput') as HTMLInputElement | null;
-  const dayCountInput = document.getElementById('interestDayCountInput') as HTMLInputElement | null;
-  const maintInput = document.getElementById('maintenanceMarginInput') as HTMLInputElement | null;
-  const stopOutInput = document.getElementById('stopOutRatioInput') as HTMLInputElement | null;
-  const rolloverInput = document.getElementById('rolloverTimeInput') as HTMLInputElement | null;
-  const commShareInput = document.getElementById('commissionPerShareInput') as HTMLInputElement | null;
-  const commVolInput = document.getElementById('commissionVolumeInput') as HTMLInputElement | null;
-  const minCommInput = document.getElementById('minimumCommissionInput') as HTMLInputElement | null;
-
-  if (annualInput) annualInput.value = (TRADERNET_RULES.annualRate * 100).toFixed(2);
-  if (dayCountInput) dayCountInput.value = String(TRADERNET_RULES.dayCountBasis);
-  if (maintInput) maintInput.value = (TRADERNET_RULES.maintenanceMarginRatio * 100).toFixed(2);
-  if (stopOutInput) {
-    stopOutInput.value = (TRADERNET_RULES.stopOutRatio * 100).toFixed(2);
-    stopOutInput.setCustomValidity('');
-  }
-  if (rolloverInput) {
-    rolloverInput.value = `${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')}`;
-  }
-  if (commShareInput) commShareInput.value = String(TRADERNET_RULES.commPerShare);
-  if (commVolInput) commVolInput.value = (TRADERNET_RULES.commVolumePct * 100).toFixed(2);
-  if (minCommInput) minCommInput.value = TRADERNET_RULES.minCommOrder.toFixed(2);
-}
-
-function saveBrokerRuleInputs(event: Event) {
-  event.preventDefault();
-  const form = event.currentTarget as HTMLFormElement;
-  const stopOutInput = document.getElementById('stopOutRatioInput') as HTMLInputElement;
-  stopOutInput.setCustomValidity('');
-  if (!form.reportValidity()) return;
-
-  const rolloverInput = document.getElementById('rolloverTimeInput') as HTMLInputElement;
-  const [rolloverHour, rolloverMinute] = rolloverInput.value.split(':').map(Number);
+function saveBrokerRuleInputs(values: import('./src/components/SettingsDesk').BrokerRulesFormValues) {
+  const [rolloverHour, rolloverMinute] = values.rolloverTime.split(':').map(Number);
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   const updatedRules = {
     ...TRADERNET_RULES,
-    annualRate: Number((document.getElementById('annualMarginRateInput') as HTMLInputElement).value) / 100,
-    dayCountBasis: Number((document.getElementById('interestDayCountInput') as HTMLInputElement).value),
-    maintenanceMarginRatio: Number((document.getElementById('maintenanceMarginInput') as HTMLInputElement).value) / 100,
-    stopOutRatio: Number(stopOutInput.value) / 100,
+    annualRate: Number(values.annualRate) / 100,
+    dayCountBasis: Number(values.dayCountBasis),
+    maintenanceMarginRatio: Number(values.maintenanceMargin) / 100,
+    stopOutRatio: Number(values.stopOutRatio) / 100,
     rolloverHour,
     rolloverMinute,
-    commPerShare: Number((document.getElementById('commissionPerShareInput') as HTMLInputElement).value),
-    commVolumePct: Number((document.getElementById('commissionVolumeInput') as HTMLInputElement).value) / 100,
-    minCommOrder: Number((document.getElementById('minimumCommissionInput') as HTMLInputElement).value)
+    commPerShare: Number(values.commPerShare),
+    commVolumePct: Number(values.commVolumePct) / 100,
+    minCommOrder: Number(values.minCommOrder)
   };
   if (updatedRules.stopOutRatio > updatedRules.maintenanceMarginRatio) {
-    stopOutInput.setCustomValidity('Stop-out equity must not exceed maintenance equity.');
-    stopOutInput.reportValidity();
+    showToast('Stop-out equity must not exceed maintenance equity.', 'error');
     return;
   }
-  stopOutInput.setCustomValidity('');
   Object.assign(TRADERNET_RULES, updatedRules);
   portfolioStore.updateAssumptions(updatedRules as any);
   saveBrokerRules(updatedRules);
@@ -357,14 +323,13 @@ function saveBrokerRuleInputs(event: Event) {
   }
   verifyTradernetRulesOnload();
   renderBoard();
+  renderSettingsPanel(true);
 }
-
 function resetBrokerRules() {
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   Object.assign(TRADERNET_RULES, DEFAULT_TRADERNET_RULES);
   portfolioStore.updateAssumptions(DEFAULT_TRADERNET_RULES as any);
   clearBrokerRules();
-  setBrokerRuleInputs();
   if (previousRollover !== `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`) {
     portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
     saveState(state, pushStateToGist);
