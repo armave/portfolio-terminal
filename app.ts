@@ -28,6 +28,7 @@ import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
   fetchYahooDeepStockData,
+  fetchAllFreedomTradeNetTrades,
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
@@ -148,12 +149,41 @@ if (typeof window !== 'undefined') {
         .map(item => `${item.ticker}: app margin ${item.marginQuantity}, Freedom total ${item.freedomQuantity}`)
         .join('; ');
       console.error('[Freedom quantity reconciliation failed]', reconciled.mismatches);
-      showToast(`Freedom quantity mismatch — ${detail}. Existing cash quantities were preserved for affected symbols.`, 'error');
+      showToast(`Freedom quantity mismatch — ${detail}. stale cash quantities were excluded for affected symbols.`, 'error');
       logTerminal(`[Freedom Warning] Broker quantities do not reconcile: ${detail}`);
     } else {
       logTerminal('[Freedom] Account balance, quantities and available broker prices refreshed.');
     }
     renderBoard();
+  });
+
+  // Executed trades are imported as read-only broker history. A capped or
+  // malformed response is marked incomplete; it must never be used to rewrite
+  // active positions or cost basis.
+  let freedomTradeSyncGeneration = 0;
+  window.addEventListener('tradenet:account-info', () => {
+    const generation = ++freedomTradeSyncGeneration;
+    void (async () => {
+      try {
+        const history = await fetchAllFreedomTradeNetTrades({ pageSize: 1000, maxPages: 20 });
+        if (generation !== freedomTradeSyncGeneration) return;
+        portfolioStore.setState({
+          brokerExecutedTrades: history.trades.map(trade => ({
+            ...trade,
+            source: 'Freedom TradeNet',
+            importedAt: Date.now()
+          })),
+          brokerTradeHistoryStatus: history.complete ? 'current' : 'incomplete'
+        } as any);
+        logTerminal(history.complete
+          ? `[Freedom] Imported ${history.trades.length} executed-trade records from TradeNet.`
+          : `[Freedom Warning] Imported ${history.trades.length} TradeNet records, but history completeness is unverified; active positions were not rewritten.`);
+      } catch (error: any) {
+        if (generation !== freedomTradeSyncGeneration) return;
+        portfolioStore.setState({ brokerTradeHistoryStatus: 'stale' } as any);
+        logTerminal(`[Freedom Warning] Executed-trade sync failed; active positions were not changed (${error?.message || 'unknown error'}).`);
+      }
+    })();
   });
 
   window.addEventListener('tradenet:account-info-error', () => {
