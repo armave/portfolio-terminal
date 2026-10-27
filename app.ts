@@ -5,7 +5,6 @@ import { render, h, type ComponentChild } from 'preact';
 function renderInto(vnode: ComponentChild, container: Element): void {
   render(vnode, container);
 }
-import { ClosedHistoryDesk } from './src/components/ClosedHistoryDesk';
 
 import {
   calculateBreakevenDays,
@@ -642,9 +641,7 @@ function toggleMarketInsights() {
 }
 
 function renderClosedHistoryPanel() {
-  const container = document.getElementById('closedHistoryContainer');
-  if (!container) return;
-  renderInto(h(ClosedHistoryDesk, null), container);
+  // ClosedHistoryDesk is owned by App and mounts when the view is first opened.
 }
 
 async function fetchBoardAnalystTarget(ticker: string, force = false) {
