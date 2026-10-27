@@ -10,8 +10,6 @@ import { formatUSD } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatUSD } from '../utils/formatters';
 import { EmptyStatePanel } from '../components/EmptyStatePanel';
-import { SummaryMetricsGrid } from '../components/SummaryMetricsGrid';
-import { ProjectionsTable } from '../components/ProjectionsTable';
 import { calculateCommission, calculateMarginInterest, collectOpenPositionTranches } from '../domain/portfolio';
 import {
   BrokerRules,
@@ -84,17 +82,9 @@ function renderPositionsTable(
     }
   }
 
-  renderInto(
-    h(ProjectionsTable, {
-      gross,
-      totalComms,
-      debtToUse,
-      marginChargedToUse,
-      entryDate,
-      dailyRate
-    }),
-    tableBody
-  );
+  window.dispatchEvent(new CustomEvent('terminal:projections-props', {
+    detail: { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate }
+  }));
 }
 
 function calculateCombinedMetrics(state: BoardState, rules: BrokerRules, tickers: string[], dailyRate: number) {
@@ -222,13 +212,9 @@ function renderSummaryCards(
   const tickers = Object.keys(state.positions || {});
   const isCombined = state.activeView === 'COMBINED' || (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
-  const metricsGridContainer = document.querySelector('.portfolio-metrics-grid');
-  if (metricsGridContainer) {
-    renderInto(
-      h(SummaryMetricsGrid, { state, rules, refreshIntervalMs }),
-      metricsGridContainer
-    );
-  }
+  window.dispatchEvent(new CustomEvent('terminal:summary-metrics-props', {
+    detail: { state, rules, refreshIntervalMs }
+  }));
 
   const titleEl = document.getElementById('boardTitle');
   const moveEl = document.getElementById('boardDailyMove');
