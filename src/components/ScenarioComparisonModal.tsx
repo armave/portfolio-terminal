@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ScenarioModalData } from '../features/terminal/commandDispatcher';
 
 interface ScenarioComparisonModalProps {
@@ -18,8 +18,10 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
   const [activeColumns, setActiveColumns] = useState(() => data.columns.map((_, index) => index));
   const [activePreset, setActivePreset] = useState(0);
   const [isClosing, setIsClosing] = useState(false);
+  const closingRef = useRef(false);
   const requestClose = () => {
-    if (isClosing) return;
+    if (closingRef.current) return;
+    closingRef.current = true;
     setIsClosing(true);
     window.setTimeout(onClose, 180);
   };
@@ -74,7 +76,7 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
         input.setSelectionRange(input.value.length, input.value.length);
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }
-      onClose();
+      requestClose();
     } else if (action.invert) {
       setActiveColumns(columns => [...columns].reverse());
     } else if (action.columnIndexes?.length) {
