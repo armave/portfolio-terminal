@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { formatQuoteMetadata, formatRiskTrigger, formatTrancheDate, formatUSD, getQuoteFreshness } from './formatters';
+import { decodeHtmlEntities, formatQuoteMetadata, formatRiskTrigger, formatTrancheDate, formatUSD, getQuoteFreshness } from './formatters';
 
 describe('display formatters', () => {
+  it('decodes common HTML character entities into plain text', () => {
+    expect(decodeHtmlEntities('It&#39;s a test')).toBe("It's a test");
+    expect(decodeHtmlEntities('&quot;quoted&quot;')).toBe('"quoted"');
+    expect(decodeHtmlEntities('A&amp;B')).toBe('A&B');
+    expect(decodeHtmlEntities('&lt;tag&gt;')).toBe('<tag>');
+    expect(decodeHtmlEntities('It&#39;s &quot;up&quot; &amp; running &lt;today&gt;')).toBe('It\'s "up" & running <today>');
+    expect(decodeHtmlEntities('&#x27;hex&#x27; &#34;decimal&#34; &copy;')).toBe("'hex' \"decimal\" ©");
+    expect(decodeHtmlEntities('unknown &notAnEntity; stays encoded')).toBe('unknown &notAnEntity; stays encoded');
+  });
+
   it('formats currency consistently and safely', () => {
     expect(formatUSD(1234.5)).toBe('1,234.50');
     expect(formatUSD('12')).toBe('12.00');
