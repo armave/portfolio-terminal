@@ -22,10 +22,10 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
       </div>
       <div class="margin-risk-meter" role="progressbar" aria-label="Account equity percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth}>
-        <span class="margin-risk-segment-floor"></span><span class="margin-risk-segment-buffer"></span><span class="margin-risk-segment-capacity"></span>
+        <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceMarginRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, 40 - Math.min(100, Math.max(0, rules.maintenanceMarginRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
         <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
       </div>
-      <div class="margin-risk-legend"><span>{(rules.maintenanceMarginRatio * 100).toFixed(1)}% maintenance</span><span>{Math.min(100, Math.max(0, rules.maintenanceMarginRatio * 100 + 30)).toFixed(1)}% reference</span><span>100% assets</span></div>
+      <div class="margin-risk-legend"><span>{(rules.maintenanceMarginRatio * 100).toFixed(1)}% maintenance</span><span>40% reference</span><span>100% assets</span></div>
       <div class="margin-risk-gauge-grid">
         <div class="margin-risk-gauge-item">
           <div class="margin-risk-gauge-row"><span class="margin-risk-label">MARGIN-CALL BUFFER</span><strong>{Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct.toFixed(1) + '%' : '—'}</strong></div>
