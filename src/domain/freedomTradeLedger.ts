@@ -77,7 +77,7 @@ export function buildFreedomMarginLedger(
 
   const transferredByTicker = new Map<string, NonNullable<PositionRecord['tranches']>>();
   for (const [key, previous] of Object.entries(currentPositions || {})) {
-    const ticker = String(previous.ticker || key).trim().toUpperCase().replace(/\\.US$/i, '');
+    const ticker = String(previous.ticker || key).trim().toUpperCase().replace(/\.US$/i, '');
     const transfers = (previous.tranches || [])
       .filter(tranche => tranche.classificationTransfer)
       .map(tranche => ({ ...tranche, qty: Math.max(0, Number(tranche.transferQty ?? tranche.qty) || 0) }));
@@ -85,7 +85,7 @@ export function buildFreedomMarginLedger(
     for (const tranche of transfers) {
       const watermark = Number(tranche.afterTradeId || 0);
       const laterSells = ordered.filter(trade => {
-        const tradeTicker = String(trade.ticker ?? '').trim().toUpperCase().replace(/\\.US$/i, '');
+        const tradeTicker = String(trade.ticker ?? '').trim().toUpperCase().replace(/\.US$/i, '');
         const side = String(trade.side ?? '').trim().toUpperCase();
         const id = Number(trade.id);
         return tradeTicker === ticker && ['SELL', '2'].includes(side) &&
@@ -129,7 +129,7 @@ export function buildFreedomMarginLedger(
     if (transferShares <= 1e-6) continue;
     const existing = positions[ticker];
     const previous = Object.values(currentPositions).find(position =>
-      String(position.ticker ?? '').trim().toUpperCase().replace(/\\.US$/i, '') === ticker
+      String(position.ticker ?? '').trim().toUpperCase().replace(/\.US$/i, '') === ticker
     );
     const brokerTranches = (existing?.tranches || []).filter(tranche => !tranche.classificationTransfer);
     const allTranches = [...brokerTranches, ...tranches];
