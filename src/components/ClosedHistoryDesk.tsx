@@ -112,6 +112,7 @@ export function ClosedHistoryDesk() {
   const [cashflowImportMessage, setCashflowImportMessage] = useState('');
   const [tradesPage, setTradesPage] = useState(1);
   const lastRecalculationKey = useRef('');
+  const historyHydrated = useRef(false);
   // Load cloud history once. An imported workbook is a complete snapshot: do not
   // union it with an older cloud workbook, which can resurrect stale rows.
   useEffect(() => {
@@ -123,6 +124,7 @@ export function ClosedHistoryDesk() {
       const localCashflows = current.cashflows?.length ? current.cashflows : saved.cashflows;
       const localExecutions = current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : saved.brokerExecutedTrades;
       const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
+      historyHydrated.current = true;
       const resolved = {
         brokerExecutedTrades: localExecutions.length ? localExecutions : (cloud.brokerExecutedTrades || []),
         cashflows: localCashflows.length ? localCashflows : (cloud.cashflows || [])
@@ -379,6 +381,15 @@ export function ClosedHistoryDesk() {
       const fingerprint = (rows: any[]) => JSON.stringify(rows);
       if (fingerprint(current) !== fingerprint(normalized)) {
         portfolioStore.setState({ brokerExecutedTrades: normalized.map((trade) => ({ ...trade })) });
+        // Sync only when the authoritative broker history actually changes, and
+        // only after initial cloud hydration. Initial reconciliation is handled by
+        // the load effect above so it doesn't race a second save against that pull.
+        if (historyHydrated.current) {
+          void pushCloudHistory({
+            brokerExecutedTrades: normalized,
+            cashflows: portfolioStore.getState().cashflows || []
+          }).catch(error => console.error('Unable to sync updated broker history:', error));
+        }
       }
     };
     const readCurrentTrades = () => {
