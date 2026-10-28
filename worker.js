@@ -56,9 +56,9 @@ async function withProviderCache(provider, key, fetcher) {
 }
 
 const ALLOWED_GEMINI_MODELS = new Set([
-    "gemini-3.1-flash-lite", "gemini-2.5-flash-lite", "gemini-3.1-flash",
-    "gemini-3.1-pro", "gemini-2.5-flash", "gemini-2.5-pro",
-    "gemini-flash", "gemini-pro", "gemini-2.0-flash-lite", "gemini-2.0-flash"
+    "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite",
+    "gemini-3.1-flash", "gemini-3.1-pro", "gemini-2.5-flash",
+    "gemini-2.5-pro", "gemini-flash", "gemini-pro"
 ]);
 
 function jsonError(message, status, headers) {
@@ -629,10 +629,9 @@ export default {
                 // Keep proxy model selection bounded to a known allowlist.
                 const rawCandidates = [
                     body.model,
-                    "gemini-2.5-flash-lite",
-                    "gemini-2.0-flash-lite",
-                    "gemini-2.0-flash",
+                    "gemini-3.8-flash",
                     "gemini-3.1-flash-lite",
+                    "gemini-2.5-flash-lite",
                     "gemini-3.1-flash"
                 ].filter(Boolean).map(model => model.replace(/^models\//, "")).filter(model => ALLOWED_GEMINI_MODELS.has(model));
                 const candidateModels = Array.from(new Set(rawCandidates)).slice(0, 3);
