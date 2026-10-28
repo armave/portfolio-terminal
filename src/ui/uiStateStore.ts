@@ -113,3 +113,28 @@ export function useAnalystConsensus(): AnalystConsensusState {
   useEffect(() => subscribeAnalystConsensus(setState), []);
   return state;
 }
+
+export interface BoardTitleState {
+  title: string;
+  showDailyMove: boolean;
+}
+
+let boardTitle: BoardTitleState = { title: 'COMBINED PORTFOLIO', showDailyMove: false };
+const boardTitleListeners = new Set<(state: BoardTitleState) => void>();
+
+export function setBoardTitle(state: BoardTitleState): void {
+  if (state.title === boardTitle.title && state.showDailyMove === boardTitle.showDailyMove) return;
+  boardTitle = state;
+  boardTitleListeners.forEach((listener) => listener(boardTitle));
+}
+
+function subscribeBoardTitle(listener: (state: BoardTitleState) => void): () => void {
+  boardTitleListeners.add(listener);
+  return () => boardTitleListeners.delete(listener);
+}
+
+export function useBoardTitle(): BoardTitleState {
+  const [state, setState] = useState(boardTitle);
+  useEffect(() => subscribeBoardTitle(setState), []);
+  return state;
+}
