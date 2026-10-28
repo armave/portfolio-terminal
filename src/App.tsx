@@ -1,3 +1,5 @@
+import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
+import { useActiveDeskView, useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useTradingConsoleProps, useCashCushionProps, useTickerTabsProps, useSummaryMetricsProps, useProjectionsProps, useEmptyStateProps, useMarketInsightsProps, useExternalLinksProps, useSettingsProps } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -7,7 +9,7 @@ import { TickerTabs, type TickerTabsProps } from './components/TickerTab';
 import { SummaryMetricsGrid, type SummaryMetricsGridProps } from './components/SummaryMetricsGrid';
 import { ProjectionsTable, type ProjectionsTableProps } from './components/ProjectionsTable';
 import { MarketInsightsPanel, type MarketInsightsPanelProps } from './components/MarketInsightsPanel';
-import { TradingConsole, type TradingConsoleProps } from './components/TradingConsole';
+import { TradingConsole } from './components/TradingConsole';
 import { BoardExternalLinks, type BoardExternalLinksProps } from './components/BoardExternalLinks';
 import { EmptyStatePanel, type EmptyStatePanelProps } from './components/EmptyStatePanel';
 import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
@@ -27,7 +29,7 @@ interface AppProps {
 
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
-  const [activeDeskView, setActiveDeskView] = useState('COMBINED');
+  const activeDeskView = useActiveDeskView();
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [cashCushionProps, setCashCushionProps] = useState<CashCushionDeskProps>({});
@@ -37,15 +39,31 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [summaryMetricsProps, setSummaryMetricsProps] = useState<SummaryMetricsGridProps | null>(null);
   const [projectionsProps, setProjectionsProps] = useState<ProjectionsTableProps | null>(null);
   const [marketInsightsProps, setMarketInsightsProps] = useState<MarketInsightsPanelProps | null>(null);
-  const [tradingConsoleProps, setTradingConsoleProps] = useState<TradingConsoleProps | null>(null);
+  const tradingConsoleProps = useTradingConsoleProps();
+  const sharedCashCushionProps = useCashCushionProps();
+  const sharedTickerTabsProps = useTickerTabsProps();
+  const sharedSummaryMetricsProps = useSummaryMetricsProps();
+  const sharedProjectionsProps = useProjectionsProps();
+  const sharedEmptyStateProps = useEmptyStateProps();
+  const sharedMarketInsightsProps = useMarketInsightsProps();
+  const sharedExternalLinksProps = useExternalLinksProps();
+  const sharedSettingsProps = useSettingsProps();
+
+  useEffect(() => setCashCushionProps(sharedCashCushionProps), [sharedCashCushionProps]);
+  useEffect(() => setTickerTabsProps(sharedTickerTabsProps), [sharedTickerTabsProps]);
+  useEffect(() => setSummaryMetricsProps(sharedSummaryMetricsProps), [sharedSummaryMetricsProps]);
+  useEffect(() => setProjectionsProps(sharedProjectionsProps), [sharedProjectionsProps]);
+  useEffect(() => setEmptyStateProps(sharedEmptyStateProps), [sharedEmptyStateProps]);
+  useEffect(() => setMarketInsightsProps(sharedMarketInsightsProps), [sharedMarketInsightsProps]);
+  useEffect(() => setExternalLinksProps(sharedExternalLinksProps), [sharedExternalLinksProps]);
+  useEffect(() => setSettingsProps(sharedSettingsProps), [sharedSettingsProps]);
   const [externalLinksProps, setExternalLinksProps] = useState<BoardExternalLinksProps | null>(null);
   const [emptyStateProps, setEmptyStateProps] = useState<EmptyStatePanelProps | null>(null);
-  const [boardTitle, setBoardTitle] = useState('COMBINED PORTFOLIO');
-  const [showDailyMove, setShowDailyMove] = useState(false);
-  const [breakevenText, setBreakevenText] = useState('Combined Breakeven: 0 days');
-  const [analystConsensus, setAnalystConsensus] = useState({ text: '', title: '', className: 'hidden' });
-  const [cloudStatus, setCloudStatusState] = useState({ status: 'idle', text: 'OFFLINE' });
-  const [cloudSyncStatus, setCloudSyncStatus] = useState({ status: 'idle', text: '' });
+  const { title: boardTitle, showDailyMove } = useBoardTitle();
+  const breakevenText = useBreakevenText();
+  const analystConsensus = useAnalystConsensus();
+  const cloudStatus = useCloudStatus();
+  const cloudSyncStatus = useCloudSyncStatus();
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
@@ -278,10 +296,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         });
       }
     };
-    window.addEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
+    addUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
     return () => {
       requestGeneration += 1;
-      window.removeEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
+      removeUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
     };
   }, []);
 
@@ -292,33 +310,23 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const detail = (event as CustomEvent<{ isOpen?: boolean }>).detail;
       setAuthOpen(Boolean(detail?.isOpen));
     };
-    const handleDeskView = (event: Event) => {
-      const detail = (event as CustomEvent<{ view?: string }>).detail;
-      if (detail?.view) {
-        setActiveDeskView(detail.view);
-        if (detail.view === 'CLOSED_HISTORY') setHasOpenedClosedHistory(true);
-        if (detail.view === 'CASH_CUSHION' || detail.view === 'BALANCE') setHasOpenedCashCushion(true);
-        if (detail.view === 'SETTINGS') setHasOpenedSettings(true);
-      }
-    };
     const handleScenarioModal = (event: Event) => setScenarioModalData((event as CustomEvent<ScenarioModalData | null>).detail ?? null);
-    window.addEventListener('terminal:scenario-modal', handleScenarioModal);
-    window.addEventListener('terminal:auth-visibility', handleAuthVisibility);
+    addUiEventListener('terminal:scenario-modal', handleScenarioModal);
+    addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
     const handleCashCushionProps = (event: Event) => {
       const detail = (event as CustomEvent<CashCushionDeskProps>).detail;
       if (detail) setCashCushionProps(detail);
     };
-    window.addEventListener('terminal:active-view', handleDeskView);
     const handleSettingsProps = (event: Event) => {
       const detail = (event as CustomEvent<SettingsDeskProps>).detail;
       if (detail) setSettingsProps(detail);
     };
-    window.addEventListener('terminal:cash-cushion-props', handleCashCushionProps);
+    addUiEventListener('terminal:cash-cushion-props', handleCashCushionProps);
     const handleTickerTabsProps = (event: Event) => {
       const detail = (event as CustomEvent<TickerTabsProps>).detail;
       if (detail) setTickerTabsProps(detail);
     };
-    window.addEventListener('terminal:settings-props', handleSettingsProps);
+    addUiEventListener('terminal:settings-props', handleSettingsProps);
     const handleSummaryMetricsProps = (event: Event) => {
       const detail = (event as CustomEvent<SummaryMetricsGridProps>).detail;
       if (detail) setSummaryMetricsProps(detail);
@@ -327,17 +335,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const detail = (event as CustomEvent<ProjectionsTableProps>).detail;
       if (detail) setProjectionsProps(detail);
     };
-    window.addEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
-    window.addEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
+    addUiEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
+    addUiEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
     const handleMarketInsightsProps = (event: Event) => {
       const detail = (event as CustomEvent<MarketInsightsPanelProps>).detail;
       if (detail) setMarketInsightsProps(detail);
     };
-    window.addEventListener('terminal:projections-props', handleProjectionsProps);
-    const handleTradingConsoleProps = (event: Event) => {
-      const detail = (event as CustomEvent<TradingConsoleProps>).detail;
-      if (detail) setTradingConsoleProps(detail);
-    };
+    addUiEventListener('terminal:projections-props', handleProjectionsProps);
     const handleExternalLinksProps = (event: Event) => {
       const detail = (event as CustomEvent<BoardExternalLinksProps>).detail;
       if (detail) setExternalLinksProps(detail);
@@ -345,55 +349,31 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const handleEmptyStateProps = (event: Event) => {
       setEmptyStateProps((event as CustomEvent<EmptyStatePanelProps | null>).detail);
     };
-    window.addEventListener('terminal:market-insights-props', handleMarketInsightsProps);
-    window.addEventListener('terminal:trading-console-props', handleTradingConsoleProps);
-    window.addEventListener('terminal:external-links-props', handleExternalLinksProps);
-    const handleBoardTitle = (event: Event) => {
-      const detail = (event as CustomEvent<{ title: string; showDailyMove: boolean }>).detail;
-      if (detail) {
-        setBoardTitle(detail.title);
-        setShowDailyMove(detail.showDailyMove);
-      }
-    };
-    const handleCloudStatus = (event: Event) => { const detail = (event as CustomEvent<{status:string;text:string}>).detail; if (detail) setCloudStatusState(detail); };
-    const handleCloudSyncStatus = (event: Event) => { const detail = (event as CustomEvent<{status:string;text:string}>).detail; if (detail) setCloudSyncStatus(detail); };
+    addUiEventListener('terminal:market-insights-props', handleMarketInsightsProps);
+    addUiEventListener('terminal:external-links-props', handleExternalLinksProps);
     const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
-    const handleAnalystConsensus = (event: Event) => {
-      const detail = (event as CustomEvent<{ text: string; title: string; className: string }>).detail;
-      if (detail) setAnalystConsensus(detail);
-    };
-    const handleBreakevenText = (event: Event) => {
-      const detail = (event as CustomEvent<{ text: string }>).detail;
-      if (detail) setBreakevenText(detail.text);
-    };
-    window.addEventListener('terminal:empty-state-props', handleEmptyStateProps);
-    window.addEventListener('terminal:board-title', handleBoardTitle);
-    window.addEventListener('terminal:breakeven-text', handleBreakevenText);
-    window.addEventListener('terminal:analyst-consensus', handleAnalystConsensus);
-    window.addEventListener('terminal:cloud-status', handleCloudStatus);
-    window.addEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
-    window.addEventListener('terminal:startup-state', handleStartupState);
+    addUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
+    addUiEventListener('terminal:startup-state', handleStartupState);
     return () => {
-      window.removeEventListener('terminal:scenario-modal', handleScenarioModal);
-      window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
-      window.removeEventListener('terminal:active-view', handleDeskView);
-      window.removeEventListener('terminal:cash-cushion-props', handleCashCushionProps);
-      window.removeEventListener('terminal:settings-props', handleSettingsProps);
-      window.removeEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
-      window.removeEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
-      window.removeEventListener('terminal:projections-props', handleProjectionsProps);
-      window.removeEventListener('terminal:market-insights-props', handleMarketInsightsProps);
-      window.removeEventListener('terminal:trading-console-props', handleTradingConsoleProps);
-      window.removeEventListener('terminal:external-links-props', handleExternalLinksProps);
-      window.removeEventListener('terminal:empty-state-props', handleEmptyStateProps);
-      window.removeEventListener('terminal:board-title', handleBoardTitle);
-      window.removeEventListener('terminal:breakeven-text', handleBreakevenText);
-      window.removeEventListener('terminal:analyst-consensus', handleAnalystConsensus);
-      window.removeEventListener('terminal:cloud-status', handleCloudStatus);
-      window.removeEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
-      window.removeEventListener('terminal:startup-state', handleStartupState);
+      removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
+      removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
+      removeUiEventListener('terminal:cash-cushion-props', handleCashCushionProps);
+      removeUiEventListener('terminal:settings-props', handleSettingsProps);
+      removeUiEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
+      removeUiEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
+      removeUiEventListener('terminal:projections-props', handleProjectionsProps);
+      removeUiEventListener('terminal:market-insights-props', handleMarketInsightsProps);
+      removeUiEventListener('terminal:external-links-props', handleExternalLinksProps);
+      removeUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
+      removeUiEventListener('terminal:startup-state', handleStartupState);
     };
   }, []);
+
+  useEffect(() => {
+    if (activeDeskView === 'CLOSED_HISTORY') setHasOpenedClosedHistory(true);
+    if (activeDeskView === 'CASH_CUSHION' || activeDeskView === 'BALANCE') setHasOpenedCashCushion(true);
+    if (activeDeskView === 'SETTINGS') setHasOpenedSettings(true);
+  }, [activeDeskView]);
 
   // Closed History asks for trade history when mounted; do not also fetch from
   // a global navigation click listener, which caused duplicate broker requests.
@@ -605,7 +585,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
       {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} />}
-      {marginIntelligence && <MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => window.dispatchEvent(new CustomEvent('terminal:margin-intelligence-request', { detail: { ticker: marginIntelligence.ticker, refresh: true } }))} />}
+      {marginIntelligence && <MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} />}
       <div id="cloudStatus" class="flex items-center gap-2 text-[10px] font-mono text-slate-400" aria-live="polite">
         <span class={`w-1.5 h-1.5 rounded-full ${cloudStatus.status === 'syncing' ? 'bg-amber-400 animate-pulse' : cloudStatus.status === 'synced' ? 'bg-emerald-400' : cloudStatus.status === 'error' ? 'bg-rose-400' : 'bg-slate-500'}`} />
         <span>KV: {cloudStatus.text.toUpperCase()}</span>
@@ -619,8 +599,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           {!startupState.failed && <div class="startup-loading__track" aria-hidden="true"><span /></div>}
           <div class="startup-loading__hint">{startupState.failed ? 'Check your connection, then retry or continue offline.' : 'Restoring saved data and market connections'}</div>
           {startupState.failed && <div class="startup-loading__actions">
-            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('terminal:startup-retry'))}>Retry</button>
-            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('terminal:startup-offline'))}>Continue offline</button>
+            <button type="button" onClick={() => emitUiEvent('terminal:startup-retry', undefined)}>Retry</button>
+            <button type="button" onClick={() => emitUiEvent('terminal:startup-offline', undefined)}>Continue offline</button>
           </div>}
         </div>
       </div>}

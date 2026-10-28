@@ -3,6 +3,8 @@ import CryptoJS from 'crypto-js';
 import {
   pullCloudState,
   pushCloudState,
+  pushCloudHistory,
+  pullCloudHistory,
   syncCloudState,
   proxyFetch,
   fetchFallbackQuote,
@@ -934,4 +936,172 @@ describe('Yahoo deep-data forced refresh', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+});
+
+
+describe('closed-history cloud write serialization', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('serializes concurrent history pushes so each reads the revision after the previous write', async () => {
+    let revision = 4;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        const expectedRevision = Number(String((init.headers as Record<string, string>)['If-Match']).replaceAll('"', ''));
+        if (expectedRevision !== revision) {
+          return new Response(JSON.stringify({ conflict: true, currentRevision: revision }), {
+            status: 409,
+            headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+          });
+        }
+        revision += 1;
+        return new Response(JSON.stringify({ success: true, revision }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+        });
+      }
+      return new Response(JSON.stringify({ encryptedPayload: 'existing-history' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = pushCloudHistory({
+      brokerExecutedTrades: [{ id: 'trade-1' }],
+      cashflows: [{ id: 'fee-1' }]
+    }, 'history-secret');
+    const second = pushCloudHistory({
+      brokerExecutedTrades: [{ id: 'trade-2' }],
+      cashflows: [{ id: 'fee-2' }]
+    }, 'history-secret');
+
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+    const historyCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('/api/history'));
+    expect(historyCalls).toHaveLength(4);
+    expect(historyCalls.map((call) => (call[1] as RequestInit).method)).toEqual([
+      'GET', 'POST', 'GET', 'POST'
+    ]);
+    expect((historyCalls[1][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"4"' });
+    expect((historyCalls[3][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"5"' });
+  });
+});
+
+
+describe('closed-history request deduplication', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('skips a second save when newly allocated arrays contain the same history', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ETag: '"2"'
+        }
+      });
+      return new Response(JSON.stringify({ encryptedPayload: 'existing-history' }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ETag: '"1"' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const first = { brokerExecutedTrades: [{ id: 'same-trade' }], cashflows: [{ id: 'same-fee' }] };
+    const second = { brokerExecutedTrades: [{ id: 'same-trade' }], cashflows: [{ id: 'same-fee' }] };
+
+    await expect(pushCloudHistory(first, 'same-history-secret')).resolves.toBe(true);
+    await expect(pushCloudHistory(second, 'same-history-secret')).resolves.toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(['GET', 'POST']);
+  });
+
+  it('shares one in-flight cloud history read among concurrent callers', async () => {
+    const secret = 'shared-history-read-secret';
+    const encryptedPayload = await encryptV2Fixture({
+      brokerExecutedTrades: [{ id: 'trade-1' }],
+      cashflows: [{ id: 'fee-1' }]
+    }, secret);
+    let resolveFetch!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveFetch = resolve; }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = pullCloudHistory(secret);
+    const second = pullCloudHistory(secret);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveFetch(new Response(JSON.stringify({ encryptedPayload }), {
+      status: 200, headers: { 'Content-Type': 'application/json', ETag: '"7"' }
+    }));
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { brokerExecutedTrades: [{ id: 'trade-1' }], cashflows: [{ id: 'fee-1' }] },
+      { brokerExecutedTrades: [{ id: 'trade-1' }], cashflows: [{ id: 'fee-1' }] }
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe('closed-history migration revision reuse', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('uses the revision from the migration GET instead of issuing a second GET before POST', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ETag: '"1"' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(pushCloudHistory({
+      brokerExecutedTrades: [{ id: 'migration-revision-reuse-trade-20261028' }],
+      cashflows: [{ id: 'migration-revision-reuse-fee-20261028' }]
+    }, 'migration-revision-reuse-secret-20261028', 0)).resolves.toBe(true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('POST');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"0"' });
+  });
+});
+
+
+describe('closed-history migration/read race', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('returns the just-migrated record to a concurrent load that initially saw 404', async () => {
+    const secret = 'migration-read-race-secret-20261028';
+    let resolveInitialGet!: (response: Response) => void;
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return Promise.resolve(new Response(JSON.stringify({ success: true, revision: 1 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: '"1"' }
+        }));
+      }
+      return new Promise<Response>((resolve) => { resolveInitialGet = resolve; });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const concurrentRead = pullCloudHistory(secret);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const migrated = {
+      brokerExecutedTrades: [{ id: 'migration-race-trade' }],
+      cashflows: [{ id: 'migration-race-fee' }]
+    };
+    await expect(pushCloudHistory(migrated, secret, 0)).resolves.toBe(true);
+    resolveInitialGet(new Response(JSON.stringify({ error: 'Portfolio state not found.' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', ETag: '"0"' }
+    }));
+
+    await expect(concurrentRead).resolves.toEqual(migrated);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(['GET', 'POST']);
+  });
 });

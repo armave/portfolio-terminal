@@ -1,4 +1,5 @@
 import { formatUSD, PositionRecord } from '../ui/renderBoard';
+import { emitUiEvent } from '../ui/uiEventBus';
 
 export interface ConsoleQuickActionsProps {
   position?: PositionRecord;
@@ -31,7 +32,7 @@ function prefillTerminalInput(
 }
 
 function requestMarginIntelligence(ticker?: string) {
-  window.dispatchEvent(new CustomEvent('terminal:margin-intelligence-request', { detail: { ticker } }));
+  emitUiEvent('terminal:margin-intelligence-request', { ticker });
 }
 
 export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillCommand }: ConsoleQuickActionsProps) {

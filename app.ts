@@ -1,11 +1,6 @@
-import { render, h, type ComponentChild } from 'preact';
-
-/** Single mount boundary for legacy shell containers. New UI should move into
- * the application tree; this helper makes remaining container mounts auditable. */
-function renderInto(vnode: ComponentChild, container: Element): void {
-  render(vnode, container);
-}
-
+import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
+import { setTradingConsoleProps, setSettingsPropsState, setMarketInsightsPropsState, setExternalLinksPropsState } from './src/ui/uiStateStore';
+import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
   calculateCommission,
@@ -42,6 +37,7 @@ import {
   restoreGatewaySecret,
   persistGatewaySecret,
   loadSavedState,
+  loadSavedHistory,
   saveApiKeys,
   saveBrokerRules,
   saveGatewaySecret,
@@ -59,9 +55,9 @@ import {
 import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
+import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets } from './src/domain/freedomPortfolio';
 import { InsightSection } from './src/components/MarketInsightsPanel';
-import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 
@@ -111,7 +107,7 @@ let activeLimitSellTargets: Record<string, number> = {};
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
 // ==========================================
 function setCloudStatus(status: string, text: string) {
-  window.dispatchEvent(new CustomEvent('terminal:cloud-status', { detail: { status, text } }));
+  setCloudStatusState({ status, text });
 }
 
 // Freedom is authoritative for broker-reported account balance, aggregate
@@ -161,7 +157,16 @@ if (typeof window !== 'undefined') {
     const trades = (event as CustomEvent).detail;
     if (!Array.isArray(trades)) return;
     const current = portfolioStore.getState();
-    portfolioStore.setState({ brokerExecutedTrades: trades });
+    // portfolioStore.setState persists synchronously. Reattach local fee allocations
+    // BEFORE setting raw broker rows, otherwise this listener overwrites the
+    // separately persisted, fee-enriched history before ClosedHistoryDesk handles
+    // the same event.
+    const savedFeeRows = loadSavedHistory().brokerExecutedTrades;
+    const tradesWithPersistedFees = preservePersistedBrokerFeeAllocations(
+      trades,
+      [...savedFeeRows, ...(current.brokerExecutedTrades || [])]
+    );
+    portfolioStore.setState({ brokerExecutedTrades: tradesWithPersistedFees });
     const snapshot = current.brokerAccountInfo;
     if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return;
     const classified = classifyFreedomPortfolio(
@@ -170,7 +175,7 @@ if (typeof window !== 'undefined') {
       current.cashCushion?.holdings || [],
       current.activeTrancheTypes || {},
       Date.now(),
-      trades,
+      tradesWithPersistedFees,
       TRADERNET_RULES
     );
     const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
@@ -345,11 +350,9 @@ async function syncCloudState(mode = 'push') {
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logTerminal,
     onStatusChange: (status) => {
-      window.dispatchEvent(new CustomEvent('terminal:cloud-sync-status', {
-        detail: status === 'synced'
-          ? { text: `Synced: ${new Date().toLocaleTimeString()}`, status: 'synced' }
-          : { text: 'Sync failed', status: 'error' }
-      }));
+      setCloudSyncStatus(status === 'synced'
+        ? { text: `Synced: ${new Date().toLocaleTimeString()}`, status: 'synced' }
+        : { text: 'Sync failed', status: 'error' });
     }
   });
 }
@@ -514,16 +517,14 @@ const switchView = setActiveView;
 
 function renderConsoleQuickActions() {
   const position = state.positions[state.activeView];
-  window.dispatchEvent(new CustomEvent('terminal:trading-console-props', {
-    detail: {
+  setTradingConsoleProps({
       position,
       onExecuteCommand: (command?: string) => executeCommand(command ?? '')
-    } satisfies import('./src/components/TradingConsole').TradingConsoleProps
-  }));
+    } satisfies import('./src/components/TradingConsole').TradingConsoleProps);
 }
 
 function updateCombinedBreakeven() {
-  const setText = (text: string) => window.dispatchEvent(new CustomEvent('terminal:breakeven-text', { detail: { text } }));
+  const setText = (text: string) => setBreakevenText(text);
 
   const tickers = Object.keys(state.positions);
   const totalDebt = Math.abs(state.balance);
@@ -586,9 +587,7 @@ function updateCombinedBreakeven() {
 
 function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
-  window.dispatchEvent(new CustomEvent('terminal:external-links-props', {
-    detail: { ticker: activeTicker } satisfies import('./src/components/BoardExternalLinks').BoardExternalLinksProps
-  }));
+  setExternalLinksPropsState({ ticker: activeTicker } satisfies import('./src/components/BoardExternalLinks').BoardExternalLinksProps);
 }
 
 function renderBoard() {
@@ -618,8 +617,7 @@ function renderBoard() {
 
 function renderMarketInsightsComponent() {
   const ticker = getMarketInsightsTicker();
-  window.dispatchEvent(new CustomEvent('terminal:market-insights-props', {
-    detail: {
+  setMarketInsightsPropsState({
       ticker,
       isOpen: true,
       activeSection: activeInsightSection as InsightSection,
@@ -628,8 +626,7 @@ function renderMarketInsightsComponent() {
         activeInsightSection = section;
         renderMarketInsightsComponent();
       }
-    } satisfies import('./src/components/MarketInsightsPanel').MarketInsightsPanelProps
-  }));
+    } satisfies import('./src/components/MarketInsightsPanel').MarketInsightsPanelProps);
 }
 
 function getMarketInsightsTicker() {
@@ -686,7 +683,7 @@ async function fetchBoardAnalystTarget(ticker: string, force = false) {
 }
 
 function renderBoardAnalystConsensus(ticker: string, force = false) {
-  const publish = (text: string, title = '', className = 'hidden') => window.dispatchEvent(new CustomEvent('terminal:analyst-consensus', { detail: { text, title, className } }));
+  const publish = (text: string, title = '', className = 'hidden') => setAnalystConsensus({ text, title, className });
   const hideConsensus = () => publish('');
   if (!ticker || !state.positions[ticker]) {
     hideConsensus();
@@ -1289,7 +1286,7 @@ function confirmAiPortfolioAction(action: any) {
 }
 
 function showScenarioModal(data: ScenarioModalData): void {
-  window.dispatchEvent(new CustomEvent('terminal:scenario-modal', { detail: data }));
+  emitUiEvent('terminal:scenario-modal', data);
 }
 
 async function executeCommand(commandText: string) {
@@ -1367,7 +1364,7 @@ async function executeCommand(commandText: string) {
   }
 
   const aiQuery = text.replace(/^(ai|ask)\s*:?\s*/i, '');
-  window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'CONNECTING...' }));
+  setAiStatus('CONNECTING...');
 
   try {
     const targetState: any = portfolioStore.getState();
@@ -1390,10 +1387,10 @@ async function executeCommand(commandText: string) {
       logTerminal(`[AI Advisor]: ${parsed.response || 'Executed.'}`);
     }
 
-    window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'READY' }));
+    setAiStatus('READY');
   } catch (err: any) {
     logTerminal(`[Error]: ${err.message}`);
-    window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'READY' }));
+    setAiStatus('READY');
   }
 }
 
@@ -1404,8 +1401,7 @@ function renderSettingsPanel(force = false) {
 
   // SettingsDesk is owned by App. Send current callbacks/rules as props instead
   // of creating a separate Preact root in the settings container.
-  window.dispatchEvent(new CustomEvent('terminal:settings-props', {
-    detail: {
+  setSettingsPropsState({
       rules,
       defaultRefreshIntervalMs: DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
       onSaveBrokerRules: saveBrokerRuleInputs,
@@ -1425,8 +1421,7 @@ function renderSettingsPanel(force = false) {
       onExportBackup: exportBackupJSON,
       onImportBackup: importBackupJSON,
       onResetToBlankState: resetToBlankState
-    } satisfies import('./src/components/SettingsDesk').SettingsDeskProps
-  }));
+    } satisfies import('./src/components/SettingsDesk').SettingsDeskProps);
   settingsPanelMounted = true;
   lastSettingsRulesSignature = rulesSignature;
 }
@@ -1434,12 +1429,12 @@ function renderSettingsPanel(force = false) {
 let appInitialized = false;
 
 function hideStartupLoading() {
-  window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: false, failed: false } }));
+  emitUiEvent('terminal:startup-state', { visible: false, failed: false });
 }
 
 setSecretGetter(() => getGatewaySecret());
 
-async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
+export async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
   const submittedSecret = secret.trim();
   if (!submittedSecret) {
     showToast('Please enter the Gateway Secret.', 'error');
@@ -1470,9 +1465,7 @@ async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
 function renderAuthModal(isOpen: boolean) {
   // App owns the auth overlay inside the main Preact tree. Communicate visibility
   // as state rather than mounting a second Preact root into a sibling container.
-  window.dispatchEvent(new CustomEvent('terminal:auth-visibility', {
-    detail: { isOpen }
-  }));
+  emitUiEvent('terminal:auth-visibility', { isOpen });
 }
 
 function showAuthContainer() {
@@ -1520,15 +1513,8 @@ async function startApp(secret: string) {
   hideStartupLoading();
 }
 
-async function initApp() {
+export async function initApp() {
   if (appInitialized) return;
-
-  const rootEl = document.getElementById('root');
-  if (rootEl && !document.getElementById('mainTerminalView')) {
-    renderInto(h(App, {
-      onSaveGatewaySecret: handleSaveGatewaySecret
-    }), rootEl);
-  }
 
   try {
     const secret = await restoreGatewaySecret();
@@ -1553,15 +1539,15 @@ async function initApp() {
 }
 
 function showStartupFailure() {
-  window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: true, failed: true } }));
+  emitUiEvent('terminal:startup-state', { visible: true, failed: true });
 }
 
 function bindStartupActions() {
-  window.addEventListener('terminal:startup-retry', () => {
-    window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: true, failed: false } }));
+  addUiEventListener('terminal:startup-retry', () => {
+    emitUiEvent('terminal:startup-state', { visible: true, failed: false });
     void initApp();
   });
-  window.addEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
+  addUiEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
 }
 bindStartupActions();
 
@@ -1576,11 +1562,4 @@ async function continueStartupOffline() {
     showStartupFailure();
   }
 }
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initApp);
-} else {
-  initApp();
-}
-
 
