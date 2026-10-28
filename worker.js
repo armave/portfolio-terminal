@@ -635,7 +635,7 @@ export default {
                     "gemini-3.1-flash-lite",
                     "gemini-3.1-flash"
                 ].filter(Boolean).map(model => model.replace(/^models\//, "")).filter(model => ALLOWED_GEMINI_MODELS.has(model));
-                const candidateModels = Array.from(new Set(rawCandidates)).slice(0, 4);
+                const candidateModels = Array.from(new Set(rawCandidates)).slice(0, 3);
 
                 let lastResponse = null;
                 let lastData = null;
@@ -647,7 +647,7 @@ export default {
                     let timeoutId;
                     try {
                         // Keep the timeout active until the response body has been consumed.
-                        timeoutId = setTimeout(() => controller.abort(), 3500);
+                        timeoutId = setTimeout(() => controller.abort(new Error('Gemini upstream request timed out after 10 seconds')), 10_000);
                         const res = await fetch(
                             `https://generativelanguage.googleapis.com/v1beta/${modelName}:generateContent?key=${encodeURIComponent(geminiKey.trim())}`,
                             {
