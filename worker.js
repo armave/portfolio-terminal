@@ -502,7 +502,7 @@ export default {
             }
 
             // --- ACTION 0: Durable Object cloud portfolio state ---
-            if (pathname === "/api/state" || pathname === "/api/history" || action === "state" || action === "history") {
+            if (pathname === "/api/state" || pathname === "/api/history" || pathname === "/api/margin-digest" || action === "state" || action === "history") {
                 if (!env.PORTFOLIO_STATE_DO) {
                     return new Response(JSON.stringify({ error: "PORTFOLIO_STATE_DO binding is missing." }), {
                         status: 500,
