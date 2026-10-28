@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
-import { setAiStatus, setBreakevenText } from './src/ui/uiStateStore';
+import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
   calculateCommission,
@@ -104,7 +104,7 @@ let activeLimitSellTargets: Record<string, number> = {};
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
 // ==========================================
 function setCloudStatus(status: string, text: string) {
-  emitUiEvent('terminal:cloud-status', { status, text });
+  setCloudStatusState({ status, text });
 }
 
 // Freedom is authoritative for broker-reported account balance, aggregate
@@ -338,9 +338,9 @@ async function syncCloudState(mode = 'push') {
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logTerminal,
     onStatusChange: (status) => {
-      emitUiEvent('terminal:cloud-sync-status', status === 'synced'
-          ? { text: `Synced: ${new Date().toLocaleTimeString()}`, status: 'synced' }
-          : { text: 'Sync failed', status: 'error' });
+      setCloudSyncStatus(status === 'synced'
+        ? { text: `Synced: ${new Date().toLocaleTimeString()}`, status: 'synced' }
+        : { text: 'Sync failed', status: 'error' });
     }
   });
 }
