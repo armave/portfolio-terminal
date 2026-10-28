@@ -1,11 +1,3 @@
-import { render, h, type ComponentChild } from 'preact';
-
-/** Single mount boundary for legacy shell containers. New UI should move into
- * the application tree; this helper makes remaining container mounts auditable. */
-function renderInto(vnode: ComponentChild, container: Element): void {
-  render(vnode, container);
-}
-
 import {
   calculateBreakevenDays,
   calculateCommission,
@@ -61,7 +53,6 @@ import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets } from './src/domain/freedomPortfolio';
 import { InsightSection } from './src/components/MarketInsightsPanel';
-import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 
@@ -1439,7 +1430,7 @@ function hideStartupLoading() {
 
 setSecretGetter(() => getGatewaySecret());
 
-async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
+export async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
   const submittedSecret = secret.trim();
   if (!submittedSecret) {
     showToast('Please enter the Gateway Secret.', 'error');
@@ -1520,15 +1511,8 @@ async function startApp(secret: string) {
   hideStartupLoading();
 }
 
-async function initApp() {
+export async function initApp() {
   if (appInitialized) return;
-
-  const rootEl = document.getElementById('root');
-  if (rootEl && !document.getElementById('mainTerminalView')) {
-    renderInto(h(App, {
-      onSaveGatewaySecret: handleSaveGatewaySecret
-    }), rootEl);
-  }
 
   try {
     const secret = await restoreGatewaySecret();
@@ -1576,11 +1560,4 @@ async function continueStartupOffline() {
     showStartupFailure();
   }
 }
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initApp);
-} else {
-  initApp();
-}
-
 
