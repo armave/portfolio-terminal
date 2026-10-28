@@ -138,3 +138,22 @@ export function useBoardTitle(): BoardTitleState {
   useEffect(() => subscribeBoardTitle(setState), []);
   return state;
 }
+
+let activeDeskView = 'COMBINED';
+const activeDeskViewListeners = new Set<(view: string) => void>();
+
+/** Publish the active desk through shared UI state rather than a prop-shaped event. */
+export function setActiveDeskViewState(view: string): void {
+  if (!view || view === activeDeskView) return;
+  activeDeskView = view;
+  activeDeskViewListeners.forEach((listener) => listener(activeDeskView));
+}
+
+export function useActiveDeskView(): string {
+  const [view, setView] = useState(activeDeskView);
+  useEffect(() => {
+    activeDeskViewListeners.add(setView);
+    return () => activeDeskViewListeners.delete(setView);
+  }, []);
+  return view;
+}
