@@ -4,6 +4,7 @@ import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
 import { getActiveTranchesFromTrades, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
+import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 
 export interface CashCushionDeskProps {
   refreshIntervalMs?: number;
@@ -94,6 +95,18 @@ export function CashCushionDesk({
 
   const totalCushion = freeCash + stocksTotal;
 
+  const valuation = calculatePortfolioValuation({
+    signedAccountBalance: state.balance,
+    freeCash,
+    marginPositions: Object.values(state.positions || {}),
+    cashHoldings: holdings
+  });
+  const valuationStatus = state.brokerAccountInfo?.status === 'stale'
+    ? 'Broker snapshot stale · estimates use last tracked values'
+    : valuation.unpricedHoldings > 0
+      ? `${valuation.unpricedHoldings} holding(s) missing a usable price`
+      : 'Recalculated from tracked shares and current market-session prices';
+
 
   return (
     <>
@@ -110,6 +123,22 @@ export function CashCushionDesk({
           </span>
         </div>
       </div>
+
+      <section class="grid grid-cols-1 sm:grid-cols-2 gap-3" aria-label="Calculated account balances">
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+          <span class="block text-[10px] uppercase tracking-wider text-slate-500">Calculated cash</span>
+          <strong class="mt-1 block text-xl font-bold font-mono text-emerald-300">{formatUSD(valuation.cashBalance)}</strong>
+          <span class="mt-1 block text-[10px] text-slate-500">Free cash + positive account cash, excluding margin debt</span>
+        </div>
+        <div class="rounded-lg border border-cyan-900/60 bg-cyan-950/20 p-3">
+          <span class="block text-[10px] uppercase tracking-wider text-slate-500">Calculated portfolio equity</span>
+          <strong class="mt-1 block text-xl font-bold font-mono text-cyan-300">{formatUSD(valuation.equity)}</strong>
+          <span class="mt-1 block text-[10px] text-slate-400">Cash + all tracked holdings − margin debt</span>
+        </div>
+        <div class="sm:col-span-2 text-[10px] text-slate-500" role="status">
+          {valuationStatus} · Holdings valued: {valuation.pricedHoldings} · Margin debt: {formatUSD(valuation.marginDebt)}
+        </div>
+      </section>
 
       <div class="space-y-2">
         <div class="table-scroll-wrapper overflow-x-auto">
