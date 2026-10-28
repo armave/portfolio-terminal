@@ -258,17 +258,22 @@ export function ClosedHistoryDesk() {
       // portfolio snapshot alone does not upload updated fee allocations. Without
       // this write, the next section mount reloads stale cloud executions over the
       // freshly recalculated local rows.
-      if (brokerExecutions.length && updatedTradeCount &&
-          JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
+      const brokerExecutionsChanged = brokerExecutions.length > 0 &&
+        JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions);
+      // Sync the history record when either source cashflows or calculated
+      // execution metadata changes. A cashflow-only update must not be left in
+      // local state while the cloud record retains an older, partial workbook.
+      if (cashflowsChanged || brokerExecutionsChanged) {
         try {
-          await pushCloudHistory({
-            brokerExecutedTrades: updatedExecutions,
+          const synced = await pushCloudHistory({
+            brokerExecutedTrades: brokerExecutionsChanged ? updatedExecutions : brokerExecutions,
             cashflows: imported
           });
+          if (!synced) throw new Error('Cloud history did not confirm the update.');
         } catch (error) {
-          console.error('Failed to sync recalculated closed-history fees:', error);
+          console.error('Failed to sync closed-history cashflows and fees:', error);
           if (showImportMessage) {
-            setCashflowImportMessage(`Fees were recalculated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}. Retry the import before navigating away.`);
+            setCashflowImportMessage(`History was updated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}. Retry the import before navigating away.`);
             return;
           }
         }
