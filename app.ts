@@ -118,11 +118,16 @@ if (typeof window !== 'undefined') {
     const snapshot = (event as CustomEvent).detail;
     if (!snapshot || snapshot.loaded !== true || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.balances)) return;
     const current = portfolioStore.getState();
+    const executedTrades = Array.isArray((window as any).__tradenetExecutedTrades)
+      ? (window as any).__tradenetExecutedTrades
+      : undefined;
     const classified = classifyFreedomPortfolio(
       snapshot,
       current.positions || {},
       current.cashCushion?.holdings || [],
-      current.activeTrancheTypes || {}
+      current.activeTrancheTypes || {},
+      Date.now(),
+      executedTrades
     );
     const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
       ...holding,
@@ -148,6 +153,38 @@ if (typeof window !== 'undefined') {
     renderBoard();
   });
 
+  window.addEventListener('tradenet:executed-trades', (event: Event) => {
+    const trades = (event as CustomEvent).detail;
+    if (!Array.isArray(trades)) return;
+    const current = portfolioStore.getState();
+    portfolioStore.setState({ brokerExecutedTrades: trades });
+    const snapshot = current.brokerAccountInfo;
+    if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return;
+    const classified = classifyFreedomPortfolio(
+      snapshot,
+      current.positions || {},
+      current.cashCushion?.holdings || [],
+      current.activeTrancheTypes || {},
+      Date.now(),
+      trades
+    );
+    const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
+      ...holding,
+      ...(Number.isFinite(Number(holding.currentPrice ?? holding.price))
+        ? { price: Number(holding.currentPrice ?? holding.price) }
+        : {})
+    }));
+    portfolioStore.setState({
+      positions: classified.positions,
+      cashStocks: brokerCashHoldings,
+      cashCushion: {
+        ...(current.cashCushion || { freeCash: 0, holdings: [] }),
+        holdings: brokerCashHoldings
+      }
+    });
+    renderBoard();
+  });
+
   window.addEventListener('tradenet:set-active-tranche-type', (event: Event) => {
     const detail = (event as CustomEvent<{ ticker?: string; type?: 'cash' | 'margin' }>).detail;
     const operationId = String(detail?.ticker || '').trim();
@@ -159,11 +196,16 @@ if (typeof window !== 'undefined') {
       portfolioStore.setState({ activeTrancheTypes });
       return;
     }
+    const executedTrades = Array.isArray((window as any).__tradenetExecutedTrades)
+      ? (window as any).__tradenetExecutedTrades
+      : undefined;
     const classified = classifyFreedomPortfolio(
       snapshot,
       current.positions || {},
       current.cashCushion?.holdings || [],
-      activeTrancheTypes
+      activeTrancheTypes,
+      Date.now(),
+      executedTrades
     );
     const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
       ...holding,
