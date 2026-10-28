@@ -409,7 +409,11 @@ export function ClosedHistoryDesk() {
       trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: tradeFees + marginFee, netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const },
       index: -1,
       source: 'tradenet' as const,
-      profit: broker.netProfit != null ? Number(broker.netProfit) : broker.profit == null ? null : Number(broker.profit) - marginFee,
+      // TradeNet's raw realized profit does not include execution commissions. Net P&L must
+      // deduct both the exit commission and FIFO-allocated entry commissions, as well
+      // as any allocated margin financing fee. `netProfit` is local cached metadata
+      // from older calculations and may therefore be incomplete; derive from raw profit.
+      profit: broker.profit == null ? null : Number(broker.profit) - tradeFees - marginFee,
       fees: tradeFees + marginFee
     };
   });
