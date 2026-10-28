@@ -12,7 +12,6 @@ import type { EmptyStatePanelProps } from '../components/EmptyStatePanel';
 export interface UiEventPayloads {
   'terminal:active-view': { view: string };
   'terminal:auth-visibility': { isOpen: boolean };
-  'terminal:board-title': { title: string; showDailyMove: boolean };
   'terminal:cash-cushion-props': CashCushionDeskProps;
   'terminal:empty-state-props': EmptyStatePanelProps | null;
   'terminal:external-links-props': BoardExternalLinksProps;
