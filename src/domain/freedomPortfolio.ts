@@ -162,7 +162,8 @@ export function classifyFreedomPortfolio(
   sourcePositions: Record<string, PositionRecord>,
   sourceCashHoldings: any[],
   classifications: Record<string, ActiveTrancheType> = {},
-  receivedAt = Date.now()
+  receivedAt = Date.now(),
+  executedTrades?: FreedomExecutedTradeLike[]
 ): { positions: Record<string, PositionRecord>; cashStocks: any[] } {
   const positions: Record<string, PositionRecord> = {};
   const cashByTicker = new Map<string, any>();
@@ -173,7 +174,10 @@ export function classifyFreedomPortfolio(
     if (ticker && !previousCash.has(ticker)) previousCash.set(ticker, holding);
   }
 
-  for (const tranche of getActiveBrokerTranches(snapshot)) {
+  const activeTranches = Array.isArray(executedTrades)
+    ? getActiveTranchesFromTrades(executedTrades, snapshot)
+    : getActiveBrokerTranches(snapshot);
+  for (const tranche of activeTranches) {
     const type = classifications[tranche.id] || classifications[tranche.ticker] || 'cash';
     const prior = sourcePositions[tranche.ticker];
     const priorCash = previousCash.get(tranche.ticker);
