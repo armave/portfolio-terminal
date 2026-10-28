@@ -139,7 +139,10 @@ export function ClosedHistoryDesk() {
       // Merge by stable IDs so cloud-only records survive while local edits win.
       const resolved = {
         brokerExecutedTrades: mergeById(localExecutions || [], cloud.brokerExecutedTrades || []),
-        cashflows: mergeById(localCashflows || [], cloud.cashflows || [])
+        // An imported workbook is a replacement snapshot, not an append-only
+        // event log. Prefer the latest local workbook as a whole; union-merging
+        // cashflows would resurrect rows that the user intentionally replaced.
+        cashflows: localCashflows?.length ? localCashflows : (cloud.cashflows || [])
       };
       portfolioStore.setState(resolved);
       const differsFromCloud =
