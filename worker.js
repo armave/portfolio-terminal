@@ -56,10 +56,17 @@ async function withProviderCache(provider, key, fetcher) {
 }
 
 const ALLOWED_GEMINI_MODELS = new Set([
-    "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite",
+    "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
     "gemini-3.1-flash", "gemini-3.1-pro", "gemini-2.5-flash",
     "gemini-2.5-pro", "gemini-flash", "gemini-pro"
 ]);
+
+function normalizeGeminiModel(model) {
+    const normalized = typeof model === "string" ? model.replace(/^models\//, "") : model;
+    // Google retired this model for new users; keep older clients working by
+    // transparently upgrading their request to the supported replacement.
+    return normalized === "gemini-2.5-flash-lite" ? "gemini-3.5-flash-lite" : normalized;
+}
 
 function jsonError(message, status, headers) {
     return new Response(JSON.stringify({ error: message }), { status, headers });
@@ -622,16 +629,17 @@ export default {
                 if (prompt.length > MAX_PROMPT_LENGTH) {
                     return jsonError("Prompt exceeds the 12,000-character limit.", 413, corsHeaders);
                 }
-                if (body.model !== undefined && (typeof body.model !== "string" || !ALLOWED_GEMINI_MODELS.has(body.model.replace(/^models\//, "")))) {
+                const requestedModel = body.model === undefined ? undefined : normalizeGeminiModel(body.model);
+                if (requestedModel !== undefined && (typeof requestedModel !== "string" || !ALLOWED_GEMINI_MODELS.has(requestedModel))) {
                     return jsonError("Unsupported Gemini model.", 400, corsHeaders);
                 }
 
                 // Keep proxy model selection bounded to a known allowlist.
                 const rawCandidates = [
-                    body.model,
+                    requestedModel,
                     "gemini-3.8-flash",
                     "gemini-3.1-flash-lite",
-                    "gemini-2.5-flash-lite",
+                    "gemini-3.5-flash-lite",
                     "gemini-3.1-flash"
                 ].filter(Boolean).map(model => model.replace(/^models\//, "")).filter(model => ALLOWED_GEMINI_MODELS.has(model));
                 const candidateModels = Array.from(new Set(rawCandidates)).slice(0, 3);
