@@ -103,7 +103,8 @@ function mountPreactApplication() {
 
 function bootstrapApplication() {
   mountPreactApplication();
-  void initApp();
+  // Let App effects register their runtime event subscriptions before startup emits events.
+  window.requestAnimationFrame(() => { void initApp(); });
 }
 
 if (document.readyState === 'loading') {
