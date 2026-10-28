@@ -4,7 +4,6 @@ import type { TickerTabsProps } from '../components/TickerTab';
 import type { SummaryMetricsGridProps } from '../components/SummaryMetricsGrid';
 import type { ProjectionsTableProps } from '../components/ProjectionsTable';
 import type { MarketInsightsPanelProps } from '../components/MarketInsightsPanel';
-import type { TradingConsoleProps } from '../components/TradingConsole';
 import type { BoardExternalLinksProps } from '../components/BoardExternalLinks';
 import type { EmptyStatePanelProps } from '../components/EmptyStatePanel';
 
@@ -24,7 +23,6 @@ export interface UiEventPayloads {
   'terminal:startup-state': { visible: boolean; failed: boolean };
   'terminal:summary-metrics-props': SummaryMetricsGridProps;
   'terminal:ticker-tabs-props': TickerTabsProps;
-  'terminal:trading-console-props': TradingConsoleProps;
 }
 
 export type UiEventName = keyof UiEventPayloads;
