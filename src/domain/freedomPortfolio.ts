@@ -252,7 +252,9 @@ export function classifyFreedomPortfolio(
       shares: tranche.quantity,
       currentPrice: item.currentPrice,
       pt: Number(prior?.pt) || entryPrice,
-      commBuy: item.entryTranches.reduce((sum, entry) => sum + Math.max(0, Number(entry.buyCommission) || 0), 0),
+      commBuy: Array.isArray(executedTrades)
+        ? item.entryTranches.reduce((sum, entry) => sum + Math.max(0, Number(entry.buyCommission) || 0), 0)
+        : (Number(prior?.commBuy) || 0),
       tranches: item.entryTranches,
       quoteSource: tranche.marketPrice !== null ? 'Freedom TradeNet' : prior?.quoteSource,
       ...(tranche.marketPrice !== null ? { quoteDetails: { ...(prior?.quoteDetails || {}), price: tranche.marketPrice, freshness: 'unknown', receivedAt } } : {})
