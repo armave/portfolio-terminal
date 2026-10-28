@@ -146,9 +146,7 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
           key={action.text}
           type="button"
           title={action.title}
-          onClick={() =>
-            prefillTerminalInput(action.command, action.selectText, action.instant, onExecuteCommand, onPrefillCommand)
-          }
+          onClick={() => action.onClick ? action.onClick() : prefillTerminalInput(action.command, action.selectText, action.instant, onExecuteCommand, onPrefillCommand)}
           class={`rounded border bg-slate-900/90 px-2.5 py-1 text-[10px] font-mono font-bold transition active:scale-95 ${action.color}`}
         >
           {action.text}
