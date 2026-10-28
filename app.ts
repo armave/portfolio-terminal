@@ -1535,7 +1535,6 @@ async function initApp() {
   const rootEl = document.getElementById('root');
   if (rootEl && !document.getElementById('mainTerminalView')) {
     renderInto(h(App, {
-      onToggleMarketInsights: toggleMarketInsights,
       onSaveGatewaySecret: handleSaveGatewaySecret
     }), rootEl);
   }
