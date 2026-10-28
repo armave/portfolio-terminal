@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
-import { setAiStatus } from './src/ui/uiStateStore';
+import { setAiStatus, setBreakevenText } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
   calculateCommission,
@@ -512,7 +512,7 @@ function renderConsoleQuickActions() {
 }
 
 function updateCombinedBreakeven() {
-  const setText = (text: string) => emitUiEvent('terminal:breakeven-text', { text });
+  const setText = (text: string) => setBreakevenText(text);
 
   const tickers = Object.keys(state.positions);
   const totalDebt = Math.abs(state.balance);
