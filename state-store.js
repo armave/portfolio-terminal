@@ -51,9 +51,17 @@ export class PortfolioStateDO {
     }
 
     await this.ensureInitialized();
-    const requestPath = new URL(request.url).pathname;
+    const requestUrl = new URL(request.url);
+    const requestPath = requestUrl.pathname;
     const isDigest = requestPath === "/api/margin-digest";
-    const recordKey = isDigest ? "marginDigestRecord" : requestPath === "/api/history" ? "historyRecord" : "record";
+    let recordKey = requestPath === "/api/history" ? "historyRecord" : "record";
+    if (isDigest && request.method === "GET") {
+      const digestKey = requestUrl.searchParams.get("key") || "";
+      if (!/^(portfolio|position:[A-Z0-9.^=-]{1,20})$/.test(digestKey)) {
+        return jsonResponse({ error: "A valid digest key is required." }, 400);
+      }
+      recordKey = "marginDigestRecord:" + digestKey;
+    }
 
     if (request.method === "GET") {
       const record = await this.ctx.storage.get(recordKey);
@@ -126,6 +134,7 @@ export class PortfolioStateDO {
           typeof body.syncedAt !== "string" || !Number.isFinite(Date.parse(body.syncedAt))) {
         return jsonResponse({ error: "Digest payload is missing valid analysis, articles, or sync timestamp." }, 400);
       }
+      recordKey = "marginDigestRecord:" + body.key;
     } else if (typeof body.encryptedPayload !== "string" || !body.encryptedPayload.trim()) {
       return jsonResponse({ error: "Cloud state must contain a non-empty encryptedPayload string." }, 400);
     }
