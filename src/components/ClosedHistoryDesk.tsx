@@ -510,6 +510,7 @@ export function ClosedHistoryDesk() {
   // Broker executions are the canonical display source when the same sale
   // also exists as an app-owned closed trade.
   const uniqueAppTrades = deduplicateClosedHistoryRows(appTrades, groupedBrokerRows);
+  const trades = [...uniqueAppTrades, ...groupedBrokerRows].sort((a, b) => String((b.trade as any).exitDate ?? (b.trade as any).sellDate ?? '').localeCompare(String((a.trade as any).exitDate ?? (a.trade as any).sellDate ?? '')));
   const tradesPageSize = 10;
   const tradesPageCount = Math.max(1, Math.ceil(trades.length / tradesPageSize));
   const visibleTrades = trades.slice((tradesPage - 1) * tradesPageSize, tradesPage * tradesPageSize);
@@ -546,7 +547,7 @@ export function ClosedHistoryDesk() {
             }} />
           </label>
           <div class="text-xs font-mono text-slate-500">
-            {appTrades.length + brokerRows.length} records ({appTrades.length} app · {brokerRows.length} Freedom)
+            {trades.length} records ({uniqueAppTrades.length} app · {groupedBrokerRows.length} Freedom)
           </div>
         </div>
       </div>
