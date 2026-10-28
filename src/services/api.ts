@@ -858,6 +858,12 @@ type CloudHistorySnapshot = { history: CloudHistory | null; revision: number };
 let lastSyncedHistoryFingerprint: string | undefined;
 let cloudHistoryPushQueue: Promise<void> = Promise.resolve();
 let cloudHistoryPulls = new Map<string, Promise<CloudHistorySnapshot>>();
+const cloudHistorySnapshotCache = new Map<string, CloudHistorySnapshot>();
+
+function rememberCloudHistorySnapshot(secret: string, snapshot: CloudHistorySnapshot): void {
+  const current = cloudHistorySnapshotCache.get(secret);
+  if (!current || snapshot.revision >= current.revision) cloudHistorySnapshotCache.set(secret, snapshot);
+}
 
 export function pushCloudHistory(
   history: { brokerExecutedTrades?: any[]; cashflows?: any[] },
@@ -897,20 +903,36 @@ async function performPushCloudHistory(
     body: JSON.stringify({ encryptedPayload })
   });
   if (!res.ok) throw new Error(`Closed history sync failed (HTTP ${res.status}).`);
+  const savedRevision = readCloudRevision(res.headers) ?? (revision as number) + 1;
+  rememberCloudHistorySnapshot(secret, {
+    history: { brokerExecutedTrades, cashflows },
+    revision: savedRevision
+  });
   lastSyncedHistoryFingerprint = fingerprint;
   try { localStorage.setItem(CLOSED_HISTORY_MIGRATION_KEY, '1'); } catch { /* session cache remains valid */ }
   return true;
 }
 
-export function pullCloudHistory(secret = getActiveGatewaySecret()): Promise<CloudHistory | null> {
-  if (!secret) return Promise.resolve(null);
-  return pullCloudHistorySnapshot(secret).then(snapshot => snapshot.history);
+export async function pullCloudHistory(secret = getActiveGatewaySecret()): Promise<CloudHistory | null> {
+  if (!secret) return null;
+  const snapshot = await pullCloudHistorySnapshot(secret);
+  if (snapshot.history) return snapshot.history;
+
+  // If this 404 raced a legacy-history migration, wait for its queued write.
+  // Return the saved snapshot from memory instead of re-reading or posting the
+  // same local rows back to the record that was just created.
+  await cloudHistoryPushQueue;
+  const latest = cloudHistorySnapshotCache.get(secret);
+  return latest && latest.revision > snapshot.revision ? latest.history : snapshot.history;
 }
 
 function pullCloudHistorySnapshot(secret: string): Promise<CloudHistorySnapshot> {
   const existing = cloudHistoryPulls.get(secret);
   if (existing) return existing;
-  const request = performPullCloudHistory(secret);
+  const request = performPullCloudHistory(secret).then(snapshot => {
+    rememberCloudHistorySnapshot(secret, snapshot);
+    return snapshot;
+  });
   cloudHistoryPulls.set(secret, request);
   void request.finally(() => {
     if (cloudHistoryPulls.get(secret) === request) cloudHistoryPulls.delete(secret);
