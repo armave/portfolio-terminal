@@ -27,6 +27,24 @@ describe('typed UI event bus', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it('delivers typed requests for Preact-owned command and backup controls', () => {
+    const commandListener = vi.fn();
+    const backupListener = vi.fn();
+    addUiEventListener('terminal:command-prefill', commandListener);
+    addUiEventListener('terminal:backup-import-request', backupListener);
+
+    emitUiEvent('terminal:command-prefill', { command: 'bought [shares] [TICKER]', selectText: '[shares]' });
+    emitUiEvent('terminal:backup-import-request');
+
+    expect(commandListener).toHaveBeenCalledTimes(1);
+    expect(commandListener.mock.calls[0][0].detail).toEqual({ command: 'bought [shares] [TICKER]', selectText: '[shares]' });
+    expect(backupListener).toHaveBeenCalledTimes(1);
+    expect(backupListener.mock.calls[0][0].detail).toBeUndefined();
+
+    removeUiEventListener('terminal:command-prefill', commandListener);
+    removeUiEventListener('terminal:backup-import-request', backupListener);
+  });
+
   it('supports events without payloads', () => {
     const listener = vi.fn();
     addUiEventListener('terminal:startup-retry', listener);

@@ -2,6 +2,7 @@ import {
   setActiveDeskViewState, setBoardTitle, setCashCushionPropsState, setTickerTabsPropsState,
   setSummaryMetricsPropsState, setProjectionsPropsState, setEmptyStatePropsState
 } from './uiStateStore';
+import { emitUiEvent } from './uiEventBus';
 import { formatUSD } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatUSD } from '../utils/formatters';
@@ -187,19 +188,8 @@ function renderSummaryCards(
 }
 
 function prefillTerminalCommand(command: string): void {
-  const input = document.getElementById('cmdInput') as HTMLInputElement | null;
-  if (!input) return;
-
-  input.value = command;
-  // Notify Preact's controlled input so its internal command state stays in sync.
-  input.dispatchEvent(new Event('input', { bubbles: true }));
-  input.focus();
-
-  const start = input.value.indexOf('[');
-  const end = start >= 0 ? input.value.indexOf(']', start) + 1 : -1;
-  if (start >= 0 && end > start) {
-    requestAnimationFrame(() => input.setSelectionRange(start, end));
-  }
+  // The TradingConsole owns its controlled input and selection state.
+  emitUiEvent('terminal:command-prefill', { command });
 }
 
 export interface RenderBoardOptions extends RenderCashCushionOptions {
@@ -285,7 +275,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
           prefillTerminalCommand('add cash stock [shares] [TICKER] for [price]');
         },
         onImportBackup: () => {
-          document.getElementById('importFileInput')?.click();
+          emitUiEvent('terminal:backup-import-request');
         }
       } satisfies import('../components/EmptyStatePanel').EmptyStatePanelProps);
     onRenderConsoleQuickActions();

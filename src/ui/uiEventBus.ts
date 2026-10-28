@@ -2,6 +2,8 @@
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
   'terminal:auth-visibility': { isOpen: boolean };
+  'terminal:backup-import-request': undefined;
+  'terminal:command-prefill': { command: string; selectText?: string | null };
   'terminal:margin-intelligence-request': { ticker?: string; refresh?: boolean };
   'terminal:scenario-modal': unknown;
   'terminal:startup-offline': undefined;

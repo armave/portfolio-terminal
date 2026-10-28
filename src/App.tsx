@@ -1,6 +1,6 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
 import { useActiveDeskView, useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useTradingConsoleProps, useCashCushionProps, useTickerTabsProps, useSummaryMetricsProps, useProjectionsProps, useEmptyStateProps, useMarketInsightsProps, useExternalLinksProps, useSettingsProps } from './ui/uiStateStore';
-import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
 import { CashCushionDesk } from './components/CashCushionDesk';
@@ -29,6 +29,7 @@ interface AppProps {
 
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
+  const backupImportInputRef = useRef<HTMLInputElement>(null);
   const activeDeskView = useActiveDeskView();
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
@@ -294,11 +295,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       setAuthOpen(Boolean(detail?.isOpen));
     };
     const handleScenarioModal = (event: Event) => setScenarioModalData((event as CustomEvent<ScenarioModalData | null>).detail ?? null);
+    const handleBackupImportRequest = () => backupImportInputRef.current?.click();
+    addUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
     addUiEventListener('terminal:scenario-modal', handleScenarioModal);
     addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
     const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
     addUiEventListener('terminal:startup-state', handleStartupState);
     return () => {
+      removeUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
       removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
       removeUiEventListener('terminal:startup-state', handleStartupState);
@@ -527,6 +531,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         <span>KV: {cloudStatus.text.toUpperCase()}</span>
         {cloudSyncStatus.text && <span class={`ml-2 ${cloudSyncStatus.status === 'synced' ? 'text-emerald-400' : 'text-rose-400'}`}>{cloudSyncStatus.text}</span>}
       </div>
+      <input
+        ref={backupImportInputRef}
+        type="file"
+        id="importFileInput"
+        class="hidden"
+        accept=".json"
+        onChange={(event: Event) => settingsProps?.onImportBackup(event)}
+      />
       {startupState.visible && <div class="startup-loading fixed inset-0 z-[100] flex items-center justify-center" role="status" aria-live="polite">
         <div class="startup-loading__content">
           <div class="startup-loading__mark" aria-hidden="true">PT</div>

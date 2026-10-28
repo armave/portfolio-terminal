@@ -11,13 +11,14 @@ Complete the remaining Preact integration without adding a second renderer or ch
 - [x] Found the remaining integration gap: App.tsx mirrors shared hook values into local component state with effects, while renderBoard.ts still publishes prop bundles through shared state. Some UI requests still use a typed event channel.
 
 ## This PR
-- [x] Replace redundant local mirrors of values already provided by uiStateStore with direct shared-state hook usage in App; shared-state changes now update the rendering component directly, without an intermediate mirrored useState/effect.
-- [x] Keep event delivery for transient commands/requests (auth visibility, modal open, margin-intelligence request, startup state); removed the redundant prop-bundle event subscriptions from App.
-- [x] Preserve the single App root and component identity; financial calculations, provider behavior, and persisted schemas were not changed.
-- [x] Added focused regression tests for typed transient event delivery, listener removal, and payload-free startup retry events in `src/ui/uiEventBus.test.ts`.
-- [x] Run typecheck, tests, production build, dead-code validation, and production dependency audit in the Validate workflow on final PR head `7d202733007e203908df6c18e9a7d204a878efca`.
-- [x] Source-level review confirms removed prop-event listeners were duplicate deliveries of state already published through uiStateStore; transient event subscriptions remain and clean up on unmount.
-- [ ] Re-run typecheck, tests, production build, dead-code validation, and production dependency audit after the event-bus cleanup and new tests; update from the exact resulting PR head.
+- [x] Replace redundant local mirrors of values already provided by uiStateStore with direct shared-state hook usage in App; shared-state changes update the rendering component directly.
+- [x] Keep event delivery for transient commands/requests (auth visibility, modal open, margin-intelligence request, startup state); remove redundant prop-bundle event subscriptions.
+- [x] Preserve the single App root and component identity; financial calculations, provider behavior, and persisted schemas are unchanged by this migration.
+- [x] Add regression coverage for typed transient event delivery, listener removal, payload-free events, command-prefill requests, and backup-import requests in `src/ui/uiEventBus.test.ts`.
+- [x] Move command prefill from direct DOM mutation to a typed request handled by the Preact-owned `TradingConsole`.
+- [x] Move the backup file input into `App`, the single Preact root owner; `SettingsDesk` no longer owns an input that sibling UI locates by id.
+- [x] Source-level review confirms transient event subscriptions are removed on unmount and component props continue to come directly from `uiStateStore`.
+- [ ] Verify typecheck, tests, production build, dead-code validation, and production dependency audit on the final PR head before merge.
 
 ## Validation policy
-Previous validation passed on earlier PR heads. The event-bus cleanup and new regression tests require a fresh CI run on the latest commit before validation can be claimed. Keep the PR draft for review of the migration boundary; no local validation is claimed.
+Typecheck, tests, production build, dead-code validation, and production dependency security audit must pass on the exact final PR head before merge. Keep the PR draft for human review. A local clone could not be established in the current environment, so no local validation is claimed.

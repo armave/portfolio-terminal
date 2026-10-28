@@ -57,7 +57,6 @@ export function SettingsDesk({
   onPullCloudState,
   onChangeRefreshInterval,
   onExportBackup,
-  onImportBackup,
   onResetToBlankState
 }: SettingsDeskProps) {
   const [secretValue, setSecretValue] = useState<string>(() => getGatewaySecret() || '');
@@ -235,13 +234,6 @@ export function SettingsDesk({
             class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"
           >
             Import
-            <input
-              type="file"
-              id="importFileInput"
-              class="hidden"
-              accept=".json"
-              onChange={onImportBackup}
-            />
           </label>
           <button
             type="button"

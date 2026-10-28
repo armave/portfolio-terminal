@@ -1,4 +1,5 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { addUiEventListener, removeUiEventListener } from '../ui/uiEventBus';
 import { ConsoleQuickActions } from './ConsoleQuickActions';
 import { clearTerminalLog } from '../ui/notifications';
 import { formatUSD, PositionRecord } from '../ui/renderBoard';
@@ -15,6 +16,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   const [command, setCommand] = useState('');
   const aiStatus = useAiStatus();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const prefillCommandRef = useRef<(value: string, selectText?: string | null, instant?: boolean) => void>(() => {});
 
   const ticker = position?.ticker || 'AAPL';
   const hasPosition = Boolean(position);
@@ -57,6 +59,8 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       inputRef.current?.setSelectionRange(selectionStart, selectionEnd);
     });
   };
+
+  prefillCommandRef.current = prefillCommand;
 
   const resizeCommandInput = (input = inputRef.current) => {
     if (!input) return;
@@ -123,6 +127,14 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       setHistoryIdx(-1);
     }
   };
+
+  useEffect(() => {
+    const handleCommandPrefill = (event: CustomEvent<{ command: string; selectText?: string | null }>) => {
+      prefillCommandRef.current(event.detail.command, event.detail.selectText);
+    };
+    addUiEventListener('terminal:command-prefill', handleCommandPrefill);
+    return () => removeUiEventListener('terminal:command-prefill', handleCommandPrefill);
+  }, []);
 
   const clearTerminal = () => clearTerminalLog();
 
