@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reconcileFreedomPortfolio } from './freedomPortfolio';
+import { classifyFreedomPortfolio, getActiveBrokerTranches, reconcileFreedomPortfolio } from './freedomPortfolio';
 
 describe('reconcileFreedomPortfolio', () => {
   it('prefers Freedom USD cash and derives cash shares after app margin lots', () => {
@@ -75,5 +75,47 @@ describe('reconcileFreedomPortfolio', () => {
     }, {}, []);
 
     expect(result.brokerUsdBalance).toBeUndefined();
+  });
+});
+
+
+describe('active broker tranches', () => {
+  const snapshot = {
+    loaded: true,
+    balances: [],
+    positions: [
+      { ticker: 'AAPL.US', name: 'Apple', quantity: 3, marketPrice: 210, averagePrice: 180, marketValue: 630 },
+      { ticker: 'AAPL', name: 'Apple', quantity: 2, marketPrice: 210, averagePrice: 190, marketValue: 420 },
+      { ticker: 'MSFT.US', name: 'Microsoft', quantity: 4, marketPrice: 400, averagePrice: 350, marketValue: 1600 },
+      { ticker: 'ZERO.US', name: 'Zero', quantity: 0, marketPrice: 20, averagePrice: 10, marketValue: 0 }
+    ]
+  };
+
+  it('aggregates duplicate broker rows and excludes closed or zero-quantity tickers', () => {
+    expect(getActiveBrokerTranches(snapshot)).toEqual([
+      expect.objectContaining({ ticker: 'AAPL', quantity: 5, averagePrice: 184, marketPrice: 210, marketValue: 1050 }),
+      expect.objectContaining({ ticker: 'MSFT', quantity: 4, averagePrice: 350, marketPrice: 400, marketValue: 1600 })
+    ]);
+  });
+
+  it('defaults unclassified broker tickers to cash and moves selected margin tickers into positions', () => {
+    const result = classifyFreedomPortfolio(snapshot, {}, [], { MSFT: 'margin' }, 123);
+    expect(result.cashStocks).toEqual([
+      expect.objectContaining({ ticker: 'AAPL', shares: 5, currentPrice: 210, price: 210 })
+    ]);
+    expect(result.positions.MSFT).toMatchObject({
+      ticker: 'MSFT', shares: 4, currentPrice: 400,
+      tranches: [{ qty: 4, price: 350 }], quoteSource: 'Freedom TradeNet',
+      quoteDetails: { price: 400, freshness: 'unknown', receivedAt: 123 }
+    });
+  });
+
+  it('retains an existing cost basis when the broker omits average price', () => {
+    const result = classifyFreedomPortfolio({ loaded: true, balances: [], positions: [
+      { ticker: 'NVDA', quantity: 2, marketPrice: 120 }
+    ] }, {
+      NVDA: { ticker: 'NVDA', shares: 2, currentPrice: 110, pt: 150, commBuy: 2, tranches: [{ qty: 2, price: 95 }] }
+    }, [], { NVDA: 'margin' });
+    expect(result.positions.NVDA).toMatchObject({ shares: 2, pt: 150, commBuy: 2, tranches: [{ qty: 2, price: 95 }] });
   });
 });
