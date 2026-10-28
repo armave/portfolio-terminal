@@ -1,50 +1,73 @@
+import type { CashCushionDeskProps } from '../components/CashCushionDesk';
+import type { SettingsDeskProps } from '../components/SettingsDesk';
+import type { TickerTabsProps } from '../components/TickerTab';
+import type { SummaryMetricsGridProps } from '../components/SummaryMetricsGrid';
+import type { ProjectionsTableProps } from '../components/ProjectionsTable';
+import type { MarketInsightsPanelProps } from '../components/MarketInsightsPanel';
+import type { TradingConsoleProps } from '../components/TradingConsole';
+import type { BoardExternalLinksProps } from '../components/BoardExternalLinks';
+import type { EmptyStatePanelProps } from '../components/EmptyStatePanel';
+
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
-export type UiEventName =
-  | 'terminal:active-view'
-  | 'terminal:ai-status'
-  | 'terminal:analyst-consensus'
-  | 'terminal:auth-visibility'
-  | 'terminal:board-title'
-  | 'terminal:breakeven-text'
-  | 'terminal:cash-cushion-props'
-  | 'terminal:cloud-status'
-  | 'terminal:cloud-sync-status'
-  | 'terminal:empty-state-props'
-  | 'terminal:external-links-props'
-  | 'terminal:margin-intelligence-request'
-  | 'terminal:market-insights-props'
-  | 'terminal:projections-props'
-  | 'terminal:scenario-modal'
-  | 'terminal:settings-props'
-  | 'terminal:startup-offline'
-  | 'terminal:startup-retry'
-  | 'terminal:startup-state'
-  | 'terminal:summary-metrics-props'
-  | 'terminal:ticker-tabs-props'
-  | 'terminal:trading-console-props';
-
-type UiListener = (event: CustomEvent<unknown>) => void;
-const listeners = new Map<UiEventName, Set<UiListener>>();
-const listenerWrappers = new WeakMap<(event: Event) => void, UiListener>();
-
-export function emitUiEvent<T = undefined>(type: UiEventName, detail?: T): void {
-  const event = { type, detail } as CustomEvent<T>;
-  listeners.get(type)?.forEach((listener) => listener(event as CustomEvent<unknown>));
+export interface UiEventPayloads {
+  'terminal:active-view': string;
+  'terminal:ai-status': { status: string; text?: string };
+  'terminal:analyst-consensus': { text: string; title: string; className: string };
+  'terminal:auth-visibility': { visible: boolean };
+  'terminal:board-title': { title: string; showDailyMove: boolean };
+  'terminal:breakeven-text': { text: string };
+  'terminal:cash-cushion-props': CashCushionDeskProps;
+  'terminal:cloud-status': { status: string; text: string };
+  'terminal:cloud-sync-status': { status: string; text: string };
+  'terminal:empty-state-props': EmptyStatePanelProps;
+  'terminal:external-links-props': BoardExternalLinksProps;
+  'terminal:margin-intelligence-request': { ticker?: string; refresh?: boolean };
+  'terminal:market-insights-props': MarketInsightsPanelProps;
+  'terminal:projections-props': ProjectionsTableProps;
+  'terminal:scenario-modal': unknown;
+  'terminal:settings-props': SettingsDeskProps;
+  'terminal:startup-offline': undefined;
+  'terminal:startup-retry': undefined;
+  'terminal:startup-state': { visible: boolean; failed: boolean };
+  'terminal:summary-metrics-props': SummaryMetricsGridProps;
+  'terminal:ticker-tabs-props': TickerTabsProps;
+  'terminal:trading-console-props': TradingConsoleProps;
 }
 
-export function addUiEventListener(type: UiEventName, listener: (event: Event) => void): void {
-  const bucket = listeners.get(type) ?? new Set<UiListener>();
-  const wrapped: UiListener = (event) => listener(event);
-  listenerWrappers.set(listener, wrapped);
+export type UiEventName = keyof UiEventPayloads;
+type UiListener<K extends UiEventName> = (detail: UiEventPayloads[K]) => void;
+type ListenerSet = Set<(detail: never) => void>;
+const listeners = new Map<UiEventName, Set<(detail: unknown) => void>>();
+const listenerWrappers = new WeakMap<(event: Event) => void, (detail: unknown) => void>();
+
+/** Publish a typed UI update to current subscribers. */
+export function emitUiEvent<K extends UiEventName>(
+  type: K,
+  ...args: UiEventPayloads[K] extends undefined ? [detail?: undefined] : [detail: UiEventPayloads[K]]
+): void {
+  const detail = args[0];
+  listeners.get(type)?.forEach((listener) => listener(detail));
+}
+
+export function addUiEventListener<K extends UiEventName>(
+  type: K,
+  listener: (event: CustomEvent<UiEventPayloads[K]>) => void
+): void {
+  const bucket = listeners.get(type) ?? new Set<(detail: unknown) => void>();
+  const wrapped = (detail: unknown) => listener({ type, detail } as CustomEvent<UiEventPayloads[K]>);
+  listenerWrappers.set(listener as (event: Event) => void, wrapped);
   bucket.add(wrapped);
   listeners.set(type, bucket);
 }
 
-export function removeUiEventListener(type: UiEventName, listener: (event: Event) => void): void {
+export function removeUiEventListener<K extends UiEventName>(
+  type: K,
+  listener: (event: CustomEvent<UiEventPayloads[K]>) => void
+): void {
   const bucket = listeners.get(type);
-  const wrapped = listenerWrappers.get(listener);
+  const wrapped = listenerWrappers.get(listener as (event: Event) => void);
   if (!bucket || !wrapped) return;
   bucket.delete(wrapped);
-  listenerWrappers.delete(listener);
+  listenerWrappers.delete(listener as (event: Event) => void);
   if (bucket.size === 0) listeners.delete(type);
 }
