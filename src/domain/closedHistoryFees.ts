@@ -71,3 +71,34 @@ export function applyCashflowAllocationsToClosedTrades(
     };
   });
 }
+
+type ClosedHistoryRow = { trade: Record<string, any> };
+
+/** Prefer broker rows for app/broker records that describe the same closed sale. */
+export function deduplicateClosedHistoryRows<T extends ClosedHistoryRow>(
+  appRows: T[],
+  brokerRows: T[]
+): T[] {
+  const matchKey = (trade: Record<string, any>): string | null => {
+    const ticker = String(trade.ticker ?? '').trim().toUpperCase().replace(/\.US$/, '');
+    const rawDate = trade.exitDate ?? trade.sellDate ?? trade.closedAt ?? trade.date;
+    const timestamp = typeof rawDate === 'number' ? rawDate : Date.parse(String(rawDate ?? ''));
+    const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
+    if (!ticker || !Number.isFinite(timestamp) || !Number.isFinite(shares) || shares <= 0) return null;
+    const date = new Date(timestamp);
+    const day = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+    return `${ticker}|${day}|${shares.toFixed(6)}`;
+  };
+  const available = new Map<string, number>();
+  for (const row of brokerRows) {
+    const key = matchKey(row.trade);
+    if (key) available.set(key, (available.get(key) || 0) + 1);
+  }
+  return appRows.filter((row) => {
+    const key = matchKey(row.trade);
+    const count = key ? available.get(key) || 0 : 0;
+    if (!key || count <= 0) return true;
+    available.set(key, count - 1);
+    return false;
+  });
+}
