@@ -1,3 +1,4 @@
+import { emitUiEvent } from './uiEventBus';
 import { formatUSD } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatUSD } from '../utils/formatters';
@@ -44,9 +45,7 @@ function renderCashCushion(
   } = options;
   // The App component owns this desk's Preact instance. Send changing action
   // handlers as props rather than mounting a second renderer into its container.
-  window.dispatchEvent(new CustomEvent('terminal:cash-cushion-props', {
-    detail: { onFetchLivePrice, onRemoveCashStock, onSaveBalance, onAddCashStock, refreshIntervalMs }
-  }));
+  emitUiEvent('terminal:cash-cushion-props', { onFetchLivePrice, onRemoveCashStock, onSaveBalance, onAddCashStock, refreshIntervalMs });
 }
 
 function renderPositionsTable(
@@ -57,9 +56,7 @@ function renderPositionsTable(
   entryDate?: string,
   dailyRate: number = 0
 ): void {
-  window.dispatchEvent(new CustomEvent('terminal:projections-props', {
-    detail: { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate }
-  }));
+  emitUiEvent('terminal:projections-props', { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate });
 }
 
 function calculateCombinedMetrics(state: BoardState, rules: BrokerRules, tickers: string[], dailyRate: number) {
@@ -141,20 +138,18 @@ function renderSummaryCards(
   const tickers = Object.keys(state.positions || {});
   const isCombined = state.activeView === 'COMBINED' || (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
-  window.dispatchEvent(new CustomEvent('terminal:summary-metrics-props', {
-    detail: { state, rules, refreshIntervalMs }
-  }));
+  emitUiEvent('terminal:summary-metrics-props', { state, rules, refreshIntervalMs });
 
 
   if (isCombined) {
     const metrics = calculateCombinedMetrics(state, rules, tickers, dailyRate);
 
-    window.dispatchEvent(new CustomEvent('terminal:board-title', { detail: {
+    emitUiEvent('terminal:board-title', {
       title: tickers.length > 0
         ? `COMBINED PORTFOLIO (${tickers.length} Positions | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`
         : 'NO ACTIVE MARGIN POSITIONS',
       showDailyMove: true
-    } }));
+    });
 
     if (typeof onRenderAnalystConsensus === 'function' && tickers[0]) {
       onRenderAnalystConsensus(tickers[0]);
@@ -174,10 +169,10 @@ function renderSummaryCards(
 
     const metrics = calculatePositionMetrics(state, pos, rules, dailyRate);
 
-    window.dispatchEvent(new CustomEvent('terminal:board-title', { detail: {
+    emitUiEvent('terminal:board-title', {
       title: `${pos.ticker} (${pos.shares} Shares @ ${formatUSD(pos.pt)} PT | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`,
       showDailyMove: false
-    } }));
+    });
 
     if (typeof onRenderAnalystConsensus === 'function') {
       onRenderAnalystConsensus(pos.ticker);
@@ -245,15 +240,13 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const tickers = Object.keys(state.positions || {});
   const currentView = resolveActiveView(state);
-  window.dispatchEvent(new CustomEvent('terminal:active-view', { detail: { view: currentView } }));
+  emitUiEvent('terminal:active-view', { view: currentView });
 
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
   const isSettingsActive = currentView === 'SETTINGS';
 
-  window.dispatchEvent(new CustomEvent('terminal:ticker-tabs-props', {
-    detail: { state, onSetActiveView, onRefreshAllLivePrices }
-  }));
+  emitUiEvent('terminal:ticker-tabs-props', { state, onSetActiveView, onRefreshAllLivePrices });
 
   // Hidden desks do not need their derived metrics or insights panel refreshed.
   // They will be updated when the user returns to a position/combined desk.
@@ -286,8 +279,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
 
   if (tickers.length === 0) {
-    window.dispatchEvent(new CustomEvent('terminal:empty-state-props', {
-      detail: {
+    emitUiEvent('terminal:empty-state-props', {
         onQuickBuy: () => {
           const todayIso = new Date().toISOString().split('T')[0];
           prefillTerminalCommand(`bought [shares] [TICKER] for [price] on [${todayIso}]`);
@@ -298,13 +290,12 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
         onImportBackup: () => {
           document.getElementById('importFileInput')?.click();
         }
-      } satisfies import('../components/EmptyStatePanel').EmptyStatePanelProps
-    }));
+      } satisfies import('../components/EmptyStatePanel').EmptyStatePanelProps);
     onRenderConsoleQuickActions();
     return;
   }
 
-  window.dispatchEvent(new CustomEvent('terminal:empty-state-props', { detail: null }));
+  emitUiEvent('terminal:empty-state-props', null);
 
   renderSummaryCards(state, {
     rules,
