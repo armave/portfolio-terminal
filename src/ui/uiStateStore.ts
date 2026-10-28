@@ -11,7 +11,7 @@ export function setAiStatus(status: string): void {
 }
 
 /** Subscribe to the latest AI status; returns a cleanup callback. */
-export function subscribeAiStatus(listener: (status: string) => void): () => void {
+function subscribeAiStatus(listener: (status: string) => void): () => void {
   aiStatusListeners.add(listener);
   return () => aiStatusListeners.delete(listener);
 }
