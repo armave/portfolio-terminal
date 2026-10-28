@@ -139,6 +139,7 @@ export function CashCushionDesk({
             <thead>
               <tr class="border-b border-slate-800 text-slate-500">
                 <th class="py-2 px-2">Ticker</th>
+                <th class="py-2 px-2">Purchase date</th>
                 <th class="py-2 px-2 text-right">Shares</th>
                 <th class="py-2 px-2 text-right">Avg. Cost</th>
                 <th class="py-2 px-2 text-right">Market</th>
@@ -148,23 +149,24 @@ export function CashCushionDesk({
             </thead>
             <tbody class="divide-y divide-slate-800/60 font-mono">
               {activeTranches.length === 0 ? (
-                <tr><td colSpan={6} class="py-4 px-2 text-center font-sans text-slate-500 italic">
+                <tr><td colSpan={7} class="py-4 px-2 text-center font-sans text-slate-500 italic">
                   {state.brokerAccountInfo?.loaded ? 'No active broker tickers.' : 'Active tickers will appear after the broker account snapshot loads.'}
                 </td></tr>
               ) : activeTranches.map((tranche) => {
-                const type = state.activeTrancheTypes?.[tranche.ticker] || 'cash';
+                const type = state.activeTrancheTypes?.[tranche.id] || state.activeTrancheTypes?.[tranche.ticker] || 'cash';
                 return (
-                  <tr key={tranche.ticker} class="hover:bg-slate-900/50">
+                  <tr key={tranche.id} class="hover:bg-slate-900/50">
                     <td class="py-2 px-2 font-bold text-cyan-300">{tranche.ticker}</td>
+                    <td class="py-2 px-2 text-slate-400 tabular-nums">{tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString() : '—'}</td>
                     <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
                     <td class="py-2 px-2 text-right text-slate-300 tabular-nums">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</td>
                     <td class="py-2 px-2 text-right text-emerald-300 tabular-nums">{tranche.marketPrice !== null ? formatUSD(tranche.marketPrice) : '—'}</td>
                     <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.marketValue !== null ? formatUSD(tranche.marketValue) : '—'}</td>
                     <td class="py-2 px-2 text-center">
-                      <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={`${tranche.ticker} operation type`}>
-                        <button type="button" aria-pressed={type === 'cash'} onClick={() => setActiveTrancheType(tranche.ticker, 'cash')}
+                      <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={`${tranche.ticker} ${tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString() : 'undated'} operation type`}>
+                        <button type="button" aria-pressed={type === 'cash'} onClick={() => setActiveTrancheType(tranche.id, 'cash')}
                           class={`rounded px-2 py-1 text-[10px] font-bold transition ${type === 'cash' ? 'bg-cyan-950 text-cyan-300' : 'text-slate-500 hover:text-slate-300'}`}>Cash</button>
-                        <button type="button" aria-pressed={type === 'margin'} onClick={() => setActiveTrancheType(tranche.ticker, 'margin')}
+                        <button type="button" aria-pressed={type === 'margin'} onClick={() => setActiveTrancheType(tranche.id, 'margin')}
                           class={`rounded px-2 py-1 text-[10px] font-bold transition ${type === 'margin' ? 'bg-amber-950 text-amber-300' : 'text-slate-500 hover:text-slate-300'}`}>Margin</button>
                       </div>
                     </td>
@@ -173,7 +175,7 @@ export function CashCushionDesk({
               })}
             </tbody>
             {activeTranches.length > 0 && <tfoot class="border-t border-slate-700"><tr>
-              <td colSpan={6} class="px-2 py-2 text-[10px] text-slate-500">{activeTranches.length} active ticker{activeTranches.length === 1 ? '' : 's'} · classifications are saved with your portfolio</td>
+              <td colSpan={7} class="px-2 py-2 text-[10px] text-slate-500">{activeTranches.length} active purchase operation{activeTranches.length === 1 ? '' : 's'} · same-ticker purchases within 5 minutes are grouped</td>
             </tr></tfoot>}
           </table>
         </div>
