@@ -169,6 +169,16 @@ export function ClosedHistoryDesk() {
     });
     return () => { active = false; };
   }, []);
+  // The separate local history record is the durable recovery copy. If another
+  // state hydration replaces cashflows with an older snapshot, restore the latest
+  // locally persisted workbook instead of allowing navigation to lose the import.
+  useEffect(() => {
+    const persistedCashflows = loadSavedHistory().cashflows;
+    const currentCashflows = state.cashflows || [];
+    if (persistedCashflows.length && JSON.stringify(currentCashflows) !== JSON.stringify(persistedCashflows)) {
+      portfolioStore.setState({ cashflows: persistedCashflows });
+    }
+  }, [state.cashflows]);
   // Once broker executions have loaded, re-run allocations from the persisted
   // normalized workbook rows. The import handler only writes state when data differs.
   useEffect(() => {
@@ -601,7 +611,7 @@ export function ClosedHistoryDesk() {
                 </td>
               </tr>
             ) : (
-              visibleTrades.map(({ trade, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions }) => {
+              visibleTrades.map(({ trade, index, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions }) => {
                 // 1. Resolve Exit Date
                 const rawDate =
                   (trade as any).exitDate ||
