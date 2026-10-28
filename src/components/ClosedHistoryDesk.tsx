@@ -111,29 +111,11 @@ export function ClosedHistoryDesk() {
   const [cashflowImporting, setCashflowImporting] = useState(false);
   const [cashflowImportMessage, setCashflowImportMessage] = useState('');
   const [tradesPage, setTradesPage] = useState(1);
-  // Keep the newest in-session import outside the reactive store so an unrelated
-  // hydration cannot overwrite it before the recovery effect runs.
-  const latestImportedCashflows = useRef<any[]>((() => {
-    const saved = loadSavedHistory().cashflows;
-    return saved.length ? saved : (state.cashflows || []);
-  })());
-  // Large cloud history is fetched only when this section mounts. The main
-  // portfolio hydration intentionally excludes these two history collections.
+  const lastRecalculationKey = useRef('');
+  // Load cloud history once. An imported workbook is a complete snapshot: do not
+  // union it with an older cloud workbook, which can resurrect stale rows.
   useEffect(() => {
     let active = true;
-    const mergeById = (localRows: any[], cloudRows: any[]) => {
-      const merged = new Map<string, any>();
-      // Local rows are the current working copy and win for duplicate IDs.
-      for (const row of cloudRows) {
-        const id = String(row?.id ?? '');
-        if (id) merged.set(id, row);
-      }
-      for (const row of localRows) {
-        const id = String(row?.id ?? '');
-        if (id) merged.set(id, row);
-      }
-      return [...merged.values()];
-    };
     void pullCloudHistory().then(async history => {
       if (!active) return;
       const current = portfolioStore.getState();
@@ -141,26 +123,14 @@ export function ClosedHistoryDesk() {
       const localCashflows = current.cashflows?.length ? current.cashflows : saved.cashflows;
       const localExecutions = current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : saved.brokerExecutedTrades;
       const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
-      // Never replace an existing local import with an older/empty cloud snapshot.
-      // Merge by stable IDs so cloud-only records survive while local edits win.
       const resolved = {
-        brokerExecutedTrades: mergeById(localExecutions || [], cloud.brokerExecutedTrades || []),
-        // An imported workbook is a replacement snapshot, not an append-only
-        // event log. Prefer the latest local workbook as a whole; union-merging
-        // cashflows would resurrect rows that the user intentionally replaced.
-        cashflows: localCashflows?.length ? localCashflows : (cloud.cashflows || [])
+        brokerExecutedTrades: localExecutions.length ? localExecutions : (cloud.brokerExecutedTrades || []),
+        cashflows: localCashflows.length ? localCashflows : (cloud.cashflows || [])
       };
       portfolioStore.setState(resolved);
-      const differsFromCloud =
-        JSON.stringify(resolved.brokerExecutedTrades) !== JSON.stringify(cloud.brokerExecutedTrades || []) ||
-        JSON.stringify(resolved.cashflows) !== JSON.stringify(cloud.cashflows || []);
-      if (differsFromCloud && (resolved.brokerExecutedTrades.length || resolved.cashflows.length)) {
-        try {
-          const synced = await pushCloudHistory(resolved);
-          if (!synced) console.warn('Merged local closed history remains unsynced; cloud history did not confirm the update.');
-        } catch (error) {
-          console.error('Unable to sync merged local closed history:', error);
-        }
+      if (JSON.stringify(resolved) !== JSON.stringify(cloud) && (resolved.brokerExecutedTrades.length || resolved.cashflows.length)) {
+        try { await pushCloudHistory(resolved); }
+        catch (error) { console.error('Unable to sync closed history:', error); }
       }
     }).catch(error => {
       console.error('Unable to load closed history from cloud:', error);
@@ -175,30 +145,17 @@ export function ClosedHistoryDesk() {
     });
     return () => { active = false; };
   }, []);
-  // The separate local history record is the durable recovery copy. If another
-  // state hydration replaces cashflows with an older snapshot, restore the latest
-  // locally persisted workbook instead of allowing navigation to lose the import.
+  // Recalculate once per distinct input snapshot, not whenever the import's own
+  // loading flag toggles. This prevents the calculation effect from re-entering.
   useEffect(() => {
-    const currentCashflows = state.cashflows || [];
-    const latestImport = latestImportedCashflows.current;
-    if (latestImport.length && JSON.stringify(currentCashflows) !== JSON.stringify(latestImport)) {
-      portfolioStore.setState({ cashflows: latestImport });
-      return;
-    }
-    const persistedCashflows = loadSavedHistory().cashflows;
-    if (persistedCashflows.length && JSON.stringify(currentCashflows) !== JSON.stringify(persistedCashflows)) {
-      latestImportedCashflows.current = persistedCashflows;
-      portfolioStore.setState({ cashflows: persistedCashflows });
-    } else if (currentCashflows.length) {
-      latestImportedCashflows.current = currentCashflows;
-    }
-  }, [state.cashflows]);
-  // Once broker executions have loaded, re-run allocations from the persisted
-  // normalized workbook rows. The import handler only writes state when data differs.
-  useEffect(() => {
-    if (brokerTradesLoading || cashflowImporting || !(state.cashflows || []).length) return;
-    void handleImportCashflows(null, state.cashflows);
-  }, [brokerTradesLoading, cashflowImporting, state.cashflows]);
+    const cashflows = state.cashflows || [];
+    if (brokerTradesLoading || !cashflows.length) return;
+    const executions = portfolioStore.getState().brokerExecutedTrades || brokerTrades;
+    const key = JSON.stringify({ cashflows, executions });
+    if (key === lastRecalculationKey.current) return;
+    lastRecalculationKey.current = key;
+    void handleImportCashflows(null, cashflows);
+  }, [brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, brokerTrades]);
   const handleImportCashflows = async (file: File | null, savedRows?: any[]) => {
     const showImportMessage = !savedRows;
     setCashflowImporting(true);
@@ -207,7 +164,6 @@ export function ClosedHistoryDesk() {
       if (!savedRows && (!file || !file.name.toLowerCase().endsWith('.xlsx'))) throw new Error('Please select an Excel .xlsx file.');
       const rows = savedRows ?? normalizeCashflowRows(await readXlsxRows(await file!.arrayBuffer()));
       const imported = savedRows ? savedRows as ReturnType<typeof normalizeCashflowRows> : rows as ReturnType<typeof normalizeCashflowRows>;
-      if (!savedRows) latestImportedCashflows.current = imported;
       if (!imported.length) throw new Error('No cashflow rows were found in this workbook.');
 
       // Persist normalized cashflow rows as the source of truth. This lets the
