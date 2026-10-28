@@ -119,6 +119,10 @@ export function getActiveTranchesFromTrades(
     previous.marketPrice = lot.marketPrice ?? previous.marketPrice;
     previous.name = lot.name || previous.name;
   }
+  grouped.sort((a, b) =>
+    (b.purchasedAt ?? Number.MIN_SAFE_INTEGER) - (a.purchasedAt ?? Number.MIN_SAFE_INTEGER) ||
+    a.ticker.localeCompare(b.ticker) || a.rowIndex - b.rowIndex
+  );
   return grouped.map(lot => ({
     id: lot.ticker + ':' + (lot.purchasedAt ?? 'undated') + ':' + lot.id,
     ticker: lot.ticker,
