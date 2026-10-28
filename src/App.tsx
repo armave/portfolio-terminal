@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
 import { CashCushionDesk, type CashCushionDeskProps } from './components/CashCushionDesk';
@@ -48,7 +48,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
 
-  useEffect(() => {
+  // Register shell event listeners synchronously after mount. Startup dispatches
+  // auth/loading events immediately after render; passive effects can miss them.
+  useLayoutEffect(() => {
     const handleAuthVisibility = (event: Event) => {
       const detail = (event as CustomEvent<{ isOpen?: boolean }>).detail;
       setAuthOpen(Boolean(detail?.isOpen));
