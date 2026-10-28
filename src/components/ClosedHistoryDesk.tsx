@@ -265,10 +265,10 @@ export function ClosedHistoryDesk() {
       // Compare the complete recalculated records before writing. This prevents
       // repeated post-load recalculation from causing redundant Worker syncs.
       if (updatedTradeCount && brokerExecutions.length &&
-          JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
+        JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
         nextState.brokerExecutedTrades = updatedExecutions;
       } else if (updatedTradeCount && !brokerExecutions.length &&
-          JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
+        JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
         nextState.closedTrades = updatedTrades;
       }
       if (Object.keys(nextState).length) portfolioStore.setState(nextState);
@@ -525,7 +525,6 @@ export function ClosedHistoryDesk() {
               <th class="py-2.5 px-3 text-right">Duration</th>
               <th class="py-2.5 px-3 text-right">Fees & Comm.</th>
               <th class="py-2.5 px-3 text-right">Net Profit</th>
-              <th class="py-2.5 px-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody id="closedTradesTableBody" class="divide-y divide-slate-800/60">
@@ -622,7 +621,6 @@ export function ClosedHistoryDesk() {
                     >
                       {netProfit === null ? "—" : sign + "$" + formatUSD(Math.abs(netProfit))}
                     </td>
-                    <td class="py-2.5 px-3 text-right whitespace-nowrap">{source === "app" ? <button type="button" onClick={() => handleDelete(index)} class="rounded border border-slate-700 px-2 py-1 text-[10px]">Delete</button> : <span class="text-[10px] text-slate-600">Read-only</span>}</td>
                   </tr>
                 );
               })
