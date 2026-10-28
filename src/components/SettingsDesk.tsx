@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
+import { emitUiEvent } from '../ui/uiEventBus';
 import {
   areHeaderCredentialsConfigured,
   getGatewaySecret,
@@ -228,13 +229,15 @@ export function SettingsDesk({
           >
             Export
           </button>
-          <label
+          <button
+            type="button"
+            onClick={() => emitUiEvent('terminal:backup-import-request')}
             title="Validate and confirm a portfolio backup import; cloud sync depends on KV configuration"
             aria-label="Import portfolio backup from JSON"
             class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"
           >
             Import
-          </label>
+          </button>
           <button
             type="button"
             onClick={onResetToBlankState}
