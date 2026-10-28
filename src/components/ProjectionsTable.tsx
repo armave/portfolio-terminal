@@ -68,10 +68,6 @@ export function ProjectionsTable({
   const currentPage = Math.min(page, pageCount - 1);
   const visibleItems = projectionItems.slice(currentPage * ROWS_PER_PAGE, (currentPage + 1) * ROWS_PER_PAGE);
 
-  useEffect(() => {
-    if (page !== currentPage) setPage(currentPage);
-  }, [page, currentPage]);
-
   return (
     <>
       {visibleItems.map((item, idx) => {
