@@ -46,14 +46,15 @@ describe('Freedom active orders proxy', () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       ok: true,
       provider: 'Freedom TradeNet',
       data: { orders: { order: [{
         order_id: '77', instr: 'AAPL.US', oper: 3, type: 2, p: 210.25, q: 10, leaves_qty: 6, stat: 'active'
       }] } }
     });
-    expect(JSON.stringify(await response.clone().json())).not.toContain('do-not-return');
+    expect(JSON.stringify(body)).not.toContain('do-not-return');
     const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(requestBody).toEqual({ cmd: 'getNotifyOrderJson', params: { active_only: 1 } });
     expect(String(fetchMock.mock.calls[0][0])).toBe('https://tradernet.com/api/getNotifyOrderJson');
