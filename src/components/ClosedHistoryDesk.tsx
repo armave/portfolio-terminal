@@ -4,7 +4,7 @@ import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { pullCloudHistory, pushCloudHistory } from '../services/api';
 import { loadSavedHistory } from '../services/storage';
-import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades } from '../domain/closedHistoryFees';
+import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows } from '../domain/closedHistoryFees';
 
 type ImportedCashflow = { id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw: Record<string, string> };
 
@@ -507,32 +507,9 @@ export function ClosedHistoryDesk() {
     }
     return groups;
   })();
-  // Broker executions and app-owned closed trades can describe the same sale.
-  // Prefer the broker-calculated row when ticker, close day, and closed quantity
-  // agree; consume each broker match once so repeated partial closes remain distinct.
-  const brokerMatchCounts = new Map<string, number>();
-  const getClosedTradeMatchKey = (trade: any): string | null => {
-    const ticker = String(trade?.ticker ?? '').trim().toUpperCase().replace(/\.US$/, '');
-    const rawDate = trade?.exitDate ?? trade?.sellDate ?? trade?.closedAt ?? trade?.date;
-    const timestamp = typeof rawDate === 'number' ? rawDate : Date.parse(String(rawDate ?? ''));
-    const shares = Math.abs(Number(trade?.shares ?? trade?.quantity ?? 0));
-    if (!ticker || !Number.isFinite(timestamp) || !Number.isFinite(shares) || shares <= 0) return null;
-    const date = new Date(timestamp);
-    const day = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
-    return `${ticker}|${day}|${shares.toFixed(6)}`;
-  };
-  for (const row of groupedBrokerRows) {
-    const key = getClosedTradeMatchKey(row.trade);
-    if (key) brokerMatchCounts.set(key, (brokerMatchCounts.get(key) || 0) + 1);
-  }
-  const uniqueAppTrades = appTrades.filter(row => {
-    const key = getClosedTradeMatchKey(row.trade);
-    const count = key ? brokerMatchCounts.get(key) || 0 : 0;
-    if (!key || count <= 0) return true;
-    brokerMatchCounts.set(key, count - 1);
-    return false;
-  });
-  const trades = [...uniqueAppTrades, ...groupedBrokerRows].sort((a, b) => String((b.trade as any).exitDate ?? (b.trade as any).sellDate ?? '').localeCompare(String((a.trade as any).exitDate ?? (a.trade as any).sellDate ?? '')));
+  // Broker executions are the canonical display source when the same sale
+  // also exists as an app-owned closed trade.
+  const uniqueAppTrades = deduplicateClosedHistoryRows(appTrades, groupedBrokerRows);
   const tradesPageSize = 10;
   const tradesPageCount = Math.max(1, Math.ceil(trades.length / tradesPageSize));
   const visibleTrades = trades.slice((tradesPage - 1) * tradesPageSize, tradesPage * tradesPageSize);
