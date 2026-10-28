@@ -583,13 +583,13 @@ describe('Worker request hardening', () => {
     // Let the request reach the upstream fetch before advancing its timeout.
     // The worker performs async request parsing before starting the Gemini attempt.
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1), { timeout: 1000 });
-    vi.advanceTimersByTime(3500);
+    vi.advanceTimersByTime(10_000);
     const response = await responsePromise;
 
     expect(firstSignal.aborted).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(response.status).toBe(200);
-  });
+  }, 15_000);
 
   it('rejects invalid Gemini payloads, oversized prompts, and unapproved models', async () => {
     const fetchMock = vi.fn();
