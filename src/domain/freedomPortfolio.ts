@@ -39,14 +39,17 @@ export interface FreedomActiveLimitSellOrderLike {
   remainingQuantity?: number | null;
 }
 
-/** Keep only unambiguous live limit-sell prices, keyed by normalized ticker. */
+/** Keep only unambiguous live limit-sell prices, keyed by normalized ticker.
+ * Freedom TradeNet uses order type 4 for the active limit-sell response; type 2
+ * remains supported for normalized/legacy order data already used by the app.
+ */
 export function getActiveLimitSellTargets(orders: FreedomActiveLimitSellOrderLike[]): Record<string, number> {
   const pricesByTicker = new Map<string, Set<number>>();
   for (const order of orders) {
     const ticker = tickerKey(order?.ticker);
     const price = positiveFinite(order?.limitPrice);
     const remaining = Number(order?.remainingQuantity);
-    if (!ticker || order?.operation !== 3 || order?.orderType !== 2 || price === null || !Number.isFinite(remaining) || remaining <= 0) continue;
+    if (!ticker || order?.operation !== 3 || ![2, 4].includes(Number(order?.orderType)) || price === null || !Number.isFinite(remaining) || remaining <= 0) continue;
     const prices = pricesByTicker.get(ticker) || new Set<number>();
     prices.add(price);
     pricesByTicker.set(ticker, prices);
