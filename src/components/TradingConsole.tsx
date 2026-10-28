@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { ConsoleQuickActions } from './ConsoleQuickActions';
 import { clearTerminalLog } from '../ui/notifications';
 import { formatUSD, PositionRecord } from '../ui/renderBoard';
-import { addUiEventListener, removeUiEventListener } from '../ui/uiEventBus';
+import { useAiStatus } from '../ui/uiStateStore';
 
 export interface TradingConsoleProps {
   position?: PositionRecord;
@@ -13,16 +13,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState<number>(-1);
   const [command, setCommand] = useState('');
-  const [aiStatus, setAiStatus] = useState('READY');
-
-  useEffect(() => {
-    const handleStatus = (event: Event) => {
-      const status = (event as CustomEvent<string>).detail;
-      if (status) setAiStatus(status);
-    };
-    addUiEventListener('terminal:ai-status', handleStatus);
-    return () => removeUiEventListener('terminal:ai-status', handleStatus);
-  }, []);
+  const aiStatus = useAiStatus();
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const ticker = position?.ticker || 'AAPL';
