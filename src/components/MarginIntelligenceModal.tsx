@@ -59,7 +59,9 @@ function renderInlineMarkdown(text: string) {
 }
 
 function renderAnalysisMarkdown(markdown: string) {
-  const lines = markdown.replace(/\r\n?/g, '\n').split('\n');
+  // Older synced digests may contain inline provider IDs; source cards are the canonical citations.
+  const cleanedMarkdown = markdown.replace(/\s*\((?:Yahoo|Yahoo Finance),\s*\d{6,}\)/gi, '');
+  const lines = cleanedMarkdown.replace(/\r\n?/g, '\n').split('\n');
   const blocks: ComponentChildren[] = [];
   let paragraph: string[] = [];
   let listItems: Array<{ text: string; ordered: boolean }> = [];
