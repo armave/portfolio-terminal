@@ -1,5 +1,8 @@
 import { emitUiEvent } from './uiEventBus';
-import { setActiveDeskViewState, setBoardTitle } from './uiStateStore';
+import {
+  setActiveDeskViewState, setBoardTitle, setCashCushionPropsState, setTickerTabsPropsState,
+  setSummaryMetricsPropsState, setProjectionsPropsState, setEmptyStatePropsState
+} from './uiStateStore';
 import { formatUSD } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatUSD } from '../utils/formatters';
@@ -40,7 +43,7 @@ function renderCashCushion(
   const refreshIntervalMs = options.refreshIntervalMs ?? 60000;
   // The App component owns this desk's Preact instance. Send changing action
   // handlers as props rather than mounting a second renderer into its container.
-  emitUiEvent('terminal:cash-cushion-props', { refreshIntervalMs });
+  setCashCushionPropsState({ refreshIntervalMs });
 }
 
 function renderPositionsTable(
@@ -51,7 +54,7 @@ function renderPositionsTable(
   entryDate?: string,
   dailyRate: number = 0
 ): void {
-  emitUiEvent('terminal:projections-props', { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate });
+  setProjectionsPropsState({ gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate });
 }
 
 function calculateCombinedMetrics(state: BoardState, rules: BrokerRules, tickers: string[], dailyRate: number) {
@@ -133,7 +136,7 @@ function renderSummaryCards(
   const tickers = Object.keys(state.positions || {});
   const isCombined = state.activeView === 'COMBINED' || (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
-  emitUiEvent('terminal:summary-metrics-props', { state, rules, refreshIntervalMs });
+  setSummaryMetricsPropsState({ state, rules, refreshIntervalMs });
 
 
   if (isCombined) {
@@ -241,7 +244,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
   const isSettingsActive = currentView === 'SETTINGS';
 
-  emitUiEvent('terminal:ticker-tabs-props', { state, onSetActiveView, onRefreshAllLivePrices });
+  setTickerTabsPropsState({ state, onSetActiveView, onRefreshAllLivePrices });
 
   // Hidden desks do not need their derived metrics or insights panel refreshed.
   // They will be updated when the user returns to a position/combined desk.
@@ -274,7 +277,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
 
   if (tickers.length === 0) {
-    emitUiEvent('terminal:empty-state-props', {
+    setEmptyStatePropsState({
         onQuickBuy: () => {
           const todayIso = new Date().toISOString().split('T')[0];
           prefillTerminalCommand(`bought [shares] [TICKER] for [price] on [${todayIso}]`);
@@ -290,7 +293,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     return;
   }
 
-  emitUiEvent('terminal:empty-state-props', null);
+  setEmptyStatePropsState(null);
 
   renderSummaryCards(state, {
     rules,
