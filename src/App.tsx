@@ -200,7 +200,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         ].join('\n\n');
         const response = await proxyFetch('gemini', {}, {
           method: 'POST',
-          body: JSON.stringify({ prompt, model: 'gemini-2.5-flash-lite' }),
+          body: JSON.stringify({ prompt, model: 'gemini-3.8-flash' }),
           cache: 'no-store'
         });
         const analysis = response?.candidates?.[0]?.content?.parts
