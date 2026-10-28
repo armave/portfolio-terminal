@@ -19,6 +19,10 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
       // Continue navigation when storage is unavailable.
     }
     onSetActiveView?.(view);
+    if (!['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(view) &&
+        typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('tradenet:request-active-orders'));
+    }
     // Entering or switching within the Margin workspace should pull fresh
     // quotes immediately instead of waiting for the polling interval.
     if (!['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(view)) {
