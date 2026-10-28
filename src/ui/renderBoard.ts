@@ -36,13 +36,7 @@ function renderCashCushion(
   _state: BoardState,
   options: RenderCashCushionOptions = {}
 ): void {
-  const {
-    onFetchLivePrice,
-    onRemoveCashStock,
-    onSaveBalance,
-    onAddCashStock,
-    refreshIntervalMs = 60000
-  } = options;
+  const refreshIntervalMs = options.refreshIntervalMs ?? 60000;
   // The App component owns this desk's Preact instance. Send changing action
   // handlers as props rather than mounting a second renderer into its container.
   emitUiEvent('terminal:cash-cushion-props', { refreshIntervalMs });
