@@ -498,8 +498,6 @@ export function ClosedHistoryDesk() {
         const newQty = Number((row.trade as any).shares ?? 0);
         const oldProfit = previous.profit;
         const newProfit = row.profit;
-        const oldFees = previous.fees;
-        const newFees = row.fees;
         const oldDuration = (previous.trade as any).holdingDays;
         const newDuration = (row.trade as any).holdingDays;
         const totalQty = oldQty + newQty;
