@@ -1040,3 +1040,28 @@ describe('closed-history request deduplication', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe('closed-history migration revision reuse', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('uses the revision from the migration GET instead of issuing a second GET before POST', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ETag: '"1"' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(pushCloudHistory({
+      brokerExecutedTrades: [{ id: 'migration-revision-reuse-trade-20261028' }],
+      cashflows: [{ id: 'migration-revision-reuse-fee-20261028' }]
+    }, 'migration-revision-reuse-secret-20261028', 0)).resolves.toBe(true);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('POST');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"0"' });
+  });
+});
