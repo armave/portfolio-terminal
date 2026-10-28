@@ -128,8 +128,23 @@ export function ClosedHistoryDesk() {
       // Once the dedicated cloud history record exists, it is authoritative.
       // Prefer local snapshots only when the cloud record is absent; otherwise
       // stale local copies cause an immediate second POST after migration/load.
+      const localExecutionsById = new Map<string, any>(localExecutions
+        .filter((trade: any) => trade?.id != null && String(trade.id) !== '')
+        .map((trade: any) => [String(trade.id), trade] as [string, any]));
+      const cloudExecutions = (cloud.brokerExecutedTrades || []).map((trade: any) => {
+        const local = trade?.id == null ? undefined : localExecutionsById.get(String(trade.id));
+        if (!local) return trade;
+        const merged = { ...trade };
+        // Fee allocations are computed client-side and can be missing from an
+        // older cloud snapshot. Do not discard a locally persisted calculation
+        // just because navigating through Balance triggered a cloud reload.
+        for (const field of ['marginFeeAllocations', 'marginFee', 'feesAndCommissions', 'netProfit']) {
+          if (local[field] !== undefined && local[field] !== null) merged[field] = local[field];
+        }
+        return merged;
+      });
       const resolved = history ? {
-        brokerExecutedTrades: cloud.brokerExecutedTrades || [],
+        brokerExecutedTrades: cloudExecutions,
         cashflows: cloud.cashflows || []
       } : {
         brokerExecutedTrades: localExecutions,
