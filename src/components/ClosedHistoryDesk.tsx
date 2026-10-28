@@ -150,11 +150,20 @@ export function ClosedHistoryDesk() {
   useEffect(() => {
     const cashflows = state.cashflows || [];
     if (brokerTradesLoading || !cashflows.length) return;
-    const executions = portfolioStore.getState().brokerExecutedTrades || brokerTrades;
-    const key = JSON.stringify({ cashflows, executions });
+    const executions = portfolioStore.getState().brokerExecutedTrades?.length
+      ? portfolioStore.getState().brokerExecutedTrades
+      : brokerTrades;
+    // Exclude calculated metadata from the input fingerprint; otherwise a
+    // successful allocation changes its own key and triggers another pass.
+    const sourceExecutions = executions.map((trade: any) => {
+      const { marginFeeAllocations: _allocations, marginFee: _marginFee, feesAndCommissions: _fees, netProfit: _net, ...source } = trade;
+      return source;
+    });
+    const key = JSON.stringify({ cashflows, executions: sourceExecutions });
     if (key === lastRecalculationKey.current) return;
-    lastRecalculationKey.current = key;
-    void handleImportCashflows(null, cashflows);
+    void handleImportCashflows(null, cashflows).then((success) => {
+      if (success) lastRecalculationKey.current = key;
+    });
   }, [brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, brokerTrades]);
   const handleImportCashflows = async (file: File | null, savedRows?: any[]) => {
     const showImportMessage = !savedRows;
@@ -307,14 +316,16 @@ export function ClosedHistoryDesk() {
         const feeSpan = feeRange.length ? new Date(Math.min(...feeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...feeRange)).toISOString().slice(0, 10) : 'unparseable';
         const tradeSpan = tradeRange.length ? new Date(Math.min(...tradeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...tradeRange)).toISOString().slice(0, 10) : 'unparseable';
         if (showImportMessage) setCashflowImportMessage(`Saved ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows (${validFeeDates} with valid dates; ${feeSpan}), but none overlapped ${segments.length} FIFO-matched closed trade segments from ${validTradeDates} dated broker executions (${tradeSpan}). Cashflow data is saved; check the date ranges and broker execution data to allocate fees.`);
-        return;
+        return true;
       }
       if (brokerExecutions.length) setBrokerTrades(updatedExecutions);
       const allocatedForMessage = brokerExecutions.length ? allocatedDailyFees : appAllocatedDailyFees;
       const matchedForMessage = brokerExecutions.length ? matchedFeeRows : appMatchedFeeRows;
       if (showImportMessage) setCashflowImportMessage(`Saved ${imported.length} cashflow rows; allocated ${allocatedForMessage.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} changed closed-trade rows (${matchedForMessage} fee dates matched). Saved rows can be reused after refresh.`);
+      return true;
     } catch (error) {
       if (showImportMessage) setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
+      return false;
     } finally {
       setCashflowImporting(false);
     }
