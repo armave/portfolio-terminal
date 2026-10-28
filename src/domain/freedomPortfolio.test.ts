@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyFreedomPortfolio, getActiveBrokerTranches, getActiveTranchesFromTrades, reconcileFreedomPortfolio } from './freedomPortfolio';
+import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, reconcileFreedomPortfolio } from './freedomPortfolio';
 
 describe('reconcileFreedomPortfolio', () => {
   it('prefers Freedom USD cash and derives cash shares after app margin lots', () => {
@@ -200,5 +200,44 @@ describe('active broker tranches', () => {
       NVDA: { ticker: 'NVDA', shares: 2, currentPrice: 110, pt: 150, commBuy: 2, tranches: [{ qty: 2, price: 95 }] }
     }, [], { NVDA: 'margin' });
     expect(result.positions.NVDA).toMatchObject({ shares: 2, pt: 150, commBuy: 2, tranches: [{ qty: 2, price: 95 }] });
+  });
+});
+
+
+describe('active limit sell target synchronization', () => {
+  it('uses the exact $353 broker limit for one sell order covering all 50 shares across three margin buys', () => {
+    const targets = getActiveLimitSellTargets([
+      { ticker: 'AAPL.US', operation: 3, orderType: 2, limitPrice: 353, remainingQuantity: 50 }
+    ]);
+    const refreshed = {
+      AAPL: {
+        ticker: 'AAPL',
+        shares: 50,
+        pt: 354.58,
+        tranches: [
+          { qty: 20, price: 340 },
+          { qty: 15, price: 345 },
+          { qty: 15, price: 350 }
+        ]
+      }
+    };
+
+    expect(targets).toEqual({ AAPL: 353 });
+    expect(applyActiveLimitSellTargets(refreshed, targets).AAPL.pt).toBe(353);
+  });
+
+  it('does not guess when different active limit-sell prices exist for the same ticker', () => {
+    expect(getActiveLimitSellTargets([
+      { ticker: 'AAPL.US', operation: 3, orderType: 2, limitPrice: 353, remainingQuantity: 25 },
+      { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 354, remainingQuantity: 25 }
+    ])).toEqual({});
+  });
+
+  it('ignores non-sell, non-limit, and fully filled orders', () => {
+    expect(getActiveLimitSellTargets([
+      { ticker: 'AAPL', operation: 1, orderType: 2, limitPrice: 353, remainingQuantity: 50 },
+      { ticker: 'AAPL', operation: 3, orderType: 1, limitPrice: 353, remainingQuantity: 50 },
+      { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 353, remainingQuantity: 0 }
+    ])).toEqual({});
   });
 });
