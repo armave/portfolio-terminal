@@ -214,7 +214,6 @@ export interface RenderBoardOptions extends RenderCashCushionOptions {
   rules: BrokerRules;
   onSetActiveView?: (view: string) => void;
   onRefreshAllLivePrices?: () => void | Promise<void>;
-  onRenderClosedHistory?: () => void;
   onRenderSettingsPanel?: () => void;
   onRenderAnalystConsensus?: (ticker: string) => void;
   onRenderExternalLinks?: () => void;
@@ -230,7 +229,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     rules,
     onSetActiveView = () => { },
     onRefreshAllLivePrices = () => { },
-    onRenderClosedHistory = () => { },
     onRenderSettingsPanel = () => { },
     onRenderAnalystConsensus = () => { },
     onFetchLivePrice = () => { },
@@ -275,7 +273,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   if (isClosedHistoryActive) {
     onUpdateLastDeskView('CLOSED_HISTORY');
-    onRenderClosedHistory();
     return;
   }
 
