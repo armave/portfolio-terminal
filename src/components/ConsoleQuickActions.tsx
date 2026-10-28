@@ -30,9 +30,6 @@ function prefillTerminalInput(
 }
 
 export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillCommand }: ConsoleQuickActionsProps) {
-  const currentPrice =
-    position && Number(position.currentPrice) > 0 ? Number(position.currentPrice) : null;
-  const priceText = currentPrice === null ? '[price]' : formatUSD(currentPrice);
   // Portfolio-level quick actions when on COMBINED or BALANCE tab
   if (!position) {
     const globalActions: QuickActionItem[] = [
