@@ -115,22 +115,42 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           }))
         ).sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0)).slice(0, 20);
 
+        const brokerPositions = snapshot.brokerAccountInfo?.positions || [];
         const summarizePosition = (position: typeof allPositions[number]) => {
-          const tranches = position.tranches || [];
-          const totalLotShares = tranches.reduce((total, tranche) => total + Number(tranche.qty || 0), 0);
-          const averageEntryPrice = totalLotShares > 0
-            ? tranches.reduce((total, tranche) => total + Number(tranche.qty || 0) * Number(tranche.price || 0), 0) / totalLotShares
+          const tranches = (position.tranches || []).filter((tranche) =>
+            Number.isFinite(Number(tranche.qty)) && Number(tranche.qty) > 0 &&
+            Number.isFinite(Number(tranche.price)) && Number(tranche.price) > 0
+          );
+          const lotShares = tranches.reduce((total, tranche) => total + Number(tranche.qty), 0);
+          const entryCost = tranches.reduce((total, tranche) => total + Number(tranche.qty) * Number(tranche.price), 0);
+          const averageEntryPrice = lotShares > 0 ? entryCost / lotShares : null;
+          const marketPrice = Number.isFinite(Number(position.currentPrice)) && Number(position.currentPrice) > 0
+            ? Number(position.currentPrice) : null;
+          const appShares = Number(position.shares);
+          const brokerPosition = brokerPositions.find((item: any) => String(item.ticker || '').toUpperCase() === String(position.ticker).toUpperCase());
+          const brokerShares = brokerPosition ? Number(brokerPosition.quantity) : null;
+          const lotSharesMatchPosition = Math.abs(lotShares - appShares) < 0.000001;
+          const brokerSharesMatchPosition = brokerShares === null || Math.abs(brokerShares - appShares) < 0.000001;
+          const lotBasedPnl = marketPrice !== null && tranches.length > 0
+            ? tranches.reduce((total, tranche) => total + (marketPrice - Number(tranche.price)) * Number(tranche.qty), 0)
             : null;
-          const marketPrice = Number(position.currentPrice) || null;
           return {
             ticker: position.ticker,
-            shares: Number(position.shares),
+            appTrackedShares: appShares,
+            brokerReportedShares: brokerShares,
+            entryLotShares: lotShares,
+            quantityReconciliation: {
+              appSharesMatchEntryLots: lotSharesMatchPosition,
+              appSharesMatchBroker: brokerSharesMatchPosition,
+              status: !lotSharesMatchPosition || !brokerSharesMatchPosition ? 'discrepancy' : brokerShares === null ? 'broker quantity unavailable' : 'matched'
+            },
             marketPrice,
             quoteSource: position.quoteSource || null,
             quoteUpdatedAt: position.quoteUpdatedAt || null,
-            quoteDetails: position.quoteDetails || null,
-            targetOrActiveSellLimit: Number(position.pt) || null,
-            marketValue: marketPrice === null ? null : Number(position.shares) * marketPrice,
+            quoteFreshness: position.quoteDetails?.freshness || 'unknown',
+            quoteSourceTimestamp: position.quoteDetails?.sourceTimestamp || null,
+            targetOrActiveSellLimit: Number.isFinite(Number(position.pt)) && Number(position.pt) > 0 ? Number(position.pt) : null,
+            marketValue: marketPrice === null ? null : appShares * marketPrice,
             entryLots: tranches.slice(-8).map((tranche) => ({
               shares: Number(tranche.qty),
               entryPrice: Number(tranche.price),
@@ -138,9 +158,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               buyCommission: Number(tranche.buyCommission || 0)
             })),
             averageEntryPrice,
-            unrealizedGrossPnl: marketPrice !== null && averageEntryPrice !== null
-              ? (marketPrice - averageEntryPrice) * Number(position.shares)
-              : null,
+            unrealizedGrossPnl: lotBasedPnl,
+            unrealizedGrossPnlBasis: lotBasedPnl === null ? 'unavailable: valid entry lots or market price missing' : 'sum of open-lot P&L; excludes commissions, fees, and interest',
             holdingStartDate: position.startDate || null,
             recordedBuyCommission: Number(position.commBuy || 0)
           };
@@ -190,10 +209,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           requestedTicker
             ? 'FOCUS: analyze ' + requestedTicker + ' in depth, but use the entire portfolio/account snapshot to assess concentration, liquidity, leverage, and correlated downside. Clearly separate ticker-specific conclusions from portfolio-wide risks.'
             : 'FOCUS: review every open margin position and the portfolio as a whole.',
-          'Use only the portfolio context and news items below as factual inputs. Do not invent news, prices, earnings dates, market data, source details, broker rules, or margin requirements. If a field is missing, stale, or unavailable, explicitly say so. Distinguish reported facts from your interpretation.',
-          'For the focus position, discuss HOLD, REDUCE/EXIT, and ADD only where justified; do not force an ADD recommendation. Consider entry lots and dates, average entry, unrealized P&L, target/active sell limit, quote freshness/source, concentration, cash, account balance, margin financing assumptions, commissions, and recent closed-trade outcomes when the supplied data supports it.',
-          'Give an overall stance, strongest evidence, downside/catalyst risks, what would invalidate the thesis, and 2-3 things to monitor next. Never claim to know the broker liquidation threshold unless explicitly provided. Do not modify or submit orders.',
-          'Format with clear short headings and bullets. Avoid certainty and do not imply this is personalized professional financial advice.',
+          'Use only the portfolio context and news items below as factual inputs. Do not invent news, prices, earnings dates, market data, source details, broker rules, or margin requirements. If a field is missing, stale, or unavailable, explicitly say so. Distinguish verified inputs from your interpretation.',
+          'IMPORTANT: quantity reconciliation fields are authoritative. If app-tracked shares, broker-reported shares, and open entry-lot shares disagree, lead with a DATA QUALITY WARNING, list each quantity and its source, and do not make a firm position-size-dependent recommendation until reconciled. Never silently choose one quantity.',
+          'All market values and P&L values supplied by the application are calculated values, not broker-confirmed values. P&L is gross, based only on valid open entry lots, and excludes commissions, fees, and interest. Do not recompute or replace it using a different share count. If it is unavailable, say so.',
+          'For news, only state claims supported by the supplied article headline/summary. Cite the source name and publication time in the text where possible. Do not infer earnings timing from phrases like “on deck”; if an earnings date is not explicitly supplied, state that the date is unverified. Label uncertain interpretations as hypotheses.',
+          'Discuss HOLD, REDUCE/EXIT, and ADD only where justified; do not force an ADD recommendation. Avoid proposing a new price target unless supplied data directly supports a transparent calculation. Never claim to know the broker liquidation threshold unless explicitly provided. Do not modify or submit orders.',
+          'Give data quality and freshness first, then overall stance, strongest evidence, downside/catalyst risks, what would invalidate the thesis, and 2-3 things to monitor. Format with clear short headings and bullets. Avoid certainty and do not imply this is personalized professional financial advice.',
           'PORTFOLIO AND ACCOUNT CONTEXT JSON:', JSON.stringify(portfolioContext),
           'RECENT NEWS JSON (provider timestamps and URLs when available):',
           JSON.stringify(articles.map((article) => ({ ticker: article.ticker, headline: article.headline.slice(0, 220), source: article.source, url: article.url, publishedAt: article.publishedAt, summary: (article.summary || '').slice(0, 280) })))
