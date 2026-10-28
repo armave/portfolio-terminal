@@ -189,6 +189,8 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
           </button>
           <span
             id="aiStatus"
+            role="status"
+            aria-live="polite"
             class="rounded bg-slate-900 border border-slate-800 px-1.5 py-0.5 text-[9px] font-mono font-bold text-slate-400"
           >
             {aiStatus}
@@ -246,11 +248,16 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
         <button
           type="button"
           onClick={triggerExecute}
+          title="Run the command. Portfolio-changing actions require confirmation before they are applied."
           class="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-slate-950 text-xs font-mono font-bold px-3.5 py-1.5 rounded transition shadow-sm"
         >
           Run ↵
         </button>
       </div>
+
+      <p id="consoleSafetyNote" class="text-[10px] leading-relaxed text-slate-500">
+        Read-only queries run directly. Portfolio-changing commands show a confirmation step before the saved portfolio is changed.
+      </p>
 
       {/* Contextual Quick Action Pills */}
       <div

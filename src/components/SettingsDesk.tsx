@@ -204,7 +204,7 @@ export function SettingsDesk({
         </div>
 
         {/* Cluster 2: Polling & Backups */}
-        <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2">
+        <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2" aria-label="Quote refresh and portfolio backup controls">
           <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
             Update Interval
             <select
@@ -223,6 +223,7 @@ export function SettingsDesk({
           <button
             type="button"
             onClick={onExportBackup}
+            aria-label="Export portfolio backup as JSON"
             title="Export portfolio state to JSON file"
             class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
           >
@@ -230,6 +231,7 @@ export function SettingsDesk({
           </button>
           <label
             title="Validate and confirm a portfolio backup import; cloud sync depends on KV configuration"
+            aria-label="Import portfolio backup from JSON"
             class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"
           >
             Import
@@ -244,7 +246,7 @@ export function SettingsDesk({
           <button
             type="button"
             onClick={onResetToBlankState}
-            title="Clear all local data and return to blank slate"
+            title="Clear all local data and return to blank slate. Export a backup first if you may need this portfolio again."
             aria-label="Reset all local portfolio data"
             class="h-8 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
           >
@@ -252,6 +254,10 @@ export function SettingsDesk({
           </button>
         </div>
       </div>
+
+      <p class="w-full text-center text-[10px] leading-relaxed text-slate-500">
+        Recovery tip: export a JSON backup before resetting local data or relying on cloud sync as your only copy.
+      </p>
 
       <details class="space-y-3">
         <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">

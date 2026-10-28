@@ -2447,3 +2447,58 @@ table tbody tr:hover {
 #activeTranches, #cloudStatus {
   margin-top: 10px;
 }
+
+/* Portfolio usability: readable tables and keyboard focus. */
+/* Portfolio usability: visible quote confidence, readable tables, and keyboard focus. */
+.table-scroll-wrapper {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.65) transparent;
+}
+.table-scroll-wrapper table thead th,
+#projectionTableContainer table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #111827;
+  box-shadow: inset 0 -1px 0 rgba(148, 163, 184, 0.16);
+}
+table th,
+table td {
+  font-variant-numeric: tabular-nums;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+#cmdInput {
+  scroll-margin-block: 1rem;
+}
+@media (max-width: 640px) {
+  .portfolio-micro-summary {
+    gap: 8px;
+  }
+  .portfolio-micro-column {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .table-scroll-wrapper {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .expandable-motion,
+  .expandable-motion__inner,
+  .credentials-motion,
+  table tbody tr {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    scroll-behavior: auto !important;
+  }
+}
