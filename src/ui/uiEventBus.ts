@@ -35,7 +35,6 @@ export interface UiEventPayloads {
 }
 
 export type UiEventName = keyof UiEventPayloads;
-type UiListener<K extends UiEventName> = (detail: UiEventPayloads[K]) => void;
 const listeners = new Map<UiEventName, Set<(detail: unknown) => void>>();
 const listenerWrappers = new WeakMap<(event: Event) => void, (detail: unknown) => void>();
 
