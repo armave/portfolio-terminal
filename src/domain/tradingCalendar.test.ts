@@ -62,6 +62,18 @@ describe('US equity trading calendar', () => {
     });
   });
 
+  it('extends weekly projections through the exact break-even date', () => {
+    const projections = getUsEquityProjectionDates(localDate(2026, 10, 12), undefined, 94);
+    expect(projections[projections.length - 1]).toMatchObject({
+      daysFromToday: 94,
+      kind: 'breakeven',
+      label: 'BREAKEVEN'
+    });
+    expect(dateLabel(projections[projections.length - 1].date)).toBe('2027-01-14');
+    expect(projections.filter(({ kind }) => kind === 'weekly').length).toBeGreaterThan(9);
+    expect(projections.every(({ daysFromToday, kind }) => kind === 'entry' || daysFromToday <= 94)).toBe(true);
+  });
+
   it('puts a historical entry date before today without treating it as a projection', () => {
     const projections = getUsEquityProjectionDates(localDate(2026, 10, 6), '2026-09-22');
     expect(projections.slice(0, 3).map(({ date, daysFromToday, kind }) => [
