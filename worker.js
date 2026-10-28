@@ -205,12 +205,14 @@ export function sanitizeFreedomActiveOrders(response) {
         response?.result,
         response?.data
     ];
-    const envelope = candidates.find(value => value && typeof value === "object"
-        && (Array.isArray(value.order) || Array.isArray(value.orders) || Array.isArray(value.items)));
-    const rows = Array.isArray(envelope?.order) ? envelope.order
-        : Array.isArray(envelope?.orders) ? envelope.orders
-            : Array.isArray(envelope?.items) ? envelope.items
-                : [];
+    const envelope = candidates.find(value => Array.isArray(value) ||
+        (value && typeof value === "object"
+            && (Array.isArray(value.order) || Array.isArray(value.orders) || Array.isArray(value.items))));
+    const rows = Array.isArray(envelope) ? envelope
+        : Array.isArray(envelope?.order) ? envelope.order
+            : Array.isArray(envelope?.orders) ? envelope.orders
+                : Array.isArray(envelope?.items) ? envelope.items
+                    : [];
     const numberOrNull = value => {
         if (value === null || value === undefined || value === "") return null;
         const number = Number(value);
