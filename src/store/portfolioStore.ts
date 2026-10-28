@@ -223,6 +223,10 @@ export class PortfolioStore {
 
     const raw: PortfolioState = {
       positions: saved?.positions || {},
+      // Operation-level cash/margin choices are canonical portfolio data and must survive reloads/cloud pulls.
+      activeTrancheTypes: saved?.activeTrancheTypes && typeof saved.activeTrancheTypes === 'object'
+        ? saved.activeTrancheTypes
+        : {},
       cashCushion: saved?.cashCushion || { freeCash: 0, holdings: [] },
       balance: Number.isFinite(Number(saved?.balance)) ? Number(saved?.balance) : 0,
       realizedMarginCharged: Number.isFinite(Number(saved?.realizedMarginCharged))
