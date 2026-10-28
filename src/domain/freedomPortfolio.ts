@@ -41,6 +41,7 @@ export function getActiveBrokerTranches(snapshot: FreedomPortfolioSnapshotLike |
     const marketPrice = positiveFinite(item?.marketPrice);
     const averagePrice = positiveFinite((item as any)?.averagePrice);
     const previous = byTicker.get(ticker);
+    const resolvedMarketPrice = marketPrice ?? previous?.marketPrice ?? null;
     const nextQuantity = (previous?.quantity || 0) + quantity;
     const averageWeight = (previous?.averageWeight || 0) + (averagePrice !== null ? quantity : 0);
     const weightedAverageTotal = (previous?.weightedAverageTotal || 0) + (averagePrice !== null ? averagePrice * quantity : 0);
@@ -48,11 +49,9 @@ export function getActiveBrokerTranches(snapshot: FreedomPortfolioSnapshotLike |
       ticker,
       name: String((item as any)?.name || ticker),
       quantity: nextQuantity,
-      marketPrice: marketPrice ?? previous?.marketPrice ?? null,
+      marketPrice: resolvedMarketPrice,
       averagePrice: averageWeight > 0 ? weightedAverageTotal / averageWeight : previous?.averagePrice ?? null,
-      marketValue: (marketPrice ?? previous?.marketPrice) !== null
-        ? nextQuantity * Number(marketPrice ?? previous?.marketPrice)
-        : null,
+      marketValue: resolvedMarketPrice !== null ? nextQuantity * resolvedMarketPrice : null,
       weightedAverageTotal,
       averageWeight
     });
