@@ -17,6 +17,7 @@ import { restoreGatewaySecret } from './services/storage';
 
 let tradesRequest: Promise<void> | null = null;
 let accountRequest: Promise<void> | null = null;
+let activeOrdersRequest: Promise<void> | null = null;
 
 interface AppProps {
   onToggleMarketInsights: () => void;
@@ -215,19 +216,28 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
   useEffect(() => {
     const loadActiveOrders = async () => {
-      try {
-        const secret = await restoreGatewaySecret();
-        if (!secret.trim()) return;
-        const response = await fetchFreedomTradeNetActiveOrders();
-        const orders = normalizeFreedomActiveOrders(response);
-        window.dispatchEvent(new CustomEvent('tradenet:active-orders', { detail: orders }));
-      } catch (error) {
-        console.error('Unable to load active TradeNet orders:', error);
-        window.dispatchEvent(new CustomEvent('tradenet:active-orders-error'));
-      }
+      if (activeOrdersRequest) return activeOrdersRequest;
+      activeOrdersRequest = (async () => {
+        try {
+          // Restore the saved Gateway Secret before querying Freedom on startup.
+          const secret = await restoreGatewaySecret();
+          if (!secret.trim()) return;
+          const response = await fetchFreedomTradeNetActiveOrders();
+          const orders = normalizeFreedomActiveOrders(response);
+          window.dispatchEvent(new CustomEvent('tradenet:active-orders', { detail: orders }));
+        } catch (error) {
+          console.error('Unable to load active TradeNet orders:', error);
+          window.dispatchEvent(new CustomEvent('tradenet:active-orders-error'));
+        }
+      })();
+      try { await activeOrdersRequest; } finally { activeOrdersRequest = null; }
     };
     const onRequest = () => { void loadActiveOrders(); };
     window.addEventListener('tradenet:request-active-orders', onRequest);
+    // Fetch on app load, not only when another desk explicitly requests orders.
+    // The cached broker limit must be available before async account/trade refreshes
+    // can leave a locally calculated target (such as 354.58) in place.
+    void loadActiveOrders();
     return () => window.removeEventListener('tradenet:request-active-orders', onRequest);
   }, []);
 
