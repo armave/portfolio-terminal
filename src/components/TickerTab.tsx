@@ -19,6 +19,11 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
       // Continue navigation when storage is unavailable.
     }
     onSetActiveView?.(view);
+    // Entering or switching within the Margin workspace should pull fresh
+    // quotes immediately instead of waiting for the polling interval.
+    if (!['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(view)) {
+      void handleRefreshQuotes();
+    }
   };
 
   const tickers = Object.keys(state.positions || {});
