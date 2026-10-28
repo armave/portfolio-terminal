@@ -1,3 +1,4 @@
+import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -278,10 +279,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         });
       }
     };
-    window.addEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
+    addUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
     return () => {
       requestGeneration += 1;
-      window.removeEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
+      removeUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
     };
   }, []);
 
@@ -302,23 +303,23 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       }
     };
     const handleScenarioModal = (event: Event) => setScenarioModalData((event as CustomEvent<ScenarioModalData | null>).detail ?? null);
-    window.addEventListener('terminal:scenario-modal', handleScenarioModal);
-    window.addEventListener('terminal:auth-visibility', handleAuthVisibility);
+    addUiEventListener('terminal:scenario-modal', handleScenarioModal);
+    addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
     const handleCashCushionProps = (event: Event) => {
       const detail = (event as CustomEvent<CashCushionDeskProps>).detail;
       if (detail) setCashCushionProps(detail);
     };
-    window.addEventListener('terminal:active-view', handleDeskView);
+    addUiEventListener('terminal:active-view', handleDeskView);
     const handleSettingsProps = (event: Event) => {
       const detail = (event as CustomEvent<SettingsDeskProps>).detail;
       if (detail) setSettingsProps(detail);
     };
-    window.addEventListener('terminal:cash-cushion-props', handleCashCushionProps);
+    addUiEventListener('terminal:cash-cushion-props', handleCashCushionProps);
     const handleTickerTabsProps = (event: Event) => {
       const detail = (event as CustomEvent<TickerTabsProps>).detail;
       if (detail) setTickerTabsProps(detail);
     };
-    window.addEventListener('terminal:settings-props', handleSettingsProps);
+    addUiEventListener('terminal:settings-props', handleSettingsProps);
     const handleSummaryMetricsProps = (event: Event) => {
       const detail = (event as CustomEvent<SummaryMetricsGridProps>).detail;
       if (detail) setSummaryMetricsProps(detail);
@@ -327,13 +328,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const detail = (event as CustomEvent<ProjectionsTableProps>).detail;
       if (detail) setProjectionsProps(detail);
     };
-    window.addEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
-    window.addEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
+    addUiEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
+    addUiEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
     const handleMarketInsightsProps = (event: Event) => {
       const detail = (event as CustomEvent<MarketInsightsPanelProps>).detail;
       if (detail) setMarketInsightsProps(detail);
     };
-    window.addEventListener('terminal:projections-props', handleProjectionsProps);
+    addUiEventListener('terminal:projections-props', handleProjectionsProps);
     const handleTradingConsoleProps = (event: Event) => {
       const detail = (event as CustomEvent<TradingConsoleProps>).detail;
       if (detail) setTradingConsoleProps(detail);
@@ -345,9 +346,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const handleEmptyStateProps = (event: Event) => {
       setEmptyStateProps((event as CustomEvent<EmptyStatePanelProps | null>).detail);
     };
-    window.addEventListener('terminal:market-insights-props', handleMarketInsightsProps);
-    window.addEventListener('terminal:trading-console-props', handleTradingConsoleProps);
-    window.addEventListener('terminal:external-links-props', handleExternalLinksProps);
+    addUiEventListener('terminal:market-insights-props', handleMarketInsightsProps);
+    addUiEventListener('terminal:trading-console-props', handleTradingConsoleProps);
+    addUiEventListener('terminal:external-links-props', handleExternalLinksProps);
     const handleBoardTitle = (event: Event) => {
       const detail = (event as CustomEvent<{ title: string; showDailyMove: boolean }>).detail;
       if (detail) {
@@ -366,32 +367,32 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const detail = (event as CustomEvent<{ text: string }>).detail;
       if (detail) setBreakevenText(detail.text);
     };
-    window.addEventListener('terminal:empty-state-props', handleEmptyStateProps);
-    window.addEventListener('terminal:board-title', handleBoardTitle);
-    window.addEventListener('terminal:breakeven-text', handleBreakevenText);
-    window.addEventListener('terminal:analyst-consensus', handleAnalystConsensus);
-    window.addEventListener('terminal:cloud-status', handleCloudStatus);
-    window.addEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
-    window.addEventListener('terminal:startup-state', handleStartupState);
+    addUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
+    addUiEventListener('terminal:board-title', handleBoardTitle);
+    addUiEventListener('terminal:breakeven-text', handleBreakevenText);
+    addUiEventListener('terminal:analyst-consensus', handleAnalystConsensus);
+    addUiEventListener('terminal:cloud-status', handleCloudStatus);
+    addUiEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
+    addUiEventListener('terminal:startup-state', handleStartupState);
     return () => {
-      window.removeEventListener('terminal:scenario-modal', handleScenarioModal);
-      window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
-      window.removeEventListener('terminal:active-view', handleDeskView);
-      window.removeEventListener('terminal:cash-cushion-props', handleCashCushionProps);
-      window.removeEventListener('terminal:settings-props', handleSettingsProps);
-      window.removeEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
-      window.removeEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
-      window.removeEventListener('terminal:projections-props', handleProjectionsProps);
-      window.removeEventListener('terminal:market-insights-props', handleMarketInsightsProps);
-      window.removeEventListener('terminal:trading-console-props', handleTradingConsoleProps);
-      window.removeEventListener('terminal:external-links-props', handleExternalLinksProps);
-      window.removeEventListener('terminal:empty-state-props', handleEmptyStateProps);
-      window.removeEventListener('terminal:board-title', handleBoardTitle);
-      window.removeEventListener('terminal:breakeven-text', handleBreakevenText);
-      window.removeEventListener('terminal:analyst-consensus', handleAnalystConsensus);
-      window.removeEventListener('terminal:cloud-status', handleCloudStatus);
-      window.removeEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
-      window.removeEventListener('terminal:startup-state', handleStartupState);
+      removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
+      removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
+      removeUiEventListener('terminal:active-view', handleDeskView);
+      removeUiEventListener('terminal:cash-cushion-props', handleCashCushionProps);
+      removeUiEventListener('terminal:settings-props', handleSettingsProps);
+      removeUiEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
+      removeUiEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
+      removeUiEventListener('terminal:projections-props', handleProjectionsProps);
+      removeUiEventListener('terminal:market-insights-props', handleMarketInsightsProps);
+      removeUiEventListener('terminal:trading-console-props', handleTradingConsoleProps);
+      removeUiEventListener('terminal:external-links-props', handleExternalLinksProps);
+      removeUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
+      removeUiEventListener('terminal:board-title', handleBoardTitle);
+      removeUiEventListener('terminal:breakeven-text', handleBreakevenText);
+      removeUiEventListener('terminal:analyst-consensus', handleAnalystConsensus);
+      removeUiEventListener('terminal:cloud-status', handleCloudStatus);
+      removeUiEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
+      removeUiEventListener('terminal:startup-state', handleStartupState);
     };
   }, []);
 
@@ -605,7 +606,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
       {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} />}
-      {marginIntelligence && <MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => window.dispatchEvent(new CustomEvent('terminal:margin-intelligence-request', { detail: { ticker: marginIntelligence.ticker, refresh: true } }))} />}
+      {marginIntelligence && <MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} />}
       <div id="cloudStatus" class="flex items-center gap-2 text-[10px] font-mono text-slate-400" aria-live="polite">
         <span class={`w-1.5 h-1.5 rounded-full ${cloudStatus.status === 'syncing' ? 'bg-amber-400 animate-pulse' : cloudStatus.status === 'synced' ? 'bg-emerald-400' : cloudStatus.status === 'error' ? 'bg-rose-400' : 'bg-slate-500'}`} />
         <span>KV: {cloudStatus.text.toUpperCase()}</span>
@@ -619,8 +620,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           {!startupState.failed && <div class="startup-loading__track" aria-hidden="true"><span /></div>}
           <div class="startup-loading__hint">{startupState.failed ? 'Check your connection, then retry or continue offline.' : 'Restoring saved data and market connections'}</div>
           {startupState.failed && <div class="startup-loading__actions">
-            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('terminal:startup-retry'))}>Retry</button>
-            <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('terminal:startup-offline'))}>Continue offline</button>
+            <button type="button" onClick={() => emitUiEvent('terminal:startup-retry', undefined)}>Retry</button>
+            <button type="button" onClick={() => emitUiEvent('terminal:startup-offline', undefined)}>Continue offline</button>
           </div>}
         </div>
       </div>}
