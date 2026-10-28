@@ -26,6 +26,40 @@ describe('upstream timeout coverage', () => {
   });
 });
 
+describe('Freedom active orders proxy', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('requests active orders with a fixed read-only command and returns sanitized limit data', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      orders: { order: [
+        { order_id: 77, instr: 'AAPL.US', oper: 3, type: 2, p: 210.25, q: 10, leaves_qty: 6, stat: 'active', private_account: 'do-not-return' }
+      ] }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-orders', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_PUBLIC_KEY: 'public-key',
+      FREEDOM_PRIVATE_KEY: 'private-key'
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      data: { orders: { order: [{
+        order_id: '77', instr: 'AAPL.US', oper: 3, type: 2, p: 210.25, q: 10, leaves_qty: 6, stat: 'active'
+      }] } }
+    });
+    expect(JSON.stringify(await response.clone().json())).not.toContain('do-not-return');
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(requestBody).toEqual({ cmd: 'getNotifyOrderJson', params: { active_only: 1 } });
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://tradernet.com/api/getNotifyOrderJson');
+  });
+});
+
 describe('sanitizeFreedomActiveOrders', () => {
   it('returns only safe order fields and preserves remaining quantity for partial fills', () => {
     const result = sanitizeFreedomActiveOrders({
