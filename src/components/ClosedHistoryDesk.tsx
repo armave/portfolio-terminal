@@ -380,19 +380,24 @@ export function ClosedHistoryDesk() {
     }
     return metricsByObject;
   })();
-  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => {
-    const marginFee = Math.abs(Number(broker.marginFee ?? 0)) || 0;
+  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold', '2'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => {
+    const allocatedMarginFee = Object.values((broker.marginFeeAllocations || {}) as Record<string, number>)
+      .reduce((sum, amount) => sum + (Number(amount) || 0), 0);
+    // Prefer the explicit allocation total when present, so the table reflects the
+    // uploaded cashflows even if an older cached marginFee field is missing/stale.
+    const marginFee = Number((broker.marginFeeAllocations && typeof broker.marginFeeAllocations === 'object')
+      ? allocatedMarginFee
+      : broker.marginFee ?? 0) || 0;
     const tradeFees = (broker.commission == null ? 0 : Math.abs(Number(broker.commission))) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0);
+    const totalFees = Number((tradeFees + Math.abs(marginFee)).toFixed(2));
     return {
-      trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: tradeFees + marginFee, netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const },
+      trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: totalFees, netProfit: broker.profit == null ? null : Number(broker.profit) - totalFees, side: broker.side, price: broker.price, source: 'tradenet' as const },
       index: -1,
       source: 'tradenet' as const,
-      // TradeNet's raw realized profit does not include execution commissions. Net P&L must
-      // deduct both the exit commission and FIFO-allocated entry commissions, as well
-      // as any allocated margin financing fee. `netProfit` is local cached metadata
-      // from older calculations and may therefore be incomplete; derive from raw profit.
-      profit: broker.profit == null ? null : Number(broker.profit) - tradeFees - marginFee,
-      fees: tradeFees + marginFee
+      // Calculate from raw realized profit and the complete fee total, rather than
+      // relying on cached netProfit values that may predate cashflow allocation.
+      profit: broker.profit == null ? null : Number(broker.profit) - totalFees,
+      fees: totalFees
     };
   });
   // Group same-ticker sell executions that occur within one hour into one closed-history row.
