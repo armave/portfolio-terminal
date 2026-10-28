@@ -111,7 +111,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             source: String(item?.source || item?.publisher || ''),
             url: String(item?.url || item?.link || ''),
             publishedAt: Number(item?.datetime || item?.publishedAt || 0) || undefined,
-            summary: String(item?.summary || item?.description || '')
+            summary: String(item?.summary || item?.description || '').slice(0, 280)
           }))
         ).sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0)).slice(0, 20);
 
@@ -131,7 +131,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             quoteDetails: position.quoteDetails || null,
             targetOrActiveSellLimit: Number(position.pt) || null,
             marketValue: marketPrice === null ? null : Number(position.shares) * marketPrice,
-            entryLots: tranches.map((tranche) => ({
+            entryLots: tranches.slice(-8).map((tranche) => ({
               shares: Number(tranche.qty),
               entryPrice: Number(tranche.price),
               purchaseDate: tranche.date || null,
@@ -181,7 +181,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             commissions: trade.commissions ?? trade.feesAndCommissions ?? trade.totalCommissions ?? null,
             marginInterest: trade.marginInterest ?? null
           })),
-          cashflows: (snapshot.cashflows || []).slice(-10).map((flow: any) => ({
+          cashflows: (snapshot.cashflows || []).slice(-5).map((flow: any) => ({
             date: flow.date, type: flow.type, amount: flow.amount, currency: flow.currency || null, description: flow.description || null
           }))
         };
@@ -196,7 +196,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           'Format with clear short headings and bullets. Avoid certainty and do not imply this is personalized professional financial advice.',
           'PORTFOLIO AND ACCOUNT CONTEXT JSON:', JSON.stringify(portfolioContext),
           'RECENT NEWS JSON (provider timestamps and URLs when available):',
-          JSON.stringify(articles.map((article) => ({ ticker: article.ticker, headline: article.headline, source: article.source, url: article.url, publishedAt: article.publishedAt, summary: article.summary })))
+          JSON.stringify(articles.map((article) => ({ ticker: article.ticker, headline: article.headline.slice(0, 220), source: article.source, url: article.url, publishedAt: article.publishedAt, summary: (article.summary || '').slice(0, 280) })))
         ].join('\n\n');
         const response = await proxyFetch('gemini', {}, {
           method: 'POST',
