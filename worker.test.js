@@ -77,6 +77,17 @@ describe('sanitizeFreedomActiveOrders', () => {
     expect(JSON.stringify(result)).not.toContain('secret');
   });
 
+  it('preserves orders that identify the instrument with instr_nm', () => {
+    const result = sanitizeFreedomActiveOrders({
+      orders: { order: [
+        { order_id: 77, instr_nm: 'AAPL.US', oper: 3, type: 2, p: 353, q: 50, leaves_qty: 50, stat: 'active' }
+      ] }
+    });
+    expect(result.orders.order).toEqual([
+      { order_id: '77', instr: 'AAPL.US', oper: 3, type: 2, p: 353, q: 50, leaves_qty: 50, stat: 'active' }
+    ]);
+  });
+
   it('returns an empty order list for an unrecognized response shape', () => {
     expect(sanitizeFreedomActiveOrders({ unexpected: true })).toEqual({ orders: { order: [] } });
   });
