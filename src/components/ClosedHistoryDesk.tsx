@@ -113,7 +113,10 @@ export function ClosedHistoryDesk() {
   const [tradesPage, setTradesPage] = useState(1);
   // Keep the newest in-session import outside the reactive store so an unrelated
   // hydration cannot overwrite it before the recovery effect runs.
-  const latestImportedCashflows = useRef<any[]>(state.cashflows || []);
+  const latestImportedCashflows = useRef<any[]>((() => {
+    const saved = loadSavedHistory().cashflows;
+    return saved.length ? saved : (state.cashflows || []);
+  })());
   // Large cloud history is fetched only when this section mounts. The main
   // portfolio hydration intentionally excludes these two history collections.
   useEffect(() => {
