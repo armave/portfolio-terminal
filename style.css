@@ -2495,7 +2495,6 @@ summary:focus-visible {
   .expandable-motion,
   .expandable-motion__inner,
   .credentials-motion,
-  .quote-freshness,
   table tbody tr {
     animation: none !important;
     transition: none !important;
