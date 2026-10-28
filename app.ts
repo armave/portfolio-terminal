@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
-import { setTradingConsoleProps } from './src/ui/uiStateStore';
+import { setTradingConsoleProps, setSettingsPropsState, setMarketInsightsPropsState, setExternalLinksPropsState } from './src/ui/uiStateStore';
 import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
@@ -587,7 +587,7 @@ function updateCombinedBreakeven() {
 
 function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
-  emitUiEvent('terminal:external-links-props', { ticker: activeTicker } satisfies import('./src/components/BoardExternalLinks').BoardExternalLinksProps);
+  setExternalLinksPropsState({ ticker: activeTicker } satisfies import('./src/components/BoardExternalLinks').BoardExternalLinksProps);
 }
 
 function renderBoard() {
@@ -617,7 +617,7 @@ function renderBoard() {
 
 function renderMarketInsightsComponent() {
   const ticker = getMarketInsightsTicker();
-  emitUiEvent('terminal:market-insights-props', {
+  setMarketInsightsPropsState({
       ticker,
       isOpen: true,
       activeSection: activeInsightSection as InsightSection,
@@ -1401,7 +1401,7 @@ function renderSettingsPanel(force = false) {
 
   // SettingsDesk is owned by App. Send current callbacks/rules as props instead
   // of creating a separate Preact root in the settings container.
-  emitUiEvent('terminal:settings-props', {
+  setSettingsPropsState({
       rules,
       defaultRefreshIntervalMs: DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
       onSaveBrokerRules: saveBrokerRuleInputs,
