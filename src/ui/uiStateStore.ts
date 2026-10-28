@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import type { TradingConsoleProps } from '../components/TradingConsole';
 
 let aiStatus = 'READY';
 const aiStatusListeners = new Set<(status: string) => void>();
@@ -158,4 +159,23 @@ export function useActiveDeskView(): string {
     return () => activeDeskViewListeners.delete(setView);
   }, []);
   return view;
+}
+
+let tradingConsoleProps: TradingConsoleProps | null = null;
+const tradingConsolePropsListeners = new Set<(props: TradingConsoleProps | null) => void>();
+
+/** Publish the latest console inputs through shared Preact state. */
+export function setTradingConsoleProps(props: TradingConsoleProps): void {
+  tradingConsoleProps = props;
+  tradingConsolePropsListeners.forEach((listener) => listener(tradingConsoleProps));
+}
+
+export function useTradingConsoleProps(): TradingConsoleProps | null {
+  const [props, setProps] = useState<TradingConsoleProps | null>(tradingConsoleProps);
+  useEffect(() => {
+    tradingConsolePropsListeners.add(setProps);
+    setProps(tradingConsoleProps);
+    return () => tradingConsolePropsListeners.delete(setProps);
+  }, []);
+  return props;
 }
