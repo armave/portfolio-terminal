@@ -49,6 +49,12 @@ export function hasStocktwitsCommentary(body: unknown): boolean {
     .length > 0;
 }
 
+export function getVisibleStocktwitsMessages<T>(messages: T[], limit = 10): T[] {
+  return messages
+    .filter(isStandaloneStocktwitsMessage)
+    .slice(0, Math.max(0, Math.floor(limit)));
+}
+
 function renderStocktwitsBody(body: string) {
   const parts = body.split(/(\$[A-Z][A-Z0-9.-]{0,9}\b)/gi);
   return parts.map((part, index) =>
@@ -232,12 +238,10 @@ export function MarketInsightsPanel({
     onSelectSection(nextTab.id);
   };
 
-  const filteredStocktwitsMessages = (stocktwitsData?.messages ?? []).filter(
-    (message) =>
-      isStandaloneStocktwitsMessage(message) &&
-      getStocktwitsCashtags(message.body).length <= 1 &&
-      hasStocktwitsCommentary(message.body)
-  );
+  // Show ten recent standalone posts. Don't discard valid posts just because
+  // they contain multiple cashtags or little text; those filters made the feed
+  // appear nearly empty even when the API returned a full stream.
+  const filteredStocktwitsMessages = getVisibleStocktwitsMessages(stocktwitsData?.messages ?? [], 10);
 
   const renderContent = () => {
     if (!ticker) {

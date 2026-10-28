@@ -33,3 +33,10 @@ Typecheck, tests, production build, dead-code validation, and production depende
 - The command textarea is updated only by the `TradingConsole` that owns it; command prefill requests are typed.
 - The backup file picker is owned by `App`, and both Settings and the empty-state shortcut request it through the typed event bus.
 - The scenario comparison modal now uses component refs for its dialog and close button; focus trap and scroll locking remain lifecycle effects.
+
+
+## Stocktwits feed follow-up
+- [x] Keep excluding replies but stop filtering out standalone posts solely because they contain multiple cashtags or little commentary.
+- [x] Display up to the ten newest standalone messages returned by the existing Stocktwits stream.
+- [x] Add regression coverage proving ten posts are shown when available and replies remain excluded.
+- [ ] Run typecheck, tests, build, dead-code validation, and production dependency audit on the updated PR head.
