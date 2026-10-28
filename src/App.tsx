@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
-import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus } from './ui/uiStateStore';
+import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -42,8 +42,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [tradingConsoleProps, setTradingConsoleProps] = useState<TradingConsoleProps | null>(null);
   const [externalLinksProps, setExternalLinksProps] = useState<BoardExternalLinksProps | null>(null);
   const [emptyStateProps, setEmptyStateProps] = useState<EmptyStatePanelProps | null>(null);
-  const [boardTitle, setBoardTitle] = useState('COMBINED PORTFOLIO');
-  const [showDailyMove, setShowDailyMove] = useState(false);
+  const { title: boardTitle, showDailyMove } = useBoardTitle();
   const breakevenText = useBreakevenText();
   const analystConsensus = useAnalystConsensus();
   const cloudStatus = useCloudStatus();
@@ -350,16 +349,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     addUiEventListener('terminal:market-insights-props', handleMarketInsightsProps);
     addUiEventListener('terminal:trading-console-props', handleTradingConsoleProps);
     addUiEventListener('terminal:external-links-props', handleExternalLinksProps);
-    const handleBoardTitle = (event: Event) => {
-      const detail = (event as CustomEvent<{ title: string; showDailyMove: boolean }>).detail;
-      if (detail) {
-        setBoardTitle(detail.title);
-        setShowDailyMove(detail.showDailyMove);
-      }
-    };
     const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
     addUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
-    addUiEventListener('terminal:board-title', handleBoardTitle);
     addUiEventListener('terminal:startup-state', handleStartupState);
     return () => {
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
@@ -374,7 +365,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:trading-console-props', handleTradingConsoleProps);
       removeUiEventListener('terminal:external-links-props', handleExternalLinksProps);
       removeUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
-      removeUiEventListener('terminal:board-title', handleBoardTitle);
       removeUiEventListener('terminal:startup-state', handleStartupState);
     };
   }, []);
