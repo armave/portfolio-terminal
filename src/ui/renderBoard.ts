@@ -1,5 +1,5 @@
 import { emitUiEvent } from './uiEventBus';
-import { setBoardTitle } from './uiStateStore';
+import { setActiveDeskViewState, setBoardTitle } from './uiStateStore';
 import { formatUSD } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatUSD } from '../utils/formatters';
@@ -235,7 +235,7 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const tickers = Object.keys(state.positions || {});
   const currentView = resolveActiveView(state);
-  emitUiEvent('terminal:active-view', { view: currentView });
+  setActiveDeskViewState(currentView);
 
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
