@@ -794,7 +794,7 @@ export async function pullCloudState(
       (Array.isArray(parsedState.cashflows) && parsedState.cashflows.length > 0);
     let historyMigrationComplete = false;
     try { historyMigrationComplete = localStorage.getItem(CLOSED_HISTORY_MIGRATION_KEY) === '1'; } catch { /* migrate safely when storage is unavailable */ }
-    if (hasHistory && (hasLegacyCloudHistory || !historyMigrationComplete)) {
+    if (hasHistory && !historyMigrationComplete) {
       // A dedicated history record may already have newer data. Never overwrite
       // it with the legacy copy embedded in an older portfolio snapshot. Only
       // migrate legacy rows when the dedicated record does not exist yet.
