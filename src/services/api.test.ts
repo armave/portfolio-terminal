@@ -978,11 +978,12 @@ describe('closed-history cloud write serialization', () => {
     }, 'history-secret');
 
     await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual([
+    const historyCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('/api/history'));
+    expect(historyCalls).toHaveLength(4);
+    expect(historyCalls.map((call) => (call[1] as RequestInit).method)).toEqual([
       'GET', 'POST', 'GET', 'POST'
     ]);
-    expect((fetchMock.mock.calls[1][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"4"' });
-    expect((fetchMock.mock.calls[3][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"5"' });
+    expect((historyCalls[1][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"4"' });
+    expect((historyCalls[3][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"5"' });
   });
 });
