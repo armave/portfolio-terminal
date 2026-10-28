@@ -953,18 +953,12 @@ async function performPushCloudState(
   }
 
   try {
-    // Keep the bulky history out of the startup-critical portfolio payload.
-    // Sync it independently, then encrypt only the compact main-state snapshot.
+    // Closed history has its own record and is synchronized only by its data
+    // owner when source history or calculated fee metadata actually changes.
+    // Portfolio UI/state writes must never implicitly trigger history GET/POST pairs.
     const stateToEncrypt = { ...currentState };
     delete stateToEncrypt.gatewaySecret;
     delete stateToEncrypt.marginBalance;
-    if ((Array.isArray(stateToEncrypt.brokerExecutedTrades) && stateToEncrypt.brokerExecutedTrades.length) ||
-      (Array.isArray(stateToEncrypt.cashflows) && stateToEncrypt.cashflows.length)) {
-      await pushCloudHistory({
-        brokerExecutedTrades: stateToEncrypt.brokerExecutedTrades,
-        cashflows: stateToEncrypt.cashflows
-      }, currentSecret);
-    }
     delete stateToEncrypt.brokerExecutedTrades;
     delete stateToEncrypt.cashflows;
     // Broker API rows may contain a large duplicated raw payload. Cloud sync
