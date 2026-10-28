@@ -150,10 +150,10 @@ if (typeof window !== 'undefined') {
 
   window.addEventListener('tradenet:set-active-tranche-type', (event: Event) => {
     const detail = (event as CustomEvent<{ ticker?: string; type?: 'cash' | 'margin' }>).detail;
-    const ticker = String(detail?.ticker || '').trim().toUpperCase().replace(/\.US$/i, '');
-    if (!ticker || (detail?.type !== 'cash' && detail?.type !== 'margin')) return;
+    const operationId = String(detail?.ticker || '').trim();
+    if (!operationId || (detail?.type !== 'cash' && detail?.type !== 'margin')) return;
     const current = portfolioStore.getState();
-    const activeTrancheTypes = { ...(current.activeTrancheTypes || {}), [ticker]: detail.type };
+    const activeTrancheTypes = { ...(current.activeTrancheTypes || {}), [operationId]: detail.type };
     const snapshot = current.brokerAccountInfo;
     if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) {
       portfolioStore.setState({ activeTrancheTypes });
@@ -180,7 +180,8 @@ if (typeof window !== 'undefined') {
         holdings: brokerCashHoldings
       }
     });
-    logTerminal(`[Freedom] ${ticker} classified as ${detail.type}.`);
+    const ticker = operationId.split(':')[0];
+    logTerminal(`[Freedom] ${ticker} purchase operation classified as ${detail.type}.`);
     renderBoard();
   });
 
