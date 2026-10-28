@@ -266,8 +266,7 @@ export function SummaryMetricsGrid({
             </div>
             <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
             <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
-              
-              <span>{quoteMetaText}</span>
+              <span class="text-slate-400"> · </span><span> {quoteMetaText}</span>
             </span>
           </div>
           <div class="portfolio-micro-column portfolio-micro-costs">
@@ -391,9 +390,9 @@ export function SummaryMetricsGrid({
           </div>
           <span id="boardDailyQuote" class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}>
             {dailyQuoteMeta?.text || ''}
+            <span class="text-slate-400"> · </span>
             <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
-              
-              <span>{quoteMetaText}{pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
+              <span>{quoteMetaText} {pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
             </span>
           </span>
         </div>
