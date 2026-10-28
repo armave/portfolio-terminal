@@ -1,28 +1,12 @@
-import type { CashCushionDeskProps } from '../components/CashCushionDesk';
-import type { SettingsDeskProps } from '../components/SettingsDesk';
-import type { TickerTabsProps } from '../components/TickerTab';
-import type { SummaryMetricsGridProps } from '../components/SummaryMetricsGrid';
-import type { ProjectionsTableProps } from '../components/ProjectionsTable';
-import type { MarketInsightsPanelProps } from '../components/MarketInsightsPanel';
-import type { BoardExternalLinksProps } from '../components/BoardExternalLinks';
-import type { EmptyStatePanelProps } from '../components/EmptyStatePanel';
 
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
   'terminal:auth-visibility': { isOpen: boolean };
-  'terminal:cash-cushion-props': CashCushionDeskProps;
-  'terminal:empty-state-props': EmptyStatePanelProps | null;
-  'terminal:external-links-props': BoardExternalLinksProps;
   'terminal:margin-intelligence-request': { ticker?: string; refresh?: boolean };
-  'terminal:market-insights-props': MarketInsightsPanelProps;
-  'terminal:projections-props': ProjectionsTableProps;
   'terminal:scenario-modal': unknown;
-  'terminal:settings-props': SettingsDeskProps;
   'terminal:startup-offline': undefined;
   'terminal:startup-retry': undefined;
   'terminal:startup-state': { visible: boolean; failed: boolean };
-  'terminal:summary-metrics-props': SummaryMetricsGridProps;
-  'terminal:ticker-tabs-props': TickerTabsProps;
 }
 
 export type UiEventName = keyof UiEventPayloads;
