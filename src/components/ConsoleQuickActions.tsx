@@ -58,24 +58,6 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
         title: 'Use Gemini to review recent news and risk across all margin positions'
       },
       {
-        text: 'Set Cash…',
-        command: 'balance [amount]',
-        color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/60',
-        title: 'Set positive free cash cushion'
-      },
-      {
-        text: 'Set Debt…',
-        command: 'debt [amount]',
-        color: 'text-rose-300 border-rose-900/70 hover:bg-rose-950/60',
-        title: 'Set margin debt balance'
-      },
-      {
-        text: '+ Cash Stock…',
-        command: 'add cash stock [shares] [TICKER] at [price]',
-        color: 'text-purple-300 border-purple-900/70 hover:bg-purple-950/60',
-        title: 'Add non-margin collateral stock to Cash Cushion'
-      },
-      {
         text: '? Help',
         command: 'help',
         instant: true,
