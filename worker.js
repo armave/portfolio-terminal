@@ -194,6 +194,41 @@ async function getYahooCredentials() {
  * broker's raw response (which includes account identifiers and unrelated data).
  * Preserve the response envelope expected by normalizeFreedomPortfolio().
  */
+/** Return only fields required to identify open sell-limit orders. */
+export function sanitizeFreedomActiveOrders(response) {
+    const candidates = [
+        response?.data?.result?.orders,
+        response?.result?.orders,
+        response?.data?.orders,
+        response?.orders,
+        response?.data?.result,
+        response?.result,
+        response?.data
+    ];
+    const envelope = candidates.find(value => value && typeof value === "object"
+        && (Array.isArray(value.order) || Array.isArray(value.orders) || Array.isArray(value.items)));
+    const rows = Array.isArray(envelope?.order) ? envelope.order
+        : Array.isArray(envelope?.orders) ? envelope.orders
+            : Array.isArray(envelope?.items) ? envelope.items
+                : [];
+    const numberOrNull = value => {
+        if (value === null || value === undefined || value === "") return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    };
+    const order = rows.map(row => ({
+        order_id: String(row?.order_id ?? row?.id ?? ""),
+        instr: String(row?.instr ?? row?.i ?? row?.ticker ?? row?.symbol ?? ""),
+        oper: numberOrNull(row?.oper ?? row?.operation),
+        type: numberOrNull(row?.type ?? row?.order_type),
+        p: numberOrNull(row?.p ?? row?.price ?? row?.limit_price),
+        q: numberOrNull(row?.q ?? row?.quantity),
+        leaves_qty: numberOrNull(row?.leaves_qty ?? row?.remaining_qty ?? row?.remainingQuantity ?? row?.q ?? row?.quantity),
+        stat: String(row?.stat ?? row?.status ?? "")
+    })).filter(row => row.order_id && row.instr);
+    return { orders: { order } };
+}
+
 export function sanitizeFreedomPositions(response) {
     // The upstream API response can be wrapped differently depending on the
     // TradeNet gateway/version. Accept only known position-envelope variants.
@@ -286,10 +321,10 @@ export default {
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -424,6 +459,26 @@ export default {
                     return jsonError("Freedom trades only supports GET.", 405, corsHeaders);
                 }
                 const data = await requestTradeNet(env, "getTradesHistory");
+                return new Response(JSON.stringify({
+                    ok: true,
+                    provider: "Freedom TradeNet",
+                    data
+                }), { headers: corsHeaders });
+            }
+
+            // Read-only current active orders. The command and active_only filter are fixed
+            // server-side; clients cannot submit arbitrary broker commands or place orders.
+            if (action === "freedom-orders") {
+                if (request.method !== "GET") {
+                    return jsonError("Freedom orders only supports GET.", 405, corsHeaders);
+                }
+                const rawData = await requestTradeNet(env, "getNotifyOrderJson", { active_only: 1 });
+                let data;
+                try {
+                    data = sanitizeFreedomActiveOrders(rawData);
+                } catch (error) {
+                    return jsonError(error instanceof Error ? error.message : "Invalid TradeNet orders response.", 502, corsHeaders);
+                }
                 return new Response(JSON.stringify({
                     ok: true,
                     provider: "Freedom TradeNet",
