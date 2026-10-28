@@ -3,6 +3,7 @@ import CryptoJS from 'crypto-js';
 import {
   pullCloudState,
   pushCloudState,
+  pushCloudHistory,
   syncCloudState,
   proxyFetch,
   fetchFallbackQuote,
@@ -934,4 +935,54 @@ describe('Yahoo deep-data forced refresh', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+});
+
+
+describe('closed-history cloud write serialization', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('serializes concurrent history pushes so each reads the revision after the previous write', async () => {
+    let revision = 4;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        const expectedRevision = Number(String((init.headers as Record<string, string>)['If-Match']).replaceAll('"', ''));
+        if (expectedRevision !== revision) {
+          return new Response(JSON.stringify({ conflict: true, currentRevision: revision }), {
+            status: 409,
+            headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+          });
+        }
+        revision += 1;
+        return new Response(JSON.stringify({ success: true, revision }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+        });
+      }
+      return new Response(JSON.stringify({ encryptedPayload: 'existing-history' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = pushCloudHistory({
+      brokerExecutedTrades: [{ id: 'trade-1' }],
+      cashflows: [{ id: 'fee-1' }]
+    }, 'history-secret');
+    const second = pushCloudHistory({
+      brokerExecutedTrades: [{ id: 'trade-2' }],
+      cashflows: [{ id: 'fee-2' }]
+    }, 'history-secret');
+
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual([
+      'GET', 'POST', 'GET', 'POST'
+    ]);
+    expect((fetchMock.mock.calls[1][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"4"' });
+    expect((fetchMock.mock.calls[3][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"5"' });
+  });
 });
