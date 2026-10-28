@@ -18,7 +18,9 @@ const MARGIN_DIGEST_PATH = '/api/margin-digest';
 export async function loadSyncedMarginDigest(key: string): Promise<{ digest: SyncedMarginDigest; revision: number } | null> {
   const secret = getActiveGatewaySecret().trim();
   if (!secret) throw new Error('Gateway Secret is not available.');
-  const response = await fetch(new URL(MARGIN_DIGEST_PATH, WORKER_PROXY_URL), {
+  const digestUrl = new URL(MARGIN_DIGEST_PATH, WORKER_PROXY_URL);
+  digestUrl.searchParams.set('key', key);
+  const response = await fetch(digestUrl, {
     headers: { 'X-App-Auth': secret, Authorization: `Bearer ${secret}` },
     cache: 'no-store'
   });
