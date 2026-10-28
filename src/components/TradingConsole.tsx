@@ -156,20 +156,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       command: `quote ${hasPosition ? ticker : '[TICKER]'}`,
       display: `quote ${hasPosition ? ticker : '[TICKER]'}  or  quote ${hasPosition ? ticker : '[TICKER]'} ${priceText}`
     },
-    {
-      category: 'Cash / Margin Debt',
-      badgeColor: 'text-emerald-400 border-emerald-900/60 bg-emerald-950/30',
-      id: 'hintBalanceDebt',
-      command: `balance [amount]`,
-      display: `balance 5000  |  debt 5000  |  b: -5000`
-    },
-    {
-      category: 'Non-Margin Holding',
-      badgeColor: 'text-purple-400 border-purple-900/60 bg-purple-950/30',
-      id: 'hintCashHolding',
-      command: `add cash stock [shares] ${hasPosition ? ticker : '[TICKER]'} at ${priceText}`,
-      display: `add cash stock [shares] ${hasPosition ? ticker : '[TICKER]'}  |  remove cash stock ${hasPosition ? ticker : '[TICKER]'}`
-    }
+
   ];
 
   return (
@@ -219,7 +206,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
             SYSTEM
           </span>
           <span>
-            Portfolio CLI ready. Refresh quotes, manage balances, or click a quick action below.
+            Portfolio CLI ready. Broker-synced portfolio data is available; refresh quotes or choose a quick action below.
           </span>
         </div>
       </div>
