@@ -783,9 +783,9 @@ export async function pullCloudState(
     // is compacted, so a failed history write cannot silently discard records.
     const localHistory = loadSavedHistory();
     const legacyCloudExecutions = Array.isArray(parsedState.brokerExecutedTrades) ? parsedState.brokerExecutedTrades : [];
-    const localExecutionsById = new Map(localHistory.brokerExecutedTrades
+    const localExecutionsById = new Map<string, any>(localHistory.brokerExecutedTrades
       .filter((trade: any) => trade?.id != null && String(trade.id) !== '')
-      .map((trade: any) => [String(trade.id), trade]));
+      .map((trade: any) => [String(trade.id), trade] as [string, any]));
     // Legacy portfolio snapshots may predate fee allocation. Keep the cloud's
     // execution fields but restore locally calculated fee metadata by stable ID,
     // so opening Balance cannot migrate an older snapshot over allocated fees.
@@ -799,14 +799,9 @@ export async function pullCloudState(
       return preserved;
     });
     const legacyHistory = {
-      brokerExecutedTrades: localHistory.brokerExecutedTrades.length
-        ? migratedExecutions.map((trade: any) => localExecutionsById.has(String(trade?.id ?? ''))
-          ? { ...trade, ...Object.fromEntries(['marginFeeAllocations', 'marginFee', 'feesAndCommissions', 'netProfit']
-            .filter(field => localExecutionsById.get(String(trade?.id ?? ''))?.[field] != null)
-            .map(field => [field, localExecutionsById.get(String(trade?.id ?? ''))[field]])) }
-          : trade)
-        : (migratedExecutions.length ? migratedExecutions : localHistory.brokerExecutedTrades),
-      cashflows: localHistory.cashflows.length ? localHistory.cashflows
+      brokerExecutedTrades: migratedExecutions.length ? migratedExecutions : localHistory.brokerExecutedTrades,
+      cashflows: localHistory.cashflows.length
+        ? localHistory.cashflows
         : (Array.isArray(parsedState.cashflows) ? parsedState.cashflows : [])
     };
     const hasHistory = legacyHistory.brokerExecutedTrades.length > 0 || legacyHistory.cashflows.length > 0;
