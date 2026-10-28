@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect } from 'preact/hooks';
 import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
@@ -132,7 +132,7 @@ export function CashCushionDesk({
                   </td>
                 </tr>
               ) : (
-                holdings.map((h, idx) => {
+                holdings.map((h) => {
                   const shares = Number(h.shares) || 0;
                   const price = Number(h.currentPrice ?? h.price) || 0;
                   const val = shares * price;
@@ -195,7 +195,7 @@ export function CashCushionDesk({
             <tfoot id="cashStocksTableFooter" class="border-t border-slate-700 font-mono">
               {holdings.length > 0 && (
                 <tr>
-                  <td class="py-2 px-3 text-slate-300 font-bold" colSpan={2}>
+                  <td class="py-2 px-3 text-slate-300 font-bold" colSpan={3}>
                     {holdings.length} holding{holdings.length === 1 ? '' : 's'}
                   </td>
                   <td class="py-2 px-3 text-right text-white font-bold">
