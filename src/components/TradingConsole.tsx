@@ -29,8 +29,6 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   const currentPrice =
     position && Number(position.currentPrice) > 0 ? Number(position.currentPrice) : null;
   const priceText = currentPrice === null ? '[price]' : formatUSD(currentPrice);
-  const comparisonPrice =
-    currentPrice === null ? '[target_price]' : formatUSD(Number((currentPrice * 1.03).toFixed(2)));
   const triggerExecute = () => {
     const value = command.trim();
     if (!value) return;
