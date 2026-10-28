@@ -59,7 +59,7 @@ import {
 import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
-import { classifyFreedomPortfolio } from './src/domain/freedomPortfolio';
+import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets } from './src/domain/freedomPortfolio';
 import { InsightSection } from './src/components/MarketInsightsPanel';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
@@ -104,6 +104,9 @@ const BOARD_ANALYST_RETRY_MS = 60 * 1000;
 const DEFAULT_QUOTE_REFRESH_INTERVAL_MS = 60 * 1000;
 const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
 
+// Cached broker limit prices must win over default targets during asynchronous refreshes.
+let activeLimitSellTargets: Record<string, number> = {};
+
 // ==========================================
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
 // ==========================================
@@ -143,7 +146,7 @@ if (typeof window !== 'undefined') {
     portfolioStore.setState({
       brokerAccountInfo: { ...snapshot, receivedAt: Date.now(), status: 'current' },
       ...(usdBalance ? { balance: Number(usdBalance.amount) } : {}),
-      positions: classified.positions,
+      positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
       cashStocks: brokerCashHoldings,
       cashCushion: {
         ...(current.cashCushion || { freeCash: 0, holdings: [] }),
@@ -177,7 +180,7 @@ if (typeof window !== 'undefined') {
         : {})
     }));
     portfolioStore.setState({
-      positions: classified.positions,
+      positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
       cashStocks: brokerCashHoldings,
       cashCushion: {
         ...(current.cashCushion || { freeCash: 0, holdings: [] }),
@@ -221,7 +224,7 @@ if (typeof window !== 'undefined') {
     }));
     portfolioStore.setState({
       activeTrancheTypes,
-      positions: classified.positions,
+      positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
       cashStocks: brokerCashHoldings,
       cashCushion: {
         ...(current.cashCushion || { freeCash: 0, holdings: [] }),
@@ -243,25 +246,17 @@ if (typeof window !== 'undefined') {
     }>>).detail;
     if (!Array.isArray(orders)) return;
 
+    // Cache the broker's exact limit price so a slower account/trade refresh
+    // cannot replace it with the locally calculated default target.
+    activeLimitSellTargets = getActiveLimitSellTargets(orders);
     const current = portfolioStore.getState();
-    const positions = { ...(current.positions || {}) };
+    const positions = applyActiveLimitSellTargets(current.positions || {}, activeLimitSellTargets);
     const updates: Array<{ ticker: string; price: number }> = [];
     for (const [ticker, position] of Object.entries(positions)) {
-      const cleanTicker = ticker.trim().toUpperCase();
-      const matching = orders.filter(order =>
-        order.ticker === cleanTicker &&
-        order.operation === 3 &&
-        order.orderType === 2 &&
-        Number(order.limitPrice) > 0 &&
-        Number(order.remainingQuantity) > 0
-      );
-      // Do not guess if multiple live limit sells for the same stock have different prices.
-      const prices = [...new Set(matching.map(order => Number(order.limitPrice)))];
-      if (prices.length !== 1) continue;
-      const target = prices[0];
-      if (Number(position.pt) === target) continue;
-      positions[ticker] = { ...position, pt: target };
-      updates.push({ ticker: cleanTicker, price: target });
+      const previous = current.positions?.[ticker];
+      if (Number(previous?.pt) !== Number(position.pt)) {
+        updates.push({ ticker: String(position.ticker || ticker).trim().toUpperCase(), price: Number(position.pt) });
+      }
     }
 
     if (!updates.length) return;
