@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyCashflowAllocationsToBrokerExecutions,
-  applyCashflowAllocationsToClosedTrades
+  applyCashflowAllocationsToClosedTrades,
+  deduplicateClosedHistoryRows
 } from './closedHistoryFees';
 
 describe('closed-history cashflow fee recalculation', () => {
@@ -70,5 +71,51 @@ describe('closed-history cashflow fee recalculation', () => {
       netProfit: 97,
       netRealizedGain: 97
     });
+  });
+});
+
+describe('closed-history idempotency and source deduplication', () => {
+  it('preserves object identity when broker allocations have not changed', () => {
+    const sell = {
+      id: 'sell-1',
+      side: 'sell',
+      commission: 1.25,
+      profit: 100,
+      marginFeeAllocations: { fee1: 2 },
+      marginFee: 2,
+      feesAndCommissions: 3.25,
+      netProfit: 98
+    };
+    const result = applyCashflowAllocationsToBrokerExecutions([sell], new Map([[0, { fee1: 2 }]]));
+    expect(result[0]).toBe(sell);
+  });
+
+  it('preserves object identity when app trade allocation is already applied', () => {
+    const trade = {
+      feesAndCommissions: 5,
+      totalCommissions: 5,
+      marginInterest: 2,
+      marginFee: 2,
+      netProfit: 95,
+      netRealizedGain: 95
+    };
+    const result = applyCashflowAllocationsToClosedTrades([trade], new Map([[0, 2]]));
+    expect(result[0]).toBe(trade);
+  });
+
+  it('uses broker rows for overlapping app trades without removing distinct app trades', () => {
+    const duplicate = { trade: { ticker: 'AAPL.US', exitDate: '2026-01-10T10:00:00Z', shares: 5 }, source: 'app' };
+    const distinct = { trade: { ticker: 'MSFT', exitDate: '2026-01-10T10:00:00Z', shares: 3 }, source: 'app' };
+    const broker = { trade: { ticker: 'AAPL', exitDate: '2026-01-10T12:00:00Z', shares: 5 }, source: 'tradenet' };
+    expect(deduplicateClosedHistoryRows([duplicate, distinct], [broker])).toEqual([distinct]);
+  });
+
+  it('deduplicates one-to-one so repeated partial closes are not all discarded', () => {
+    const make = (id: string, source: string) => ({
+      trade: { id, ticker: 'AAPL', exitDate: '2026-01-10T10:00:00Z', shares: 5 },
+      source
+    });
+    expect(deduplicateClosedHistoryRows([make('app-1', 'app'), make('app-2', 'app')], [make('broker-1', 'tradenet')]))
+      .toEqual([make('app-2', 'app')]);
   });
 });
