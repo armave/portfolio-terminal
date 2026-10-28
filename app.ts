@@ -236,6 +236,43 @@ if (typeof window !== 'undefined') {
     renderBoard();
   });
 
+  window.addEventListener('tradenet:active-orders', (event: Event) => {
+    const orders = (event as CustomEvent<Array<{
+      id: string; ticker: string; operation: number | null; orderType: number | null;
+      limitPrice: number | null; remainingQuantity: number | null; status: string;
+    }>>).detail;
+    if (!Array.isArray(orders)) return;
+
+    const current = portfolioStore.getState();
+    const positions = { ...(current.positions || {}) };
+    const updates: Array<{ ticker: string; price: number }> = [];
+    for (const [ticker, position] of Object.entries(positions)) {
+      const cleanTicker = ticker.trim().toUpperCase();
+      const matching = orders.filter(order =>
+        order.ticker === cleanTicker &&
+        order.operation === 3 &&
+        order.orderType === 2 &&
+        Number(order.limitPrice) > 0 &&
+        Number(order.remainingQuantity) > 0
+      );
+      // Do not guess if multiple live limit sells for the same stock have different prices.
+      const prices = [...new Set(matching.map(order => Number(order.limitPrice)))];
+      if (prices.length !== 1) continue;
+      const target = prices[0];
+      if (Number(position.pt) === target) continue;
+      positions[ticker] = { ...position, pt: target };
+      updates.push({ ticker: cleanTicker, price: target });
+    }
+
+    if (!updates.length) return;
+    portfolioStore.setState({ positions });
+    saveState(state, pushStateToGist);
+    for (const update of updates) {
+      logTerminal(`[Freedom] Updated ${update.ticker} target from active limit sell: ${update.price.toFixed(2)}.`);
+    }
+    renderBoard();
+  });
+
   window.addEventListener('tradenet:account-info-error', () => {
     const current = portfolioStore.getState();
     if (current.brokerAccountInfo) {
