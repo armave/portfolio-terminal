@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect } from 'preact/hooks';
 
 export interface MarginIntelligenceArticle {
@@ -41,7 +42,7 @@ function renderInlineMarkdown(text: string) {
 
 function renderAnalysisMarkdown(markdown: string) {
   const lines = markdown.replace(/\r\n?/g, '\n').split('\n');
-  const blocks: preact.ComponentChildren[] = [];
+  const blocks: ComponentChildren[] = [];
   let paragraph: string[] = [];
   let listItems: Array<{ text: string; ordered: boolean }> = [];
 
