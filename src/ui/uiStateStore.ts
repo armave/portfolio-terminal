@@ -153,6 +153,8 @@ export function useActiveDeskView(): string {
   const [view, setView] = useState(activeDeskView);
   useEffect(() => {
     activeDeskViewListeners.add(setView);
+    // Re-read after subscribing so a publish between render and effect setup is not lost.
+    setView(activeDeskView);
     return () => activeDeskViewListeners.delete(setView);
   }, []);
   return view;
