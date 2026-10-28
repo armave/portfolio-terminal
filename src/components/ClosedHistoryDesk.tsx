@@ -135,9 +135,6 @@ export function ClosedHistoryDesk() {
       // Once the dedicated cloud history record exists, it is authoritative.
       // Prefer local snapshots only when the cloud record is absent; otherwise
       // stale local copies cause an immediate second POST after migration/load.
-      const localExecutionsById = new Map<string, any>(localExecutions
-        .filter((trade: any) => trade?.id != null && String(trade.id) !== '')
-        .map((trade: any) => [String(trade.id), trade] as [string, any]));
       const cloudExecutions = preservePersistedBrokerFeeAllocations(
         cloud.brokerExecutedTrades || [],
         [...saved.brokerExecutedTrades, ...localExecutions]
