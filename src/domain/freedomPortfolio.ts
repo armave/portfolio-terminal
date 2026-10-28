@@ -63,7 +63,7 @@ export function getActiveTranchesFromTrades(
   type BuyLot = {
     id: string; ticker: string; name: string; quantity: number;
     marketPrice: number | null; averagePrice: number | null;
-    purchasedAt: number | null; rowIndex: number;
+    purchasedAt: number | null; lastPurchasedAt: number | null; rowIndex: number;
   };
   const ordered = trades.map((trade, rowIndex) => ({
     trade,
@@ -88,6 +88,7 @@ export function getActiveTranchesFromTrades(
         marketPrice: positiveFinite(brokerPosition?.marketPrice),
         averagePrice: item.price,
         purchasedAt: item.at,
+        lastPurchasedAt: item.at,
         rowIndex: item.rowIndex
       });
       continue;
@@ -106,7 +107,7 @@ export function getActiveTranchesFromTrades(
   const grouped: BuyLot[] = [];
   for (const lot of openLots) {
     const previous = grouped[grouped.length - 1];
-    const withinWindow = previous && previous.ticker === lot.ticker && previous.purchasedAt !== null && lot.purchasedAt !== null && lot.purchasedAt - previous.purchasedAt <= 5 * 60 * 1000;
+    const withinWindow = previous && previous.ticker === lot.ticker && previous.lastPurchasedAt !== null && lot.purchasedAt !== null && lot.purchasedAt - previous.lastPurchasedAt <= 5 * 60 * 1000;
     if (!withinWindow) { grouped.push({ ...lot }); continue; }
     const previousQuantity = previous.quantity;
     const totalQuantity = previousQuantity + lot.quantity;
@@ -114,6 +115,7 @@ export function getActiveTranchesFromTrades(
       ? (previous.averagePrice * previousQuantity + lot.averagePrice * lot.quantity) / totalQuantity
       : previous.averagePrice ?? lot.averagePrice;
     previous.quantity = totalQuantity;
+    previous.lastPurchasedAt = lot.purchasedAt;
     previous.marketPrice = lot.marketPrice ?? previous.marketPrice;
     previous.name = lot.name || previous.name;
     previous.id = previous.id + '+' + lot.id;
