@@ -71,3 +71,14 @@ npm audit --omit=dev --audit-level=high
 Also inspect the final diff for changes to financial calculations, persisted formats, broker/API boundaries, secrets, and unrelated files. Browser verification should confirm the daily high/low display in the cash-holdings panel and review the key responsive layouts.
 
 **Current limitation:** source changes were committed through the GitHub repository API because local network resolution prevented cloning. Therefore, the focused regression test has been added but has not been executed locally in this session. Keep the PR unmerged until its CI run passes all required gates.
+
+## Follow-up checkpoint — 2026-10-28
+
+- [x] Re-read the current `main` and `perf/onload-request-optimization` versions of `TickerTab.tsx` and the active-orders listener in `App.tsx`.
+- [x] Confirmed the current `main` version already refreshes active orders when `state.activeView` changes. The performance branch version still uses only `isMarginDeskActive` as the effect dependency, so blindly replaying its older lifecycle commit would regress the current behavior.
+- [x] Reviewed the unique `fixed onload behavior` commit diff. It changes startup sequencing and DOM listener null guards in the root runtime; it must be reconciled against the current `src/main.ts` / `app.ts` startup and state-loading lifecycle rather than cherry-picked wholesale.
+- [x] Reconfirmed that the audit PR itself is ahead of `main` by only its three intended commits and has no merge-base divergence.
+- [ ] Continue review of the performance branch's remaining unique commit(s), especially request de-duplication and stale-response handling, before proposing a separate integration PR.
+- [ ] Complete final browser verification for the quote display.
+
+**Rebase decision:** no forced rebase or cherry-pick is justified yet. The active-orders dependency improvement is already present on `main`; the remaining startup change is broader than a safe mechanical port and should be reviewed separately.
