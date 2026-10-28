@@ -147,8 +147,7 @@ export function SettingsDesk({
         <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2">
           <div
             id="headerCredentialsFields"
-            style={{ display: isConfigured && credentialsHidden ? 'none' : 'flex' }}
-            class="flex items-center"
+            class={`credentials-motion ${isConfigured && credentialsHidden ? '' : 'is-expanded'} flex items-center`}
           >
             <input
               id="headerGatewaySecretInput"
@@ -181,8 +180,7 @@ export function SettingsDesk({
           </button>
           <div
             id="headerCredentialsActions"
-            style={{ display: isConfigured && credentialsHidden ? 'none' : 'flex' }}
-            class="flex items-center gap-1.5"
+            class={`credentials-motion ${isConfigured && credentialsHidden ? '' : 'is-expanded'} flex items-center gap-1.5`}
           >
             <button
               id="saveApiKeysButton"

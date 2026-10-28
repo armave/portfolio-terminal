@@ -224,7 +224,13 @@ export function CashCushionDesk({
               </button>
             </div>
           </div>
-          {activeTranchesExpanded && <div class="table-scroll-wrapper overflow-x-auto">
+          <div
+            id="activeTranchesPanel"
+            class={`expandable-motion ${activeTranchesExpanded ? 'is-expanded' : ''}`}
+            aria-hidden={!activeTranchesExpanded}
+          >
+            <div class="expandable-motion__inner">
+              <div class="table-scroll-wrapper overflow-x-auto">
             <table id="activeTranchesTable" class="w-full min-w-[500px] text-left text-xs border-collapse">
               <thead>
                 <tr class="border-b border-slate-800 text-slate-500">
@@ -266,7 +272,9 @@ export function CashCushionDesk({
                 <td colSpan={6} class="px-2 py-2 text-[10px] text-slate-500">{activeTranches.length} active purchase operation{activeTranches.length === 1 ? '' : 's'} · same-ticker purchases within 5 minutes are grouped</td>
               </tr></tfoot>}
             </table>
-          </div>}
+              </div>
+            </div>
+          </div>
         </section>
       </div>
     </>

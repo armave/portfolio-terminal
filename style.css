@@ -2138,6 +2138,61 @@ textarea {
 }
 
 
+/* Shared expand/collapse motion: native disclosures and app-controlled panels. */
+:where(details) {
+  interpolate-size: allow-keywords;
+}
+
+:where(details)::details-content {
+  height: 0;
+  opacity: 0;
+  overflow: clip;
+  transition: height 180ms ease, opacity 160ms ease;
+  transition-behavior: allow-discrete;
+}
+
+:where(details[open])::details-content {
+  height: auto;
+  opacity: 1;
+}
+
+.expandable-motion {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: grid-template-rows 200ms ease, opacity 160ms ease, transform 200ms ease;
+  will-change: grid-template-rows, opacity;
+}
+
+.expandable-motion.is-expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.expandable-motion__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.credentials-motion {
+  max-width: 0;
+  opacity: 0;
+  overflow: clip;
+  flex-shrink: 1;
+  transition: max-width 200ms ease, opacity 160ms ease;
+}
+
+.credentials-motion.is-expanded {
+  max-width: 32rem;
+  opacity: 1;
+}
+
+.credentials-motion > * {
+  flex-shrink: 0;
+}
+
 /* Native motion polish: keep animated work to compositor-friendly properties. */
 :where(a, button, [role="tab"], .insight-tab) {
   transition-property: opacity, transform, color, background-color, border-color;
