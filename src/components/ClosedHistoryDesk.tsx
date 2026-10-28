@@ -214,24 +214,8 @@ export function ClosedHistoryDesk() {
         }
         allocatedDailyFees += amount; matchedFeeRows++;
       }
-      let updatedTradeCount = 0;
-      const updatedExecutions = brokerExecutions.map((trade, index) => {
-        if (!['sell', 's', 'sale', 'sold', '2'].includes(String(trade.side ?? '').toLowerCase())) return trade;
-        const incoming = allocationsBySell.get(index); if (!incoming || !Object.keys(incoming).length) return trade;
-        const persisted = { ...(trade.marginFeeAllocations || {}) } as Record<string, number>;
-        Object.entries(incoming).forEach(([id, amount]) => { persisted[id] = Number(amount.toFixed(6)); });
-        const marginFee = Number(Object.values(persisted).reduce((sum, amount) => sum + (Number(amount) || 0), 0).toFixed(2));
-        updatedTradeCount++;
-        const commission = Math.abs(Number(trade.commission ?? 0)) || 0;
-        const profit = trade.profit == null ? null : Number(trade.profit);
-        return {
-          ...trade,
-          marginFeeAllocations: persisted,
-          marginFee,
-          feesAndCommissions: Number((commission + marginFee).toFixed(2)),
-          netProfit: profit == null ? null : Number((profit - marginFee).toFixed(2))
-        };
-      });
+      const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(brokerExecutions, allocationsBySell);
+      let updatedTradeCount = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
       let updatedTrades = appTrades;
       if (!brokerExecutions.length) {
         const appAllocations = new Map<number, number>();
@@ -248,15 +232,8 @@ export function ClosedHistoryDesk() {
           for (const position of open) appAllocations.set(position.index, (appAllocations.get(position.index) || 0) + amount * position.weight / totalWeight);
           allocatedDailyFees += amount; matchedFeeRows++;
         }
-        updatedTrades = appTrades.map((trade, index) => {
-          const addedFee = Number((appAllocations.get(index) || 0).toFixed(2)); if (addedFee <= 0) return trade;
-          updatedTradeCount++;
-          const previousMargin = Math.abs(Number(trade.marginInterest ?? trade.marginFee ?? 0)) || 0;
-          const previousFees = Number(trade.feesAndCommissions ?? trade.totalCommissions ?? trade.commissions ?? 0) || 0;
-          const net = Number(trade.netProfit ?? trade.netRealizedGain ?? trade.grossProfit ?? 0) || 0;
-          const fees = Number((Math.max(0, previousFees - previousMargin) + addedFee).toFixed(2));
-          return { ...trade, feesAndCommissions: fees, totalCommissions: fees, marginInterest: addedFee, marginFee: addedFee, netProfit: Number((net + previousMargin - addedFee).toFixed(2)), netRealizedGain: Number((net + previousMargin - addedFee).toFixed(2)) };
-        });
+        updatedTrades = applyCashflowAllocationsToClosedTrades(appTrades, appAllocations);
+        updatedTradeCount = updatedTrades.filter((trade, index) => trade !== appTrades[index]).length;
       }
       const currentCashflows = portfolioStore.getState().cashflows || [];
       const cashflowsChanged = JSON.stringify(currentCashflows) !== JSON.stringify(imported);
