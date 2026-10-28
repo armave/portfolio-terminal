@@ -427,9 +427,11 @@ export function ClosedHistoryDesk() {
     // Never use feesAndCommissions as a commission fallback: that aggregate may already include margin fees, which are displayed separately below.
     const commissions = Number((trade as any).commissions ?? (trade as any).totalCommissions ?? (trade as any).commission ?? 0);
     const fees = Number((trade as any).marginFee ?? (trade as any).marginInterest ?? 0);
-    return { trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const,
+    return {
+      trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const,
       profit: Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0),
-      fees, commissions, feesTotal: fees + commissions };
+      fees, commissions, feesTotal: fees + commissions
+    };
   });
   // Match buy lots FIFO to sell executions so both entry and exit commissions
   // are reflected in the closed-history row. Fees are allocated per share for partial closes.
@@ -573,7 +575,7 @@ export function ClosedHistoryDesk() {
             }} />
           </label>
           <div class="text-xs font-mono text-slate-500">
-            {trades.length} records ({uniqueAppTrades.length} app · {groupedBrokerRows.length} Freedom)
+            {trades.length} records
           </div>
         </div>
       </div>
