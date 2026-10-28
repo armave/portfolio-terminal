@@ -10,16 +10,16 @@ import type { EmptyStatePanelProps } from '../components/EmptyStatePanel';
 
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
-  'terminal:active-view': string;
-  'terminal:ai-status': { status: string; text?: string };
+  'terminal:active-view': { view: string };
+  'terminal:ai-status': string;
   'terminal:analyst-consensus': { text: string; title: string; className: string };
-  'terminal:auth-visibility': { visible: boolean };
+  'terminal:auth-visibility': { isOpen: boolean };
   'terminal:board-title': { title: string; showDailyMove: boolean };
   'terminal:breakeven-text': { text: string };
   'terminal:cash-cushion-props': CashCushionDeskProps;
   'terminal:cloud-status': { status: string; text: string };
   'terminal:cloud-sync-status': { status: string; text: string };
-  'terminal:empty-state-props': EmptyStatePanelProps;
+  'terminal:empty-state-props': EmptyStatePanelProps | null;
   'terminal:external-links-props': BoardExternalLinksProps;
   'terminal:margin-intelligence-request': { ticker?: string; refresh?: boolean };
   'terminal:market-insights-props': MarketInsightsPanelProps;
@@ -36,7 +36,6 @@ export interface UiEventPayloads {
 
 export type UiEventName = keyof UiEventPayloads;
 type UiListener<K extends UiEventName> = (detail: UiEventPayloads[K]) => void;
-type ListenerSet = Set<(detail: never) => void>;
 const listeners = new Map<UiEventName, Set<(detail: unknown) => void>>();
 const listenerWrappers = new WeakMap<(event: Event) => void, (detail: unknown) => void>();
 
