@@ -115,20 +115,52 @@ export function ClosedHistoryDesk() {
   // portfolio hydration intentionally excludes these two history collections.
   useEffect(() => {
     let active = true;
-    void pullCloudHistory().then(history => {
+    const mergeById = (localRows: any[], cloudRows: any[]) => {
+      const merged = new Map<string, any>();
+      // Local rows are the current working copy and win for duplicate IDs.
+      for (const row of cloudRows) {
+        const id = String(row?.id ?? '');
+        if (id) merged.set(id, row);
+      }
+      for (const row of localRows) {
+        const id = String(row?.id ?? '');
+        if (id) merged.set(id, row);
+      }
+      return [...merged.values()];
+    };
+    void pullCloudHistory().then(async history => {
       if (!active) return;
-      const resolved = history || loadSavedHistory();
-      portfolioStore.setState({
-        brokerExecutedTrades: resolved.brokerExecutedTrades,
-        cashflows: resolved.cashflows
-      });
+      const current = portfolioStore.getState();
+      const saved = loadSavedHistory();
+      const localCashflows = current.cashflows?.length ? current.cashflows : saved.cashflows;
+      const localExecutions = current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : saved.brokerExecutedTrades;
+      const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
+      // Never replace an existing local import with an older/empty cloud snapshot.
+      // Merge by stable IDs so cloud-only records survive while local edits win.
+      const resolved = {
+        brokerExecutedTrades: mergeById(localExecutions || [], cloud.brokerExecutedTrades || []),
+        cashflows: mergeById(localCashflows || [], cloud.cashflows || [])
+      };
+      portfolioStore.setState(resolved);
+      const differsFromCloud =
+        JSON.stringify(resolved.brokerExecutedTrades) !== JSON.stringify(cloud.brokerExecutedTrades || []) ||
+        JSON.stringify(resolved.cashflows) !== JSON.stringify(cloud.cashflows || []);
+      if (differsFromCloud && (resolved.brokerExecutedTrades.length || resolved.cashflows.length)) {
+        try {
+          const synced = await pushCloudHistory(resolved);
+          if (!synced) console.warn('Merged local closed history remains unsynced; cloud history did not confirm the update.');
+        } catch (error) {
+          console.error('Unable to sync merged local closed history:', error);
+        }
+      }
     }).catch(error => {
       console.error('Unable to load closed history from cloud:', error);
       if (active) {
-        const localHistory = loadSavedHistory();
+        const current = portfolioStore.getState();
+        const saved = loadSavedHistory();
         portfolioStore.setState({
-          brokerExecutedTrades: localHistory.brokerExecutedTrades,
-          cashflows: localHistory.cashflows
+          brokerExecutedTrades: current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : saved.brokerExecutedTrades,
+          cashflows: current.cashflows?.length ? current.cashflows : saved.cashflows
         });
       }
     });
