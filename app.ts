@@ -621,7 +621,7 @@ function renderMarketInsightsComponent() {
   window.dispatchEvent(new CustomEvent('terminal:market-insights-props', {
     detail: {
       ticker,
-      isOpen: true,
+      isOpen: !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(state.activeView),
       activeSection: activeInsightSection as InsightSection,
       refreshTrigger: insightRequestId,
       onSelectSection: (section: InsightSection) => {
@@ -1490,7 +1490,11 @@ async function startApp(secret: string) {
   state = portfolioStore.getState();
   applyOvernightRollover();
 
+  window.dispatchEvent(new CustomEvent('terminal:portfolio-hydrating'));
   if (secret) await syncCloudState('pull');
+  // Broker requests must not race the initial cloud-state hydration. Optional
+  // broker reads can begin now while the first quote batch is loading.
+  window.dispatchEvent(new CustomEvent('terminal:portfolio-hydrated'));
 
   const initialQuoteRefreshInterval = getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS);
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
@@ -1541,6 +1545,7 @@ async function initApp() {
       portfolioStore.importState(loadSavedState(portfolioStore.getState()));
       state = portfolioStore.getState();
       applyOvernightRollover();
+      window.dispatchEvent(new CustomEvent('terminal:portfolio-hydrated'));
       switchView(state.activeView);
       hideStartupLoading();
       showAuthContainer();

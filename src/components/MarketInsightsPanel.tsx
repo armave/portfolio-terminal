@@ -84,6 +84,7 @@ export function MarketInsightsPanel({
   }, [selectedNews]);
   const [stockData, setStockData] = useState<any>(null);
   const [stocktwitsData, setStocktwitsData] = useState<StocktwitsStream | null>(null);
+  const [stocktwitsRequested, setStocktwitsRequested] = useState(false);
   const [stocktwitsLoading, setStocktwitsLoading] = useState(false);
   const [stocktwitsError, setStocktwitsError] = useState<string | null>(null);
   const [stocktwitsUpdatedAt, setStocktwitsUpdatedAt] = useState<number | null>(null);
@@ -173,9 +174,10 @@ export function MarketInsightsPanel({
     };
   }, [ticker, isOpen, refreshTrigger, newsRefreshRequest]);
 
-  // Stocktwits loads on open and refreshes only when requested.
+  // Stocktwits is an optional secondary feed; do not request it until the user
+  // explicitly loads it. Once requested, ticker changes and manual refreshes work normally.
   useEffect(() => {
-    if (!isOpen || !ticker) return;
+    if (!isOpen || !ticker || !stocktwitsRequested) return;
 
     const forceOnStart = refreshTrigger !== lastStocktwitsRefreshTriggerRef.current || stocktwitsRefreshRequest !== lastStocktwitsManualRefreshRef.current;
     lastStocktwitsRefreshTriggerRef.current = refreshTrigger;
@@ -210,7 +212,7 @@ export function MarketInsightsPanel({
       disposed = true;
       stocktwitsRequestIdRef.current += 1;
     };
-  }, [ticker, isOpen, refreshTrigger, stocktwitsRefreshRequest]);
+  }, [ticker, isOpen, refreshTrigger, stocktwitsRefreshRequest, stocktwitsRequested]);
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -556,10 +558,10 @@ export function MarketInsightsPanel({
               Stocktwits <span class="text-cyan-300">{ticker ? `· ${ticker}` : ''}</span>
             </h3>
           </div>
-          <button type="button" onClick={() => setStocktwitsRefreshRequest((value) => value + 1)}
+          <button type="button" onClick={() => { setStocktwitsRequested(true); setStocktwitsRefreshRequest((value) => value + 1); }}
             class="rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
             aria-label="Refresh Stocktwits messages">
-            {stocktwitsLoading ? 'Refreshing…' : 'Refresh'}
+            {stocktwitsLoading ? 'Refreshing…' : stocktwitsRequested ? 'Refresh' : 'Load'}
           </button>
           {stocktwitsData?.streamUrl && (
             <a href={stocktwitsData.streamUrl} target="_blank" rel="noopener noreferrer"
@@ -575,6 +577,8 @@ export function MarketInsightsPanel({
           <p class="py-2 text-xs text-slate-500 font-mono animate-pulse">Loading Stocktwits stream…</p>
         ) : stocktwitsError && !stocktwitsData?.messages.length ? (
           <p class="py-2 text-xs text-rose-400">Stocktwits unavailable: {stocktwitsError}</p>
+        ) : !stocktwitsRequested ? (
+          <p class="py-2 text-xs text-slate-500">Load Stocktwits messages to view community posts.</p>
         ) : !stocktwitsData?.messages.length ? (
           <p class="py-2 text-xs text-slate-500">No recent Stocktwits messages found.</p>
         ) : (

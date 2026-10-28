@@ -34,13 +34,12 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
     !isCushionActive && !isClosedHistoryActive && !isSettingsActive;
 
   // The Margin desk is the surface whose targets depend on open broker orders.
-  // Refresh on first mount and whenever navigation returns to that desk, rather
-  // than relying on a user clicking a ticker tab.
+  // Refresh when entering or returning to the desk, not for every ticker change.
   useEffect(() => {
     if (isMarginDeskActive && typeof window !== 'undefined') {
       window.dispatchEvent(new Event('tradenet:request-active-orders'));
     }
-  }, [isMarginDeskActive, state.activeView]);
+  }, [isMarginDeskActive]);
 
   const tickers = Object.keys(state.positions || {});
 

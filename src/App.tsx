@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
 import { CashCushionDesk, type CashCushionDeskProps } from './components/CashCushionDesk';
@@ -47,6 +47,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [cloudStatus, setCloudStatusState] = useState({ status: 'idle', text: 'OFFLINE' });
   const [cloudSyncStatus, setCloudSyncStatus] = useState({ status: 'idle', text: '' });
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
+  const [portfolioHydrated, setPortfolioHydrated] = useState(false);
+  const pendingTradesRequestRef = useRef(false);
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
   const closeMarginIntelligence = useCallback(() => setMarginIntelligence(null), []);
@@ -358,6 +360,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const handleCloudStatus = (event: Event) => { const detail = (event as CustomEvent<{status:string;text:string}>).detail; if (detail) setCloudStatusState(detail); };
     const handleCloudSyncStatus = (event: Event) => { const detail = (event as CustomEvent<{status:string;text:string}>).detail; if (detail) setCloudSyncStatus(detail); };
     const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
+    const handlePortfolioHydrating = () => setPortfolioHydrated(false);
+    const handlePortfolioHydrated = () => setPortfolioHydrated(true);
     const handleAnalystConsensus = (event: Event) => {
       const detail = (event as CustomEvent<{ text: string; title: string; className: string }>).detail;
       if (detail) setAnalystConsensus(detail);
@@ -373,6 +377,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     window.addEventListener('terminal:cloud-status', handleCloudStatus);
     window.addEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
     window.addEventListener('terminal:startup-state', handleStartupState);
+    window.addEventListener('terminal:portfolio-hydrating', handlePortfolioHydrating);
+    window.addEventListener('terminal:portfolio-hydrated', handlePortfolioHydrated);
     return () => {
       window.removeEventListener('terminal:scenario-modal', handleScenarioModal);
       window.removeEventListener('terminal:auth-visibility', handleAuthVisibility);
@@ -392,19 +398,28 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       window.removeEventListener('terminal:cloud-status', handleCloudStatus);
       window.removeEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
       window.removeEventListener('terminal:startup-state', handleStartupState);
+      window.removeEventListener('terminal:portfolio-hydrating', handlePortfolioHydrating);
+      window.removeEventListener('terminal:portfolio-hydrated', handlePortfolioHydrated);
     };
   }, []);
 
-  // Closed History asks for trade history when mounted; do not also fetch from
-  // a global navigation click listener, which caused duplicate broker requests.
+  // Broker history is requested by desks that need it, never unconditionally
+  // during startup. Queue early view requests until cloud/local state is hydrated.
   useEffect(() => {
-    // Load broker executions so margin commissions can use Freedom-reported fees
-    // when present; local commission rules remain the fallback.
-    void loadExecutedTrades();
-    const onRequest = () => { void loadExecutedTrades(); };
+    const onRequest = () => {
+      if (!portfolioHydrated) {
+        pendingTradesRequestRef.current = true;
+        return;
+      }
+      void loadExecutedTrades();
+    };
     window.addEventListener('tradenet:request-executed-trades', onRequest);
+    if (portfolioHydrated && pendingTradesRequestRef.current) {
+      pendingTradesRequestRef.current = false;
+      void loadExecutedTrades();
+    }
     return () => window.removeEventListener('tradenet:request-executed-trades', onRequest);
-  }, []);
+  }, [portfolioHydrated]);
 
   const loadFreedomAccount = async () => {
     if (accountRequest) return accountRequest;
@@ -468,15 +483,22 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       })();
       try { await activeOrdersRequest; } finally { activeOrdersRequest = null; }
     };
-    const onRequest = () => { void loadActiveOrders(); };
+    const onRequest = () => { if (portfolioHydrated) void loadActiveOrders(); };
     window.addEventListener('tradenet:request-active-orders', onRequest);
     // The Margin desk requests active orders when it becomes visible.
     return () => window.removeEventListener('tradenet:request-active-orders', onRequest);
-  }, []);
+  }, [portfolioHydrated]);
 
-  // Load account/balance/position data first on startup. Trade history is fetched
-  // only when Closed History opens.
+  // Fetch active orders only after portfolio hydration and only while a margin
+  // desk is visible. Ticker-to-ticker navigation does not require another pull.
   useEffect(() => {
+    if (!portfolioHydrated || ['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(activeDeskView)) return;
+    window.dispatchEvent(new Event('tradenet:request-active-orders'));
+  }, [portfolioHydrated]);
+
+  // Load account/balance/position data after local/cloud portfolio state is ready.
+  useEffect(() => {
+    if (!portfolioHydrated) return;
     void loadFreedomAccount().catch(() => {
       // Keep the saved portfolio intact, but notify the app shell so stale
       // broker data is never mistaken for a successful current snapshot.
@@ -484,7 +506,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         window.dispatchEvent(new CustomEvent('tradenet:account-info-error'));
       }
     });
-  }, []);
+  }, [portfolioHydrated]);
 
 
 
