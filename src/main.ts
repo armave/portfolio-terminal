@@ -1,5 +1,7 @@
 import '../style.css';
-import '../app';
+import { h, render } from 'preact';
+import { App } from './App';
+import { handleSaveGatewaySecret, initApp } from '../app';
 import { pullCloudState, pushCloudState } from './services/api';
 import { registerSW } from 'virtual:pwa-register';
 
@@ -88,4 +90,24 @@ if (typeof document !== 'undefined') {
 if (typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).pullCloudState = pullCloudState;
   (window as unknown as Record<string, unknown>).pushCloudState = pushCloudState;
+}
+
+
+/** The application has exactly one Preact root. Runtime orchestration lives in app.ts;
+ * component mounting and startup sequencing are owned by this entry point. */
+function mountPreactApplication() {
+  const root = document.getElementById('root');
+  if (!root) throw new Error('Missing #root mount element');
+  render(h(App, { onSaveGatewaySecret: handleSaveGatewaySecret }), root);
+}
+
+function bootstrapApplication() {
+  mountPreactApplication();
+  void initApp();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrapApplication, { once: true });
+} else {
+  bootstrapApplication();
 }
