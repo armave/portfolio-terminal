@@ -75,9 +75,12 @@ export function applyCashflowAllocationsToClosedTrades(
 type ClosedHistoryRow = { trade: Record<string, any> };
 
 /** Prefer broker rows for app/broker records that describe the same closed sale. */
-export function deduplicateClosedHistoryRows<T extends ClosedHistoryRow>(
+export function deduplicateClosedHistoryRows<
+  T extends ClosedHistoryRow,
+  U extends ClosedHistoryRow
+>(
   appRows: T[],
-  brokerRows: T[]
+  brokerRows: U[]
 ): T[] {
   const matchKey = (trade: Record<string, any>): string | null => {
     const ticker = String(trade.ticker ?? '').trim().toUpperCase().replace(/\.US$/, '');
