@@ -134,6 +134,49 @@ describe('active broker tranches', () => {
     });
   });
 
+  it('calculates margin commissions from executed buy operations, not legacy in-app trades', () => {
+    const trades = [
+      { id: 'buy-1', ticker: 'AAPL.US', side: 'BUY', quantity: 1, price: 100, executedAt: '2026-01-01T10:00:00Z' },
+      { id: 'buy-2', ticker: 'AAPL.US', side: 'BUY', quantity: 1, price: 100, executedAt: '2026-01-01T10:04:00Z' }
+    ];
+    const result = classifyFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'AAPL.US', quantity: 2, marketPrice: 120 }]
+    }, {
+      AAPL: {
+        ticker: 'AAPL',
+        shares: 50,
+        currentPrice: 80,
+        pt: 150,
+        commBuy: 99,
+        tranches: [{ qty: 50, price: 5, buyCommission: 77 }]
+      }
+    }, [], { AAPL: 'margin' }, 123, trades, {
+      commPerShare: 0.012,
+      commVolumePct: 0.0012,
+      minCommOrder: 1.2
+    });
+
+    expect(result.positions.AAPL).toMatchObject({
+      shares: 2,
+      pt: 150,
+      commBuy: 2.4,
+      tranches: [{ qty: 2, price: 100, buyCommission: 2.4 }]
+    });
+  });
+
+  it('uses broker-reported buy commission when available', () => {
+    const result = getActiveTranchesFromTrades([
+      { id: 'buy-1', ticker: 'MSFT', side: 'BUY', quantity: 3, price: 100, commission: 0.85, executedAt: '2026-01-01T10:00:00Z' }
+    ], undefined, {
+      commPerShare: 0.012,
+      commVolumePct: 0.0012,
+      minCommOrder: 1.2
+    });
+    expect(result[0]).toMatchObject({ quantity: 3, buyCommission: 0.85 });
+  });
+
   it('retains an existing cost basis when the broker omits average price', () => {
     const result = classifyFreedomPortfolio({ loaded: true, balances: [], positions: [
       { ticker: 'NVDA', quantity: 2, marketPrice: 120 }
