@@ -101,11 +101,6 @@ export function dismissScenarioReport(): void {
   setScenarioReport(null);
 }
 
-export function subscribeScenarioReport(listener: (report: string | null) => void): () => void {
-  scenarioReportListeners.add(listener);
-  return () => scenarioReportListeners.delete(listener);
-}
-
 export function useScenarioReport(): string | null {
   const [report, setReport] = useState(scenarioReport);
   useEffect(() => {
@@ -137,11 +132,6 @@ export function addErrorToast(rawMessage: string): void {
       notifyErrorToasts();
     }, 250);
   }, 2800);
-}
-
-export function subscribeErrorToasts(listener: (toasts: ErrorToast[]) => void): () => void {
-  errorToastListeners.add(listener);
-  return () => errorToastListeners.delete(listener);
 }
 
 export function useErrorToasts(): ErrorToast[] {
