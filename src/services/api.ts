@@ -3,6 +3,54 @@ import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { PortfolioState } from '../types/portfolio';
 
+export interface SyncedMarginDigest {
+  key: string;
+  title: string;
+  scope: 'position' | 'portfolio';
+  ticker?: string;
+  analysis: string;
+  articles: Array<{ ticker: string; headline: string; source: string; url: string; publishedAt?: number; summary?: string }>;
+  syncedAt: string;
+}
+
+const MARGIN_DIGEST_PATH = '/api/margin-digest';
+
+export async function loadSyncedMarginDigest(key: string): Promise<{ digest: SyncedMarginDigest; revision: number } | null> {
+  const secret = getActiveGatewaySecret().trim();
+  if (!secret) throw new Error('Gateway Secret is not available.');
+  const response = await fetch(new URL(MARGIN_DIGEST_PATH, WORKER_PROXY_URL), {
+    headers: { 'X-App-Auth': secret, Authorization: `Bearer ${secret}` },
+    cache: 'no-store'
+  });
+  if (response.status === 404) return null;
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || `Could not load synced margin digest (HTTP ${response.status}).`);
+  if (!data || data.key !== key || typeof data.analysis !== 'string' || !Array.isArray(data.articles) || typeof data.syncedAt !== 'string') return null;
+  const revision = Number((response.headers.get('ETag') || '').replace(/^W\\//, '').replace(/^"|"$/g, ''));
+  return { digest: data as SyncedMarginDigest, revision: Number.isSafeInteger(revision) ? revision : 0 };
+}
+
+export async function saveSyncedMarginDigest(digest: SyncedMarginDigest, revision: number): Promise<number> {
+  const secret = getActiveGatewaySecret().trim();
+  if (!secret) throw new Error('Gateway Secret is not available.');
+  const response = await fetch(new URL(MARGIN_DIGEST_PATH, WORKER_PROXY_URL), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-App-Auth': secret,
+      Authorization: `Bearer ${secret}`,
+      'If-Match': `"${revision}"`
+    },
+    body: JSON.stringify(digest),
+    cache: 'no-store'
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || `Could not save synced margin digest (HTTP ${response.status}).`);
+  const nextRevision = Number((response.headers.get('ETag') || '').replace(/^W\\//, '').replace(/^"|"$/g, '') || data?.revision);
+  if (!Number.isSafeInteger(nextRevision) || nextRevision < 1) throw new Error('Server saved the digest but returned an invalid revision.');
+  return nextRevision;
+}
+
 const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
 // Persist each browser's last-seen cloud revision so a reload cannot reset it to zero.
