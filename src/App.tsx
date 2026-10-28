@@ -22,7 +22,6 @@ let accountRequest: Promise<void> | null = null;
 let activeOrdersRequest: Promise<void> | null = null;
 
 interface AppProps {
-  onToggleMarketInsights: () => void;
   onSaveGatewaySecret: (secret: string) => Promise<boolean>;
 }
 

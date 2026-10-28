@@ -189,30 +189,36 @@ Keys are configured directly in the terminal toolbar:
 
 ## Architecture & Codebase
 
-The frontend uses **Preact with React-compatible APIs**, **TypeScript**, **Tailwind CSS**, and **Vite**. Pure domain business logic is decoupled from UI rendering.
+The app uses **Preact, TypeScript, Vite, Tailwind CSS, and Vitest**. The browser entry point is `src/main.ts`, which loads the root `app.ts` runtime; the Cloudflare Worker is deployed separately from `worker.js` and `state-store.js`.
 
 ```text
 portfolio-terminal/
 ├── src/
-│   ├── components/            # React UI components (Dashboard, Tables, Modals, Console)
-│   ├── contexts/              # Application-wide React contexts (NotificationContext)
-│   ├── domain/                # Pure financial engines and trading calendars
-│   │   ├── portfolio.ts       # Margin interest, breakeven math, P&L, risk equations
-│   │   └── tradingCalendar.ts # NYSE/NASDAQ holiday schedules, EOW/NTD date math
-│   ├── features/              # Modular integrations and AI services
-│   │   ├── ai/                # Gemini client, intent classification, prompt builders
-│   │   └── quotes/            # Finnhub, Twelve Data, Alpha Vantage, RapidAPI connectors
-│   ├── services/              # Storage engine, JSON import/export, encrypted Gist sync
-│   ├── store/                 # Global state management (PortfolioContext)
-│   ├── main.tsx               # Application root mount and providers
-│   └── utils.tsx              # Formatting, currency, and date helpers
-├── style.css                  # Tailwind CSS root styles
-├── vite.config.ts             # Vite bundler configuration
-└── vitest.config.ts           # Vitest configuration
-
+│   ├── components/        # Preact presentation components
+│   ├── domain/            # Portfolio math, calendars, quote normalization
+│   ├── features/
+│   │   ├── ai/            # Gemini client, intent handling, prompts
+│   │   ├── quotes/        # Market insight and sentiment helpers
+│   │   └── terminal/      # Command dispatch and scenario evaluation
+│   ├── services/          # Provider APIs, polling, persistence, backup
+│   ├── store/             # Canonical portfolio state and mutations
+│   ├── types/             # Shared portfolio and broker types
+│   ├── ui/                # Board rendering and notifications
+│   ├── utils/             # Formatting and relative-time helpers
+│   ├── App.tsx            # Main Preact application
+│   └── main.ts            # Browser entry point
+├── app.ts                 # Runtime orchestration and event wiring
+├── worker.js              # Cloudflare Worker API boundary
+├── state-store.js         # Durable Object cloud-state storage
+├── worker.test.js         # Worker and Durable Object tests
+├── docs/                  # Architecture, audit, and provider notes
+├── style.css              # Application styles
+├── startup-critical.css   # Inlined first-paint styles
+├── vite.config.ts         # Build, PWA, and CSS injection
+└── package.json            # Validation and build scripts
 ```
 
----
+Keep the financial domain independent of UI and network concerns. Treat `PortfolioState.positions` as canonical, and retain root-level runtime/Worker files until their call sites, deployment paths, and tests have been migrated deliberately.
 
 ## Quality & Testing
 

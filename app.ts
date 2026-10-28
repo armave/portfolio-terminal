@@ -598,7 +598,6 @@ function renderBoard() {
     onRefreshAllLivePrices: refreshAllLivePrices,
     onSaveBalance: saveCurrentBalance,
     onAddCashStock: addCashStockFromDesk,
-    onRenderClosedHistory: renderClosedHistoryPanel,
     onRenderSettingsPanel: () => renderSettingsPanel(),
     onRenderAnalystConsensus: renderBoardAnalystConsensus,
     onFetchLivePrice: fetchLivePrice,
@@ -654,14 +653,6 @@ function syncMarketInsightsPanel() {
   renderMarketInsightsComponent();
 }
 
-function toggleMarketInsights() {
-  // Market Insights is a permanent part of the Margin workspace, not a toggleable panel.
-  syncMarketInsightsPanel();
-}
-
-function renderClosedHistoryPanel() {
-  // ClosedHistoryDesk is owned by App and mounts when the view is first opened.
-}
 
 async function fetchBoardAnalystTarget(ticker: string, force = false) {
   if (!ticker) return null;
@@ -1535,7 +1526,6 @@ async function initApp() {
   const rootEl = document.getElementById('root');
   if (rootEl && !document.getElementById('mainTerminalView')) {
     renderInto(h(App, {
-      onToggleMarketInsights: toggleMarketInsights,
       onSaveGatewaySecret: handleSaveGatewaySecret
     }), rootEl);
   }

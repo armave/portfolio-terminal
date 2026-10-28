@@ -185,3 +185,40 @@ The latest head passed typecheck, Vitest, production build, and dead-code diagno
 **Known boundary kept separate:** the active runtime rollover uses the configured timezone and batch debt projection, while the legacy cloud-import `processRollovers` path uses the historical Asia/Yerevan boundary and per-cycle rounding. These are not assumed equivalent; combining them without a decision about the existing financial rounding contract could change persisted debt. Keep both paths covered independently rather than silently changing the formula during this refactor.
 
 The remaining work is the final repository diff review and compatibility audit. Keep the PR in draft until the latest head passes the merge gates and the audit finds no unintended financial, persistence, quote, or UI regressions.
+
+
+## Cleanup audit progress — 2026-10-28
+
+**Status: in progress; keep the pull request in draft until all gates pass.**
+
+- [x] Audited the current `main` tree, runtime entry points, package scripts, TypeScript inclusion, Knip configuration, and existing CI workflows through the repository API.
+- [x] Confirmed `src/main.ts` imports the root `app.ts`, and `app.ts` mounts `src/App.tsx`; the root runtime is active and must not be deleted merely because it is large or legacy-shaped.
+- [x] Removed the unused `onToggleMarketInsights` prop from `AppProps` and its sole call-site argument. The component did not consume the prop; market-insights events are wired through the existing application event flow.
+- [x] Corrected the README architecture map to match the actual checked-in source tree and separate browser runtime from the Cloudflare Worker.
+- [x] Ran the merge gates on PR head `7ae2b9ddb94059887f1851447cc73b3fd7edb124`: TypeScript typecheck passed, all 343 tests across 24 files passed, Knip dead-code validation passed, production dependency audit reported 0 vulnerabilities at the configured high threshold, and the production build completed.
+- [x] Removed the confirmed orphaned `toggleMarketInsights()` wrapper identified by the first CI run (`TS6133`); no broader code was removed solely based on size or age.
+- [ ] Review any future Knip/import-graph findings and investigate duplicate execution paths before further removals.
+- [ ] Finish a deeper compatibility review of financial calculations, backup migration, encrypted cloud sync, Worker APIs, and deployment workflows.
+- [ ] Review the final diff and latest CI results before marking the PR ready for review.
+
+- [x] Investigated the first PR CI failure: TypeScript reported `app.ts(657,10): TS6133` for `toggleMarketInsights`, a now-unused wrapper left behind after removing the obsolete callback prop.
+- [x] Removed the unused `toggleMarketInsights` function; the panel refresh path remains available through `syncMarketInsightsPanel`.
+
+**Execution limitation:** a local `git clone` was attempted but the environment could not resolve `github.com`. Repository source was inspected through GitHub's repository API instead; no local test command is represented as having passed. CI results for the exact PR head are required before merge.
+
+
+**CI result recorded 2026-10-28:** the PR head `7ae2b9ddb94059887f1851447cc73b3fd7edb124` passed both PR validation workflows. The Pull Request CI run completed typecheck, tests (343/343), Knip validation, production dependency audit, and production build successfully. This is a verified checkpoint; later commits must be revalidated independently.
+
+## Follow-up audit checkpoint — 2026-10-28
+
+- [x] Inspected the supplied repository ZIP locally and cross-checked its architecture and validation configuration against the current PR branch.
+- [x] Rechecked the current PR head `59a9d9e67b702c3e403767e1755372935538d622`: both **Validate** (run 40648482060) and **Pull Request CI** (run 40648482089) completed successfully. Their validation jobs passed dependency installation, typecheck, tests, dead-code validation, production dependency audit, and production build.
+- [x] Rechecked the configured dead-code scope: Knip includes `src/**/*.{ts,tsx}`, `app.ts`, `state-store.js`, CSS, the Worker entry point, and test files. CI's dead-code validation is green, so no further deletion is justified by the current detector alone.
+- [x] Traced the empty `renderClosedHistoryPanel()` callback to `renderBoardUI`; removed the no-op callback, its interface option/default, and the caller wrapper together. `App` already owns the Closed History desk lifecycle via the active-view event, so this callback performed no work.
+- [x] Removed the confirmed no-op Closed History callback contract from `src/ui/renderBoard.ts` and `app.ts`; latest CI must verify no hidden caller relied on it.
+- [ ] Finish targeted compatibility review of cloud-state persistence, Worker endpoints/deployment configuration, and the final UI event/callback diff before considering the audit complete.
+
+**Local validation note:** the supplied ZIP was extracted successfully, but dependency installation was interrupted by the execution environment. The resulting partial `node_modules` made local TypeScript/test commands unusable; those local failures are environmental and are not treated as source regressions. The authoritative validation for this checkpoint is the successful GitHub Actions run on the exact PR head above. Re-run CI after any subsequent commit.
+ 
+
+**Latest cleanup change:** removed the empty Closed History callback passed from `app.ts` to `renderBoardUI`. `renderBoardUI` already communicates active desk state through `terminal:active-view`, and `App` mounts `ClosedHistoryDesk` from that state. The callback body was empty, so deleting the no-op callback contract does not change the desk lifecycle. CI is required to validate this change on the new head.
