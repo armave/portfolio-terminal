@@ -14,7 +14,6 @@ export interface UiEventPayloads {
   'terminal:analyst-consensus': { text: string; title: string; className: string };
   'terminal:auth-visibility': { isOpen: boolean };
   'terminal:board-title': { title: string; showDailyMove: boolean };
-  'terminal:breakeven-text': { text: string };
   'terminal:cash-cushion-props': CashCushionDeskProps;
   'terminal:cloud-status': { status: string; text: string };
   'terminal:cloud-sync-status': { status: string; text: string };
