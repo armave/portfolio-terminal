@@ -59,12 +59,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const detail = (event as CustomEvent<{ ticker?: string }>).detail;
       const requestedTicker = String(detail?.ticker || '').trim().toUpperCase();
       const snapshot = portfolioStore.getState();
-      const positions = Object.values(snapshot.positions || {}).filter((position: any) =>
-        position && Number(position.shares) > 0 &&
-        (!requestedTicker || String(position.ticker).toUpperCase() === requestedTicker)
-      ) as Array<{ ticker: string; shares: number; currentPrice: number; pt: number; commBuy?: number; startDate?: string; tranches?: Array<{ qty: number; price: number; date?: string; buyCommission?: number }> }>;
+      const allPositions = Object.values(snapshot.positions || {}).filter((position: any) =>
+        position && Number(position.shares) > 0
+      ) as Array<{ ticker: string; shares: number; currentPrice: number; pt: number; commBuy?: number; startDate?: string; tranches?: Array<{ qty: number; price: number; date?: string; buyCommission?: number }>; quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: Record<string, unknown> }>;
+      const focusPosition = requestedTicker
+        ? allPositions.find((position) => String(position.ticker).toUpperCase() === requestedTicker)
+        : null;
 
-      if (requestedTicker && positions.length === 0) {
+      if (requestedTicker && !focusPosition) {
         setMarginIntelligence({
           title: requestedTicker + ' · Position Review',
           scope: 'position',
@@ -90,10 +92,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       });
 
       try {
-        const newsByTicker = await Promise.all(positions.map(async (position) => {
+        // Single-position reviews fetch fresh news for the selected ticker; portfolio
+        // reviews fetch news for each active margin position. The full portfolio
+        // snapshot is included in both cases so Gemini can reason about concentration.
+        const newsPositions = isPortfolio ? allPositions : focusPosition ? [focusPosition] : [];
+        const newsByTicker = await Promise.all(newsPositions.map(async (position) => {
           try {
             const items = await fetchMarketNews(position.ticker, true);
-            return { ticker: position.ticker, items: Array.isArray(items) ? items.slice(0, 5) : [] };
+            return { ticker: position.ticker, items: Array.isArray(items) ? items.slice(0, 4) : [] };
           } catch {
             return { ticker: position.ticker, items: [] as any[] };
           }
@@ -107,42 +113,89 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             publishedAt: Number(item?.datetime || item?.publishedAt || 0) || undefined,
             summary: String(item?.summary || item?.description || '')
           }))
-        ).sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0));
+        ).sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0)).slice(0, 20);
 
-        const portfolioContext = {
-          scope: isPortfolio ? 'portfolio-wide' : 'single-position',
-          asOf: new Date().toISOString(),
-          marginDebtOrBalance: Number(snapshot.balance || 0),
-          freeCash: Number(snapshot.cashCushion?.freeCash || 0),
-          realizedMarginCharged: Number(snapshot.realizedMarginCharged || 0),
-          positions: positions.map((position) => ({
+        const summarizePosition = (position: typeof allPositions[number]) => {
+          const tranches = position.tranches || [];
+          const totalLotShares = tranches.reduce((total, tranche) => total + Number(tranche.qty || 0), 0);
+          const averageEntryPrice = totalLotShares > 0
+            ? tranches.reduce((total, tranche) => total + Number(tranche.qty || 0) * Number(tranche.price || 0), 0) / totalLotShares
+            : null;
+          const marketPrice = Number(position.currentPrice) || null;
+          return {
             ticker: position.ticker,
             shares: Number(position.shares),
-            marketPrice: Number(position.currentPrice) || null,
+            marketPrice,
+            quoteSource: position.quoteSource || null,
+            quoteUpdatedAt: position.quoteUpdatedAt || null,
+            quoteDetails: position.quoteDetails || null,
             targetOrActiveSellLimit: Number(position.pt) || null,
-            marketValue: Number(position.shares) * (Number(position.currentPrice) || 0),
-            entryLots: (position.tranches || []).map((tranche) => ({
+            marketValue: marketPrice === null ? null : Number(position.shares) * marketPrice,
+            entryLots: tranches.map((tranche) => ({
               shares: Number(tranche.qty),
               entryPrice: Number(tranche.price),
               purchaseDate: tranche.date || null,
               buyCommission: Number(tranche.buyCommission || 0)
             })),
-            averageEntryPrice: (position.tranches || []).reduce((total, tranche) => total + Number(tranche.qty) * Number(tranche.price), 0) /
-              Math.max(1, (position.tranches || []).reduce((total, tranche) => total + Number(tranche.qty), 0)),
-            unrealizedGrossPnl: (Number(position.currentPrice) - ((position.tranches || []).reduce((total, tranche) => total + Number(tranche.qty) * Number(tranche.price), 0) /
-              Math.max(1, (position.tranches || []).reduce((total, tranche) => total + Number(tranche.qty), 0)))) * Number(position.shares),
-            holdingStartDate: position.startDate || null
+            averageEntryPrice,
+            unrealizedGrossPnl: marketPrice !== null && averageEntryPrice !== null
+              ? (marketPrice - averageEntryPrice) * Number(position.shares)
+              : null,
+            holdingStartDate: position.startDate || null,
+            recordedBuyCommission: Number(position.commBuy || 0)
+          };
+        };
+        const portfolioContext = {
+          scope: isPortfolio ? 'portfolio-wide' : 'single-position-with-full-portfolio-context',
+          focusTicker: requestedTicker || null,
+          asOf: new Date().toISOString(),
+          accountState: {
+            balance: Number(snapshot.balance || 0),
+            cashBalance: Number(snapshot.cashBalance || 0),
+            freeCash: Number(snapshot.cashCushion?.freeCash || 0),
+            cashHoldings: (snapshot.cashCushion?.holdings || []).map((holding: any) => ({
+              ticker: holding.ticker,
+              shares: Number(holding.shares || 0),
+              currentPrice: Number(holding.currentPrice ?? holding.price) || null
+            })),
+            realizedMarginCharged: Number(snapshot.realizedMarginCharged || 0),
+            brokerAccountInfo: snapshot.brokerAccountInfo ? {
+              status: snapshot.brokerAccountInfo.status || (snapshot.brokerAccountInfo.loaded ? 'loaded' : 'not-loaded'),
+              receivedAt: snapshot.brokerAccountInfo.receivedAt || null,
+              balances: snapshot.brokerAccountInfo.balances || [],
+              positions: snapshot.brokerAccountInfo.positions || []
+            } : null,
+            brokerAssumptions: snapshot.brokerAssumptions || null,
+            activeTrancheTypes: snapshot.activeTrancheTypes || {}
+          },
+          focusPosition: focusPosition ? summarizePosition(focusPosition) : null,
+          allOpenMarginPositions: allPositions.map(summarizePosition),
+          recentClosedTrades: (snapshot.closedTrades || []).slice(-10).map((trade: any) => ({
+            ticker: trade.ticker,
+            shares: trade.shares,
+            avgBuyPrice: trade.avgBuyPrice ?? trade.entryPrice ?? null,
+            sellPrice: trade.sellPrice ?? trade.exitPrice ?? null,
+            buyDate: trade.buyDate ?? trade.purchaseDate ?? null,
+            sellDate: trade.sellDate ?? trade.exitDate ?? null,
+            netProfit: trade.netProfit ?? trade.netRealizedGain ?? null,
+            commissions: trade.commissions ?? trade.feesAndCommissions ?? trade.totalCommissions ?? null,
+            marginInterest: trade.marginInterest ?? null
+          })),
+          cashflows: (snapshot.cashflows || []).slice(-10).map((flow: any) => ({
+            date: flow.date, type: flow.type, amount: flow.amount, currency: flow.currency || null, description: flow.description || null
           }))
         };
         const prompt = [
           'You are a cautious margin-portfolio research assistant. Produce a concise, evidence-grounded decision brief, not a trade execution instruction.',
-          'Use only the portfolio context and news items below as factual inputs. Do not invent news, prices, earnings dates, market data, source details, or margin requirements. If news is absent or stale, say so clearly. Distinguish reported facts from your interpretation.',
-          'For each position, discuss HOLD, REDUCE/EXIT, and ADD only where justified; do not force an ADD recommendation. Consider unrealized P&L, target/active sell limit, concentration, available cash, margin debt, holding period, and financing/commission costs when the provided data supports it.',
-          'Give a short overall stance, strongest supporting evidence, key downside risks, what would invalidate the thesis, and 2-3 things to monitor next. Explain uncertainty. Never claim you know the broker liquidation threshold if it is not provided. Do not modify or submit orders.',
+          requestedTicker
+            ? 'FOCUS: analyze ' + requestedTicker + ' in depth, but use the entire portfolio/account snapshot to assess concentration, liquidity, leverage, and correlated downside. Clearly separate ticker-specific conclusions from portfolio-wide risks.'
+            : 'FOCUS: review every open margin position and the portfolio as a whole.',
+          'Use only the portfolio context and news items below as factual inputs. Do not invent news, prices, earnings dates, market data, source details, broker rules, or margin requirements. If a field is missing, stale, or unavailable, explicitly say so. Distinguish reported facts from your interpretation.',
+          'For the focus position, discuss HOLD, REDUCE/EXIT, and ADD only where justified; do not force an ADD recommendation. Consider entry lots and dates, average entry, unrealized P&L, target/active sell limit, quote freshness/source, concentration, cash, account balance, margin financing assumptions, commissions, and recent closed-trade outcomes when the supplied data supports it.',
+          'Give an overall stance, strongest evidence, downside/catalyst risks, what would invalidate the thesis, and 2-3 things to monitor next. Never claim to know the broker liquidation threshold unless explicitly provided. Do not modify or submit orders.',
           'Format with clear short headings and bullets. Avoid certainty and do not imply this is personalized professional financial advice.',
-          'PORTFOLIO CONTEXT JSON:',
-          JSON.stringify(portfolioContext),
-          'RECENT NEWS JSON (each item includes its source URL and provider timestamp when available):',
+          'PORTFOLIO AND ACCOUNT CONTEXT JSON:', JSON.stringify(portfolioContext),
+          'RECENT NEWS JSON (provider timestamps and URLs when available):',
           JSON.stringify(articles.map((article) => ({ ticker: article.ticker, headline: article.headline, source: article.source, url: article.url, publishedAt: article.publishedAt, summary: article.summary })))
         ].join('\n\n');
         const response = await proxyFetch('gemini', {}, {
