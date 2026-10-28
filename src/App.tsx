@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
-import { useBreakevenText, useCloudStatus, useCloudSyncStatus } from './ui/uiStateStore';
+import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -45,7 +45,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [boardTitle, setBoardTitle] = useState('COMBINED PORTFOLIO');
   const [showDailyMove, setShowDailyMove] = useState(false);
   const breakevenText = useBreakevenText();
-  const [analystConsensus, setAnalystConsensus] = useState({ text: '', title: '', className: 'hidden' });
+  const analystConsensus = useAnalystConsensus();
   const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
@@ -358,13 +358,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       }
     };
     const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
-    const handleAnalystConsensus = (event: Event) => {
-      const detail = (event as CustomEvent<{ text: string; title: string; className: string }>).detail;
-      if (detail) setAnalystConsensus(detail);
-    };
     addUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
     addUiEventListener('terminal:board-title', handleBoardTitle);
-    addUiEventListener('terminal:analyst-consensus', handleAnalystConsensus);
     addUiEventListener('terminal:startup-state', handleStartupState);
     return () => {
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
@@ -380,7 +375,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:external-links-props', handleExternalLinksProps);
       removeUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
       removeUiEventListener('terminal:board-title', handleBoardTitle);
-      removeUiEventListener('terminal:analyst-consensus', handleAnalystConsensus);
       removeUiEventListener('terminal:startup-state', handleStartupState);
     };
   }, []);
