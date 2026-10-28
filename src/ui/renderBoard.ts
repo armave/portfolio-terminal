@@ -1,4 +1,3 @@
-import { emitUiEvent } from './uiEventBus';
 import {
   setActiveDeskViewState, setBoardTitle, setCashCushionPropsState, setTickerTabsPropsState,
   setSummaryMetricsPropsState, setProjectionsPropsState, setEmptyStatePropsState
