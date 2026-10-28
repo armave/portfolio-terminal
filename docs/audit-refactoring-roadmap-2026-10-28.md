@@ -6,7 +6,7 @@
 
 ## Scope and method
 
-Reviewed repository metadata, package scripts, the current architecture and audit notes, CI/deployment workflows, selected portfolio-store/domain/service/UI code, and the active branch graph through the GitHub repository API. A local `git clone` was attempted but the environment could not resolve `github.com`; no local typecheck, test, dead-code, or build result is claimed. The pull-request CI must validate the exact final head.
+Reviewed repository metadata, package scripts, the current architecture and audit notes, CI/deployment workflows, selected portfolio-store/domain/service/UI code, and the active branch graph through the GitHub repository API. A local `git clone` was attempted but the environment could not resolve `github.com`; no local typecheck, test, dead-code, or build result is claimed. The pull-request CI validates the exact committed head; final browser verification remains outstanding.
 
 The repository already contains substantial protections for backup validation, cloud revision conflicts, quote ordering, authenticated cloud encryption migration, and financial rollover/rounding behavior. This pass deliberately avoids reimplementing those protections or changing financial semantics without targeted evidence and regression tests.
 
@@ -16,7 +16,7 @@ The repository already contains substantial protections for backup validation, c
 - [x] Extract the range formatter as a pure helper and add a focused regression test.
 - [x] Keep the change presentation-only: no portfolio state, quote provenance, provider priority, or financial calculations are changed.
 - [x] Create this audit plan with prioritized follow-up work and branch-divergence findings.
-- [ ] Run all required CI checks on the final PR head after the Stocktwits lazy-load refinement and review the final diff.
+- [x] Run all required CI checks on the final PR head after the Stocktwits lazy-load refinement: both GitHub Actions workflows passed on `9fdc4bd8f211eaab051307675473cbbeb68b86b6`.
 
 ## Prioritized refactoring roadmap
 
@@ -70,7 +70,7 @@ npm audit --omit=dev --audit-level=high
 
 Also inspect the final diff for changes to financial calculations, persisted formats, broker/API boundaries, secrets, and unrelated files. Browser verification should confirm the daily high/low display in the cash-holdings panel and review the key responsive layouts.
 
-**Current limitation:** source changes were committed through the GitHub repository API because local network resolution prevented cloning. Therefore, the focused regression test has been added but has not been executed locally in this session. Keep the PR unmerged until its CI run passes all required gates.
+**Current limitation:** source changes were committed through the GitHub repository API because local network resolution prevented cloning. The focused regression test was not run locally, but both GitHub Actions workflows passed the exact PR head, including typecheck, tests, production build, dead-code validation, and the production dependency audit. Keep the PR unmerged until the browser review is complete.
 
 ## Follow-up checkpoint — 2026-10-28
 
