@@ -219,11 +219,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         };
         const prompt = [
           'Act as a cautious, concise margin-position research assistant. Maximum 350 words. No introduction, no generic preface, no repeated disclaimer, no preset/template data.',
-          'Output exactly these sections: **Stance** (one sentence plus confidence: low/medium/high); **Position facts** (use supplied calculated values); **What matters now** (up to 3 news items and why each matters); **Risks / invalidation** (up to 3 bullets); **Monitor next** (up to 3 concrete items).',
+          'Output exactly these sections in this order: **Stance** (one sentence plus confidence: low/medium/high); **What matters now** (up to 3 news items and why each matters); **Risks / invalidation** (up to 3 bullets); **Monitor next** (up to 3 concrete items); **Position facts** (brief factual snapshot at the end).',
           'Use only supplied account data and article headlines/summaries. Do not invent prices, dates, events, rates, broker rules, or liquidation thresholds. Clearly label fact versus interpretation. If a key field is missing or stale, state it briefly.',
           'If app-tracked shares, broker-reported shares, and entry-lot shares disagree, put a concise DATA QUALITY WARNING first, list the three quantities and their sources, and do not make a firm size-dependent recommendation. Do not silently choose a quantity.',
           'Use the application-calculated gross P&L as supplied; do not recompute it. It excludes commissions, fees, and interest. Do not suggest a new price target unless the supplied data supports a transparent calculation. Do not submit or modify orders.',
-          'Mention a news claim only when supported by a supplied headline/summary; cite source and publication time inline. Do not infer earnings timing; call an earnings date unverified unless explicitly provided. No more than 3 key news developments for a ticker and no repeated source list in the prose.',
+          'Mention a news claim only when supported by a supplied headline/summary. Do not include inline source citations, provider IDs, numeric article IDs, or parentheticals like (Yahoo, 1793156968); source cards below the analysis are the citations. Do not infer earnings timing; call an earnings date unverified unless explicitly provided. No more than 3 key news developments for a ticker and no repeated source list in the prose.',
           'PORTFOLIO DATA:', JSON.stringify(portfolioContext),
           'NEWS (newest first):', JSON.stringify(articles.map((article) => ({
             ticker: article.ticker,
