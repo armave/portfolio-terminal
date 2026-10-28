@@ -795,7 +795,15 @@ export async function pullCloudState(
     let historyMigrationComplete = false;
     try { historyMigrationComplete = localStorage.getItem(CLOSED_HISTORY_MIGRATION_KEY) === '1'; } catch { /* migrate safely when storage is unavailable */ }
     if (hasHistory && (hasLegacyCloudHistory || !historyMigrationComplete)) {
-      await pushCloudHistory(legacyHistory, currentSecret);
+      // A dedicated history record may already have newer data. Never overwrite
+      // it with the legacy copy embedded in an older portfolio snapshot. Only
+      // migrate legacy rows when the dedicated record does not exist yet.
+      const dedicatedHistory = await pullCloudHistory(currentSecret);
+      if (!dedicatedHistory && (legacyHistory.brokerExecutedTrades.length || legacyHistory.cashflows.length)) {
+        await pushCloudHistory(legacyHistory, currentSecret);
+      } else if (dedicatedHistory) {
+        try { localStorage.setItem(CLOSED_HISTORY_MIGRATION_KEY, '1'); } catch { /* migration can be rechecked next session */ }
+      }
     }
     delete parsedState.brokerExecutedTrades;
     delete parsedState.cashflows;
