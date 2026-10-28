@@ -220,7 +220,7 @@ export function sanitizeFreedomActiveOrders(response) {
     };
     const order = rows.map(row => ({
         order_id: String(row?.order_id ?? row?.id ?? ""),
-        instr: String(row?.instr ?? row?.i ?? row?.ticker ?? row?.symbol ?? ""),
+        instr: String(row?.instr ?? row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instrument ?? ""),
         oper: numberOrNull(row?.oper ?? row?.operation),
         type: numberOrNull(row?.type ?? row?.order_type),
         p: numberOrNull(row?.p ?? row?.price ?? row?.limit_price),
