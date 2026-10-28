@@ -492,9 +492,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   // Fetch active orders only after portfolio hydration and only while a margin
   // desk is visible. Ticker-to-ticker navigation does not require another pull.
   useEffect(() => {
-    if (!portfolioHydrated || ['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(activeDeskView)) return;
+    // Wait until the active view has been published by the legacy shell. On
+    // initial mount activeDeskView can still be empty; requesting here would
+    // run before the Margin desk is actually resolved and never retry until
+    // the user navigates away and back.
+    if (!portfolioHydrated || !activeDeskView || ['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(activeDeskView)) return;
     window.dispatchEvent(new Event('tradenet:request-active-orders'));
-  }, [portfolioHydrated]);
+  }, [portfolioHydrated, activeDeskView]);
 
   // Load account/balance/position data after local/cloud portfolio state is ready.
   useEffect(() => {
