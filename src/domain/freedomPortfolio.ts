@@ -1,3 +1,5 @@
+import type { ActiveBrokerTranche, ActiveTrancheType, PositionRecord } from '../types/portfolio';
+
 export interface FreedomPortfolioSnapshotLike {
   loaded: boolean;
   balances: Array<{ currency: string; amount: number; [key: string]: unknown }>;
@@ -26,6 +28,93 @@ function positiveFinite(value: unknown): number | null {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : null;
 }
+
+/** Normalize broker rows into one active tranche per ticker for the Balance table. */
+export function getActiveBrokerTranches(snapshot: FreedomPortfolioSnapshotLike | undefined): ActiveBrokerTranche[] {
+  if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return [];
+  const byTicker = new Map<string, ActiveBrokerTranche & { weightedAverageTotal: number; averageWeight: number }>();
+
+  for (const item of snapshot.positions) {
+    const ticker = tickerKey(item?.ticker);
+    const quantity = Number(item?.quantity);
+    if (!ticker || !Number.isFinite(quantity) || quantity <= 0) continue;
+    const marketPrice = positiveFinite(item?.marketPrice);
+    const averagePrice = positiveFinite((item as any)?.averagePrice);
+    const previous = byTicker.get(ticker);
+    const nextQuantity = (previous?.quantity || 0) + quantity;
+    const averageWeight = (previous?.averageWeight || 0) + (averagePrice !== null ? quantity : 0);
+    const weightedAverageTotal = (previous?.weightedAverageTotal || 0) + (averagePrice !== null ? averagePrice * quantity : 0);
+    byTicker.set(ticker, {
+      ticker,
+      name: String((item as any)?.name || ticker),
+      quantity: nextQuantity,
+      marketPrice: marketPrice ?? previous?.marketPrice ?? null,
+      averagePrice: averageWeight > 0 ? weightedAverageTotal / averageWeight : previous?.averagePrice ?? null,
+      marketValue: (marketPrice ?? previous?.marketPrice) !== null
+        ? nextQuantity * Number(marketPrice ?? previous?.marketPrice)
+        : null,
+      weightedAverageTotal,
+      averageWeight
+    });
+  }
+
+  return [...byTicker.values()]
+    .map(({ weightedAverageTotal: _weightedAverageTotal, averageWeight: _averageWeight, ...item }) => item)
+    .sort((a, b) => a.ticker.localeCompare(b.ticker));
+}
+
+/**
+ * Project the broker's current open quantities into the app's cash and margin
+ * ledgers. Broker data is authoritative for active quantities; classifications
+ * are user preferences and default to cash for newly observed tickers.
+ */
+export function classifyFreedomPortfolio(
+  snapshot: FreedomPortfolioSnapshotLike,
+  sourcePositions: Record<string, PositionRecord>,
+  sourceCashHoldings: any[],
+  classifications: Record<string, ActiveTrancheType> = {},
+  receivedAt = Date.now()
+): { positions: Record<string, PositionRecord>; cashStocks: any[] } {
+  const positions: Record<string, PositionRecord> = {};
+  const cashStocks: any[] = [];
+  const previousCash = new Map<string, any>();
+  for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
+    const ticker = tickerKey(holding?.ticker);
+    if (ticker && !previousCash.has(ticker)) previousCash.set(ticker, holding);
+  }
+
+  for (const tranche of getActiveBrokerTranches(snapshot)) {
+    const type = classifications[tranche.ticker] || 'cash';
+    const prior = sourcePositions[tranche.ticker];
+    const priorCash = previousCash.get(tranche.ticker);
+    const currentPrice = tranche.marketPrice ?? prior?.currentPrice ?? (Number(priorCash?.currentPrice ?? priorCash?.price) || 0);
+    const entryPrice = tranche.averagePrice ?? (Number(prior?.tranches?.[0]?.price) || currentPrice);
+
+    if (type === 'margin') {
+      positions[tranche.ticker] = {
+        ...(prior || {}),
+        ticker: tranche.ticker,
+        shares: tranche.quantity,
+        currentPrice,
+        pt: Number(prior?.pt) || entryPrice,
+        commBuy: Number(prior?.commBuy) || 0,
+        tranches: entryPrice > 0 ? [{ qty: tranche.quantity, price: entryPrice, ...(prior?.startDate ? { date: prior.startDate } : {}) }] : [],
+        quoteSource: tranche.marketPrice !== null ? 'Freedom TradeNet' : prior?.quoteSource,
+        ...(tranche.marketPrice !== null ? { quoteDetails: { ...(prior?.quoteDetails || {}), price: tranche.marketPrice, freshness: 'unknown', receivedAt } } : {})
+      };
+    } else {
+      cashStocks.push({
+        ...(priorCash || {}),
+        ticker: tranche.ticker,
+        shares: tranche.quantity,
+        ...(tranche.marketPrice !== null ? { currentPrice: tranche.marketPrice, price: tranche.marketPrice } : {})
+      });
+    }
+  }
+
+  return { positions, cashStocks };
+}
+
 
 /**
  * Prefer Freedom's live account snapshot without rewriting app-owned trade lots.
