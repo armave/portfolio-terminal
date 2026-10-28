@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 
 export interface MarginIntelligenceArticle {
   ticker: string;
@@ -18,17 +18,35 @@ export interface MarginIntelligenceState {
   analysis: string;
   articles: MarginIntelligenceArticle[];
   error?: string;
+  syncedAt?: string;
+  digestRevision?: number;
 }
 
 interface MarginIntelligenceModalProps {
   data: MarginIntelligenceState;
   onClose: () => void;
+  onRefresh: () => void;
 }
 
 function publishedLabel(timestamp?: number): string {
   if (!timestamp || !Number.isFinite(timestamp)) return 'Publication time unavailable';
   const date = new Date(timestamp > 1e12 ? timestamp : timestamp * 1000);
   return Number.isNaN(date.getTime()) ? 'Publication time unavailable' : date.toLocaleString();
+}
+
+function relativeSyncLabel(syncedAt?: string, now = Date.now()): string {
+  if (!syncedAt) return 'Not synced yet';
+  const timestamp = Date.parse(syncedAt);
+  if (!Number.isFinite(timestamp)) return 'Sync time unavailable';
+  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
+  if (seconds < 10) return 'Synced just now';
+  if (seconds < 60) return `Synced ${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `Synced ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Synced ${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `Synced ${days}d ago`;
 }
 
 function renderInlineMarkdown(text: string) {
@@ -103,7 +121,13 @@ function renderAnalysisMarkdown(markdown: string) {
   return <div class="space-y-1">{blocks}</div>;
 }
 
-export function MarginIntelligenceModal({ data, onClose }: MarginIntelligenceModalProps) {
+export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginIntelligenceModalProps) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -121,15 +145,19 @@ export function MarginIntelligenceModal({ data, onClose }: MarginIntelligenceMod
     <div class="fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/80 p-2 backdrop-blur-sm sm:p-4" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section class="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-cyan-900/60 bg-slate-950 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="marginIntelligenceTitle">
         <header class="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
-          <div>
+          <div class="min-w-0">
             <div class="text-[10px] font-mono font-bold uppercase tracking-widest text-cyan-400">Gemini · Margin Intelligence</div>
             <h2 id="marginIntelligenceTitle" class="mt-1 text-lg font-bold text-white">{data.title}</h2>
-            <p class="mt-1 text-xs text-slate-400">News-grounded decision support · Read-only · No broker orders are changed</p>
+            <p class="mt-1 text-xs text-slate-400">Read-only · No broker orders are changed</p>
+            <p class="mt-1 text-[11px] text-slate-500" title={data.syncedAt ? new Date(data.syncedAt).toLocaleString() : 'No server-synced digest yet'}>{relativeSyncLabel(data.syncedAt, now)}{data.syncedAt ? ` · ${new Date(data.syncedAt).toLocaleString()}` : ''}</p>
           </div>
-          <button type="button" onClick={onClose} class="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800">Close</button>
+          <div class="flex shrink-0 items-center gap-2">
+            <button type="button" onClick={onRefresh} disabled={data.loading} class="rounded border border-cyan-800 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-950/50 disabled:cursor-not-allowed disabled:opacity-50">{data.loading ? 'Refreshing…' : '↻ Refresh'}</button>
+            <button type="button" onClick={onClose} class="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800">Close</button>
+          </div>
         </header>
         <div class="min-h-0 overflow-y-auto p-4">
-          {data.loading && <div class="flex items-center gap-3 rounded-lg border border-cyan-900/40 bg-cyan-950/20 p-4 text-sm text-cyan-100" role="status"><span class="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />Fetching recent news and asking Gemini to assess your portfolio…</div>}
+          {data.loading && <div class="flex items-center gap-3 rounded-lg border border-cyan-900/40 bg-cyan-950/20 p-4 text-sm text-cyan-100" role="status"><span class="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />Syncing fresh news and regenerating the review…</div>}
           {data.error && <div class="rounded-lg border border-rose-900/60 bg-rose-950/30 p-3 text-sm text-rose-200">{data.error}</div>}
           {data.analysis && <div class="break-words text-sm leading-6 text-slate-200">{renderAnalysisMarkdown(data.analysis)}</div>}
           {!data.loading && !data.error && data.articles.length === 0 && data.analysis && <p class="mt-4 rounded border border-amber-900/50 bg-amber-950/20 p-3 text-xs text-amber-200">No news articles were returned by the connected provider. Treat any news-dependent conclusions as limited.</p>}
