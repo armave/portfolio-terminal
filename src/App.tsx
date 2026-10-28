@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
-import { useBreakevenText } from './ui/uiStateStore';
+import { useBreakevenText, useCloudStatus, useCloudSyncStatus } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -46,8 +46,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [showDailyMove, setShowDailyMove] = useState(false);
   const breakevenText = useBreakevenText();
   const [analystConsensus, setAnalystConsensus] = useState({ text: '', title: '', className: 'hidden' });
-  const [cloudStatus, setCloudStatusState] = useState({ status: 'idle', text: 'OFFLINE' });
-  const [cloudSyncStatus, setCloudSyncStatus] = useState({ status: 'idle', text: '' });
+  const cloudStatus = useCloudStatus();
+  const cloudSyncStatus = useCloudSyncStatus();
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
@@ -357,8 +357,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         setShowDailyMove(detail.showDailyMove);
       }
     };
-    const handleCloudStatus = (event: Event) => { const detail = (event as CustomEvent<{status:string;text:string}>).detail; if (detail) setCloudStatusState(detail); };
-    const handleCloudSyncStatus = (event: Event) => { const detail = (event as CustomEvent<{status:string;text:string}>).detail; if (detail) setCloudSyncStatus(detail); };
     const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
     const handleAnalystConsensus = (event: Event) => {
       const detail = (event as CustomEvent<{ text: string; title: string; className: string }>).detail;
@@ -367,8 +365,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     addUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
     addUiEventListener('terminal:board-title', handleBoardTitle);
     addUiEventListener('terminal:analyst-consensus', handleAnalystConsensus);
-    addUiEventListener('terminal:cloud-status', handleCloudStatus);
-    addUiEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
     addUiEventListener('terminal:startup-state', handleStartupState);
     return () => {
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
@@ -385,8 +381,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
       removeUiEventListener('terminal:board-title', handleBoardTitle);
       removeUiEventListener('terminal:analyst-consensus', handleAnalystConsensus);
-      removeUiEventListener('terminal:cloud-status', handleCloudStatus);
-      removeUiEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
       removeUiEventListener('terminal:startup-state', handleStartupState);
     };
   }, []);
