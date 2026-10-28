@@ -572,7 +572,7 @@ export function ClosedHistoryDesk() {
                 <span class="inline-flex items-center gap-2"><span class="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-purple-400" aria-hidden="true" />Loading closed trade history…</span>
               </td></tr>
             ) : brokerTradesError && trades.length === 0 ? (
-              <tr><td colSpan={8} class="py-8 text-center text-rose-400">Unable to load TradeNet history. Please retry.</td></tr>
+              <tr><td colSpan={7} class="py-8 text-center text-rose-400">Unable to load TradeNet history. Please retry.</td></tr>
             ) : trades.length === 0 ? (
               <tr>
                 <td colSpan={7} class="py-8 text-center text-slate-500 italic">
