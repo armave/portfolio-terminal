@@ -250,3 +250,6 @@ export const useProjectionsProps = () => useUiProp('projectionsProps');
 export const useMarketInsightsProps = () => useUiProp('marketInsightsProps');
 export const useExternalLinksProps = () => useUiProp('externalLinksProps');
 export const useEmptyStateProps = () => useUiProp('emptyStateProps');
+export const useMarketInsightsProps = () => useUiProp('marketInsightsProps');
+export const useExternalLinksProps = () => useUiProp('externalLinksProps');
+export const useSettingsProps = () => useUiProp('settingsProps');
