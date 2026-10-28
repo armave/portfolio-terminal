@@ -12,7 +12,7 @@ import { BoardExternalLinks, type BoardExternalLinksProps } from './components/B
 import { EmptyStatePanel, type EmptyStatePanelProps } from './components/EmptyStatePanel';
 import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
 import type { ScenarioModalData } from './features/terminal/commandDispatcher';
-import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, normalizeFreedomPortfolio, normalizeFreedomTrades } from './services/api';
+import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders } from './services/api';
 import { restoreGatewaySecret } from './services/storage';
 
 let tradesRequest: Promise<void> | null = null;
@@ -212,6 +212,24 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     })();
     try { await tradesRequest; } finally { tradesRequest = null; }
   };
+
+  useEffect(() => {
+    const loadActiveOrders = async () => {
+      try {
+        const secret = await restoreGatewaySecret();
+        if (!secret.trim()) return;
+        const response = await fetchFreedomTradeNetActiveOrders();
+        const orders = normalizeFreedomActiveOrders(response);
+        window.dispatchEvent(new CustomEvent('tradenet:active-orders', { detail: orders }));
+      } catch (error) {
+        console.error('Unable to load active TradeNet orders:', error);
+        window.dispatchEvent(new CustomEvent('tradenet:active-orders-error'));
+      }
+    };
+    const onRequest = () => { void loadActiveOrders(); };
+    window.addEventListener('tradenet:request-active-orders', onRequest);
+    return () => window.removeEventListener('tradenet:request-active-orders', onRequest);
+  }, []);
 
   // Load account/balance/position data first on startup. Trade history is fetched
   // only when Closed History opens.
