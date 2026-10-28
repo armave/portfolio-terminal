@@ -87,3 +87,29 @@ export function useCloudSyncStatus(): CloudStatus {
   useEffect(() => subscribeCloudSyncStatus(setStatus), []);
   return status;
 }
+
+export interface AnalystConsensusState {
+  text: string;
+  title: string;
+  className: string;
+}
+
+let analystConsensus: AnalystConsensusState = { text: '', title: '', className: 'hidden' };
+const analystConsensusListeners = new Set<(state: AnalystConsensusState) => void>();
+
+export function setAnalystConsensus(state: AnalystConsensusState): void {
+  if (state.text === analystConsensus.text && state.title === analystConsensus.title && state.className === analystConsensus.className) return;
+  analystConsensus = state;
+  analystConsensusListeners.forEach((listener) => listener(analystConsensus));
+}
+
+function subscribeAnalystConsensus(listener: (state: AnalystConsensusState) => void): () => void {
+  analystConsensusListeners.add(listener);
+  return () => analystConsensusListeners.delete(listener);
+}
+
+export function useAnalystConsensus(): AnalystConsensusState {
+  const [state, setState] = useState(analystConsensus);
+  useEffect(() => subscribeAnalystConsensus(setState), []);
+  return state;
+}
