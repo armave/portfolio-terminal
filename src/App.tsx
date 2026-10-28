@@ -234,10 +234,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     };
     const onRequest = () => { void loadActiveOrders(); };
     window.addEventListener('tradenet:request-active-orders', onRequest);
-    // Fetch on app load, not only when another desk explicitly requests orders.
-    // The cached broker limit must be available before async account/trade refreshes
-    // can leave a locally calculated target (such as 354.58) in place.
-    void loadActiveOrders();
+    // The Margin desk requests active orders when it becomes visible.
     return () => window.removeEventListener('tradenet:request-active-orders', onRequest);
   }, []);
 
