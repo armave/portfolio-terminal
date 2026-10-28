@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyFreedomPortfolio, getActiveBrokerTranches, reconcileFreedomPortfolio } from './freedomPortfolio';
+import { classifyFreedomPortfolio, getActiveBrokerTranches, getActiveTranchesFromTrades, reconcileFreedomPortfolio } from './freedomPortfolio';
 
 describe('reconcileFreedomPortfolio', () => {
   it('prefers Freedom USD cash and derives cash shares after app margin lots', () => {
@@ -99,21 +99,25 @@ describe('active broker tranches', () => {
     ]);
   });
 
-  it('groups same-ticker buys within five minutes, leaves later buys separate, and removes sold quantity', () => {
-    const result = getActiveBrokerTranches({
+  it('groups same-ticker buys within five minutes, leaves later buys separate, and removes sold quantity FIFO', () => {
+    const trades = [
+      { id: 'b1', ticker: 'AAPL.US', side: 'BUY', quantity: 3, price: 100, executedAt: '2026-01-01T10:00:00Z' },
+      { id: 'b2', ticker: 'AAPL.US', side: 'BUY', quantity: 2, price: 105, executedAt: '2026-01-01T10:04:00Z' },
+      { id: 'b3', ticker: 'AAPL.US', side: 'BUY', quantity: 4, price: 120, executedAt: '2026-01-01T10:10:00Z' },
+      { id: 's1', ticker: 'AAPL.US', side: 'SELL', quantity: 1, price: 115, executedAt: '2026-01-01T10:12:00Z' },
+      { id: 'b4', ticker: 'MSFT.US', side: 'BUY', quantity: 1, price: 50, executedAt: '2026-01-01T09:00:00Z' }
+    ];
+    const snapshot = {
       loaded: true,
       balances: [],
       positions: [
-        { id: 'b1', ticker: 'AAPL', side: 'buy', quantity: 3, averagePrice: 100, marketPrice: 110, timestamp: '2026-01-01T10:00:00Z' },
-        { id: 'b2', ticker: 'AAPL', side: 'buy', quantity: 2, averagePrice: 105, marketPrice: 110, timestamp: '2026-01-01T10:04:00Z' },
-        { id: 'b3', ticker: 'AAPL', side: 'buy', quantity: 4, averagePrice: 120, marketPrice: 110, timestamp: '2026-01-01T10:10:00Z' },
-        { id: 's1', ticker: 'AAPL', side: 'sell', quantity: 1, price: 115, marketPrice: null, timestamp: '2026-01-01T10:12:00Z' },
-        { id: 'b4', ticker: 'MSFT', side: 'buy', quantity: 1, averagePrice: 50, marketPrice: 55, timestamp: '2026-01-01T09:00:00Z' },
-        { id: 'closed', ticker: 'TSLA', side: 'buy', status: 'closed', quantity: 7, averagePrice: 200, marketPrice: 210, timestamp: '2026-01-01T08:00:00Z' }
+        { ticker: 'AAPL.US', quantity: 8, marketPrice: 110 },
+        { ticker: 'MSFT.US', quantity: 1, marketPrice: 55 }
       ]
-    });
+    };
+    const result = getActiveTranchesFromTrades(trades, snapshot);
     expect(result).toHaveLength(3);
-    expect(result[0]).toMatchObject({ ticker: 'AAPL', quantity: 4, averagePrice: 102.5, purchasedAt: Date.parse('2026-01-01T10:00:00Z') });
+    expect(result[0]).toMatchObject({ ticker: 'AAPL', quantity: 4, averagePrice: 102.5, purchasedAt: Date.parse('2026-01-01T10:00:00Z'), marketPrice: 110 });
     expect(result[1]).toMatchObject({ ticker: 'AAPL', quantity: 4, averagePrice: 120, purchasedAt: Date.parse('2026-01-01T10:10:00Z') });
     expect(result[2]).toMatchObject({ ticker: 'MSFT', quantity: 1 });
   });
