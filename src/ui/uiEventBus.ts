@@ -3,7 +3,7 @@
 export interface UiEventPayloads {
   'terminal:auth-visibility': { isOpen: boolean };
   'terminal:backup-import-request': undefined;
-  'terminal:command-prefill': { command: string; selectText?: string | null };
+  'terminal:command-prefill': { command: string; selectText?: string | null; cursorAtEnd?: boolean };
   'terminal:margin-intelligence-request': { ticker?: string; refresh?: boolean };
   'terminal:scenario-modal': unknown;
   'terminal:startup-offline': undefined;

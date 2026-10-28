@@ -38,6 +38,8 @@ describe('typed UI event bus', () => {
 
     expect(commandListener).toHaveBeenCalledTimes(1);
     expect(commandListener.mock.calls[0][0].detail).toEqual({ command: 'bought [shares] [TICKER]', selectText: '[shares]' });
+    emitUiEvent('terminal:command-prefill', { command: 'help', cursorAtEnd: true });
+    expect(commandListener.mock.calls[1][0].detail).toEqual({ command: 'help', cursorAtEnd: true });
     expect(backupListener).toHaveBeenCalledTimes(1);
     expect(backupListener.mock.calls[0][0].detail).toBeUndefined();
 

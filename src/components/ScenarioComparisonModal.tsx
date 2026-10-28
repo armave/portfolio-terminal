@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ScenarioModalData } from '../features/terminal/commandDispatcher';
+import { emitUiEvent } from '../ui/uiEventBus';
 
 interface ScenarioComparisonModalProps {
   data: ScenarioModalData;
@@ -69,13 +70,7 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
   };
   const runQuickAction = (action: NonNullable<ScenarioModalData['quickActions']>[number]) => {
     if (action.command) {
-      const input = document.getElementById('cmdInput') as HTMLInputElement | null;
-      if (input) {
-        input.value = action.command;
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      }
+      emitUiEvent('terminal:command-prefill', { command: action.command, cursorAtEnd: true });
       requestClose();
     } else if (action.invert) {
       setActiveColumns(columns => [...columns].reverse());

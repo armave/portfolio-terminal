@@ -16,6 +16,7 @@ Complete the remaining Preact integration without adding a second renderer or ch
 - [x] Preserve the single App root and component identity; financial calculations, provider behavior, and persisted schemas are unchanged by this migration.
 - [x] Add regression coverage for typed transient event delivery, listener removal, payload-free events, command-prefill requests, and backup-import requests in `src/ui/uiEventBus.test.ts`.
 - [x] Move command prefill from direct DOM mutation to a typed request handled by the Preact-owned `TradingConsole`.
+- [x] Route scenario-comparison quick-action command prefill through the same typed request, preserving its cursor-at-end behavior.
 - [x] Move the backup file input into `App`, the single Preact root owner; `SettingsDesk` no longer owns an input that sibling UI locates by id.
 - [x] Source-level review confirms transient event subscriptions are removed on unmount and component props continue to come directly from `uiStateStore`.
 - [ ] Verify typecheck, tests, production build, dead-code validation, and production dependency audit on the final PR head before merge.

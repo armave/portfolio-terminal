@@ -16,7 +16,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   const [command, setCommand] = useState('');
   const aiStatus = useAiStatus();
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const prefillCommandRef = useRef<(value: string, selectText?: string | null, instant?: boolean) => void>(() => {});
+  const prefillCommandRef = useRef<(value: string, selectText?: string | null, instant?: boolean, cursorAtEnd?: boolean) => void>(() => {});
 
   const ticker = position?.ticker || 'AAPL';
   const hasPosition = Boolean(position);
@@ -38,7 +38,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
     onExecuteCommand(value);
   };
 
-  const prefillCommand = (value: string, selectText?: string | null, instant?: boolean) => {
+  const prefillCommand = (value: string, selectText?: string | null, instant?: boolean, cursorAtEnd = false) => {
     setCommand(value);
     if (instant) {
       setHistory((prev) => (prev[0] === value ? prev : [value, ...prev.slice(0, 49)]));
@@ -52,8 +52,8 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
     const selectionText = selectText || (placeholderStart >= 0
       ? value.slice(placeholderStart, value.indexOf(']', placeholderStart) + 1)
       : null);
-    const selectionStart = selectionText ? value.lastIndexOf(selectionText) : value.length;
-    const selectionEnd = selectionText ? selectionStart + selectionText.length : value.length;
+    const selectionStart = cursorAtEnd ? value.length : selectionText ? value.lastIndexOf(selectionText) : value.length;
+    const selectionEnd = cursorAtEnd || !selectionText ? value.length : selectionStart + selectionText.length;
     requestAnimationFrame(() => {
       resizeCommandInput();
       inputRef.current?.setSelectionRange(selectionStart, selectionEnd);
@@ -129,8 +129,8 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   };
 
   useEffect(() => {
-    const handleCommandPrefill = (event: CustomEvent<{ command: string; selectText?: string | null }>) => {
-      prefillCommandRef.current(event.detail.command, event.detail.selectText);
+    const handleCommandPrefill = (event: CustomEvent<{ command: string; selectText?: string | null; cursorAtEnd?: boolean }>) => {
+      prefillCommandRef.current(event.detail.command, event.detail.selectText, false, event.detail.cursorAtEnd);
     };
     addUiEventListener('terminal:command-prefill', handleCommandPrefill);
     return () => removeUiEventListener('terminal:command-prefill', handleCommandPrefill);
