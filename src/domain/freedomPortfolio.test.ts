@@ -166,6 +166,22 @@ describe('active broker tranches', () => {
     });
   });
 
+  it('assigns a 5% default target to newly classified margin positions without a target', () => {
+    const result = classifyFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'AAPL', quantity: 2, marketPrice: 120 }]
+    }, {}, [], { AAPL: 'margin' }, 123, [
+      { id: 'buy-1', ticker: 'AAPL', side: 'BUY', quantity: 2, price: 100, executedAt: '2026-01-01T10:00:00Z' }
+    ]);
+
+    expect(result.positions.AAPL).toMatchObject({
+      shares: 2,
+      pt: 105,
+      tranches: [{ qty: 2, price: 100 }]
+    });
+  });
+
   it('uses broker-reported buy commission when available', () => {
     const result = getActiveTranchesFromTrades([
       { id: 'buy-1', ticker: 'MSFT', side: 'BUY', quantity: 3, price: 100, commission: 0.85, executedAt: '2026-01-01T10:00:00Z' }
