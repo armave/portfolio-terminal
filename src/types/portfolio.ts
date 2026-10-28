@@ -176,12 +176,16 @@ export interface PendingMutation {
 export type ActiveTrancheType = 'cash' | 'margin';
 
 export interface ActiveBrokerTranche {
+  /** Stable identity for the open purchase operation or a 5-minute grouped batch. */
+  id: string;
   ticker: string;
   name: string;
   quantity: number;
   marketPrice: number | null;
   averagePrice: number | null;
   marketValue: number | null;
+  /** Broker purchase timestamp when supplied. */
+  purchasedAt: number | null;
 }
 
 export interface PortfolioState {
