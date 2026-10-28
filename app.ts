@@ -1378,7 +1378,7 @@ async function executeCommand(commandText: string) {
     setAiStatus('READY');
   } catch (err: any) {
     logTerminal(`[Error]: ${err.message}`);
-    emitUiEvent('terminal:ai-status', 'READY');
+    setAiStatus('READY');
   }
 }
 
