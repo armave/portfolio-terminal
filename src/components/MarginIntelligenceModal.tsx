@@ -30,6 +30,78 @@ function publishedLabel(timestamp?: number): string {
   return Number.isNaN(date.getTime()) ? 'Publication time unavailable' : date.toLocaleString();
 }
 
+function renderInlineMarkdown(text: string) {
+  return text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g).filter(Boolean).map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) return <strong key={index} class="font-semibold text-slate-50">{part.slice(2, -2)}</strong>;
+    if (part.startsWith('*') && part.endsWith('*')) return <em key={index}>{part.slice(1, -1)}</em>;
+    if (part.startsWith('`') && part.endsWith('`')) return <code key={index} class="rounded bg-slate-800 px-1 py-0.5 text-cyan-200">{part.slice(1, -1)}</code>;
+    return part;
+  });
+}
+
+function renderAnalysisMarkdown(markdown: string) {
+  const lines = markdown.replace(/\r\n?/g, '\n').split('\n');
+  const blocks: preact.ComponentChildren[] = [];
+  let paragraph: string[] = [];
+  let listItems: Array<{ text: string; ordered: boolean }> = [];
+
+  const flushParagraph = () => {
+    if (paragraph.length) {
+      const text = paragraph.join(' ').trim();
+      if (text) blocks.push(<p key={`p-${blocks.length}`} class="mb-3 last:mb-0">{renderInlineMarkdown(text)}</p>);
+      paragraph = [];
+    }
+  };
+  const flushList = () => {
+    if (listItems.length) {
+      const ordered = listItems[0].ordered;
+      const items = listItems;
+      blocks.push(ordered
+        ? <ol key={`ol-${blocks.length}`} class="mb-3 list-decimal space-y-1 pl-5">{items.map((item, index) => <li key={index}>{renderInlineMarkdown(item.text)}</li>)}</ol>
+        : <ul key={`ul-${blocks.length}`} class="mb-3 list-disc space-y-1 pl-5">{items.map((item, index) => <li key={index}>{renderInlineMarkdown(item.text)}</li>)}</ul>);
+      listItems = [];
+    }
+  };
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+    if (/^---+$/.test(line) || /^\*\*\*$/.test(line)) {
+      flushParagraph();
+      flushList();
+      blocks.push(<hr key={`hr-${blocks.length}`} class="my-4 border-slate-800" />);
+      return;
+    }
+    const heading = line.match(/^(#{1,4})\s+(.+?)\s*#*$/);
+    if (heading) {
+      flushParagraph();
+      flushList();
+      const level = heading[1].length;
+      const className = level <= 2 ? 'mb-2 mt-4 text-base font-bold text-white first:mt-0' : 'mb-2 mt-4 text-sm font-bold text-cyan-100 first:mt-0';
+      blocks.push(<h3 key={`h-${blocks.length}`} class={className}>{renderInlineMarkdown(heading[2].replace(/\*\*/g, ''))}</h3>);
+      return;
+    }
+    const bullet = line.match(/^[-*]\s+(.+)$/);
+    const numbered = line.match(/^\d+[.)]\s+(.+)$/);
+    if (bullet || numbered) {
+      flushParagraph();
+      const ordered = Boolean(numbered);
+      if (listItems.length && listItems[0].ordered !== ordered) flushList();
+      listItems.push({ text: (bullet || numbered)![1], ordered });
+      return;
+    }
+    flushList();
+    paragraph.push(line);
+  });
+  flushParagraph();
+  flushList();
+  return <div class="space-y-1">{blocks}</div>;
+}
+
 export function MarginIntelligenceModal({ data, onClose }: MarginIntelligenceModalProps) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -58,7 +130,7 @@ export function MarginIntelligenceModal({ data, onClose }: MarginIntelligenceMod
         <div class="min-h-0 overflow-y-auto p-4">
           {data.loading && <div class="flex items-center gap-3 rounded-lg border border-cyan-900/40 bg-cyan-950/20 p-4 text-sm text-cyan-100" role="status"><span class="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />Fetching recent news and asking Gemini to assess your portfolio…</div>}
           {data.error && <div class="rounded-lg border border-rose-900/60 bg-rose-950/30 p-3 text-sm text-rose-200">{data.error}</div>}
-          {data.analysis && <div class="whitespace-pre-wrap break-words text-sm leading-6 text-slate-200">{data.analysis}</div>}
+          {data.analysis && <div class="break-words text-sm leading-6 text-slate-200">{renderAnalysisMarkdown(data.analysis)}</div>}
           {!data.loading && !data.error && data.articles.length === 0 && data.analysis && <p class="mt-4 rounded border border-amber-900/50 bg-amber-950/20 p-3 text-xs text-amber-200">No news articles were returned by the connected provider. Treat any news-dependent conclusions as limited.</p>}
           {data.articles.length > 0 && <section class="mt-5 border-t border-slate-800 pt-4">
             <h3 class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Sources reviewed ({data.articles.length})</h3>
