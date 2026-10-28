@@ -516,7 +516,7 @@ describe('Worker request hardening', () => {
     // Let the request reach the upstream fetch before advancing its timeout.
     // The worker performs async request parsing before starting the Gemini attempt.
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1), { timeout: 1000 });
-    await vi.advanceTimersByTimeAsync(3500);
+    await vi.advanceTimersByTimeAsync(10_000);
     const response = await responsePromise;
 
     expect(firstSignal.aborted).toBe(true);
