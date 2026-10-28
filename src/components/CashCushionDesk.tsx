@@ -3,7 +3,7 @@ import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
-import { getActiveBrokerTranches } from '../domain/freedomPortfolio';
+import { getActiveTranchesFromTrades, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 
 export interface CashCushionDeskProps {
   onFetchLivePrice?: (ticker: string) => void;
@@ -61,11 +61,31 @@ export function CashCushionDesk({
   refreshIntervalMs = 60000
 }: CashCushionDeskProps) {
   const state = usePortfolio();
+  const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTradeLike[]>(() =>
+    typeof window !== 'undefined' && Array.isArray((window as any).__tradenetExecutedTrades)
+      ? (window as any).__tradenetExecutedTrades
+      : Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
+  );
+
+  useEffect(() => {
+    const onTrades = (event: Event) => {
+      const trades = (event as CustomEvent<FreedomExecutedTradeLike[]>).detail;
+      if (Array.isArray(trades)) setExecutedTrades(trades);
+    };
+    const onTradesError = () => setExecutedTrades([]);
+    window.addEventListener('tradenet:executed-trades', onTrades);
+    window.addEventListener('tradenet:executed-trades-error', onTradesError);
+    window.dispatchEvent(new CustomEvent('tradenet:request-executed-trades'));
+    return () => {
+      window.removeEventListener('tradenet:executed-trades', onTrades);
+      window.removeEventListener('tradenet:executed-trades-error', onTradesError);
+    };
+  }, []);
 
   const freeCash = Number(state.cashCushion?.freeCash) || 0;
   const signedBalance = freeCash + (Number(state.balance) || 0);
   const holdings = state.cashCushion?.holdings || [];
-  const activeTranches = getActiveBrokerTranches(state.brokerAccountInfo);
+  const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
   const setActiveTrancheType = (ticker: string, type: ActiveTrancheType) => {
     window.dispatchEvent(new CustomEvent('tradenet:set-active-tranche-type', { detail: { ticker, type } }));
   };
@@ -128,10 +148,10 @@ export function CashCushionDesk({
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
           <div>
             <h2 id="activeTranchesHeading" class="text-sm font-black uppercase tracking-wide text-cyan-300">Active Tranches</h2>
-            <p class="mt-0.5 text-[10px] text-slate-500">Open broker holdings · new tickers default to Cash</p>
+            <p class="mt-0.5 text-[10px] text-slate-500">Open purchases from Freedom trade history · new operations default to Cash</p>
           </div>
           <span class={`text-[10px] font-bold uppercase tracking-wide ${state.brokerAccountInfo?.status === 'stale' ? 'text-amber-400' : state.brokerAccountInfo?.loaded ? 'text-emerald-400' : 'text-slate-500'}`}>
-            {state.brokerAccountInfo?.status === 'stale' ? 'Broker data stale' : state.brokerAccountInfo?.loaded ? 'Broker synced' : 'Waiting for broker data'}
+            {state.brokerAccountInfo?.status === 'stale' ? 'Broker data stale' : executedTrades.length ? 'Trades synced' : 'Waiting for trade history'}
           </span>
         </div>
         <div class="table-scroll-wrapper overflow-x-auto">
@@ -150,7 +170,7 @@ export function CashCushionDesk({
             <tbody class="divide-y divide-slate-800/60 font-mono">
               {activeTranches.length === 0 ? (
                 <tr><td colSpan={7} class="py-4 px-2 text-center font-sans text-slate-500 italic">
-                  {state.brokerAccountInfo?.loaded ? 'No active broker tickers.' : 'Active tickers will appear after the broker account snapshot loads.'}
+                  {executedTrades.length ? 'No active purchase operations.' : 'Active purchase operations will appear after Freedom trade history loads.'}
                 </td></tr>
               ) : activeTranches.map((tranche) => {
                 const type = state.activeTrancheTypes?.[tranche.id] || state.activeTrancheTypes?.[tranche.ticker] || 'cash';
