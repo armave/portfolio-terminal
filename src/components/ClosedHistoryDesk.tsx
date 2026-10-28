@@ -155,10 +155,10 @@ export function ClosedHistoryDesk() {
       : brokerTrades;
     // Exclude calculated metadata from the input fingerprint; otherwise a
     // successful allocation changes its own key and triggers another pass.
-    const sourceExecutions = executions.map((trade: any) => {
-      const { marginFeeAllocations: _allocations, marginFee: _marginFee, feesAndCommissions: _fees, netProfit: _net, ...source } = trade;
-      return source;
-    });
+    const calculatedFields = new Set(['marginFeeAllocations', 'marginFee', 'feesAndCommissions', 'netProfit']);
+    const sourceExecutions = executions.map((trade: any) =>
+      Object.fromEntries(Object.entries(trade).filter(([field]) => !calculatedFields.has(field)))
+    );
     const key = JSON.stringify({ cashflows, executions: sourceExecutions });
     if (key === lastRecalculationKey.current) return;
     void handleImportCashflows(null, cashflows).then((success) => {
