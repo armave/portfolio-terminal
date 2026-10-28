@@ -24,7 +24,7 @@ export function applyCashflowAllocationsToBrokerExecutions(
     const profit = trade.profit == null ? null : Number(trade.profit);
 
     const feesAndCommissions = Number((commission + marginFee).toFixed(2));
-    const netProfit = profit == null ? null : Number((profit - marginFee).toFixed(2));
+    const netProfit = profit == null ? null : Number((profit - feesAndCommissions).toFixed(2));
     const previousAllocations = trade.marginFeeAllocations ?? {};
     const sameAllocations = JSON.stringify(previousAllocations) === JSON.stringify(marginFeeAllocations);
     if (
