@@ -11,13 +11,13 @@ Complete the remaining Preact integration without adding a second renderer or ch
 - [x] Found the remaining integration gap: App.tsx mirrors shared hook values into local component state with effects, while renderBoard.ts still publishes prop bundles through shared state. Some UI requests still use a typed event channel.
 
 ## This PR
-- [ ] Replace redundant local mirrors of values already provided by uiStateStore with direct shared-state hook usage where safe.
-- [ ] Keep event delivery for transient commands/requests, and keep state publication only for values that genuinely cross the runtime/UI boundary.
-- [ ] Preserve stable component roots and stateful forms; avoid changes to financial calculations and persisted schemas.
-- [ ] Add focused tests for any new shared-state behavior or event lifecycle behavior.
+- [x] Replace redundant local mirrors of values already provided by uiStateStore with direct shared-state hook usage in App; shared-state changes now update the rendering component directly, without an intermediate mirrored useState/effect.
+- [x] Keep event delivery for transient commands/requests (auth visibility, modal open, margin-intelligence request, startup state); removed the redundant prop-bundle event subscriptions from App.
+- [x] Preserve the single App root and component identity; financial calculations, provider behavior, and persisted schemas were not changed.
+- [ ] Add focused regression tests for the remaining shared-state/event lifecycle boundary; no test file exists yet for these modules.
 - [ ] Run typecheck, tests, production build, dead-code validation, and production dependency audit in GitHub Actions on the final PR head.
-- [ ] Review the final diff for duplicate subscriptions, stale callbacks, unintended UI remounts, and runtime compatibility.
-- [ ] Update this progress tracker and PR body from the exact latest CI result.
+- [x] Source-level review confirms removed prop-event listeners were duplicate deliveries of state already published through uiStateStore; transient event subscriptions remain and clean up on unmount.
+- [ ] Update this progress tracker and PR body from the exact latest CI result (pending PR CI).
 
 ## Validation policy
 No test or build pass is claimed from the repository API inspection. GitHub Actions on the final PR head is the authoritative validation. Keep the PR draft until all checks pass.
