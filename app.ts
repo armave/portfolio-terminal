@@ -196,6 +196,8 @@ if (typeof window !== 'undefined') {
     const snapshot = current.brokerAccountInfo;
     if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) {
       portfolioStore.setState({ activeTrancheTypes });
+      // Persist the preference even when broker data is not ready yet.
+      saveState(state, pushStateToGist);
       return;
     }
     const executedTrades = Array.isArray((window as any).__tradenetExecutedTrades)
@@ -225,6 +227,8 @@ if (typeof window !== 'undefined') {
         holdings: brokerCashHoldings
       }
     });
+    // Save locally and push the classification map to Cloudflare KV.
+    saveState(state, pushStateToGist);
     const ticker = operationId.split(':')[0];
     logTerminal(`[Freedom] ${ticker} purchase operation classified as ${detail.type}.`);
     renderBoard();
