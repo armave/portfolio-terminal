@@ -2343,3 +2343,7 @@ table tbody tr:hover {
     transform: none !important;
   }
 }
+
+#activeTranches, #cloudStatus {
+  margin-top: 10px;
+}
