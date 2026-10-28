@@ -42,3 +42,48 @@ export function useBreakevenText(): string {
   useEffect(() => subscribeBreakevenText(setText), []);
   return text;
 }
+
+export interface CloudStatus {
+  status: string;
+  text: string;
+}
+
+let cloudStatus: CloudStatus = { status: 'idle', text: 'OFFLINE' };
+const cloudStatusListeners = new Set<(status: CloudStatus) => void>();
+
+export function setCloudStatusState(status: CloudStatus): void {
+  if (status.status === cloudStatus.status && status.text === cloudStatus.text) return;
+  cloudStatus = status;
+  cloudStatusListeners.forEach((listener) => listener(cloudStatus));
+}
+
+function subscribeCloudStatus(listener: (status: CloudStatus) => void): () => void {
+  cloudStatusListeners.add(listener);
+  return () => cloudStatusListeners.delete(listener);
+}
+
+export function useCloudStatus(): CloudStatus {
+  const [status, setStatus] = useState(cloudStatus);
+  useEffect(() => subscribeCloudStatus(setStatus), []);
+  return status;
+}
+
+let cloudSyncStatus: CloudStatus = { status: 'idle', text: '' };
+const cloudSyncStatusListeners = new Set<(status: CloudStatus) => void>();
+
+export function setCloudSyncStatus(status: CloudStatus): void {
+  if (status.status === cloudSyncStatus.status && status.text === cloudSyncStatus.text) return;
+  cloudSyncStatus = status;
+  cloudSyncStatusListeners.forEach((listener) => listener(cloudSyncStatus));
+}
+
+function subscribeCloudSyncStatus(listener: (status: CloudStatus) => void): () => void {
+  cloudSyncStatusListeners.add(listener);
+  return () => cloudSyncStatusListeners.delete(listener);
+}
+
+export function useCloudSyncStatus(): CloudStatus {
+  const [status, setStatus] = useState(cloudSyncStatus);
+  useEffect(() => subscribeCloudSyncStatus(setStatus), []);
+  return status;
+}
