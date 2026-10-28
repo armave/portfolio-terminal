@@ -208,3 +208,13 @@ The remaining work is the final repository diff review and compatibility audit. 
 
 
 **CI result recorded 2026-10-28:** the PR head `7ae2b9ddb94059887f1851447cc73b3fd7edb124` passed both PR validation workflows. The Pull Request CI run completed typecheck, tests (343/343), Knip validation, production dependency audit, and production build successfully. This is a verified checkpoint; later commits must be revalidated independently.
+
+## Follow-up audit checkpoint — 2026-10-28
+
+- [x] Inspected the supplied repository ZIP locally and cross-checked its architecture and validation configuration against the current PR branch.
+- [x] Rechecked the current PR head `59a9d9e67b702c3e403767e1755372935538d622`: both **Validate** (run 40648482060) and **Pull Request CI** (run 40648482089) completed successfully. Their validation jobs passed dependency installation, typecheck, tests, dead-code validation, production dependency audit, and production build.
+- [x] Rechecked the configured dead-code scope: Knip includes `src/**/*.{ts,tsx}`, `app.ts`, `state-store.js`, CSS, the Worker entry point, and test files. CI's dead-code validation is green, so no further deletion is justified by the current detector alone.
+- [x] Traced the empty `renderClosedHistoryPanel()` callback to `renderBoardUI` and confirmed it is part of the board callback contract; do not remove it without changing and testing that contract.
+- [ ] Continue targeted compatibility review of cloud-state persistence, Worker endpoints/deployment configuration, and UI callback ownership before considering the audit complete.
+
+**Local validation note:** the supplied ZIP was extracted successfully, but dependency installation was interrupted by the execution environment. The resulting partial `node_modules` made local TypeScript/test commands unusable; those local failures are environmental and are not treated as source regressions. The authoritative validation for this checkpoint is the successful GitHub Actions run on the exact PR head above. Re-run CI after any subsequent commit.
