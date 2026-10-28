@@ -251,7 +251,10 @@ export function classifyFreedomPortfolio(
       ticker,
       shares: tranche.quantity,
       currentPrice: item.currentPrice,
-      pt: Number(prior?.pt) || entryPrice,
+      // Match app-created positions: use a modest 5% upside target when a newly
+      // classified margin position has no user-defined target. A target equal
+      // to cost basis makes Combined Breakeven's net target zero immediately.
+      pt: Number(prior?.pt) || Number(((entryPrice > 0 ? entryPrice : item.currentPrice) * 1.05).toFixed(2)),
       commBuy: Array.isArray(executedTrades)
         ? item.entryTranches.reduce((sum, entry) => sum + Math.max(0, Number(entry.buyCommission) || 0), 0)
         : (Number(prior?.commBuy) || 0),
