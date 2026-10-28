@@ -113,7 +113,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             publishedAt: Number(item?.datetime || item?.publishedAt || 0) || undefined,
             summary: String(item?.summary || item?.description || '').slice(0, 280)
           }))
-        ).sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0)).slice(0, 20);
+        ).sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0)).slice(0, isPortfolio ? 5 : 3);
 
         const brokerPositions = snapshot.brokerAccountInfo?.positions || [];
         const summarizePosition = (position: typeof allPositions[number]) => {
@@ -164,60 +164,44 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             recordedBuyCommission: Number(position.commBuy || 0)
           };
         };
+        const summarizeBalance = (value: unknown) => {
+          if (value === null || value === undefined || value === '') return null;
+          const numeric = Number(value);
+          return Number.isFinite(numeric) ? numeric : null;
+        };
         const portfolioContext = {
-          scope: isPortfolio ? 'portfolio-wide' : 'single-position-with-full-portfolio-context',
-          focusTicker: requestedTicker || null,
           asOf: new Date().toISOString(),
-          accountState: {
-            balance: Number(snapshot.balance || 0),
-            cashBalance: Number(snapshot.cashBalance || 0),
-            freeCash: Number(snapshot.cashCushion?.freeCash || 0),
-            cashHoldings: (snapshot.cashCushion?.holdings || []).map((holding: any) => ({
-              ticker: holding.ticker,
-              shares: Number(holding.shares || 0),
-              currentPrice: Number(holding.currentPrice ?? holding.price) || null
-            })),
-            realizedMarginCharged: Number(snapshot.realizedMarginCharged || 0),
-            brokerAccountInfo: snapshot.brokerAccountInfo ? {
-              status: snapshot.brokerAccountInfo.status || (snapshot.brokerAccountInfo.loaded ? 'loaded' : 'not-loaded'),
-              receivedAt: snapshot.brokerAccountInfo.receivedAt || null,
-              balances: snapshot.brokerAccountInfo.balances || [],
-              positions: snapshot.brokerAccountInfo.positions || []
-            } : null,
-            brokerAssumptions: snapshot.brokerAssumptions || null,
-            activeTrancheTypes: snapshot.activeTrancheTypes || {}
+          focusTicker: requestedTicker || null,
+          account: {
+            brokerSnapshotStatus: snapshot.brokerAccountInfo?.status || (snapshot.brokerAccountInfo?.loaded ? 'loaded' : 'not-loaded'),
+            brokerSnapshotReceivedAt: snapshot.brokerAccountInfo?.receivedAt || null,
+            balance: summarizeBalance(snapshot.balance),
+            cashBalance: summarizeBalance(snapshot.cashBalance),
+            freeCash: summarizeBalance(snapshot.cashCushion?.freeCash),
+            realizedMarginCharged: summarizeBalance(snapshot.realizedMarginCharged),
+            brokerAssumptions: snapshot.brokerAssumptions || null
           },
           focusPosition: focusPosition ? summarizePosition(focusPosition) : null,
-          allOpenMarginPositions: allPositions.map(summarizePosition),
-          recentClosedTrades: (snapshot.closedTrades || []).slice(-10).map((trade: any) => ({
-            ticker: trade.ticker,
-            shares: trade.shares,
-            avgBuyPrice: trade.avgBuyPrice ?? trade.entryPrice ?? null,
-            sellPrice: trade.sellPrice ?? trade.exitPrice ?? null,
-            buyDate: trade.buyDate ?? trade.purchaseDate ?? null,
-            sellDate: trade.sellDate ?? trade.exitDate ?? null,
-            netProfit: trade.netProfit ?? trade.netRealizedGain ?? null,
-            commissions: trade.commissions ?? trade.feesAndCommissions ?? trade.totalCommissions ?? null,
-            marginInterest: trade.marginInterest ?? null
-          })),
-          cashflows: (snapshot.cashflows || []).slice(-5).map((flow: any) => ({
-            date: flow.date, type: flow.type, amount: flow.amount, currency: flow.currency || null, description: flow.description || null
-          }))
+          otherOpenPositions: allPositions
+            .filter((position) => !requestedTicker || String(position.ticker).toUpperCase() !== requestedTicker)
+            .map(summarizePosition)
         };
         const prompt = [
-          'You are a cautious margin-portfolio research assistant. Produce a concise, evidence-grounded decision brief, not a trade execution instruction.',
-          requestedTicker
-            ? 'FOCUS: analyze ' + requestedTicker + ' in depth, but use the entire portfolio/account snapshot to assess concentration, liquidity, leverage, and correlated downside. Clearly separate ticker-specific conclusions from portfolio-wide risks.'
-            : 'FOCUS: review every open margin position and the portfolio as a whole.',
-          'Use only the portfolio context and news items below as factual inputs. Do not invent news, prices, earnings dates, market data, source details, broker rules, or margin requirements. If a field is missing, stale, or unavailable, explicitly say so. Distinguish verified inputs from your interpretation.',
-          'IMPORTANT: quantity reconciliation fields are authoritative. If app-tracked shares, broker-reported shares, and open entry-lot shares disagree, lead with a DATA QUALITY WARNING, list each quantity and its source, and do not make a firm position-size-dependent recommendation until reconciled. Never silently choose one quantity.',
-          'All market values and P&L values supplied by the application are calculated values, not broker-confirmed values. P&L is gross, based only on valid open entry lots, and excludes commissions, fees, and interest. Do not recompute or replace it using a different share count. If it is unavailable, say so.',
-          'For news, only state claims supported by the supplied article headline/summary. Cite the source name and publication time in the text where possible. Do not infer earnings timing from phrases like “on deck”; if an earnings date is not explicitly supplied, state that the date is unverified. Label uncertain interpretations as hypotheses.',
-          'Discuss HOLD, REDUCE/EXIT, and ADD only where justified; do not force an ADD recommendation. Avoid proposing a new price target unless supplied data directly supports a transparent calculation. Never claim to know the broker liquidation threshold unless explicitly provided. Do not modify or submit orders.',
-          'Give data quality and freshness first, then overall stance, strongest evidence, downside/catalyst risks, what would invalidate the thesis, and 2-3 things to monitor. Format with clear short headings and bullets. Avoid certainty and do not imply this is personalized professional financial advice.',
-          'PORTFOLIO AND ACCOUNT CONTEXT JSON:', JSON.stringify(portfolioContext),
-          'RECENT NEWS JSON (provider timestamps and URLs when available):',
-          JSON.stringify(articles.map((article) => ({ ticker: article.ticker, headline: article.headline.slice(0, 220), source: article.source, url: article.url, publishedAt: article.publishedAt, summary: (article.summary || '').slice(0, 280) })))
+          'Act as a cautious, concise margin-position research assistant. Maximum 350 words. No introduction, no generic preface, no repeated disclaimer, no preset/template data.',
+          'Output exactly these sections: **Stance** (one sentence plus confidence: low/medium/high); **Position facts** (use supplied calculated values); **What matters now** (up to 3 news items and why each matters); **Risks / invalidation** (up to 3 bullets); **Monitor next** (up to 3 concrete items).',
+          'Use only supplied account data and article headlines/summaries. Do not invent prices, dates, events, rates, broker rules, or liquidation thresholds. Clearly label fact versus interpretation. If a key field is missing or stale, state it briefly.',
+          'If app-tracked shares, broker-reported shares, and entry-lot shares disagree, put a concise DATA QUALITY WARNING first, list the three quantities and their sources, and do not make a firm size-dependent recommendation. Do not silently choose a quantity.',
+          'Use the application-calculated gross P&L as supplied; do not recompute it. It excludes commissions, fees, and interest. Do not suggest a new price target unless the supplied data supports a transparent calculation. Do not submit or modify orders.',
+          'Mention a news claim only when supported by a supplied headline/summary; cite source and publication time inline. Do not infer earnings timing; call an earnings date unverified unless explicitly provided. No more than 3 key news developments for a ticker and no repeated source list in the prose.',
+          'PORTFOLIO DATA:', JSON.stringify(portfolioContext),
+          'NEWS (newest first):', JSON.stringify(articles.map((article) => ({
+            ticker: article.ticker,
+            headline: article.headline.slice(0, 180),
+            source: article.source,
+            url: article.url,
+            publishedAt: article.publishedAt,
+            summary: (article.summary || '').slice(0, 220)
+          })))
         ].join('\n\n');
         const response = await proxyFetch('gemini', {}, {
           method: 'POST',
