@@ -10,7 +10,6 @@ import type { EmptyStatePanelProps } from '../components/EmptyStatePanel';
 
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
-  'terminal:active-view': { view: string };
   'terminal:auth-visibility': { isOpen: boolean };
   'terminal:cash-cushion-props': CashCushionDeskProps;
   'terminal:empty-state-props': EmptyStatePanelProps | null;
