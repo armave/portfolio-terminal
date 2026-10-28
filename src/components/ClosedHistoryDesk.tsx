@@ -243,26 +243,29 @@ export function ClosedHistoryDesk() {
       }
       const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(brokerExecutions, allocationsBySell);
       let updatedTradeCount = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
-      // Recalculate app-owned trades independently from broker executions. Some
-      // portfolios contain both sources, and app-only trades still need their
-      // daily financing fees even when broker history is available.
+      // Use one authoritative trade source per recalculation. When broker
+      // executions exist they drive FIFO matching and fee allocation; applying
+      // the same daily cashflow rows independently to app trades would allocate
+      // each fee twice across two representations of the portfolio.
       const appAllocations = new Map<number, number>();
       let appAllocatedDailyFees = 0, appMatchedFeeRows = 0;
-      for (const fee of feeRows) {
-        const date = feeDate(fee), amount = Math.abs(fee.amount);
-        if (!Number.isFinite(date) || amount <= 0) continue;
-        const open = appTrades.map((trade, index) => {
-          const sell = parseTradeDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.date);
-          const buy = parseTradeDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate);
-          const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
-          const price = Math.abs(Number(trade.entryPrice ?? trade.avgBuyPrice ?? trade.buyPrice ?? 0));
-          return { index, buy, sell, weight: shares * (price || 1) };
-        }).filter(t => Number.isFinite(t.buy) && Number.isFinite(t.sell) && date >= t.buy && date <= t.sell && t.weight > 0);
-        const totalWeight = open.reduce((sum, t) => sum + t.weight, 0);
-        if (!open.length || totalWeight <= 0) continue;
-        for (const position of open) appAllocations.set(position.index, (appAllocations.get(position.index) || 0) + amount * position.weight / totalWeight);
-        appAllocatedDailyFees += amount;
-        appMatchedFeeRows++;
+      if (!brokerExecutions.length) {
+        for (const fee of feeRows) {
+          const date = feeDate(fee), amount = Math.abs(fee.amount);
+          if (!Number.isFinite(date) || amount <= 0) continue;
+          const open = appTrades.map((trade, index) => {
+            const sell = parseTradeDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.date);
+            const buy = parseTradeDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate);
+            const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
+            const price = Math.abs(Number(trade.entryPrice ?? trade.avgBuyPrice ?? trade.buyPrice ?? 0));
+            return { index, buy, sell, weight: shares * (price || 1) };
+          }).filter(t => Number.isFinite(t.buy) && Number.isFinite(t.sell) && date >= t.buy && date <= t.sell && t.weight > 0);
+          const totalWeight = open.reduce((sum, t) => sum + t.weight, 0);
+          if (!open.length || totalWeight <= 0) continue;
+          for (const position of open) appAllocations.set(position.index, (appAllocations.get(position.index) || 0) + amount * position.weight / totalWeight);
+          appAllocatedDailyFees += amount;
+          appMatchedFeeRows++;
+        }
       }
       const updatedTrades = applyCashflowAllocationsToClosedTrades(appTrades, appAllocations);
       const changedBrokerRows = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
