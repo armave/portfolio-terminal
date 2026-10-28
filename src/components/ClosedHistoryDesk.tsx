@@ -456,15 +456,6 @@ export function ClosedHistoryDesk() {
   const averageHoldingDays = knownDurations.length ? knownDurations.reduce((total, days) => total + days, 0) / knownDurations.length : null;
   const winRate = profitKnownTrades.length ? (winningTrades / profitKnownTrades.length) * 100 : 0;
 
-  const handleDelete = (index: number) => {
-    const trade = state.closedTrades?.[index];
-    const ticker = trade?.ticker || 'unknown';
-    if (!confirm(`Delete the ${ticker} closed trade from history? This cannot be undone.`)) {
-      return;
-    }
-    portfolioStore.deleteClosedTrade(index);
-  };
-
   return (
     <section class="rounded-xl border-card p-4 space-y-4" aria-label="Closed trade history">
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
