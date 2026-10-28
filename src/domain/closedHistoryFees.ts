@@ -23,13 +23,17 @@ export function applyCashflowAllocationsToBrokerExecutions(
     const commission = Math.abs(Number(trade.commission ?? 0)) || 0;
     const profit = trade.profit == null ? null : Number(trade.profit);
 
-    return {
-      ...trade,
-      marginFeeAllocations,
-      marginFee,
-      feesAndCommissions: Number((commission + marginFee).toFixed(2)),
-      netProfit: profit == null ? null : Number((profit - marginFee).toFixed(2))
-    };
+    const feesAndCommissions = Number((commission + marginFee).toFixed(2));
+    const netProfit = profit == null ? null : Number((profit - marginFee).toFixed(2));
+    const previousAllocations = trade.marginFeeAllocations ?? {};
+    const sameAllocations = JSON.stringify(previousAllocations) === JSON.stringify(marginFeeAllocations);
+    if (
+      sameAllocations &&
+      Number(trade.marginFee ?? 0) === marginFee &&
+      Number(trade.feesAndCommissions ?? 0) === feesAndCommissions &&
+      (trade.netProfit == null ? netProfit == null : Number(trade.netProfit) === netProfit)
+    ) return trade;
+    return { ...trade, marginFeeAllocations, marginFee, feesAndCommissions, netProfit };
   });
 }
 
@@ -48,6 +52,14 @@ export function applyCashflowAllocationsToClosedTrades(
     const fees = Number((Math.max(0, previousFees - previousMargin) + addedFee).toFixed(2));
     const netAfterFee = Number((net + previousMargin - addedFee).toFixed(2));
 
+    if (
+      Number(trade.feesAndCommissions ?? trade.totalCommissions ?? 0) === fees &&
+      Number(trade.totalCommissions ?? fees) === fees &&
+      Number(trade.marginInterest ?? 0) === addedFee &&
+      Number(trade.marginFee ?? 0) === addedFee &&
+      Number(trade.netProfit ?? trade.netRealizedGain ?? 0) === netAfterFee &&
+      Number(trade.netRealizedGain ?? netAfterFee) === netAfterFee
+    ) return trade;
     return {
       ...trade,
       feesAndCommissions: fees,
