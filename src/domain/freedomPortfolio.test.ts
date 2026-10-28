@@ -213,7 +213,9 @@ describe('active limit sell target synchronization', () => {
       AAPL: {
         ticker: 'AAPL',
         shares: 50,
+        currentPrice: 350,
         pt: 354.58,
+        commBuy: 3.4,
         tranches: [
           { qty: 20, price: 340 },
           { qty: 15, price: 345 },
