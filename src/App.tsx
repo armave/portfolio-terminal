@@ -11,8 +11,10 @@ import { TradingConsole, type TradingConsoleProps } from './components/TradingCo
 import { BoardExternalLinks, type BoardExternalLinksProps } from './components/BoardExternalLinks';
 import { EmptyStatePanel, type EmptyStatePanelProps } from './components/EmptyStatePanel';
 import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
+import { MarginIntelligenceModal, type MarginIntelligenceState, type MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/commandDispatcher';
-import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders } from './services/api';
+import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch } from './services/api';
+import { portfolioStore } from './store/portfolioStore';
 import { restoreGatewaySecret } from './services/storage';
 
 let tradesRequest: Promise<void> | null = null;
@@ -47,7 +49,139 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [cloudSyncStatus, setCloudSyncStatus] = useState({ status: 'idle', text: '' });
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
+  const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
+  const closeMarginIntelligence = useCallback(() => setMarginIntelligence(null), []);
   const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
+
+  useEffect(() => {
+    let requestGeneration = 0;
+    const handleMarginIntelligence = async (event: Event) => {
+      const detail = (event as CustomEvent<{ ticker?: string }>).detail;
+      const requestedTicker = String(detail?.ticker || '').trim().toUpperCase();
+      const snapshot = portfolioStore.getState();
+      const positions = Object.values(snapshot.positions || {}).filter((position: any) =>
+        position && Number(position.shares) > 0 &&
+        (!requestedTicker || String(position.ticker).toUpperCase() === requestedTicker)
+      ) as Array<{ ticker: string; shares: number; currentPrice: number; pt: number; commBuy?: number; startDate?: string; tranches?: Array<{ qty: number; price: number; date?: string; buyCommission?: number }> }>;
+
+      if (requestedTicker && positions.length === 0) {
+        setMarginIntelligence({
+          title: requestedTicker + ' · Position Review',
+          scope: 'position',
+          ticker: requestedTicker,
+          loading: false,
+          analysis: '',
+          articles: [],
+          error: 'No active margin position was found for ' + requestedTicker + '. Select an active margin ticker and try again.'
+        });
+        return;
+      }
+
+      const requestId = ++requestGeneration;
+      const isPortfolio = !requestedTicker;
+      const title = isPortfolio ? 'Portfolio-wide Margin Review' : requestedTicker + ' · Position Review';
+      setMarginIntelligence({
+        title,
+        scope: isPortfolio ? 'portfolio' : 'position',
+        ...(requestedTicker ? { ticker: requestedTicker } : {}),
+        loading: true,
+        analysis: '',
+        articles: []
+      });
+
+      try {
+        const newsByTicker = await Promise.all(positions.map(async (position) => {
+          try {
+            const items = await fetchMarketNews(position.ticker, true);
+            return { ticker: position.ticker, items: Array.isArray(items) ? items.slice(0, 5) : [] };
+          } catch {
+            return { ticker: position.ticker, items: [] as any[] };
+          }
+        }));
+        const articles: MarginIntelligenceArticle[] = newsByTicker.flatMap(({ ticker, items }) =>
+          items.map((item: any) => ({
+            ticker,
+            headline: String(item?.headline || item?.title || 'Untitled news item'),
+            source: String(item?.source || item?.publisher || ''),
+            url: String(item?.url || item?.link || ''),
+            publishedAt: Number(item?.datetime || item?.publishedAt || 0) || undefined,
+            summary: String(item?.summary || item?.description || '')
+          }))
+        ).sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0));
+
+        const portfolioContext = {
+          scope: isPortfolio ? 'portfolio-wide' : 'single-position',
+          asOf: new Date().toISOString(),
+          marginDebtOrBalance: Number(snapshot.balance || 0),
+          freeCash: Number(snapshot.cashCushion?.freeCash || 0),
+          realizedMarginCharged: Number(snapshot.realizedMarginCharged || 0),
+          positions: positions.map((position) => ({
+            ticker: position.ticker,
+            shares: Number(position.shares),
+            marketPrice: Number(position.currentPrice) || null,
+            targetOrActiveSellLimit: Number(position.pt) || null,
+            marketValue: Number(position.shares) * (Number(position.currentPrice) || 0),
+            entryLots: (position.tranches || []).map((tranche) => ({
+              shares: Number(tranche.qty),
+              entryPrice: Number(tranche.price),
+              purchaseDate: tranche.date || null,
+              buyCommission: Number(tranche.buyCommission || 0)
+            })),
+            averageEntryPrice: (position.tranches || []).reduce((total, tranche) => total + Number(tranche.qty) * Number(tranche.price), 0) /
+              Math.max(1, (position.tranches || []).reduce((total, tranche) => total + Number(tranche.qty), 0)),
+            unrealizedGrossPnl: (Number(position.currentPrice) - ((position.tranches || []).reduce((total, tranche) => total + Number(tranche.qty) * Number(tranche.price), 0) /
+              Math.max(1, (position.tranches || []).reduce((total, tranche) => total + Number(tranche.qty), 0)))) * Number(position.shares),
+            holdingStartDate: position.startDate || null
+          }))
+        };
+        const prompt = [
+          'You are a cautious margin-portfolio research assistant. Produce a concise, evidence-grounded decision brief, not a trade execution instruction.',
+          'Use only the portfolio context and news items below as factual inputs. Do not invent news, prices, earnings dates, market data, source details, or margin requirements. If news is absent or stale, say so clearly. Distinguish reported facts from your interpretation.',
+          'For each position, discuss HOLD, REDUCE/EXIT, and ADD only where justified; do not force an ADD recommendation. Consider unrealized P&L, target/active sell limit, concentration, available cash, margin debt, holding period, and financing/commission costs when the provided data supports it.',
+          'Give a short overall stance, strongest supporting evidence, key downside risks, what would invalidate the thesis, and 2-3 things to monitor next. Explain uncertainty. Never claim you know the broker liquidation threshold if it is not provided. Do not modify or submit orders.',
+          'Format with clear short headings and bullets. Avoid certainty and do not imply this is personalized professional financial advice.',
+          'PORTFOLIO CONTEXT JSON:',
+          JSON.stringify(portfolioContext),
+          'RECENT NEWS JSON (each item includes its source URL and provider timestamp when available):',
+          JSON.stringify(articles.map((article) => ({ ticker: article.ticker, headline: article.headline, source: article.source, url: article.url, publishedAt: article.publishedAt, summary: article.summary })))
+        ].join('\n\n');
+        const response = await proxyFetch('gemini', {}, {
+          method: 'POST',
+          body: JSON.stringify({ prompt, model: 'gemini-2.5-flash-lite' }),
+          cache: 'no-store'
+        });
+        const analysis = response?.candidates?.[0]?.content?.parts
+          ?.map((part: { text?: string }) => String(part.text || ''))
+          .filter(Boolean).join('\n\n');
+        if (!analysis) throw new Error(response?.error?.message || response?.error || 'Gemini returned an empty analysis.');
+        if (requestId !== requestGeneration) return;
+        setMarginIntelligence({
+          title,
+          scope: isPortfolio ? 'portfolio' : 'position',
+          ...(requestedTicker ? { ticker: requestedTicker } : {}),
+          loading: false,
+          analysis,
+          articles
+        });
+      } catch (error) {
+        if (requestId !== requestGeneration) return;
+        setMarginIntelligence({
+          title,
+          scope: isPortfolio ? 'portfolio' : 'position',
+          ...(requestedTicker ? { ticker: requestedTicker } : {}),
+          loading: false,
+          analysis: '',
+          articles: [],
+          error: error instanceof Error ? error.message : 'Could not complete Gemini margin review.'
+        });
+      }
+    };
+    window.addEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
+    return () => {
+      requestGeneration += 1;
+      window.removeEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
+    };
+  }, []);
 
   // Register shell event listeners synchronously after mount. Startup dispatches
   // auth/loading events immediately after render; passive effects can miss them.
@@ -369,6 +503,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
       {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} />}
+      {marginIntelligence && <MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} />}
       <div id="cloudStatus" class="flex items-center gap-2 text-[10px] font-mono text-slate-400" aria-live="polite">
         <span class={`w-1.5 h-1.5 rounded-full ${cloudStatus.status === 'syncing' ? 'bg-amber-400 animate-pulse' : cloudStatus.status === 'synced' ? 'bg-emerald-400' : cloudStatus.status === 'error' ? 'bg-rose-400' : 'bg-slate-500'}`} />
         <span>KV: {cloudStatus.text.toUpperCase()}</span>
