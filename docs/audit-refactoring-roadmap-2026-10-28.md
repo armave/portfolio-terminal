@@ -16,7 +16,7 @@ The repository already contains substantial protections for backup validation, c
 - [x] Extract the range formatter as a pure helper and add a focused regression test.
 - [x] Keep the change presentation-only: no portfolio state, quote provenance, provider priority, or financial calculations are changed.
 - [x] Create this audit plan with prioritized follow-up work and branch-divergence findings.
-- [ ] Run all required CI checks on the final PR head and review the final diff.
+- [ ] Run all required CI checks on the final PR head after the Stocktwits lazy-load refinement and review the final diff.
 
 ## Prioritized refactoring roadmap
 
@@ -77,8 +77,9 @@ Also inspect the final diff for changes to financial calculations, persisted for
 - [x] Re-read the current `main` and `perf/onload-request-optimization` versions of `TickerTab.tsx` and the active-orders listener in `App.tsx`.
 - [x] Confirmed the current `main` version already refreshes active orders when `state.activeView` changes. The performance branch version still uses only `isMarginDeskActive` as the effect dependency, so blindly replaying its older lifecycle commit would regress the current behavior.
 - [x] Reviewed the unique `fixed onload behavior` commit diff. It changes startup sequencing and DOM listener null guards in the root runtime; it must be reconciled against the current `src/main.ts` / `app.ts` startup and state-loading lifecycle rather than cherry-picked wholesale.
-- [x] Reconfirmed that the audit PR itself is ahead of `main` by its four intended audit commits and has no merge-base divergence.
-- [ ] Continue review of the performance branch's remaining unique commit(s), especially request de-duplication and stale-response handling, before proposing a separate integration PR.
-- [ ] Complete final browser verification for the quote display.
+- [x] Reconfirmed that the audit PR has no merge-base divergence from `main`.
+- [x] Reviewed the optional Stocktwits request optimization on the performance branch and ported the user-triggered lazy-load behavior into this PR. The feed now avoids a network request until the user presses Load; after that, ticker changes and refreshes continue to work.
+- [ ] Review request counts and stale-response behavior in a browser before proposing any further performance-branch integration.
+- [ ] Complete final browser verification for the quote display and Stocktwits opt-in loading.
 
 **Rebase decision:** no forced rebase or cherry-pick is justified yet. The active-orders dependency improvement is already present on `main`; the remaining startup change is broader than a safe mechanical port and should be reviewed separately.
