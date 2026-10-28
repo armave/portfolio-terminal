@@ -1,4 +1,5 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
+import { setAiStatus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
   calculateCommission,
@@ -1351,7 +1352,7 @@ async function executeCommand(commandText: string) {
   }
 
   const aiQuery = text.replace(/^(ai|ask)\s*:?\s*/i, '');
-  emitUiEvent('terminal:ai-status', 'CONNECTING...');
+  setAiStatus('CONNECTING...');
 
   try {
     const targetState: any = portfolioStore.getState();
@@ -1374,7 +1375,7 @@ async function executeCommand(commandText: string) {
       logTerminal(`[AI Advisor]: ${parsed.response || 'Executed.'}`);
     }
 
-    emitUiEvent('terminal:ai-status', 'READY');
+    setAiStatus('READY');
   } catch (err: any) {
     logTerminal(`[Error]: ${err.message}`);
     emitUiEvent('terminal:ai-status', 'READY');
