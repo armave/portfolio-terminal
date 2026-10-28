@@ -23,20 +23,14 @@ export type UiEventName =
   | 'terminal:ticker-tabs-props'
   | 'terminal:trading-console-props';
 
-export interface UiMessage<T = unknown> {
-  readonly type: UiEventName;
-  readonly detail: T;
-}
-
 type UiListener = (event: CustomEvent<unknown>) => void;
 const listeners = new Map<UiEventName, Set<UiListener>>();
+const listenerWrappers = new WeakMap<(event: Event) => void, UiListener>();
 
 export function emitUiEvent<T = undefined>(type: UiEventName, detail?: T): void {
   const event = { type, detail } as CustomEvent<T>;
   listeners.get(type)?.forEach((listener) => listener(event as CustomEvent<unknown>));
 }
-
-const listenerWrappers = new WeakMap<(event: Event) => void, UiListener>();
 
 export function addUiEventListener(type: UiEventName, listener: (event: Event) => void): void {
   const bucket = listeners.get(type) ?? new Set<UiListener>();
