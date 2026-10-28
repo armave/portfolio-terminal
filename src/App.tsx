@@ -9,7 +9,7 @@ import { TickerTabs, type TickerTabsProps } from './components/TickerTab';
 import { SummaryMetricsGrid, type SummaryMetricsGridProps } from './components/SummaryMetricsGrid';
 import { ProjectionsTable, type ProjectionsTableProps } from './components/ProjectionsTable';
 import { MarketInsightsPanel, type MarketInsightsPanelProps } from './components/MarketInsightsPanel';
-import { TradingConsole, type TradingConsoleProps } from './components/TradingConsole';
+import { TradingConsole } from './components/TradingConsole';
 import { BoardExternalLinks, type BoardExternalLinksProps } from './components/BoardExternalLinks';
 import { EmptyStatePanel, type EmptyStatePanelProps } from './components/EmptyStatePanel';
 import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
