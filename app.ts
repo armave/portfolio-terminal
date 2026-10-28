@@ -37,6 +37,7 @@ import {
   restoreGatewaySecret,
   persistGatewaySecret,
   loadSavedState,
+  loadSavedHistory,
   saveApiKeys,
   saveBrokerRules,
   saveGatewaySecret,
@@ -54,6 +55,7 @@ import {
 import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
+import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets } from './src/domain/freedomPortfolio';
 import { InsightSection } from './src/components/MarketInsightsPanel';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
@@ -155,7 +157,16 @@ if (typeof window !== 'undefined') {
     const trades = (event as CustomEvent).detail;
     if (!Array.isArray(trades)) return;
     const current = portfolioStore.getState();
-    portfolioStore.setState({ brokerExecutedTrades: trades });
+    // portfolioStore.setState persists synchronously. Reattach local fee allocations
+    // BEFORE setting raw broker rows, otherwise this listener overwrites the
+    // separately persisted, fee-enriched history before ClosedHistoryDesk handles
+    // the same event.
+    const savedFeeRows = loadSavedHistory().brokerExecutedTrades;
+    const tradesWithPersistedFees = preservePersistedBrokerFeeAllocations(
+      trades,
+      [...savedFeeRows, ...(current.brokerExecutedTrades || [])]
+    );
+    portfolioStore.setState({ brokerExecutedTrades: tradesWithPersistedFees });
     const snapshot = current.brokerAccountInfo;
     if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return;
     const classified = classifyFreedomPortfolio(
@@ -164,7 +175,7 @@ if (typeof window !== 'undefined') {
       current.cashCushion?.holdings || [],
       current.activeTrancheTypes || {},
       Date.now(),
-      trades,
+      tradesWithPersistedFees,
       TRADERNET_RULES
     );
     const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
