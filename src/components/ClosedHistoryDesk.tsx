@@ -3,7 +3,7 @@ import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { pullCloudHistory, pushCloudHistory } from '../services/api';
-import { loadSavedHistory } from '../services/storage';
+import { loadSavedHistory, saveSavedHistory } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows } from '../domain/closedHistoryFees';
 
 type ImportedCashflow = { id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw: Record<string, string> };
@@ -309,6 +309,12 @@ export function ClosedHistoryDesk() {
         nextState.closedTrades = updatedTrades;
       }
       if (Object.keys(nextState).length) portfolioStore.setState(nextState);
+      // Persist computed fee allocations immediately; navigation to Balance may
+      // trigger unrelated portfolio saves and a fresh broker-history hydration.
+      saveSavedHistory({
+        brokerExecutedTrades: brokerExecutions.length ? updatedExecutions : (portfolioStore.getState().brokerExecutedTrades || []),
+        cashflows: imported
+      });
       // The closed-history collection lives in its own cloud record; saving the
       // portfolio snapshot alone does not upload updated fee allocations. Without
       // this write, the next section mount reloads stale cloud executions over the
