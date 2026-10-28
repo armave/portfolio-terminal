@@ -107,7 +107,7 @@ describe('active broker tranches', () => {
         { id: 'b1', ticker: 'AAPL', side: 'buy', quantity: 3, averagePrice: 100, marketPrice: 110, timestamp: '2026-01-01T10:00:00Z' },
         { id: 'b2', ticker: 'AAPL', side: 'buy', quantity: 2, averagePrice: 105, marketPrice: 110, timestamp: '2026-01-01T10:04:00Z' },
         { id: 'b3', ticker: 'AAPL', side: 'buy', quantity: 4, averagePrice: 120, marketPrice: 110, timestamp: '2026-01-01T10:10:00Z' },
-        { id: 's1', ticker: 'AAPL', side: 'sell', quantity: 1, price: 115, timestamp: '2026-01-01T10:12:00Z' },
+        { id: 's1', ticker: 'AAPL', side: 'sell', quantity: 1, price: 115, marketPrice: null, timestamp: '2026-01-01T10:12:00Z' },
         { id: 'b4', ticker: 'MSFT', side: 'buy', quantity: 1, averagePrice: 50, marketPrice: 55, timestamp: '2026-01-01T09:00:00Z' },
         { id: 'closed', ticker: 'TSLA', side: 'buy', status: 'closed', quantity: 7, averagePrice: 200, marketPrice: 210, timestamp: '2026-01-01T08:00:00Z' }
       ]
