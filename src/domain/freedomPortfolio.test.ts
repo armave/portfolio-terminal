@@ -117,8 +117,8 @@ describe('active broker tranches', () => {
     };
     const result = getActiveTranchesFromTrades(trades, snapshot);
     expect(result).toHaveLength(3);
-    expect(result[0]).toMatchObject({ ticker: 'AAPL', quantity: 4, averagePrice: 102.5, purchasedAt: Date.parse('2026-01-01T10:00:00Z'), marketPrice: 110 });
-    expect(result[1]).toMatchObject({ ticker: 'AAPL', quantity: 4, averagePrice: 120, purchasedAt: Date.parse('2026-01-01T10:10:00Z') });
+    expect(result[0]).toMatchObject({ ticker: 'AAPL', quantity: 4, averagePrice: 120, purchasedAt: Date.parse('2026-01-01T10:10:00Z') });
+    expect(result[1]).toMatchObject({ ticker: 'AAPL', quantity: 4, averagePrice: 102.5, purchasedAt: Date.parse('2026-01-01T10:00:00Z'), marketPrice: 110 });
     expect(result[2]).toMatchObject({ ticker: 'MSFT', quantity: 1 });
   });
 
