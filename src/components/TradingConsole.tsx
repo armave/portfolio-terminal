@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { ConsoleQuickActions } from './ConsoleQuickActions';
 import { clearTerminalLog } from '../ui/notifications';
 import { formatUSD, PositionRecord } from '../ui/renderBoard';
+import { addUiEventListener, removeUiEventListener } from '../ui/uiEventBus';
 
 export interface TradingConsoleProps {
   position?: PositionRecord;
@@ -19,8 +20,8 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       const status = (event as CustomEvent<string>).detail;
       if (status) setAiStatus(status);
     };
-    window.addEventListener('terminal:ai-status', handleStatus);
-    return () => window.removeEventListener('terminal:ai-status', handleStatus);
+    addUiEventListener('terminal:ai-status', handleStatus);
+    return () => removeUiEventListener('terminal:ai-status', handleStatus);
   }, []);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
