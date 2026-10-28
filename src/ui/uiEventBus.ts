@@ -11,7 +11,6 @@ import type { EmptyStatePanelProps } from '../components/EmptyStatePanel';
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
   'terminal:active-view': { view: string };
-  'terminal:ai-status': string;
   'terminal:analyst-consensus': { text: string; title: string; className: string };
   'terminal:auth-visibility': { isOpen: boolean };
   'terminal:board-title': { title: string; showDailyMove: boolean };
