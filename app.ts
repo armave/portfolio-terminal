@@ -1,3 +1,4 @@
+import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import {
   calculateBreakevenDays,
   calculateCommission,
@@ -102,7 +103,7 @@ let activeLimitSellTargets: Record<string, number> = {};
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
 // ==========================================
 function setCloudStatus(status: string, text: string) {
-  window.dispatchEvent(new CustomEvent('terminal:cloud-status', { detail: { status, text } }));
+  emitUiEvent('terminal:cloud-status', { status, text });
 }
 
 // Freedom is authoritative for broker-reported account balance, aggregate
@@ -336,11 +337,9 @@ async function syncCloudState(mode = 'push') {
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logTerminal,
     onStatusChange: (status) => {
-      window.dispatchEvent(new CustomEvent('terminal:cloud-sync-status', {
-        detail: status === 'synced'
+      emitUiEvent('terminal:cloud-sync-status', status === 'synced'
           ? { text: `Synced: ${new Date().toLocaleTimeString()}`, status: 'synced' }
-          : { text: 'Sync failed', status: 'error' }
-      }));
+          : { text: 'Sync failed', status: 'error' });
     }
   });
 }
@@ -505,16 +504,14 @@ const switchView = setActiveView;
 
 function renderConsoleQuickActions() {
   const position = state.positions[state.activeView];
-  window.dispatchEvent(new CustomEvent('terminal:trading-console-props', {
-    detail: {
+  emitUiEvent('terminal:trading-console-props', {
       position,
       onExecuteCommand: (command?: string) => executeCommand(command ?? '')
-    } satisfies import('./src/components/TradingConsole').TradingConsoleProps
-  }));
+    } satisfies import('./src/components/TradingConsole').TradingConsoleProps);
 }
 
 function updateCombinedBreakeven() {
-  const setText = (text: string) => window.dispatchEvent(new CustomEvent('terminal:breakeven-text', { detail: { text } }));
+  const setText = (text: string) => emitUiEvent('terminal:breakeven-text', { text });
 
   const tickers = Object.keys(state.positions);
   const totalDebt = Math.abs(state.balance);
@@ -577,9 +574,7 @@ function updateCombinedBreakeven() {
 
 function renderBoardExternalLinks() {
   const activeTicker = state.positions[state.activeView] ? state.activeView : '';
-  window.dispatchEvent(new CustomEvent('terminal:external-links-props', {
-    detail: { ticker: activeTicker } satisfies import('./src/components/BoardExternalLinks').BoardExternalLinksProps
-  }));
+  emitUiEvent('terminal:external-links-props', { ticker: activeTicker } satisfies import('./src/components/BoardExternalLinks').BoardExternalLinksProps);
 }
 
 function renderBoard() {
@@ -609,8 +604,7 @@ function renderBoard() {
 
 function renderMarketInsightsComponent() {
   const ticker = getMarketInsightsTicker();
-  window.dispatchEvent(new CustomEvent('terminal:market-insights-props', {
-    detail: {
+  emitUiEvent('terminal:market-insights-props', {
       ticker,
       isOpen: true,
       activeSection: activeInsightSection as InsightSection,
@@ -619,8 +613,7 @@ function renderMarketInsightsComponent() {
         activeInsightSection = section;
         renderMarketInsightsComponent();
       }
-    } satisfies import('./src/components/MarketInsightsPanel').MarketInsightsPanelProps
-  }));
+    } satisfies import('./src/components/MarketInsightsPanel').MarketInsightsPanelProps);
 }
 
 function getMarketInsightsTicker() {
@@ -677,7 +670,7 @@ async function fetchBoardAnalystTarget(ticker: string, force = false) {
 }
 
 function renderBoardAnalystConsensus(ticker: string, force = false) {
-  const publish = (text: string, title = '', className = 'hidden') => window.dispatchEvent(new CustomEvent('terminal:analyst-consensus', { detail: { text, title, className } }));
+  const publish = (text: string, title = '', className = 'hidden') => emitUiEvent('terminal:analyst-consensus', { text, title, className });
   const hideConsensus = () => publish('');
   if (!ticker || !state.positions[ticker]) {
     hideConsensus();
@@ -1280,7 +1273,7 @@ function confirmAiPortfolioAction(action: any) {
 }
 
 function showScenarioModal(data: ScenarioModalData): void {
-  window.dispatchEvent(new CustomEvent('terminal:scenario-modal', { detail: data }));
+  emitUiEvent('terminal:scenario-modal', data);
 }
 
 async function executeCommand(commandText: string) {
@@ -1358,7 +1351,7 @@ async function executeCommand(commandText: string) {
   }
 
   const aiQuery = text.replace(/^(ai|ask)\s*:?\s*/i, '');
-  window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'CONNECTING...' }));
+  emitUiEvent('terminal:ai-status', 'CONNECTING...');
 
   try {
     const targetState: any = portfolioStore.getState();
@@ -1381,10 +1374,10 @@ async function executeCommand(commandText: string) {
       logTerminal(`[AI Advisor]: ${parsed.response || 'Executed.'}`);
     }
 
-    window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'READY' }));
+    emitUiEvent('terminal:ai-status', 'READY');
   } catch (err: any) {
     logTerminal(`[Error]: ${err.message}`);
-    window.dispatchEvent(new CustomEvent('terminal:ai-status', { detail: 'READY' }));
+    emitUiEvent('terminal:ai-status', 'READY');
   }
 }
 
@@ -1395,8 +1388,7 @@ function renderSettingsPanel(force = false) {
 
   // SettingsDesk is owned by App. Send current callbacks/rules as props instead
   // of creating a separate Preact root in the settings container.
-  window.dispatchEvent(new CustomEvent('terminal:settings-props', {
-    detail: {
+  emitUiEvent('terminal:settings-props', {
       rules,
       defaultRefreshIntervalMs: DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
       onSaveBrokerRules: saveBrokerRuleInputs,
@@ -1416,8 +1408,7 @@ function renderSettingsPanel(force = false) {
       onExportBackup: exportBackupJSON,
       onImportBackup: importBackupJSON,
       onResetToBlankState: resetToBlankState
-    } satisfies import('./src/components/SettingsDesk').SettingsDeskProps
-  }));
+    } satisfies import('./src/components/SettingsDesk').SettingsDeskProps);
   settingsPanelMounted = true;
   lastSettingsRulesSignature = rulesSignature;
 }
@@ -1425,7 +1416,7 @@ function renderSettingsPanel(force = false) {
 let appInitialized = false;
 
 function hideStartupLoading() {
-  window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: false, failed: false } }));
+  emitUiEvent('terminal:startup-state', { visible: false, failed: false });
 }
 
 setSecretGetter(() => getGatewaySecret());
@@ -1461,9 +1452,7 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
 function renderAuthModal(isOpen: boolean) {
   // App owns the auth overlay inside the main Preact tree. Communicate visibility
   // as state rather than mounting a second Preact root into a sibling container.
-  window.dispatchEvent(new CustomEvent('terminal:auth-visibility', {
-    detail: { isOpen }
-  }));
+  emitUiEvent('terminal:auth-visibility', { isOpen });
 }
 
 function showAuthContainer() {
@@ -1537,15 +1526,15 @@ export async function initApp() {
 }
 
 function showStartupFailure() {
-  window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: true, failed: true } }));
+  emitUiEvent('terminal:startup-state', { visible: true, failed: true });
 }
 
 function bindStartupActions() {
-  window.addEventListener('terminal:startup-retry', () => {
-    window.dispatchEvent(new CustomEvent('terminal:startup-state', { detail: { visible: true, failed: false } }));
+  addUiEventListener('terminal:startup-retry', () => {
+    emitUiEvent('terminal:startup-state', { visible: true, failed: false });
     void initApp();
   });
-  window.addEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
+  addUiEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
 }
 bindStartupActions();
 
