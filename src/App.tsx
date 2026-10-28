@@ -17,6 +17,8 @@ import { MarginIntelligenceModal, type MarginIntelligenceState, type MarginIntel
 import type { ScenarioModalData } from './features/terminal/commandDispatcher';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest } from './services/api';
 import { portfolioStore } from './store/portfolioStore';
+import { ScenarioReportModal } from './components/ScenarioReportModal';
+import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import { restoreGatewaySecret } from './services/storage';
 
 let tradesRequest: Promise<void> | null = null;
@@ -48,6 +50,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const analystConsensus = useAnalystConsensus();
   const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
+  const scenarioReport = useScenarioReport();
+  const errorToasts = useErrorToasts();
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
@@ -525,7 +529,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
       {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} />}
+      {scenarioReport !== null && <ScenarioReportModal report={scenarioReport} onClose={dismissScenarioReport} />}
       {marginIntelligence && <MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} />}
+      <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="assertive">
+        {errorToasts.map((toast) => <div key={toast.id} role="alert" class={'pointer-events-auto rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all ' + (toast.isClosing ? 'opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
+      </div>
       <div id="cloudStatus" class="flex items-center gap-2 text-[10px] font-mono text-slate-400" aria-live="polite">
         <span class={`w-1.5 h-1.5 rounded-full ${cloudStatus.status === 'syncing' ? 'bg-amber-400 animate-pulse' : cloudStatus.status === 'synced' ? 'bg-emerald-400' : cloudStatus.status === 'error' ? 'bg-rose-400' : 'bg-slate-500'}`} />
         <span>KV: {cloudStatus.text.toUpperCase()}</span>
