@@ -1,4 +1,5 @@
 import { emitUiEvent } from './uiEventBus';
+import { setBoardTitle } from './uiStateStore';
 import { formatUSD } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatUSD } from '../utils/formatters';
@@ -138,7 +139,7 @@ function renderSummaryCards(
   if (isCombined) {
     const metrics = calculateCombinedMetrics(state, rules, tickers, dailyRate);
 
-    emitUiEvent('terminal:board-title', {
+    setBoardTitle({
       title: tickers.length > 0
         ? `COMBINED PORTFOLIO (${tickers.length} Positions | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`
         : 'NO ACTIVE MARGIN POSITIONS',
@@ -163,7 +164,7 @@ function renderSummaryCards(
 
     const metrics = calculatePositionMetrics(state, pos, rules, dailyRate);
 
-    emitUiEvent('terminal:board-title', {
+    setBoardTitle({
       title: `${pos.ticker} (${pos.shares} Shares @ ${formatUSD(pos.pt)} PT | ${metrics.netPct >= 0 ? '+' : ''}${metrics.netPct.toFixed(2)}% Net Target)`,
       showDailyMove: false
     });
