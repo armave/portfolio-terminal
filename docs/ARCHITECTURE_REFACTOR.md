@@ -185,3 +185,19 @@ The latest head passed typecheck, Vitest, production build, and dead-code diagno
 **Known boundary kept separate:** the active runtime rollover uses the configured timezone and batch debt projection, while the legacy cloud-import `processRollovers` path uses the historical Asia/Yerevan boundary and per-cycle rounding. These are not assumed equivalent; combining them without a decision about the existing financial rounding contract could change persisted debt. Keep both paths covered independently rather than silently changing the formula during this refactor.
 
 The remaining work is the final repository diff review and compatibility audit. Keep the PR in draft until the latest head passes the merge gates and the audit finds no unintended financial, persistence, quote, or UI regressions.
+
+
+## Cleanup audit progress — 2026-10-28
+
+**Status: in progress; keep the pull request in draft until all gates pass.**
+
+- [x] Audited the current `main` tree, runtime entry points, package scripts, TypeScript inclusion, Knip configuration, and existing CI workflows through the repository API.
+- [x] Confirmed `src/main.ts` imports the root `app.ts`, and `app.ts` mounts `src/App.tsx`; the root runtime is active and must not be deleted merely because it is large or legacy-shaped.
+- [x] Removed the unused `onToggleMarketInsights` prop from `AppProps` and its sole call-site argument. The component did not consume the prop; market-insights events are wired through the existing application event flow.
+- [x] Corrected the README architecture map to match the actual checked-in source tree and separate browser runtime from the Cloudflare Worker.
+- [ ] Run the full typecheck, test suite, dead-code analysis, production dependency audit, and production build on the same final PR head.
+- [ ] Review Knip output and import/call graphs for any additional confirmed dead exports, unused dependencies, obsolete helpers, and duplicate execution paths before removing them.
+- [ ] Finish a compatibility review of financial calculations, backup migration, encrypted cloud sync, Worker APIs, and deployment workflows.
+- [ ] Review the final diff and latest CI results before marking the PR ready for review.
+
+**Execution limitation:** a local `git clone` was attempted but the environment could not resolve `github.com`. Repository source was inspected through GitHub's repository API instead; no local test command is represented as having passed. CI results for the exact PR head are required before merge.
