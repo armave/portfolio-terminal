@@ -29,6 +29,12 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   const currentPrice =
     position && Number(position.currentPrice) > 0 ? Number(position.currentPrice) : null;
   const priceText = currentPrice === null ? '[price]' : formatUSD(currentPrice);
+  const comparisonPrice =
+    currentPrice === null ? '[target_price]' : formatUSD(Number((currentPrice * 1.03).toFixed(2)));
+  const halfShares =
+    position && Number(position.shares) > 1
+      ? String(Math.max(1, Math.floor(Number(position.shares) / 2)))
+      : '5';
   const triggerExecute = () => {
     const value = command.trim();
     if (!value) return;
@@ -129,6 +135,20 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   const clearTerminal = () => clearTerminalLog();
 
   const guideItems = [
+    {
+      category: 'Buy More Scenario (What-if)',
+      badgeColor: 'text-purple-400 border-purple-900/60 bg-purple-950/30',
+      id: 'hintBuyMoreScenario',
+      command: `buy scenario ${halfShares} ${hasPosition ? ticker : '[TICKER]'} at ${priceText}`,
+      display: `buy scenario ${halfShares} ${hasPosition ? ticker : '[TICKER]'} at ${priceText}`
+    },
+    {
+      category: 'Exit Comparison',
+      badgeColor: 'text-cyan-400 border-cyan-900/60 bg-cyan-950/30',
+      id: 'hintExitComparison',
+      command: `sell ${hasPosition ? ticker : '[TICKER]'} today for ${priceText} vs sell 14 days later for ${comparisonPrice}`,
+      display: `sell today for ${priceText} vs sell 14 days later for ${comparisonPrice}`
+    },
     {
       category: 'Live / Manual Quote',
       badgeColor: 'text-amber-400 border-amber-900/60 bg-amber-950/30',
