@@ -6,10 +6,6 @@ import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
 import { getActiveTranchesFromTrades, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 
 export interface CashCushionDeskProps {
-  onFetchLivePrice?: (ticker: string) => void;
-  onRemoveCashStock?: (index: number) => void;
-  onSaveBalance?: (signedValue: number) => void;
-  onAddCashStock?: (ticker: string, shares: number, manualPrice: number) => void;
   refreshIntervalMs?: number;
 }
 
@@ -58,10 +54,6 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
 }
 
 export function CashCushionDesk({
-  onFetchLivePrice,
-  onRemoveCashStock,
-  onSaveBalance,
-  onAddCashStock,
   refreshIntervalMs = 60000
 }: CashCushionDeskProps) {
   const state = usePortfolio();
@@ -94,15 +86,7 @@ export function CashCushionDesk({
     window.dispatchEvent(new CustomEvent('tradenet:set-active-tranche-type', { detail: { ticker, type } }));
   };
 
-  const [balanceInput, setBalanceInput] = useState<string>(signedBalance.toFixed(2));
-  const balanceInputRef = useRef<HTMLInputElement | null>(null);
-  const tickerInputRef = useRef<HTMLInputElement | null>(null);
-  const sharesInputRef = useRef<HTMLInputElement | null>(null);
-  const priceInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    setBalanceInput(signedBalance.toFixed(2));
-  }, [signedBalance]);
+  const [activeTranchesExpanded, setActiveTranchesExpanded] = useState(false);
 
   const stocksTotal = holdings.reduce((sum, h) => {
     const price = Number(h.currentPrice ?? h.price) || 0;
@@ -111,40 +95,6 @@ export function CashCushionDesk({
 
   const totalCushion = freeCash + stocksTotal;
 
-  const handleUpdateBalance = () => {
-    const input = balanceInputRef.current;
-    if (!input || !input.reportValidity()) return;
-    const signedValue = input.valueAsNumber;
-    if (!Number.isFinite(signedValue)) return;
-    onSaveBalance?.(signedValue);
-  };
-
-  const handleAddStock = () => {
-    const tickerInput = tickerInputRef.current;
-    const sharesInput = sharesInputRef.current;
-    const priceInput = priceInputRef.current;
-    if (!tickerInput || !sharesInput || !priceInput) return;
-    if (!tickerInput.reportValidity() || !sharesInput.reportValidity() ||
-      (priceInput.value !== '' && !priceInput.reportValidity())) return;
-
-    const ticker = tickerInput.value.trim().toUpperCase();
-    const shares = sharesInput.valueAsNumber;
-    const manualPrice = priceInput.value === '' ? NaN : priceInput.valueAsNumber;
-    if (!ticker) {
-      tickerInput.setCustomValidity('Enter a valid ticker symbol.');
-      tickerInput.reportValidity();
-      tickerInput.focus();
-      return;
-    }
-    tickerInput.setCustomValidity('');
-    if (!Number.isFinite(shares) || shares <= 0 ||
-      (priceInput.value !== '' && (!Number.isFinite(manualPrice) || manualPrice <= 0))) return;
-
-    onAddCashStock?.(ticker, shares, manualPrice);
-    tickerInput.value = '';
-    sharesInput.value = '';
-    priceInput.value = '';
-  };
 
   return (
     <>
@@ -163,37 +113,6 @@ export function CashCushionDesk({
       </div>
 
       <div class="space-y-2">
-        <div class="flex items-center gap-2" style={{ justifyContent: 'end' }}>
-          <div class="relative">
-            <span
-              class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs"
-              aria-hidden="true"
-            >
-              $
-            </span>
-            <input
-              type="number"
-              id="freeCashInput"
-              step="0.01"
-              required
-              inputMode="decimal"
-              ref={balanceInputRef}
-              value={balanceInput}
-              onInput={(e) => setBalanceInput((e.target as HTMLInputElement).value)}
-              aria-label="Signed balance or margin debt in US dollars"
-              title="Positive values are cash balance; negative values are margin debt"
-              class="number-input bg-slate-950 border border-slate-700 text-xs pl-5 pr-2 py-1 rounded w-36 text-right text-emerald-300 font-mono font-bold focus:outline-none focus:border-cyan-500"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={handleUpdateBalance}
-            class="bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded border border-slate-600 transition"
-          >
-            Update
-          </button>
-        </div>
-
         <div class="table-scroll-wrapper overflow-x-auto">
           <table class="w-full min-w-0 table-fixed text-left text-xs border-collapse">
             <thead>
@@ -203,14 +122,13 @@ export function CashCushionDesk({
                 <th class="w-[20%] py-2 px-2 text-right">Price · Mkt</th>
                 <th class="w-[15%] py-2 px-2 text-right">Mkt Value</th>
                 <th class="w-[15%] py-2 px-2 text-right">Eq. Alloc</th>
-                <th class="w-[15%] py-2 px-2 text-center">Actions</th>
               </tr>
             </thead>
             <tbody id="cashStocksTableBody" class="divide-y divide-slate-800/60 font-mono">
               {holdings.length === 0 ? (
                 <tr>
-                  <td colSpan={6} class="py-3 text-center text-slate-500 italic">
-                    No cash stocks entered. Add unleveraged stocks below (price auto-fetches).
+                  <td colSpan={5} class="py-3 text-center text-slate-500 italic">
+                    No broker-reported cash holdings available.
                   </td>
                 </tr>
               ) : (
@@ -269,24 +187,6 @@ export function CashCushionDesk({
                       <td class="py-2 px-3 text-right text-slate-300 tabular-nums">
                         {allocation.toFixed(1)}%
                       </td>
-                      <td class="py-2 px-3 text-center space-x-2">
-                        <button
-                          type="button"
-                          title="Refresh Live Price"
-                          aria-label={`Refresh ${h.ticker} quote`}
-                          onClick={() => onFetchLivePrice?.(h.ticker)}
-                          class="text-cyan-400 hover:text-cyan-300 text-xs font-bold"
-                        >
-                          ↻
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onRemoveCashStock?.(idx)}
-                          class="text-rose-400 hover:text-rose-300 text-xs font-bold"
-                        >
-                          Remove
-                        </button>
-                      </td>
                     </tr>
                   );
                 })
@@ -295,7 +195,7 @@ export function CashCushionDesk({
             <tfoot id="cashStocksTableFooter" class="border-t border-slate-700 font-mono">
               {holdings.length > 0 && (
                 <tr>
-                  <td class="py-2 px-3 text-slate-300 font-bold" colSpan={3}>
+                  <td class="py-2 px-3 text-slate-300 font-bold" colSpan={2}>
                     {holdings.length} holding{holdings.length === 1 ? '' : 's'}
                   </td>
                   <td class="py-2 px-3 text-right text-white font-bold">
@@ -304,73 +204,9 @@ export function CashCushionDesk({
                   <td class="py-2 px-3 text-right text-slate-300 font-bold">
                     {stocksTotal > 0 ? '100.0%' : '—'}
                   </td>
-                  <td></td>
                 </tr>
               )}
             </tfoot>
-            <tbody class="border-t border-slate-800 bg-slate-900/30">
-              <tr>
-                <td class="py-2 px-3">
-                  <input
-                    type="text"
-                    id="newCashTicker"
-                    ref={tickerInputRef}
-                    onInput={() => tickerInputRef.current?.setCustomValidity('')}
-                    placeholder="TICKER"
-                    required
-                    aria-label="Stock ticker symbol"
-                    autoComplete="off"
-                    autoCapitalize="characters"
-                    class="bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-full min-w-0 uppercase focus:outline-none focus:border-cyan-500"
-                  />
-                </td>
-                <td class="py-2 px-3 text-right">
-                  <input
-                    type="number"
-                    id="newCashShares"
-                    ref={sharesInputRef}
-                    placeholder="Shares"
-                    min="0.01"
-                    step="0.01"
-                    required
-                    inputMode="decimal"
-                    aria-label="Number of shares"
-                    class="number-input bg-slate-950 border border-slate-700 text-xs px-2 py-1 rounded text-white w-full min-w-0 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500"
-                  />
-                </td>
-                <td class="py-2 px-3 text-right">
-                  <div class="w-full min-w-0 relative">
-                    <span
-                      class="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-xs"
-                      aria-hidden="true"
-                    >
-                      $
-                    </span>
-                    <input
-                      type="number"
-                      id="newCashPrice"
-                      ref={priceInputRef}
-                      placeholder="Auto"
-                      min="0.01"
-                      step="0.01"
-                      inputMode="decimal"
-                      aria-label="Optional price per share in US dollars"
-                      class="number-input bg-slate-950 border border-slate-700 text-xs pl-4 pr-1 py-1 rounded text-white w-full min-w-0 text-right font-mono tabular-nums focus:outline-none focus:border-cyan-500"
-                    />
-                  </div>
-                </td>
-                <td class="py-2 px-3" colSpan={2}></td>
-                <td class="py-2 px-3 text-center">
-                  <button
-                    type="button"
-                    onClick={handleAddStock}
-                    class="bg-cyan-700 hover:bg-cyan-600 text-white text-xs font-bold px-2 py-1 rounded transition whitespace-nowrap"
-                  >
-                    + Add
-                  </button>
-                </td>
-              </tr>
-            </tbody>
           </table>
         </div>
 
@@ -380,26 +216,30 @@ export function CashCushionDesk({
               <h2 id="activeTranchesHeading" class="text-sm font-black uppercase tracking-wide text-cyan-300">Active Tranches</h2>
               <p class="mt-0.5 text-[10px] text-slate-500">Open purchases from Freedom trade history · new operations default to Cash</p>
             </div>
-            <span class={`text-[10px] font-bold uppercase tracking-wide ${state.brokerAccountInfo?.status === 'stale' ? 'text-amber-400' : state.brokerAccountInfo?.loaded ? 'text-emerald-400' : 'text-slate-500'}`}>
-              {state.brokerAccountInfo?.status === 'stale' ? 'Broker data stale' : executedTrades.length ? 'Trades synced' : 'Waiting for trade history'}
-            </span>
+            <div class="flex items-center gap-2">
+              <span class={`text-[10px] font-bold uppercase tracking-wide ${state.brokerAccountInfo?.status === 'stale' ? 'text-amber-400' : state.brokerAccountInfo?.loaded ? 'text-emerald-400' : 'text-slate-500'}`}>
+                {state.brokerAccountInfo?.status === 'stale' ? 'Broker data stale' : executedTrades.length ? 'Trades synced' : 'Waiting for trade history'}
+              </span>
+              <button type="button" aria-expanded={activeTranchesExpanded} aria-controls="activeTranchesTable" onClick={() => setActiveTranchesExpanded((expanded) => !expanded)} class="rounded border border-slate-700 px-2 py-1 text-[10px] font-bold text-cyan-300 hover:bg-slate-900">
+                {activeTranchesExpanded ? 'Collapse' : 'Expand'}
+              </button>
+            </div>
           </div>
-          <div class="table-scroll-wrapper overflow-x-auto">
-            <table class="w-full min-w-[560px] text-left text-xs border-collapse">
+          {activeTranchesExpanded && <div class="table-scroll-wrapper overflow-x-auto">
+            <table id="activeTranchesTable" class="w-full min-w-[500px] text-left text-xs border-collapse">
               <thead>
                 <tr class="border-b border-slate-800 text-slate-500">
                   <th class="py-2 px-2">Ticker</th>
                   <th class="py-2 px-2">Purchase date</th>
                   <th class="py-2 px-2 text-right">Shares</th>
                   <th class="py-2 px-2 text-right">Avg. Cost</th>
-                  <th class="py-2 px-2 text-right">Market</th>
                   <th class="py-2 px-2 text-right">Value</th>
                   <th class="py-2 px-2 text-center">Operation</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800/60 font-mono">
                 {activeTranches.length === 0 ? (
-                  <tr><td colSpan={7} class="py-4 px-2 text-center font-sans text-slate-500 italic">
+                  <tr><td colSpan={6} class="py-4 px-2 text-center font-sans text-slate-500 italic">
                     {executedTrades.length ? 'No active purchase operations.' : 'Active purchase operations will appear after Freedom trade history loads.'}
                   </td></tr>
                 ) : activeTranches.map((tranche) => {
@@ -410,7 +250,6 @@ export function CashCushionDesk({
                       <td class="py-2 px-2 text-slate-400 tabular-nums">{tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString() : '—'}</td>
                       <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
                       <td class="py-2 px-2 text-right text-slate-300 tabular-nums">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</td>
-                      <td class="py-2 px-2 text-right text-emerald-300 tabular-nums">{tranche.marketPrice !== null ? formatUSD(tranche.marketPrice) : '—'}</td>
                       <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.marketValue !== null ? formatUSD(tranche.marketValue) : '—'}</td>
                       <td class="py-2 px-2 text-center">
                         <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={`${tranche.ticker} ${tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString() : 'undated'} operation type`}>
@@ -425,10 +264,10 @@ export function CashCushionDesk({
                 })}
               </tbody>
               {activeTranches.length > 0 && <tfoot class="border-t border-slate-700"><tr>
-                <td colSpan={7} class="px-2 py-2 text-[10px] text-slate-500">{activeTranches.length} active purchase operation{activeTranches.length === 1 ? '' : 's'} · same-ticker purchases within 5 minutes are grouped</td>
+                <td colSpan={6} class="px-2 py-2 text-[10px] text-slate-500">{activeTranches.length} active purchase operation{activeTranches.length === 1 ? '' : 's'} · same-ticker purchases within 5 minutes are grouped</td>
               </tr></tfoot>}
             </table>
-          </div>
+          </div>}
         </section>
       </div>
     </>
