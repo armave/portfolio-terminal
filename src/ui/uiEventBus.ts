@@ -36,13 +36,21 @@ export function emitUiEvent<T = undefined>(type: UiEventName, detail?: T): void 
   listeners.get(type)?.forEach((listener) => listener(event as CustomEvent<unknown>));
 }
 
-export function subscribeUiEvent(type: UiEventName, listener: (event: Event) => void): () => void {
+const listenerWrappers = new WeakMap<(event: Event) => void, UiListener>();
+
+export function addUiEventListener(type: UiEventName, listener: (event: Event) => void): void {
   const bucket = listeners.get(type) ?? new Set<UiListener>();
   const wrapped: UiListener = (event) => listener(event);
+  listenerWrappers.set(listener, wrapped);
   bucket.add(wrapped);
   listeners.set(type, bucket);
-  return () => {
-    bucket.delete(wrapped);
-    if (bucket.size === 0) listeners.delete(type);
-  };
+}
+
+export function removeUiEventListener(type: UiEventName, listener: (event: Event) => void): void {
+  const bucket = listeners.get(type);
+  const wrapped = listenerWrappers.get(listener);
+  if (!bucket || !wrapped) return;
+  bucket.delete(wrapped);
+  listenerWrappers.delete(listener);
+  if (bucket.size === 0) listeners.delete(type);
 }
