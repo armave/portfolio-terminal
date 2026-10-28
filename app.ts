@@ -654,11 +654,6 @@ function syncMarketInsightsPanel() {
   renderMarketInsightsComponent();
 }
 
-function toggleMarketInsights() {
-  // Market Insights is a permanent part of the Margin workspace, not a toggleable panel.
-  syncMarketInsightsPanel();
-}
-
 function renderClosedHistoryPanel() {
   // ClosedHistoryDesk is owned by App and mounts when the view is first opened.
 }
