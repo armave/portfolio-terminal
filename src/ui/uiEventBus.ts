@@ -15,8 +15,6 @@ export interface UiEventPayloads {
   'terminal:auth-visibility': { isOpen: boolean };
   'terminal:board-title': { title: string; showDailyMove: boolean };
   'terminal:cash-cushion-props': CashCushionDeskProps;
-  'terminal:cloud-status': { status: string; text: string };
-  'terminal:cloud-sync-status': { status: string; text: string };
   'terminal:empty-state-props': EmptyStatePanelProps | null;
   'terminal:external-links-props': BoardExternalLinksProps;
   'terminal:margin-intelligence-request': { ticker?: string; refresh?: boolean };
