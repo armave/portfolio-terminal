@@ -48,7 +48,7 @@ export async function saveSyncedMarginDigest(digest: SyncedMarginDigest, revisio
   });
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.error || `Could not save synced margin digest (HTTP ${response.status}).`);
-  const nextRevision = Number((response.headers.get('ETag') || '').replace(/^W\\//, '').replace(/^"|"$/g, '') || data?.revision);
+  const nextRevision = Number((response.headers.get('ETag') || '').replace(/^"|"$/g, '') || data?.revision);
   if (!Number.isSafeInteger(nextRevision) || nextRevision < 1) throw new Error('Server saved the digest but returned an invalid revision.');
   return nextRevision;
 }
