@@ -842,14 +842,13 @@ export async function pullCloudState(
  * Closed-history data uses its own encrypted Durable Object record so normal
  * portfolio sync never transfers the large historical arrays.
  */
-let lastSyncedBrokerTrades: any[] | undefined;
-let lastSyncedCashflows: any[] | undefined;
 const CLOSED_HISTORY_MIGRATION_KEY = 'closed_history_cloud_migrated_v1';
 
-// History has an independent Durable Object revision from portfolio state. Serialize
-// every history writer in this tab so simultaneous navigation/recalculation/state-sync
-// writes cannot both read the same revision and race into a routine 409.
+// History has an independent Durable Object revision from portfolio state. Share
+// concurrent reads and serialize writes, coalescing structurally identical snapshots.
+let lastSyncedHistoryFingerprint: string | undefined;
 let cloudHistoryPushQueue: Promise<void> = Promise.resolve();
+let cloudHistoryPulls = new Map<string, Promise<{ brokerExecutedTrades: any[]; cashflows: any[] } | null>>();
 
 export function pushCloudHistory(history: { brokerExecutedTrades?: any[]; cashflows?: any[] }, secret = getActiveGatewaySecret()): Promise<boolean> {
   const operation = cloudHistoryPushQueue.then(() => performPushCloudHistory(history, secret));
@@ -861,12 +860,16 @@ async function performPushCloudHistory(history: { brokerExecutedTrades?: any[]; 
   const brokerExecutedTrades = Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [];
   const cashflows = Array.isArray(history.cashflows) ? history.cashflows : [];
   if (!secret || (!brokerExecutedTrades.length && !cashflows.length)) return false;
-  if (brokerExecutedTrades === lastSyncedBrokerTrades && cashflows === lastSyncedCashflows) return false;
+  const plaintext = JSON.stringify({ brokerExecutedTrades, cashflows });
+  const fingerprint = JSON.stringify([secret, plaintext]);
+  // Compare serialized content, not object identity: stores often rebuild arrays
+  // during render/recalculation even when no history record has actually changed.
+  if (fingerprint === lastSyncedHistoryFingerprint) return false;
+
   const url = new URL('/api/history', WORKER_PROXY_URL).toString();
   const current = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}` } });
   const revision = readCloudRevision(current.headers) ?? 0;
   if (!current.ok && current.status !== 404) throw new Error(`Closed history revision check failed (HTTP ${current.status}).`);
-  const plaintext = JSON.stringify({ brokerExecutedTrades, cashflows });
   const encryptedPayload = await encryptCloudPayload(plaintext, secret);
   const res = await fetch(url, {
     method: 'POST',
@@ -874,14 +877,26 @@ async function performPushCloudHistory(history: { brokerExecutedTrades?: any[]; 
     body: JSON.stringify({ encryptedPayload })
   });
   if (!res.ok) throw new Error(`Closed history sync failed (HTTP ${res.status}).`);
-  lastSyncedBrokerTrades = brokerExecutedTrades;
-  lastSyncedCashflows = cashflows;
+  lastSyncedHistoryFingerprint = fingerprint;
   try { localStorage.setItem(CLOSED_HISTORY_MIGRATION_KEY, '1'); } catch { /* session cache remains valid */ }
   return true;
 }
 
-export async function pullCloudHistory(secret = getActiveGatewaySecret()): Promise<{ brokerExecutedTrades: any[]; cashflows: any[] } | null> {
-  if (!secret) return null;
+export function pullCloudHistory(secret = getActiveGatewaySecret()): Promise<{ brokerExecutedTrades: any[]; cashflows: any[] } | null> {
+  if (!secret) return Promise.resolve(null);
+  const existing = cloudHistoryPulls.get(secret);
+  if (existing) return existing;
+  const request = performPullCloudHistory(secret);
+  cloudHistoryPulls.set(secret, request);
+  void request.finally(() => {
+    if (cloudHistoryPulls.get(secret) === request) cloudHistoryPulls.delete(secret);
+  }).catch(() => {
+    // The caller handles the original rejection; don't create an unhandled cleanup rejection.
+  });
+  return request;
+}
+
+async function performPullCloudHistory(secret: string): Promise<{ brokerExecutedTrades: any[]; cashflows: any[] } | null> {
   const res = await fetch(new URL('/api/history', WORKER_PROXY_URL).toString(), {
     method: 'GET',
     headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}` }
