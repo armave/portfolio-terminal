@@ -789,9 +789,6 @@ export async function pullCloudState(
         ? parsedState.cashflows : localHistory.cashflows
     };
     const hasHistory = legacyHistory.brokerExecutedTrades.length > 0 || legacyHistory.cashflows.length > 0;
-    const hasLegacyCloudHistory =
-      (Array.isArray(parsedState.brokerExecutedTrades) && parsedState.brokerExecutedTrades.length > 0) ||
-      (Array.isArray(parsedState.cashflows) && parsedState.cashflows.length > 0);
     let historyMigrationComplete = false;
     try { historyMigrationComplete = localStorage.getItem(CLOSED_HISTORY_MIGRATION_KEY) === '1'; } catch { /* migrate safely when storage is unavailable */ }
     if (hasHistory && !historyMigrationComplete) {
