@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
-import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
+import { useActiveDeskView, useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -29,7 +29,7 @@ interface AppProps {
 
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
-  const [activeDeskView, setActiveDeskView] = useState('COMBINED');
+  const activeDeskView = useActiveDeskView();
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [cashCushionProps, setCashCushionProps] = useState<CashCushionDeskProps>({});
@@ -293,15 +293,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const detail = (event as CustomEvent<{ isOpen?: boolean }>).detail;
       setAuthOpen(Boolean(detail?.isOpen));
     };
-    const handleDeskView = (event: Event) => {
-      const detail = (event as CustomEvent<{ view?: string }>).detail;
-      if (detail?.view) {
-        setActiveDeskView(detail.view);
-        if (detail.view === 'CLOSED_HISTORY') setHasOpenedClosedHistory(true);
-        if (detail.view === 'CASH_CUSHION' || detail.view === 'BALANCE') setHasOpenedCashCushion(true);
-        if (detail.view === 'SETTINGS') setHasOpenedSettings(true);
-      }
-    };
     const handleScenarioModal = (event: Event) => setScenarioModalData((event as CustomEvent<ScenarioModalData | null>).detail ?? null);
     addUiEventListener('terminal:scenario-modal', handleScenarioModal);
     addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
@@ -309,7 +300,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const detail = (event as CustomEvent<CashCushionDeskProps>).detail;
       if (detail) setCashCushionProps(detail);
     };
-    addUiEventListener('terminal:active-view', handleDeskView);
     const handleSettingsProps = (event: Event) => {
       const detail = (event as CustomEvent<SettingsDeskProps>).detail;
       if (detail) setSettingsProps(detail);
@@ -355,7 +345,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     return () => {
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
       removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
-      removeUiEventListener('terminal:active-view', handleDeskView);
       removeUiEventListener('terminal:cash-cushion-props', handleCashCushionProps);
       removeUiEventListener('terminal:settings-props', handleSettingsProps);
       removeUiEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
@@ -368,6 +357,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:startup-state', handleStartupState);
     };
   }, []);
+
+  useEffect(() => {
+    if (activeDeskView === 'CLOSED_HISTORY') setHasOpenedClosedHistory(true);
+    if (activeDeskView === 'CASH_CUSHION' || activeDeskView === 'BALANCE') setHasOpenedCashCushion(true);
+    if (activeDeskView === 'SETTINGS') setHasOpenedSettings(true);
+  }, [activeDeskView]);
 
   // Closed History asks for trade history when mounted; do not also fetch from
   // a global navigation click listener, which caused duplicate broker requests.
