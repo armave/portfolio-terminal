@@ -22,7 +22,7 @@ describe('closed-history cashflow fee recalculation', () => {
       marginFeeAllocations: { new_cashflow: 2.25 },
       marginFee: 2.25,
       feesAndCommissions: 3.5,
-      netProfit: 97.75
+      netProfit: 96.5
     });
   });
 
@@ -41,7 +41,7 @@ describe('closed-history cashflow fee recalculation', () => {
       marginFeeAllocations: {},
       marginFee: 0,
       feesAndCommissions: 1.25,
-      netProfit: 100
+      netProfit: 98.75
     });
   });
 
@@ -84,7 +84,7 @@ describe('closed-history idempotency and source deduplication', () => {
       marginFeeAllocations: { fee1: 2 },
       marginFee: 2,
       feesAndCommissions: 3.25,
-      netProfit: 98
+      netProfit: 96.75
     };
     const result = applyCashflowAllocationsToBrokerExecutions([sell], new Map([[0, { fee1: 2 }]]));
     expect(result[0]).toBe(sell);
