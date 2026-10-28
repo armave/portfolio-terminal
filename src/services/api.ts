@@ -28,8 +28,8 @@ export async function loadSyncedMarginDigest(key: string): Promise<{ digest: Syn
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.error || `Could not load synced margin digest (HTTP ${response.status}).`);
   if (!data || data.key !== key || typeof data.analysis !== 'string' || !Array.isArray(data.articles) || typeof data.syncedAt !== 'string') return null;
-  const revision = Number((response.headers.get('ETag') || '').replace(/^"|"$/g, ''));
-  return { digest: data as SyncedMarginDigest, revision: Number.isSafeInteger(revision) ? revision : 0 };
+  const revision = readCloudRevision(response.headers) ?? 0;
+  return { digest: data as SyncedMarginDigest, revision };
 }
 
 export async function saveSyncedMarginDigest(digest: SyncedMarginDigest, revision: number): Promise<number> {
@@ -48,7 +48,7 @@ export async function saveSyncedMarginDigest(digest: SyncedMarginDigest, revisio
   });
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.error || `Could not save synced margin digest (HTTP ${response.status}).`);
-  const nextRevision = Number((response.headers.get('ETag') || '').replace(/^"|"$/g, '') || data?.revision);
+  const nextRevision = readCloudRevision(response.headers) ?? Number(data?.revision);
   if (!Number.isSafeInteger(nextRevision) || nextRevision < 1) throw new Error('Server saved the digest but returned an invalid revision.');
   return nextRevision;
 }
