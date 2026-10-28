@@ -45,7 +45,7 @@ function renderCashCushion(
   } = options;
   // The App component owns this desk's Preact instance. Send changing action
   // handlers as props rather than mounting a second renderer into its container.
-  emitUiEvent('terminal:cash-cushion-props', { onFetchLivePrice, onRemoveCashStock, onSaveBalance, onAddCashStock, refreshIntervalMs });
+  emitUiEvent('terminal:cash-cushion-props', { refreshIntervalMs });
 }
 
 function renderPositionsTable(
