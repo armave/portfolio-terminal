@@ -13,7 +13,7 @@ import { EmptyStatePanel, type EmptyStatePanelProps } from './components/EmptySt
 import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
 import { MarginIntelligenceModal, type MarginIntelligenceState, type MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/commandDispatcher';
-import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch } from './services/api';
+import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest } from './services/api';
 import { portfolioStore } from './store/portfolioStore';
 import { restoreGatewaySecret } from './services/storage';
 
@@ -56,7 +56,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   useEffect(() => {
     let requestGeneration = 0;
     const handleMarginIntelligence = async (event: Event) => {
-      const detail = (event as CustomEvent<{ ticker?: string }>).detail;
+      const detail = (event as CustomEvent<{ ticker?: string; refresh?: boolean }>).detail;
       const requestedTicker = String(detail?.ticker || '').trim().toUpperCase();
       const snapshot = portfolioStore.getState();
       const allPositions = Object.values(snapshot.positions || {}).filter((position: any) =>
@@ -82,17 +82,48 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const requestId = ++requestGeneration;
       const isPortfolio = !requestedTicker;
       const title = isPortfolio ? 'Portfolio-wide Margin Review' : requestedTicker + ' · Position Review';
-      setMarginIntelligence({
+      const digestKey = isPortfolio ? 'portfolio' : 'position:' + requestedTicker;
+      setMarginIntelligence((current) => ({
         title,
         scope: isPortfolio ? 'portfolio' : 'position',
         ...(requestedTicker ? { ticker: requestedTicker } : {}),
         loading: true,
-        analysis: '',
-        articles: []
-      });
+        analysis: current?.analysis || '',
+        articles: current?.articles || [],
+        ...(current?.syncedAt ? { syncedAt: current.syncedAt } : {})
+      }));
 
       try {
-        // Single-position reviews fetch fresh news for the selected ticker; portfolio
+        const cached = await loadSyncedMarginDigest(digestKey);
+        if (requestId !== requestGeneration) return;
+        if (cached && !detail?.refresh) {
+          setMarginIntelligence({
+            title: cached.digest.title || title,
+            scope: cached.digest.scope,
+            ...(cached.digest.ticker ? { ticker: cached.digest.ticker } : {}),
+            loading: false,
+            analysis: cached.digest.analysis,
+            articles: cached.digest.articles,
+            syncedAt: cached.digest.syncedAt,
+            digestRevision: cached.revision
+          });
+          return;
+        }
+        if (cached) {
+          setMarginIntelligence({
+            title: cached.digest.title || title,
+            scope: cached.digest.scope,
+            ...(cached.digest.ticker ? { ticker: cached.digest.ticker } : {}),
+            loading: true,
+            analysis: cached.digest.analysis,
+            articles: cached.digest.articles,
+            syncedAt: cached.digest.syncedAt,
+            digestRevision: cached.revision
+          });
+        }
+        // Explicit refresh fetches fresh news and regenerates the analysis.
+        // Initial open only reaches this point when no synced digest exists.
+        // Single-position reviews fetch news for the selected ticker; portfolio
         // reviews fetch news for each active margin position. The full portfolio
         // snapshot is included in both cases so Gemini can reason about concentration.
         const newsPositions = isPortfolio ? allPositions : focusPosition ? [focusPosition] : [];
@@ -213,13 +244,27 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           .filter(Boolean).join('\n\n');
         if (!analysis) throw new Error(response?.error?.message || response?.error || 'Gemini returned an empty analysis.');
         if (requestId !== requestGeneration) return;
+        const syncedAt = new Date().toISOString();
+        const digest = {
+          key: digestKey,
+          title,
+          scope: (isPortfolio ? 'portfolio' : 'position') as 'portfolio' | 'position',
+          ...(requestedTicker ? { ticker: requestedTicker } : {}),
+          analysis,
+          articles,
+          syncedAt
+        };
+        const nextRevision = await saveSyncedMarginDigest(digest, cached?.revision ?? 0);
+        if (requestId !== requestGeneration) return;
         setMarginIntelligence({
           title,
           scope: isPortfolio ? 'portfolio' : 'position',
           ...(requestedTicker ? { ticker: requestedTicker } : {}),
           loading: false,
           analysis,
-          articles
+          articles,
+          syncedAt,
+          digestRevision: nextRevision
         });
       } catch (error) {
         if (requestId !== requestGeneration) return;
@@ -230,7 +275,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           loading: false,
           analysis: '',
           articles: [],
-          error: error instanceof Error ? error.message : 'Could not complete Gemini margin review.'
+          error: error instanceof Error ? error.message : 'Could not load or save the synced Gemini margin review.'
         });
       }
     };
