@@ -79,7 +79,6 @@ export function CashCushionDesk({
   }, []);
 
   const freeCash = Number(state.cashCushion?.freeCash) || 0;
-  const signedBalance = freeCash + (Number(state.balance) || 0);
   const holdings = state.cashCushion?.holdings || [];
   const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
   const setActiveTrancheType = (ticker: string, type: ActiveTrancheType) => {
@@ -153,7 +152,7 @@ export function CashCushionDesk({
                       : sentimentLabel(direction);
 
                   return (
-                    <tr key={`${h.ticker}-${idx}`} class="hover:bg-slate-900/40">
+                    <tr key={h.ticker} class="hover:bg-slate-900/40">
                       <td class="py-2 px-3 text-cyan-300 font-bold">
                         <div class="inline-flex items-center gap-1.5">
                           <span>{h.ticker}</span>
