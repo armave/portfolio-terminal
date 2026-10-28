@@ -13,6 +13,7 @@ interface QuickActionItem {
   instant?: boolean;
   color: string;
   title?: string;
+  onClick?: () => void;
 }
 
 function prefillTerminalInput(
@@ -27,6 +28,10 @@ function prefillTerminalInput(
     return;
   }
   if (instant && onExecuteCommand) onExecuteCommand(command);
+}
+
+function requestMarginIntelligence(ticker?: string) {
+  window.dispatchEvent(new CustomEvent('terminal:margin-intelligence-request', { detail: { ticker } }));
 }
 
 export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillCommand }: ConsoleQuickActionsProps) {
@@ -44,6 +49,13 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
         instant: true,
         color: 'text-amber-300 border-amber-900/70 hover:bg-amber-950/60',
         title: 'Fetch live quotes for all tracked holdings immediately'
+      },
+      {
+        text: '✦ Portfolio Review',
+        command: '',
+        onClick: () => requestMarginIntelligence(),
+        color: 'text-cyan-200 border-cyan-800/70 hover:bg-cyan-950/50',
+        title: 'Use Gemini to review recent news and risk across all margin positions'
       },
       {
         text: 'Set Cash…',
@@ -82,9 +94,7 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
             key={action.text}
             type="button"
             title={action.title}
-            onClick={() =>
-              prefillTerminalInput(action.command, action.selectText, action.instant, onExecuteCommand, onPrefillCommand)
-            }
+            onClick={() => action.onClick ? action.onClick() : prefillTerminalInput(action.command, action.selectText, action.instant, onExecuteCommand, onPrefillCommand)}
             class={`rounded border bg-slate-900/90 px-2.5 py-1 text-[10px] font-mono font-bold transition active:scale-95 ${action.color}`}
           >
             {action.text}
@@ -102,6 +112,13 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
       instant: true,
       color: 'text-amber-300 border-amber-900/70 hover:bg-amber-950/60',
       title: `Immediately pull latest quote for ${position.ticker}`
+    },
+    {
+      text: '✦ News + Review',
+      command: '',
+      onClick: () => requestMarginIntelligence(position.ticker),
+      color: 'text-cyan-200 border-cyan-800/70 hover:bg-cyan-950/50',
+      title: `Review recent news and margin-position risks for ${position.ticker} with Gemini`
     },
     {
       text: '⇄ Compare Exits…',
