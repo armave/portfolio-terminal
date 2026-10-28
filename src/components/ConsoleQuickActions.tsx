@@ -30,6 +30,11 @@ function prefillTerminalInput(
 }
 
 export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillCommand }: ConsoleQuickActionsProps) {
+  const currentPrice =
+    position && Number(position.currentPrice) > 0 ? Number(position.currentPrice) : null;
+  const priceText = currentPrice === null ? '[price]' : formatUSD(currentPrice);
+  const comparisonPrice =
+    currentPrice === null ? '[target_price]' : formatUSD(Number((currentPrice * 1.03).toFixed(2)));
   // Portfolio-level quick actions when on COMBINED or BALANCE tab
   if (!position) {
     const globalActions: QuickActionItem[] = [
@@ -97,6 +102,20 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
       instant: true,
       color: 'text-amber-300 border-amber-900/70 hover:bg-amber-950/60',
       title: `Immediately pull latest quote for ${position.ticker}`
+    },
+    {
+      text: '⇄ Compare Exits…',
+      command: `sell ${position.ticker} today for ${priceText} vs sell 14 days later for ${comparisonPrice}`,
+      selectText: comparisonPrice,
+      color: 'text-cyan-300 border-cyan-900/70 hover:bg-cyan-950/60',
+      title: 'Compare exit scenarios without placing a trade'
+    },
+    {
+      text: '⇧ Buy More Scenario…',
+      command: `buy scenario ${Math.max(1, Math.floor(Number(position.shares) / 2))} ${position.ticker} at ${priceText}`,
+      selectText: String(Math.max(1, Math.floor(Number(position.shares) / 2))),
+      color: 'text-purple-300 border-purple-900/70 hover:bg-purple-950/60',
+      title: `Preview how buying more ${position.ticker} shares changes average entry and exposure without placing an order`
     },
   ];
 
