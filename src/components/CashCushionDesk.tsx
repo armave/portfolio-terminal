@@ -20,6 +20,10 @@ const BADGE_STYLES: Record<string, string> = {
   unknown: 'border-slate-800 bg-slate-950 text-slate-500'
 };
 
+export function formatDailyQuoteRange(details: Pick<QuoteDetails, 'high' | 'low'>): string {
+  return `H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`;
+}
+
 function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   if (!details || typeof details !== 'object') return null;
   const hasChange = Number.isFinite(details.change) && Number.isFinite(details.changePercent);
@@ -43,7 +47,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   }
 
   if (hasRange) {
-    parts.push(`H {formatUSD(details.high)} / L {formatUSD(details.low)}`);
+    parts.push(formatDailyQuoteRange(details));
   }
 
   return (
