@@ -30,6 +30,48 @@ function positiveFinite(value: unknown): number | null {
   return Number.isFinite(number) && number > 0 ? number : null;
 }
 
+
+export interface FreedomActiveLimitSellOrderLike {
+  ticker?: string;
+  operation?: number | null;
+  orderType?: number | null;
+  limitPrice?: number | null;
+  remainingQuantity?: number | null;
+}
+
+/** Keep only unambiguous live limit-sell prices, keyed by normalized ticker. */
+export function getActiveLimitSellTargets(orders: FreedomActiveLimitSellOrderLike[]): Record<string, number> {
+  const pricesByTicker = new Map<string, Set<number>>();
+  for (const order of orders) {
+    const ticker = tickerKey(order?.ticker);
+    const price = positiveFinite(order?.limitPrice);
+    const remaining = Number(order?.remainingQuantity);
+    if (!ticker || order?.operation !== 3 || order?.orderType !== 2 || price === null || !Number.isFinite(remaining) || remaining <= 0) continue;
+    const prices = pricesByTicker.get(ticker) || new Set<number>();
+    prices.add(price);
+    pricesByTicker.set(ticker, prices);
+  }
+  return Object.fromEntries([...pricesByTicker.entries()]
+    .filter(([, prices]) => prices.size === 1)
+    .map(([ticker, prices]) => [ticker, [...prices][0]]));
+}
+
+/** Apply broker limit prices after every portfolio reclassification so defaults cannot overwrite them. */
+export function applyActiveLimitSellTargets(
+  positions: Record<string, PositionRecord>,
+  targets: Record<string, number>
+): Record<string, PositionRecord> {
+  const result = { ...positions };
+  for (const [key, position] of Object.entries(positions || {})) {
+    const ticker = tickerKey(position?.ticker || key);
+    const target = targets[ticker];
+    if (target && Number.isFinite(target) && target > 0 && Number(position.pt) !== target) {
+      result[key] = { ...position, pt: target };
+    }
+  }
+  return result;
+}
+
 function operationTimestamp(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const numeric = typeof value === 'number' || /^\d+(\.\d+)?$/.test(String(value)) ? Number(value) : NaN;
