@@ -150,9 +150,8 @@ export function ClosedHistoryDesk() {
   useEffect(() => {
     const cashflows = state.cashflows || [];
     if (brokerTradesLoading || !cashflows.length) return;
-    const executions = portfolioStore.getState().brokerExecutedTrades?.length
-      ? portfolioStore.getState().brokerExecutedTrades
-      : brokerTrades;
+    const storedExecutions = portfolioStore.getState().brokerExecutedTrades || [];
+    const executions = storedExecutions.length ? storedExecutions : brokerTrades;
     // Exclude calculated metadata from the input fingerprint; otherwise a
     // successful allocation changes its own key and triggers another pass.
     const calculatedFields = new Set(['marginFeeAllocations', 'marginFee', 'feesAndCommissions', 'netProfit']);
