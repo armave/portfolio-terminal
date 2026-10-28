@@ -4,6 +4,7 @@ import {
   pullCloudState,
   pushCloudState,
   pushCloudHistory,
+  pullCloudHistory,
   syncCloudState,
   proxyFetch,
   fetchFallbackQuote,
@@ -985,5 +986,57 @@ describe('closed-history cloud write serialization', () => {
     ]);
     expect((historyCalls[1][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"4"' });
     expect((historyCalls[3][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"5"' });
+  });
+});
+
+
+describe('closed-history request deduplication', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('skips a second save when newly allocated arrays contain the same history', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ETag: '"2"'
+        }
+      });
+      return new Response(JSON.stringify({ encryptedPayload: 'existing-history' }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ETag: '"1"' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const first = { brokerExecutedTrades: [{ id: 'same-trade' }], cashflows: [{ id: 'same-fee' }] };
+    const second = { brokerExecutedTrades: [{ id: 'same-trade' }], cashflows: [{ id: 'same-fee' }] };
+
+    await expect(pushCloudHistory(first, 'same-history-secret')).resolves.toBe(true);
+    await expect(pushCloudHistory(second, 'same-history-secret')).resolves.toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(['GET', 'POST']);
+  });
+
+  it('shares one in-flight cloud history read among concurrent callers', async () => {
+    const secret = 'shared-history-read-secret';
+    const encryptedPayload = await encryptV2Fixture({
+      brokerExecutedTrades: [{ id: 'trade-1' }],
+      cashflows: [{ id: 'fee-1' }]
+    }, secret);
+    let resolveFetch!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveFetch = resolve; }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = pullCloudHistory(secret);
+    const second = pullCloudHistory(secret);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveFetch(new Response(JSON.stringify({ encryptedPayload }), {
+      status: 200, headers: { 'Content-Type': 'application/json', ETag: '"7"' }
+    }));
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { brokerExecutedTrades: [{ id: 'trade-1' }], cashflows: [{ id: 'fee-1' }] },
+      { brokerExecutedTrades: [{ id: 'trade-1' }], cashflows: [{ id: 'fee-1' }] }
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
