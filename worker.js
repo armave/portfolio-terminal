@@ -56,10 +56,17 @@ async function withProviderCache(provider, key, fetcher) {
 }
 
 const ALLOWED_GEMINI_MODELS = new Set([
-    "gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite",
+    "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
     "gemini-3.1-flash", "gemini-3.1-pro", "gemini-2.5-flash",
     "gemini-2.5-pro", "gemini-flash", "gemini-pro"
 ]);
+
+function normalizeGeminiModel(model) {
+    const normalized = typeof model === "string" ? model.replace(/^models\//, "") : model;
+    // Google retired this model for new users; keep older clients working by
+    // transparently upgrading their request to the supported replacement.
+    return normalized === "gemini-2.5-flash-lite" ? "gemini-3.5-flash-lite" : normalized;
+}
 
 function jsonError(message, status, headers) {
     return new Response(JSON.stringify({ error: message }), { status, headers });
@@ -194,6 +201,43 @@ async function getYahooCredentials() {
  * broker's raw response (which includes account identifiers and unrelated data).
  * Preserve the response envelope expected by normalizeFreedomPortfolio().
  */
+/** Return only fields required to identify open sell-limit orders. */
+export function sanitizeFreedomActiveOrders(response) {
+    const candidates = [
+        response?.data?.result?.orders,
+        response?.result?.orders,
+        response?.data?.orders,
+        response?.orders,
+        response?.data?.result,
+        response?.result,
+        response?.data
+    ];
+    const envelope = candidates.find(value => Array.isArray(value) ||
+        (value && typeof value === "object"
+            && (Array.isArray(value.order) || Array.isArray(value.orders) || Array.isArray(value.items))));
+    const rows = Array.isArray(envelope) ? envelope
+        : Array.isArray(envelope?.order) ? envelope.order
+            : Array.isArray(envelope?.orders) ? envelope.orders
+                : Array.isArray(envelope?.items) ? envelope.items
+                    : [];
+    const numberOrNull = value => {
+        if (value === null || value === undefined || value === "") return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    };
+    const order = rows.map(row => ({
+        order_id: String(row?.order_id ?? row?.id ?? ""),
+        instr: String(row?.instr ?? row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instrument ?? ""),
+        oper: numberOrNull(row?.oper ?? row?.operation),
+        type: numberOrNull(row?.type ?? row?.order_type),
+        p: numberOrNull(row?.p ?? row?.price ?? row?.limit_price),
+        q: numberOrNull(row?.q ?? row?.quantity),
+        leaves_qty: numberOrNull(row?.leaves_qty ?? row?.remaining_qty ?? row?.remainingQuantity ?? row?.q ?? row?.quantity),
+        stat: String(row?.stat ?? row?.status ?? "")
+    })).filter(row => row.order_id && row.instr);
+    return { orders: { order } };
+}
+
 export function sanitizeFreedomPositions(response) {
     // The upstream API response can be wrapped differently depending on the
     // TradeNet gateway/version. Accept only known position-envelope variants.
@@ -286,10 +330,10 @@ export default {
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -431,6 +475,26 @@ export default {
                 }), { headers: corsHeaders });
             }
 
+            // Read-only current active orders. The command and active_only filter are fixed
+            // server-side; clients cannot submit arbitrary broker commands or place orders.
+            if (action === "freedom-orders") {
+                if (request.method !== "GET") {
+                    return jsonError("Freedom orders only supports GET.", 405, corsHeaders);
+                }
+                const rawData = await requestTradeNet(env, "getNotifyOrderJson", { active_only: 1 });
+                let data;
+                try {
+                    data = sanitizeFreedomActiveOrders(rawData);
+                } catch (error) {
+                    return jsonError(error instanceof Error ? error.message : "Invalid TradeNet orders response.", 502, corsHeaders);
+                }
+                return new Response(JSON.stringify({
+                    ok: true,
+                    provider: "Freedom TradeNet",
+                    data
+                }), { headers: corsHeaders });
+            }
+
             // Read-only Freedom cashflow history. The upstream command is fixed server-side.
             if (action === "freedom-cashflows") {
                 if (request.method !== "GET") {
@@ -445,7 +509,7 @@ export default {
             }
 
             // --- ACTION 0: Durable Object cloud portfolio state ---
-            if (pathname === "/api/state" || pathname === "/api/history" || action === "state" || action === "history") {
+            if (pathname === "/api/state" || pathname === "/api/history" || pathname === "/api/margin-digest" || action === "state" || action === "history") {
                 if (!env.PORTFOLIO_STATE_DO) {
                     return new Response(JSON.stringify({ error: "PORTFOLIO_STATE_DO binding is missing." }), {
                         status: 500,
@@ -565,16 +629,17 @@ export default {
                 if (prompt.length > MAX_PROMPT_LENGTH) {
                     return jsonError("Prompt exceeds the 12,000-character limit.", 413, corsHeaders);
                 }
-                if (body.model !== undefined && (typeof body.model !== "string" || !ALLOWED_GEMINI_MODELS.has(body.model.replace(/^models\//, "")))) {
+                const requestedModel = body.model === undefined ? undefined : normalizeGeminiModel(body.model);
+                if (requestedModel !== undefined && (typeof requestedModel !== "string" || !ALLOWED_GEMINI_MODELS.has(requestedModel))) {
                     return jsonError("Unsupported Gemini model.", 400, corsHeaders);
                 }
 
                 // Keep proxy model selection bounded to a known allowlist.
                 const rawCandidates = [
-                    body.model,
+                    requestedModel,
                     "gemini-3.8-flash",
                     "gemini-3.1-flash-lite",
-                    "gemini-2.5-flash-lite",
+                    "gemini-3.5-flash-lite",
                     "gemini-3.1-flash"
                 ].filter(Boolean).map(model => model.replace(/^models\//, "")).filter(model => ALLOWED_GEMINI_MODELS.has(model));
                 const candidateModels = Array.from(new Set(rawCandidates)).slice(0, 3);

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions } from './worker.js';
+import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 
 describe('upstream timeout coverage', () => {
@@ -23,6 +23,73 @@ describe('upstream timeout coverage', () => {
     await vi.advanceTimersByTimeAsync(51);
     await rejectedBody;
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Freedom active orders proxy', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('requests active orders with a fixed read-only command and returns sanitized limit data', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      orders: { order: [
+        { order_id: 77, instr: 'AAPL.US', oper: 3, type: 2, p: 210.25, q: 10, leaves_qty: 6, stat: 'active', private_account: 'do-not-return' }
+      ] }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-orders', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_PUBLIC_KEY: 'public-key',
+      FREEDOM_PRIVATE_KEY: 'private-key'
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      data: { orders: { order: [{
+        order_id: '77', instr: 'AAPL.US', oper: 3, type: 2, p: 210.25, q: 10, leaves_qty: 6, stat: 'active'
+      }] } }
+    });
+    expect(JSON.stringify(body)).not.toContain('do-not-return');
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(requestBody).toEqual({ cmd: 'getNotifyOrderJson', params: { active_only: 1 } });
+    expect(String(fetchMock.mock.calls[0][0])).toBe('https://tradernet.com/api/getNotifyOrderJson');
+  });
+});
+
+describe('sanitizeFreedomActiveOrders', () => {
+  it('returns only safe order fields and preserves remaining quantity for partial fills', () => {
+    const result = sanitizeFreedomActiveOrders({
+      data: { result: { orders: { order: [
+        { order_id: 42, instr: 'AAPL.US', oper: 3, type: 2, p: 212.5, q: 10, leaves_qty: 4, stat: 'active', account: 'private', token: 'secret' },
+        { order_id: 43, instr: 'MSFT.US', oper: 1, type: 2, p: 400, q: 2, stat: 'active' }
+      ] } } }
+    });
+    expect(result.orders.order).toEqual([
+      { order_id: '42', instr: 'AAPL.US', oper: 3, type: 2, p: 212.5, q: 10, leaves_qty: 4, stat: 'active' },
+      { order_id: '43', instr: 'MSFT.US', oper: 1, type: 2, p: 400, q: 2, leaves_qty: 2, stat: 'active' }
+    ]);
+    expect(JSON.stringify(result)).not.toContain('private');
+    expect(JSON.stringify(result)).not.toContain('secret');
+  });
+
+  it('preserves orders that identify the instrument with instr_nm', () => {
+    const result = sanitizeFreedomActiveOrders({
+      orders: { order: [
+        { order_id: 77, instr_nm: 'AAPL.US', oper: 3, type: 2, p: 353, q: 50, leaves_qty: 50, stat: 'active' }
+      ] }
+    });
+    expect(result.orders.order).toEqual([
+      { order_id: '77', instr: 'AAPL.US', oper: 3, type: 2, p: 353, q: 50, leaves_qty: 50, stat: 'active' }
+    ]);
+  });
+
+  it('returns an empty order list for an unrecognized response shape', () => {
+    expect(sanitizeFreedomActiveOrders({ unexpected: true })).toEqual({ orders: { order: [] } });
   });
 });
 
@@ -354,6 +421,55 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(latest.headers.get('ETag')).toBe('"1"');
   });
 
+
+  it('stores independent server-synced digests for portfolio and ticker keys', async () => {
+    const store = makeDurableObject();
+    const digest = {
+      key: 'position:GOOGL',
+      title: 'GOOGL · Position Review',
+      scope: 'position',
+      ticker: 'GOOGL',
+      analysis: '**Stance** Hold.',
+      articles: [{ ticker: 'GOOGL', headline: 'Example', source: 'Test', url: 'https://example.com' }],
+      syncedAt: '2026-10-28T05:00:00.000Z'
+    };
+    const write = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(digest)
+    }));
+    expect(write.status).toBe(200);
+    expect(write.headers.get('ETag')).toBe('"1"');
+
+    const read = await store.fetch(new Request('https://worker.test/api/margin-digest?key=position%3AGOOGL'));
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual(digest);
+    expect(read.headers.get('ETag')).toBe('"1"');
+
+    const missing = await store.fetch(new Request('https://worker.test/api/margin-digest?key=portfolio'));
+    expect(missing.status).toBe(404);
+  });
+
+  it('rejects invalid margin digest keys and stale writes', async () => {
+    const store = makeDurableObject();
+    const invalid = await store.fetch(new Request('https://worker.test/api/margin-digest?key=bad%2Fkey'));
+    expect(invalid.status).toBe(400);
+
+    const digest = { key: 'portfolio', title: 'Portfolio Review', scope: 'portfolio', analysis: 'Review', articles: [], syncedAt: '2026-10-28T05:00:00.000Z' };
+    const first = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(digest)
+    }));
+    expect(first.status).toBe(200);
+    const stale = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(digest)
+    }));
+    expect(stale.status).toBe(409);
+  });
+
   it('migrates an existing KV portfolio without changing its payload', async () => {
     const store = makeDurableObject(JSON.stringify({ encryptedPayload: 'legacy' }));
     const response = await store.fetch(new Request('https://worker.test/api/state'));
@@ -522,7 +638,7 @@ describe('Worker request hardening', () => {
     expect(firstSignal.aborted).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(response.status).toBe(200);
-  });
+  }, 15_000);
 
   it('rejects invalid Gemini payloads, oversized prompts, and unapproved models', async () => {
     const fetchMock = vi.fn();

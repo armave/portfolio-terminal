@@ -51,7 +51,17 @@ export class PortfolioStateDO {
     }
 
     await this.ensureInitialized();
-    const recordKey = new URL(request.url).pathname === "/api/history" ? "historyRecord" : "record";
+    const requestUrl = new URL(request.url);
+    const requestPath = requestUrl.pathname;
+    const isDigest = requestPath === "/api/margin-digest";
+    let recordKey = requestPath === "/api/history" ? "historyRecord" : "record";
+    if (isDigest && request.method === "GET") {
+      const digestKey = requestUrl.searchParams.get("key") || "";
+      if (!/^(portfolio|position:[A-Z0-9.^=-]{1,20})$/.test(digestKey)) {
+        return jsonResponse({ error: "A valid digest key is required." }, 400);
+      }
+      recordKey = "marginDigestRecord:" + digestKey;
+    }
 
     if (request.method === "GET") {
       const record = await this.ctx.storage.get(recordKey);
@@ -115,7 +125,17 @@ export class PortfolioStateDO {
       return jsonResponse({ error: "Missing or invalid JSON body." }, 400);
     }
 
-    if (typeof body.encryptedPayload !== "string" || !body.encryptedPayload.trim()) {
+    if (isDigest) {
+      if (typeof body.key !== "string" || !/^(portfolio|position:[A-Z0-9.^=-]{1,20})$/.test(body.key)) {
+        return jsonResponse({ error: "Digest key must identify a portfolio or ticker position." }, 400);
+      }
+      if (typeof body.analysis !== "string" || !body.analysis.trim() || body.analysis.length > 30_000 ||
+          !Array.isArray(body.articles) || body.articles.length > 20 ||
+          typeof body.syncedAt !== "string" || !Number.isFinite(Date.parse(body.syncedAt))) {
+        return jsonResponse({ error: "Digest payload is missing valid analysis, articles, or sync timestamp." }, 400);
+      }
+      recordKey = "marginDigestRecord:" + body.key;
+    } else if (typeof body.encryptedPayload !== "string" || !body.encryptedPayload.trim()) {
       return jsonResponse({ error: "Cloud state must contain a non-empty encryptedPayload string." }, 400);
     }
 
