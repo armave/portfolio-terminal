@@ -21,3 +21,24 @@ export function useAiStatus(): string {
   useEffect(() => subscribeAiStatus(setStatus), []);
   return status;
 }
+
+let breakevenText = 'Combined Breakeven: 0 days';
+const breakevenTextListeners = new Set<(text: string) => void>();
+
+/** Publish the current combined-portfolio breakeven label. */
+export function setBreakevenText(text: string): void {
+  if (text === breakevenText) return;
+  breakevenText = text;
+  breakevenTextListeners.forEach((listener) => listener(breakevenText));
+}
+
+function subscribeBreakevenText(listener: (text: string) => void): () => void {
+  breakevenTextListeners.add(listener);
+  return () => breakevenTextListeners.delete(listener);
+}
+
+export function useBreakevenText(): string {
+  const [text, setText] = useState(breakevenText);
+  useEffect(() => subscribeBreakevenText(setText), []);
+  return text;
+}
