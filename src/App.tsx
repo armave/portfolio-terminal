@@ -1,4 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
+import { useBreakevenText } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -43,7 +44,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [emptyStateProps, setEmptyStateProps] = useState<EmptyStatePanelProps | null>(null);
   const [boardTitle, setBoardTitle] = useState('COMBINED PORTFOLIO');
   const [showDailyMove, setShowDailyMove] = useState(false);
-  const [breakevenText, setBreakevenText] = useState('Combined Breakeven: 0 days');
+  const breakevenText = useBreakevenText();
   const [analystConsensus, setAnalystConsensus] = useState({ text: '', title: '', className: 'hidden' });
   const [cloudStatus, setCloudStatusState] = useState({ status: 'idle', text: 'OFFLINE' });
   const [cloudSyncStatus, setCloudSyncStatus] = useState({ status: 'idle', text: '' });
@@ -363,13 +364,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const detail = (event as CustomEvent<{ text: string; title: string; className: string }>).detail;
       if (detail) setAnalystConsensus(detail);
     };
-    const handleBreakevenText = (event: Event) => {
-      const detail = (event as CustomEvent<{ text: string }>).detail;
-      if (detail) setBreakevenText(detail.text);
-    };
     addUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
     addUiEventListener('terminal:board-title', handleBoardTitle);
-    addUiEventListener('terminal:breakeven-text', handleBreakevenText);
     addUiEventListener('terminal:analyst-consensus', handleAnalystConsensus);
     addUiEventListener('terminal:cloud-status', handleCloudStatus);
     addUiEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
@@ -388,7 +384,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:external-links-props', handleExternalLinksProps);
       removeUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
       removeUiEventListener('terminal:board-title', handleBoardTitle);
-      removeUiEventListener('terminal:breakeven-text', handleBreakevenText);
       removeUiEventListener('terminal:analyst-consensus', handleAnalystConsensus);
       removeUiEventListener('terminal:cloud-status', handleCloudStatus);
       removeUiEventListener('terminal:cloud-sync-status', handleCloudSyncStatus);
