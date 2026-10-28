@@ -1,22 +1,24 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
 import { useActiveDeskView, useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useTradingConsoleProps, useCashCushionProps, useTickerTabsProps, useSummaryMetricsProps, useProjectionsProps, useEmptyStateProps, useMarketInsightsProps, useExternalLinksProps, useSettingsProps } from './ui/uiStateStore';
-import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
-import { CashCushionDesk, type CashCushionDeskProps } from './components/CashCushionDesk';
-import { SettingsDesk, type SettingsDeskProps } from './components/SettingsDesk';
-import { TickerTabs, type TickerTabsProps } from './components/TickerTab';
-import { SummaryMetricsGrid, type SummaryMetricsGridProps } from './components/SummaryMetricsGrid';
-import { ProjectionsTable, type ProjectionsTableProps } from './components/ProjectionsTable';
-import { MarketInsightsPanel, type MarketInsightsPanelProps } from './components/MarketInsightsPanel';
+import { CashCushionDesk } from './components/CashCushionDesk';
+import { SettingsDesk } from './components/SettingsDesk';
+import { TickerTabs } from './components/TickerTab';
+import { SummaryMetricsGrid } from './components/SummaryMetricsGrid';
+import { ProjectionsTable } from './components/ProjectionsTable';
+import { MarketInsightsPanel } from './components/MarketInsightsPanel';
 import { TradingConsole } from './components/TradingConsole';
-import { BoardExternalLinks, type BoardExternalLinksProps } from './components/BoardExternalLinks';
-import { EmptyStatePanel, type EmptyStatePanelProps } from './components/EmptyStatePanel';
+import { BoardExternalLinks } from './components/BoardExternalLinks';
+import { EmptyStatePanel } from './components/EmptyStatePanel';
 import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
 import { MarginIntelligenceModal, type MarginIntelligenceState, type MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/commandDispatcher';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest } from './services/api';
 import { portfolioStore } from './store/portfolioStore';
+import { ScenarioReportModal } from './components/ScenarioReportModal';
+import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import { restoreGatewaySecret } from './services/storage';
 
 let tradesRequest: Promise<void> | null = null;
@@ -29,41 +31,27 @@ interface AppProps {
 
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
+  const backupImportInputRef = useRef<HTMLInputElement>(null);
   const activeDeskView = useActiveDeskView();
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
-  const [cashCushionProps, setCashCushionProps] = useState<CashCushionDeskProps>({});
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
-  const [settingsProps, setSettingsProps] = useState<SettingsDeskProps | null>(null);
-  const [tickerTabsProps, setTickerTabsProps] = useState<TickerTabsProps | null>(null);
-  const [summaryMetricsProps, setSummaryMetricsProps] = useState<SummaryMetricsGridProps | null>(null);
-  const [projectionsProps, setProjectionsProps] = useState<ProjectionsTableProps | null>(null);
-  const [marketInsightsProps, setMarketInsightsProps] = useState<MarketInsightsPanelProps | null>(null);
+  const cashCushionProps = useCashCushionProps();
+  const settingsProps = useSettingsProps();
+  const tickerTabsProps = useTickerTabsProps();
+  const summaryMetricsProps = useSummaryMetricsProps();
+  const projectionsProps = useProjectionsProps();
+  const emptyStateProps = useEmptyStateProps();
+  const marketInsightsProps = useMarketInsightsProps();
+  const externalLinksProps = useExternalLinksProps();
   const tradingConsoleProps = useTradingConsoleProps();
-  const sharedCashCushionProps = useCashCushionProps();
-  const sharedTickerTabsProps = useTickerTabsProps();
-  const sharedSummaryMetricsProps = useSummaryMetricsProps();
-  const sharedProjectionsProps = useProjectionsProps();
-  const sharedEmptyStateProps = useEmptyStateProps();
-  const sharedMarketInsightsProps = useMarketInsightsProps();
-  const sharedExternalLinksProps = useExternalLinksProps();
-  const sharedSettingsProps = useSettingsProps();
-
-  useEffect(() => setCashCushionProps(sharedCashCushionProps), [sharedCashCushionProps]);
-  useEffect(() => setTickerTabsProps(sharedTickerTabsProps), [sharedTickerTabsProps]);
-  useEffect(() => setSummaryMetricsProps(sharedSummaryMetricsProps), [sharedSummaryMetricsProps]);
-  useEffect(() => setProjectionsProps(sharedProjectionsProps), [sharedProjectionsProps]);
-  useEffect(() => setEmptyStateProps(sharedEmptyStateProps), [sharedEmptyStateProps]);
-  useEffect(() => setMarketInsightsProps(sharedMarketInsightsProps), [sharedMarketInsightsProps]);
-  useEffect(() => setExternalLinksProps(sharedExternalLinksProps), [sharedExternalLinksProps]);
-  useEffect(() => setSettingsProps(sharedSettingsProps), [sharedSettingsProps]);
-  const [externalLinksProps, setExternalLinksProps] = useState<BoardExternalLinksProps | null>(null);
-  const [emptyStateProps, setEmptyStateProps] = useState<EmptyStatePanelProps | null>(null);
   const { title: boardTitle, showDailyMove } = useBoardTitle();
   const breakevenText = useBreakevenText();
   const analystConsensus = useAnalystConsensus();
   const cloudStatus = useCloudStatus();
   const cloudSyncStatus = useCloudSyncStatus();
+  const scenarioReport = useScenarioReport();
+  const errorToasts = useErrorToasts();
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
@@ -311,60 +299,16 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       setAuthOpen(Boolean(detail?.isOpen));
     };
     const handleScenarioModal = (event: Event) => setScenarioModalData((event as CustomEvent<ScenarioModalData | null>).detail ?? null);
+    const handleBackupImportRequest = () => backupImportInputRef.current?.click();
+    addUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
     addUiEventListener('terminal:scenario-modal', handleScenarioModal);
     addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
-    const handleCashCushionProps = (event: Event) => {
-      const detail = (event as CustomEvent<CashCushionDeskProps>).detail;
-      if (detail) setCashCushionProps(detail);
-    };
-    const handleSettingsProps = (event: Event) => {
-      const detail = (event as CustomEvent<SettingsDeskProps>).detail;
-      if (detail) setSettingsProps(detail);
-    };
-    addUiEventListener('terminal:cash-cushion-props', handleCashCushionProps);
-    const handleTickerTabsProps = (event: Event) => {
-      const detail = (event as CustomEvent<TickerTabsProps>).detail;
-      if (detail) setTickerTabsProps(detail);
-    };
-    addUiEventListener('terminal:settings-props', handleSettingsProps);
-    const handleSummaryMetricsProps = (event: Event) => {
-      const detail = (event as CustomEvent<SummaryMetricsGridProps>).detail;
-      if (detail) setSummaryMetricsProps(detail);
-    };
-    const handleProjectionsProps = (event: Event) => {
-      const detail = (event as CustomEvent<ProjectionsTableProps>).detail;
-      if (detail) setProjectionsProps(detail);
-    };
-    addUiEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
-    addUiEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
-    const handleMarketInsightsProps = (event: Event) => {
-      const detail = (event as CustomEvent<MarketInsightsPanelProps>).detail;
-      if (detail) setMarketInsightsProps(detail);
-    };
-    addUiEventListener('terminal:projections-props', handleProjectionsProps);
-    const handleExternalLinksProps = (event: Event) => {
-      const detail = (event as CustomEvent<BoardExternalLinksProps>).detail;
-      if (detail) setExternalLinksProps(detail);
-    };
-    const handleEmptyStateProps = (event: Event) => {
-      setEmptyStateProps((event as CustomEvent<EmptyStatePanelProps | null>).detail);
-    };
-    addUiEventListener('terminal:market-insights-props', handleMarketInsightsProps);
-    addUiEventListener('terminal:external-links-props', handleExternalLinksProps);
     const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
-    addUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
     addUiEventListener('terminal:startup-state', handleStartupState);
     return () => {
+      removeUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
       removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
-      removeUiEventListener('terminal:cash-cushion-props', handleCashCushionProps);
-      removeUiEventListener('terminal:settings-props', handleSettingsProps);
-      removeUiEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
-      removeUiEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
-      removeUiEventListener('terminal:projections-props', handleProjectionsProps);
-      removeUiEventListener('terminal:market-insights-props', handleMarketInsightsProps);
-      removeUiEventListener('terminal:external-links-props', handleExternalLinksProps);
-      removeUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
       removeUiEventListener('terminal:startup-state', handleStartupState);
     };
   }, []);
@@ -585,12 +529,24 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
       {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} />}
+      {scenarioReport !== null && <ScenarioReportModal key={scenarioReport} report={scenarioReport} onClose={dismissScenarioReport} />}
       {marginIntelligence && <MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} />}
+      <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="assertive">
+        {errorToasts.map((toast) => <div key={toast.id} role="alert" class={'pointer-events-auto rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all ' + (toast.isClosing ? 'opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
+      </div>
       <div id="cloudStatus" class="flex items-center gap-2 text-[10px] font-mono text-slate-400" aria-live="polite">
         <span class={`w-1.5 h-1.5 rounded-full ${cloudStatus.status === 'syncing' ? 'bg-amber-400 animate-pulse' : cloudStatus.status === 'synced' ? 'bg-emerald-400' : cloudStatus.status === 'error' ? 'bg-rose-400' : 'bg-slate-500'}`} />
         <span>KV: {cloudStatus.text.toUpperCase()}</span>
         {cloudSyncStatus.text && <span class={`ml-2 ${cloudSyncStatus.status === 'synced' ? 'text-emerald-400' : 'text-rose-400'}`}>{cloudSyncStatus.text}</span>}
       </div>
+      <input
+        ref={backupImportInputRef}
+        type="file"
+        id="importFileInput"
+        class="hidden"
+        accept=".json"
+        onChange={(event: Event) => settingsProps?.onImportBackup(event)}
+      />
       {startupState.visible && <div class="startup-loading fixed inset-0 z-[100] flex items-center justify-center" role="status" aria-live="polite">
         <div class="startup-loading__content">
           <div class="startup-loading__mark" aria-hidden="true">PT</div>

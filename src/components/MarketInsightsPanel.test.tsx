@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getStocktwitsCashtags, hasStocktwitsCommentary, isStandaloneStocktwitsMessage } from './MarketInsightsPanel';
+import { getStocktwitsCashtags, getVisibleStocktwitsMessages, hasStocktwitsCommentary, isStandaloneStocktwitsMessage } from './MarketInsightsPanel';
 
 describe('getStocktwitsCashtags', () => {
   it('returns unique ticker cashtags in uppercase', () => {
@@ -54,5 +54,28 @@ describe('isStandaloneStocktwitsMessage', () => {
   it('rejects malformed messages', () => {
     expect(isStandaloneStocktwitsMessage(null)).toBe(false);
     expect(isStandaloneStocktwitsMessage('message')).toBe(false);
+  });
+});
+
+describe('getVisibleStocktwitsMessages', () => {
+  it('shows up to ten recent standalone posts without filtering their content', () => {
+    const messages = Array.from({ length: 14 }, (_, id) => ({
+      id,
+      body: id === 0 ? '$AAPL' : id === 1 ? '$AAPL $MSFT' : `Post ${id}`,
+      ...(id === 3 ? { in_reply_to: 1 } : {})
+    }));
+
+    const visible = getVisibleStocktwitsMessages(messages);
+
+    expect(visible).toHaveLength(10);
+    expect(visible.map((message) => message.id)).toEqual([0, 1, 2, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  it('returns fewer than ten when the source has fewer standalone posts', () => {
+    expect(getVisibleStocktwitsMessages([
+      { id: 1, body: '$AAPL' },
+      { id: 2, in_reply_to: 1 },
+      { id: 3, body: 'Bullish $AAPL $MSFT' }
+    ])).toHaveLength(2);
   });
 });

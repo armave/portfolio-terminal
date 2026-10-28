@@ -1,6 +1,9 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { addUiEventListener, removeUiEventListener } from '../ui/uiEventBus';
 import { ConsoleQuickActions } from './ConsoleQuickActions';
 import { clearTerminalLog } from '../ui/notifications';
+import { useTerminalLogEntries } from '../ui/notificationStore';
+import { TerminalLog } from './TerminalLog';
 import { formatUSD, PositionRecord } from '../ui/renderBoard';
 import { useAiStatus } from '../ui/uiStateStore';
 
@@ -14,7 +17,9 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   const [historyIdx, setHistoryIdx] = useState<number>(-1);
   const [command, setCommand] = useState('');
   const aiStatus = useAiStatus();
+  const terminalEntries = useTerminalLogEntries();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const prefillCommandRef = useRef<(value: string, selectText?: string | null, instant?: boolean, cursorAtEnd?: boolean) => void>(() => {});
 
   const ticker = position?.ticker || 'AAPL';
   const hasPosition = Boolean(position);
@@ -36,7 +41,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
     onExecuteCommand(value);
   };
 
-  const prefillCommand = (value: string, selectText?: string | null, instant?: boolean) => {
+  const prefillCommand = (value: string, selectText?: string | null, instant?: boolean, cursorAtEnd = false) => {
     setCommand(value);
     if (instant) {
       setHistory((prev) => (prev[0] === value ? prev : [value, ...prev.slice(0, 49)]));
@@ -50,13 +55,15 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
     const selectionText = selectText || (placeholderStart >= 0
       ? value.slice(placeholderStart, value.indexOf(']', placeholderStart) + 1)
       : null);
-    const selectionStart = selectionText ? value.lastIndexOf(selectionText) : value.length;
-    const selectionEnd = selectionText ? selectionStart + selectionText.length : value.length;
+    const selectionStart = cursorAtEnd ? value.length : selectionText ? value.lastIndexOf(selectionText) : value.length;
+    const selectionEnd = cursorAtEnd || !selectionText ? value.length : selectionStart + selectionText.length;
     requestAnimationFrame(() => {
       resizeCommandInput();
       inputRef.current?.setSelectionRange(selectionStart, selectionEnd);
     });
   };
+
+  prefillCommandRef.current = prefillCommand;
 
   const resizeCommandInput = (input = inputRef.current) => {
     if (!input) return;
@@ -124,6 +131,14 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
     }
   };
 
+  useEffect(() => {
+    const handleCommandPrefill = (event: CustomEvent<{ command: string; selectText?: string | null; cursorAtEnd?: boolean }>) => {
+      prefillCommandRef.current(event.detail.command, event.detail.selectText, false, event.detail.cursorAtEnd);
+    };
+    addUiEventListener('terminal:command-prefill', handleCommandPrefill);
+    return () => removeUiEventListener('terminal:command-prefill', handleCommandPrefill);
+  }, []);
+
   const clearTerminal = () => clearTerminalLog();
 
   const guideItems = [
@@ -190,20 +205,8 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
         </div>
       </div>
 
-      {/* Terminal Output Viewport */}
-      <div
-        id="terminalLog"
-        class="h-64 overflow-y-auto rounded-lg bg-slate-950/95 p-3 font-mono text-xs space-y-1.5 border border-slate-800/90 shadow-inner leading-relaxed"
-      >
-        <div class="flex items-start gap-2 text-slate-400 py-0.5">
-          <span class="shrink-0 rounded bg-slate-800 px-1.5 py-0.5 text-[9px] font-bold text-slate-300">
-            SYSTEM
-          </span>
-          <span>
-            Portfolio CLI ready. Broker-synced portfolio data is available; refresh quotes or choose a quick action below.
-          </span>
-        </div>
-      </div>
+      {/* Terminal output is stored and rendered by Preact; runtime services only publish entries. */}
+      <TerminalLog entries={terminalEntries} />
 
       {/* Command Input Bar */}
       <div class="flex items-center gap-2 rounded-lg bg-slate-900/95 border border-slate-700/90 px-3 py-2 focus-within:border-emerald-500/80 focus-within:ring-1 focus-within:ring-emerald-500/30 transition">
