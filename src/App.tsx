@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
-import { useActiveDeskView, useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useTradingConsoleProps } from './ui/uiStateStore';
+import { useActiveDeskView, useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useTradingConsoleProps, useCashCushionProps, useTickerTabsProps, useSummaryMetricsProps, useProjectionsProps, useEmptyStateProps } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -40,6 +40,17 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [projectionsProps, setProjectionsProps] = useState<ProjectionsTableProps | null>(null);
   const [marketInsightsProps, setMarketInsightsProps] = useState<MarketInsightsPanelProps | null>(null);
   const tradingConsoleProps = useTradingConsoleProps();
+  const sharedCashCushionProps = useCashCushionProps();
+  const sharedTickerTabsProps = useTickerTabsProps();
+  const sharedSummaryMetricsProps = useSummaryMetricsProps();
+  const sharedProjectionsProps = useProjectionsProps();
+  const sharedEmptyStateProps = useEmptyStateProps();
+
+  useEffect(() => setCashCushionProps(sharedCashCushionProps), [sharedCashCushionProps]);
+  useEffect(() => setTickerTabsProps(sharedTickerTabsProps), [sharedTickerTabsProps]);
+  useEffect(() => setSummaryMetricsProps(sharedSummaryMetricsProps), [sharedSummaryMetricsProps]);
+  useEffect(() => setProjectionsProps(sharedProjectionsProps), [sharedProjectionsProps]);
+  useEffect(() => setEmptyStateProps(sharedEmptyStateProps), [sharedEmptyStateProps]);
   const [externalLinksProps, setExternalLinksProps] = useState<BoardExternalLinksProps | null>(null);
   const [emptyStateProps, setEmptyStateProps] = useState<EmptyStatePanelProps | null>(null);
   const { title: boardTitle, showDailyMove } = useBoardTitle();
