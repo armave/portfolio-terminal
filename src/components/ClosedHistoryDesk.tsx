@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
-import { pullCloudHistory } from '../services/api';
+import { pullCloudHistory, pushCloudHistory } from '../services/api';
 import { loadSavedHistory } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades } from '../domain/closedHistoryFees';
 
@@ -254,6 +254,25 @@ export function ClosedHistoryDesk() {
         nextState.closedTrades = updatedTrades;
       }
       if (Object.keys(nextState).length) portfolioStore.setState(nextState);
+      // The closed-history collection lives in its own cloud record; saving the
+      // portfolio snapshot alone does not upload updated fee allocations. Without
+      // this write, the next section mount reloads stale cloud executions over the
+      // freshly recalculated local rows.
+      if (brokerExecutions.length && updatedTradeCount &&
+          JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
+        try {
+          await pushCloudHistory({
+            brokerExecutedTrades: updatedExecutions,
+            cashflows: imported
+          });
+        } catch (error) {
+          console.error('Failed to sync recalculated closed-history fees:', error);
+          if (showImportMessage) {
+            setCashflowImportMessage(`Fees were recalculated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}. Retry the import before navigating away.`);
+            return;
+          }
+        }
+      }
       if (!updatedTradeCount) {
         const validTradeDates = brokerExecutions.filter(trade => Number.isFinite(Date.parse(String(trade.executedAt ?? trade.date ?? '')))).length;
         const validFeeDates = feeRows.filter(fee => Number.isFinite(feeDate(fee))).length;
