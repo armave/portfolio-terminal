@@ -200,4 +200,7 @@ The remaining work is the final repository diff review and compatibility audit. 
 - [ ] Finish a compatibility review of financial calculations, backup migration, encrypted cloud sync, Worker APIs, and deployment workflows.
 - [ ] Review the final diff and latest CI results before marking the PR ready for review.
 
+- [x] Investigated the first PR CI failure: TypeScript reported `app.ts(657,10): TS6133` for `toggleMarketInsights`, a now-unused wrapper left behind after removing the obsolete callback prop.
+- [x] Removed the unused `toggleMarketInsights` function; the panel refresh path remains available through `syncMarketInsightsPanel`.
+
 **Execution limitation:** a local `git clone` was attempted but the environment could not resolve `github.com`. Repository source was inspected through GitHub's repository API instead; no local test command is represented as having passed. CI results for the exact PR head are required before merge.
