@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
+import type { ComponentChild } from 'preact';
 import { setScenarioReport, type TerminalLogEntry } from '../ui/notificationStore';
 
 interface TerminalLogProps {
@@ -29,7 +30,7 @@ function parseTagAndStyle(rawMessage: string, isError: boolean) {
 
 function renderFinancialTokens(line: string) {
   const pattern = /(\+\$[0-9,]+(?:\.[0-9]+)?|\+[0-9]+(?:\.[0-9]+)?%|-\$[0-9,]+(?:\.[0-9]+)?|-[0-9]+(?:\.[0-9]+)?%|(?<![+-])\$[0-9,]+(?:\.[0-9]+)?|→|\s\|\s)/g;
-  const rendered: Array<string | preact.JSX.Element> = [];
+  const rendered: ComponentChild[] = [];
   let cursor = 0;
   for (const match of line.matchAll(pattern)) {
     const index = match.index ?? 0;

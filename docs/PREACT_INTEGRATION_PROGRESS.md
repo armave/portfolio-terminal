@@ -19,6 +19,7 @@ Complete the remaining Preact integration without adding a second renderer or ch
 - [x] Route scenario-comparison quick-action command prefill through the same typed request, preserving its cursor-at-end behavior.
 - [x] Move the backup file input into `App`, the single Preact root owner; `SettingsDesk` no longer owns an input that sibling UI locates by id.
 - [x] Source-level review confirms transient event subscriptions are removed on unmount and component props continue to come directly from `uiStateStore`.
+- [x] Move terminal log rows, scenario-report dialog, and error toasts into Preact renderers backed by an in-memory notification store; runtime notification functions now publish state instead of creating or replacing DOM nodes.
 - [ ] Verify typecheck, tests, production build, dead-code validation, and production dependency audit on the final PR head before merge.
 
 ## Validation policy
