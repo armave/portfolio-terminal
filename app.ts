@@ -1,4 +1,5 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
+import { setTradingConsoleProps } from './src/ui/uiStateStore';
 import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
@@ -505,7 +506,7 @@ const switchView = setActiveView;
 
 function renderConsoleQuickActions() {
   const position = state.positions[state.activeView];
-  emitUiEvent('terminal:trading-console-props', {
+  setTradingConsoleProps({
       position,
       onExecuteCommand: (command?: string) => executeCommand(command ?? '')
     } satisfies import('./src/components/TradingConsole').TradingConsoleProps);
