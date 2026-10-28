@@ -846,7 +846,18 @@ let lastSyncedBrokerTrades: any[] | undefined;
 let lastSyncedCashflows: any[] | undefined;
 const CLOSED_HISTORY_MIGRATION_KEY = 'closed_history_cloud_migrated_v1';
 
-export async function pushCloudHistory(history: { brokerExecutedTrades?: any[]; cashflows?: any[] }, secret = getActiveGatewaySecret()): Promise<boolean> {
+// History has an independent Durable Object revision from portfolio state. Serialize
+// every history writer in this tab so simultaneous navigation/recalculation/state-sync
+// writes cannot both read the same revision and race into a routine 409.
+let cloudHistoryPushQueue: Promise<void> = Promise.resolve();
+
+export function pushCloudHistory(history: { brokerExecutedTrades?: any[]; cashflows?: any[] }, secret = getActiveGatewaySecret()): Promise<boolean> {
+  const operation = cloudHistoryPushQueue.then(() => performPushCloudHistory(history, secret));
+  cloudHistoryPushQueue = operation.then(() => undefined, () => undefined);
+  return operation;
+}
+
+async function performPushCloudHistory(history: { brokerExecutedTrades?: any[]; cashflows?: any[] }, secret: string): Promise<boolean> {
   const brokerExecutedTrades = Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [];
   const cashflows = Array.isArray(history.cashflows) ? history.cashflows : [];
   if (!secret || (!brokerExecutedTrades.length && !cashflows.length)) return false;
