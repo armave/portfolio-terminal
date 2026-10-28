@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
-import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus } from './src/ui/uiStateStore';
+import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
   calculateCommission,
@@ -671,7 +671,7 @@ async function fetchBoardAnalystTarget(ticker: string, force = false) {
 }
 
 function renderBoardAnalystConsensus(ticker: string, force = false) {
-  const publish = (text: string, title = '', className = 'hidden') => emitUiEvent('terminal:analyst-consensus', { text, title, className });
+  const publish = (text: string, title = '', className = 'hidden') => setAnalystConsensus({ text, title, className });
   const hideConsensus = () => publish('');
   if (!ticker || !state.positions[ticker]) {
     hideConsensus();
