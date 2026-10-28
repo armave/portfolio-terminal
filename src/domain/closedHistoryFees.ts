@@ -2,6 +2,43 @@ type FeeRecord = Record<string, any>;
 
 const SELL_SIDES = new Set(['sell', 's', 'sale', 'sold', '2']);
 
+/**
+ * Reattach locally persisted cashflow allocations when freshly fetched broker rows
+ * omit client-calculated fields. Broker refreshes are authoritative for execution
+ * facts, but are not authoritative for the fee allocations derived by this app.
+ */
+export function preservePersistedBrokerFeeAllocations<T extends FeeRecord>(
+  executions: T[],
+  persistedExecutions: FeeRecord[]
+): T[] {
+  const rowsWithAllocations = new Map<string, FeeRecord>();
+  for (const trade of persistedExecutions) {
+    const id = trade?.id == null ? '' : String(trade.id);
+    const allocations = trade?.marginFeeAllocations;
+    if (!id || !allocations || typeof allocations !== 'object' ||
+        !Object.values(allocations).some((amount) => Number(amount) > 0)) continue;
+    // Prefer the last persisted candidate for each stable execution ID.
+    rowsWithAllocations.set(id, trade);
+  }
+
+  return executions.map((trade) => {
+    const id = trade?.id == null ? '' : String(trade.id);
+    const persisted = id ? rowsWithAllocations.get(id) : undefined;
+    if (!persisted) return trade;
+    const currentAllocations = trade.marginFeeAllocations;
+    if (currentAllocations && typeof currentAllocations === 'object' &&
+        Object.values(currentAllocations).some((amount) => Number(amount) > 0)) return trade;
+
+    return {
+      ...trade,
+      marginFeeAllocations: persisted.marginFeeAllocations,
+      marginFee: persisted.marginFee,
+      feesAndCommissions: persisted.feesAndCommissions,
+      netProfit: persisted.netProfit
+    };
+  });
+}
+
 export function applyCashflowAllocationsToBrokerExecutions(
   executions: FeeRecord[],
   allocationsBySell: ReadonlyMap<number, Record<string, number>>
