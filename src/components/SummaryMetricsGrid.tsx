@@ -43,29 +43,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   );
 }
 
-function QuoteFreshnessIndicator({ freshness, source }: { freshness: string; source?: string }) {
-  const normalized = ['fresh', 'delayed', 'stale', 'unknown', 'unavailable'].includes(freshness)
-    ? freshness
-    : 'unknown';
-  const labels: Record<string, string> = {
-    fresh: 'FRESH QUOTE',
-    delayed: 'DELAYED',
-    stale: 'STALE',
-    unknown: 'FRESHNESS UNKNOWN',
-    unavailable: 'NO QUOTE'
-  };
-  return (
-    <span
-      class={`quote-freshness quote-freshness--${normalized}`}
-      role="status"
-      title={source ? `Quote source: ${source}. Freshness is ${normalized}.` : `Quote freshness is ${normalized}.`}
-    >
-      <span class="quote-freshness__dot" aria-hidden="true"></span>
-      {labels[normalized]}
-    </span>
-  );
-}
-
 export interface SummaryMetricsGridProps {
   state: BoardState;
   rules: BrokerRules;
@@ -288,8 +265,8 @@ export function SummaryMetricsGrid({
               </span>
             </div>
             <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
-            <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex flex-wrap items-center gap-2 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
-              <QuoteFreshnessIndicator freshness={quoteFreshness} source={latestQuote?.quoteSource} />
+            <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
+              
               <span>{quoteMetaText}</span>
             </span>
           </div>
@@ -414,8 +391,8 @@ export function SummaryMetricsGrid({
           </div>
           <span id="boardDailyQuote" class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}>
             {dailyQuoteMeta?.text || ''}
-            <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex flex-wrap items-center gap-2 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
-              <QuoteFreshnessIndicator freshness={quoteFreshness} source={pos.quoteSource} />
+            <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
+              
               <span>{quoteMetaText}{pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
             </span>
           </span>
