@@ -39,4 +39,4 @@ Typecheck, tests, production build, dead-code validation, and production depende
 - [x] Keep excluding replies but stop filtering out standalone posts solely because they contain multiple cashtags or little commentary.
 - [x] Display up to the ten newest standalone messages returned by the existing Stocktwits stream.
 - [x] Add regression coverage proving ten posts are shown when available and replies remain excluded.
-- [ ] Run typecheck, tests, build, dead-code validation, and production dependency audit on the updated PR head.
+- [x] Typecheck, tests, production build, dead-code validation, and production dependency audit passed on Stocktwits implementation head `bb3e6fa9734c67e9ff7ae5af83e481bb6ee8c7ea`: [Validate](https://github.com/armave/portfolio-terminal/actions/runs/40701076600) and [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/40701076162).
