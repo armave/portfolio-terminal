@@ -14,10 +14,10 @@ Complete the remaining Preact integration without adding a second renderer or ch
 - [x] Replace redundant local mirrors of values already provided by uiStateStore with direct shared-state hook usage in App; shared-state changes now update the rendering component directly, without an intermediate mirrored useState/effect.
 - [x] Keep event delivery for transient commands/requests (auth visibility, modal open, margin-intelligence request, startup state); removed the redundant prop-bundle event subscriptions from App.
 - [x] Preserve the single App root and component identity; financial calculations, provider behavior, and persisted schemas were not changed.
-- [ ] Add focused regression tests for the remaining shared-state/event lifecycle boundary; no test file exists yet for these modules.
+- [x] Added focused regression tests for typed transient event delivery, listener removal, and payload-free startup retry events in `src/ui/uiEventBus.test.ts`.
 - [x] Run typecheck, tests, production build, dead-code validation, and production dependency audit in the Validate workflow on final PR head `7d202733007e203908df6c18e9a7d204a878efca`.
 - [x] Source-level review confirms removed prop-event listeners were duplicate deliveries of state already published through uiStateStore; transient event subscriptions remain and clean up on unmount.
-- [ ] Update this progress tracker and PR body from the exact latest CI result (pending PR CI).
+- [ ] Re-run typecheck, tests, production build, dead-code validation, and production dependency audit after the event-bus cleanup and new tests; update from the exact resulting PR head.
 
 ## Validation policy
-Validation results (2026-10-28): [Validate workflow](https://github.com/armave/portfolio-terminal/actions/runs/40696258518) passed typecheck, tests, production build, dead-code validation, and production dependency audit on exact head `7d202733007e203908df6c18e9a7d204a878efca`. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/40696258484) also completed typecheck, tests, dead-code validation, production dependency audit, and production build successfully on that exact head. Keep the PR draft for review of the migration boundary; no local validation is claimed.
+Previous validation passed on earlier PR heads. The event-bus cleanup and new regression tests require a fresh CI run on the latest commit before validation can be claimed. Keep the PR draft for review of the migration boundary; no local validation is claimed.
