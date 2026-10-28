@@ -1,9 +1,9 @@
-export interface ValuationPositionLike {
+interface ValuationPositionLike {
   shares?: unknown;
   currentPrice?: unknown;
 }
 
-export interface ValuationCashHoldingLike {
+interface ValuationCashHoldingLike {
   shares?: unknown;
   currentPrice?: unknown;
   price?: unknown;
