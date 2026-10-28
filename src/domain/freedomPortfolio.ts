@@ -29,83 +29,127 @@ function positiveFinite(value: unknown): number | null {
   return Number.isFinite(number) && number > 0 ? number : null;
 }
 
-function operationTimestamp(item: Record<string, unknown>): number | null {
-  const candidates = [item.purchasedAt, item.purchaseDate, item.buyDate, item.tradeDate, item.transactionDate, item.datetime, item.timestamp, item.time, item.openedAt, item.createdAt, item.date];
-  for (const value of candidates) {
-    if (value === null || value === undefined || value === '') continue;
-    const numeric = typeof value === 'number' || /^\d+(\.\d+)?$/.test(String(value)) ? Number(value) : NaN;
-    if (Number.isFinite(numeric) && numeric > 0) return numeric < 1e11 ? numeric * 1000 : numeric;
-    const parsed = Date.parse(String(value));
-    if (Number.isFinite(parsed)) return parsed;
-  }
+function operationTimestamp(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = typeof value === 'number' || /^\d+(\.\d+)?$/.test(String(value)) ? Number(value) : NaN;
+  if (Number.isFinite(numeric) && numeric > 0) return numeric < 1e11 ? numeric * 1000 : numeric;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function tradeSide(value: unknown): 'buy' | 'sell' | null {
+  const side = String(value ?? '').trim().toLowerCase();
+  if (side === '1' || /\b(buy|bought|purchase)\b/.test(side)) return 'buy';
+  if (side === '2' || /\b(sell|sold|sale)\b/.test(side)) return 'sell';
   return null;
 }
 
-function isClosedOrSellOperation(item: Record<string, unknown>): boolean {
-  const action = String(item.side ?? item.action ?? item.operation ?? item.operationType ?? item.transactionType ?? '').toLowerCase();
-  const status = String(item.status ?? item.state ?? '').toLowerCase();
-  return /\b(sell|sold|sale|close|closed|cancel|cancelled|canceled)\b/.test(action) ||
-    /\b(closed|sold|cancelled|canceled|rejected|expired)\b/.test(status) ||
-    item.isSold === true || item.isClosed === true || item.active === false;
+export interface FreedomExecutedTradeLike {
+  id?: string;
+  ticker?: string;
+  side?: string;
+  quantity?: number | null;
+  price?: number | null;
+  executedAt?: string | null;
+  [key: string]: unknown;
 }
 
-/** Return open purchase operations, grouping same-ticker purchases no more than five minutes apart. */
-export function getActiveBrokerTranches(snapshot: FreedomPortfolioSnapshotLike | undefined): ActiveBrokerTranche[] {
-  if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return [];
-  type Operation = ActiveBrokerTranche & { rowIndex: number };
-  const operations: Operation[] = [];
+/** Derive still-open purchase operations from Freedom's executed-trades history using FIFO sells. */
+export function getActiveTranchesFromTrades(
+  trades: FreedomExecutedTradeLike[] | undefined,
+  snapshot?: FreedomPortfolioSnapshotLike
+): ActiveBrokerTranche[] {
+  if (!Array.isArray(trades)) return [];
+  type BuyLot = {
+    id: string; ticker: string; name: string; quantity: number;
+    marketPrice: number | null; averagePrice: number | null;
+    purchasedAt: number | null; rowIndex: number;
+  };
+  const ordered = trades.map((trade, rowIndex) => ({
+    trade,
+    rowIndex,
+    ticker: tickerKey(trade?.ticker),
+    side: tradeSide(trade?.side ?? trade?.operation ?? trade?.type),
+    quantity: Number(trade?.quantity),
+    price: positiveFinite(trade?.price),
+    at: operationTimestamp(trade?.executedAt ?? trade?.date ?? trade?.time)
+  })).filter(item => item.ticker && item.side && Number.isFinite(item.quantity) && item.quantity > 0)
+    .sort((a, b) => (a.at ?? 0) - (b.at ?? 0) || a.rowIndex - b.rowIndex);
 
-  snapshot.positions.forEach((rawItem, rowIndex) => {
-    const item = rawItem as Record<string, unknown>;
-    const ticker = tickerKey(item?.ticker ?? item?.symbol);
-    const quantity = Number(item?.remainingQuantity ?? item?.openQuantity ?? item?.quantity ?? item?.shares);
-    if (!ticker || !Number.isFinite(quantity) || quantity <= 0 || isClosedOrSellOperation(item)) return;
-    const marketPrice = positiveFinite(item?.marketPrice ?? item?.currentPrice ?? item?.price);
-    const averagePrice = positiveFinite(item?.averagePrice ?? item?.purchasePrice ?? item?.buyPrice ?? item?.entryPrice);
-    const purchasedAt = operationTimestamp(item);
-    const fallbackId = String(item?.id ?? item?.operationId ?? item?.tradeId ?? ((averagePrice ?? 'na') + ':' + quantity + ':' + rowIndex));
-    const id = ticker + ':' + (purchasedAt ?? 'undated') + ':' + fallbackId;
-    operations.push({ id, ticker, name: String(item?.name || item?.companyName || ticker), quantity, marketPrice, averagePrice, marketValue: marketPrice !== null ? quantity * marketPrice : null, purchasedAt, rowIndex });
-  });
-
-  const sells = snapshot.positions
-    .map((rawItem, rowIndex) => ({ item: rawItem as Record<string, unknown>, rowIndex }))
-    .filter(({ item }) => /\b(sell|sold|sale)\b/i.test(String(item.side ?? item.action ?? item.operation ?? item.operationType ?? item.transactionType ?? '')))
-    .map(({ item }) => ({ ticker: tickerKey(item.ticker ?? item.symbol), quantity: Number(item.quantity ?? item.shares), at: operationTimestamp(item) }))
-    .filter(item => item.ticker && Number.isFinite(item.quantity) && item.quantity > 0)
-    .sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
-
-  for (const sell of sells) {
-    let remaining = sell.quantity;
-    const candidates = operations.filter(operation => operation.ticker === sell.ticker && operation.quantity > 0 && (sell.at === null || operation.purchasedAt === null || operation.purchasedAt <= sell.at))
-      .sort((a, b) => (a.purchasedAt ?? 0) - (b.purchasedAt ?? 0));
-    for (const buy of candidates) {
-      const consumed = Math.min(remaining, buy.quantity);
-      buy.quantity -= consumed;
-      remaining -= consumed;
-      if (remaining <= 1e-8) break;
+  const lots: BuyLot[] = [];
+  for (const item of ordered) {
+    if (item.side === 'buy') {
+      const brokerPosition = snapshot?.positions?.find(position => tickerKey(position.ticker) === item.ticker);
+      lots.push({
+        id: String(item.trade.id ?? item.rowIndex),
+        ticker: item.ticker,
+        name: String(item.trade.ticker || item.ticker).replace(/\.US$/i, ''),
+        quantity: item.quantity,
+        marketPrice: positiveFinite(brokerPosition?.marketPrice),
+        averagePrice: item.price,
+        purchasedAt: item.at,
+        rowIndex: item.rowIndex
+      });
+      continue;
+    }
+    let remainingToSell = item.quantity;
+    for (const lot of lots.filter(candidate => candidate.ticker === item.ticker && candidate.quantity > 1e-8 && (item.at === null || candidate.purchasedAt === null || candidate.purchasedAt <= item.at)).sort((a, b) => (a.purchasedAt ?? 0) - (b.purchasedAt ?? 0) || a.rowIndex - b.rowIndex)) {
+      const sold = Math.min(lot.quantity, remainingToSell);
+      lot.quantity -= sold;
+      remainingToSell -= sold;
+      if (remainingToSell <= 1e-8) break;
     }
   }
 
-  const openOperations = operations.filter(operation => operation.quantity > 1e-8)
+  const openLots = lots.filter(lot => lot.quantity > 1e-8)
     .sort((a, b) => a.ticker.localeCompare(b.ticker) || (a.purchasedAt ?? Number.MAX_SAFE_INTEGER) - (b.purchasedAt ?? Number.MAX_SAFE_INTEGER) || a.rowIndex - b.rowIndex);
-  const grouped: Operation[] = [];
-  for (const operation of openOperations) {
+  const grouped: BuyLot[] = [];
+  for (const lot of openLots) {
     const previous = grouped[grouped.length - 1];
-    const withinWindow = previous && previous.ticker === operation.ticker && previous.purchasedAt !== null && operation.purchasedAt !== null && operation.purchasedAt - previous.purchasedAt <= 5 * 60 * 1000;
-    if (!withinWindow) { grouped.push({ ...operation }); continue; }
+    const withinWindow = previous && previous.ticker === lot.ticker && previous.purchasedAt !== null && lot.purchasedAt !== null && lot.purchasedAt - previous.purchasedAt <= 5 * 60 * 1000;
+    if (!withinWindow) { grouped.push({ ...lot }); continue; }
     const previousQuantity = previous.quantity;
-    const totalQuantity = previousQuantity + operation.quantity;
-    previous.averagePrice = previous.averagePrice !== null && operation.averagePrice !== null
-      ? (previous.averagePrice * previousQuantity + operation.averagePrice * operation.quantity) / totalQuantity
-      : previous.averagePrice ?? operation.averagePrice;
+    const totalQuantity = previousQuantity + lot.quantity;
+    previous.averagePrice = previous.averagePrice !== null && lot.averagePrice !== null
+      ? (previous.averagePrice * previousQuantity + lot.averagePrice * lot.quantity) / totalQuantity
+      : previous.averagePrice ?? lot.averagePrice;
     previous.quantity = totalQuantity;
-    previous.marketPrice = operation.marketPrice ?? previous.marketPrice;
-    previous.marketValue = previous.marketPrice !== null ? previous.marketPrice * totalQuantity : null;
-    previous.name = operation.name || previous.name;
-    previous.id = previous.id + '+' + operation.id;
+    previous.marketPrice = lot.marketPrice ?? previous.marketPrice;
+    previous.name = lot.name || previous.name;
+    previous.id = previous.id + '+' + lot.id;
   }
-  return grouped.map(({ rowIndex: _rowIndex, ...operation }) => operation);
+  return grouped.map(lot => ({
+    id: lot.ticker + ':' + (lot.purchasedAt ?? 'undated') + ':' + lot.id,
+    ticker: lot.ticker,
+    name: lot.name,
+    quantity: lot.quantity,
+    marketPrice: lot.marketPrice,
+    averagePrice: lot.averagePrice,
+    marketValue: lot.marketPrice !== null ? lot.marketPrice * lot.quantity : null,
+    purchasedAt: lot.purchasedAt
+  }));
+}
+
+/** Compatibility helper for account-position snapshots; the Balance table uses trade history instead. */
+export function getActiveBrokerTranches(snapshot: FreedomPortfolioSnapshotLike | undefined): ActiveBrokerTranche[] {
+  if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return [];
+  return snapshot.positions.map((item, index) => {
+    const ticker = tickerKey(item.ticker);
+    const quantity = Number(item.quantity);
+    const marketPrice = positiveFinite(item.marketPrice);
+    const averagePrice = positiveFinite((item as Record<string, unknown>).averagePrice);
+    return {
+      id: ticker + ':snapshot:' + index,
+      ticker,
+      name: String((item as Record<string, unknown>).name || ticker),
+      quantity,
+      marketPrice,
+      averagePrice,
+      marketValue: marketPrice !== null ? marketPrice * quantity : null,
+      purchasedAt: null
+    };
+  }).filter(item => item.ticker && Number.isFinite(item.quantity) && item.quantity > 0)
+    .sort((a, b) => a.ticker.localeCompare(b.ticker));
 }
 
 /**
