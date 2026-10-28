@@ -214,7 +214,11 @@ The remaining work is the final repository diff review and compatibility audit. 
 - [x] Inspected the supplied repository ZIP locally and cross-checked its architecture and validation configuration against the current PR branch.
 - [x] Rechecked the current PR head `59a9d9e67b702c3e403767e1755372935538d622`: both **Validate** (run 40648482060) and **Pull Request CI** (run 40648482089) completed successfully. Their validation jobs passed dependency installation, typecheck, tests, dead-code validation, production dependency audit, and production build.
 - [x] Rechecked the configured dead-code scope: Knip includes `src/**/*.{ts,tsx}`, `app.ts`, `state-store.js`, CSS, the Worker entry point, and test files. CI's dead-code validation is green, so no further deletion is justified by the current detector alone.
-- [x] Traced the empty `renderClosedHistoryPanel()` callback to `renderBoardUI` and confirmed it is part of the board callback contract; do not remove it without changing and testing that contract.
-- [ ] Continue targeted compatibility review of cloud-state persistence, Worker endpoints/deployment configuration, and UI callback ownership before considering the audit complete.
+- [x] Traced the empty `renderClosedHistoryPanel()` callback to `renderBoardUI`; removed the no-op callback, its interface option/default, and the caller wrapper together. `App` already owns the Closed History desk lifecycle via the active-view event, so this callback performed no work.
+- [x] Removed the confirmed no-op Closed History callback contract from `src/ui/renderBoard.ts` and `app.ts`; latest CI must verify no hidden caller relied on it.
+- [ ] Finish targeted compatibility review of cloud-state persistence, Worker endpoints/deployment configuration, and the final UI event/callback diff before considering the audit complete.
 
 **Local validation note:** the supplied ZIP was extracted successfully, but dependency installation was interrupted by the execution environment. The resulting partial `node_modules` made local TypeScript/test commands unusable; those local failures are environmental and are not treated as source regressions. The authoritative validation for this checkpoint is the successful GitHub Actions run on the exact PR head above. Re-run CI after any subsequent commit.
+ 
+
+**Latest cleanup change:** removed the empty Closed History callback passed from `app.ts` to `renderBoardUI`. `renderBoardUI` already communicates active desk state through `terminal:active-view`, and `App` mounts `ClosedHistoryDesk` from that state. The callback body was empty, so deleting the no-op callback contract does not change the desk lifecycle. CI is required to validate this change on the new head.
