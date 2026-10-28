@@ -186,6 +186,8 @@ export interface ActiveBrokerTranche {
   marketValue: number | null;
   /** Broker purchase timestamp when supplied. */
   purchasedAt: number | null;
+  /** Estimated or broker-reported buy commission allocated to the still-open quantity. */
+  buyCommission?: number;
 }
 
 export interface PortfolioState {
