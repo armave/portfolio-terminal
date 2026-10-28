@@ -205,6 +205,24 @@ describe('active broker tranches', () => {
 
 
 describe('active limit sell target synchronization', () => {
+  it('uses Freedom TradeNet type 4 order at $353 for all 50 GOOGL shares', () => {
+    const targets = getActiveLimitSellTargets([
+      {
+        ticker: 'GOOGL.US',
+        operation: 3,
+        orderType: 4,
+        limitPrice: 353,
+        remainingQuantity: 50
+      }
+    ]);
+    const positions = {
+      GOOGL: { ticker: 'GOOGL', shares: 50, currentPrice: 350, pt: 354.58 }
+    };
+
+    expect(targets).toEqual({ GOOGL: 353 });
+    expect(applyActiveLimitSellTargets(positions, targets).GOOGL.pt).toBe(353);
+  });
+
   it('uses the exact $353 broker limit for one sell order covering all 50 shares across three margin buys', () => {
     const targets = getActiveLimitSellTargets([
       { ticker: 'AAPL.US', operation: 3, orderType: 2, limitPrice: 353, remainingQuantity: 50 }
