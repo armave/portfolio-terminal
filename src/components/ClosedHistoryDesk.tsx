@@ -307,6 +307,13 @@ export function ClosedHistoryDesk() {
           }
         }
       }
+      if (!updatedTradeCount && (matchedFeeRows > 0 || appMatchedFeeRows > 0)) {
+        if (showImportMessage) {
+          const matchedForMessage = brokerExecutions.length ? matchedFeeRows : appMatchedFeeRows;
+          setCashflowImportMessage(`Saved ${imported.length} cashflow rows; ${matchedForMessage} fee dates matched closed trades, and existing allocations were already current. No trade rows needed updating.`);
+        }
+        return true;
+      }
       if (!updatedTradeCount) {
         const validTradeDates = brokerExecutions.filter(trade => Number.isFinite(Date.parse(String(trade.executedAt ?? trade.date ?? '')))).length;
         const validFeeDates = feeRows.filter(fee => Number.isFinite(feeDate(fee))).length;
