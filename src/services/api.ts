@@ -1019,7 +1019,50 @@ export async function fetchFreedomTradeNetTrades(): Promise<any> {
   return proxyFetch('freedom-trades');
 }
 
+/** Fetch current active TradeNet orders without reusing a cached response. */
+export async function fetchFreedomTradeNetActiveOrders(): Promise<any> {
+  return proxyFetch('freedom-orders', { active_only: 1 }, { cache: 'no-store' });
+}
+
+export interface FreedomActiveOrder {
+  id: string;
+  ticker: string;
+  operation: number | null;
+  orderType: number | null;
+  limitPrice: number | null;
+  remainingQuantity: number | null;
+  status: string;
+  raw: Record<string, any>;
+}
+
+/** Normalize current-order aliases; keep the raw row so unknown broker fields remain inspectable. */
+export function normalizeFreedomActiveOrders(response: any): FreedomActiveOrder[] {
+  const root = response?.data?.result ?? response?.data ?? response?.result ?? response;
+  const rows = Array.isArray(root) ? root
+    : Array.isArray(root?.orders?.order) ? root.orders.order
+      : Array.isArray(root?.orders) ? root.orders
+        : Array.isArray(root?.items) ? root.items
+          : Array.isArray(root?.data) ? root.data
+            : [];
+  const numberOrNull = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  return rows.map((row: any, index: number) => ({
+    id: String(row?.order_id ?? row?.id ?? row?.orderId ?? index),
+    ticker: String(row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? '').trim().toUpperCase(),
+    operation: numberOrNull(row?.oper ?? row?.operation),
+    orderType: numberOrNull(row?.type ?? row?.order_type ?? row?.orderType),
+    limitPrice: numberOrNull(row?.p ?? row?.price ?? row?.limit_price ?? row?.limitPrice),
+    remainingQuantity: numberOrNull(row?.leaves_qty ?? row?.remaining_qty ?? row?.remainingQuantity ?? row?.q ?? row?.quantity),
+    status: String(row?.stat ?? row?.status ?? ''),
+    raw: row && typeof row === 'object' ? row : {}
+  }));
+}
+
 /** Fetch the raw read-only Freedom Broker cashflows response for temporary integration testing. */
+
 export async function fetchFreedomCashflows(): Promise<any> {
   try {
     return await proxyFetch('freedom-cashflows', {}, { cache: 'no-store' });
