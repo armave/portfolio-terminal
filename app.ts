@@ -127,7 +127,8 @@ if (typeof window !== 'undefined') {
       current.cashCushion?.holdings || [],
       current.activeTrancheTypes || {},
       Date.now(),
-      executedTrades
+      executedTrades,
+      TRADERNET_RULES
     );
     const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
       ...holding,
@@ -166,7 +167,8 @@ if (typeof window !== 'undefined') {
       current.cashCushion?.holdings || [],
       current.activeTrancheTypes || {},
       Date.now(),
-      trades
+      trades,
+      TRADERNET_RULES
     );
     const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
       ...holding,
@@ -205,7 +207,8 @@ if (typeof window !== 'undefined') {
       current.cashCushion?.holdings || [],
       activeTrancheTypes,
       Date.now(),
-      executedTrades
+      executedTrades,
+      TRADERNET_RULES
     );
     const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
       ...holding,
