@@ -101,6 +101,11 @@ export function dismissScenarioReport(): void {
   setScenarioReport(null);
 }
 
+export function subscribeScenarioReport(listener: (report: string | null) => void): () => void {
+  scenarioReportListeners.add(listener);
+  return () => scenarioReportListeners.delete(listener);
+}
+
 export function useScenarioReport(): string | null {
   const [report, setReport] = useState(scenarioReport);
   useEffect(() => {
