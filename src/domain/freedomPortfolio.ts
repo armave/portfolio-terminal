@@ -216,8 +216,9 @@ export function classifyFreedomPortfolio(
     const prior = sourcePositions[tranche.ticker];
     const priorCash = previousCash.get(tranche.ticker);
     const currentPrice = tranche.marketPrice ?? prior?.currentPrice ?? (Number(priorCash?.currentPrice ?? priorCash?.price) || 0);
-    // Cost basis and buy fees must come from the broker operation history, never legacy in-app buy lots.
-    const entryPrice = tranche.averagePrice ?? 0;
+    // When executed operations are available, they are the sole source of lot cost basis and fees.
+    // Snapshot-only fallback may retain legacy cost basis for interest continuity, but never its commissions.
+    const entryPrice = tranche.averagePrice ?? (!Array.isArray(executedTrades) ? (Number(prior?.tranches?.[0]?.price) || currentPrice) : 0);
 
     if (type === 'margin') {
       const existing = marginByTicker.get(tranche.ticker);
@@ -244,7 +245,7 @@ export function classifyFreedomPortfolio(
     const totalEntryQuantity = item.entryTranches.reduce((sum, entry) => sum + entry.qty, 0);
     const entryPrice = totalEntryQuantity > 0
       ? item.entryTranches.reduce((sum, entry) => sum + entry.qty * entry.price, 0) / totalEntryQuantity
-      : Number(prior?.tranches?.[0]?.price) || item.currentPrice;
+      : (!Array.isArray(executedTrades) ? (Number(prior?.tranches?.[0]?.price) || item.currentPrice) : item.currentPrice);
     positions[ticker] = {
       ...(prior || {}),
       ticker,
