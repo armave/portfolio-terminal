@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
-import { useActiveDeskView, useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useTradingConsoleProps, useCashCushionProps, useTickerTabsProps, useSummaryMetricsProps, useProjectionsProps, useEmptyStateProps } from './ui/uiStateStore';
+import { useActiveDeskView, useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useTradingConsoleProps, useCashCushionProps, useTickerTabsProps, useSummaryMetricsProps, useProjectionsProps, useEmptyStateProps, useMarketInsightsProps, useExternalLinksProps, useSettingsProps } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -45,12 +45,18 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const sharedSummaryMetricsProps = useSummaryMetricsProps();
   const sharedProjectionsProps = useProjectionsProps();
   const sharedEmptyStateProps = useEmptyStateProps();
+  const sharedMarketInsightsProps = useMarketInsightsProps();
+  const sharedExternalLinksProps = useExternalLinksProps();
+  const sharedSettingsProps = useSettingsProps();
 
   useEffect(() => setCashCushionProps(sharedCashCushionProps), [sharedCashCushionProps]);
   useEffect(() => setTickerTabsProps(sharedTickerTabsProps), [sharedTickerTabsProps]);
   useEffect(() => setSummaryMetricsProps(sharedSummaryMetricsProps), [sharedSummaryMetricsProps]);
   useEffect(() => setProjectionsProps(sharedProjectionsProps), [sharedProjectionsProps]);
   useEffect(() => setEmptyStateProps(sharedEmptyStateProps), [sharedEmptyStateProps]);
+  useEffect(() => setMarketInsightsProps(sharedMarketInsightsProps), [sharedMarketInsightsProps]);
+  useEffect(() => setExternalLinksProps(sharedExternalLinksProps), [sharedExternalLinksProps]);
+  useEffect(() => setSettingsProps(sharedSettingsProps), [sharedSettingsProps]);
   const [externalLinksProps, setExternalLinksProps] = useState<BoardExternalLinksProps | null>(null);
   const [emptyStateProps, setEmptyStateProps] = useState<EmptyStatePanelProps | null>(null);
   const { title: boardTitle, showDailyMove } = useBoardTitle();
