@@ -59,7 +59,7 @@ import {
 import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
-import { reconcileFreedomPortfolio } from './src/domain/freedomPortfolio';
+import { classifyFreedomPortfolio } from './src/domain/freedomPortfolio';
 import { InsightSection } from './src/components/MarketInsightsPanel';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
@@ -118,41 +118,69 @@ if (typeof window !== 'undefined') {
     const snapshot = (event as CustomEvent).detail;
     if (!snapshot || snapshot.loaded !== true || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.balances)) return;
     const current = portfolioStore.getState();
-    // CashCushionDesk consumes cashCushion.holdings; keep the legacy cashStocks
-    // projection in sync, but reconcile from the canonical store-owned holdings.
-    const reconciled = reconcileFreedomPortfolio(
+    const classified = classifyFreedomPortfolio(
       snapshot,
       current.positions || {},
-      current.cashCushion?.holdings || []
+      current.cashCushion?.holdings || [],
+      current.activeTrancheTypes || {}
     );
-    const brokerCashHoldings = reconciled.cashStocks.map((holding: any) => ({
+    const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
       ...holding,
       ...(Number.isFinite(Number(holding.currentPrice ?? holding.price))
         ? { price: Number(holding.currentPrice ?? holding.price) }
         : {})
     }));
+    const usdBalance = snapshot.balances.find((item: any) =>
+      String(item.currency ?? '').toUpperCase() === 'USD' && Number.isFinite(Number(item.amount))
+    );
 
     portfolioStore.setState({
       brokerAccountInfo: { ...snapshot, receivedAt: Date.now(), status: 'current' },
-      ...(reconciled.brokerUsdBalance ? { balance: reconciled.brokerUsdBalance.amount } : {}),
-      positions: reconciled.positions,
+      ...(usdBalance ? { balance: Number(usdBalance.amount) } : {}),
+      positions: classified.positions,
       cashStocks: brokerCashHoldings,
       cashCushion: {
         ...(current.cashCushion || { freeCash: 0, holdings: [] }),
         holdings: brokerCashHoldings
       }
     });
+    logTerminal('[Freedom] Active tickers, cash/margin classifications, balance and prices refreshed.');
+    renderBoard();
+  });
 
-    if (reconciled.mismatches.length) {
-      const detail = reconciled.mismatches
-        .map(item => `${item.ticker}: app margin ${item.marginQuantity}, Freedom total ${item.freedomQuantity}`)
-        .join('; ');
-      console.error('[Freedom quantity reconciliation failed]', reconciled.mismatches);
-      showToast(`Freedom quantity mismatch — ${detail}. Existing cash quantities were preserved for affected symbols.`, 'error');
-      logTerminal(`[Freedom Warning] Broker quantities do not reconcile: ${detail}`);
-    } else {
-      logTerminal('[Freedom] Account balance, quantities and available broker prices refreshed.');
+  window.addEventListener('tradenet:set-active-tranche-type', (event: Event) => {
+    const detail = (event as CustomEvent<{ ticker?: string; type?: 'cash' | 'margin' }>).detail;
+    const ticker = String(detail?.ticker || '').trim().toUpperCase().replace(/\.US$/i, '');
+    if (!ticker || (detail?.type !== 'cash' && detail?.type !== 'margin')) return;
+    const current = portfolioStore.getState();
+    const activeTrancheTypes = { ...(current.activeTrancheTypes || {}), [ticker]: detail.type };
+    const snapshot = current.brokerAccountInfo;
+    if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) {
+      portfolioStore.setState({ activeTrancheTypes });
+      return;
     }
+    const classified = classifyFreedomPortfolio(
+      snapshot,
+      current.positions || {},
+      current.cashCushion?.holdings || [],
+      activeTrancheTypes
+    );
+    const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
+      ...holding,
+      ...(Number.isFinite(Number(holding.currentPrice ?? holding.price))
+        ? { price: Number(holding.currentPrice ?? holding.price) }
+        : {})
+    }));
+    portfolioStore.setState({
+      activeTrancheTypes,
+      positions: classified.positions,
+      cashStocks: brokerCashHoldings,
+      cashCushion: {
+        ...(current.cashCushion || { freeCash: 0, holdings: [] }),
+        holdings: brokerCashHoldings
+      }
+    });
+    logTerminal(`[Freedom] ${ticker} classified as ${detail.type}.`);
     renderBoard();
   });
 
