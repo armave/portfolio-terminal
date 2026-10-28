@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
-import { QuoteDetails } from '../types/portfolio';
+import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
+import { getActiveBrokerTranches } from '../domain/freedomPortfolio';
 
 export interface CashCushionDeskProps {
   onFetchLivePrice?: (ticker: string) => void;
@@ -64,6 +65,10 @@ export function CashCushionDesk({
   const freeCash = Number(state.cashCushion?.freeCash) || 0;
   const signedBalance = freeCash + (Number(state.balance) || 0);
   const holdings = state.cashCushion?.holdings || [];
+  const activeTranches = getActiveBrokerTranches(state.brokerAccountInfo);
+  const setActiveTrancheType = (ticker: string, type: ActiveTrancheType) => {
+    window.dispatchEvent(new CustomEvent('tradenet:set-active-tranche-type', { detail: { ticker, type } }));
+  };
 
   const [balanceInput, setBalanceInput] = useState<string>(signedBalance.toFixed(2));
   const balanceInputRef = useRef<HTMLInputElement | null>(null);
@@ -119,6 +124,61 @@ export function CashCushionDesk({
 
   return (
     <>
+      <section class="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2" aria-labelledby="activeTranchesHeading">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+          <div>
+            <h2 id="activeTranchesHeading" class="text-sm font-black uppercase tracking-wide text-cyan-300">Active Tranches</h2>
+            <p class="mt-0.5 text-[10px] text-slate-500">Open broker holdings · new tickers default to Cash</p>
+          </div>
+          <span class={`text-[10px] font-bold uppercase tracking-wide ${state.brokerAccountInfo?.status === 'stale' ? 'text-amber-400' : state.brokerAccountInfo?.loaded ? 'text-emerald-400' : 'text-slate-500'}`}>
+            {state.brokerAccountInfo?.status === 'stale' ? 'Broker data stale' : state.brokerAccountInfo?.loaded ? 'Broker synced' : 'Waiting for broker data'}
+          </span>
+        </div>
+        <div class="table-scroll-wrapper overflow-x-auto">
+          <table class="w-full min-w-[560px] text-left text-xs border-collapse">
+            <thead>
+              <tr class="border-b border-slate-800 text-slate-500">
+                <th class="py-2 px-2">Ticker</th>
+                <th class="py-2 px-2 text-right">Shares</th>
+                <th class="py-2 px-2 text-right">Avg. Cost</th>
+                <th class="py-2 px-2 text-right">Market</th>
+                <th class="py-2 px-2 text-right">Value</th>
+                <th class="py-2 px-2 text-center">Operation</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60 font-mono">
+              {activeTranches.length === 0 ? (
+                <tr><td colSpan={6} class="py-4 px-2 text-center font-sans text-slate-500 italic">
+                  {state.brokerAccountInfo?.loaded ? 'No active broker tickers.' : 'Active tickers will appear after the broker account snapshot loads.'}
+                </td></tr>
+              ) : activeTranches.map((tranche) => {
+                const type = state.activeTrancheTypes?.[tranche.ticker] || 'cash';
+                return (
+                  <tr key={tranche.ticker} class="hover:bg-slate-900/50">
+                    <td class="py-2 px-2 font-bold text-cyan-300">{tranche.ticker}</td>
+                    <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
+                    <td class="py-2 px-2 text-right text-slate-300 tabular-nums">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</td>
+                    <td class="py-2 px-2 text-right text-emerald-300 tabular-nums">{tranche.marketPrice !== null ? formatUSD(tranche.marketPrice) : '—'}</td>
+                    <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.marketValue !== null ? formatUSD(tranche.marketValue) : '—'}</td>
+                    <td class="py-2 px-2 text-center">
+                      <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={`${tranche.ticker} operation type`}>
+                        <button type="button" aria-pressed={type === 'cash'} onClick={() => setActiveTrancheType(tranche.ticker, 'cash')}
+                          class={`rounded px-2 py-1 text-[10px] font-bold transition ${type === 'cash' ? 'bg-cyan-950 text-cyan-300' : 'text-slate-500 hover:text-slate-300'}`}>Cash</button>
+                        <button type="button" aria-pressed={type === 'margin'} onClick={() => setActiveTrancheType(tranche.ticker, 'margin')}
+                          class={`rounded px-2 py-1 text-[10px] font-bold transition ${type === 'margin' ? 'bg-amber-950 text-amber-300' : 'text-slate-500 hover:text-slate-300'}`}>Margin</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {activeTranches.length > 0 && <tfoot class="border-t border-slate-700"><tr>
+              <td colSpan={6} class="px-2 py-2 text-[10px] text-slate-500">{activeTranches.length} active ticker{activeTranches.length === 1 ? '' : 's'} · classifications are saved with your portfolio</td>
+            </tr></tfoot>}
+          </table>
+        </div>
+      </section>
+
       <div class="flex justify-between items-center border-b border-slate-800 pb-2">
         <div>
           <h2 class="text-lg font-black text-cyan-400 tracking-wide">
