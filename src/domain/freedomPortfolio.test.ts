@@ -91,11 +91,31 @@ describe('active broker tranches', () => {
     ]
   };
 
-  it('aggregates duplicate broker rows and excludes closed or zero-quantity tickers', () => {
+  it('keeps same-ticker purchase operations separate when the broker provides no timestamps', () => {
     expect(getActiveBrokerTranches(snapshot)).toEqual([
-      expect.objectContaining({ ticker: 'AAPL', quantity: 5, averagePrice: 184, marketPrice: 210, marketValue: 1050 }),
-      expect.objectContaining({ ticker: 'MSFT', quantity: 4, averagePrice: 350, marketPrice: 400, marketValue: 1600 })
+      expect.objectContaining({ ticker: 'AAPL', quantity: 3, averagePrice: 180, marketPrice: 210, marketValue: 630, purchasedAt: null }),
+      expect.objectContaining({ ticker: 'AAPL', quantity: 2, averagePrice: 190, marketPrice: 210, marketValue: 420, purchasedAt: null }),
+      expect.objectContaining({ ticker: 'MSFT', quantity: 4, averagePrice: 350, marketPrice: 400, marketValue: 1600, purchasedAt: null })
     ]);
+  });
+
+  it('groups same-ticker buys within five minutes, leaves later buys separate, and removes sold quantity', () => {
+    const result = getActiveBrokerTranches({
+      loaded: true,
+      balances: [],
+      positions: [
+        { id: 'b1', ticker: 'AAPL', side: 'buy', quantity: 3, averagePrice: 100, marketPrice: 110, timestamp: '2026-01-01T10:00:00Z' },
+        { id: 'b2', ticker: 'AAPL', side: 'buy', quantity: 2, averagePrice: 105, marketPrice: 110, timestamp: '2026-01-01T10:04:00Z' },
+        { id: 'b3', ticker: 'AAPL', side: 'buy', quantity: 4, averagePrice: 120, marketPrice: 110, timestamp: '2026-01-01T10:10:00Z' },
+        { id: 's1', ticker: 'AAPL', side: 'sell', quantity: 1, price: 115, timestamp: '2026-01-01T10:12:00Z' },
+        { id: 'b4', ticker: 'MSFT', side: 'buy', quantity: 1, averagePrice: 50, marketPrice: 55, timestamp: '2026-01-01T09:00:00Z' },
+        { id: 'closed', ticker: 'TSLA', side: 'buy', status: 'closed', quantity: 7, averagePrice: 200, marketPrice: 210, timestamp: '2026-01-01T08:00:00Z' }
+      ]
+    });
+    expect(result).toHaveLength(3);
+    expect(result[0]).toMatchObject({ ticker: 'AAPL', quantity: 4, averagePrice: 102.5, purchasedAt: Date.parse('2026-01-01T10:00:00Z') });
+    expect(result[1]).toMatchObject({ ticker: 'AAPL', quantity: 4, averagePrice: 120, purchasedAt: Date.parse('2026-01-01T10:10:00Z') });
+    expect(result[2]).toMatchObject({ ticker: 'MSFT', quantity: 1 });
   });
 
   it('defaults unclassified broker tickers to cash and moves selected margin tickers into positions', () => {
