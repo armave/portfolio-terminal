@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
-import { useActiveDeskView, useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
+import { useActiveDeskView, useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useTradingConsoleProps } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -39,7 +39,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [summaryMetricsProps, setSummaryMetricsProps] = useState<SummaryMetricsGridProps | null>(null);
   const [projectionsProps, setProjectionsProps] = useState<ProjectionsTableProps | null>(null);
   const [marketInsightsProps, setMarketInsightsProps] = useState<MarketInsightsPanelProps | null>(null);
-  const [tradingConsoleProps, setTradingConsoleProps] = useState<TradingConsoleProps | null>(null);
+  const tradingConsoleProps = useTradingConsoleProps();
   const [externalLinksProps, setExternalLinksProps] = useState<BoardExternalLinksProps | null>(null);
   const [emptyStateProps, setEmptyStateProps] = useState<EmptyStatePanelProps | null>(null);
   const { title: boardTitle, showDailyMove } = useBoardTitle();
@@ -325,10 +325,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       if (detail) setMarketInsightsProps(detail);
     };
     addUiEventListener('terminal:projections-props', handleProjectionsProps);
-    const handleTradingConsoleProps = (event: Event) => {
-      const detail = (event as CustomEvent<TradingConsoleProps>).detail;
-      if (detail) setTradingConsoleProps(detail);
-    };
     const handleExternalLinksProps = (event: Event) => {
       const detail = (event as CustomEvent<BoardExternalLinksProps>).detail;
       if (detail) setExternalLinksProps(detail);
@@ -337,7 +333,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       setEmptyStateProps((event as CustomEvent<EmptyStatePanelProps | null>).detail);
     };
     addUiEventListener('terminal:market-insights-props', handleMarketInsightsProps);
-    addUiEventListener('terminal:trading-console-props', handleTradingConsoleProps);
     addUiEventListener('terminal:external-links-props', handleExternalLinksProps);
     const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
     addUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
@@ -351,7 +346,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
       removeUiEventListener('terminal:projections-props', handleProjectionsProps);
       removeUiEventListener('terminal:market-insights-props', handleMarketInsightsProps);
-      removeUiEventListener('terminal:trading-console-props', handleTradingConsoleProps);
       removeUiEventListener('terminal:external-links-props', handleExternalLinksProps);
       removeUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
       removeUiEventListener('terminal:startup-state', handleStartupState);
