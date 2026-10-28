@@ -216,7 +216,8 @@ export function classifyFreedomPortfolio(
     const prior = sourcePositions[tranche.ticker];
     const priorCash = previousCash.get(tranche.ticker);
     const currentPrice = tranche.marketPrice ?? prior?.currentPrice ?? (Number(priorCash?.currentPrice ?? priorCash?.price) || 0);
-    const entryPrice = tranche.averagePrice ?? (Number(prior?.tranches?.[0]?.price) || currentPrice);
+    // Cost basis and buy fees must come from the broker operation history, never legacy in-app buy lots.
+    const entryPrice = tranche.averagePrice ?? 0;
 
     if (type === 'margin') {
       const existing = marginByTicker.get(tranche.ticker);
