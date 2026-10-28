@@ -1065,3 +1065,43 @@ describe('closed-history migration revision reuse', () => {
     expect((fetchMock.mock.calls[0][1] as RequestInit).headers).toMatchObject({ 'If-Match': '"0"' });
   });
 });
+
+
+describe('closed-history migration/read race', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('returns the just-migrated record to a concurrent load that initially saw 404', async () => {
+    const secret = 'migration-read-race-secret-20261028';
+    let resolveInitialGet!: (response: Response) => void;
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return Promise.resolve(new Response(JSON.stringify({ success: true, revision: 1 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: '"1"' }
+        }));
+      }
+      return new Promise<Response>((resolve) => { resolveInitialGet = resolve; });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const concurrentRead = pullCloudHistory(secret);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const migrated = {
+      brokerExecutedTrades: [{ id: 'migration-race-trade' }],
+      cashflows: [{ id: 'migration-race-fee' }]
+    };
+    await expect(pushCloudHistory(migrated, secret, 0)).resolves.toBe(true);
+    resolveInitialGet(new Response(JSON.stringify({ error: 'Portfolio state not found.' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', ETag: '"0"' }
+    }));
+
+    await expect(concurrentRead).resolves.toEqual(migrated);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(['GET', 'POST']);
+  });
+});
