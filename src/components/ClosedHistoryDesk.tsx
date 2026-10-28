@@ -4,7 +4,7 @@ import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { pullCloudHistory, pushCloudHistory } from '../services/api';
 import { loadSavedHistory, saveSavedHistory } from '../services/storage';
-import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows } from '../domain/closedHistoryFees';
+import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
 
 type ImportedCashflow = { id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw: Record<string, string> };
 
@@ -122,7 +122,14 @@ export function ClosedHistoryDesk() {
       const current = portfolioStore.getState();
       const saved = loadSavedHistory();
       const localCashflows = current.cashflows?.length ? current.cashflows : saved.cashflows;
-      const localExecutions = current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : saved.brokerExecutedTrades;
+      const currentExecutions = current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : saved.brokerExecutedTrades;
+      // Current memory may have just hydrated raw broker executions before this
+      // cloud-history read completed. Enrich it from persisted calculated rows by
+      // execution ID before deciding which copy is safe to restore.
+      const localExecutions = preservePersistedBrokerFeeAllocations(
+        currentExecutions,
+        saved.brokerExecutedTrades
+      );
       const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
       historyHydrated.current = true;
       // Once the dedicated cloud history record exists, it is authoritative.
@@ -131,18 +138,10 @@ export function ClosedHistoryDesk() {
       const localExecutionsById = new Map<string, any>(localExecutions
         .filter((trade: any) => trade?.id != null && String(trade.id) !== '')
         .map((trade: any) => [String(trade.id), trade] as [string, any]));
-      const cloudExecutions = (cloud.brokerExecutedTrades || []).map((trade: any) => {
-        const local = trade?.id == null ? undefined : localExecutionsById.get(String(trade.id));
-        if (!local) return trade;
-        const merged = { ...trade };
-        // Fee allocations are computed client-side and can be missing from an
-        // older cloud snapshot. Do not discard a locally persisted calculation
-        // just because navigating through Balance triggered a cloud reload.
-        for (const field of ['marginFeeAllocations', 'marginFee', 'feesAndCommissions', 'netProfit']) {
-          if (local[field] !== undefined && local[field] !== null) merged[field] = local[field];
-        }
-        return merged;
-      });
+      const cloudExecutions = preservePersistedBrokerFeeAllocations(
+        cloud.brokerExecutedTrades || [],
+        [...saved.brokerExecutedTrades, ...localExecutions]
+      );
       const resolved = history ? {
         brokerExecutedTrades: cloudExecutions,
         cashflows: cloud.cashflows || []
@@ -372,11 +371,11 @@ export function ClosedHistoryDesk() {
     const persistBrokerTrades = (trades: any[]) => {
       const stored = portfolioStore.getState().brokerExecutedTrades || [];
       const storedById = new Map<string, any>(stored.map((trade: any) => [String(trade.id ?? ''), trade] as [string, any]));
-      const normalized = trades.map((trade: any) => {
+      const normalizedRaw = trades.map((trade: any) => {
         const previous = storedById.get(String(trade.id ?? ''));
         // Keep only the fields needed for closed-history rendering and fee matching.
         // TradeNet's raw response can be large and must not be copied into synced state.
-        const compact = {
+        return {
           id: String(trade?.id ?? ''),
           ticker: String(trade?.ticker ?? ''),
           side: String(trade?.side ?? ''),
@@ -389,14 +388,19 @@ export function ClosedHistoryDesk() {
           marginFee: previous?.marginFee ?? trade?.marginFee ?? null,
           commission: trade?.commission ?? null,
           commissionCurrency: String(trade?.commissionCurrency ?? ''),
-          // Cashflow-upload calculations are local persisted metadata, not fields
-          // returned by the broker API. Preserve them when fresh executions arrive.
           marginFeeAllocations: previous?.marginFeeAllocations ?? trade?.marginFeeAllocations,
           feesAndCommissions: previous?.feesAndCommissions ?? trade?.feesAndCommissions,
           netProfit: previous?.netProfit ?? trade?.netProfit
         };
-        return compact;
       });
+      // In-memory rows can contain explicit empty allocation objects from a
+      // pre-hydration broker response. Restore real saved allocations by ID before
+      // writing these rows into the canonical store or triggering cloud sync.
+      const savedFeeRows = loadSavedHistory().brokerExecutedTrades;
+      const normalized = preservePersistedBrokerFeeAllocations(
+        normalizedRaw,
+        [...savedFeeRows, ...stored]
+      );
       setBrokerTrades(normalized);
       setBrokerTradesLoading(false);
       setBrokerTradesError(false);
