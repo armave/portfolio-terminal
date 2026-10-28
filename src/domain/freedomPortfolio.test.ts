@@ -216,7 +216,7 @@ describe('active limit sell target synchronization', () => {
       }
     ]);
     const positions = {
-      GOOGL: { ticker: 'GOOGL', shares: 50, currentPrice: 350, pt: 354.58 }
+      GOOGL: { ticker: 'GOOGL', shares: 50, currentPrice: 350, pt: 354.58, commBuy: 0 }
     };
 
     expect(targets).toEqual({ GOOGL: 353 });
