@@ -28,7 +28,7 @@ export async function loadSyncedMarginDigest(key: string): Promise<{ digest: Syn
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new Error(data?.error || `Could not load synced margin digest (HTTP ${response.status}).`);
   if (!data || data.key !== key || typeof data.analysis !== 'string' || !Array.isArray(data.articles) || typeof data.syncedAt !== 'string') return null;
-  const revision = Number((response.headers.get('ETag') || '').replace(/^W\\//, '').replace(/^"|"$/g, ''));
+  const revision = Number((response.headers.get('ETag') || '').replace(/^"|"$/g, ''));
   return { digest: data as SyncedMarginDigest, revision: Number.isSafeInteger(revision) ? revision : 0 };
 }
 
