@@ -32,33 +32,16 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const activeDeskView = useActiveDeskView();
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
-  const [cashCushionProps, setCashCushionProps] = useState<CashCushionDeskProps>({});
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
-  const [settingsProps, setSettingsProps] = useState<SettingsDeskProps | null>(null);
-  const [tickerTabsProps, setTickerTabsProps] = useState<TickerTabsProps | null>(null);
-  const [summaryMetricsProps, setSummaryMetricsProps] = useState<SummaryMetricsGridProps | null>(null);
-  const [projectionsProps, setProjectionsProps] = useState<ProjectionsTableProps | null>(null);
-  const [marketInsightsProps, setMarketInsightsProps] = useState<MarketInsightsPanelProps | null>(null);
+  const cashCushionProps = useCashCushionProps();
+  const settingsProps = useSettingsProps();
+  const tickerTabsProps = useTickerTabsProps();
+  const summaryMetricsProps = useSummaryMetricsProps();
+  const projectionsProps = useProjectionsProps();
+  const emptyStateProps = useEmptyStateProps();
+  const marketInsightsProps = useMarketInsightsProps();
+  const externalLinksProps = useExternalLinksProps();
   const tradingConsoleProps = useTradingConsoleProps();
-  const sharedCashCushionProps = useCashCushionProps();
-  const sharedTickerTabsProps = useTickerTabsProps();
-  const sharedSummaryMetricsProps = useSummaryMetricsProps();
-  const sharedProjectionsProps = useProjectionsProps();
-  const sharedEmptyStateProps = useEmptyStateProps();
-  const sharedMarketInsightsProps = useMarketInsightsProps();
-  const sharedExternalLinksProps = useExternalLinksProps();
-  const sharedSettingsProps = useSettingsProps();
-
-  useEffect(() => setCashCushionProps(sharedCashCushionProps), [sharedCashCushionProps]);
-  useEffect(() => setTickerTabsProps(sharedTickerTabsProps), [sharedTickerTabsProps]);
-  useEffect(() => setSummaryMetricsProps(sharedSummaryMetricsProps), [sharedSummaryMetricsProps]);
-  useEffect(() => setProjectionsProps(sharedProjectionsProps), [sharedProjectionsProps]);
-  useEffect(() => setEmptyStateProps(sharedEmptyStateProps), [sharedEmptyStateProps]);
-  useEffect(() => setMarketInsightsProps(sharedMarketInsightsProps), [sharedMarketInsightsProps]);
-  useEffect(() => setExternalLinksProps(sharedExternalLinksProps), [sharedExternalLinksProps]);
-  useEffect(() => setSettingsProps(sharedSettingsProps), [sharedSettingsProps]);
-  const [externalLinksProps, setExternalLinksProps] = useState<BoardExternalLinksProps | null>(null);
-  const [emptyStateProps, setEmptyStateProps] = useState<EmptyStatePanelProps | null>(null);
   const { title: boardTitle, showDailyMove } = useBoardTitle();
   const breakevenText = useBreakevenText();
   const analystConsensus = useAnalystConsensus();
@@ -313,58 +296,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const handleScenarioModal = (event: Event) => setScenarioModalData((event as CustomEvent<ScenarioModalData | null>).detail ?? null);
     addUiEventListener('terminal:scenario-modal', handleScenarioModal);
     addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
-    const handleCashCushionProps = (event: Event) => {
-      const detail = (event as CustomEvent<CashCushionDeskProps>).detail;
-      if (detail) setCashCushionProps(detail);
-    };
-    const handleSettingsProps = (event: Event) => {
-      const detail = (event as CustomEvent<SettingsDeskProps>).detail;
-      if (detail) setSettingsProps(detail);
-    };
-    addUiEventListener('terminal:cash-cushion-props', handleCashCushionProps);
-    const handleTickerTabsProps = (event: Event) => {
-      const detail = (event as CustomEvent<TickerTabsProps>).detail;
-      if (detail) setTickerTabsProps(detail);
-    };
-    addUiEventListener('terminal:settings-props', handleSettingsProps);
-    const handleSummaryMetricsProps = (event: Event) => {
-      const detail = (event as CustomEvent<SummaryMetricsGridProps>).detail;
-      if (detail) setSummaryMetricsProps(detail);
-    };
-    const handleProjectionsProps = (event: Event) => {
-      const detail = (event as CustomEvent<ProjectionsTableProps>).detail;
-      if (detail) setProjectionsProps(detail);
-    };
-    addUiEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
-    addUiEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
-    const handleMarketInsightsProps = (event: Event) => {
-      const detail = (event as CustomEvent<MarketInsightsPanelProps>).detail;
-      if (detail) setMarketInsightsProps(detail);
-    };
-    addUiEventListener('terminal:projections-props', handleProjectionsProps);
-    const handleExternalLinksProps = (event: Event) => {
-      const detail = (event as CustomEvent<BoardExternalLinksProps>).detail;
-      if (detail) setExternalLinksProps(detail);
-    };
-    const handleEmptyStateProps = (event: Event) => {
-      setEmptyStateProps((event as CustomEvent<EmptyStatePanelProps | null>).detail);
-    };
-    addUiEventListener('terminal:market-insights-props', handleMarketInsightsProps);
-    addUiEventListener('terminal:external-links-props', handleExternalLinksProps);
     const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
-    addUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
     addUiEventListener('terminal:startup-state', handleStartupState);
     return () => {
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
       removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
-      removeUiEventListener('terminal:cash-cushion-props', handleCashCushionProps);
-      removeUiEventListener('terminal:settings-props', handleSettingsProps);
-      removeUiEventListener('terminal:ticker-tabs-props', handleTickerTabsProps);
-      removeUiEventListener('terminal:summary-metrics-props', handleSummaryMetricsProps);
-      removeUiEventListener('terminal:projections-props', handleProjectionsProps);
-      removeUiEventListener('terminal:market-insights-props', handleMarketInsightsProps);
-      removeUiEventListener('terminal:external-links-props', handleExternalLinksProps);
-      removeUiEventListener('terminal:empty-state-props', handleEmptyStateProps);
       removeUiEventListener('terminal:startup-state', handleStartupState);
     };
   }, []);
