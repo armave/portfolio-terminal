@@ -125,9 +125,15 @@ export function ClosedHistoryDesk() {
       const localExecutions = current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : saved.brokerExecutedTrades;
       const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
       historyHydrated.current = true;
-      const resolved = {
-        brokerExecutedTrades: localExecutions.length ? localExecutions : (cloud.brokerExecutedTrades || []),
-        cashflows: localCashflows.length ? localCashflows : (cloud.cashflows || [])
+      // Once the dedicated cloud history record exists, it is authoritative.
+      // Prefer local snapshots only when the cloud record is absent; otherwise
+      // stale local copies cause an immediate second POST after migration/load.
+      const resolved = history ? {
+        brokerExecutedTrades: cloud.brokerExecutedTrades || [],
+        cashflows: cloud.cashflows || []
+      } : {
+        brokerExecutedTrades: localExecutions,
+        cashflows: localCashflows
       };
       portfolioStore.setState(resolved);
       if (JSON.stringify(resolved) !== JSON.stringify(cloud) && (resolved.brokerExecutedTrades.length || resolved.cashflows.length)) {
