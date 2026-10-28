@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
-import { QuoteDetails } from '../types/portfolio';
+import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
+import { getActiveTranchesFromTrades, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 
 export interface CashCushionDeskProps {
   onFetchLivePrice?: (ticker: string) => void;
@@ -60,10 +61,34 @@ export function CashCushionDesk({
   refreshIntervalMs = 60000
 }: CashCushionDeskProps) {
   const state = usePortfolio();
+  const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTradeLike[]>(() =>
+    typeof window !== 'undefined' && Array.isArray((window as any).__tradenetExecutedTrades)
+      ? (window as any).__tradenetExecutedTrades
+      : Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
+  );
+
+  useEffect(() => {
+    const onTrades = (event: Event) => {
+      const trades = (event as CustomEvent<FreedomExecutedTradeLike[]>).detail;
+      if (Array.isArray(trades)) setExecutedTrades(trades);
+    };
+    const onTradesError = () => setExecutedTrades([]);
+    window.addEventListener('tradenet:executed-trades', onTrades);
+    window.addEventListener('tradenet:executed-trades-error', onTradesError);
+    window.dispatchEvent(new CustomEvent('tradenet:request-executed-trades'));
+    return () => {
+      window.removeEventListener('tradenet:executed-trades', onTrades);
+      window.removeEventListener('tradenet:executed-trades-error', onTradesError);
+    };
+  }, []);
 
   const freeCash = Number(state.cashCushion?.freeCash) || 0;
   const signedBalance = freeCash + (Number(state.balance) || 0);
   const holdings = state.cashCushion?.holdings || [];
+  const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
+  const setActiveTrancheType = (ticker: string, type: ActiveTrancheType) => {
+    window.dispatchEvent(new CustomEvent('tradenet:set-active-tranche-type', { detail: { ticker, type } }));
+  };
 
   const [balanceInput, setBalanceInput] = useState<string>(signedBalance.toFixed(2));
   const balanceInputRef = useRef<HTMLInputElement | null>(null);
@@ -344,6 +369,63 @@ export function CashCushionDesk({
             </tbody>
           </table>
         </div>
+
+        <section class="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2" id="activeTranches" aria-labelledby="activeTranchesHeading">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+            <div>
+              <h2 id="activeTranchesHeading" class="text-sm font-black uppercase tracking-wide text-cyan-300">Active Tranches</h2>
+              <p class="mt-0.5 text-[10px] text-slate-500">Open purchases from Freedom trade history · new operations default to Cash</p>
+            </div>
+            <span class={`text-[10px] font-bold uppercase tracking-wide ${state.brokerAccountInfo?.status === 'stale' ? 'text-amber-400' : state.brokerAccountInfo?.loaded ? 'text-emerald-400' : 'text-slate-500'}`}>
+              {state.brokerAccountInfo?.status === 'stale' ? 'Broker data stale' : executedTrades.length ? 'Trades synced' : 'Waiting for trade history'}
+            </span>
+          </div>
+          <div class="table-scroll-wrapper overflow-x-auto">
+            <table class="w-full min-w-[560px] text-left text-xs border-collapse">
+              <thead>
+                <tr class="border-b border-slate-800 text-slate-500">
+                  <th class="py-2 px-2">Ticker</th>
+                  <th class="py-2 px-2">Purchase date</th>
+                  <th class="py-2 px-2 text-right">Shares</th>
+                  <th class="py-2 px-2 text-right">Avg. Cost</th>
+                  <th class="py-2 px-2 text-right">Market</th>
+                  <th class="py-2 px-2 text-right">Value</th>
+                  <th class="py-2 px-2 text-center">Operation</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 font-mono">
+                {activeTranches.length === 0 ? (
+                  <tr><td colSpan={7} class="py-4 px-2 text-center font-sans text-slate-500 italic">
+                    {executedTrades.length ? 'No active purchase operations.' : 'Active purchase operations will appear after Freedom trade history loads.'}
+                  </td></tr>
+                ) : activeTranches.map((tranche) => {
+                  const type = state.activeTrancheTypes?.[tranche.id] || state.activeTrancheTypes?.[tranche.ticker] || 'cash';
+                  return (
+                    <tr key={tranche.id} class="hover:bg-slate-900/50">
+                      <td class="py-2 px-2 font-bold text-cyan-300">{tranche.ticker}</td>
+                      <td class="py-2 px-2 text-slate-400 tabular-nums">{tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString() : '—'}</td>
+                      <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
+                      <td class="py-2 px-2 text-right text-slate-300 tabular-nums">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</td>
+                      <td class="py-2 px-2 text-right text-emerald-300 tabular-nums">{tranche.marketPrice !== null ? formatUSD(tranche.marketPrice) : '—'}</td>
+                      <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.marketValue !== null ? formatUSD(tranche.marketValue) : '—'}</td>
+                      <td class="py-2 px-2 text-center">
+                        <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={`${tranche.ticker} ${tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString() : 'undated'} operation type`}>
+                          <button type="button" aria-pressed={type === 'cash'} onClick={() => setActiveTrancheType(tranche.id, 'cash')}
+                            class={`rounded px-2 py-1 text-[10px] font-bold transition ${type === 'cash' ? 'bg-cyan-950 text-cyan-300' : 'text-slate-500 hover:text-slate-300'}`}>Cash</button>
+                          <button type="button" aria-pressed={type === 'margin'} onClick={() => setActiveTrancheType(tranche.id, 'margin')}
+                            class={`rounded px-2 py-1 text-[10px] font-bold transition ${type === 'margin' ? 'bg-amber-950 text-amber-300' : 'text-slate-500 hover:text-slate-300'}`}>Margin</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {activeTranches.length > 0 && <tfoot class="border-t border-slate-700"><tr>
+                <td colSpan={7} class="px-2 py-2 text-[10px] text-slate-500">{activeTranches.length} active purchase operation{activeTranches.length === 1 ? '' : 's'} · same-ticker purchases within 5 minutes are grouped</td>
+              </tr></tfoot>}
+            </table>
+          </div>
+        </section>
       </div>
     </>
   );

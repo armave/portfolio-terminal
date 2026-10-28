@@ -35,7 +35,6 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
     position && Number(position.shares) > 1
       ? String(Math.max(1, Math.floor(Number(position.shares) / 2)))
       : '5';
-
   const triggerExecute = () => {
     const value = command.trim();
     if (!value) return;
@@ -137,25 +136,11 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
 
   const guideItems = [
     {
-      category: 'Buy Shares',
-      badgeColor: 'text-emerald-400 border-emerald-900/60 bg-emerald-950/30',
-      id: 'hintBuyShares',
-      command: `bought [shares] ${hasPosition ? ticker : '[TICKER]'} for ${priceText}, pt ${comparisonPrice}`,
-      display: `bought [shares] ${hasPosition ? ticker : '[TICKER]'} for ${priceText}, pt ${comparisonPrice}`
-    },
-    {
       category: 'Buy More Scenario (What-if)',
       badgeColor: 'text-purple-400 border-purple-900/60 bg-purple-950/30',
       id: 'hintBuyMoreScenario',
       command: `buy scenario ${halfShares} ${hasPosition ? ticker : '[TICKER]'} at ${priceText}`,
       display: `buy scenario ${halfShares} ${hasPosition ? ticker : '[TICKER]'} at ${priceText}`
-    },
-    {
-      category: 'Sell / Close',
-      badgeColor: 'text-rose-400 border-rose-900/60 bg-rose-950/30',
-      id: 'hintClosePosition',
-      command: `sold all ${hasPosition ? ticker : '[TICKER]'} for ${priceText}`,
-      display: `sold [shares|all] ${hasPosition ? ticker : '[TICKER]'} for ${priceText}`
     },
     {
       category: 'Exit Comparison',
@@ -171,27 +156,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
       command: `quote ${hasPosition ? ticker : '[TICKER]'}`,
       display: `quote ${hasPosition ? ticker : '[TICKER]'}  or  quote ${hasPosition ? ticker : '[TICKER]'} ${priceText}`
     },
-    {
-      category: 'Price Target (PT)',
-      badgeColor: 'text-cyan-400 border-cyan-900/60 bg-cyan-950/30',
-      id: 'hintTargetPrice',
-      command: `target ${hasPosition ? ticker : '[TICKER]'} ${comparisonPrice}`,
-      display: `target ${hasPosition ? ticker : '[TICKER]'} ${comparisonPrice}`
-    },
-    {
-      category: 'Cash / Margin Debt',
-      badgeColor: 'text-emerald-400 border-emerald-900/60 bg-emerald-950/30',
-      id: 'hintBalanceDebt',
-      command: `balance [amount]`,
-      display: `balance 5000  |  debt 5000  |  b: -5000`
-    },
-    {
-      category: 'Non-Margin Holding',
-      badgeColor: 'text-purple-400 border-purple-900/60 bg-purple-950/30',
-      id: 'hintCashHolding',
-      command: `add cash stock [shares] ${hasPosition ? ticker : '[TICKER]'} at ${priceText}`,
-      display: `add cash stock [shares] ${hasPosition ? ticker : '[TICKER]'}  |  remove cash stock ${hasPosition ? ticker : '[TICKER]'}`
-    }
+
   ];
 
   return (
@@ -241,7 +206,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
             SYSTEM
           </span>
           <span>
-            Portfolio CLI ready. Execute trades, run exit comparisons, or click any quick action below.
+            Portfolio CLI ready. Broker-synced portfolio data is available; refresh quotes or choose a quick action below.
           </span>
         </div>
       </div>
@@ -271,7 +236,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
           autocorrect="off"
           enterkeyhint="go"
           spellcheck={false}
-          placeholder={`e.g. sell ${hasPosition ? ticker : 'AAPL'} today for ${priceText} vs sell 14 days later for ${comparisonPrice}`}
+          placeholder={`e.g. quote ${hasPosition ? ticker : 'AAPL'} or refresh quotes`}
           onKeyDown={handleKeyDown}
           class="flex-1 min-w-0 min-h-[44px] max-h-32 resize-none overflow-y-hidden whitespace-pre-wrap break-words text-xs bg-transparent border-none text-base leading-5 py-2 font-mono text-white placeholder-slate-500 focus:outline-none"
         />

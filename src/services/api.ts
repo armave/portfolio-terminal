@@ -3,6 +3,56 @@ import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { PortfolioState } from '../types/portfolio';
 
+export interface SyncedMarginDigest {
+  key: string;
+  title: string;
+  scope: 'position' | 'portfolio';
+  ticker?: string;
+  analysis: string;
+  articles: Array<{ ticker: string; headline: string; source: string; url: string; publishedAt?: number; summary?: string }>;
+  syncedAt: string;
+}
+
+const MARGIN_DIGEST_PATH = '/api/margin-digest';
+
+export async function loadSyncedMarginDigest(key: string): Promise<{ digest: SyncedMarginDigest; revision: number } | null> {
+  const secret = getActiveGatewaySecret().trim();
+  if (!secret) throw new Error('Gateway Secret is not available.');
+  const digestUrl = new URL(MARGIN_DIGEST_PATH, WORKER_PROXY_URL);
+  digestUrl.searchParams.set('key', key);
+  const response = await fetch(digestUrl, {
+    headers: { 'X-App-Auth': secret, Authorization: `Bearer ${secret}` },
+    cache: 'no-store'
+  });
+  if (response.status === 404) return null;
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || `Could not load synced margin digest (HTTP ${response.status}).`);
+  if (!data || data.key !== key || typeof data.analysis !== 'string' || !Array.isArray(data.articles) || typeof data.syncedAt !== 'string') return null;
+  const revision = readCloudRevision(response.headers) ?? 0;
+  return { digest: data as SyncedMarginDigest, revision };
+}
+
+export async function saveSyncedMarginDigest(digest: SyncedMarginDigest, revision: number): Promise<number> {
+  const secret = getActiveGatewaySecret().trim();
+  if (!secret) throw new Error('Gateway Secret is not available.');
+  const response = await fetch(new URL(MARGIN_DIGEST_PATH, WORKER_PROXY_URL), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-App-Auth': secret,
+      Authorization: `Bearer ${secret}`,
+      'If-Match': `"${revision}"`
+    },
+    body: JSON.stringify(digest),
+    cache: 'no-store'
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || `Could not save synced margin digest (HTTP ${response.status}).`);
+  const nextRevision = readCloudRevision(response.headers) ?? Number(data?.revision);
+  if (!Number.isSafeInteger(nextRevision) || nextRevision < 1) throw new Error('Server saved the digest but returned an invalid revision.');
+  return nextRevision;
+}
+
 const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
 // Persist each browser's last-seen cloud revision so a reload cannot reset it to zero.
@@ -1019,7 +1069,50 @@ export async function fetchFreedomTradeNetTrades(): Promise<any> {
   return proxyFetch('freedom-trades');
 }
 
+/** Fetch current active TradeNet orders without reusing a cached response. */
+export async function fetchFreedomTradeNetActiveOrders(): Promise<any> {
+  return proxyFetch('freedom-orders', { active_only: 1 }, { cache: 'no-store' });
+}
+
+export interface FreedomActiveOrder {
+  id: string;
+  ticker: string;
+  operation: number | null;
+  orderType: number | null;
+  limitPrice: number | null;
+  remainingQuantity: number | null;
+  status: string;
+  raw: Record<string, any>;
+}
+
+/** Normalize current-order aliases; keep the raw row so unknown broker fields remain inspectable. */
+export function normalizeFreedomActiveOrders(response: any): FreedomActiveOrder[] {
+  const root = response?.data?.result ?? response?.data ?? response?.result ?? response;
+  const rows = Array.isArray(root) ? root
+    : Array.isArray(root?.orders?.order) ? root.orders.order
+      : Array.isArray(root?.orders) ? root.orders
+        : Array.isArray(root?.items) ? root.items
+          : Array.isArray(root?.data) ? root.data
+            : [];
+  const numberOrNull = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  return rows.map((row: any, index: number) => ({
+    id: String(row?.order_id ?? row?.id ?? row?.orderId ?? index),
+    ticker: String(row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? '').trim().toUpperCase(),
+    operation: numberOrNull(row?.oper ?? row?.operation),
+    orderType: numberOrNull(row?.type ?? row?.order_type ?? row?.orderType),
+    limitPrice: numberOrNull(row?.p ?? row?.price ?? row?.limit_price ?? row?.limitPrice),
+    remainingQuantity: numberOrNull(row?.leaves_qty ?? row?.remaining_qty ?? row?.remainingQuantity ?? row?.q ?? row?.quantity),
+    status: String(row?.stat ?? row?.status ?? ''),
+    raw: row && typeof row === 'object' ? row : {}
+  }));
+}
+
 /** Fetch the raw read-only Freedom Broker cashflows response for temporary integration testing. */
+
 export async function fetchFreedomCashflows(): Promise<any> {
   try {
     return await proxyFetch('freedom-cashflows', {}, { cache: 'no-store' });

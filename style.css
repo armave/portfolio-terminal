@@ -1120,6 +1120,44 @@ summary:hover {
   }
 }
 
+/* Smoothly reveal content as modal data arrives, not just when the dialog opens. */
+.margin-intelligence-overlay {
+  animation: modal-overlay-enter 180ms ease-out both;
+}
+
+.margin-intelligence-dialog {
+  animation: modal-dialog-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+[role="dialog"] [data-animate-content],
+[role="dialog"] [aria-live="polite"] > *,
+[role="dialog"] article,
+[role="dialog"] .news-feed-item,
+[role="dialog"] .stocktwits-feed-item,
+[role="dialog"] .digest-content,
+[role="dialog"] .digest-article {
+  animation: modal-data-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes modal-data-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .margin-intelligence-overlay,
+  .margin-intelligence-dialog,
+  [role="dialog"] [data-animate-content],
+  [role="dialog"] [aria-live="polite"] > *,
+  [role="dialog"] article,
+  [role="dialog"] .news-feed-item,
+  [role="dialog"] .stocktwits-feed-item,
+  [role="dialog"] .digest-content,
+  [role="dialog"] .digest-article {
+    animation: none !important;
+  }
+}
+
 /* Modal financial figures: prioritize legibility over compact density. */
 #scenarioComparisonModal table {
   font-size: 0.8125rem;
@@ -2342,4 +2380,8 @@ table tbody tr:hover {
     transition: none !important;
     transform: none !important;
   }
+}
+
+#activeTranches, #cloudStatus {
+  margin-top: 10px;
 }

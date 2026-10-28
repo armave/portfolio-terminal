@@ -281,6 +281,25 @@ describe('canonical trade lifecycle and persistence', () => {
     ]);
   });
 
+  it('restores operation-level cash/margin classifications from persisted state', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    stored.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+      positions: {},
+      activeTrancheTypes: {
+        'AAPL:1767261600000:buy-1': 'margin',
+        'MSFT:1767265200000:buy-2': 'cash'
+      },
+      cashCushion: { freeCash: 0, holdings: [] }
+    }));
+
+    const store = new PortfolioStore();
+
+    expect(store.getState().activeTrancheTypes).toEqual({
+      'AAPL:1767261600000:buy-1': 'margin',
+      'MSFT:1767265200000:buy-2': 'cash'
+    });
+  });
+
   it('normalizes unsupported active views without relying on render-time mutation', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();

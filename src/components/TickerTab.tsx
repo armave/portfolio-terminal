@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { BoardState } from '../types/portfolio';
 import { getCashCushionTotal } from '../domain/portfolioSelectors';
 
@@ -19,15 +19,30 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
       // Continue navigation when storage is unavailable.
     }
     onSetActiveView?.(view);
+    // Entering or switching within the Margin workspace should pull fresh
+    // quotes immediately instead of waiting for the polling interval.
+    if (!['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(view)) {
+      void handleRefreshQuotes();
+    }
   };
 
-  const tickers = Object.keys(state.positions || {});
   const isCushionActive =
     state.activeView === 'CASH_CUSHION' || state.activeView === 'BALANCE';
   const isClosedHistoryActive = state.activeView === 'CLOSED_HISTORY';
   const isSettingsActive = state.activeView === 'SETTINGS';
   const isMarginDeskActive =
     !isCushionActive && !isClosedHistoryActive && !isSettingsActive;
+
+  // The Margin desk is the surface whose targets depend on open broker orders.
+  // Refresh on first mount and whenever navigation returns to that desk, rather
+  // than relying on a user clicking a ticker tab.
+  useEffect(() => {
+    if (isMarginDeskActive && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('tradenet:request-active-orders'));
+    }
+  }, [isMarginDeskActive, state.activeView]);
+
+  const tickers = Object.keys(state.positions || {});
 
   const cushionTotal = getCashCushionTotal(state);
 

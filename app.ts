@@ -59,7 +59,7 @@ import {
 import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
-import { reconcileFreedomPortfolio } from './src/domain/freedomPortfolio';
+import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets } from './src/domain/freedomPortfolio';
 import { InsightSection } from './src/components/MarketInsightsPanel';
 import { App } from './src/App';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
@@ -104,6 +104,9 @@ const BOARD_ANALYST_RETRY_MS = 60 * 1000;
 const DEFAULT_QUOTE_REFRESH_INTERVAL_MS = 60 * 1000;
 const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
 
+// Cached broker limit prices must win over default targets during asynchronous refreshes.
+let activeLimitSellTargets: Record<string, number> = {};
+
 // ==========================================
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
 // ==========================================
@@ -118,40 +121,149 @@ if (typeof window !== 'undefined') {
     const snapshot = (event as CustomEvent).detail;
     if (!snapshot || snapshot.loaded !== true || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.balances)) return;
     const current = portfolioStore.getState();
-    // CashCushionDesk consumes cashCushion.holdings; keep the legacy cashStocks
-    // projection in sync, but reconcile from the canonical store-owned holdings.
-    const reconciled = reconcileFreedomPortfolio(
+    const executedTrades = Array.isArray((window as any).__tradenetExecutedTrades)
+      ? (window as any).__tradenetExecutedTrades
+      : undefined;
+    const classified = classifyFreedomPortfolio(
       snapshot,
       current.positions || {},
-      current.cashCushion?.holdings || []
+      current.cashCushion?.holdings || [],
+      current.activeTrancheTypes || {},
+      Date.now(),
+      executedTrades,
+      TRADERNET_RULES
     );
-    const brokerCashHoldings = reconciled.cashStocks.map((holding: any) => ({
+    const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
       ...holding,
       ...(Number.isFinite(Number(holding.currentPrice ?? holding.price))
         ? { price: Number(holding.currentPrice ?? holding.price) }
         : {})
     }));
+    const usdBalance = snapshot.balances.find((item: any) =>
+      String(item.currency ?? '').toUpperCase() === 'USD' && Number.isFinite(Number(item.amount))
+    );
 
     portfolioStore.setState({
       brokerAccountInfo: { ...snapshot, receivedAt: Date.now(), status: 'current' },
-      ...(reconciled.brokerUsdBalance ? { balance: reconciled.brokerUsdBalance.amount } : {}),
-      positions: reconciled.positions,
+      ...(usdBalance ? { balance: Number(usdBalance.amount) } : {}),
+      positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
       cashStocks: brokerCashHoldings,
       cashCushion: {
         ...(current.cashCushion || { freeCash: 0, holdings: [] }),
         holdings: brokerCashHoldings
       }
     });
+    logTerminal('[Freedom] Active tickers, cash/margin classifications, balance and prices refreshed.');
+    renderBoard();
+  });
 
-    if (reconciled.mismatches.length) {
-      const detail = reconciled.mismatches
-        .map(item => `${item.ticker}: app margin ${item.marginQuantity}, Freedom total ${item.freedomQuantity}`)
-        .join('; ');
-      console.error('[Freedom quantity reconciliation failed]', reconciled.mismatches);
-      showToast(`Freedom quantity mismatch — ${detail}. Existing cash quantities were preserved for affected symbols.`, 'error');
-      logTerminal(`[Freedom Warning] Broker quantities do not reconcile: ${detail}`);
-    } else {
-      logTerminal('[Freedom] Account balance, quantities and available broker prices refreshed.');
+  window.addEventListener('tradenet:executed-trades', (event: Event) => {
+    const trades = (event as CustomEvent).detail;
+    if (!Array.isArray(trades)) return;
+    const current = portfolioStore.getState();
+    portfolioStore.setState({ brokerExecutedTrades: trades });
+    const snapshot = current.brokerAccountInfo;
+    if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return;
+    const classified = classifyFreedomPortfolio(
+      snapshot,
+      current.positions || {},
+      current.cashCushion?.holdings || [],
+      current.activeTrancheTypes || {},
+      Date.now(),
+      trades,
+      TRADERNET_RULES
+    );
+    const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
+      ...holding,
+      ...(Number.isFinite(Number(holding.currentPrice ?? holding.price))
+        ? { price: Number(holding.currentPrice ?? holding.price) }
+        : {})
+    }));
+    portfolioStore.setState({
+      positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
+      cashStocks: brokerCashHoldings,
+      cashCushion: {
+        ...(current.cashCushion || { freeCash: 0, holdings: [] }),
+        holdings: brokerCashHoldings
+      }
+    });
+    renderBoard();
+  });
+
+  window.addEventListener('tradenet:set-active-tranche-type', (event: Event) => {
+    const detail = (event as CustomEvent<{ ticker?: string; type?: 'cash' | 'margin' }>).detail;
+    const operationId = String(detail?.ticker || '').trim();
+    if (!operationId || (detail?.type !== 'cash' && detail?.type !== 'margin')) return;
+    const current = portfolioStore.getState();
+    const activeTrancheTypes = { ...(current.activeTrancheTypes || {}), [operationId]: detail.type };
+    const snapshot = current.brokerAccountInfo;
+    if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) {
+      portfolioStore.setState({ activeTrancheTypes });
+      // Persist the preference even when broker data is not ready yet.
+      saveState(state);
+      pushStateToGist();
+      return;
+    }
+    const executedTrades = Array.isArray((window as any).__tradenetExecutedTrades)
+      ? (window as any).__tradenetExecutedTrades
+      : undefined;
+    const classified = classifyFreedomPortfolio(
+      snapshot,
+      current.positions || {},
+      current.cashCushion?.holdings || [],
+      activeTrancheTypes,
+      Date.now(),
+      executedTrades,
+      TRADERNET_RULES
+    );
+    const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
+      ...holding,
+      ...(Number.isFinite(Number(holding.currentPrice ?? holding.price))
+        ? { price: Number(holding.currentPrice ?? holding.price) }
+        : {})
+    }));
+    portfolioStore.setState({
+      activeTrancheTypes,
+      positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
+      cashStocks: brokerCashHoldings,
+      cashCushion: {
+        ...(current.cashCushion || { freeCash: 0, holdings: [] }),
+        holdings: brokerCashHoldings
+      }
+    });
+    // Store updates persist locally immediately; push explicitly so the local write doesn't suppress cloud sync.
+    saveState(state);
+    pushStateToGist();
+    const ticker = operationId.split(':')[0];
+    logTerminal(`[Freedom] ${ticker} purchase operation classified as ${detail.type}.`);
+    renderBoard();
+  });
+
+  window.addEventListener('tradenet:active-orders', (event: Event) => {
+    const orders = (event as CustomEvent<Array<{
+      id: string; ticker: string; operation: number | null; orderType: number | null;
+      limitPrice: number | null; remainingQuantity: number | null; status: string;
+    }>>).detail;
+    if (!Array.isArray(orders)) return;
+
+    // Cache the broker's exact limit price so a slower account/trade refresh
+    // cannot replace it with the locally calculated default target.
+    activeLimitSellTargets = getActiveLimitSellTargets(orders);
+    const current = portfolioStore.getState();
+    const positions = applyActiveLimitSellTargets(current.positions || {}, activeLimitSellTargets);
+    const updates: Array<{ ticker: string; price: number }> = [];
+    for (const [ticker, position] of Object.entries(positions)) {
+      const previous = current.positions?.[ticker];
+      if (Number(previous?.pt) !== Number(position.pt)) {
+        updates.push({ ticker: String(position.ticker || ticker).trim().toUpperCase(), price: Number(position.pt) });
+      }
+    }
+
+    if (!updates.length) return;
+    portfolioStore.setState({ positions });
+    saveState(state, pushStateToGist);
+    for (const update of updates) {
+      logTerminal(`[Freedom] Updated ${update.ticker} target from active limit sell: ${update.price.toFixed(2)}.`);
     }
     renderBoard();
   });

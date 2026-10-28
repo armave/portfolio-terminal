@@ -109,6 +109,7 @@ export function ClosedHistoryDesk() {
   const [brokerTradesError, setBrokerTradesError] = useState(false);
   const [cashflowImporting, setCashflowImporting] = useState(false);
   const [cashflowImportMessage, setCashflowImportMessage] = useState('');
+  const [tradesPage, setTradesPage] = useState(1);
   // Large cloud history is fetched only when this section mounts. The main
   // portfolio hydration intentionally excludes these two history collections.
   useEffect(() => {
@@ -265,10 +266,10 @@ export function ClosedHistoryDesk() {
       // Compare the complete recalculated records before writing. This prevents
       // repeated post-load recalculation from causing redundant Worker syncs.
       if (updatedTradeCount && brokerExecutions.length &&
-          JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
+        JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
         nextState.brokerExecutedTrades = updatedExecutions;
       } else if (updatedTradeCount && !brokerExecutions.length &&
-          JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
+        JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
         nextState.closedTrades = updatedTrades;
       }
       if (Object.keys(nextState).length) portfolioStore.setState(nextState);
@@ -448,6 +449,12 @@ export function ClosedHistoryDesk() {
     return groups;
   })();
   const trades = [...appTrades, ...groupedBrokerRows].sort((a, b) => String((b.trade as any).exitDate ?? (b.trade as any).sellDate ?? '').localeCompare(String((a.trade as any).exitDate ?? (a.trade as any).sellDate ?? '')));
+  const tradesPageSize = 10;
+  const tradesPageCount = Math.max(1, Math.ceil(trades.length / tradesPageSize));
+  const visibleTrades = trades.slice((tradesPage - 1) * tradesPageSize, tradesPage * tradesPageSize);
+  useEffect(() => {
+    if (tradesPage > tradesPageCount) setTradesPage(tradesPageCount);
+  }, [tradesPage, tradesPageCount]);
   const realizedNet = trades.reduce((total, row) => total + (row.profit ?? 0), 0);
   const totalFees = trades.reduce((total, row) => total + (Number.isFinite(row.fees) ? row.fees : 0), 0);
   const profitKnownTrades = trades.filter((row) => row.profit !== null);
@@ -455,15 +462,6 @@ export function ClosedHistoryDesk() {
   const knownDurations = trades.map((row) => Number((row.trade as any).holdingDays ?? (row.trade as any).daysHeld)).filter((days) => Number.isFinite(days) && days >= 0);
   const averageHoldingDays = knownDurations.length ? knownDurations.reduce((total, days) => total + days, 0) / knownDurations.length : null;
   const winRate = profitKnownTrades.length ? (winningTrades / profitKnownTrades.length) * 100 : 0;
-
-  const handleDelete = (index: number) => {
-    const trade = state.closedTrades?.[index];
-    const ticker = trade?.ticker || 'unknown';
-    if (!confirm(`Delete the ${ticker} closed trade from history? This cannot be undone.`)) {
-      return;
-    }
-    portfolioStore.deleteClosedTrade(index);
-  };
 
   return (
     <section class="rounded-xl border-card p-4 space-y-4" aria-label="Closed trade history">
@@ -525,7 +523,6 @@ export function ClosedHistoryDesk() {
               <th class="py-2.5 px-3 text-right">Duration</th>
               <th class="py-2.5 px-3 text-right">Fees & Comm.</th>
               <th class="py-2.5 px-3 text-right">Net Profit</th>
-              <th class="py-2.5 px-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody id="closedTradesTableBody" class="divide-y divide-slate-800/60">
@@ -542,7 +539,7 @@ export function ClosedHistoryDesk() {
                 </td>
               </tr>
             ) : (
-              trades.map(({ trade, index, source, profit: rowProfit, fees: rowFees }) => {
+              visibleTrades.map(({ trade, index, source, profit: rowProfit, fees: rowFees }) => {
                 // 1. Resolve Exit Date
                 const rawDate =
                   (trade as any).exitDate ||
@@ -622,7 +619,6 @@ export function ClosedHistoryDesk() {
                     >
                       {netProfit === null ? "—" : sign + "$" + formatUSD(Math.abs(netProfit))}
                     </td>
-                    <td class="py-2.5 px-3 text-right whitespace-nowrap">{source === "app" ? <button type="button" onClick={() => handleDelete(index)} class="rounded border border-slate-700 px-2 py-1 text-[10px]">Delete</button> : <span class="text-[10px] text-slate-600">Read-only</span>}</td>
                   </tr>
                 );
               })
@@ -630,6 +626,18 @@ export function ClosedHistoryDesk() {
           </tbody>
         </table>
       </div>
+      {trades.length > 0 && (
+        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 px-1 pt-3 text-xs" aria-label="Closed history pagination">
+          <span class="text-slate-500" aria-live="polite">
+            Showing {(tradesPage - 1) * tradesPageSize + 1}–{Math.min(tradesPage * tradesPageSize, trades.length)} of {trades.length} trades
+          </span>
+          <div class="flex items-center gap-2">
+            <button type="button" onClick={() => setTradesPage(page => Math.max(1, page - 1))} disabled={tradesPage <= 1} class="rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Previous closed history page">Previous</button>
+            <span class="min-w-16 text-center font-mono text-slate-400">Page {tradesPage} / {tradesPageCount}</span>
+            <button type="button" onClick={() => setTradesPage(page => Math.min(tradesPageCount, page + 1))} disabled={tradesPage >= tradesPageCount} class="rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Next closed history page">Next</button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

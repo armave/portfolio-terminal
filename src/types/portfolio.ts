@@ -173,10 +173,29 @@ export interface PendingMutation {
   rollback?: () => void;
 }
 
+export type ActiveTrancheType = 'cash' | 'margin';
+
+export interface ActiveBrokerTranche {
+  /** Stable identity for the open purchase operation or a 5-minute grouped batch. */
+  id: string;
+  ticker: string;
+  name: string;
+  quantity: number;
+  marketPrice: number | null;
+  averagePrice: number | null;
+  marketValue: number | null;
+  /** Broker purchase timestamp when supplied. */
+  purchasedAt: number | null;
+  /** Estimated or broker-reported buy commission allocated to the still-open quantity. */
+  buyCommission?: number;
+}
+
 export interface PortfolioState {
   // Active runtime properties (used by app.ts & renderBoard.ts)
   positions: Record<string, PositionRecord>;
   /** Read-only broker snapshot; never replaces app-owned cash/margin classifications. */
+  /** User's persisted cash/margin classification for each broker ticker; unknown tickers default to cash. */
+  activeTrancheTypes?: Record<string, ActiveTrancheType>;
   brokerAccountInfo?: {
     loaded: boolean;
     balances: Array<{ currency: string; amount: number; forecastIn: number; forecastOut: number; t2In: number; t2Out: number }>;
