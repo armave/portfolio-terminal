@@ -380,7 +380,8 @@ export function ClosedHistoryDesk() {
     return () => { window.removeEventListener('tradenet:executed-trades', onTrades); window.removeEventListener('tradenet:executed-trades-error', onTradesError); };
   }, []);
   const appTrades = (state.closedTrades || []).map((trade, index) => {
-    const commissions = Number((trade as any).commissions ?? (trade as any).totalCommissions ?? (trade as any).feesAndCommissions ?? 0);
+    // Never use feesAndCommissions as a commission fallback: that aggregate may already include margin fees, which are displayed separately below.
+    const commissions = Number((trade as any).commissions ?? (trade as any).totalCommissions ?? (trade as any).commission ?? 0);
     const fees = Number((trade as any).marginFee ?? (trade as any).marginInterest ?? 0);
     return { trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const,
       profit: Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0),
