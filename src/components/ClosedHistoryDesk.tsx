@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
@@ -111,6 +111,9 @@ export function ClosedHistoryDesk() {
   const [cashflowImporting, setCashflowImporting] = useState(false);
   const [cashflowImportMessage, setCashflowImportMessage] = useState('');
   const [tradesPage, setTradesPage] = useState(1);
+  // Keep the newest in-session import outside the reactive store so an unrelated
+  // hydration cannot overwrite it before the recovery effect runs.
+  const latestImportedCashflows = useRef<any[]>(state.cashflows || []);
   // Large cloud history is fetched only when this section mounts. The main
   // portfolio hydration intentionally excludes these two history collections.
   useEffect(() => {
@@ -173,10 +176,18 @@ export function ClosedHistoryDesk() {
   // state hydration replaces cashflows with an older snapshot, restore the latest
   // locally persisted workbook instead of allowing navigation to lose the import.
   useEffect(() => {
-    const persistedCashflows = loadSavedHistory().cashflows;
     const currentCashflows = state.cashflows || [];
+    const latestImport = latestImportedCashflows.current;
+    if (latestImport.length && JSON.stringify(currentCashflows) !== JSON.stringify(latestImport)) {
+      portfolioStore.setState({ cashflows: latestImport });
+      return;
+    }
+    const persistedCashflows = loadSavedHistory().cashflows;
     if (persistedCashflows.length && JSON.stringify(currentCashflows) !== JSON.stringify(persistedCashflows)) {
+      latestImportedCashflows.current = persistedCashflows;
       portfolioStore.setState({ cashflows: persistedCashflows });
+    } else if (currentCashflows.length) {
+      latestImportedCashflows.current = currentCashflows;
     }
   }, [state.cashflows]);
   // Once broker executions have loaded, re-run allocations from the persisted
@@ -193,6 +204,7 @@ export function ClosedHistoryDesk() {
       if (!savedRows && (!file || !file.name.toLowerCase().endsWith('.xlsx'))) throw new Error('Please select an Excel .xlsx file.');
       const rows = savedRows ?? normalizeCashflowRows(await readXlsxRows(await file!.arrayBuffer()));
       const imported = savedRows ? savedRows as ReturnType<typeof normalizeCashflowRows> : rows as ReturnType<typeof normalizeCashflowRows>;
+      if (!savedRows) latestImportedCashflows.current = imported;
       if (!imported.length) throw new Error('No cashflow rows were found in this workbook.');
 
       // Persist normalized cashflow rows as the source of truth. This lets the
