@@ -421,6 +421,55 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(latest.headers.get('ETag')).toBe('"1"');
   });
 
+
+  it('stores independent server-synced digests for portfolio and ticker keys', async () => {
+    const store = makeDurableObject();
+    const digest = {
+      key: 'position:GOOGL',
+      title: 'GOOGL · Position Review',
+      scope: 'position',
+      ticker: 'GOOGL',
+      analysis: '**Stance** Hold.',
+      articles: [{ ticker: 'GOOGL', headline: 'Example', source: 'Test', url: 'https://example.com' }],
+      syncedAt: '2026-10-28T05:00:00.000Z'
+    };
+    const write = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(digest)
+    }));
+    expect(write.status).toBe(200);
+    expect(write.headers.get('ETag')).toBe('"1"');
+
+    const read = await store.fetch(new Request('https://worker.test/api/margin-digest?key=position%3AGOOGL'));
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual(digest);
+    expect(read.headers.get('ETag')).toBe('"1"');
+
+    const missing = await store.fetch(new Request('https://worker.test/api/margin-digest?key=portfolio'));
+    expect(missing.status).toBe(404);
+  });
+
+  it('rejects invalid margin digest keys and stale writes', async () => {
+    const store = makeDurableObject();
+    const invalid = await store.fetch(new Request('https://worker.test/api/margin-digest?key=bad%2Fkey'));
+    expect(invalid.status).toBe(400);
+
+    const digest = { key: 'portfolio', title: 'Portfolio Review', scope: 'portfolio', analysis: 'Review', articles: [], syncedAt: '2026-10-28T05:00:00.000Z' };
+    const first = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(digest)
+    }));
+    expect(first.status).toBe(200);
+    const stale = await store.fetch(new Request('https://worker.test/api/margin-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify(digest)
+    }));
+    expect(stale.status).toBe(409);
+  });
+
   it('migrates an existing KV portfolio without changing its payload', async () => {
     const store = makeDurableObject(JSON.stringify({ encryptedPayload: 'legacy' }));
     const response = await store.fetch(new Request('https://worker.test/api/state'));
