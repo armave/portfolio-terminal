@@ -2448,50 +2448,8 @@ table tbody tr:hover {
   margin-top: 10px;
 }
 
+/* Portfolio usability: readable tables and keyboard focus. */
 /* Portfolio usability: visible quote confidence, readable tables, and keyboard focus. */
-.quote-freshness {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 20px;
-  padding: 2px 7px;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.055em;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-.quote-freshness__dot {
-  width: 6px;
-  height: 6px;
-  flex: 0 0 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.quote-freshness--fresh {
-  color: #6ee7b7;
-  border-color: rgba(52, 211, 153, 0.35);
-  background: rgba(6, 78, 59, 0.25);
-}
-.quote-freshness--delayed {
-  color: #fcd34d;
-  border-color: rgba(251, 191, 36, 0.4);
-  background: rgba(120, 53, 15, 0.22);
-}
-.quote-freshness--stale,
-.quote-freshness--unavailable {
-  color: #fda4af;
-  border-color: rgba(251, 113, 133, 0.45);
-  background: rgba(136, 19, 55, 0.22);
-}
-.quote-freshness--unknown {
-  color: #cbd5e1;
-  border-color: rgba(148, 163, 184, 0.3);
-  background: rgba(51, 65, 85, 0.25);
-}
-
 .table-scroll-wrapper {
   scrollbar-width: thin;
   scrollbar-color: rgba(100, 116, 139, 0.65) transparent;
@@ -2527,9 +2485,6 @@ summary:focus-visible {
   .portfolio-micro-column {
     min-width: 0;
     overflow-wrap: anywhere;
-  }
-  .quote-freshness {
-    font-size: 8px;
   }
   .table-scroll-wrapper {
     max-width: 100%;
