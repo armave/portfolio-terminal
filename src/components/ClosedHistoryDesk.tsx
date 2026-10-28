@@ -4,6 +4,7 @@ import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { pullCloudHistory } from '../services/api';
 import { loadSavedHistory } from '../services/storage';
+import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades } from '../domain/closedHistoryFees';
 
 type ImportedCashflow = { id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw: Record<string, string> };
 
