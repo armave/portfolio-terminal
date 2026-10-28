@@ -195,12 +195,16 @@ The remaining work is the final repository diff review and compatibility audit. 
 - [x] Confirmed `src/main.ts` imports the root `app.ts`, and `app.ts` mounts `src/App.tsx`; the root runtime is active and must not be deleted merely because it is large or legacy-shaped.
 - [x] Removed the unused `onToggleMarketInsights` prop from `AppProps` and its sole call-site argument. The component did not consume the prop; market-insights events are wired through the existing application event flow.
 - [x] Corrected the README architecture map to match the actual checked-in source tree and separate browser runtime from the Cloudflare Worker.
-- [ ] Run the full typecheck, test suite, dead-code analysis, production dependency audit, and production build on the same final PR head.
-- [ ] Review Knip output and import/call graphs for any additional confirmed dead exports, unused dependencies, obsolete helpers, and duplicate execution paths before removing them.
-- [ ] Finish a compatibility review of financial calculations, backup migration, encrypted cloud sync, Worker APIs, and deployment workflows.
+- [x] Ran the merge gates on PR head `7ae2b9ddb94059887f1851447cc73b3fd7edb124`: TypeScript typecheck passed, all 343 tests across 24 files passed, Knip dead-code validation passed, production dependency audit reported 0 vulnerabilities at the configured high threshold, and the production build completed.
+- [x] Removed the confirmed orphaned `toggleMarketInsights()` wrapper identified by the first CI run (`TS6133`); no broader code was removed solely based on size or age.
+- [ ] Review any future Knip/import-graph findings and investigate duplicate execution paths before further removals.
+- [ ] Finish a deeper compatibility review of financial calculations, backup migration, encrypted cloud sync, Worker APIs, and deployment workflows.
 - [ ] Review the final diff and latest CI results before marking the PR ready for review.
 
 - [x] Investigated the first PR CI failure: TypeScript reported `app.ts(657,10): TS6133` for `toggleMarketInsights`, a now-unused wrapper left behind after removing the obsolete callback prop.
 - [x] Removed the unused `toggleMarketInsights` function; the panel refresh path remains available through `syncMarketInsightsPanel`.
 
 **Execution limitation:** a local `git clone` was attempted but the environment could not resolve `github.com`. Repository source was inspected through GitHub's repository API instead; no local test command is represented as having passed. CI results for the exact PR head are required before merge.
+
+
+**CI result recorded 2026-10-28:** the PR head `7ae2b9ddb94059887f1851447cc73b3fd7edb124` passed both PR validation workflows. The Pull Request CI run completed typecheck, tests (343/343), Knip validation, production dependency audit, and production build successfully. This is a verified checkpoint; later commits must be revalidated independently.
