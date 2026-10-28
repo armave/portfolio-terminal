@@ -4,6 +4,7 @@ import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { pullCloudHistory } from '../services/api';
 import { loadSavedHistory } from '../services/storage';
+import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades } from '../domain/closedHistoryFees';
 
 type ImportedCashflow = { id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw: Record<string, string> };
 
@@ -160,7 +161,10 @@ export function ClosedHistoryDesk() {
         const isTradeCommission = /trading\s+fee|commission\s+for\s+trade/i.test(text);
         return isDailyFinancingFee && !isTradeCommission;
       });
-      const brokerExecutions = [...(portfolioStore.getState().brokerExecutedTrades || brokerTrades)] as any[];
+      const storedBrokerExecutions = portfolioStore.getState().brokerExecutedTrades || [];
+      // An empty canonical array is truthy but does not mean broker history is unavailable.
+      // Fall back to the loaded table data so cashflow allocation still reaches visible rows.
+      const brokerExecutions = [...(storedBrokerExecutions.length ? storedBrokerExecutions : brokerTrades)] as any[];
       const executions = brokerExecutions.map((trade, index) => ({ trade, index, time: Date.parse(String(trade.executedAt ?? trade.date ?? '')), ticker: String(trade.ticker ?? '').trim().toUpperCase(), side: String(trade.side ?? '').toLowerCase(), quantity: Math.abs(Number(trade.quantity ?? trade.shares ?? 0)), price: Math.abs(Number(trade.price ?? trade.executionPrice ?? 0)) })).filter(row => row.ticker && Number.isFinite(row.time) && row.quantity > 0).sort((a, b) => a.time - b.time);
       const segments: Array<{ sellIndex: number; buyDate: number; sellDate: number; quantity: number; buyPrice: number }> = [];
       const queues = new Map<string, Array<{ date: number; quantity: number; price: number }>>();
@@ -213,24 +217,8 @@ export function ClosedHistoryDesk() {
         }
         allocatedDailyFees += amount; matchedFeeRows++;
       }
-      let updatedTradeCount = 0;
-      const updatedExecutions = brokerExecutions.map((trade, index) => {
-        if (!['sell', 's', 'sale', 'sold', '2'].includes(String(trade.side ?? '').toLowerCase())) return trade;
-        const incoming = allocationsBySell.get(index); if (!incoming || !Object.keys(incoming).length) return trade;
-        const persisted = { ...(trade.marginFeeAllocations || {}) } as Record<string, number>;
-        Object.entries(incoming).forEach(([id, amount]) => { persisted[id] = Number(amount.toFixed(6)); });
-        const marginFee = Number(Object.values(persisted).reduce((sum, amount) => sum + (Number(amount) || 0), 0).toFixed(2));
-        updatedTradeCount++;
-        const commission = Math.abs(Number(trade.commission ?? 0)) || 0;
-        const profit = trade.profit == null ? null : Number(trade.profit);
-        return {
-          ...trade,
-          marginFeeAllocations: persisted,
-          marginFee,
-          feesAndCommissions: Number((commission + marginFee).toFixed(2)),
-          netProfit: profit == null ? null : Number((profit - marginFee).toFixed(2))
-        };
-      });
+      const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(brokerExecutions, allocationsBySell);
+      let updatedTradeCount = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
       let updatedTrades = appTrades;
       if (!brokerExecutions.length) {
         const appAllocations = new Map<number, number>();
@@ -247,15 +235,8 @@ export function ClosedHistoryDesk() {
           for (const position of open) appAllocations.set(position.index, (appAllocations.get(position.index) || 0) + amount * position.weight / totalWeight);
           allocatedDailyFees += amount; matchedFeeRows++;
         }
-        updatedTrades = appTrades.map((trade, index) => {
-          const addedFee = Number((appAllocations.get(index) || 0).toFixed(2)); if (addedFee <= 0) return trade;
-          updatedTradeCount++;
-          const previousMargin = Math.abs(Number(trade.marginInterest ?? trade.marginFee ?? 0)) || 0;
-          const previousFees = Number(trade.feesAndCommissions ?? trade.totalCommissions ?? trade.commissions ?? 0) || 0;
-          const net = Number(trade.netProfit ?? trade.netRealizedGain ?? trade.grossProfit ?? 0) || 0;
-          const fees = Number((Math.max(0, previousFees - previousMargin) + addedFee).toFixed(2));
-          return { ...trade, feesAndCommissions: fees, totalCommissions: fees, marginInterest: addedFee, marginFee: addedFee, netProfit: Number((net + previousMargin - addedFee).toFixed(2)), netRealizedGain: Number((net + previousMargin - addedFee).toFixed(2)) };
-        });
+        updatedTrades = applyCashflowAllocationsToClosedTrades(appTrades, appAllocations);
+        updatedTradeCount = updatedTrades.filter((trade, index) => trade !== appTrades[index]).length;
       }
       const currentCashflows = portfolioStore.getState().cashflows || [];
       const cashflowsChanged = JSON.stringify(currentCashflows) !== JSON.stringify(imported);
@@ -402,19 +383,24 @@ export function ClosedHistoryDesk() {
     }
     return metricsByObject;
   })();
-  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => {
-    const marginFee = Math.abs(Number(broker.marginFee ?? 0)) || 0;
+  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold', '2'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => {
+    const allocatedMarginFee = Object.values((broker.marginFeeAllocations || {}) as Record<string, number>)
+      .reduce((sum, amount) => sum + (Number(amount) || 0), 0);
+    // Prefer the explicit allocation total when present, so the table reflects the
+    // uploaded cashflows even if an older cached marginFee field is missing/stale.
+    const marginFee = Number((broker.marginFeeAllocations && typeof broker.marginFeeAllocations === 'object')
+      ? allocatedMarginFee
+      : broker.marginFee ?? 0) || 0;
     const tradeFees = (broker.commission == null ? 0 : Math.abs(Number(broker.commission))) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0);
+    const totalFees = Number((tradeFees + Math.abs(marginFee)).toFixed(2));
     return {
-      trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: tradeFees + marginFee, netProfit: broker.profit, side: broker.side, price: broker.price, source: 'tradenet' as const },
+      trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: totalFees, netProfit: broker.profit == null ? null : Number(broker.profit) - totalFees, side: broker.side, price: broker.price, source: 'tradenet' as const },
       index: -1,
       source: 'tradenet' as const,
-      // TradeNet's raw realized profit does not include execution commissions. Net P&L must
-      // deduct both the exit commission and FIFO-allocated entry commissions, as well
-      // as any allocated margin financing fee. `netProfit` is local cached metadata
-      // from older calculations and may therefore be incomplete; derive from raw profit.
-      profit: broker.profit == null ? null : Number(broker.profit) - tradeFees - marginFee,
-      fees: tradeFees + marginFee
+      // Calculate from raw realized profit and the complete fee total, rather than
+      // relying on cached netProfit values that may predate cashflow allocation.
+      profit: broker.profit == null ? null : Number(broker.profit) - totalFees,
+      fees: totalFees
     };
   });
   // Group same-ticker sell executions that occur within one hour into one closed-history row.
