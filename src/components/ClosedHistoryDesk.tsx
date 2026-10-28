@@ -235,25 +235,31 @@ export function ClosedHistoryDesk() {
       }
       const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(brokerExecutions, allocationsBySell);
       let updatedTradeCount = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
-      let updatedTrades = appTrades;
-      if (!brokerExecutions.length) {
-        const appAllocations = new Map<number, number>();
-        for (const fee of feeRows) {
-          const date = feeDate(fee), amount = Math.abs(fee.amount); if (!Number.isFinite(date) || amount <= 0) continue;
-          const open = appTrades.map((trade, index) => {
-            const sell = parseTradeDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.date);
-            const buy = parseTradeDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate);
-            const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
-            const price = Math.abs(Number(trade.entryPrice ?? trade.avgBuyPrice ?? trade.buyPrice ?? 0));
-            return { index, buy, sell, weight: shares * (price || 1) };
-          }).filter(t => Number.isFinite(t.buy) && Number.isFinite(t.sell) && date >= t.buy && date <= t.sell && t.weight > 0);
-          const totalWeight = open.reduce((sum, t) => sum + t.weight, 0); if (!open.length || totalWeight <= 0) continue;
-          for (const position of open) appAllocations.set(position.index, (appAllocations.get(position.index) || 0) + amount * position.weight / totalWeight);
-          allocatedDailyFees += amount; matchedFeeRows++;
-        }
-        updatedTrades = applyCashflowAllocationsToClosedTrades(appTrades, appAllocations);
-        updatedTradeCount = updatedTrades.filter((trade, index) => trade !== appTrades[index]).length;
+      // Recalculate app-owned trades independently from broker executions. Some
+      // portfolios contain both sources, and app-only trades still need their
+      // daily financing fees even when broker history is available.
+      const appAllocations = new Map<number, number>();
+      let appAllocatedDailyFees = 0, appMatchedFeeRows = 0;
+      for (const fee of feeRows) {
+        const date = feeDate(fee), amount = Math.abs(fee.amount);
+        if (!Number.isFinite(date) || amount <= 0) continue;
+        const open = appTrades.map((trade, index) => {
+          const sell = parseTradeDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.date);
+          const buy = parseTradeDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate);
+          const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
+          const price = Math.abs(Number(trade.entryPrice ?? trade.avgBuyPrice ?? trade.buyPrice ?? 0));
+          return { index, buy, sell, weight: shares * (price || 1) };
+        }).filter(t => Number.isFinite(t.buy) && Number.isFinite(t.sell) && date >= t.buy && date <= t.sell && t.weight > 0);
+        const totalWeight = open.reduce((sum, t) => sum + t.weight, 0);
+        if (!open.length || totalWeight <= 0) continue;
+        for (const position of open) appAllocations.set(position.index, (appAllocations.get(position.index) || 0) + amount * position.weight / totalWeight);
+        appAllocatedDailyFees += amount;
+        appMatchedFeeRows++;
       }
+      const updatedTrades = applyCashflowAllocationsToClosedTrades(appTrades, appAllocations);
+      const changedBrokerRows = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
+      const changedAppRows = updatedTrades.filter((trade, index) => trade !== appTrades[index]).length;
+      updatedTradeCount = changedBrokerRows + changedAppRows;
       const currentCashflows = portfolioStore.getState().cashflows || [];
       const cashflowsChanged = JSON.stringify(currentCashflows) !== JSON.stringify(imported);
       // Persist the uploaded source rows even when no fee date overlaps a closed
@@ -262,11 +268,10 @@ export function ClosedHistoryDesk() {
       if (cashflowsChanged) nextState.cashflows = imported;
       // Compare the complete recalculated records before writing. This prevents
       // repeated post-load recalculation from causing redundant Worker syncs.
-      if (updatedTradeCount && brokerExecutions.length &&
-          JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
+      if (changedBrokerRows && JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
         nextState.brokerExecutedTrades = updatedExecutions;
-      } else if (updatedTradeCount && !brokerExecutions.length &&
-          JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
+      }
+      if (changedAppRows && JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
         nextState.closedTrades = updatedTrades;
       }
       if (Object.keys(nextState).length) portfolioStore.setState(nextState);
@@ -304,8 +309,10 @@ export function ClosedHistoryDesk() {
         if (showImportMessage) setCashflowImportMessage(`Saved ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows (${validFeeDates} with valid dates; ${feeSpan}), but none overlapped ${segments.length} FIFO-matched closed trade segments from ${validTradeDates} dated broker executions (${tradeSpan}). Cashflow data is saved; check the date ranges and broker execution data to allocate fees.`);
         return;
       }
-      setBrokerTrades(brokerExecutions.length ? updatedExecutions : brokerTrades);
-      if (showImportMessage) setCashflowImportMessage(`Saved ${imported.length} cashflow rows; allocated ${allocatedDailyFees.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} closed trade rows (${matchedFeeRows} fee dates matched). Saved rows can be reused after refresh.`);
+      if (brokerExecutions.length) setBrokerTrades(updatedExecutions);
+      const allocatedForMessage = brokerExecutions.length ? allocatedDailyFees : appAllocatedDailyFees;
+      const matchedForMessage = brokerExecutions.length ? matchedFeeRows : appMatchedFeeRows;
+      if (showImportMessage) setCashflowImportMessage(`Saved ${imported.length} cashflow rows; allocated ${allocatedForMessage.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} changed closed-trade rows (${matchedForMessage} fee dates matched). Saved rows can be reused after refresh.`);
     } catch (error) {
       if (showImportMessage) setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
     } finally {
