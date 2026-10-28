@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions } from './worker.js';
+import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 
 describe('upstream timeout coverage', () => {
@@ -23,6 +23,27 @@ describe('upstream timeout coverage', () => {
     await vi.advanceTimersByTimeAsync(51);
     await rejectedBody;
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('sanitizeFreedomActiveOrders', () => {
+  it('returns only safe order fields and preserves remaining quantity for partial fills', () => {
+    const result = sanitizeFreedomActiveOrders({
+      data: { result: { orders: { order: [
+        { order_id: 42, instr: 'AAPL.US', oper: 3, type: 2, p: 212.5, q: 10, leaves_qty: 4, stat: 'active', account: 'private', token: 'secret' },
+        { order_id: 43, instr: 'MSFT.US', oper: 1, type: 2, p: 400, q: 2, stat: 'active' }
+      ] } } }
+    });
+    expect(result.orders.order).toEqual([
+      { order_id: '42', instr: 'AAPL.US', oper: 3, type: 2, p: 212.5, q: 10, leaves_qty: 4, stat: 'active' },
+      { order_id: '43', instr: 'MSFT.US', oper: 1, type: 2, p: 400, q: 2, leaves_qty: 2, stat: 'active' }
+    ]);
+    expect(JSON.stringify(result)).not.toContain('private');
+    expect(JSON.stringify(result)).not.toContain('secret');
+  });
+
+  it('returns an empty order list for an unrecognized response shape', () => {
+    expect(sanitizeFreedomActiveOrders({ unexpected: true })).toEqual({ orders: { order: [] } });
   });
 });
 
