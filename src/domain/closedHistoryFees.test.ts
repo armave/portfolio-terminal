@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   applyCashflowAllocationsToBrokerExecutions,
   applyCashflowAllocationsToClosedTrades,
-  deduplicateClosedHistoryRows
+  deduplicateClosedHistoryRows,
+  preservePersistedBrokerFeeAllocations
 } from './closedHistoryFees';
 
 describe('closed-history cashflow fee recalculation', () => {
@@ -73,6 +74,56 @@ describe('closed-history cashflow fee recalculation', () => {
     });
   });
 });
+
+
+  it('restores persisted cashflow fee allocations when fresh broker rows omit them', () => {
+    const freshBrokerRow = {
+      id: 'sell-42',
+      side: 'sell',
+      commission: 1.25,
+      profit: 100,
+      marginFeeAllocations: {},
+      marginFee: 0,
+      feesAndCommissions: 1.25,
+      netProfit: 98.75
+    };
+    const persistedRow = {
+      id: 'sell-42',
+      side: 'sell',
+      commission: 1.25,
+      profit: 100,
+      marginFeeAllocations: { 'fee-2026-01-01': 2.5, 'fee-2026-01-02': 1.5 },
+      marginFee: 4,
+      feesAndCommissions: 5.25,
+      netProfit: 94.75
+    };
+
+    expect(preservePersistedBrokerFeeAllocations([freshBrokerRow], [persistedRow])[0]).toMatchObject({
+      id: 'sell-42',
+      marginFeeAllocations: { 'fee-2026-01-01': 2.5, 'fee-2026-01-02': 1.5 },
+      marginFee: 4,
+      feesAndCommissions: 5.25,
+      netProfit: 94.75
+    });
+  });
+
+  it('does not replace freshly calculated allocations with saved metadata', () => {
+    const fresh = {
+      id: 'sell-42',
+      marginFeeAllocations: { 'new-fee': 1 },
+      marginFee: 1,
+      feesAndCommissions: 2,
+      netProfit: 98
+    };
+    const stale = {
+      id: 'sell-42',
+      marginFeeAllocations: { 'old-fee': 5 },
+      marginFee: 5,
+      feesAndCommissions: 6,
+      netProfit: 94
+    };
+    expect(preservePersistedBrokerFeeAllocations([fresh], [stale])[0]).toBe(fresh);
+  });
 
 describe('closed-history idempotency and source deduplication', () => {
   it('preserves object identity when broker allocations have not changed', () => {
