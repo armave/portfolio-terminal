@@ -120,7 +120,7 @@ if (typeof window !== 'undefined') {
     const current = portfolioStore.getState();
     const executedTrades = Array.isArray((window as any).__tradenetExecutedTrades)
       ? (window as any).__tradenetExecutedTrades
-      : undefined;
+      : Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
     const classified = classifyFreedomPortfolio(
       snapshot,
       current.positions || {},
@@ -238,7 +238,7 @@ if (typeof window !== 'undefined') {
     }
     const executedTrades = Array.isArray((window as any).__tradenetExecutedTrades)
       ? (window as any).__tradenetExecutedTrades
-      : undefined;
+      : Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
     const classified = classifyFreedomPortfolio(
       snapshot,
       current.positions || {},
