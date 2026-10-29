@@ -302,10 +302,9 @@ export function CashCushionDesk({
                         </div>
                         <div
                           aria-hidden={!(type === 'mix' && mixExpanded)}
-                          class={`grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${type === 'mix' && mixExpanded ? 'mt-2 opacity-100' : 'mt-0 opacity-0 pointer-events-none'}`}
-                          style={{ gridTemplateRows: type === 'mix' && mixExpanded ? '1fr' : '0fr' }}
+                          class={`overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-in-out motion-reduce:transition-none ${type === 'mix' && mixExpanded ? 'mt-2 max-h-24 opacity-100' : 'mt-0 max-h-0 opacity-0 pointer-events-none'}`}
                         >
-                          <div class="min-h-0 overflow-hidden">
+                          <div>
                             {type === 'mix' && (
                               <div class="flex items-center justify-center gap-2 rounded-md border border-slate-800 bg-slate-950/70 p-2 font-sans">
                                 <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">
