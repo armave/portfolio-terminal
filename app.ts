@@ -286,7 +286,7 @@ if (typeof window !== 'undefined') {
   });
 }
 
-portfolioStore.subscribe((nextStoreState) => {
+const syncCalculatedPortfolioEquity = (nextStoreState: ReturnType<typeof portfolioStore.getState>) => {
   state = nextStoreState as any;
 
   // Equity is derived from the latest stored cash, holdings, and prices. Persist
@@ -308,7 +308,12 @@ portfolioStore.subscribe((nextStoreState) => {
     portfolioEquityUpdatedAt: Date.now()
   });
   void pushStateToCloud();
-});
+};
+
+portfolioStore.subscribe(syncCalculatedPortfolioEquity);
+// Also calculate/persist the initial snapshot so the first equity value is not
+// left local-only until the next trade or quote refresh.
+syncCalculatedPortfolioEquity(portfolioStore.getState());
 
 async function pushStateToCloud(forceImmediate = false) {
   if (!areHeaderCredentialsConfigured()) {
