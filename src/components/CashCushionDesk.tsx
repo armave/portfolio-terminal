@@ -282,11 +282,11 @@ export function CashCushionDesk({
                       <td class="py-2 px-2 text-center">
                         <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={tranche.ticker + ' operation type'}>
                           <button type="button" aria-pressed={type === 'cash'} onClick={() => setActiveTrancheType(tranche.id, 'cash')}
-                            class={\`rounded px-2 py-1 text-[10px] font-bold transition \${type === 'cash' ? 'bg-cyan-950 text-cyan-300' : 'text-slate-500 hover:text-slate-300'}\`}>Cash</button>
+                            class={type === 'cash' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-cyan-950 text-cyan-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Cash</button>
                           <button type="button" aria-pressed={type === 'margin'} onClick={() => setActiveTrancheType(tranche.id, 'margin')}
-                            class={\`rounded px-2 py-1 text-[10px] font-bold transition \${type === 'margin' ? 'bg-amber-950 text-amber-300' : 'text-slate-500 hover:text-slate-300'}\`}>Margin</button>
+                            class={type === 'margin' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-amber-950 text-amber-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Margin</button>
                           <button type="button" aria-pressed={type === 'mix'} onClick={selectMix}
-                            class={\`rounded px-2 py-1 text-[10px] font-bold transition \${type === 'mix' ? 'bg-violet-950 text-violet-300' : 'text-slate-500 hover:text-slate-300'}\`}>Mix</button>
+                            class={type === 'mix' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-violet-950 text-violet-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Mix</button>
                         </div>
                         {type === 'mix' && (
                           <div class="mt-1 flex items-center justify-center gap-2 font-sans">
