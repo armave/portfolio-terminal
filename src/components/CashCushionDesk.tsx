@@ -4,7 +4,6 @@ import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
 import { getActiveTranchesFromTrades, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
-import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 
 export interface CashCushionDeskProps {
   refreshIntervalMs?: number;
@@ -79,7 +78,6 @@ export function CashCushionDesk({
     };
   }, []);
 
-  const freeCash = Number(state.cashCushion?.freeCash) || 0;
   const holdings = state.cashCushion?.holdings || [];
   const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
   const setActiveTrancheType = (ticker: string, type: ActiveTrancheType) => {
@@ -92,19 +90,6 @@ export function CashCushionDesk({
     const price = Number(h.currentPrice ?? h.price) || 0;
     return sum + (Number(h.shares) || 0) * price;
   }, 0);
-
-  const valuation = calculatePortfolioValuation({
-    signedAccountBalance: state.balance,
-    freeCash,
-    marginPositions: Object.values(state.positions || {}),
-    cashHoldings: holdings
-  });
-  const valuationStatus = state.brokerAccountInfo?.status === 'stale'
-    ? 'Broker snapshot stale · estimates use last tracked values'
-    : valuation.unpricedHoldings > 0
-      ? `${valuation.unpricedHoldings} holding(s) missing a usable price`
-      : 'Recalculated from tracked shares and current market-session prices';
-
 
   return (
     <>
