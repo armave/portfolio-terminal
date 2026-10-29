@@ -29,14 +29,14 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
       <div class="margin-risk-legend"><span>{(rules.maintenanceMarginRatio * 100).toFixed(1)}% maintenance</span><span>40% reference</span><span>100% assets</span></div>
       <div class="margin-risk-gauge-grid">
         <div class="margin-risk-gauge-item">
-          <div class="margin-risk-gauge-row"><span class="margin-risk-label">MARGIN-CALL BUFFER</span><strong>{Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct.toFixed(1) + '%' : '—'}</strong></div>
-          <div class="margin-risk-buffer-track" role="progressbar" aria-label="Margin-call buffer" aria-valuemin={0} aria-valuemax={100} aria-valuenow={buffer}><span class={buffer < 30 ? 'danger' : 'warning'} style={{ width: buffer + '%' }}></span></div>
-          <div class="margin-risk-detail"><span>Trigger estimate</span><strong>{risk.showMarginCall ? risk.marginCallText : 'Below trigger estimate'}</strong></div>
-        </div>
-        <div class="margin-risk-gauge-item">
           <div class="margin-risk-gauge-row" title={stopOutTitle}><span class="margin-risk-label">STOP-OUT THRESHOLD</span><strong>{Number.isFinite(risk.stopOutBufferPct) ? risk.stopOutBufferPct.toFixed(1) + '% buffer' : '—'}</strong></div>
           <div class="margin-risk-buffer-track"><span class={stopOutBuffer < 30 ? 'danger' : 'safe'} style={{ width: stopOutBuffer + '%' }}></span></div>
           <div class="margin-risk-detail"><span>Trigger estimate</span><strong>{risk.showStopOut ? risk.stopOutText : '—'}</strong></div>
+        </div>
+        <div class="margin-risk-gauge-item">
+          <div class="margin-risk-gauge-row"><span class="margin-risk-label">MARGIN-CALL BUFFER</span><strong>{Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct.toFixed(1) + '%' : '—'}</strong></div>
+          <div class="margin-risk-buffer-track" role="progressbar" aria-label="Margin-call buffer" aria-valuemin={0} aria-valuemax={100} aria-valuenow={buffer}><span class={buffer < 30 ? 'danger' : 'warning'} style={{ width: buffer + '%' }}></span></div>
+          <div class="margin-risk-detail"><span>Trigger estimate</span><strong>{risk.showMarginCall ? risk.marginCallText : 'Below trigger estimate'}</strong></div>
         </div>
       </div>
       <details class="margin-risk-mobile-details"><summary>Equity and collateral details</summary><div class="margin-risk-detail"><span>Account equity</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>Cash / collateral</span><strong>{collateralText}</strong></div><div class="margin-risk-disclaimer">Estimates use configured broker thresholds and are not live broker risk indicators.</div></details>
