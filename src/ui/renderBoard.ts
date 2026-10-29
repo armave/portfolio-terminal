@@ -176,7 +176,7 @@ function renderSummaryCards(
       metrics.totalComms,
       metrics.totalDebt,
       metrics.totalMarginCharged,
-      resolvePositionEntryDate(tranchesForCombined, state.startDate),
+      resolvePositionEntryDate(collectOpenPositionTranches(state.positions || {}), state.startDate),
       dailyRate
     );
   } else {
