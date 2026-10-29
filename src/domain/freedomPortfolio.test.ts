@@ -246,21 +246,21 @@ describe('active limit sell target synchronization', () => {
     expect(applyActiveLimitSellTargets(refreshed, targets).AAPL.pt).toBe(353);
   });
 
-  it('matches newest dated orders first and quantity-weights the price to the margin position', () => {
+  it('selects one active order instead of quantity-weighting different limit prices', () => {
     const targets = getActiveLimitSellTargets([
       { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 300, remainingQuantity: 20, date: '2026-10-01T10:00:00Z' },
       { ticker: 'AAPL.US', operation: 3, orderType: 2, limitPrice: 320, remainingQuantity: 15, date: '2026-10-02T10:00:00Z' },
       { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 340, remainingQuantity: 10, date: '2026-10-03T10:00:00Z' }
     ], { AAPL: 30 });
 
-    // Use all 10 shares at 340 and 15 at 320, then 5 at 300.
-    expect(targets).toEqual({ AAPL: 323.33 });
+    // With no single order covering the full position, use the largest live order.
+    expect(targets).toEqual({ AAPL: 300 });
   });
 
-  it('does not calculate a target when active order quantities cannot cover the margin position', () => {
+  it('uses the live order price even when its remaining quantity does not cover the tracked position', () => {
     expect(getActiveLimitSellTargets([
       { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 320, remainingQuantity: 10, date: '2026-10-02T10:00:00Z' }
-    ], { AAPL: 20 })).toEqual({});
+    ], { AAPL: 20 })).toEqual({ AAPL: 320 });
   });
 
   it('does not guess between different prices without a known margin quantity', () => {
@@ -286,12 +286,12 @@ describe('active limit sell target synchronization', () => {
     expect(targets).toEqual({ GOOGL: 333 });
   });
 
-  it('uses only the live TradeNet order when active-order payload includes historical statuses', () => {
+  it('selects the 70-share GOOGL order at $333 with TradeNet status 10 over historical rows', () => {
     const targets = getActiveLimitSellTargets([
       { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 353, remainingQuantity: 50, status: '31' },
-      { ticker: 'GOOGL.US', operation: 3, orderType: 2, limitPrice: 285, remainingQuantity: 20, status: '21' },
-      { ticker: 'GOOGL.US', operation: 3, orderType: 2, limitPrice: 282, remainingQuantity: 0, status: '21' },
-      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 333, remainingQuantity: 70, status: '16' }
+      { ticker: 'GOOGL.US', operation: 1, orderType: 2, limitPrice: 285, remainingQuantity: 20, status: '31' },
+      { ticker: 'GOOGL.US', operation: 1, orderType: 2, limitPrice: 282, remainingQuantity: 0, status: '21' },
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 333, remainingQuantity: 70, status: '10' }
     ], { GOOGL: 70 });
 
     expect(targets).toEqual({ GOOGL: 333 });

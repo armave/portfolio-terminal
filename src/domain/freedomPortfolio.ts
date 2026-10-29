@@ -54,9 +54,10 @@ function activeOrderTimestamp(order: FreedomActiveLimitSellOrderLike): number | 
 }
 
 /**
- * Resolve one target per ticker by matching the total margin quantity against
- * active limit-sell orders, newest first. Partial matching of the final order is
- * allowed. If known margin quantity cannot be fully covered, no target is guessed.
+ * Resolve one target per ticker from a single active limit-sell order. Never
+ * synthesize a target by averaging distinct broker limit prices. Prefer an order
+ * that exactly covers the tracked position; otherwise use the largest remaining
+ * order, and leave the target unchanged when equally sized prices are ambiguous.
  */
 export function getActiveLimitSellTargets(
   orders: FreedomActiveLimitSellOrderLike[],
@@ -69,9 +70,9 @@ export function getActiveLimitSellTargets(
     const quantity = positiveFinite(order?.remainingQuantity);
     const status = String(order?.status ?? '').trim().toLowerCase();
     // TradeNet's active-orders endpoint can include historical rows. In the
-    // observed broker payload, stat=16 is the live order; 21/31 are not active.
+    // observed broker payload, stat=10 is the live order; 21/31 are not active.
     // Keep status-less callers compatible with the pure helper's existing API.
-    if (status && !['16', 'active', 'open', 'working'].includes(status)) return;
+    if (status && !['10', '16', 'active', 'open', 'working'].includes(status)) return;
     if (!ticker || order?.operation !== 3 || ![2, 4].includes(Number(order?.orderType)) || price === null || quantity === null) return;
     const entries = ordersByTicker.get(ticker) || [];
     entries.push({ price, quantity, timestamp: activeOrderTimestamp(order), index });
@@ -82,39 +83,37 @@ export function getActiveLimitSellTargets(
   for (const [ticker, tickerOrders] of ordersByTicker) {
     const rawMarginQuantity = marginQuantities[ticker];
     const marginQuantity = Number(rawMarginQuantity);
-    if (rawMarginQuantity === undefined || !Number.isFinite(marginQuantity) || marginQuantity <= 0) {
-      // Compatibility path for callers without position quantities: a single
-      // unambiguous price can still be applied, but differing prices are not guessed.
-      const prices = new Set(tickerOrders.map(order => order.price));
-      if (prices.size === 1) targets[ticker] = tickerOrders[0].price;
+    let candidates = tickerOrders;
+
+    // If a single broker order exactly covers the tracked position, that order
+    // is authoritative even when other order rows are present.
+    if (rawMarginQuantity !== undefined && Number.isFinite(marginQuantity) && marginQuantity > 0) {
+      const exactOrders = tickerOrders.filter(order => Math.abs(order.quantity - marginQuantity) <= 1e-8);
+      if (exactOrders.length) candidates = exactOrders;
+    }
+
+    // Never average different broker limit prices into a synthetic target.
+    // If no exact-quantity order exists, use the order with the most shares
+    // remaining. Equal-size orders at different prices are ambiguous unless a
+    // unique newest timestamp resolves the choice.
+    if (candidates === tickerOrders) {
+      const largestQuantity = Math.max(...tickerOrders.map(order => order.quantity));
+      candidates = tickerOrders.filter(order => Math.abs(order.quantity - largestQuantity) <= 1e-8);
+    }
+
+    const prices = new Set(candidates.map(order => order.price));
+    if (prices.size === 1) {
+      targets[ticker] = candidates[0].price;
       continue;
     }
 
-    const sorted = [...tickerOrders].sort((a, b) => {
-      if (a.timestamp !== null && b.timestamp !== null) return b.timestamp - a.timestamp || a.index - b.index;
-      if (a.timestamp !== null) return -1;
-      if (b.timestamp !== null) return 1;
-      return a.index - b.index;
-    });
-
-    // Prefer a single live order whose remaining quantity exactly covers the
-    // position. Do not blend its limit with unrelated/superseded orders returned
-    // in the same broker response.
-    const exactQuantityOrder = sorted.find(order => Math.abs(order.quantity - marginQuantity) <= 1e-8);
-    if (exactQuantityOrder) {
-      targets[ticker] = exactQuantityOrder.price;
-      continue;
+    const dated = candidates
+      .filter(order => order.timestamp !== null)
+      .sort((a, b) => (b.timestamp as number) - (a.timestamp as number) || a.index - b.index);
+    if (dated.length && dated[0].timestamp !== null &&
+        (dated.length === 1 || dated[0].timestamp !== dated[1].timestamp)) {
+      targets[ticker] = dated[0].price;
     }
-
-    let remaining = marginQuantity;
-    let notional = 0;
-    for (const order of sorted) {
-      if (remaining <= 1e-8) break;
-      const matchedQuantity = Math.min(order.quantity, remaining);
-      notional += matchedQuantity * order.price;
-      remaining -= matchedQuantity;
-    }
-    if (remaining <= 1e-8) targets[ticker] = Number((notional / marginQuantity).toFixed(2));
   }
   return targets;
 }

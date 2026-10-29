@@ -261,6 +261,23 @@ if (typeof window !== 'undefined') {
       return quantities;
     }, {} as Record<string, number>);
     activeLimitSellTargets = getActiveLimitSellTargets(orders, marginQuantities);
+    const orderDiagnostics = orders
+      .filter(order => Object.keys(marginQuantities).includes(String(order.ticker || '').trim().toUpperCase().replace(/\.US$/i, '')))
+      .map(order => [
+        String(order.ticker || '?').toUpperCase(),
+        Number(order.limitPrice) > 0 ? '$' + Number(order.limitPrice).toFixed(2) : 'no-price',
+        'remaining=' + String(order.remainingQuantity ?? '?'),
+        'status=' + String(order.status || '?'),
+        'operation=' + String(order.operation ?? '?'),
+        'type=' + String(order.orderType ?? '?'),
+        'id=' + String(order.id || '?')
+      ].join(' ')).join('; ');
+    const targetDiagnostics = Object.entries(activeLimitSellTargets)
+      .map(([ticker, price]) => ticker + '=$' + price.toFixed(2))
+      .join(', ');
+    logTerminal('[Freedom] Active sell target sync: ' + (targetDiagnostics || 'no target selected') +
+      '; tracked quantities=' + JSON.stringify(marginQuantities) +
+      '; orders=' + (orderDiagnostics || 'none') + '.');
     const current = portfolioStore.getState();
     const positions = applyActiveLimitSellTargets(current.positions || {}, activeLimitSellTargets);
     const updates: Array<{ ticker: string; price: number }> = [];
