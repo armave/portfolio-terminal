@@ -116,30 +116,6 @@ export function CashCushionDesk({
         </div>
       </div>
 
-      <section class="space-y-1.5" aria-label="Calculated account balances">
-        <div class="flex items-stretch overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/50 divide-x divide-slate-800">
-          <div class="min-w-[155px] flex-1 border-t-2 border-t-cyan-700/70 px-3 py-2 sm:px-4">
-            <span class="block whitespace-nowrap text-xs uppercase tracking-wide text-cyan-300">Total portfolio equity</span>
-            <strong class="mt-0.5 block whitespace-nowrap text-sm font-bold font-mono tabular-nums text-cyan-200">{formatUSD(valuation.equity)}</strong>
-          </div>
-          {valuation.cashBalance > 0 || valuation.marginDebt === 0 ? (
-            <div class="min-w-[130px] flex-1 border-t-2 border-t-emerald-800/70 px-3 py-2 sm:px-4">
-              <span class="block whitespace-nowrap text-xs uppercase tracking-wide text-slate-400">Available cash</span>
-              <strong class="mt-0.5 block whitespace-nowrap text-sm font-bold font-mono tabular-nums text-emerald-300">{formatUSD(valuation.cashBalance)}</strong>
-            </div>
-          ) : null}
-          {valuation.marginDebt > 0 ? (
-            <div class="min-w-[130px] flex-1 border-t-2 border-t-rose-800/70 bg-rose-950/10 px-3 py-2 sm:px-4">
-              <span class="block whitespace-nowrap text-xs uppercase tracking-wide text-rose-300">Margin debt</span>
-              <strong class="mt-0.5 block whitespace-nowrap text-sm font-bold font-mono tabular-nums text-rose-300">{formatUSD(valuation.marginDebt)}</strong>
-            </div>
-          ) : null}
-        </div>
-        <div class="text-[10px] text-slate-500" role="status">
-          {valuationStatus} · Holdings valued: {valuation.pricedHoldings}
-        </div>
-      </section>
-
       <div class="space-y-2">
         <div class="table-scroll-wrapper overflow-x-auto">
           <table class="w-full min-w-0 table-fixed text-left text-xs border-collapse">
