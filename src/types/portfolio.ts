@@ -173,7 +173,12 @@ export interface PendingMutation {
   rollback?: () => void;
 }
 
-export type ActiveTrancheType = 'cash' | 'margin';
+export type ActiveTrancheType = 'cash' | 'margin' | 'mix';
+
+export interface ActiveTrancheMix {
+  cash: number;
+  margin: number;
+}
 
 export interface ActiveBrokerTranche {
   /** Stable identity for the open purchase operation or a 5-minute grouped batch. */
@@ -196,6 +201,8 @@ export interface PortfolioState {
   /** Read-only broker snapshot; never replaces app-owned cash/margin classifications. */
   /** User's persisted cash/margin classification for each broker ticker; unknown tickers default to cash. */
   activeTrancheTypes?: Record<string, ActiveTrancheType>;
+  /** Per-operation share quantities for mixed cash/margin classifications. */
+  activeTrancheMixes?: Record<string, ActiveTrancheMix>;
   brokerAccountInfo?: {
     loaded: boolean;
     balances: Array<{ currency: string; amount: number; forecastIn: number; forecastOut: number; t2In: number; t2Out: number }>;
