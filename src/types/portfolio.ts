@@ -210,6 +210,10 @@ export interface PortfolioState {
   };
   cashCushion: CashCushionState;
   balance: number;
+  /** Derived total equity synced with the rest of the portfolio snapshot. */
+  portfolioEquity?: number;
+  /** Timestamp of the last persisted equity recalculation. */
+  portfolioEquityUpdatedAt?: number;
   realizedMarginCharged: number;
   tranches?: TrancheItem[];
   startDate?: string;
