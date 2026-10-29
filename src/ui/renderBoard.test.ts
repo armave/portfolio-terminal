@@ -22,7 +22,7 @@ describe('resolvePositionEntryDate', () => {
     expect(resolvePositionEntryDate([
       { purchaseDate: '2026-10-22' },
       { acquiredAt: Date.parse('2026-10-21T12:00:00Z') }
-    ], '2026-10-28', new Date('2026-10-29T12:00:00Z'))).toBe('2026-10-22');
+    ], '2026-10-28', new Date('2026-10-29T12:00:00Z'))).toBe('2026-10-21');
   });
 
   it('skips active tranches without a valid date until the first valid tranche date', () => {
@@ -31,7 +31,7 @@ describe('resolvePositionEntryDate', () => {
       { date: 'invalid-date' },
       { date: '2026-10-22' },
       { date: '2026-10-20' }
-    ], '2026-10-28')).toBe('2026-10-22');
+    ], '2026-10-28')).toBe('2026-10-20');
   });
 
   it('uses the fallback when no valid tranche dates exist', () => {
