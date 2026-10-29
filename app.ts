@@ -576,7 +576,11 @@ function updateCombinedBreakeven() {
     return;
   }
 
-  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate()) || 0;
+  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate());
+  if (beDays === null) {
+    setText("Combined Breakeven: No non-negative breakeven date");
+    return;
+  }
 
   const beDate = new Date();
   beDate.setDate(beDate.getDate() + beDays);
