@@ -411,7 +411,11 @@ export function calculateBreakevenDays(
   for (let day = 1; day <= 1_000_000; day++) {
     const next = Number((projected * (1 + dailyRate)).toFixed(2));
     if (!Number.isFinite(next) || next <= 0) return null;
-    if (next - principal >= netTargetProfit - 1e-9) return day;
+    const remainingNet = Number((netTargetProfit - (next - principal)).toFixed(2));
+    // Only report a breakeven date when the projected net balance is zero,
+    // never on the first day it has already crossed into negative territory.
+    if (remainingNet === 0) return day;
+    if (remainingNet < 0) return null;
     // Cent rounding can make very small balances stationary indefinitely.
     if (next === projected) return null;
     projected = next;
