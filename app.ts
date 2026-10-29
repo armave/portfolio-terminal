@@ -53,6 +53,7 @@ import {
   renderBoard as renderBoardUI,
 } from './src/ui/renderBoard';
 import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
+import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
@@ -287,6 +288,26 @@ if (typeof window !== 'undefined') {
 
 portfolioStore.subscribe((nextStoreState) => {
   state = nextStoreState as any;
+
+  // Equity is derived from the latest stored cash, holdings, and prices. Persist
+  // it into the canonical snapshot and cloud-sync only when its cent value changes.
+  const valuation = calculatePortfolioValuation({
+    signedAccountBalance: nextStoreState.balance,
+    freeCash: nextStoreState.cashCushion?.freeCash,
+    marginPositions: Object.values(nextStoreState.positions || {}),
+    cashHoldings: nextStoreState.cashCushion?.holdings || []
+  });
+  const equity = Number(valuation.equity.toFixed(2));
+  if (
+    Number.isFinite(nextStoreState.portfolioEquity) &&
+    Number(nextStoreState.portfolioEquity) === equity
+  ) return;
+
+  portfolioStore.setState({
+    portfolioEquity: equity,
+    portfolioEquityUpdatedAt: Date.now()
+  });
+  void pushStateToCloud();
 });
 
 async function pushStateToCloud(forceImmediate = false) {
