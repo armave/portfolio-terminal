@@ -254,7 +254,7 @@ describe('active limit sell target synchronization', () => {
     ], { AAPL: 30 });
 
     // Use all 10 shares at 340 and 15 at 320, then 5 at 300.
-    expect(targets).toEqual({ AAPL: 325 });
+    expect(targets).toEqual({ AAPL: 323.33 });
   });
 
   it('does not calculate a target when active order quantities cannot cover the margin position', () => {
