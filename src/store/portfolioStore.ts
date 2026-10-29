@@ -227,6 +227,9 @@ export class PortfolioStore {
       activeTrancheTypes: saved?.activeTrancheTypes && typeof saved.activeTrancheTypes === 'object'
         ? saved.activeTrancheTypes
         : {},
+      activeTrancheMixes: saved?.activeTrancheMixes && typeof saved.activeTrancheMixes === 'object'
+        ? saved.activeTrancheMixes
+        : {},
       cashCushion: saved?.cashCushion || { freeCash: 0, holdings: [] },
       balance: Number.isFinite(Number(saved?.balance)) ? Number(saved?.balance) : 0,
       realizedMarginCharged: Number.isFinite(Number(saved?.realizedMarginCharged))
