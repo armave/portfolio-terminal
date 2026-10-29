@@ -49,33 +49,22 @@ export function ProjectionsTable({
     return gross - projectedFees;
   };
 
-  // Find an exact cent-rounded breakeven, and independently stop projection
-  // rows before the first negative net balance. Never label a negative day as breakeven.
+  // Find the first day projected net reaches or crosses zero. That day is the
+  // breakeven milestone; display its net as $0.00 and stop before any negative day.
   let breakevenDays: number | undefined;
-  let lastNonNegativeDay = Number.POSITIVE_INFINITY;
   const todayNet = Number(netAfterDays(0).toFixed(2));
-  if (todayNet < 0) {
-    lastNonNegativeDay = -1;
-  } else if (todayNet === 0) {
+  if (todayNet <= 0) {
     breakevenDays = 0;
-    lastNonNegativeDay = 0;
   } else if (debtToUse > 0 && dailyRate > 0) {
     for (let day = 1; day <= MAX_BREAKEVEN_SEARCH_DAYS; day++) {
-      const projectedNet = Number(netAfterDays(day).toFixed(2));
-      if (projectedNet === 0) {
+      if (Number(netAfterDays(day).toFixed(2)) <= 0) {
         breakevenDays = day;
-        lastNonNegativeDay = day;
-        break;
-      }
-      if (projectedNet < 0) {
-        lastNonNegativeDay = day - 1;
         break;
       }
     }
   }
 
-  const projectionItems = getUsEquityProjectionDates(new Date(), entryDate, breakevenDays)
-    .filter((item) => item.kind === 'entry' || item.daysFromToday <= lastNonNegativeDay);
+  const projectionItems = getUsEquityProjectionDates(new Date(), entryDate, breakevenDays);
   const pageCount = Math.max(1, Math.ceil(projectionItems.length / ROWS_PER_PAGE));
   const currentPage = Math.min(page, pageCount - 1);
   const visibleItems = projectionItems.slice(currentPage * ROWS_PER_PAGE, (currentPage + 1) * ROWS_PER_PAGE);
@@ -108,7 +97,8 @@ export function ProjectionsTable({
         const additionalAccrual = projectedDebt - Math.abs(debtToUse);
         const marginFee = marginChargedToUse + additionalAccrual;
         const feesAndCommissions = calculateAccruedFees(totalComms, marginChargedToUse, additionalAccrual);
-        const net = gross - feesAndCommissions;
+        const projectedNet = Number((gross - feesAndCommissions).toFixed(2));
+        const net = kind === 'breakeven' ? 0 : projectedNet;
         const dailyFee = projectedDebt * dailyRate;
 
         const rowClass = kind === 'today'
