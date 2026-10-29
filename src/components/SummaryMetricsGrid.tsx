@@ -7,6 +7,7 @@ import {
   calculateCommission,
   calculateMarginInterest
 } from '../domain/portfolio';
+import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 
 function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string; rules: BrokerRules }) {
   const stopOutTitle = `Estimate assumes the configured ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
@@ -198,7 +199,7 @@ export function SummaryMetricsGrid({
     const totalComms = totalCommBuy + totalCommSell;
     const totalUnrealized = totalMarketValue - totalInvested;
     const unrealizedPct = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
-    const totalDebt = Math.abs(Number(state.balance) || 0);
+    const totalDebt = Math.max(0, -(Number(state.balance) || 0));
     const dailyAccrual = totalDebt * dailyRate;
 
     const tranchesText =
@@ -232,8 +233,14 @@ export function SummaryMetricsGrid({
       ? getQuoteFreshness(latestQuote, Date.now(), refreshIntervalMs)
       : 'unavailable';
 
-    const totalAccountEquity = totalMarketValue + cushionTotal - totalDebt;
-    const totalAccountAssets = totalMarketValue + cushionTotal;
+    const valuation = calculatePortfolioValuation({
+      signedAccountBalance: state.balance,
+      freeCash: state.cashCushion?.freeCash,
+      marginPositions: tickers.map((ticker) => state.positions![ticker]),
+      cashHoldings: state.cashCushion?.holdings || []
+    });
+    const totalAccountEquity = valuation.equity;
+    const totalAccountAssets = valuation.totalHoldingsValue + valuation.cashBalance;
     const equityPct = totalAccountAssets > 0 ? (totalAccountEquity / totalAccountAssets) * 100 : Number.NaN;
     const equityText = `${formatUSD(totalAccountEquity)} (${Number.isFinite(equityPct) ? equityPct.toFixed(2) + "%" : "N/A"})`;
 
@@ -306,7 +313,7 @@ export function SummaryMetricsGrid({
   const portfolioInvested = getTotalPortfolioInvested(state);
   const weight = portfolioInvested > 0 ? totalInvested / portfolioInvested : 0;
 
-  const totalAccountDebt = Math.abs(Number(state.balance) || 0);
+  const totalAccountDebt = Math.max(0, -(Number(state.balance) || 0));
   const allocatedDebt = totalAccountDebt * weight;
   const totalCushion = getCashCushionTotal(state);
   const allocatedCushion = totalCushion * weight;
