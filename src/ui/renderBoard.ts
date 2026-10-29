@@ -46,7 +46,7 @@ function renderCashCushion(
   setCashCushionPropsState({ refreshIntervalMs });
 }
 
-function resolvePositionEntryDate(
+export function resolvePositionEntryDate(
   tranches: Array<{ date?: string }> | undefined,
   fallbackDate?: string
 ): string | undefined {
