@@ -1,5 +1,28 @@
-import type { ActiveBrokerTranche, ActiveTrancheType, PositionRecord } from '../types/portfolio';
+import type { ActiveBrokerTranche, ActiveTrancheMix, ActiveTrancheType, PositionRecord } from '../types/portfolio';
 import { calculateCommission, type CommissionConfig } from './portfolio';
+
+/** Preserve the cash/margin ratio when an open operation's quantity changes. */
+export function normalizeActiveTrancheMix(
+  quantity: number,
+  allocation?: Partial<ActiveTrancheMix> | null
+): ActiveTrancheMix {
+  const totalQuantity = Number(quantity);
+  if (!Number.isFinite(totalQuantity) || totalQuantity <= 0) return { cash: 0, margin: 0 };
+
+  const cash = Number(allocation?.cash);
+  const margin = Number(allocation?.margin);
+  if (!Number.isFinite(cash) || !Number.isFinite(margin) || cash < 0 || margin < 0) {
+    return { cash: totalQuantity, margin: 0 };
+  }
+
+  const allocatedQuantity = cash + margin;
+  if (!Number.isFinite(allocatedQuantity) || allocatedQuantity <= 1e-8) {
+    return { cash: totalQuantity, margin: 0 };
+  }
+
+  const cashQuantity = totalQuantity * (cash / allocatedQuantity);
+  return { cash: cashQuantity, margin: totalQuantity - cashQuantity };
+}
 
 export interface FreedomPortfolioSnapshotLike {
   loaded: boolean;
@@ -301,7 +324,8 @@ export function classifyFreedomPortfolio(
   classifications: Record<string, ActiveTrancheType> = {},
   receivedAt = Date.now(),
   executedTrades?: FreedomExecutedTradeLike[],
-  commissionRules?: CommissionConfig
+  commissionRules?: CommissionConfig,
+  mixedAllocations: Record<string, ActiveTrancheMix> = {}
 ): { positions: Record<string, PositionRecord>; cashStocks: any[] } {
   const positions: Record<string, PositionRecord> = {};
   const cashByTicker = new Map<string, any>();
@@ -317,6 +341,14 @@ export function classifyFreedomPortfolio(
     : getActiveBrokerTranches(snapshot);
   for (const tranche of activeTranches) {
     const type = classifications[tranche.id] || classifications[tranche.ticker] || 'cash';
+    const allocation = type === 'mix'
+      ? normalizeActiveTrancheMix(tranche.quantity, mixedAllocations[tranche.id] || mixedAllocations[tranche.ticker])
+      : null;
+    const cashQuantity = type === 'mix' ? (allocation?.cash || 0) : type === 'margin' ? 0 : tranche.quantity;
+    const marginQuantity = type === 'margin' ? tranche.quantity : (allocation?.margin || 0);
+    const marginBuyCommission = tranche.buyCommission !== undefined && tranche.quantity > 0
+      ? tranche.buyCommission * (marginQuantity / tranche.quantity)
+      : undefined;
     const prior = sourcePositions[tranche.ticker];
     const priorCash = previousCash.get(tranche.ticker);
     const currentPrice = tranche.marketPrice ?? prior?.currentPrice ?? (Number(priorCash?.currentPrice ?? priorCash?.price) || 0);
@@ -324,11 +356,16 @@ export function classifyFreedomPortfolio(
     // Snapshot-only fallback may retain legacy cost basis for interest continuity, but never its commissions.
     const entryPrice = tranche.averagePrice ?? (!Array.isArray(executedTrades) ? (Number(prior?.tranches?.[0]?.price) || currentPrice) : 0);
 
-    if (type === 'margin') {
+    if (marginQuantity > 1e-8) {
       const existing = marginByTicker.get(tranche.ticker);
       const entryTranches = existing?.entryTranches || [];
-      if (entryPrice > 0) entryTranches.push({ qty: tranche.quantity, price: entryPrice, ...(tranche.purchasedAt !== null ? { date: new Date(tranche.purchasedAt).toISOString() } : {}), ...(tranche.buyCommission !== undefined ? { buyCommission: tranche.buyCommission } : {}) });
-      const combinedQuantity = (existing?.tranche.quantity || 0) + tranche.quantity;
+      if (entryPrice > 0) entryTranches.push({
+        qty: marginQuantity,
+        price: entryPrice,
+        ...(tranche.purchasedAt !== null ? { date: new Date(tranche.purchasedAt).toISOString() } : {}),
+        ...(marginBuyCommission !== undefined ? { buyCommission: marginBuyCommission } : {})
+      });
+      const combinedQuantity = (existing?.tranche.quantity || 0) + marginQuantity;
       const combinedMarketPrice = tranche.marketPrice ?? existing?.tranche.marketPrice ?? null;
       marginByTicker.set(tranche.ticker, {
         tranche: { ...tranche, quantity: combinedQuantity, marketPrice: combinedMarketPrice, marketValue: combinedMarketPrice !== null ? combinedMarketPrice * combinedQuantity : null },
@@ -336,9 +373,11 @@ export function classifyFreedomPortfolio(
         currentPrice,
         entryTranches
       });
-    } else {
+    }
+
+    if (cashQuantity > 1e-8) {
       const existing = cashByTicker.get(tranche.ticker);
-      const quantity = (Number(existing?.shares) || 0) + tranche.quantity;
+      const quantity = (Number(existing?.shares) || 0) + cashQuantity;
       cashByTicker.set(tranche.ticker, { ...(existing || priorCash || {}), ticker: tranche.ticker, shares: quantity, ...(tranche.marketPrice !== null ? { currentPrice: tranche.marketPrice, price: tranche.marketPrice } : {}) });
     }
   }
