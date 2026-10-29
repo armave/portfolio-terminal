@@ -277,6 +277,15 @@ describe('active limit sell target synchronization', () => {
     ])).toEqual({});
   });
 
+  it('prefers an exact-quantity live order price over blending other live order rows', () => {
+    const targets = getActiveLimitSellTargets([
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 353, remainingQuantity: 50, status: '16' },
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 333, remainingQuantity: 70, status: '16' }
+    ], { GOOGL: 70 });
+
+    expect(targets).toEqual({ GOOGL: 333 });
+  });
+
   it('uses only the live TradeNet order when active-order payload includes historical statuses', () => {
     const targets = getActiveLimitSellTargets([
       { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 353, remainingQuantity: 50, status: '31' },

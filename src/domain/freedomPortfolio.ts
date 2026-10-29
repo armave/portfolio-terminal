@@ -96,6 +96,16 @@ export function getActiveLimitSellTargets(
       if (b.timestamp !== null) return 1;
       return a.index - b.index;
     });
+
+    // Prefer a single live order whose remaining quantity exactly covers the
+    // position. Do not blend its limit with unrelated/superseded orders returned
+    // in the same broker response.
+    const exactQuantityOrder = sorted.find(order => Math.abs(order.quantity - marginQuantity) <= 1e-8);
+    if (exactQuantityOrder) {
+      targets[ticker] = exactQuantityOrder.price;
+      continue;
+    }
+
     let remaining = marginQuantity;
     let notional = 0;
     for (const order of sorted) {
