@@ -62,6 +62,7 @@ export function CashCushionDesk({
       ? (window as any).__tradenetExecutedTrades
       : Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
   );
+  const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     const onTrades = (event: Event) => {
@@ -263,15 +264,26 @@ export function CashCushionDesk({
                       : 0;
                     setActiveTrancheType(tranche.id, 'mix', { cash: tranche.quantity - margin, margin });
                   };
-                  const selectMix = () => setActiveTrancheType(
-                    tranche.id,
-                    'mix',
-                    type === 'mix'
-                      ? mix
-                      : type === 'margin'
+                  const mixExpanded = expandedMixTranches.has(tranche.id);
+                  const selectMix = () => {
+                    if (type === 'mix') {
+                      setExpandedMixTranches((current) => {
+                        const next = new Set(current);
+                        if (next.has(tranche.id)) next.delete(tranche.id);
+                        else next.add(tranche.id);
+                        return next;
+                      });
+                      return;
+                    }
+                    setActiveTrancheType(
+                      tranche.id,
+                      'mix',
+                      type === 'margin'
                         ? { cash: 0, margin: tranche.quantity }
                         : { cash: tranche.quantity, margin: 0 }
-                  );
+                    );
+                    setExpandedMixTranches((current) => new Set(current).add(tranche.id));
+                  };
                   return (
                     <tr key={tranche.id} class="hover:bg-slate-900/50">
                       <td class="py-2 px-2 font-bold text-cyan-300">{tranche.ticker}</td>
@@ -285,11 +297,11 @@ export function CashCushionDesk({
                             class={type === 'cash' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-cyan-950 text-cyan-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Cash</button>
                           <button type="button" aria-pressed={type === 'margin'} onClick={() => setActiveTrancheType(tranche.id, 'margin')}
                             class={type === 'margin' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-amber-950 text-amber-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Margin</button>
-                          <button type="button" aria-pressed={type === 'mix'} onClick={selectMix}
-                            class={type === 'mix' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-violet-950 text-violet-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Mix</button>
+                          <button type="button" aria-pressed={type === 'mix'} aria-expanded={type === 'mix' && mixExpanded} title={type === 'mix' && mixExpanded ? 'Hide cash and margin quantities' : 'Edit cash and margin quantities'} onClick={selectMix}
+                            class={type === 'mix' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-violet-950 text-violet-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Mix <span aria-hidden="true">{type === 'mix' && mixExpanded ? '−' : '+'}</span></button>
                         </div>
-                        {type === 'mix' && (
-                          <div class="mt-1 flex items-center justify-center gap-2 font-sans">
+                        {type === 'mix' && mixExpanded && (
+                          <div class="mt-2 flex items-center justify-center gap-2 rounded-md border border-slate-800 bg-slate-950/70 p-2 font-sans">
                             <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">
                               Cash
                               <input
