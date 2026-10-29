@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { BoardState } from '../types/portfolio';
-import { getCashCushionTotal } from '../domain/portfolioSelectors';
+import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 
 export interface TickerTabsProps {
   state: BoardState;
@@ -44,7 +44,13 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
 
   const tickers = Object.keys(state.positions || {});
 
-  const cushionTotal = getCashCushionTotal(state);
+  const portfolioValuation = calculatePortfolioValuation({
+    signedAccountBalance: state.balance,
+    freeCash: state.cashCushion?.freeCash,
+    marginPositions: Object.values(state.positions || {}),
+    cashHoldings: state.cashCushion?.holdings || []
+  });
+  const equityBadgeText = `${portfolioValuation.equity >= 0 ? '+' : '−'}${Math.abs(portfolioValuation.equity).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -175,7 +181,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
           class={`text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
             }`}
         >
-          +${cushionTotal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+          {equityBadgeText}
         </span>
       </button>
 
