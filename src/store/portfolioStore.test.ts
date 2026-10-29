@@ -287,7 +287,11 @@ describe('canonical trade lifecycle and persistence', () => {
       positions: {},
       activeTrancheTypes: {
         'AAPL:1767261600000:buy-1': 'margin',
-        'MSFT:1767265200000:buy-2': 'cash'
+        'MSFT:1767265200000:buy-2': 'cash',
+        'GOOGL:1767268800000:buy-3': 'mix'
+      },
+      activeTrancheMixes: {
+        'GOOGL:1767268800000:buy-3': { cash: 3, margin: 2 }
       },
       cashCushion: { freeCash: 0, holdings: [] }
     }));
@@ -296,7 +300,11 @@ describe('canonical trade lifecycle and persistence', () => {
 
     expect(store.getState().activeTrancheTypes).toEqual({
       'AAPL:1767261600000:buy-1': 'margin',
-      'MSFT:1767265200000:buy-2': 'cash'
+      'MSFT:1767265200000:buy-2': 'cash',
+      'GOOGL:1767268800000:buy-3': 'mix'
+    });
+    expect(store.getState().activeTrancheMixes).toEqual({
+      'GOOGL:1767268800000:buy-3': { cash: 3, margin: 2 }
     });
   });
 

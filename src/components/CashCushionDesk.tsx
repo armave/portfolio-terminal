@@ -3,7 +3,7 @@ import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
-import { getActiveTranchesFromTrades, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
+import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 
 export interface CashCushionDeskProps {
   refreshIntervalMs?: number;
@@ -62,6 +62,7 @@ export function CashCushionDesk({
       ? (window as any).__tradenetExecutedTrades
       : Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
   );
+  const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     const onTrades = (event: Event) => {
@@ -80,8 +81,14 @@ export function CashCushionDesk({
 
   const holdings = state.cashCushion?.holdings || [];
   const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
-  const setActiveTrancheType = (ticker: string, type: ActiveTrancheType) => {
-    window.dispatchEvent(new CustomEvent('tradenet:set-active-tranche-type', { detail: { ticker, type } }));
+  const setActiveTrancheType = (
+    ticker: string,
+    type: ActiveTrancheType,
+    mix?: { cash: number; margin: number }
+  ) => {
+    window.dispatchEvent(new CustomEvent('tradenet:set-active-tranche-type', {
+      detail: { ticker, type, ...(mix ? { mix } : {}) }
+    }));
   };
 
   const [activeTranchesExpanded, setActiveTranchesExpanded] = useState(false);
@@ -221,7 +228,7 @@ export function CashCushionDesk({
           >
             <div class="expandable-motion__inner">
               <div class="table-scroll-wrapper overflow-x-auto">
-            <table id="activeTranchesTable" class="w-full min-w-[500px] text-left text-xs border-collapse">
+            <table id="activeTranchesTable" class="w-full min-w-[760px] text-left text-xs border-collapse">
               <thead>
                 <tr class="border-b border-slate-800 text-slate-500">
                   <th class="py-2 px-2">Ticker</th>
@@ -239,19 +246,102 @@ export function CashCushionDesk({
                   </td></tr>
                 ) : activeTranches.map((tranche) => {
                   const type = state.activeTrancheTypes?.[tranche.id] || state.activeTrancheTypes?.[tranche.ticker] || 'cash';
+                  const mix = normalizeActiveTrancheMix(
+                    tranche.quantity,
+                    state.activeTrancheMixes?.[tranche.id] || state.activeTrancheMixes?.[tranche.ticker]
+                  );
+                  const updateMixCash = (value: string) => {
+                    const requestedCash = Number(value);
+                    const cash = Number.isFinite(requestedCash)
+                      ? Math.min(tranche.quantity, Math.max(0, requestedCash))
+                      : 0;
+                    setActiveTrancheType(tranche.id, 'mix', { cash, margin: tranche.quantity - cash });
+                  };
+                  const updateMixMargin = (value: string) => {
+                    const requestedMargin = Number(value);
+                    const margin = Number.isFinite(requestedMargin)
+                      ? Math.min(tranche.quantity, Math.max(0, requestedMargin))
+                      : 0;
+                    setActiveTrancheType(tranche.id, 'mix', { cash: tranche.quantity - margin, margin });
+                  };
+                  const mixExpanded = expandedMixTranches.has(tranche.id);
+                  const selectMix = () => {
+                    if (type === 'mix') {
+                      setExpandedMixTranches((current) => {
+                        const next = new Set(current);
+                        if (next.has(tranche.id)) next.delete(tranche.id);
+                        else next.add(tranche.id);
+                        return next;
+                      });
+                      return;
+                    }
+                    setActiveTrancheType(
+                      tranche.id,
+                      'mix',
+                      type === 'margin'
+                        ? { cash: 0, margin: tranche.quantity }
+                        : { cash: tranche.quantity, margin: 0 }
+                    );
+                    setExpandedMixTranches((current) => new Set(current).add(tranche.id));
+                  };
                   return (
                     <tr key={tranche.id} class="hover:bg-slate-900/50">
                       <td class="py-2 px-2 font-bold text-cyan-300">{tranche.ticker}</td>
-                      <td class="py-2 px-2 text-slate-400 tabular-nums">{tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString() : '—'}</td>
+                      <td class="py-2 px-2 text-slate-400 tabular-nums whitespace-nowrap">{tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString(undefined, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '—'}</td>
                       <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
                       <td class="py-2 px-2 text-right text-slate-300 tabular-nums">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</td>
                       <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.marketValue !== null ? formatUSD(tranche.marketValue) : '—'}</td>
                       <td class="py-2 px-2 text-center">
-                        <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={`${tranche.ticker} ${tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString() : 'undated'} operation type`}>
+                        <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={tranche.ticker + ' operation type'}>
                           <button type="button" aria-pressed={type === 'cash'} onClick={() => setActiveTrancheType(tranche.id, 'cash')}
-                            class={`rounded px-2 py-1 text-[10px] font-bold transition ${type === 'cash' ? 'bg-cyan-950 text-cyan-300' : 'text-slate-500 hover:text-slate-300'}`}>Cash</button>
+                            class={type === 'cash' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-cyan-950 text-cyan-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Cash</button>
                           <button type="button" aria-pressed={type === 'margin'} onClick={() => setActiveTrancheType(tranche.id, 'margin')}
-                            class={`rounded px-2 py-1 text-[10px] font-bold transition ${type === 'margin' ? 'bg-amber-950 text-amber-300' : 'text-slate-500 hover:text-slate-300'}`}>Margin</button>
+                            class={type === 'margin' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-amber-950 text-amber-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Margin</button>
+                          <button type="button" aria-pressed={type === 'mix'} aria-expanded={type === 'mix' && mixExpanded} title={type === 'mix' && mixExpanded ? 'Hide cash and margin quantities' : 'Edit cash and margin quantities'} onClick={selectMix}
+                            class={type === 'mix' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-violet-950 text-violet-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Mix <span aria-hidden="true">{type === 'mix' && mixExpanded ? '−' : '+'}</span></button>
+                        </div>
+                        <div
+                          aria-hidden={!(type === 'mix' && mixExpanded)}
+                          class={`overflow-hidden motion-reduce:!transition-none ${type === 'mix' && mixExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                          style={{
+                            maxHeight: type === 'mix' && mixExpanded ? '5rem' : '0px',
+                            marginTop: type === 'mix' && mixExpanded ? '0.5rem' : '0px',
+                            transition: 'max-height 280ms cubic-bezier(0.22, 1, 0.36, 1), margin-top 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease',
+                            willChange: 'max-height, opacity, margin-top'
+                          }}
+                        >
+                          <div>
+                            {type === 'mix' && (
+                              <div class="flex items-center justify-center gap-2 rounded-md border border-slate-800 bg-slate-950/70 p-2 font-sans">
+                                <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">
+                                  Cash
+                                  <input
+                                    aria-label={tranche.ticker + ' cash shares'}
+                                    type="number"
+                                    min="0"
+                                    max={tranche.quantity}
+                                    step="any"
+                                    defaultValue={mix.cash}
+                                    onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)}
+                                    class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
+                                  />
+                                </label>
+                                <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-amber-300">
+                                  Margin
+                                  <input
+                                    aria-label={tranche.ticker + ' margin shares'}
+                                    type="number"
+                                    min="0"
+                                    max={tranche.quantity}
+                                    step="any"
+                                    defaultValue={mix.margin}
+                                    onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)}
+                                    class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
+                                  />
+                                </label>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
                     </tr>
