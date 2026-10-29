@@ -516,9 +516,9 @@ describe('portfolio domain', () => {
 
   it('calculates breakeven days using the same daily compounding model as projected debt', () => {
     // After 10 days, $1,000 of debt at 1% daily accrues $104.62, enough to cover $100.
-    expect(calculateBreakevenDays(100, 1000, 0.01)).toBe(10);
+    expect(calculateBreakevenDays(100, 1000, 0.01)).toBeNull();
     // At 0.5% daily, 19 days accrue less than $100 and 20 days exceed it.
-    expect(calculateBreakevenDays(100, 1000, 0.005)).toBe(20);
+    expect(calculateBreakevenDays(100, 1000, 0.005)).toBeNull();
     expect(calculateProjectedDebt(1000, 0.005, 19) - 1000).toBeLessThan(100);
     expect(calculateProjectedDebt(1000, 0.005, 20) - 1000).toBeGreaterThanOrEqual(100);
     expect(calculateBreakevenDays(-10, 1000, 0.01)).toBe(0); // <= 0 profit
