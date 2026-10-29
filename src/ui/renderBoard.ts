@@ -84,13 +84,15 @@ export function resolvePositionEntryDate(
     return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   };
 
-  const firstActiveTrancheDate = (tranches || [])
+  const activeTrancheDates = (tranches || [])
     .map((tranche) => parseTrancheDate(tranche.date ?? tranche.purchaseDate ?? tranche.acquiredAt))
-    .find((date): date is string => Boolean(date));
+    .filter((date): date is string => Boolean(date))
+    .sort((a, b) => a.localeCompare(b));
 
-  // Use the first active tranche in the current position's tranche order.
+  // The entry date is the chronologically lowest (earliest) valid date among
+  // the current position's active tranches, independent of array order.
   // Legacy tranche dates may be stored as "22 Oct", not ISO dates.
-  return firstActiveTrancheDate || fallbackDate;
+  return activeTrancheDates[0] || fallbackDate;
 }
 
 function renderPositionsTable(
