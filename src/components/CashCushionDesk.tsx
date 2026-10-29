@@ -93,8 +93,6 @@ export function CashCushionDesk({
     return sum + (Number(h.shares) || 0) * price;
   }, 0);
 
-  const totalCushion = freeCash + stocksTotal;
-
   const valuation = calculatePortfolioValuation({
     signedAccountBalance: state.balance,
     freeCash,
@@ -115,12 +113,6 @@ export function CashCushionDesk({
           <h2 class="text-lg font-black text-cyan-400 tracking-wide">
             CASH &amp; NON-MARGIN HOLDINGS
           </h2>
-        </div>
-        <div class="text-right">
-          <span class="text-xs uppercase tracking-wide text-cyan-300 block">Portfolio Equity</span>
-          <span class="text-2xl sm:text-3xl font-black text-cyan-200 font-mono" id="portfolioEquityValue">
-            {formatUSD(valuation.equity)}
-          </span>
         </div>
       </div>
 
