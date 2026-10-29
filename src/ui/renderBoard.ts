@@ -46,6 +46,24 @@ function renderCashCushion(
   setCashCushionPropsState({ refreshIntervalMs });
 }
 
+export function resolvePositionEntryDate(
+  tranches: Array<{ date?: string }> | undefined,
+  fallbackDate?: string
+): string | undefined {
+  const trancheDates = (tranches || [])
+    .map((tranche) => tranche.date)
+    .filter((date): date is string => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date))
+    .filter((date) => {
+      const parsed = new Date(`${date}T00:00:00Z`);
+      return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date;
+    })
+    .sort();
+
+  // The oldest remaining purchase tranche is the true position entry date.
+  // Persisted position.startDate can be stale after imported/backdated buys.
+  return trancheDates[0] || fallbackDate;
+}
+
 function renderPositionsTable(
   gross: number,
   totalComms: number,
@@ -158,7 +176,7 @@ function renderSummaryCards(
       metrics.totalComms,
       metrics.totalDebt,
       metrics.totalMarginCharged,
-      state.startDate,
+      resolvePositionEntryDate(collectOpenPositionTranches(state.positions || {}), state.startDate),
       dailyRate
     );
   } else {
@@ -181,7 +199,7 @@ function renderSummaryCards(
       metrics.totalComms,
       metrics.allocatedDebt,
       metrics.posMarginCharged,
-      pos.startDate || state.startDate,
+      resolvePositionEntryDate(pos.tranches, pos.startDate || state.startDate),
       dailyRate
     );
   }
