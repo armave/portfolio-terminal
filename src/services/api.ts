@@ -1188,7 +1188,7 @@ export function normalizeFreedomActiveOrders(response: any): FreedomActiveOrder[
   return rows.map((row: any, index: number) => ({
     id: String(row?.order_id ?? row?.id ?? row?.orderId ?? index),
     ticker: String(row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? '').trim().toUpperCase(),
-    operation: numberOrNull(row?.oper ?? row?.operation),
+    operation: numberOrNull(row?.oper ?? row?.operation ?? row?.open),
     orderType: numberOrNull(row?.type ?? row?.order_type ?? row?.orderType),
     limitPrice: numberOrNull(row?.p ?? row?.price ?? row?.limit_price ?? row?.limitPrice),
     remainingQuantity: numberOrNull(row?.leaves_qty ?? row?.remaining_qty ?? row?.remainingQuantity ?? row?.q ?? row?.quantity),
