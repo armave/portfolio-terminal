@@ -99,12 +99,6 @@ export function CashCushionDesk({
     marginPositions: Object.values(state.positions || {}),
     cashHoldings: holdings
   });
-  const valuationStatus = state.brokerAccountInfo?.status === 'stale'
-    ? 'Broker snapshot stale · estimates use last tracked values'
-    : valuation.unpricedHoldings > 0
-      ? `${valuation.unpricedHoldings} holding(s) missing a usable price`
-      : 'Recalculated from tracked shares and current market-session prices';
-
 
   return (
     <>
