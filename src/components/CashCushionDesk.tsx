@@ -4,7 +4,6 @@ import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
 import { getActiveTranchesFromTrades, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
-import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 
 export interface CashCushionDeskProps {
   refreshIntervalMs?: number;
@@ -92,13 +91,6 @@ export function CashCushionDesk({
     const price = Number(h.currentPrice ?? h.price) || 0;
     return sum + (Number(h.shares) || 0) * price;
   }, 0);
-
-  const valuation = calculatePortfolioValuation({
-    signedAccountBalance: state.balance,
-    freeCash,
-    marginPositions: Object.values(state.positions || {}),
-    cashHoldings: holdings
-  });
 
   return (
     <>
