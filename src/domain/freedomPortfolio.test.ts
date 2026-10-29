@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, reconcileFreedomPortfolio } from './freedomPortfolio';
+import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio } from './freedomPortfolio';
 
 describe('reconcileFreedomPortfolio', () => {
   it('prefers Freedom USD cash and derives cash shares after app margin lots', () => {
@@ -134,6 +134,42 @@ describe('active broker tranches', () => {
     });
   });
 
+  it('splits one active purchase operation between cash holdings and margin lots', () => {
+    const trades = [
+      { id: 'mixed-buy', ticker: 'AAPL.US', side: 'BUY', quantity: 10, price: 100, buyCommission: 5, executedAt: '2026-01-01T10:00:00Z' }
+    ];
+    const snapshot = {
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'AAPL.US', quantity: 10, marketPrice: 120 }]
+    };
+    const tranche = getActiveTranchesFromTrades(trades, snapshot)[0];
+    const result = classifyFreedomPortfolio(
+      snapshot, {}, [],
+      { [tranche.id]: 'mix' },
+      123,
+      trades,
+      undefined,
+      { [tranche.id]: { cash: 4, margin: 6 } }
+    );
+
+    expect(result.cashStocks).toEqual([
+      expect.objectContaining({ ticker: 'AAPL', shares: 4, currentPrice: 120 })
+    ]);
+    expect(result.positions.AAPL).toMatchObject({
+      ticker: 'AAPL',
+      shares: 6,
+      commBuy: 3,
+      tranches: [{ qty: 6, price: 100, buyCommission: 3 }]
+    });
+  });
+
+  it('rescales a saved Mix split when the open quantity changes after a sale', () => {
+    expect(normalizeActiveTrancheMix(8, { cash: 4, margin: 6 })).toEqual({
+      cash: 3.2,
+      margin: 4.8
+    });
+  });
   it('calculates margin commissions from executed buy operations, not legacy in-app trades', () => {
     const trades = [
       { id: 'buy-1', ticker: 'AAPL.US', side: 'BUY', quantity: 1, price: 100, executedAt: '2026-01-01T10:00:00Z' },
