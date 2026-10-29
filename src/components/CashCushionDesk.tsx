@@ -302,7 +302,7 @@ export function CashCushionDesk({
                         </div>
                         <div
                           aria-hidden={!(type === 'mix' && mixExpanded)}
-                          class={`overflow-hidden pointer-events-none ${type === 'mix' && mixExpanded ? 'opacity-100' : 'opacity-0'}`}
+                          class={`overflow-hidden motion-reduce:!transition-none ${type === 'mix' && mixExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                           style={{
                             maxHeight: type === 'mix' && mixExpanded ? '5rem' : '0px',
                             marginTop: type === 'mix' && mixExpanded ? '0.5rem' : '0px',
