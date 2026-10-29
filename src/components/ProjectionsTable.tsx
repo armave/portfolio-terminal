@@ -49,21 +49,33 @@ export function ProjectionsTable({
     return gross - projectedFees;
   };
 
-  // Find the first cent-rounded calendar day on which projected net P&L reaches
-  // zero. The cap prevents unbounded rendering for positions that never break even.
+  // Find an exact cent-rounded breakeven, and independently stop projection
+  // rows before the first negative net balance. Never label a negative day as breakeven.
   let breakevenDays: number | undefined;
-  if (netAfterDays(0) <= 0) {
+  let lastNonNegativeDay = Number.POSITIVE_INFINITY;
+  const todayNet = Number(netAfterDays(0).toFixed(2));
+  if (todayNet < 0) {
+    lastNonNegativeDay = -1;
+  } else if (todayNet === 0) {
     breakevenDays = 0;
+    lastNonNegativeDay = 0;
   } else if (debtToUse > 0 && dailyRate > 0) {
     for (let day = 1; day <= MAX_BREAKEVEN_SEARCH_DAYS; day++) {
-      if (netAfterDays(day) <= 0) {
+      const projectedNet = Number(netAfterDays(day).toFixed(2));
+      if (projectedNet === 0) {
         breakevenDays = day;
+        lastNonNegativeDay = day;
+        break;
+      }
+      if (projectedNet < 0) {
+        lastNonNegativeDay = day - 1;
         break;
       }
     }
   }
 
-  const projectionItems = getUsEquityProjectionDates(new Date(), entryDate, breakevenDays);
+  const projectionItems = getUsEquityProjectionDates(new Date(), entryDate, breakevenDays)
+    .filter((item) => item.kind === 'entry' || item.daysFromToday <= lastNonNegativeDay);
   const pageCount = Math.max(1, Math.ceil(projectionItems.length / ROWS_PER_PAGE));
   const currentPage = Math.min(page, pageCount - 1);
   const visibleItems = projectionItems.slice(currentPage * ROWS_PER_PAGE, (currentPage + 1) * ROWS_PER_PAGE);
