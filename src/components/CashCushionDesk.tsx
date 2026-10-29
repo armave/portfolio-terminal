@@ -300,36 +300,44 @@ export function CashCushionDesk({
                           <button type="button" aria-pressed={type === 'mix'} aria-expanded={type === 'mix' && mixExpanded} title={type === 'mix' && mixExpanded ? 'Hide cash and margin quantities' : 'Edit cash and margin quantities'} onClick={selectMix}
                             class={type === 'mix' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-violet-950 text-violet-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Mix <span aria-hidden="true">{type === 'mix' && mixExpanded ? '−' : '+'}</span></button>
                         </div>
-                        {type === 'mix' && mixExpanded && (
-                          <div class="mt-2 flex items-center justify-center gap-2 rounded-md border border-slate-800 bg-slate-950/70 p-2 font-sans">
-                            <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">
-                              Cash
-                              <input
-                                aria-label={tranche.ticker + ' cash shares'}
-                                type="number"
-                                min="0"
-                                max={tranche.quantity}
-                                step="any"
-                                defaultValue={mix.cash}
-                                onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)}
-                                class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
-                              />
-                            </label>
-                            <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-amber-300">
-                              Margin
-                              <input
-                                aria-label={tranche.ticker + ' margin shares'}
-                                type="number"
-                                min="0"
-                                max={tranche.quantity}
-                                step="any"
-                                defaultValue={mix.margin}
-                                onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)}
-                                class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
-                              />
-                            </label>
+                        <div
+                          aria-hidden={!(type === 'mix' && mixExpanded)}
+                          class={`grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${type === 'mix' && mixExpanded ? 'mt-2 opacity-100' : 'mt-0 opacity-0 pointer-events-none'}`}
+                          style={{ gridTemplateRows: type === 'mix' && mixExpanded ? '1fr' : '0fr' }}
+                        >
+                          <div class="min-h-0 overflow-hidden">
+                            {type === 'mix' && (
+                              <div class="flex items-center justify-center gap-2 rounded-md border border-slate-800 bg-slate-950/70 p-2 font-sans">
+                                <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">
+                                  Cash
+                                  <input
+                                    aria-label={tranche.ticker + ' cash shares'}
+                                    type="number"
+                                    min="0"
+                                    max={tranche.quantity}
+                                    step="any"
+                                    defaultValue={mix.cash}
+                                    onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)}
+                                    class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
+                                  />
+                                </label>
+                                <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-amber-300">
+                                  Margin
+                                  <input
+                                    aria-label={tranche.ticker + ' margin shares'}
+                                    type="number"
+                                    min="0"
+                                    max={tranche.quantity}
+                                    step="any"
+                                    defaultValue={mix.margin}
+                                    onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)}
+                                    class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
+                                  />
+                                </label>
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   );
