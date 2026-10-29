@@ -41,6 +41,7 @@ export interface FreedomActiveLimitSellOrderLike {
   createdAt?: string | number | null;
   placedAt?: string | number | null;
   timestamp?: string | number | null;
+  status?: string | number | null;
 }
 
 function activeOrderTimestamp(order: FreedomActiveLimitSellOrderLike): number | null {
@@ -66,6 +67,11 @@ export function getActiveLimitSellTargets(
     const ticker = tickerKey(order?.ticker);
     const price = positiveFinite(order?.limitPrice);
     const quantity = positiveFinite(order?.remainingQuantity);
+    const status = String(order?.status ?? '').trim().toLowerCase();
+    // TradeNet's active-orders endpoint can include historical rows. In the
+    // observed broker payload, stat=16 is the live order; 21/31 are not active.
+    // Keep status-less callers compatible with the pure helper's existing API.
+    if (status && !['16', 'active', 'open', 'working'].includes(status)) return;
     if (!ticker || order?.operation !== 3 || ![2, 4].includes(Number(order?.orderType)) || price === null || quantity === null) return;
     const entries = ordersByTicker.get(ticker) || [];
     entries.push({ price, quantity, timestamp: activeOrderTimestamp(order), index });
