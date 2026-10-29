@@ -285,9 +285,9 @@ export function CashCushionDesk({
                     setExpandedMixTranches((current) => new Set(current).add(tranche.id));
                   };
                   return (
-                    <tr key={tranche.id + (type === 'mix' && mixExpanded ? ':' + mix.cash + ':' + mix.margin : '')} class="hover:bg-slate-900/50">
+                    <tr key={tranche.id} class="hover:bg-slate-900/50">
                       <td class="py-2 px-2 font-bold text-cyan-300">{tranche.ticker}</td>
-                      <td class="py-2 px-2 text-slate-400 tabular-nums">{tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString() : '—'}</td>
+                      <td class="py-2 px-2 text-slate-400 tabular-nums whitespace-nowrap">{tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString(undefined, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '—'}</td>
                       <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
                       <td class="py-2 px-2 text-right text-slate-300 tabular-nums">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</td>
                       <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.marketValue !== null ? formatUSD(tranche.marketValue) : '—'}</td>
@@ -302,7 +302,13 @@ export function CashCushionDesk({
                         </div>
                         <div
                           aria-hidden={!(type === 'mix' && mixExpanded)}
-                          class={`overflow-hidden transition-[max-height,opacity,margin] duration-300 ease-in-out motion-reduce:transition-none ${type === 'mix' && mixExpanded ? 'mt-2 max-h-24 opacity-100' : 'mt-0 max-h-0 opacity-0 pointer-events-none'}`}
+                          class={`overflow-hidden pointer-events-none ${type === 'mix' && mixExpanded ? 'opacity-100' : 'opacity-0'}`}
+                          style={{
+                            maxHeight: type === 'mix' && mixExpanded ? '5rem' : '0px',
+                            marginTop: type === 'mix' && mixExpanded ? '0.5rem' : '0px',
+                            transition: 'max-height 280ms cubic-bezier(0.22, 1, 0.36, 1), margin-top 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease',
+                            willChange: 'max-height, opacity, margin-top'
+                          }}
                         >
                           <div>
                             {type === 'mix' && (
