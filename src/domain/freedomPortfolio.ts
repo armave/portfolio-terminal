@@ -46,7 +46,7 @@ export interface FreedomActiveLimitSellOrderLike {
 function activeOrderTimestamp(order: FreedomActiveLimitSellOrderLike): number | null {
   const value = order.date ?? order.createdAt ?? order.placedAt ?? order.timestamp;
   if (value === null || value === undefined || value === '') return null;
-  const numeric = typeof value === 'number' || /^\\d+(\\.\\d+)?$/.test(String(value)) ? Number(value) : NaN;
+  const numeric = typeof value === 'number' || /^\d+(\.\d+)?$/.test(String(value)) ? Number(value) : NaN;
   if (Number.isFinite(numeric) && numeric > 0) return numeric < 1e11 ? numeric * 1000 : numeric;
   const parsed = Date.parse(String(value));
   return Number.isFinite(parsed) ? parsed : null;
