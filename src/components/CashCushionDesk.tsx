@@ -299,7 +299,7 @@ export function CashCushionDesk({
                                 max={tranche.quantity}
                                 step="any"
                                 value={mix.cash}
-                                onInput={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)}
+                                onChange={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)}
                                 class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
                               />
                             </label>
@@ -312,7 +312,7 @@ export function CashCushionDesk({
                                 max={tranche.quantity}
                                 step="any"
                                 value={mix.margin}
-                                onInput={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)}
+                                onChange={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)}
                                 class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
                               />
                             </label>
