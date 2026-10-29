@@ -286,7 +286,36 @@ describe('active limit sell target synchronization', () => {
     expect(targets).toEqual({ GOOGL: 333 });
   });
 
-  it('uses only the live TradeNet order when active-order payload includes historical statuses', () => {
+  it('selects the 70-share GOOGL order at $333 with TradeNet status 10 over historical rows', () => {
+    const targets = getActiveLimitSellTargets([
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 353, remainingQuantity: 50, status: '31' },
+      { ticker: 'GOOGL.US', operation: 1, orderType: 2, limitPrice: 285, remainingQuantity: 20, status: '31' },
+      { ticker: 'GOOGL.US', operation: 1, orderType: 2, limitPrice: 282, remainingQuantity: 0, status: '21' },
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 333, remainingQuantity: 70, status: '10' }
+    ], { GOOGL: 70 });
+
+    expect(targets).toEqual({ GOOGL: 333 });
+  });
+
+    const targets = getActiveLimitSellTargets([
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 353, remainingQuantity: 50, status: '31' },
+      { ticker: 'GOOGL.US', operation: 3, orderType: 2, limitPrice: 285, remainingQuantity: 20, status: '21' },
+      { ticker: 'GOOGL.US', operation: 3, orderType: 2, limitPrice: 282, remainingQuantity: 0, status: '21' },
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 333, remainingQuantity: 70, status: '16' }
+    ], { GOOGL: 70 });
+
+    expect(targets).toEqual({ GOOGL: 333 });
+  });
+
+  it('ignores non-sell, non-limit, and fully filled orders', () => {
+    expect(getActiveLimitSellTargets([
+      { ticker: 'AAPL', operation: 1, orderType: 2, limitPrice: 353, remainingQuantity: 50 },
+      { ticker: 'AAPL', operation: 3, orderType: 1, limitPrice: 353, remainingQuantity: 50 },
+      { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 353, remainingQuantity: 0 }
+    ])).toEqual({});
+  });
+});
+
     const targets = getActiveLimitSellTargets([
       { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 353, remainingQuantity: 50, status: '31' },
       { ticker: 'GOOGL.US', operation: 3, orderType: 2, limitPrice: 285, remainingQuantity: 20, status: '21' },
