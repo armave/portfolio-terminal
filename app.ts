@@ -567,16 +567,20 @@ function updateCombinedBreakeven() {
   }
 
   if (netTargetProfit <= 0) {
-    setText("Combined Breakeven: 0 days (Net Target ≤ $0)");
+    setText("Combined Breakeven: No date");
     return;
   }
 
   if (getDailyRate() === 0) {
-    setText("Combined Breakeven: 0 days (no ongoing margin interest)");
+    setText("Combined Breakeven: No date");
     return;
   }
 
-  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate()) || 0;
+  const beDays = calculateBreakevenDays(netTargetProfit, totalDebt, getDailyRate());
+  if (beDays === null) {
+    setText("Combined Breakeven: No non-negative breakeven date");
+    return;
+  }
 
   const beDate = new Date();
   beDate.setDate(beDate.getDate() + beDays);

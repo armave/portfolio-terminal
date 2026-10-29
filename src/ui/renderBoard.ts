@@ -46,6 +46,55 @@ function renderCashCushion(
   setCashCushionPropsState({ refreshIntervalMs });
 }
 
+export function resolvePositionEntryDate(
+  tranches: Array<{ date?: string; purchaseDate?: string; acquiredAt?: number }> | undefined,
+  fallbackDate?: string,
+  now: Date = new Date()
+): string | undefined {
+  const parseTrancheDate = (value: unknown): string | undefined => {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      const date = new Date(value);
+      return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : undefined;
+    }
+    if (typeof value !== 'string' || !value.trim()) return undefined;
+    const raw = value.trim();
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) {
+      const [, year, month, day] = iso;
+      const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+      return date.getUTCFullYear() === Number(year) &&
+        date.getUTCMonth() === Number(month) - 1 &&
+        date.getUTCDate() === Number(day)
+        ? `${year}-${month}-${day}`
+        : undefined;
+    }
+
+    // Tranche dates are also persisted/displayed in the legacy "22 Oct" form.
+    const short = raw.match(/^(\d{1,2})\s+([A-Za-z]{3,})$/) ||
+      raw.match(/^([A-Za-z]{3,})\s+(\d{1,2})$/);
+    if (!short) return undefined;
+    const dayFirst = /^\d+$/.test(short[1]);
+    const day = Number(dayFirst ? short[1] : short[2]);
+    const monthName = (dayFirst ? short[2] : short[1]).slice(0, 3).toLowerCase();
+    const month = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(monthName);
+    if (month < 0 || day < 1 || day > 31) return undefined;
+    const year = now.getFullYear();
+    const date = new Date(Date.UTC(year, month, day));
+    if (date.getUTCMonth() !== month || date.getUTCDate() !== day) return undefined;
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  };
+
+  const activeTrancheDates = (tranches || [])
+    .map((tranche) => parseTrancheDate(tranche.date ?? tranche.purchaseDate ?? tranche.acquiredAt))
+    .filter((date): date is string => Boolean(date))
+    .sort((a, b) => a.localeCompare(b));
+
+  // The entry date is the chronologically lowest (earliest) valid date among
+  // the current position's active tranches, independent of array order.
+  // Legacy tranche dates may be stored as "22 Oct", not ISO dates.
+  return activeTrancheDates[0] || fallbackDate;
+}
+
 function renderPositionsTable(
   gross: number,
   totalComms: number,
@@ -158,7 +207,7 @@ function renderSummaryCards(
       metrics.totalComms,
       metrics.totalDebt,
       metrics.totalMarginCharged,
-      state.startDate,
+      resolvePositionEntryDate(collectOpenPositionTranches(state.positions || {}), state.startDate),
       dailyRate
     );
   } else {
@@ -181,7 +230,7 @@ function renderSummaryCards(
       metrics.totalComms,
       metrics.allocatedDebt,
       metrics.posMarginCharged,
-      pos.startDate || state.startDate,
+      resolvePositionEntryDate(pos.tranches, pos.startDate || state.startDate),
       dailyRate
     );
   }

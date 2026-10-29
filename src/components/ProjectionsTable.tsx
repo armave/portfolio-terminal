@@ -49,14 +49,15 @@ export function ProjectionsTable({
     return gross - projectedFees;
   };
 
-  // Find the first cent-rounded calendar day on which projected net P&L reaches
-  // zero. The cap prevents unbounded rendering for positions that never break even.
+  // Find the first day projected net reaches or crosses zero. That day is the
+  // breakeven milestone; display its net as $0.00 and stop before any negative day.
   let breakevenDays: number | undefined;
-  if (netAfterDays(0) <= 0) {
+  const todayNet = Number(netAfterDays(0).toFixed(2));
+  if (todayNet <= 0) {
     breakevenDays = 0;
   } else if (debtToUse > 0 && dailyRate > 0) {
     for (let day = 1; day <= MAX_BREAKEVEN_SEARCH_DAYS; day++) {
-      if (netAfterDays(day) <= 0) {
+      if (Number(netAfterDays(day).toFixed(2)) <= 0) {
         breakevenDays = day;
         break;
       }
@@ -96,7 +97,8 @@ export function ProjectionsTable({
         const additionalAccrual = projectedDebt - Math.abs(debtToUse);
         const marginFee = marginChargedToUse + additionalAccrual;
         const feesAndCommissions = calculateAccruedFees(totalComms, marginChargedToUse, additionalAccrual);
-        const net = gross - feesAndCommissions;
+        const projectedNet = Number((gross - feesAndCommissions).toFixed(2));
+        const net = kind === 'breakeven' ? 0 : projectedNet;
         const dailyFee = projectedDebt * dailyRate;
 
         const rowClass = kind === 'today'
