@@ -567,12 +567,12 @@ function updateCombinedBreakeven() {
   }
 
   if (netTargetProfit <= 0) {
-    setText("Combined Breakeven: 0 days (Net Target ≤ $0)");
+    setText("Combined Breakeven: No date");
     return;
   }
 
   if (getDailyRate() === 0) {
-    setText("Combined Breakeven: 0 days (no ongoing margin interest)");
+    setText("Combined Breakeven: No date");
     return;
   }
 
