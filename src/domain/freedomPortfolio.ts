@@ -37,26 +37,70 @@ export interface FreedomActiveLimitSellOrderLike {
   orderType?: number | null;
   limitPrice?: number | null;
   remainingQuantity?: number | null;
+  date?: string | number | null;
+  createdAt?: string | number | null;
+  placedAt?: string | number | null;
+  timestamp?: string | number | null;
 }
 
-/** Keep only unambiguous live limit-sell prices, keyed by normalized ticker.
- * Freedom TradeNet uses order type 4 for the active limit-sell response; type 2
- * remains supported for normalized/legacy order data already used by the app.
+function activeOrderTimestamp(order: FreedomActiveLimitSellOrderLike): number | null {
+  const value = order.date ?? order.createdAt ?? order.placedAt ?? order.timestamp;
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = typeof value === 'number' || /^\\d+(\\.\\d+)?$/.test(String(value)) ? Number(value) : NaN;
+  if (Number.isFinite(numeric) && numeric > 0) return numeric < 1e11 ? numeric * 1000 : numeric;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Resolve one target per ticker by matching the total margin quantity against
+ * active limit-sell orders, newest first. Partial matching of the final order is
+ * allowed. If known margin quantity cannot be fully covered, no target is guessed.
  */
-export function getActiveLimitSellTargets(orders: FreedomActiveLimitSellOrderLike[]): Record<string, number> {
-  const pricesByTicker = new Map<string, Set<number>>();
-  for (const order of orders) {
+export function getActiveLimitSellTargets(
+  orders: FreedomActiveLimitSellOrderLike[],
+  marginQuantities: Record<string, number> = {}
+): Record<string, number> {
+  const ordersByTicker = new Map<string, Array<{ price: number; quantity: number; timestamp: number | null; index: number }>>();
+  orders.forEach((order, index) => {
     const ticker = tickerKey(order?.ticker);
     const price = positiveFinite(order?.limitPrice);
-    const remaining = Number(order?.remainingQuantity);
-    if (!ticker || order?.operation !== 3 || ![2, 4].includes(Number(order?.orderType)) || price === null || !Number.isFinite(remaining) || remaining <= 0) continue;
-    const prices = pricesByTicker.get(ticker) || new Set<number>();
-    prices.add(price);
-    pricesByTicker.set(ticker, prices);
+    const quantity = positiveFinite(order?.remainingQuantity);
+    if (!ticker || order?.operation !== 3 || ![2, 4].includes(Number(order?.orderType)) || price === null || quantity === null) return;
+    const entries = ordersByTicker.get(ticker) || [];
+    entries.push({ price, quantity, timestamp: activeOrderTimestamp(order), index });
+    ordersByTicker.set(ticker, entries);
+  });
+
+  const targets: Record<string, number> = {};
+  for (const [ticker, tickerOrders] of ordersByTicker) {
+    const rawMarginQuantity = marginQuantities[ticker];
+    const marginQuantity = Number(rawMarginQuantity);
+    if (rawMarginQuantity === undefined || !Number.isFinite(marginQuantity) || marginQuantity <= 0) {
+      // Compatibility path for callers without position quantities: a single
+      // unambiguous price can still be applied, but differing prices are not guessed.
+      const prices = new Set(tickerOrders.map(order => order.price));
+      if (prices.size === 1) targets[ticker] = tickerOrders[0].price;
+      continue;
+    }
+
+    const sorted = [...tickerOrders].sort((a, b) => {
+      if (a.timestamp !== null && b.timestamp !== null) return b.timestamp - a.timestamp || a.index - b.index;
+      if (a.timestamp !== null) return -1;
+      if (b.timestamp !== null) return 1;
+      return a.index - b.index;
+    });
+    let remaining = marginQuantity;
+    let notional = 0;
+    for (const order of sorted) {
+      if (remaining <= 1e-8) break;
+      const matchedQuantity = Math.min(order.quantity, remaining);
+      notional += matchedQuantity * order.price;
+      remaining -= matchedQuantity;
+    }
+    if (remaining <= 1e-8) targets[ticker] = Number((notional / marginQuantity).toFixed(2));
   }
-  return Object.fromEntries([...pricesByTicker.entries()]
-    .filter(([, prices]) => prices.size === 1)
-    .map(([ticker, prices]) => [ticker, [...prices][0]]));
+  return targets;
 }
 
 /** Apply broker limit prices after every portfolio reclassification so defaults cannot overwrite them. */

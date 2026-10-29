@@ -246,6 +246,30 @@ describe('active limit sell target synchronization', () => {
     expect(applyActiveLimitSellTargets(refreshed, targets).AAPL.pt).toBe(353);
   });
 
+  it('matches newest dated orders first and quantity-weights the price to the margin position', () => {
+    const targets = getActiveLimitSellTargets([
+      { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 300, remainingQuantity: 20, date: '2026-10-01T10:00:00Z' },
+      { ticker: 'AAPL.US', operation: 3, orderType: 2, limitPrice: 320, remainingQuantity: 15, date: '2026-10-02T10:00:00Z' },
+      { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 340, remainingQuantity: 10, date: '2026-10-03T10:00:00Z' }
+    ], { AAPL: 30 });
+
+    // Use all 10 shares at 340 and 15 at 320, then 5 at 300.
+    expect(targets).toEqual({ AAPL: 325 });
+  });
+
+  it('does not calculate a target when active order quantities cannot cover the margin position', () => {
+    expect(getActiveLimitSellTargets([
+      { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 320, remainingQuantity: 10, date: '2026-10-02T10:00:00Z' }
+    ], { AAPL: 20 })).toEqual({});
+  });
+
+  it('does not guess between different prices without a known margin quantity', () => {
+    expect(getActiveLimitSellTargets([
+      { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 353, remainingQuantity: 25 },
+      { ticker: 'AAPL.US', operation: 3, orderType: 2, limitPrice: 354, remainingQuantity: 25 }
+    ])).toEqual({});
+  });
+
   it('does not guess when different active limit-sell prices exist for the same ticker', () => {
     expect(getActiveLimitSellTargets([
       { ticker: 'AAPL.US', operation: 3, orderType: 2, limitPrice: 353, remainingQuantity: 25 },

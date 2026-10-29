@@ -254,7 +254,13 @@ if (typeof window !== 'undefined') {
 
     // Cache the broker's exact limit price so a slower account/trade refresh
     // cannot replace it with the locally calculated default target.
-    activeLimitSellTargets = getActiveLimitSellTargets(orders);
+    const marginQuantities = Object.values(portfolioStore.getState().positions || {}).reduce((quantities, position: any) => {
+      const ticker = String(position?.ticker || '').trim().toUpperCase().replace(/\.US$/i, '');
+      const shares = Number(position?.shares);
+      if (ticker && Number.isFinite(shares) && shares > 0) quantities[ticker] = (quantities[ticker] || 0) + shares;
+      return quantities;
+    }, {} as Record<string, number>);
+    activeLimitSellTargets = getActiveLimitSellTargets(orders, marginQuantities);
     const current = portfolioStore.getState();
     const positions = applyActiveLimitSellTargets(current.positions || {}, activeLimitSellTargets);
     const updates: Array<{ ticker: string; price: number }> = [];
