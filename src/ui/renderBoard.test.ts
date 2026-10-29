@@ -2,20 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { resolvePositionEntryDate } from './renderBoard';
 
 describe('resolvePositionEntryDate', () => {
-  it('uses the first active tranche date instead of sorting or using a stale persisted start date', () => {
+  it('uses the chronologically earliest active tranche date instead of array order or a stale saved date', () => {
     expect(resolvePositionEntryDate([
       { date: '2026-10-22' },
       { date: '2026-10-20' },
       { date: '2026-10-21' }
-    ], '2026-10-28')).toBe('2026-10-22');
+    ], '2026-10-28')).toBe('2026-10-20');
   });
 
-  it('parses legacy day-month tranche dates and uses the first active tranche', () => {
+  it('parses legacy day-month dates and selects the earliest date regardless of array order', () => {
     expect(resolvePositionEntryDate([
       { date: '22 Oct' },
       { date: '21 Oct' },
       { date: '20 Oct' }
-    ], '2026-10-28', new Date('2026-10-29T12:00:00Z'))).toBe('2026-10-22');
+    ], '2026-10-28', new Date('2026-10-29T12:00:00Z'))).toBe('2026-10-20');
   });
 
   it('supports purchaseDate and acquiredAt tranche fields', () => {
