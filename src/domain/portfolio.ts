@@ -412,10 +412,9 @@ export function calculateBreakevenDays(
     const next = Number((projected * (1 + dailyRate)).toFixed(2));
     if (!Number.isFinite(next) || next <= 0) return null;
     const remainingNet = Number((netTargetProfit - (next - principal)).toFixed(2));
-    // Only report a breakeven date when the projected net balance is zero,
-    // never on the first day it has already crossed into negative territory.
-    if (remainingNet === 0) return day;
-    if (remainingNet < 0) return null;
+    // The first day the debt accrual covers the target is the breakeven day.
+    // The UI marks that crossing as exactly zero rather than displaying a negative balance.
+    if (remainingNet <= 0) return day;
     // Cent rounding can make very small balances stationary indefinitely.
     if (next === projected) return null;
     projected = next;
