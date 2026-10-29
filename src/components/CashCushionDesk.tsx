@@ -116,26 +116,26 @@ export function CashCushionDesk({
         </div>
       </div>
 
-      <section class="grid grid-cols-1 sm:grid-cols-2 gap-3" aria-label="Calculated account balances">
-        <div class="sm:col-span-2 rounded-lg border border-cyan-800/70 bg-cyan-950/25 p-4">
-          <span class="block text-[10px] uppercase tracking-wider text-cyan-300">Total portfolio equity</span>
-          <strong class="mt-1 block text-3xl sm:text-4xl font-black font-mono text-cyan-200">{formatUSD(valuation.equity)}</strong>
-          <span class="mt-1 block text-[10px] text-slate-400">All tracked holdings + available cash − margin debt</span>
+      <section class="space-y-1.5" aria-label="Calculated account balances">
+        <div class="flex items-stretch overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/50 divide-x divide-slate-800">
+          <div class="min-w-[155px] flex-1 border-t-2 border-t-cyan-700/70 px-3 py-2 sm:px-4">
+            <span class="block whitespace-nowrap text-xs uppercase tracking-wide text-cyan-300">Total portfolio equity</span>
+            <strong class="mt-0.5 block whitespace-nowrap text-sm font-bold font-mono tabular-nums text-cyan-200">{formatUSD(valuation.equity)}</strong>
+          </div>
+          {valuation.cashBalance > 0 || valuation.marginDebt === 0 ? (
+            <div class="min-w-[130px] flex-1 border-t-2 border-t-emerald-800/70 px-3 py-2 sm:px-4">
+              <span class="block whitespace-nowrap text-xs uppercase tracking-wide text-slate-400">Available cash</span>
+              <strong class="mt-0.5 block whitespace-nowrap text-sm font-bold font-mono tabular-nums text-emerald-300">{formatUSD(valuation.cashBalance)}</strong>
+            </div>
+          ) : null}
+          {valuation.marginDebt > 0 ? (
+            <div class="min-w-[130px] flex-1 border-t-2 border-t-rose-800/70 bg-rose-950/10 px-3 py-2 sm:px-4">
+              <span class="block whitespace-nowrap text-xs uppercase tracking-wide text-rose-300">Margin debt</span>
+              <strong class="mt-0.5 block whitespace-nowrap text-sm font-bold font-mono tabular-nums text-rose-300">{formatUSD(valuation.marginDebt)}</strong>
+            </div>
+          ) : null}
         </div>
-        {valuation.cashBalance > 0 || valuation.marginDebt === 0 ? (
-          <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-            <span class="block text-[10px] uppercase tracking-wider text-slate-500">Available cash</span>
-            <strong class="mt-1 block text-xl font-bold font-mono text-emerald-300">{formatUSD(valuation.cashBalance)}</strong>
-            <span class="mt-1 block text-[10px] text-slate-500">Free cash + positive account cash</span>
-          </div>
-        ) : null}
-        {valuation.marginDebt > 0 ? (
-          <div class="rounded-lg border border-rose-900/60 bg-rose-950/20 p-3">
-            <span class="block text-[10px] uppercase tracking-wider text-rose-300">Margin debt</span>
-            <strong class="mt-1 block text-xl font-bold font-mono text-rose-300">{formatUSD(valuation.marginDebt)}</strong>
-          </div>
-        ) : null}
-        <div class="sm:col-span-2 text-[10px] text-slate-500" role="status">
+        <div class="text-[10px] text-slate-500" role="status">
           {valuationStatus} · Holdings valued: {valuation.pricedHoldings}
         </div>
       </section>
