@@ -399,7 +399,7 @@ export function calculateBreakevenDays(
   dailyRate: number
 ): number | null {
   if (![netTargetProfit, totalDebt, dailyRate].every(Number.isFinite)) return null;
-  if (netTargetProfit <= 0 || totalDebt === 0) return 0;
+  if (netTargetProfit <= 0 || totalDebt === 0) return null;
   if (totalDebt < 0 || dailyRate < 0) return null;
   // Positive interest coverage is impossible without a positive daily rate.
   if (dailyRate === 0) return null;
