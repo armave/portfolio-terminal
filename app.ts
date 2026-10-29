@@ -57,7 +57,7 @@ import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
-import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets } from './src/domain/freedomPortfolio';
+import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { InsightSection } from './src/components/MarketInsightsPanel';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
@@ -128,7 +128,8 @@ if (typeof window !== 'undefined') {
       current.activeTrancheTypes || {},
       Date.now(),
       executedTrades,
-      TRADERNET_RULES
+      TRADERNET_RULES,
+      current.activeTrancheMixes || {}
     );
     const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
       ...holding,
@@ -177,7 +178,8 @@ if (typeof window !== 'undefined') {
       current.activeTrancheTypes || {},
       Date.now(),
       tradesWithPersistedFees,
-      TRADERNET_RULES
+      TRADERNET_RULES,
+      current.activeTrancheMixes || {}
     );
     const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
       ...holding,
@@ -197,14 +199,38 @@ if (typeof window !== 'undefined') {
   });
 
   window.addEventListener('tradenet:set-active-tranche-type', (event: Event) => {
-    const detail = (event as CustomEvent<{ ticker?: string; type?: 'cash' | 'margin' }>).detail;
+    const detail = (event as CustomEvent<{
+      ticker?: string;
+      type?: 'cash' | 'margin' | 'mix';
+      mix?: { cash?: number; margin?: number };
+    }>).detail;
     const operationId = String(detail?.ticker || '').trim();
-    if (!operationId || (detail?.type !== 'cash' && detail?.type !== 'margin')) return;
+    const selectedType = detail?.type;
+    if (!operationId || (selectedType !== 'cash' && selectedType !== 'margin' && selectedType !== 'mix')) return;
+
     const current = portfolioStore.getState();
-    const activeTrancheTypes = { ...(current.activeTrancheTypes || {}), [operationId]: detail.type };
+    const activeTrancheTypes = { ...(current.activeTrancheTypes || {}), [operationId]: selectedType };
+    const activeTrancheMixes = { ...(current.activeTrancheMixes || {}) };
+    if (selectedType === 'mix') {
+      const availableTrades = Array.isArray((window as any).__tradenetExecutedTrades)
+        ? (window as any).__tradenetExecutedTrades
+        : Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+      const activeTranche = getActiveTranchesFromTrades(availableTrades, current.brokerAccountInfo)
+        .find((tranche) => tranche.id === operationId);
+      const previousType = current.activeTrancheTypes?.[operationId] ||
+        current.activeTrancheTypes?.[operationId.split(':')[0]] || 'cash';
+      const requestedMix = detail.mix || activeTrancheMixes[operationId] ||
+        (previousType === 'margin'
+          ? { cash: 0, margin: activeTranche?.quantity ?? 0 }
+          : { cash: activeTranche?.quantity ?? 0, margin: 0 });
+      const quantity = activeTranche?.quantity ??
+        (Math.max(0, Number(requestedMix.cash) || 0) + Math.max(0, Number(requestedMix.margin) || 0));
+      activeTrancheMixes[operationId] = normalizeActiveTrancheMix(quantity, requestedMix);
+    }
+
     const snapshot = current.brokerAccountInfo;
     if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) {
-      portfolioStore.setState({ activeTrancheTypes });
+      portfolioStore.setState({ activeTrancheTypes, activeTrancheMixes });
       // Persist the preference even when broker data is not ready yet.
       saveState(state);
       pushStateToGist();
@@ -220,7 +246,8 @@ if (typeof window !== 'undefined') {
       activeTrancheTypes,
       Date.now(),
       executedTrades,
-      TRADERNET_RULES
+      TRADERNET_RULES,
+      activeTrancheMixes
     );
     const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
       ...holding,
@@ -230,6 +257,7 @@ if (typeof window !== 'undefined') {
     }));
     portfolioStore.setState({
       activeTrancheTypes,
+      activeTrancheMixes,
       positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
       cashStocks: brokerCashHoldings,
       cashCushion: {
@@ -241,7 +269,7 @@ if (typeof window !== 'undefined') {
     saveState(state);
     pushStateToGist();
     const ticker = operationId.split(':')[0];
-    logTerminal(`[Freedom] ${ticker} purchase operation classified as ${detail.type}.`);
+    logTerminal(`[Freedom] ${ticker} purchase operation classified as ${selectedType}.`);
     renderBoard();
   });
 
