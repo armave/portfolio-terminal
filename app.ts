@@ -278,6 +278,7 @@ if (typeof window !== 'undefined') {
     logTerminal('[Freedom] Active sell target sync: ' + (targetDiagnostics || 'no target selected') +
       '; tracked quantities=' + JSON.stringify(marginQuantities) +
       '; orders=' + (orderDiagnostics || 'none') + '.');
+    const current = portfolioStore.getState();
     const positions = applyActiveLimitSellTargets(current.positions || {}, activeLimitSellTargets);
     const updates: Array<{ ticker: string; price: number }> = [];
     for (const [ticker, position] of Object.entries(positions)) {
