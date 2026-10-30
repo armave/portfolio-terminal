@@ -350,8 +350,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const removeRequestListener = addBrokerEventListener('broker:request-executed-trades', () => {
       void loadExecutedTrades();
     });
+    const removeAwaitableRequestListener = addBrokerEventListener('broker:request-executed-trades-and-wait', (request) => {
+      void loadExecutedTrades().finally(request.resolve);
+    });
     void loadExecutedTrades();
-    return removeRequestListener;
+    return () => {
+      removeRequestListener();
+      removeAwaitableRequestListener();
+    };
   }, []);
 
   const loadFreedomAccount = async () => {

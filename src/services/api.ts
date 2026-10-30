@@ -1179,12 +1179,12 @@ export async function testFreedomTradeNetConnection(): Promise<any> {
 
 /** Fetch raw read-only TradeNet positions so the actual broker schema can be verified. */
 export async function fetchFreedomTradeNetPositions(): Promise<any> {
-  return proxyFetch('freedom-positions');
+  return proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
 }
 
 /** Fetch a bounded, read-only page of executed TradeNet trades. */
 export async function fetchFreedomTradeNetTrades(): Promise<any> {
-  return proxyFetch('freedom-trades');
+  return proxyFetch('freedom-trades', undefined, { cache: 'no-store' });
 }
 
 /** Fetch current active TradeNet orders without reusing a cached response. */
