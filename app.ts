@@ -1359,7 +1359,7 @@ setSecretGetter(() => getGatewaySecret());
 export async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
   const submittedSecret = secret.trim();
   if (!submittedSecret) {
-    showToast('Please enter the Gateway Secret.', 'error');
+    showToast('Please sign in with your account.', 'error');
     return false;
   }
 
@@ -1371,7 +1371,7 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
   const persisted = await persistGatewaySecret();
   portfolioStore.setState({ gatewaySecret: submittedSecret });
   if (!persisted) {
-    showToast('Secure storage failed. Re-enter the Gateway Secret after refresh.', 'error');
+    showToast('Secure session storage failed. Sign in again after refresh.', 'error');
   }
 
   emitUiEvent('settings:gateway-secret-authenticated', { secret: submittedSecret });
