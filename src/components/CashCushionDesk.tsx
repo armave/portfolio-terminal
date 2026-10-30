@@ -290,11 +290,11 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               <thead>
                 <tr class="border-b border-slate-800 text-slate-400 font-medium">
                   <th class="w-[12%] py-2 px-2">Ticker</th>
-                  <th class="w-[9%] py-2 px-2 text-right whitespace-nowrap">Shares</th>
-                  <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Price · Mkt</th>
-                  <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Avg Bought</th>
-                  <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Avg Value</th>
-                  <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Mkt Value</th>
+                  <th class="w-[9%] py-2 px-2 text-right whitespace-nowrap">Q</th>
+                  <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Mkt</th>
+                  <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Avg B.</th>
+                  <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Avg Val.</th>
+                  <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Mkt Val.</th>
                   <th class="w-[13%] py-2 px-2 text-right whitespace-nowrap">P/L</th>
                   <th class="w-[10%] py-2 px-2 text-right whitespace-nowrap">Eq. Alloc</th>
                 </tr>

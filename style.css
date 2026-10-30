@@ -546,7 +546,7 @@ summary:hover {
 @media (min-width: 48rem) {
   .trading-workspace-grid {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
-    gap: 1.5rem;
+    gap: 1rem;
   }
 }
 
@@ -2507,7 +2507,7 @@ summary:focus-visible {
 /* Responsive portfolio desk: give the data area priority without crowding the console. */
 #tradingWorkspaceGrid.trading-workspace-grid {
   grid-template-columns: minmax(0, 1fr);
-  gap: 1.25rem;
+  gap: 1rem;
 }
 
 #tradingWorkspaceGrid > #cashCushionContainer,
@@ -2520,10 +2520,10 @@ summary:focus-visible {
   max-width: none;
 }
 
-@media (min-width: 80rem) {
+@media (min-width: 65rem) {
   #tradingWorkspaceGrid.trading-workspace-grid {
     grid-template-columns: minmax(0, 1.72fr) minmax(20rem, 0.88fr);
-    gap: 1.5rem;
+    gap: 1rem;
   }
 }
 
