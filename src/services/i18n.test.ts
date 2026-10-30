@@ -30,7 +30,7 @@ describe('app localization', () => {
     expect(translateText('Assigned stock value: ≥$1,200', 'ru')).toBe('Стоимость назначенных акций: ≥$1,200');
     expect(translateText('3 tranches', 'ru')).toBe('3 лота');
     expect(translateText('2 records', 'ru')).toBe('2 записи');
-    expect(translateText('Show 4 tranches', 'ru')).toBe('Показать 4 лотов');
+    expect(translateText('Show 4 tranches', 'ru')).toBe('Показать 4 лота');
   });
 
   it('notifies the app when the selected language changes', () => {
