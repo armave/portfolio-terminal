@@ -30,7 +30,10 @@ const PASSWORD_ITERATIONS = 210_000;
 const authEncoder = new TextEncoder();
 
 function authJson(body, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: CORS_HEADERS });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, "Cache-Control": "no-store" }
+  });
 }
 function normalizeAccountName(value) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
