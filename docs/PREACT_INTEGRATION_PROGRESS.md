@@ -82,3 +82,11 @@ Typecheck, tests, production build, dead-code validation, and production depende
 - [x] Make Settings, Ticker Tabs, Trading Console, Market Insights, External Links, Empty State, Cash Cushion, Summary Metrics, and Projections Preact-owned components that read canonical state directly.
 - [x] Route navigation, command execution, backup import, Settings actions, quote refresh requests, and broker requests through typed event channels; keep financial logic and asynchronous service effects in their existing runtime/domain owners.
 - [x] Share the live quote refresh interval through `useQuoteRefreshInterval`, which reads persisted configuration and subscribes to Settings changes.
+
+## Final Preact boundary audit — 2026-10-30
+- [x] Replace the synthetic `CustomEvent` façade in the in-process UI event bus with plain typed application messages; listener identity is now preserved independently in each event channel.
+- [x] Add regression coverage for removing a shared callback from one channel without affecting another.
+- [x] Replace tab-navigation sibling DOM queries/click synthesis with Preact-owned button refs, explicit view selection, and tested keyboard index resolution.
+- [x] Replace AuthModal form queries and post-submit browser timeout focus with button refs and Preact effect-driven focus restoration.
+- [x] Final PR-branch source scan finds no `CustomEvent` use, imperative HTML renderer APIs, generic component prop-state bridge, or component-level DOM query selectors.
+- Remaining browser APIs are limited to application bootstrap/autofill configuration, visibility lifecycle, file download, element-owned text-area sizing, focus/keyboard/resize handling, and ref-based scrolling. These remain browser/platform responsibilities and do not create a second renderer.
