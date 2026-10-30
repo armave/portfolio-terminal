@@ -432,7 +432,7 @@ function finiteNumber(value: unknown, fallback: number): number {
 }
 
 /** Resolve legacy/canonical tranche aliases into the quantity and price used by portfolio calculations. */
-function normalizeTrancheRecord(tranche: Record<string, unknown>): TradeTranche {
+export function normalizePortfolioTranche(tranche: Record<string, unknown>): TradeTranche {
   const firstPositive = (...values: unknown[]): number => {
     for (const value of values) {
       if (value === null || value === undefined || value === '' || typeof value === 'boolean') continue;
@@ -494,7 +494,7 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
 
       const tranches = (Array.isArray(holding.tranches) ? holding.tranches : [])
         .filter(isRecord)
-        .map(normalizeTrancheRecord)
+        .map(normalizePortfolioTranche)
         .filter((tranche) => tranche.qty > 0 && tranche.price > 0);
       const shares = tranches.reduce((total, tranche) => total + tranche.qty, 0);
       if (shares <= 0) return;
@@ -518,7 +518,7 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
   Object.entries(positions).forEach(([ticker, position]) => {
     if (!isRecord(position)) return;
     const tranches = Array.isArray(position.tranches)
-      ? position.tranches.filter(isRecord).map(normalizeTrancheRecord)
+      ? position.tranches.filter(isRecord).map(normalizePortfolioTranche)
       : [];
     // Define the property explicitly: imported JSON can contain a ticker key
     // named "__proto__", and assignment to that key on a plain object changes
