@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { BoardState } from '../types/portfolio';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
+import { emitBrokerEvent } from '../services/brokerEventBus';
 
 export interface TickerTabsProps {
   state: BoardState;
@@ -37,9 +38,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
   // Refresh on first mount and whenever navigation returns to that desk, rather
   // than relying on a user clicking a ticker tab.
   useEffect(() => {
-    if (isMarginDeskActive && typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('tradenet:request-active-orders'));
-    }
+    if (isMarginDeskActive) emitBrokerEvent('broker:request-active-orders');
   }, [isMarginDeskActive, state.activeView]);
 
   const tickers = Object.keys(state.positions || {});
