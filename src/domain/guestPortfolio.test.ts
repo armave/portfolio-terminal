@@ -96,3 +96,46 @@ describe('guest assigned cash holdings', () => {
     expect(calculateGuestPersonalEquity(holdings)).toBe(500);
   });
 });
+
+
+describe('guest holding valuation', () => {
+  it('does not turn a missing market quote into a zero market value or false loss', async () => {
+    const { getGuestHoldingValuation } = await import('./guestPortfolio');
+    expect(getGuestHoldingValuation({
+      ticker: 'AAPL',
+      shares: 4,
+      averagePrice: 150,
+      currentPrice: null,
+      price: null,
+      marketValue: null
+    })).toEqual({
+      shares: 4,
+      currentPrice: null,
+      marketValue: null,
+      averagePrice: 150,
+      costBasis: 600,
+      unrealizedPnl: null,
+      unrealizedPnlPercent: null
+    });
+  });
+
+  it('calculates market value and unrealized P/L when both quotes are available', async () => {
+    const { getGuestHoldingValuation } = await import('./guestPortfolio');
+    expect(getGuestHoldingValuation({
+      ticker: 'AAPL',
+      shares: 4,
+      averagePrice: 150,
+      currentPrice: 175,
+      price: 175,
+      marketValue: 700
+    })).toEqual({
+      shares: 4,
+      currentPrice: 175,
+      marketValue: 700,
+      averagePrice: 150,
+      costBasis: 600,
+      unrealizedPnl: 100,
+      unrealizedPnlPercent: 100 / 600 * 100
+    });
+  });
+});
