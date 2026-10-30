@@ -420,6 +420,36 @@ const RU: Record<string, string> = {
   "Rows": "Строки",
   "Page": "Страница",
   "No quote for": "Нет котировки для",
+  "[Freedom] Active tickers, cash/margin classifications, balance and prices refreshed.": "Обновлены активные тикеры, классификация денежных и маржинальных позиций, баланс и цены.",
+  "[Freedom Warning] Account refresh failed; retained local data and marked the last broker snapshot stale.": "Не удалось обновить данные счёта Freedom; локальные данные сохранены, а последний снимок брокера помечен как устаревший.",
+  "[Guest Portfolio Sync Error]: Assigned holdings could not be refreshed.": "Не удалось обновить назначенные гостю активы.",
+  "[System]: Portfolio reset to a clean blank slate.": "Портфель сброшен до пустого состояния.",
+  "[Market Data Warning]: No quotes updated during batch fetch.": "При пакетном запросе не удалось обновить ни одной котировки.",
+  "[Backup Import]: Import cancelled; the current portfolio was not changed.": "Импорт отменён; текущий портфель не изменён.",
+  "Invalid buy details.": "Некорректные данные покупки.",
+  "Sale price must be greater than zero.": "Цена продажи должна быть больше нуля.",
+  "Cash holding sale failed.": "Не удалось продать акцию за денежные средства.",
+  "Margin position sale failed.": "Не удалось продать маржинальную позицию.",
+  "[Margin Sync Error]: Enter a valid finite debt amount.": "Введите корректную конечную сумму маржинального долга.",
+  "Invalid margin debt amount.": "Некорректная сумма маржинального долга.",
+  "[AI Action]: Cancelled.": "Действие ИИ отменено.",
+  "Executed.": "Выполнено.",
+  "READY": "ГОТОВО",
+  "FAIL": "ОШИБКА",
+  "Please enter a valid Gateway Secret": "Введите корректный секретный ключ Gateway.",
+  "Gateway Secret saved. Remote access has not been verified yet.": "Секретный ключ Gateway сохранён. Удалённый доступ ещё не проверен.",
+  "Gateway Secret is available for this session, but secure device storage failed. It may need to be entered again after refresh.": "Секретный ключ Gateway доступен в этой сессии, но не удалось безопасно сохранить его на устройстве. После обновления страницы его может потребоваться ввести снова.",
+  "Gateway Secret required to access cloud state.": "Для доступа к облачному состоянию требуется секретный ключ Gateway.",
+  "Gateway Secret saved.": "Секретный ключ Gateway сохранён.",
+  "Remote access has not been verified yet.": "Удалённый доступ ещё не проверен.",
+  "The workbook contains no transaction rows.": "Книга не содержит строк с транзакциями.",
+  "Could not persist the imported backup to browser storage.": "Не удалось сохранить импортированную резервную копию в памяти браузера.",
+  "[AI Action Error]": "Ошибка действия ИИ",
+  "[KV Cloud Error]": "Ошибка облака KV",
+  "Cloud pull failed": "Не удалось загрузить данные из облака",
+  "[Market Data Error]": "Ошибка рыночных данных",
+  "[Sell Error]": "Ошибка продажи",
+  "[Freedom] Active sell target sync": "Синхронизация целевых цен активных продаж",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -456,7 +486,13 @@ function translateDynamicText(normalized: string): string | undefined {
     ['Quote status: ', 'Quote status', ': '],
     ['Assigned stock value: ', 'Assigned stock value', ': '],
     ['Immediately pull latest quote for ', 'Immediately pull latest quote for', ' '],
-    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' ']
+    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' '],
+    ['[AI Action Error]: ', '[AI Action Error]', ': '],
+    ['[KV Cloud Error]: ', '[KV Cloud Error]', ': '],
+    ['Cloud pull failed: ', 'Cloud pull failed', ': '],
+    ['[Market Data Error]: ', '[Market Data Error]', ': '],
+    ['[Sell Error]: ', 'Sell Error', ': '],
+    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': ']
   ];
   for (const [prefix, dictionaryKey, separator] of prefixes) {
     if (normalized.startsWith(prefix)) {
