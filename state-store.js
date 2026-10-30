@@ -26,7 +26,9 @@ const AUTH_LOGIN_FAILURE_PREFIX = "auth:login-failure:";
 const AUTH_LOGIN_FAILURE_LIMIT = 10;
 const AUTH_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const PASSWORD_ITERATIONS = 210_000;
+const PASSWORD_HASH_VERSION = 2;
+const PASSWORD_ITERATIONS_PER_STAGE = 100_000;
+const PASSWORD_HASH_STAGES = 6;
 const authEncoder = new TextEncoder();
 
 function authJson(body, status = 200) {
@@ -45,12 +47,22 @@ async function digestHex(value) {
   return toHex(await crypto.subtle.digest("SHA-256", authEncoder.encode(value)));
 }
 async function derivePasswordHash(password, salt) {
-  const material = await crypto.subtle.importKey("raw", authEncoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: authEncoder.encode(salt), iterations: PASSWORD_ITERATIONS, hash: "SHA-256" },
-    material, 256
-  );
-  return toHex(bits);
+  // Cloudflare Workers rejects a single PBKDF2 deriveBits call above 100,000
+  // iterations. Chain six independently salted PBKDF2 stages so each native
+  // operation stays within that limit while preserving 600,000 total rounds
+  // of PBKDF2-HMAC-SHA256 work for every password.
+  let input = authEncoder.encode(password);
+  for (let stage = 0; stage < PASSWORD_HASH_STAGES; stage += 1) {
+    const material = await crypto.subtle.importKey("raw", input, "PBKDF2", false, ["deriveBits"]);
+    const stageSalt = authEncoder.encode(
+      `${salt}:portfolio-terminal:password:v${PASSWORD_HASH_VERSION}:stage:${stage}`
+    );
+    input = new Uint8Array(await crypto.subtle.deriveBits(
+      { name: "PBKDF2", salt: stageSalt, iterations: PASSWORD_ITERATIONS_PER_STAGE, hash: "SHA-256" },
+      material, 256
+    ));
+  }
+  return toHex(input);
 }
 function secureEqual(left, right) {
   if (typeof left !== "string" || typeof right !== "string" || left.length !== right.length) return false;
@@ -151,7 +163,7 @@ export class PortfolioStateDO {
       const passwordHash = await derivePasswordHash(body.password, salt);
       const user = {
         id: crypto.randomUUID(), name, normalizedName: name.toLocaleLowerCase("en-US"),
-        role: "admin", salt, passwordHash, createdAt: new Date().toISOString()
+        role: "admin", salt, passwordHash, passwordHashVersion: PASSWORD_HASH_VERSION, createdAt: new Date().toISOString()
       };
       const created = await this.ctx.storage.transaction(async () => {
         const users = await this.ctx.storage.get(AUTH_USERS_KEY) || [];
@@ -233,7 +245,7 @@ export class PortfolioStateDO {
         const passwordHash = await derivePasswordHash(body.password, salt);
         const user = {
           id: crypto.randomUUID(), name, normalizedName: name.toLocaleLowerCase("en-US"),
-          role, salt, passwordHash, createdAt: new Date().toISOString()
+          role, salt, passwordHash, passwordHashVersion: PASSWORD_HASH_VERSION, createdAt: new Date().toISOString()
         };
         const created = await this.ctx.storage.transaction(async () => {
           const users = await this.ctx.storage.get(AUTH_USERS_KEY) || [];
@@ -269,7 +281,7 @@ export class PortfolioStateDO {
             ...current,
             ...(name ? { name, normalizedName: name.toLocaleLowerCase("en-US") } : {}),
             ...(role ? { role } : {}),
-            ...(passwordSalt && passwordHash ? { salt: passwordSalt, passwordHash } : {})
+            ...(passwordSalt && passwordHash ? { salt: passwordSalt, passwordHash, passwordHashVersion: PASSWORD_HASH_VERSION } : {})
           };
           const nextUsers = [...users];
           nextUsers[index] = next;
