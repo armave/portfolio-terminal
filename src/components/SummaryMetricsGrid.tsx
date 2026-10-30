@@ -169,6 +169,17 @@ function getStoredMarginTrancheQuantity(tranche: unknown): number | null {
   return null;
 }
 
+function getTradeNetCalendarDate(timestamp: number): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Yerevan',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date(timestamp));
+  const part = (type: string) => parts.find((item) => item.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
 function getTranchePriceAndDate(tranche: unknown): { price: number; date: string } | null {
   if (!tranche || typeof tranche !== 'object') return null;
   const value = tranche as {
@@ -184,14 +195,7 @@ function getTranchePriceAndDate(tranche: unknown): { price: number; date: string
     (() => {
       const parsed = Date.parse(rawDate);
       if (!Number.isFinite(parsed)) return rawDate;
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Yerevan',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).formatToParts(new Date(parsed));
-      const part = (type: string) => parts.find((item) => item.type === type)?.value || '';
-      return `${part('year')}-${part('month')}-${part('day')}`;
+      return getTradeNetCalendarDate(parsed);
     })();
   return { price, date };
 }
@@ -222,7 +226,7 @@ export function getMarginTrancheQuantities(
   brokerLots.forEach((lot) => {
     if (ticker && lot.ticker !== ticker.toUpperCase()) return;
     if (lot.averagePrice === null || !Number.isFinite(lot.averagePrice) || lot.averagePrice <= 0 || lot.purchasedAt === null) return;
-    const key = `${Number(lot.averagePrice).toFixed(2)}|${new Date(lot.purchasedAt).toISOString().slice(0, 10)}`;
+    const key = `${Number(lot.averagePrice).toFixed(2)}|${getTradeNetCalendarDate(lot.purchasedAt)}`;
     lotsByKey.set(key, [...(lotsByKey.get(key) || []), lot]);
   });
 
