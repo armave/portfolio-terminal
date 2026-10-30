@@ -36,4 +36,38 @@ describe('margin tranche quantity display', () => {
     expect(getMarginTrancheQuantity({ qty: 'invalid' })).toBeNull();
     expect(getMarginTrancheQuantity({ qty: 0, shares: 0 })).toBeNull();
   });
+
+  it('recovers a missing persisted lot quantity from one exact broker execution-log match', () => {
+    const purchasedAt = Date.parse('2026-10-22T09:30:00.000Z');
+    const brokerLots = [{
+      id: 'GOOGL:lot-1',
+      ticker: 'GOOGL',
+      name: 'GOOGL',
+      quantity: 10,
+      marketPrice: 423,
+      averagePrice: 328,
+      marketValue: 4230,
+      purchasedAt
+    }];
+    expect(getMarginTrancheQuantity({
+      price: 328,
+      date: '2026-10-22'
+    }, brokerLots, 'GOOGL')).toBe(10);
+  });
+
+  it('does not guess when broker execution matches are ambiguous or mismatched', () => {
+    const brokerLots = [{
+      id: 'GOOGL:lot-1',
+      ticker: 'GOOGL',
+      name: 'GOOGL',
+      quantity: 10,
+      marketPrice: 423,
+      averagePrice: 328,
+      marketValue: 4230,
+      purchasedAt: Date.parse('2026-10-22T09:30:00.000Z')
+    }];
+    expect(getMarginTrancheQuantity({ price: 328, date: '2026-10-22' }, [...brokerLots, ...brokerLots], 'GOOGL')).toBeNull();
+    expect(getMarginTrancheQuantity({ price: 328, date: '2026-10-22' }, brokerLots, 'AAPL')).toBeNull();
+    expect(getMarginTrancheQuantity({ price: 329, date: '2026-10-22' }, brokerLots, 'GOOGL')).toBeNull();
+  });
 });
