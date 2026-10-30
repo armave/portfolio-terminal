@@ -4,7 +4,8 @@ import { usePortfolio } from '../store/portfolioStore';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
 import { emitUiEvent } from '../ui/uiEventBus';
-import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings } from '../domain/guestPortfolio';
+import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
+import { getAppLanguage } from '../services/i18n';
 
 export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; userId?: string } = {}) {
   const state = usePortfolio();
@@ -72,19 +73,13 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
     : [];
   const guestEquity = calculateGuestPersonalEquity(guestHoldings);
   const displayedEquity = isAdmin ? portfolioValuation.equity : guestEquity;
-  const hasUnpricedGuestHoldings = guestHoldings.some((holding) => {
-    const price = Number(holding.currentPrice ?? holding.price);
-    return !Number.isFinite(price) || price <= 0;
-  });
-  const hasPricedGuestHoldings = guestHoldings.some((holding) => {
-    const price = Number(holding.currentPrice ?? holding.price);
-    return Number.isFinite(price) && price > 0;
-  });
+  const hasUnpricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice === null);
+  const hasPricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice !== null);
   const equityBadgeText = !isAdmin && userId
     ? guestHoldings.length === 0 ? '$0'
       : !hasPricedGuestHoldings ? '—'
-        : (hasUnpricedGuestHoldings ? '≥$' : '+$') + Math.abs(displayedEquity).toLocaleString('en-US', { maximumFractionDigits: 0 })
-    : (displayedEquity >= 0 ? '+$' : '−$') + Math.abs(displayedEquity).toLocaleString('en-US', { maximumFractionDigits: 0 });
+        : (hasUnpricedGuestHoldings ? '≥$' : '+$') + Math.abs(displayedEquity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 0 })
+    : (displayedEquity >= 0 ? '+$' : '−$') + Math.abs(displayedEquity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 0 });
   const equityBadgeTitle = !isAdmin && hasUnpricedGuestHoldings
     ? 'Partial value: holdings without a valid market quote are excluded.'
     : 'Current market value of your assigned cash-funded stocks.';
@@ -115,17 +110,18 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
 
   return (
     <>
-      {isAdmin && tickers.length > 0 && (
+      {((isAdmin && tickers.length > 0) || (!isAdmin && Boolean(userId) && guestHoldings.length > 0)) && (
         <button
           id="refreshQuotesButton"
           type="button"
           title="Update quotes"
           aria-label="Refresh live quotes"
+          aria-busy={isRefreshingQuotes}
           disabled={isRefreshingQuotes}
           onClick={handleRefreshQuotes}
           class="h-8 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
         >
-          <span>↻</span>
+          <span class={isRefreshingQuotes ? 'animate-spin' : ''}>↻</span>
         </button>
       )}
 
