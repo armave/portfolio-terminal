@@ -297,7 +297,7 @@ export class PortfolioStore {
           tranches: Array.isArray(record.tranches)
             ? record.tranches
               .filter((tranche) => tranche && typeof tranche === 'object' && !Array.isArray(tranche))
-              .map((tranche) => normalizePortfolioTranche(tranche as Record<string, unknown>))
+              .map((tranche) => normalizePortfolioTranche(tranche as unknown as Record<string, unknown>))
               .filter((tranche) => tranche.qty > 0 && tranche.price > 0)
             : []
         }];
