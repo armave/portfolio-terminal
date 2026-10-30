@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolvePositionEntryDate } from './renderBoard';
+import { resolveActiveView, resolvePositionEntryDate } from './renderBoard';
+import type { PositionRecord } from '../types/portfolio';
 
 describe('resolvePositionEntryDate', () => {
   it('uses the chronologically earliest active tranche date instead of array order or a stale saved date', () => {
@@ -40,5 +41,26 @@ describe('resolvePositionEntryDate', () => {
 
   it('returns undefined when neither a valid tranche date nor fallback exists', () => {
     expect(resolvePositionEntryDate([])).toBeUndefined();
+  });
+});
+
+
+describe('resolveActiveView', () => {
+  it('keeps non-position desks selected without requiring a ticker position', () => {
+    expect(resolveActiveView({ activeView: 'CASH_CUSHION' })).toBe('CASH_CUSHION');
+    expect(resolveActiveView({ activeView: 'CLOSED_HISTORY' })).toBe('CLOSED_HISTORY');
+  });
+
+  it('keeps a selected ticker desk while that position exists', () => {
+    const positions = { AAPL: {} as PositionRecord };
+    expect(resolveActiveView({ activeView: 'AAPL', positions })).toBe('AAPL');
+  });
+
+  it('falls back to the combined desk when a saved ticker no longer exists', () => {
+    expect(resolveActiveView({ activeView: 'AAPL', positions: {} })).toBe('COMBINED');
+  });
+
+  it('keeps the combined desk selected', () => {
+    expect(resolveActiveView({ activeView: 'COMBINED', positions: {} })).toBe('COMBINED');
   });
 });
