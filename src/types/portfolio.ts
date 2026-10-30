@@ -77,6 +77,8 @@ interface CashStock {
 interface CashStockHolding {
   ticker: string;
   shares: number | string;
+  /** Weighted average entry price of the still-open cash-allocated purchase lots. */
+  averagePrice?: number | null;
   price?: number | string;
   currentPrice?: number | string;
   quoteUpdatedAt?: number;
