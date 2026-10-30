@@ -432,7 +432,8 @@ export function SummaryMetricsGrid() {
       commPerShare: Number(rules.commPerShare ?? rules.commissionPerShare ?? 0),
       commVolumePct: Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0),
       minCommOrder: Number(rules.minCommOrder ?? rules.commissionMin ?? 0)
-    }
+    },
+    false
   );
   const trancheQuantities = getMarginTrancheQuantities(positionTranches, brokerOpenLots, pos.ticker);
   const tranchesExpanded = expandedTrancheTicker === pos.ticker;
