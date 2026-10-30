@@ -5,6 +5,7 @@ import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings } from '../domain/guestPortfolio';
+import { getAppLanguage } from '../services/i18n';
 
 export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; userId?: string } = {}) {
   const state = usePortfolio();
@@ -83,8 +84,8 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
   const equityBadgeText = !isAdmin && userId
     ? guestHoldings.length === 0 ? '$0'
       : !hasPricedGuestHoldings ? '—'
-        : (hasUnpricedGuestHoldings ? '≥$' : '+$') + Math.abs(displayedEquity).toLocaleString('en-US', { maximumFractionDigits: 0 })
-    : (displayedEquity >= 0 ? '+$' : '−$') + Math.abs(displayedEquity).toLocaleString('en-US', { maximumFractionDigits: 0 });
+        : (hasUnpricedGuestHoldings ? '≥$' : '+$') + Math.abs(displayedEquity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 0 })
+    : (displayedEquity >= 0 ? '+$' : '−$') + Math.abs(displayedEquity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 0 });
   const equityBadgeTitle = !isAdmin && hasUnpricedGuestHoldings
     ? 'Partial value: holdings without a valid market quote are excluded.'
     : 'Current market value of your assigned cash-funded stocks.';
