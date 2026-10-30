@@ -132,7 +132,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
   const adminHoldingGroups = isAdmin ? guestUsers.map((guest) => ({
     key: guest.id,
-    label: guest.name || guest.email || guest.id,
+    label: guest.name || guest.id,
     holdings: getGuestAssignedCashHoldings({
       guestId: guest.id,
       activeTranches,
