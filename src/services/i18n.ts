@@ -417,37 +417,47 @@ export function getAppLanguage(): AppLanguage {
   return currentLanguage;
 }
 
+function russianPlural(value: number, one: string, few: string, many: string): string {
+  const lastTwo = value % 100;
+  const last = value % 10;
+  if (last === 1 && lastTwo !== 11) return one;
+  if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return few;
+  return many;
+}
+
 function translateDynamicText(normalized: string): string | undefined {
-  const prefixes: Array<[string, string]> = [
-    ['Name for ', 'Name for '],
-    ['Role for ', 'Role for '],
-    ['Language for ', 'Language for '],
-    ['New password for ', 'New password for '],
-    ['Updated ', 'Updated'],
-    ['Synced ', 'Synced'],
-    ['Read news: ', 'Read news'],
-    ['Stocktwits unavailable: ', 'Stocktwits unavailable'],
-    ['Quote status: ', 'Quote status'],
-    ['Assigned stock value: ', 'Assigned stock value'],
-    ['Immediately pull latest quote for ', 'Immediately pull latest quote for'],
-    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for']
+  const prefixes: Array<[string, string, string]> = [
+    ['Name for ', 'Name for ', ''],
+    ['Role for ', 'Role for ', ''],
+    ['Language for ', 'Language for ', ''],
+    ['New password for ', 'New password for ', ''],
+    ['Updated ', 'Updated', ' '],
+    ['Synced ', 'Synced', ' '],
+    ['Read news: ', 'Read news', ': '],
+    ['Stocktwits unavailable: ', 'Stocktwits unavailable', ': '],
+    ['Quote status: ', 'Quote status', ': '],
+    ['Assigned stock value: ', 'Assigned stock value', ': '],
+    ['Immediately pull latest quote for ', 'Immediately pull latest quote for', ' '],
+    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' ']
   ];
-  for (const [prefix, dictionaryKey] of prefixes) {
+  for (const [prefix, dictionaryKey, separator] of prefixes) {
     if (normalized.startsWith(prefix)) {
-      return (RU[dictionaryKey] || dictionaryKey) + normalized.slice(prefix.length);
+      return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
     }
   }
 
   const showTranches = normalized.match(/^Show (\\d+) tranches$/i);
-  if (showTranches) return `Показать ${showTranches[1]} лотов`;
+  if (showTranches) {
+    return `Показать ${showTranches[1]} ${russianPlural(Number(showTranches[1]), 'лот', 'лота', 'лотов')}`;
+  }
 
   const count = normalized.match(/^(\\d+) (tranches|records|holdings|days|hrs|shares)$/i);
   if (count) {
     const amount = Number(count[1]);
     const noun = count[2].toLowerCase();
-    if (noun === 'tranches') return `${amount} ${amount % 10 === 1 && amount % 100 !== 11 ? 'лот' : amount % 10 >= 2 && amount % 10 <= 4 && (amount % 100 < 12 || amount % 100 > 14) ? 'лота' : 'лотов'}`;
-    if (noun === 'records') return `${amount} ${amount % 10 === 1 && amount % 100 !== 11 ? 'запись' : amount % 10 >= 2 && amount % 10 <= 4 && (amount % 100 < 12 || amount % 100 > 14) ? 'записи' : 'записей'}`;
-    if (noun === 'holdings') return `${amount} ${amount % 10 === 1 && amount % 100 !== 11 ? 'позиция' : amount % 10 >= 2 && amount % 10 <= 4 && (amount % 100 < 12 || amount % 100 > 14) ? 'позиции' : 'позиций'}`;
+    if (noun === 'tranches') return `${amount} ${russianPlural(amount, 'лот', 'лота', 'лотов')}`;
+    if (noun === 'records') return `${amount} ${russianPlural(amount, 'запись', 'записи', 'записей')}`;
+    if (noun === 'holdings') return `${amount} ${russianPlural(amount, 'позиция', 'позиции', 'позиций')}`;
     if (noun === 'days') return `${amount} дн.`;
     if (noun === 'hrs') return `${amount} ч`;
     return `${amount} акций`;
