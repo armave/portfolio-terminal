@@ -130,6 +130,43 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     return sum + (Number(h.shares) || 0) * price;
   }, 0);
 
+  const adminHoldingGroups = isAdmin ? guestUsers.map((guest) => ({
+    key: guest.id,
+    label: guest.name || guest.email || guest.id,
+    holdings: getGuestAssignedCashHoldings({
+      guestId: guest.id,
+      activeTranches,
+      assignments: state.activeTrancheGuestAssignments,
+      types: state.activeTrancheTypes,
+      mixes: state.activeTrancheMixes,
+      cashHoldings: state.cashCushion?.holdings || []
+    })
+  })).filter((group) => group.holdings.length > 0) : [];
+
+  const assignedByTicker = new Map<string, number>();
+  adminHoldingGroups.forEach((group) => group.holdings.forEach((holding) => {
+    assignedByTicker.set(holding.ticker, (assignedByTicker.get(holding.ticker) || 0) + holding.shares);
+  }));
+  const unassignedHoldings = isAdmin ? holdings.flatMap((holding) => {
+    const shares = Math.max(0, Number(holding.shares || 0) - (assignedByTicker.get(holding.ticker) || 0));
+    return shares > 1e-8 ? [{ ...holding, shares }] : [];
+  }) : [];
+
+  const displayHoldingGroups = isAdmin
+    ? [
+      ...adminHoldingGroups,
+      ...(unassignedHoldings.length ? [{ key: 'unassigned', label: 'Unassigned · shared holdings', holdings: unassignedHoldings }] : [])
+    ]
+    : [{ key: 'guest', label: '', holdings }];
+  const displayHoldings = displayHoldingGroups.flatMap((group) =>
+    group.holdings.map((holding, index) => ({
+      ...holding,
+      groupKey: group.key,
+      groupLabel: group.label,
+      isGroupStart: index === 0
+    }))
+  );
+
   return (
     <>
       <div class="flex justify-between items-center border-b border-slate-800 pb-2">
@@ -151,6 +188,45 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       )}
 
       <div class="space-y-2">
+        {guestUserId ? (
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Your active stock cards">
+            {guestHoldings.length === 0 ? (
+              <div class="col-span-full rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-500">No active cash-funded stocks are linked to your account yet.</div>
+            ) : guestHoldings.map((holding) => {
+              const shares = Number(holding.shares) || 0;
+              const price = Number(holding.currentPrice ?? holding.price) || 0;
+              const marketValue = shares * price;
+              const averagePrice = Number(holding.averagePrice);
+              const hasCost = Number.isFinite(averagePrice) && averagePrice > 0;
+              const costValue = hasCost ? shares * averagePrice : null;
+              const pnl = costValue !== null ? marketValue - costValue : null;
+              const pnlPercent = costValue && costValue > 0 ? pnl! / costValue * 100 : null;
+              const change = holding.quoteDetails?.changePercent;
+              return (
+                <article key={holding.ticker} class="rounded-xl border border-slate-800 bg-slate-950/60 p-4 shadow-sm">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 class="text-lg font-black tracking-wide text-cyan-300">{holding.ticker}</h3>
+                      <p class="mt-1 text-[10px] uppercase tracking-wider text-slate-500">Assigned active shares</p>
+                    </div>
+                    {Number.isFinite(change) && <span class={`rounded-full border px-2 py-1 text-[10px] font-bold ${Number(change) >= 0 ? 'border-emerald-900 bg-emerald-950/40 text-emerald-300' : 'border-rose-900 bg-rose-950/40 text-rose-300'}`}>{Number(change) > 0 ? '+' : ''}{Number(change).toFixed(2)}%</span>}
+                  </div>
+                  <div class="mt-4">
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500">Current market value</p>
+                    <p class="mt-1 text-2xl font-black tabular-nums text-white">{formatUSD(marketValue)}</p>
+                  </div>
+                  <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-800 pt-3">
+                    <div><p class="text-[10px] text-slate-500">Assigned shares</p><p class="mt-1 font-mono text-sm font-bold text-slate-200">{shares.toLocaleString('en-US', { maximumFractionDigits: 3 })}</p></div>
+                    <div><p class="text-[10px] text-slate-500">Price · share</p><p class="mt-1 font-mono text-sm font-bold text-emerald-300">{price > 0 ? formatUSD(price) : '—'}</p></div>
+                    <div><p class="text-[10px] text-slate-500">Avg. entry</p><p class="mt-1 font-mono text-sm text-slate-300">{hasCost ? formatUSD(averagePrice) : '—'}</p></div>
+                    <div><p class="text-[10px] text-slate-500">Unrealized P/L</p><p class={`mt-1 font-mono text-sm font-bold ${pnl === null ? 'text-slate-500' : pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{pnl === null ? '—' : `${pnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(pnl))}`}{pnlPercent !== null ? <span class="block text-[10px] font-normal">{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%</span> : null}</p></div>
+                  </div>
+                  <p class="mt-3 text-[9px] text-slate-500">{formatQuoteMetadata(holding, refreshIntervalMs)}</p>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
         <div class="table-scroll-wrapper overflow-x-auto">
           <table class="w-full min-w-[1040px] table-fixed text-left text-xs border-collapse">
             <thead>
@@ -166,14 +242,14 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               </tr>
             </thead>
             <tbody id="cashStocksTableBody" class="divide-y divide-slate-800/60 font-mono">
-              {holdings.length === 0 ? (
+              {displayHoldings.length === 0 ? (
                 <tr>
                   <td colSpan={8} class="py-3 text-center text-slate-500 italic">
                     {!isAdmin && !guestUserId ? 'Verifying account access…' : guestUserId ? 'No active cash-funded stocks are linked to your account.' : 'No broker-reported cash holdings available.'}
                   </td>
                 </tr>
               ) : (
-                holdings.map((h) => {
+                displayHoldings.map((h) => {
                   const shares = Number(h.shares) || 0;
                   const price = Number(h.currentPrice ?? h.price) || 0;
                   const averagePrice = Number(h.averagePrice);
@@ -202,7 +278,11 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       : sentimentLabel(direction);
 
                   return (
-                    <tr key={h.ticker} class="hover:bg-slate-900/40">
+                    <>
+                    {isAdmin && h.isGroupStart && <tr key={`group-${h.groupKey}`} class="border-t border-slate-700 bg-slate-900/70">
+                      <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-300">{h.groupLabel}</td>
+                    </tr>}
+                    <tr key={`${h.groupKey}-${h.ticker}`} class="hover:bg-slate-900/40">
                       <td class="py-2 px-3 text-cyan-300 font-bold">
                         <div class="inline-flex items-center gap-1.5">
                           <span>{h.ticker}</span>
@@ -266,6 +346,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         {allocation.toFixed(1)}%
                       </td>
                     </tr>
+                    </>
                   );
                 })
               )}
@@ -287,6 +368,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             </tfoot>
           </table>
         </div>
+        )}
 
         {showActiveTranches && <section class="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2" id="activeTranches" aria-labelledby="activeTranchesHeading">
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
