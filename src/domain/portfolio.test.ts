@@ -102,6 +102,31 @@ describe('portfolio domain', () => {
     expect(normalized.closedTrades).toEqual([]);
   });
 
+  it('canonicalizes legacy tranche aliases inside already-canonical positions', () => {
+    const normalized = normalizePortfolioState({
+      positions: {
+        GOOGL: {
+          ticker: 'GOOGL',
+          shares: 69,
+          currentPrice: 423,
+          pt: 353,
+          commBuy: 0,
+          tranches: [
+            { id: 'legacy-shares', shares: 5, entryPrice: 282, purchaseDate: '2026-10-29' },
+            { id: 'zero-qty-placeholder', qty: 0, shares: 14, price: 282, date: '2026-10-29' },
+            { id: 'broker-quantity', quantity: 10, averagePrice: 328, entryDate: '2026-10-22' }
+          ]
+        }
+      }
+    }, 10_000);
+
+    expect(normalized.positions.GOOGL.tranches).toMatchObject([
+      { qty: 5, price: 282, date: '2026-10-29' },
+      { qty: 14, price: 282, date: '2026-10-29' },
+      { qty: 10, price: 328, date: '2026-10-22' }
+    ]);
+  });
+
   it('omits legacy marginBalance without mutating the source state', () => {
     const source = {
       activeView: 'AAPL',
