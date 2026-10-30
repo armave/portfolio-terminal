@@ -404,3 +404,57 @@ describe('active limit sell target synchronization', () => {
     ])).toEqual({});
   });
 });
+
+
+describe('cash holdings average purchase price', () => {
+  it('weights open cash lots by their allocated quantity and excludes margin shares', () => {
+    const trades = [
+      { id: 'buy-cash', ticker: 'AAPL.US', side: 'BUY', quantity: 4, price: 100, executedAt: '2026-01-01T10:00:00Z' },
+      { id: 'buy-mix', ticker: 'AAPL.US', side: 'BUY', quantity: 6, price: 120, executedAt: '2026-01-01T10:10:00Z' }
+    ];
+    const snapshot = {
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'AAPL.US', quantity: 10, marketPrice: 130 }]
+    };
+    const mixedTranche = getActiveTranchesFromTrades(trades, snapshot)
+      .find((tranche) => tranche.purchasedAt === Date.parse('2026-01-01T10:10:00Z'));
+    expect(mixedTranche).toBeDefined();
+
+    const result = classifyFreedomPortfolio(
+      snapshot,
+      {},
+      [],
+      { [mixedTranche!.id]: 'mix' },
+      123,
+      trades,
+      undefined,
+      { [mixedTranche!.id]: { cash: 3, margin: 3 } }
+    );
+
+    expect(result.cashStocks).toHaveLength(1);
+    expect(result.cashStocks[0]).toMatchObject({
+      ticker: 'AAPL',
+      shares: 7,
+      currentPrice: 130
+    });
+    expect(result.cashStocks[0].averagePrice).toBeCloseTo(760 / 7, 8);
+  });
+
+  it('does not fabricate an average when an open cash lot has no purchase price', () => {
+    const trades = [
+      { id: 'buy-priced', ticker: 'MSFT', side: 'BUY', quantity: 2, price: 100, executedAt: '2026-01-01T10:00:00Z' },
+      { id: 'buy-unpriced', ticker: 'MSFT', side: 'BUY', quantity: 3, executedAt: '2026-01-01T10:10:00Z' }
+    ];
+    const snapshot = {
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'MSFT', quantity: 5, marketPrice: 110 }]
+    };
+
+    const result = classifyFreedomPortfolio(snapshot, {}, [], {}, 123, trades);
+
+    expect(result.cashStocks[0].shares).toBe(5);
+    expect(result.cashStocks[0].averagePrice).toBeNull();
+  });
+});
