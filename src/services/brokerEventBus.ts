@@ -4,12 +4,7 @@ import type {
   FreedomPortfolioSnapshot
 } from './api';
 
-export type BrokerAccountSnapshot = FreedomPortfolioSnapshot & {
-  receivedAt?: number;
-  status?: 'current' | 'stale';
-};
-
-export interface ActiveTrancheTypeRequest {
+interface ActiveTrancheTypeRequest {
   ticker?: string;
   type?: 'cash' | 'margin' | 'mix';
   mix?: { cash?: number; margin?: number };
