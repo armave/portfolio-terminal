@@ -86,6 +86,8 @@ const DEFAULT_TRADERNET_RULES = {
 const TRADERNET_RULES = { ...DEFAULT_TRADERNET_RULES };
 
 let state: any = createBlankState();
+// Guest sessions may read the shared snapshot, but must never enqueue cloud writes.
+let isGuestSession = false;
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
@@ -408,6 +410,12 @@ portfolioStore.subscribe(syncCalculatedPortfolioEquity);
 syncCalculatedPortfolioEquity(portfolioStore.getState());
 
 async function pushStateToCloud(forceImmediate = false) {
+  if (isGuestSession) {
+    if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
+    gistSyncTimeout = null;
+    return;
+  }
+
   if (!areHeaderCredentialsConfigured()) {
     setCloudStatus('idle', 'ADD SECRET');
     return;
@@ -1423,9 +1431,11 @@ setSecretGetter(() => getGatewaySecret());
 async function publishCurrentUser() {
   try {
     const user = await getCurrentUser();
+    isGuestSession = user.role === 'guest';
     emitUiEvent('auth:user-changed', { user });
     return user;
   } catch {
+    isGuestSession = false;
     emitUiEvent('auth:user-changed', { user: null });
     return null;
   }
@@ -1450,6 +1460,8 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
   if (!authenticated) return false;
 
   saveGatewaySecret(submittedSecret);
+  // Resolve the account role before any store update can trigger the cloud-write subscriber.
+  await publishCurrentUser();
   const persisted = await persistGatewaySecret();
   portfolioStore.setState({ gatewaySecret: submittedSecret });
   if (!persisted) {
@@ -1484,13 +1496,15 @@ function hideAuthContainer() {
 
 async function startApp(secret: string) {
   loadTradernetRules();
+  // Establish read/write permissions before importing state or refreshing quotes.
+  if (secret) await publishCurrentUser();
+  else isGuestSession = false;
   portfolioStore.setState({ gatewaySecret: secret });
   portfolioStore.importState(loadSavedState(portfolioStore.getState()));
   state = portfolioStore.getState();
   applyOvernightRollover();
 
   if (secret) await syncCloudState('pull');
-  await publishCurrentUser();
 
   const initialQuoteRefreshInterval = getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS);
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
