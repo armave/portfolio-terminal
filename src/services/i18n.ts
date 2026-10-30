@@ -406,7 +406,8 @@ const RU: Record<string, string> = {
   "Market quote": "Рыночная котировка",
   "A valid market quote is required to calculate market value and unrealized P/L.": "Для расчёта рыночной стоимости и нереализованной прибыли/убытка необходима корректная рыночная котировка.",
   "Stocktwits unavailable": "Stocktwits недоступен",
-  "Updated": "Обновлено",
+  "Show less": "Показать меньше",
+  "Day:": "За день:",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
