@@ -231,6 +231,38 @@ const RU: Record<string, string> = {
   'Shares / Tranches': 'Акции / лоты',
   'Invested / Avg. Entry': 'Инвестировано / средний вход',
   'Share Price / Market Value': 'Цена акции / рыночная стоимость'
+  'Update quotes': 'Обновить котировки',
+  'Refresh live quotes': 'Обновить актуальные котировки',
+  'Add Cash Stock': 'Добавить акцию за собственные средства',
+  'Update quotes': 'Обновить котировки',
+  'Portfolio Assets': 'Активы портфеля',
+  'Show CLI command reference in terminal': 'Показать справочник команд терминала',
+  'Clear terminal log output': 'Очистить журнал терминала',
+  'Terminal command': 'Команда терминала',
+  'Run the command. Portfolio-changing actions require confirmation before they are applied.': 'Выполнить команду. Действия, изменяющие портфель, требуют подтверждения.',
+  'Quick actions for the selected stock': 'Быстрые действия для выбранной акции',
+  'Close scenario comparison': 'Закрыть сравнение сценариев',
+  'Projection table pagination': 'Страницы таблицы прогнозов',
+  'Previous projection page': 'Предыдущая страница прогноза',
+  'Next projection page': 'Следующая страница прогноза',
+  'Portfolio workspace': 'Рабочая область портфеля',
+  'Portfolio assets': 'Активы портфеля',
+  'Portfolio summary metrics': 'Сводные показатели портфеля',
+  'Portfolio projection by date': 'Прогноз портфеля по датам',
+  'Market insights': 'Рыночная аналитика',
+  'Close scenario report': 'Закрыть отчёт по сценарию',
+  'Scenario report details': 'Подробности отчёта по сценарию',
+  'Quick actions for the selected stock': 'Быстрые действия для выбранной акции',
+  'Account language': 'Язык учётной записи',
+  'New user role': 'Роль нового пользователя',
+  'New user language': 'Язык нового пользователя',
+  'Name for ': 'Имя: ',
+  'Role for ': 'Роль: ',
+  'Language for ': 'Язык: ',
+  'New password for ': 'Новый пароль: ',
+  'Update quotes': 'Обновить котировки',
+  'Loading company news…': 'Загрузка новостей компании…',
+  'Delete account': 'Удалить учётную запись',
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -245,7 +277,11 @@ export function translateText(value: string, language: AppLanguage = currentLang
   if (language === 'en') return value;
   const normalized = value.trim().replace(/\s+/g, ' ');
   if (!normalized) return value;
-  const translated = RU[normalized];
+  const translated = RU[normalized] ??
+    (normalized.startsWith('Name for ') ? RU['Name for '] + normalized.slice('Name for '.length) : undefined) ??
+    (normalized.startsWith('Role for ') ? RU['Role for '] + normalized.slice('Role for '.length) : undefined) ??
+    (normalized.startsWith('Language for ') ? RU['Language for '] + normalized.slice('Language for '.length) : undefined) ??
+    (normalized.startsWith('New password for ') ? RU['New password for '] + normalized.slice('New password for '.length) : undefined);
   if (!translated) return value;
   const start = value.indexOf(value.trim());
   const end = start + value.trim().length;
