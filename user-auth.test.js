@@ -64,8 +64,47 @@ describe("Durable Object account authentication", () => {
     const duplicate = await request(store, "/api/auth/bootstrap", {
       name: "Second Admin",
       password: "another-long-password-123"
-    }, undefined, { "X-Bootstrap-Authorized": "true" });
+    }, undefined, {
+      "X-Bootstrap-Authorized": "true",
+      "X-Workspace-Encryption-Key": "legacy-shared-cloud-key"
+    });
     expect(duplicate.status).toBe(409);
+  });
+
+
+  it("returns the stable shared encryption key only to an active account session", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const session = await bootstrap(store);
+    expect(await storage.get("auth:cloud-encryption-key")).toBe("legacy-shared-cloud-key");
+
+    const result = await store.fetch(new Request("https://durable.test/api/auth/cloud-key", {
+      headers: { Authorization: "Bearer " + session.token }
+    }));
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual({ key: "legacy-shared-cloud-key" });
+
+    const denied = await store.fetch(new Request("https://durable.test/api/auth/cloud-key"));
+    expect(denied.status).toBe(401);
+  });
+
+  it("blocks sign-in while the per-name and per-IP failure window is locked", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    await bootstrap(store);
+    const identity = new TextEncoder().encode("primary admin|unknown");
+    const digest = await webcrypto.subtle.digest("SHA-256", identity);
+    const digestHex = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, "0")).join("");
+    await storage.put("auth:login-failure:" + digestHex, {
+      count: 10,
+      expiresAt: Date.now() + 15 * 60 * 1000
+    });
+    const result = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "a-long-password-123"
+    });
+    expect(result.status).toBe(429);
+    expect(result.headers.get("Retry-After")).toBe("900");
   });
 
   it("creates guest users by default and blocks guest account administration", async () => {
