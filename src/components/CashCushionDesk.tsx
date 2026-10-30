@@ -168,6 +168,18 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
   return (
     <>
+      <style>{`
+        @keyframes guest-stock-card-enter {
+          from { opacity: 0; transform: translateY(12px) scale(0.985); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .guest-stock-card-enter {
+          animation: guest-stock-card-enter 420ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .guest-stock-card-enter { animation: none; }
+        }
+      `}</style>
       <div class="flex justify-between items-center border-b border-slate-800 pb-2">
         <div>
           <h2 class="text-lg font-black text-cyan-400 tracking-wide">
@@ -192,7 +204,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               const pnlPercent = costValue && costValue > 0 ? pnl! / costValue * 100 : null;
               const change = holding.quoteDetails?.changePercent;
               return (
-                <article key={holding.ticker} class="rounded-xl border border-slate-800 bg-slate-950/60 p-4 shadow-sm">
+                <article key={holding.ticker} class="guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-4 shadow-sm">
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <h3 class="text-lg font-black tracking-wide text-cyan-300">{holding.ticker}</h3>
