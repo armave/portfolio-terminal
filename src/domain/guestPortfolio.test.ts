@@ -81,4 +81,18 @@ describe('guest assigned cash holdings', () => {
       { ticker: 'MSFT', shares: 2, averagePrice: null, currentPrice: null, price: null, marketValue: null }
     ])).toBe(330);
   });
+
+  it('prefers a refreshed cash-holding quote over the older broker tranche snapshot price', () => {
+    const holdings = getGuestAssignedCashHoldings({
+      guestId: 'guest-1',
+      activeTranches: [tranche({ quantity: 4, marketPrice: 100 })],
+      assignments: { 'AAPL:buy-1': 'guest-1' },
+      cashHoldings: [{ ticker: 'AAPL', currentPrice: 125, price: 125 }]
+    });
+
+    expect(holdings).toEqual([
+      expect.objectContaining({ ticker: 'AAPL', shares: 4, currentPrice: 125, marketValue: 500 })
+    ]);
+    expect(calculateGuestPersonalEquity(holdings)).toBe(500);
+  });
 });
