@@ -18,3 +18,20 @@ export function getCashCushionTotal(state?: BoardState | null): number {
   }, 0);
   return cashVal + stocksVal;
 }
+
+
+/** Resolve the stock symbol whose quote context backs the market-insights panel. */
+export function getMarketInsightsTicker(state?: BoardState | null): string {
+  if (!state) return '';
+  const currentView = state.activeView;
+  const isPositionView = Boolean(
+    currentView &&
+    !['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(currentView) &&
+    state.positions?.[currentView]
+  );
+  if (isPositionView) return currentView;
+  const tickers = Object.keys(state.positions || {});
+  const preferredTicker = state.selectedTicker;
+  if (preferredTicker && state.positions?.[preferredTicker]) return preferredTicker;
+  return tickers[0] || '';
+}
