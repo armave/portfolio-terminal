@@ -1233,3 +1233,21 @@ export function usePortfolio(): PortfolioState {
 
   return state;
 }
+
+/** Subscribe to a derived slice and re-render only when that selection changes. */
+export function usePortfolioSelector<T>(selector: (state: PortfolioState) => T): T {
+  const [selected, setSelected] = useState<T>(() => selector(portfolioStore.getState()));
+
+  useEffect(() => {
+    let current = selector(portfolioStore.getState());
+    setSelected(current);
+    return portfolioStore.subscribe((nextState) => {
+      const next = selector(nextState);
+      if (Object.is(current, next)) return;
+      current = next;
+      setSelected(next);
+    });
+  }, [selector]);
+
+  return selected;
+}
