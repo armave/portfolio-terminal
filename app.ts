@@ -1,4 +1,5 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
+import { addBrokerEventListener } from './src/services/brokerEventBus';
 import { setTradingConsoleProps, setSettingsPropsState, setMarketInsightsPropsState, setExternalLinksPropsState } from './src/ui/uiStateStore';
 import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
@@ -113,14 +114,10 @@ function setCloudStatus(status: string, text: string) {
 
 // Freedom is authoritative for broker-reported account balance, aggregate
 // holdings and available broker prices. App-owned lots/cost basis remain local.
-if (typeof window !== 'undefined') {
-  window.addEventListener('tradenet:account-info', (event: Event) => {
-    const snapshot = (event as CustomEvent).detail;
+addBrokerEventListener('broker:account-info', (snapshot) => {
     if (!snapshot || snapshot.loaded !== true || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.balances)) return;
     const current = portfolioStore.getState();
-    const executedTrades = Array.isArray((window as any).__tradenetExecutedTrades)
-      ? (window as any).__tradenetExecutedTrades
-      : Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+    const executedTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
     const classified = classifyFreedomPortfolio(
       snapshot,
       current.positions || {},
@@ -155,8 +152,7 @@ if (typeof window !== 'undefined') {
     renderBoard();
   });
 
-  window.addEventListener('tradenet:executed-trades', (event: Event) => {
-    const trades = (event as CustomEvent).detail;
+  addBrokerEventListener('broker:executed-trades', (trades) => {
     if (!Array.isArray(trades)) return;
     const current = portfolioStore.getState();
     // portfolioStore.setState persists synchronously. Reattach local fee allocations
@@ -198,12 +194,7 @@ if (typeof window !== 'undefined') {
     renderBoard();
   });
 
-  window.addEventListener('tradenet:set-active-tranche-type', (event: Event) => {
-    const detail = (event as CustomEvent<{
-      ticker?: string;
-      type?: 'cash' | 'margin' | 'mix';
-      mix?: { cash?: number; margin?: number };
-    }>).detail;
+  addBrokerEventListener('broker:set-active-tranche-type', (detail) => {
     const operationId = String(detail?.ticker || '').trim();
     const selectedType = detail?.type;
     if (!operationId || (selectedType !== 'cash' && selectedType !== 'margin' && selectedType !== 'mix')) return;
@@ -212,9 +203,7 @@ if (typeof window !== 'undefined') {
     const activeTrancheTypes = { ...(current.activeTrancheTypes || {}), [operationId]: selectedType };
     const activeTrancheMixes = { ...(current.activeTrancheMixes || {}) };
     if (selectedType === 'mix') {
-      const availableTrades = Array.isArray((window as any).__tradenetExecutedTrades)
-        ? (window as any).__tradenetExecutedTrades
-        : Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+      const availableTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
       const activeTranche = getActiveTranchesFromTrades(availableTrades, current.brokerAccountInfo)
         .find((tranche) => tranche.id === operationId);
       const previousType = current.activeTrancheTypes?.[operationId] ||
@@ -236,9 +225,7 @@ if (typeof window !== 'undefined') {
       pushStateToGist();
       return;
     }
-    const executedTrades = Array.isArray((window as any).__tradenetExecutedTrades)
-      ? (window as any).__tradenetExecutedTrades
-      : Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+    const executedTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
     const classified = classifyFreedomPortfolio(
       snapshot,
       current.positions || {},
@@ -273,11 +260,7 @@ if (typeof window !== 'undefined') {
     renderBoard();
   });
 
-  window.addEventListener('tradenet:active-orders', (event: Event) => {
-    const orders = (event as CustomEvent<Array<{
-      id: string; ticker: string; operation: number | null; orderType: number | null;
-      limitPrice: number | null; remainingQuantity: number | null; status: string;
-    }>>).detail;
+  addBrokerEventListener('broker:active-orders', (orders) => {
     if (!Array.isArray(orders)) return;
 
     // Cache the broker's exact limit price so a slower account/trade refresh
@@ -325,7 +308,7 @@ if (typeof window !== 'undefined') {
     renderBoard();
   });
 
-  window.addEventListener('tradenet:account-info-error', () => {
+  addBrokerEventListener('broker:account-info-error', () => {
     const current = portfolioStore.getState();
     if (current.brokerAccountInfo) {
       portfolioStore.setState({
@@ -335,7 +318,6 @@ if (typeof window !== 'undefined') {
     showToast('Freedom account data unavailable — saved portfolio data is being retained.', 'warning');
     logTerminal('[Freedom Warning] Account refresh failed; retained local data and marked the last broker snapshot stale.');
   });
-}
 
 const syncCalculatedPortfolioEquity = (nextStoreState: ReturnType<typeof portfolioStore.getState>) => {
   state = nextStoreState as any;
