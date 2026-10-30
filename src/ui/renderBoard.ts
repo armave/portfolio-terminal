@@ -232,7 +232,6 @@ function renderSummaryCards(
 
 export interface RenderBoardOptions extends RenderCashCushionOptions {
   rules: BrokerRules;
-  onRenderSettingsPanel?: () => void;
   onRenderAnalystConsensus?: (ticker: string) => void;
   onUpdateCombinedBreakeven?: () => void;
   lastDeskView?: string | null;
@@ -242,7 +241,6 @@ export interface RenderBoardOptions extends RenderCashCushionOptions {
 export function renderBoard(state: BoardState, options: RenderBoardOptions): void {
   const {
     rules,
-    onRenderSettingsPanel = () => { },
     onRenderAnalystConsensus = () => { },
     onUpdateCombinedBreakeven = () => { },
     refreshIntervalMs = 60000,
@@ -278,7 +276,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   }
 
   if (isSettingsActive) {
-    onRenderSettingsPanel();
     onUpdateLastDeskView('SETTINGS');
     return;
   }
