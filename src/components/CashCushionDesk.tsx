@@ -123,6 +123,13 @@ export function CashCushionDesk() {
                 holdings.map((h) => {
                   const shares = Number(h.shares) || 0;
                   const price = Number(h.currentPrice ?? h.price) || 0;
+                  const averagePrice = Number(h.averagePrice);
+                  const hasAveragePrice = Number.isFinite(averagePrice) && averagePrice > 0;
+                  const hasMarketComparison = hasAveragePrice && price > 0;
+                  const marketDifference = hasMarketComparison ? price - averagePrice : null;
+                  const marketDifferencePercent = hasMarketComparison
+                    ? (marketDifference! / averagePrice) * 100
+                    : null;
                   const val = shares * price;
                   const allocation = stocksTotal > 0 ? (val / stocksTotal) * 100 : 0;
                   const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
@@ -164,6 +171,26 @@ export function CashCushionDesk() {
                       </td>
                       <td class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums">
                         <span>{formatUSD(price)}</span>
+                        <span class="mt-0.5 block text-[9px] font-normal text-slate-300">
+                          Avg bought: {hasAveragePrice ? formatUSD(averagePrice) : '—'}
+                        </span>
+                        {hasMarketComparison && (
+                          <span
+                            class={`mt-0.5 block text-[9px] font-normal tabular-nums ${
+                              marketDifference! > 0
+                                ? 'text-emerald-400'
+                                : marketDifference! < 0
+                                  ? 'text-rose-400'
+                                  : 'text-slate-400'
+                            }`}
+                            title="Market price minus average bought price, per share"
+                          >
+                            vs Avg: {marketDifference! > 0 ? '+' : marketDifference! < 0 ? '−' : ''}
+                            {formatUSD(Math.abs(marketDifference!))} (
+                            {marketDifferencePercent! > 0 ? '+' : ''}
+                            {marketDifferencePercent!.toFixed(2)}%)
+                          </span>
+                        )}
                         {renderDailyQuoteSubtext(h.quoteDetails)}
                         <span class="mt-0.5 block text-[9px] font-normal text-slate-500">
                           {quoteMeta}
