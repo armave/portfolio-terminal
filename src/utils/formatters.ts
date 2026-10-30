@@ -22,8 +22,9 @@ export function formatTrancheDate(dateStr?: string | number | null): string {
     const month = Number(ymdMatch[2]) - 1;
     const day = Number(ymdMatch[3]);
     if (month >= 0 && month < 12 && day >= 1 && day <= 31) {
+      if (!isRussian) return `${String(day).padStart(2, '0')} ${MONTH_NAMES[month]}`;
       const date = new Date(year, month, day);
-      return new Intl.DateTimeFormat(currentNumberLocale(), { day: '2-digit', month: 'short' }).format(date);
+      return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short' }).format(date);
     }
   }
 
@@ -42,7 +43,8 @@ export function formatTrancheDate(dateStr?: string | number | null): string {
 
   const parsed = new Date(trimmed);
   if (!Number.isNaN(parsed.getTime())) {
-    return new Intl.DateTimeFormat(currentNumberLocale(), { day: '2-digit', month: 'short' }).format(parsed);
+    if (!isRussian) return `${String(parsed.getDate()).padStart(2, '0')} ${MONTH_NAMES[parsed.getMonth()]}`;
+    return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short' }).format(parsed);
   }
   return trimmed;
 }
