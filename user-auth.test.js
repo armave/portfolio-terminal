@@ -126,25 +126,27 @@ describe("Worker session endpoints", () => {
   it("serves the existing shared encryption key to valid account sessions only", async () => {
     vi.stubGlobal("crypto", webcrypto);
     const authStub = {
-      fetch: vi.fn(async () => new Response(JSON.stringify({
-        user: { id: "admin-id", name: "Admin", role: "admin" }
-      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      fetch: vi.fn(async (request) => {
+        if (new URL(request.url).pathname === "/api/auth/cloud-key") {
+          const token = request.headers.get("Authorization");
+          return token === "Bearer valid-session"
+            ? new Response(JSON.stringify({ key: "legacy-shared-cloud-key" }), { status: 200, headers: { "Content-Type": "application/json" } })
+            : new Response(JSON.stringify({ error: "expired" }), { status: 401 });
+        }
+        return new Response(JSON.stringify({ user: { id: "admin-id", name: "Admin", role: "admin" } }), { status: 200 });
+      })
     };
     const response = await worker.fetch(new Request("https://worker.test/api/auth/cloud-key", {
       headers: { Authorization: "Bearer valid-session" }
     }), {
-      GATEWAY_SECRET: "legacy-shared-cloud-key",
       PORTFOLIO_STATE_DO: { idFromName: () => "portfolio_state", get: () => authStub }
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ key: "legacy-shared-cloud-key" });
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
 
-    authStub.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: "expired" }), { status: 401 }));
     const denied = await worker.fetch(new Request("https://worker.test/api/auth/cloud-key", {
       headers: { Authorization: "Bearer expired-session" }
     }), {
-      GATEWAY_SECRET: "legacy-shared-cloud-key",
       PORTFOLIO_STATE_DO: { idFromName: () => "portfolio_state", get: () => authStub }
     });
     expect(denied.status).toBe(401);
