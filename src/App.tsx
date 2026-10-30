@@ -444,7 +444,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs isAdmin={permissions.isAdmin} /></div>
+          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
           <div
             class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             id="daysToBreakeven"
@@ -513,7 +513,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           </div>
 
           {/* Cash Cushion Management Panel */}
-          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} />}</div>
+          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} />}</div>
 
           {/* Keep the command console available on both Margin and Cash desks. */}
           {permissions.canUseTerminal && <div id="tradingTerminalColumn" class="trading-terminal-column">
