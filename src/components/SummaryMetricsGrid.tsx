@@ -345,9 +345,9 @@ export function SummaryMetricsGrid() {
   const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
 
   const positionTranches = pos.tranches || [];
+  const tranchesExpanded = expandedTrancheTicker === pos.ticker;
   const visibleTranches = getMarginTranchePreview(positionTranches, tranchesExpanded);
   const hiddenTrancheCount = positionTranches.length;
-  const tranchesExpanded = expandedTrancheTicker === pos.ticker;
 
   const investedText = `${formatUSD(totalInvested)} | ${formatUSD(avgPrice)}`;
   const unSign = unrealized >= 0 ? '+' : '';
