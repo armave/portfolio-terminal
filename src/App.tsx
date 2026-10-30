@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
-import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useCashCushionProps, useSummaryMetricsProps, useProjectionsProps } from './ui/uiStateStore';
+import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -41,10 +41,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
-  const cashCushionProps = useCashCushionProps();
 
-  const summaryMetricsProps = useSummaryMetricsProps();
-  const projectionsProps = useProjectionsProps();
 
 
 
@@ -474,7 +471,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               id="portfolioMetricsGrid"
               aria-label="Portfolio summary metrics"
               class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateVisible ? "hidden" : "")}
-            >{summaryMetricsProps && <SummaryMetricsGrid {...summaryMetricsProps} />}</div>
+            ><SummaryMetricsGrid /></div>
 
             {/* Projection Table */}
             <div
@@ -495,13 +492,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 <tbody
                   id="projectionTableBody"
                   class="divide-y divide-slate-800/60 font-mono"
-                >{projectionsProps && <ProjectionsTable {...projectionsProps} />}</tbody>
+                ><ProjectionsTable /></tbody>
               </table>
             </div>
           </div>
 
           {/* Cash Cushion Management Panel */}
-          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk {...cashCushionProps} />}</div>
+          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk />}</div>
 
           {/* Keep the command console available on both Margin and Cash desks. */}
           <div id="tradingTerminalColumn" class="trading-terminal-column">
