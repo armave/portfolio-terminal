@@ -265,7 +265,7 @@ const RU: Record<string, string> = {
   'Account equity percentage': 'Доля собственного капитала счёта',
   'Margin-call buffer': 'Запас до маржин-колла',
   'Portfolio financial summary': 'Финансовая сводка портфеля',
-  "YOUR STOCKS": "ВАШИ АКЦИИ",
+  "MY STOCKS": "МОИ АКЦИИ",
   "CASH & NON-MARGIN HOLDINGS": "ДЕНЕЖНЫЕ СРЕДСТВА И АКЦИИ БЕЗ МАРЖИ",
   "Only cash-funded shares assigned to you by an administrator appear here.": "Здесь отображаются ваши акции.",
   "No stocks are assigned to your account yet.": "В вашей учётной записи пока нет назначенных акций.",

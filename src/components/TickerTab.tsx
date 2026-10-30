@@ -253,7 +253,7 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
           ref={(element) => { tabButtonRefs.current[balanceNavIndex + (isAdmin ? 2 : 1)] = element; }}
           onKeyDown={handleTabKeyDown}
       >
-        <span>⚙️ SETTINGS</span>
+        <span>⚙️</span>
       </button>
     </>
   );
