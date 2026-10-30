@@ -121,13 +121,16 @@ export function SettingsDesk() {
   };
 
   const [refreshInterval, setRefreshInterval] = useState<string>(() =>
-    String(getQuoteRefreshInterval(60000))
+    String(getQuoteRefreshInterval(15_000, 'guest'))
   );
 
-  // Guests get a 15-second default when no preference has been saved.
+  // Load the current role's own preference. An unset guest preference defaults
+  // to 15 seconds regardless of any interval previously saved by an admin.
   useEffect(() => {
-    if (account?.role !== "guest") return;
-    const interval = String(getQuoteRefreshInterval(15_000));
+    if (account?.role !== 'admin' && account?.role !== 'guest') return;
+    const scope = account.role;
+    const fallback = scope === 'guest' ? 15_000 : 60_000;
+    const interval = String(getQuoteRefreshInterval(fallback, scope));
     setRefreshInterval(interval);
     emitUiEvent('settings:change-refresh-interval', { intervalMs: interval });
   }, [account?.role]);
@@ -183,7 +186,7 @@ export function SettingsDesk() {
             {account ? <><span class="font-bold text-white">{account.name}</span><span class="ml-2 rounded bg-slate-800 px-2 py-1 uppercase text-[10px] text-cyan-300">{account.role}</span></> : "Account information unavailable"}
           </div>
           <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-8 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">Sign out</button>
-          {account?.role !== "guest" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title="Pull the latest shared portfolio state" class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>}
+          {account?.role === "admin" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title="Pull the latest shared portfolio state" class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>}
         </div>
 
         {/* Cluster 2: Polling & Backups */}
