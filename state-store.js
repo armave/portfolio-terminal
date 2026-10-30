@@ -394,6 +394,45 @@ export class PortfolioStateDO {
     return parsed;
   }
 
+  normalizeGuestPortfolioSnapshot(source) {
+    if (!source || typeof source !== "object" || Array.isArray(source) ||
+        !Number.isFinite(Number(source.updatedAt)) || !Array.isArray(source.tranches) ||
+        source.tranches.length > 500) {
+      return { error: "Invalid guest portfolio snapshot." };
+    }
+
+    const seenIds = new Set();
+    const tranches = [];
+    for (const item of source.tranches) {
+      const id = typeof item?.id === "string" ? item.id.trim() : "";
+      const ticker = typeof item?.ticker === "string" ? item.ticker.trim().toUpperCase() : "";
+      const name = typeof item?.name === "string" ? item.name.trim().slice(0, 120) : ticker;
+      const quantity = Number(item?.quantity);
+      if (!id || id.length > 200 || seenIds.has(id) || !/^[A-Z0-9.^=-]{1,20}$/.test(ticker) ||
+          !Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9) {
+        return { error: "Guest portfolio contains an invalid tranche." };
+      }
+      seenIds.add(id);
+      const positiveOrNull = (value) => {
+        const parsed = Number(value);
+        return value !== null && value !== undefined && value !== "" && Number.isFinite(parsed) && parsed > 0
+          ? parsed : null;
+      };
+      const purchasedAt = Number(item?.purchasedAt);
+      const averagePrice = positiveOrNull(item?.averagePrice);
+      const marketPrice = positiveOrNull(item?.marketPrice);
+      tranches.push({
+        id, ticker, name, quantity,
+        averagePrice,
+        marketPrice,
+        marketValue: marketPrice === null ? null : marketPrice * quantity,
+        purchasedAt: Number.isFinite(purchasedAt) && purchasedAt > 0 ? purchasedAt : null
+      });
+    }
+
+    return { snapshot: { updatedAt: Number(source.updatedAt), tranches } };
+  }
+
   async handleGuestPortfolio(request) {
     const session = await this.resolveSession(request);
     if (!session) return authJson({ error: "Authentication required." }, 401);
@@ -426,6 +465,64 @@ export class PortfolioStateDO {
     }
     let body;
     try { body = JSON.parse(rawBody); } catch { return authJson({ error: "Invalid guest portfolio JSON." }, 400); }
+    if (Array.isArray(body?.snapshots)) {
+      if (body.snapshots.length === 0 || body.snapshots.length > 100) {
+        return authJson({ error: "A guest portfolio batch must contain between 1 and 100 snapshots." }, 400);
+      }
+
+      const existingGuests = new Set(
+        (await this.getAuthUsers()).filter((user) => user.role === "guest").map((user) => user.id)
+      );
+      const seenGuestIds = new Set();
+      const prepared = [];
+      for (const item of body.snapshots) {
+        const guestId = typeof item?.guestId === "string" ? item.guestId.trim() : "";
+        if (!guestId || seenGuestIds.has(guestId)) {
+          return authJson({ error: "Guest portfolio batch contains a missing or duplicate guest ID." }, 400);
+        }
+        if (!existingGuests.has(guestId)) {
+          return authJson({ error: "Target guest account does not exist." }, 404);
+        }
+        seenGuestIds.add(guestId);
+
+        const normalized = this.normalizeGuestPortfolioSnapshot(item.snapshot);
+        if (normalized.error) return authJson({ error: normalized.error }, 400);
+        let encryptedSnapshot;
+        try {
+          encryptedSnapshot = await this.encryptGuestProjection(normalized.snapshot);
+        } catch {
+          return authJson({ error: "Guest portfolio snapshot could not be encrypted." }, 500);
+        }
+        prepared.push({ guestId, encryptedSnapshot });
+      }
+
+      // Re-check guest roles inside the same transaction as the writes. A user
+      // deleted or changed to admin while snapshots were being encrypted cannot
+      // receive a stale guest projection.
+      const result = await this.ctx.storage.transaction(async (transaction) => {
+        const users = await transaction.get(AUTH_USERS_KEY) || [];
+        const stillGuests = new Set(users.filter((user) => user.role === "guest").map((user) => user.id));
+        if (prepared.some((item) => !stillGuests.has(item.guestId))) {
+          return { error: "A target guest account changed while the batch was being published." };
+        }
+
+        const revisions = {};
+        for (const item of prepared) {
+          const key = "guest-portfolio:" + item.guestId;
+          const current = await transaction.get(key);
+          const revision = (Number.isSafeInteger(current?.revision) ? current.revision : 0) + 1;
+          await transaction.put(key, { encryptedSnapshot: item.encryptedSnapshot, revision });
+          revisions[item.guestId] = revision;
+        }
+        return { revisions };
+      });
+      if (result.error) return authJson({ error: result.error }, 409);
+      return new Response(JSON.stringify({ success: true, revisions: result.revisions }), {
+        status: 200,
+        headers: { ...CORS_HEADERS, "Cache-Control": "no-store" }
+      });
+    }
+
     const guestId = typeof body?.guestId === "string" ? body.guestId.trim() : "";
     const source = body?.snapshot;
     if (!guestId || !source || typeof source !== "object" || Array.isArray(source) ||
