@@ -10,6 +10,9 @@ export interface UiEventPayloads {
   'terminal:startup-retry': undefined;
   'terminal:startup-state': { visible: boolean; failed: boolean };
   'terminal:scroll-workspace': undefined;
+  'terminal:execute-command': { command: string };
+  'portfolio:set-active-view': { view: string };
+  'portfolio:refresh-live-prices': { resolve: () => void };
 }
 
 export type UiEventName = keyof UiEventPayloads;
