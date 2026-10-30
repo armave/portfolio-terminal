@@ -1,5 +1,5 @@
 import {
-  setActiveDeskViewState, setBoardTitle, setCashCushionPropsState, setTickerTabsPropsState,
+  setBoardTitle, setCashCushionPropsState, setTickerTabsPropsState,
   setSummaryMetricsPropsState, setProjectionsPropsState, setEmptyStatePropsState
 } from './uiStateStore';
 import { emitUiEvent } from './uiEventBus';
@@ -20,7 +20,7 @@ export type {
 
 const NON_POSITION_VIEWS = new Set(['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
 
-function resolveActiveView(state: BoardState): string {
+export function resolveActiveView(state: BoardState): string {
   let currentView = state.activeView;
   if (!currentView || (!NON_POSITION_VIEWS.has(currentView) && !state.positions?.[currentView])) {
     currentView = 'COMBINED';
@@ -276,7 +276,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const tickers = Object.keys(state.positions || {});
   const currentView = resolveActiveView(state);
-  setActiveDeskViewState(currentView);
 
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
