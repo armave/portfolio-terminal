@@ -418,15 +418,21 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     return removeRequestListener;
   }, []);
 
-  // Load account/balance/position data first on startup. Trade history is fetched
-  // only when Closed History opens.
+  // Broker-wide balances and positions are administrator data. Guests refresh
+  // assigned symbols and assignment state through the scoped quote/cloud flows.
   useEffect(() => {
-    void loadFreedomAccount().catch(() => {
-      // Keep the saved portfolio intact, but notify the app shell so stale
-      // broker data is never mistaken for a successful current snapshot.
-      emitBrokerEvent('broker:account-info-error');
-    });
-  }, []);
+    if (currentUser?.role !== 'admin') return;
+    const refreshAccountInfo = () => {
+      void loadFreedomAccount().catch(() => {
+        // Keep the saved portfolio intact, but notify the app shell so stale
+        // broker data is never mistaken for a successful current snapshot.
+        emitBrokerEvent('broker:account-info-error');
+      });
+    };
+    const removeRequestListener = addBrokerEventListener('broker:request-account-info', refreshAccountInfo);
+    refreshAccountInfo();
+    return removeRequestListener;
+  }, [currentUser?.role]);
 
 
 
