@@ -959,3 +959,44 @@ describe('authenticate before consuming request bodies', () => {
     expect(reads).toBe(0);
   });
 });
+
+
+describe('Gateway compatibility during account migration', () => {
+  it('accepts the existing Gateway credential only until the first account is bootstrapped', async () => {
+    let setupRequired = true;
+    const doStub = {
+      fetch: vi.fn(async (request) => {
+        const path = new URL(request.url).pathname;
+        if (path === "/api/auth/status") {
+          return new Response(JSON.stringify({ setupRequired }), { status: 200 });
+        }
+        if (path === "/api/auth/verify") {
+          return new Response(JSON.stringify({ error: "No account session" }), { status: 401 });
+        }
+        return new Response(JSON.stringify({ encryptedPayload: "existing-ciphertext" }), {
+          status: 200,
+          headers: { ETag: '"1"' }
+        });
+      })
+    };
+    const env = {
+      GATEWAY_SECRET: "legacy-test-secret",
+      PORTFOLIO_STATE_DO: {
+        idFromName: vi.fn().mockReturnValue("portfolio_state"),
+        get: vi.fn().mockReturnValue(doStub)
+      }
+    };
+    const legacyRequest = () => new Request("https://worker.test/?action=state", {
+      headers: { "X-App-Auth": "legacy-test-secret" }
+    });
+
+    const beforeBootstrap = await worker.fetch(legacyRequest(), env);
+    expect(beforeBootstrap.status).toBe(200);
+    expect(await beforeBootstrap.json()).toEqual({ encryptedPayload: "existing-ciphertext" });
+
+    setupRequired = false;
+    const afterBootstrap = await worker.fetch(legacyRequest(), env);
+    expect(afterBootstrap.status).toBe(401);
+  });
+});
+
