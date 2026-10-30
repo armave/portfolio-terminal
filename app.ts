@@ -454,7 +454,11 @@ function pullCloudAndRewriteLocal(parsedState: any) {
   const currentView = state.activeView;
   const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(parsedState, state);
   const mergedState = { ...state, ...compatibleCloudState };
-  if (!parsedState?.activeView && currentView) {
+  if (currentAccountRole === 'guest') {
+    // The shared snapshot may contain the admin's last-opened desk. Guest login
+    // always starts on Balance instead of inheriting that shared navigation state.
+    mergedState.activeView = 'CASH_CUSHION';
+  } else if (!parsedState?.activeView && currentView) {
     mergedState.activeView = currentView;
   }
   portfolioStore.importState(loadSavedState(mergedState));
@@ -960,7 +964,7 @@ function setQuoteRefreshInterval(interval: number | string) {
 
   if (quoteRefreshTimer !== null) clearInterval(quoteRefreshTimer);
   quoteRefreshTimer = null;
-  saveQuoteRefreshInterval(intervalMs);
+  saveQuoteRefreshInterval(intervalMs, currentAccountRole === 'guest' ? 'guest' : 'admin');
 
   if (intervalMs > 0) {
     quoteRefreshTimer = setInterval(() => {
@@ -1478,6 +1482,9 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
     appInitialized = true;
   } else {
     await publishCurrentUser();
+    const refreshScope = currentAccountRole === 'guest' ? 'guest' : 'admin';
+    const refreshFallback = currentAccountRole === 'guest' ? 15 * 1000 : DEFAULT_QUOTE_REFRESH_INTERVAL_MS;
+    setQuoteRefreshInterval(getQuoteRefreshInterval(refreshFallback, refreshScope));
     // Re-authentication must also finish the shared-state pull and initial quotes
     // before dismissing the modal.
     await syncCloudState('pull');
@@ -1519,8 +1526,10 @@ async function startApp(secret: string) {
 
   if (secret) await syncCloudState('pull');
 
+  const refreshIntervalScope = currentAccountRole === 'guest' ? 'guest' : 'admin';
   const initialQuoteRefreshInterval = getQuoteRefreshInterval(
-    currentAccountRole === 'guest' ? 15 * 1000 : DEFAULT_QUOTE_REFRESH_INTERVAL_MS
+    currentAccountRole === 'guest' ? 15 * 1000 : DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
+    refreshIntervalScope
   );
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
 
@@ -1536,10 +1545,12 @@ async function startApp(secret: string) {
   // Avoid launching a duplicate per-ticker analyst request while the initial
   // batch already contains the same deep Yahoo data for all tracked symbols.
   initialQuoteRefreshPending = true;
-  switchView(state.activeView);
+  if (currentAccountRole === 'guest') setActiveView('BALANCE');
+  else switchView(state.activeView);
   emitUiEvent('terminal:scroll-workspace');
   await refreshAllLivePrices();
   initialQuoteRefreshPending = false;
+  if (currentAccountRole === 'guest') setActiveView('BALANCE');
   renderBoardAnalystConsensus(getMarketInsightsTicker());
   hideStartupLoading();
 }
