@@ -51,3 +51,12 @@ Typecheck, tests, production build, dead-code validation, and production depende
 - [ ] Reduce the remaining prop-mirror boundary in `uiStateStore` and `renderBoard.ts` by moving one desk/view-model slice at a time into Preact-owned state or pure selectors. Keep calculations in `src/domain` and do not move financial rules into components.
 - [ ] Keep browser/platform operations (visibility lifecycle, file downloads, autofill compatibility and element measurement/focus/scroll through component refs) in focused effects or infrastructure helpers; these are not reasons to introduce a second renderer.
 - [ ] Re-run typecheck, Vitest, production build, Knip and dependency audit on the final PR head. A local clone was attempted but this environment cannot resolve `github.com`; CI is the validation source for this pass.
+
+
+## Broker event ownership — 2026-10-30
+- [x] Replace TradeNet account, executions, active-order, fetch-request, fetch-error, and tranche-classification `window` CustomEvents with a typed in-process broker event channel.
+- [x] Remove the `window.__tradenetAccountInfo` and `window.__tradenetExecutedTrades` caches; broker executions are read from the canonical portfolio store and refreshed through typed broker events.
+- [x] Keep Freedom normalization, portfolio classification, fee preservation, active limit-sell target selection, persistence, and cloud synchronization behavior in their existing service/domain owners.
+- [x] Add focused tests for broker payload delivery, multiple subscribers, unsubscribe behavior, and payload-free refresh requests.
+- [ ] Next: reduce the remaining `uiStateStore` / `renderBoard.ts` prop-mirror boundary by moving one coherent presentation slice at a time into store selectors/hooks. Keep calculation rules in `src/domain`.
+- [ ] Next: audit and migrate the remaining in-process `window` CustomEvents individually; retain true platform/browser integration APIs and document any external contracts instead of removing them wholesale.
