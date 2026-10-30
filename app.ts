@@ -33,7 +33,7 @@ import {
   getCurrentUser,
   listUsers,
   getGuestPortfolioSnapshot,
-  publishGuestPortfolioSnapshots,
+  publishGuestPortfolioSnapshots as publishGuestPortfolioSnapshotsBatch,
   clearCloudEncryptionSecretCache
 } from './src/services/api';
 import {
@@ -444,7 +444,7 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
         })
       }
     }));
-    await publishGuestPortfolioSnapshots(publications);
+    await publishGuestPortfolioSnapshotsBatch(publications);
   });
   guestPortfolioPublishQueue = operation.catch((error) => {
     console.error('Unable to publish guest portfolio projections:', error);
