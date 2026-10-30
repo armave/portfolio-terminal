@@ -128,7 +128,7 @@ describe('normalizeFreedomTrades', () => {
     }, {}, [], { GOOGL: 'margin' }, 123, trades);
 
     expect(result.positions.GOOGL.shares).toBe(69);
-    expect(result.positions.GOOGL.tranches.map((tranche) => ({
+    expect(result.positions.GOOGL.tranches?.map((tranche) => ({
       qty: tranche.qty,
       price: tranche.price
     }))).toEqual([
