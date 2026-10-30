@@ -706,7 +706,8 @@ export async function validateGatewaySecret(secret: string): Promise<boolean> {
     const payload = typeof response.json === 'function'
       ? await response.json().catch(() => null)
       : null;
-    if (isAuthUser(payload?.user)) rememberCurrentUser(cleanSecret, payload.user);
+    const user = normalizeAuthUser(payload?.user);
+    if (user) rememberCurrentUser(cleanSecret, user);
     return true;
   } catch (error) {
     validatedCloudResponse = null;
