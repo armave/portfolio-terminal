@@ -317,25 +317,6 @@ export default {
         if (incomingUrl.pathname.startsWith("/api/auth/")) {
             if (!env.PORTFOLIO_STATE_DO) return jsonError("PORTFOLIO_STATE_DO binding is missing.", 500, corsHeaders);
 
-            if (incomingUrl.pathname === "/api/auth/cloud-key") {
-                if (request.method !== "GET") return jsonError("Cloud key retrieval supports GET only.", 405, corsHeaders);
-                if (!env.GATEWAY_SECRET) return jsonError("Shared cloud encryption key is not configured.", 500, corsHeaders);
-                const authHeader = request.headers.get("Authorization") || "";
-                const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim();
-                const token = request.headers.get("X-App-Auth") || bearerToken;
-                if (!token || !env.PORTFOLIO_STATE_DO) return jsonError("Authentication required.", 401, corsHeaders);
-                const authStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
-                const verified = await authStub.fetch(new Request("https://auth.internal/api/auth/verify", {
-                    method: "POST",
-                    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-                    body: "{}"
-                }));
-                if (!verified.ok) return jsonError("Authentication required.", 401, corsHeaders);
-                return new Response(JSON.stringify({ key: env.GATEWAY_SECRET }), {
-                    status: 200,
-                    headers: { ...corsHeaders, "Cache-Control": "no-store" }
-                });
-            }
             let forwardedRequest = request;
             if (request.method === "POST") {
                 if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
@@ -383,6 +364,7 @@ export default {
                     }
                     delete payload.bootstrapSecret;
                     headers.set("X-Bootstrap-Authorized", "true");
+                    headers.set("X-Workspace-Encryption-Key", env.GATEWAY_SECRET);
                 }
                 headers.set("Content-Type", "application/json");
                 forwardedRequest = new Request(request.url, { method: "POST", headers, body: JSON.stringify(payload) });
