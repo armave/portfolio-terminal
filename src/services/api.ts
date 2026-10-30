@@ -1256,8 +1256,8 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
   const normalizedSide = (...values: unknown[]): 'BUY' | 'SELL' | null => {
     for (const value of values) {
       const side = String(value ?? '').trim().toLowerCase();
-      if (side === '1' || side === 'b' || /\\b(buy|bought|purchase)\\b/.test(side)) return 'BUY';
-      if (side === '2' || side === 's' || /\\b(sell|sold|sale)\\b/.test(side)) return 'SELL';
+      if (side === '1' || ['b', 'buy', 'bought', 'purchase'].includes(side)) return 'BUY';
+      if (side === '2' || ['s', 'sell', 'sold', 'sale'].includes(side)) return 'SELL';
     }
     return null;
   };
