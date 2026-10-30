@@ -56,7 +56,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
 
 export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, guestUserId }: { showActiveTranches?: boolean; isAdmin?: boolean; guestUserId?: string } = {}) {
   const state = usePortfolio();
-  const refreshIntervalMs = useQuoteRefreshInterval();
+  const refreshIntervalMs = useQuoteRefreshInterval(guestUserId ? 15_000 : 60_000, guestUserId ? 'guest' : 'admin');
   const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTradeLike[]>(() =>
     Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
   );
