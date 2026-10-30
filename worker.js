@@ -318,10 +318,14 @@ export default {
             if (!env.PORTFOLIO_STATE_DO) return jsonError("PORTFOLIO_STATE_DO binding is missing.", 500, corsHeaders);
             let forwardedRequest = request;
             if (request.method === "POST") {
+                if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
+                    return jsonError("Authentication requests must use application/json.", 415, corsHeaders);
+                }
                 const rawBody = await request.text();
                 if (rawBody.length > 8192) return jsonError("Authentication request exceeds the 8 KB limit.", 413, corsHeaders);
                 let payload;
                 try { payload = JSON.parse(rawBody); } catch { return jsonError("Invalid JSON request body.", 400, corsHeaders); }
+                if (!payload || typeof payload !== "object" || Array.isArray(payload)) return jsonError("Invalid JSON request body.", 400, corsHeaders);
                 const headers = new Headers(request.headers);
                 headers.delete("Content-Length");
                 if (incomingUrl.pathname === "/api/auth/bootstrap") {
@@ -349,7 +353,9 @@ export default {
         if (env.PORTFOLIO_STATE_DO && clientSecret) {
             const authStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
             const verifyResponse = await authStub.fetch(new Request("https://auth.internal/api/auth/verify", {
-                method: "POST", headers: { Authorization: "Bearer " + clientSecret }
+                method: "POST",
+                headers: { Authorization: "Bearer " + clientSecret, "Content-Type": "application/json" },
+                body: "{}"
             }));
             if (verifyResponse.ok) {
                 const principal = await verifyResponse.json().catch(() => null);
