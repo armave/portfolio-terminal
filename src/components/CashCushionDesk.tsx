@@ -6,6 +6,8 @@ import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
 import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
+import { listUsers, type AuthUser } from '../services/api';
+import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
 
 const BADGE_STYLES: Record<string, string> = {
   bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
@@ -58,6 +60,9 @@ export function CashCushionDesk({ showActiveTranches = false }: { showActiveTran
     Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
   );
   const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
+  const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
+  const [guestUsersLoading, setGuestUsersLoading] = useState(showActiveTranches);
+  const [guestUsersError, setGuestUsersError] = useState('');
 
   useEffect(() => {
     const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
@@ -70,6 +75,29 @@ export function CashCushionDesk({ showActiveTranches = false }: { showActiveTran
       removeErrorListener();
     };
   }, []);
+
+  useEffect(() => {
+    if (!showActiveTranches) return;
+    let cancelled = false;
+    setGuestUsersLoading(true);
+    listUsers()
+      .then((users) => {
+        if (!cancelled) {
+          setGuestUsers(users.filter((user) => user.role === 'guest'));
+          setGuestUsersError('');
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setGuestUsers([]);
+          setGuestUsersError(error instanceof Error ? error.message : 'Could not load guest accounts.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGuestUsersLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [showActiveTranches]);
 
   const holdings = state.cashCushion?.holdings || [];
   const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
@@ -260,7 +288,7 @@ export function CashCushionDesk({ showActiveTranches = false }: { showActiveTran
           >
             <div class="expandable-motion__inner">
               <div class="table-scroll-wrapper overflow-x-auto">
-            <table id="activeTranchesTable" class="w-full min-w-[760px] text-left text-xs border-collapse">
+            <table id="activeTranchesTable" class="w-full min-w-[920px] text-left text-xs border-collapse">
               <thead>
                 <tr class="border-b border-slate-800 text-slate-500">
                   <th class="py-2 px-2">Ticker</th>
@@ -269,11 +297,12 @@ export function CashCushionDesk({ showActiveTranches = false }: { showActiveTran
                   <th class="py-2 px-2 text-right">Avg. Cost</th>
                   <th class="py-2 px-2 text-right">Value</th>
                   <th class="py-2 px-2 text-center">Operation</th>
+                  <th class="py-2 px-2 text-center">Guest · cash shares</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800/60 font-mono">
                 {activeTranches.length === 0 ? (
-                  <tr><td colSpan={6} class="py-4 px-2 text-center font-sans text-slate-500 italic">
+                  <tr><td colSpan={7} class="py-4 px-2 text-center font-sans text-slate-500 italic">
                     {executedTrades.length ? 'No active purchase operations.' : 'Active purchase operations will appear after Freedom trade history loads.'}
                   </td></tr>
                 ) : activeTranches.map((tranche) => {
@@ -282,6 +311,8 @@ export function CashCushionDesk({ showActiveTranches = false }: { showActiveTran
                     tranche.quantity,
                     state.activeTrancheMixes?.[tranche.id] || state.activeTrancheMixes?.[tranche.ticker]
                   );
+                  const cashQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
+                  const assignedGuestId = state.activeTrancheGuestAssignments?.[tranche.id] || '';
                   const updateMixCash = (value: string) => {
                     const requestedCash = Number(value);
                     const cash = Number.isFinite(requestedCash)
@@ -376,12 +407,42 @@ export function CashCushionDesk({ showActiveTranches = false }: { showActiveTran
                           </div>
                         </div>
                       </td>
+                      <td class="py-2 px-2 text-center">
+                        {cashQuantity > 0 ? (
+                          <div class="flex flex-col items-center gap-1">
+                            <select
+                              aria-label={`Guest for ${tranche.ticker} cash tranche`}
+                              value={assignedGuestId}
+                              onChange={(event) => emitBrokerEvent('broker:assign-active-tranche-guest', {
+                                trancheId: tranche.id,
+                                guestId: (event.currentTarget as HTMLSelectElement).value
+                              })}
+                              class="max-w-[11rem] rounded border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] text-slate-200"
+                            >
+                              <option value="">Unassigned</option>
+                              {assignedGuestId && !guestUsers.some((user) => user.id === assignedGuestId) && (
+                                <option value={assignedGuestId}>Guest unavailable</option>
+                              )}
+                              {guestUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+                            </select>
+                            <span class="text-[9px] tabular-nums text-slate-500">
+                              {cashQuantity.toLocaleString('en-US', { maximumFractionDigits: 4 })} cash shares
+                            </span>
+                            {guestUsersError && <span class="max-w-[12rem] text-[9px] text-amber-400">{guestUsersError}</span>}
+                            {!guestUsersLoading && guestUsers.length === 0 && !guestUsersError && (
+                              <span class="text-[9px] text-slate-500">No guest accounts</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span class="text-[10px] text-slate-600">No cash allocation</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
               {activeTranches.length > 0 && <tfoot class="border-t border-slate-700"><tr>
-                <td colSpan={6} class="px-2 py-2 text-[10px] text-slate-500">{activeTranches.length} active purchase operation{activeTranches.length === 1 ? '' : 's'} · same-ticker purchases within 5 minutes are grouped</td>
+                <td colSpan={7} class="px-2 py-2 text-[10px] text-slate-500">{activeTranches.length} active purchase operation{activeTranches.length === 1 ? '' : 's'} · same-ticker purchases within 5 minutes are grouped</td>
               </tr></tfoot>}
             </table>
               </div>
