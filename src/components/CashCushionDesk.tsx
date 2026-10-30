@@ -4,6 +4,7 @@ import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
 import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
+import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 
 export interface CashCushionDeskProps {
   refreshIntervalMs?: number;
@@ -58,24 +59,19 @@ export function CashCushionDesk({
 }: CashCushionDeskProps) {
   const state = usePortfolio();
   const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTradeLike[]>(() =>
-    typeof window !== 'undefined' && Array.isArray((window as any).__tradenetExecutedTrades)
-      ? (window as any).__tradenetExecutedTrades
-      : Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
+    Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
   );
   const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
-    const onTrades = (event: Event) => {
-      const trades = (event as CustomEvent<FreedomExecutedTradeLike[]>).detail;
-      if (Array.isArray(trades)) setExecutedTrades(trades);
-    };
-    const onTradesError = () => setExecutedTrades([]);
-    window.addEventListener('tradenet:executed-trades', onTrades);
-    window.addEventListener('tradenet:executed-trades-error', onTradesError);
-    window.dispatchEvent(new CustomEvent('tradenet:request-executed-trades'));
+    const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
+      setExecutedTrades(trades);
+    });
+    const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => setExecutedTrades([]));
+    emitBrokerEvent('broker:request-executed-trades');
     return () => {
-      window.removeEventListener('tradenet:executed-trades', onTrades);
-      window.removeEventListener('tradenet:executed-trades-error', onTradesError);
+      removeTradesListener();
+      removeErrorListener();
     };
   }, []);
 
@@ -86,9 +82,9 @@ export function CashCushionDesk({
     type: ActiveTrancheType,
     mix?: { cash: number; margin: number }
   ) => {
-    window.dispatchEvent(new CustomEvent('tradenet:set-active-tranche-type', {
-      detail: { ticker, type, ...(mix ? { mix } : {}) }
-    }));
+    emitBrokerEvent('broker:set-active-tranche-type', {
+      ticker, type, ...(mix ? { mix } : {})
+    });
   };
 
   const [activeTranchesExpanded, setActiveTranchesExpanded] = useState(false);
