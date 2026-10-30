@@ -4,8 +4,9 @@ import { usePortfolio } from '../store/portfolioStore';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
 import { emitUiEvent } from '../ui/uiEventBus';
+import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings } from '../domain/guestPortfolio';
 
-export function TickerTabs({ isAdmin = false }: { isAdmin?: boolean } = {}) {
+export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; userId?: string } = {}) {
   const state = usePortfolio();
   const [isRefreshingQuotes, setIsRefreshingQuotes] = useState(false);
   const selectView = (view: string) => {
@@ -57,7 +58,22 @@ export function TickerTabs({ isAdmin = false }: { isAdmin?: boolean } = {}) {
     marginPositions: Object.values(state.positions || {}),
     cashHoldings: state.cashCushion?.holdings || []
   });
-  const equityBadgeText = (portfolioValuation.equity >= 0 ? '+$' : '−$') + Math.abs(portfolioValuation.equity).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const guestTranches = state.guestPortfolioSnapshot?.tranches || [];
+  const guestAssignments = userId
+    ? Object.fromEntries(guestTranches.map((tranche) => [tranche.id, userId]))
+    : {};
+  const guestTypes = Object.fromEntries(guestTranches.map((tranche) => [tranche.id, 'cash' as const]));
+  const guestEquity = !isAdmin && userId
+    ? calculateGuestPersonalEquity(getGuestAssignedCashHoldings({
+      guestId: userId,
+      activeTranches: guestTranches,
+      assignments: guestAssignments,
+      types: guestTypes,
+      cashHoldings: state.cashCushion?.holdings || []
+    }))
+    : 0;
+  const displayedEquity = isAdmin ? portfolioValuation.equity : guestEquity;
+  const equityBadgeText = (displayedEquity >= 0 ? '+$' : '−$') + Math.abs(displayedEquity).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     const currentButton = event.currentTarget as HTMLButtonElement;
@@ -85,7 +101,7 @@ export function TickerTabs({ isAdmin = false }: { isAdmin?: boolean } = {}) {
 
   return (
     <>
-      {tickers.length > 0 && (
+      {isAdmin && tickers.length > 0 && (
         <button
           id="refreshQuotesButton"
           type="button"

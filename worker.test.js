@@ -1072,3 +1072,190 @@ describe('Gateway compatibility during account migration', () => {
   });
 });
 
+
+
+describe('guest data isolation at the Worker boundary', () => {
+  it('denies guest access to shared portfolio state and account-wide broker reads', async () => {
+    const stateStub = {
+      fetch: vi.fn(async (request) => {
+        if (new URL(request.url).pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        throw new Error('Protected request reached the state service.');
+      })
+    };
+    const env = {
+      PORTFOLIO_STATE_DO: {
+        idFromName: vi.fn().mockReturnValue('portfolio-state'),
+        get: vi.fn().mockReturnValue(stateStub)
+      }
+    };
+    const headers = { 'X-App-Auth': 'guest-session-token', Authorization: 'Bearer guest-session-token' };
+
+    const stateResponse = await worker.fetch(new Request('https://worker.test/api/state', { headers }), env);
+    const historyResponse = await worker.fetch(new Request('https://worker.test/api/history', { headers }), env);
+    const tradesResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-trades', { headers }), env);
+    const positionsResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-positions', { headers }), env);
+
+    expect(stateResponse.status).toBe(403);
+    expect(historyResponse.status).toBe(403);
+    expect(tradesResponse.status).toBe(403);
+    expect(positionsResponse.status).toBe(403);
+    expect(stateStub.fetch).toHaveBeenCalledTimes(4);
+    expect(stateStub.fetch.mock.calls.every(([request]) => new URL(request.url).pathname === '/api/auth/verify')).toBe(true);
+  });
+
+  it('routes the guest endpoint without exposing the shared-state route', async () => {
+    const stateStub = {
+      fetch: vi.fn(async (request) => {
+        const pathname = new URL(request.url).pathname;
+        if (pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        if (pathname === '/api/guest-portfolio') {
+          return new Response(JSON.stringify({ snapshot: { updatedAt: 10, tranches: [] }, revision: 2 }), {
+            status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+          });
+        }
+        throw new Error('Unexpected Durable Object path: ' + pathname);
+      })
+    };
+    const response = await worker.fetch(new Request('https://worker.test/api/guest-portfolio', {
+      headers: { 'X-App-Auth': 'guest-session-token', Authorization: 'Bearer guest-session-token' }
+    }), {
+      PORTFOLIO_STATE_DO: {
+        idFromName: vi.fn().mockReturnValue('portfolio-state'),
+        get: vi.fn().mockReturnValue(stateStub)
+      }
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      snapshot: { updatedAt: 10, tranches: [] },
+      revision: 2
+    });
+    expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
+      '/api/auth/verify', '/api/guest-portfolio'
+    ]);
+  });
+});
+
+describe('Durable Object guest portfolio ownership', () => {
+  async function makeScopedStore() {
+    const values = new Map();
+    const storage = {
+      get: async (key) => values.get(key),
+      put: async (key, value) => values.set(key, value),
+      delete: async (key) => values.delete(key),
+      list: async ({ prefix }) => new Map([...values.entries()].filter(([key]) => key.startsWith(prefix))),
+      transaction: async (callback) => callback({
+        get: async (key) => values.get(key),
+        put: async (key, value) => values.set(key, value),
+        delete: async (key) => values.delete(key)
+      })
+    };
+    const users = [
+      { id: 'admin-1', name: 'Admin', role: 'admin' },
+      { id: 'guest-1', name: 'Guest One', role: 'guest' },
+      { id: 'guest-2', name: 'Guest Two', role: 'guest' }
+    ];
+    values.set('auth:users', users);
+    values.set('auth:cloud-encryption-key', 'workspace-secret');
+    const issueTestSession = async (token, userId) => {
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)));
+      const hex = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      values.set('auth:session:' + hex, { userId, expiresAt: Date.now() + 60_000 });
+    };
+    await issueTestSession('admin-token', 'admin-1');
+    await issueTestSession('guest-one-token', 'guest-1');
+    await issueTestSession('guest-two-token', 'guest-2');
+    return { store: new PortfolioStateDO({ storage }, {}), values };
+  }
+
+  const authHeaders = (token, extra = {}) => ({
+    'Content-Type': 'application/json',
+    'X-App-Auth': token,
+    Authorization: 'Bearer ' + token,
+    ...extra
+  });
+
+  it('lets admins publish a projection and binds guest reads to the active session', async () => {
+    const { store, values } = await makeScopedStore();
+    const write = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({
+        guestId: 'guest-1',
+        snapshot: {
+          updatedAt: 20,
+          tranches: [{
+            id: 'AAPL:buy-1', ticker: 'aapl', name: 'Apple', quantity: 2.5,
+            averagePrice: 100, marketPrice: 120, unexpected: 'must-not-persist'
+          }]
+        }
+      })
+    }));
+    expect(write.status).toBe(200);
+    expect(write.headers.get('ETag')).toBe('"1"');
+    const storedProjection = values.get('guest-portfolio:guest-1');
+    expect(storedProjection.encryptedSnapshot).toMatch(/^aesgcm:v1:/);
+    expect(storedProjection.snapshot).toBeUndefined();
+
+    const guestOne = await store.fetch(new Request('https://store.test/api/guest-portfolio?guestId=guest-2', {
+      headers: authHeaders('guest-one-token')
+    }));
+    expect(guestOne.status).toBe(200);
+    const guestOneBody = await guestOne.json();
+    expect(guestOneBody.snapshot.tranches).toEqual([{
+      id: 'AAPL:buy-1', ticker: 'AAPL', name: 'Apple', quantity: 2.5,
+      averagePrice: 100, marketPrice: 120, marketValue: 300, purchasedAt: null
+    }]);
+    expect(JSON.stringify(guestOneBody)).not.toContain('unexpected');
+
+    const guestTwo = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-two-token')
+    }));
+    await expect(guestTwo.json()).resolves.toMatchObject({ snapshot: { updatedAt: 0, tranches: [] } });
+  });
+
+  it('rejects guest writes, cross-guest reads, and guest access to the workspace key', async () => {
+    const { store } = await makeScopedStore();
+    const guestWrite = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('guest-one-token'),
+      body: JSON.stringify({ guestId: 'guest-2', snapshot: { updatedAt: 1, tranches: [] } })
+    }));
+    const cloudKey = await store.fetch(new Request('https://store.test/api/auth/cloud-key', {
+      headers: authHeaders('guest-one-token')
+    }));
+    const adminRead = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('admin-token')
+    }));
+    expect(guestWrite.status).toBe(403);
+    expect(cloudKey.status).toBe(403);
+    expect(adminRead.status).toBe(403);
+  });
+
+  it('rejects malformed projections and nonexistent guest targets', async () => {
+    const { store } = await makeScopedStore();
+    const invalid = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({
+        guestId: 'guest-1',
+        snapshot: { updatedAt: 1, tranches: [{ id: 'bad', ticker: 'AAPL', quantity: -2 }] }
+      })
+    }));
+    const missing = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({ guestId: 'not-a-guest', snapshot: { updatedAt: 1, tranches: [] } })
+    }));
+    expect(invalid.status).toBe(400);
+    expect(missing.status).toBe(404);
+  });
+});

@@ -80,15 +80,27 @@ describe('typed broker event bus', () => {
   it('supports payload-free refresh requests and multiple subscribers', () => {
     const first = vi.fn();
     const second = vi.fn();
+    const accountRefresh = vi.fn();
+    const awaitableTradesRefresh = vi.fn();
+    const resolveTradesRefresh = vi.fn();
     const removeFirst = addBrokerEventListener('broker:request-active-orders', first);
     const removeSecond = addBrokerEventListener('broker:request-active-orders', second);
+    const removeAccount = addBrokerEventListener('broker:request-account-info', accountRefresh);
+    const removeAwaitableTrades = addBrokerEventListener('broker:request-executed-trades-and-wait', awaitableTradesRefresh);
 
     emitBrokerEvent('broker:request-active-orders');
+    emitBrokerEvent('broker:request-account-info');
+    emitBrokerEvent('broker:request-executed-trades-and-wait', { resolve: resolveTradesRefresh });
 
     expect(first).toHaveBeenCalledTimes(1);
     expect(first).toHaveBeenCalledWith(undefined);
     expect(second).toHaveBeenCalledTimes(1);
+    expect(accountRefresh).toHaveBeenCalledTimes(1);
+    expect(accountRefresh).toHaveBeenCalledWith(undefined);
+    expect(awaitableTradesRefresh).toHaveBeenCalledWith({ resolve: resolveTradesRefresh });
     removeFirst();
     removeSecond();
+    removeAccount();
+    removeAwaitableTrades();
   });
 });

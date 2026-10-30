@@ -345,14 +345,21 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   // Closed History asks for trade history when mounted; do not also fetch from
   // a global navigation click listener, which caused duplicate broker requests.
   useEffect(() => {
-    // Load broker executions so margin commissions can use Freedom-reported fees
-    // when present; local commission rules remain the fallback.
+    // Broker execution history is account-wide administrator data. Guests receive
+    // only the assigned-tranche projection from /api/guest-portfolio.
+    if (currentUser?.role !== 'admin') return;
     const removeRequestListener = addBrokerEventListener('broker:request-executed-trades', () => {
       void loadExecutedTrades();
     });
+    const removeAwaitableRequestListener = addBrokerEventListener('broker:request-executed-trades-and-wait', (request) => {
+      void loadExecutedTrades().finally(request.resolve);
+    });
     void loadExecutedTrades();
-    return removeRequestListener;
-  }, []);
+    return () => {
+      removeRequestListener();
+      removeAwaitableRequestListener();
+    };
+  }, [currentUser?.role]);
 
   const loadFreedomAccount = async () => {
     if (accountRequest) return accountRequest;
@@ -418,15 +425,21 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     return removeRequestListener;
   }, []);
 
-  // Load account/balance/position data first on startup. Trade history is fetched
-  // only when Closed History opens.
+  // Broker-wide balances and positions are administrator data. Guests refresh
+  // assigned symbols and assignment state through the scoped quote/cloud flows.
   useEffect(() => {
-    void loadFreedomAccount().catch(() => {
-      // Keep the saved portfolio intact, but notify the app shell so stale
-      // broker data is never mistaken for a successful current snapshot.
-      emitBrokerEvent('broker:account-info-error');
-    });
-  }, []);
+    if (currentUser?.role !== 'admin') return;
+    const refreshAccountInfo = () => {
+      void loadFreedomAccount().catch(() => {
+        // Keep the saved portfolio intact, but notify the app shell so stale
+        // broker data is never mistaken for a successful current snapshot.
+        emitBrokerEvent('broker:account-info-error');
+      });
+    };
+    const removeRequestListener = addBrokerEventListener('broker:request-account-info', refreshAccountInfo);
+    refreshAccountInfo();
+    return removeRequestListener;
+  }, [currentUser?.role]);
 
 
 
@@ -444,19 +457,19 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs isAdmin={permissions.isAdmin} /></div>
-          <div
+          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
+          {permissions.isAdmin && <div
             class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             id="daysToBreakeven"
           >
             {breakevenText}
-          </div>
+          </div>}
         </div>
 
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
         <div id="tradingWorkspaceGrid" class={"trading-workspace-grid " + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
-          <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
+          {permissions.canViewMarginDesk && <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
             <div
               id="emptyStatePanel"
               class={"border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4 " + (emptyStateVisible ? "" : "hidden")}
@@ -510,10 +523,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 ><ProjectionsTable /></tbody>
               </table>
             </div>
-          </div>
+          </div>}
 
           {/* Cash Cushion Management Panel */}
-          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} />}</div>
+          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} />}</div>
 
           {/* Keep the command console available on both Margin and Cash desks. */}
           {permissions.canUseTerminal && <div id="tradingTerminalColumn" class="trading-terminal-column">

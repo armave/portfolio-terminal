@@ -121,8 +121,19 @@ export function SettingsDesk() {
   };
 
   const [refreshInterval, setRefreshInterval] = useState<string>(() =>
-    String(getQuoteRefreshInterval(60000))
+    String(getQuoteRefreshInterval(15_000, 'guest'))
   );
+
+  // Load the current role's own preference. An unset guest preference defaults
+  // to 15 seconds regardless of any interval previously saved by an admin.
+  useEffect(() => {
+    if (account?.role !== 'admin' && account?.role !== 'guest') return;
+    const scope = account.role;
+    const fallback = scope === 'guest' ? 15_000 : 60_000;
+    const interval = String(getQuoteRefreshInterval(fallback, scope));
+    setRefreshInterval(interval);
+    emitUiEvent('settings:change-refresh-interval', { intervalMs: interval });
+  }, [account?.role]);
 
   const [ruleValues, setRuleValues] = useState<BrokerRulesFormValues>(() =>
     toBrokerRulesFormValues(rules)
@@ -174,20 +185,20 @@ export function SettingsDesk() {
           <div class="text-xs text-slate-300">
             {account ? <><span class="font-bold text-white">{account.name}</span><span class="ml-2 rounded bg-slate-800 px-2 py-1 uppercase text-[10px] text-cyan-300">{account.role}</span></> : "Account information unavailable"}
           </div>
-          {account?.role === "guest" && <span class="text-[10px] text-amber-300">Guest access · cloud changes disabled</span>}
           <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-8 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">Sign out</button>
-          <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title="Pull the latest shared portfolio state" class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>
+          {account?.role === "admin" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title="Pull the latest shared portfolio state" class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>}
         </div>
 
         {/* Cluster 2: Polling & Backups */}
-        <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2" aria-label="Quote refresh and portfolio backup controls">
+        <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2" aria-label="Portfolio data refresh and backup controls">
           <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
             Update Interval
             <select
               id="quoteRefreshInterval"
               value={refreshInterval}
               onChange={handleIntervalChange}
-              aria-label="Automatic quote refresh interval"
+              aria-label="Automatic portfolio data refresh interval"
+              title="Quotes update at this interval. Broker balances, positions, trades and orders sync every 60 seconds. Guests refresh only their assigned stocks and assignment changes."
               class="h-8 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
             >
               <option value="0">Off</option>
@@ -232,7 +243,7 @@ export function SettingsDesk() {
         Recovery tip: export a JSON backup before resetting local data or relying on cloud sync as your only copy.
       </p>}
 
-      <section class="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
+      {account?.role === "admin" && <section class="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div><h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">User management</h3>
             <p class="text-[10px] text-slate-500">Accounts share this portfolio. Guests have read-only access; admins can manage accounts.</p></div>
@@ -257,7 +268,7 @@ export function SettingsDesk() {
           </table></div>
         </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
-      </section>
+      </section>}
 
       {permissions.canEditBrokerRules && <details class="space-y-3">
         <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">

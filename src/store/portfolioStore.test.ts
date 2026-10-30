@@ -322,6 +322,10 @@ describe('canonical trade lifecycle and persistence', () => {
       activeTrancheMixes: {
         'GOOGL:1767268800000:buy-3': { cash: 3, margin: 2 }
       },
+      activeTrancheGuestAssignments: {
+        'MSFT:1767265200000:buy-2': 'guest-account-id',
+        'GOOGL:1767268800000:buy-3': 'guest-account-id'
+      },
       cashCushion: { freeCash: 0, holdings: [] }
     }));
 
@@ -334,6 +338,10 @@ describe('canonical trade lifecycle and persistence', () => {
     });
     expect(store.getState().activeTrancheMixes).toEqual({
       'GOOGL:1767268800000:buy-3': { cash: 3, margin: 2 }
+    });
+    expect(store.getState().activeTrancheGuestAssignments).toEqual({
+      'MSFT:1767265200000:buy-2': 'guest-account-id',
+      'GOOGL:1767268800000:buy-3': 'guest-account-id'
     });
   });
 

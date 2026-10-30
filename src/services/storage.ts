@@ -10,6 +10,7 @@ const GW_KEY_ID = 'gateway-secret-aes-key';
 let pendingSecretPersistence: Promise<boolean> = Promise.resolve(true);
 const STORAGE_KEY_RULES = 'tradernet_rules_v1';
 const STORAGE_KEY_REFRESH_INTERVAL = 'quote_refresh_interval';
+const STORAGE_KEY_GUEST_REFRESH_INTERVAL = 'quote_refresh_interval_guest_v1';
 
 let inMemoryGatewaySecret = '';
 
@@ -493,14 +494,22 @@ export function clearBrokerRules(): void {
   }
 }
 
+export type QuoteRefreshIntervalScope = 'admin' | 'guest';
+
 /**
- * Gets quote refresh interval with fallback.
+ * Gets the quote refresh interval for one account role. Guests have their own
+ * preference so an administrator's saved polling interval cannot override the
+ * guest's 15-second default on a shared browser.
  */
-export function getQuoteRefreshInterval(fallback = 60000): number {
+export function getQuoteRefreshInterval(
+  fallback = 60000,
+  scope: QuoteRefreshIntervalScope = 'admin'
+): number {
   const storage = getBrowserStorage();
   if (!storage) return fallback;
   try {
-    const raw = storage.getItem(STORAGE_KEY_REFRESH_INTERVAL);
+    const key = scope === 'guest' ? STORAGE_KEY_GUEST_REFRESH_INTERVAL : STORAGE_KEY_REFRESH_INTERVAL;
+    const raw = storage.getItem(key);
     if (raw === null || raw === undefined) return fallback;
     const num = Number(raw);
     return Number.isFinite(num) ? num : fallback;
@@ -509,14 +518,16 @@ export function getQuoteRefreshInterval(fallback = 60000): number {
   }
 }
 
-/**
- * Saves quote refresh interval in milliseconds.
- */
-export function saveQuoteRefreshInterval(interval: number): void {
+/** Saves a quote refresh preference separately for admins and guests. */
+export function saveQuoteRefreshInterval(
+  interval: number,
+  scope: QuoteRefreshIntervalScope = 'admin'
+): void {
   const storage = getBrowserStorage();
   if (!storage) return;
   try {
-    storage.setItem(STORAGE_KEY_REFRESH_INTERVAL, String(interval));
+    const key = scope === 'guest' ? STORAGE_KEY_GUEST_REFRESH_INTERVAL : STORAGE_KEY_REFRESH_INTERVAL;
+    storage.setItem(key, String(interval));
   } catch (err) {
     console.error('Failed to save quote refresh interval:', err);
   }

@@ -359,6 +359,17 @@ describe('storage service', () => {
       saveQuoteRefreshInterval(15000);
       expect(getQuoteRefreshInterval(60000)).toBe(15000);
     });
+
+    it('keeps guest refresh defaults and preferences separate from admin settings', () => {
+      saveQuoteRefreshInterval(60000, 'admin');
+
+      expect(getQuoteRefreshInterval(15000, 'guest')).toBe(15000);
+      expect(getQuoteRefreshInterval(60000, 'admin')).toBe(60000);
+
+      saveQuoteRefreshInterval(30000, 'guest');
+      expect(getQuoteRefreshInterval(15000, 'guest')).toBe(30000);
+      expect(getQuoteRefreshInterval(60000, 'admin')).toBe(60000);
+    });
   });
 
   describe('clearLocalData', () => {

@@ -10,6 +10,11 @@ interface ActiveTrancheTypeRequest {
   mix?: { cash?: number; margin?: number };
 }
 
+interface ActiveTrancheGuestAssignmentRequest {
+  trancheId?: string;
+  guestId?: string;
+}
+
 export interface BrokerEventPayloads {
   'broker:account-info': FreedomPortfolioSnapshot;
   'broker:account-info-error': undefined;
@@ -17,9 +22,12 @@ export interface BrokerEventPayloads {
   'broker:executed-trades-error': undefined;
   'broker:active-orders': FreedomActiveOrder[];
   'broker:active-orders-error': undefined;
+  'broker:request-account-info': undefined;
   'broker:request-executed-trades': undefined;
+  'broker:request-executed-trades-and-wait': { resolve: () => void };
   'broker:request-active-orders': undefined;
   'broker:set-active-tranche-type': ActiveTrancheTypeRequest;
+  'broker:assign-active-tranche-guest': ActiveTrancheGuestAssignmentRequest;
 }
 
 export type BrokerEventName = keyof BrokerEventPayloads;

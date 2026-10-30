@@ -159,6 +159,49 @@ describe('cloud state sync', () => {
     expect(payload.encryptedPayload).toMatch(/^aesgcm:v2:[A-Za-z0-9+/]+=*:[A-Za-z0-9+/]+=*$/);
     expect(payload.encryptedPayload).not.toContain('cloud-encryption-secret');
   });
+  it('imports shared portfolio state for read-only guests without posting legacy cloud history', async () => {
+    const secret = 'guest-read-only-history-migration-secret';
+    const encryptedPayload = await encryptV2Fixture({
+      activeView: 'AAPL',
+      balance: 1250,
+      brokerExecutedTrades: [{ id: 'legacy-trade-1' }],
+      cashflows: [{ id: 'legacy-cashflow-1' }],
+      lastRolloverTimestamp: Date.now()
+    }, secret);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(_input);
+      if (url.endsWith('/api/state')) {
+        return new Response(JSON.stringify({ encryptedPayload }), {
+          status: 200, headers: { 'Content-Type': 'application/json', ETag: '"8"' }
+        });
+      }
+      if (url.endsWith('/api/history')) {
+        return new Response(JSON.stringify({ error: 'Portfolio state not found.' }), {
+          status: 404, headers: { 'Content-Type': 'application/json', ETag: '"0"' }
+        });
+      }
+      throw new Error('Unexpected request: ' + url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const rewriteLocal = vi.fn();
+    const reportResult = vi.fn();
+    vi.spyOn(storage, 'saveState').mockReturnValue(true);
+
+    const result = await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 0 },
+      secret,
+      allowCloudWrites: false,
+      pullCloudAndRewriteLocal: rewriteLocal,
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    }, reportResult);
+
+    expect(result.activeView).toBe('AAPL');
+    expect(rewriteLocal).toHaveBeenCalledWith(expect.objectContaining({ activeView: 'AAPL' }));
+    expect(reportResult).toHaveBeenCalledWith(true);
+    expect(fetchMock.mock.calls.map(call => (call[1] as RequestInit)?.method || 'GET')).toEqual(['GET', 'GET']);
+  });
+
   it('returns false when a failed cloud pull falls back to a truthy local state', async () => {
     const localState = { activeView: 'AAPL', balance: 1250 };
     const fetchMock = vi.fn().mockRejectedValue(new Error('Network unavailable'));
@@ -376,9 +419,12 @@ describe('Gateway Secret validation', () => {
     await expect((await import('./api')).validateGatewaySecret('valid-secret')).resolves.toBe(true);
   });
 
-  it('accepts valid credentials when no cloud portfolio exists yet', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+  it('validates a guest session without requesting the shared portfolio endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal('fetch', fetchMock);
     await expect((await import('./api')).validateGatewaySecret('valid-secret')).resolves.toBe(true);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/auth/me');
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('/api/state');
   });
 
   it('rejects invalid credentials', async () => {
@@ -399,6 +445,53 @@ describe('Gateway Secret validation', () => {
     vi.stubGlobal('fetch', fetchMock);
     await expect((await import('./api')).validateGatewaySecret('  ')).resolves.toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('guest portfolio projection API', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads only the authenticated guest projection', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      snapshot: { updatedAt: 100, tranches: [{
+        id: 'AAPL:buy-1', ticker: 'AAPL', name: 'Apple', quantity: 2,
+        averagePrice: 100, marketPrice: 120, marketValue: 240, purchasedAt: 50
+      }] },
+      revision: 3
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { getGuestPortfolioSnapshot } = await import('./api');
+    const snapshot = await getGuestPortfolioSnapshot();
+    expect(snapshot.tranches).toHaveLength(1);
+    expect(snapshot.tranches[0]).toMatchObject({ ticker: 'AAPL', quantity: 2 });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/guest-portfolio');
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
+      Authorization: 'Bearer test-gateway-secret',
+      'X-App-Auth': 'test-gateway-secret'
+    });
+  });
+
+  it('publishes a guest-only projection using the authenticated administrator session', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, revision: 4 }), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { publishGuestPortfolioSnapshot } = await import('./api');
+    await publishGuestPortfolioSnapshot('guest-1', {
+      updatedAt: 200,
+      tranches: [{
+        id: 'MSFT:buy-2', ticker: 'MSFT', name: 'Microsoft', quantity: 1.5,
+        averagePrice: 300, marketPrice: 320, marketValue: 480, purchasedAt: 60
+      } as any]
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/guest-portfolio');
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({
+      guestId: 'guest-1',
+      snapshot: { tranches: [expect.objectContaining({ ticker: 'MSFT', quantity: 1.5 })] }
+    });
   });
 });
 
@@ -741,17 +834,27 @@ describe('Gateway validation response reuse', () => {
     vi.restoreAllMocks();
   });
 
-  it('uses the authenticated cloud payload for the initial pull without a second GET', async () => {
+  it('validates the session separately before an administrator pulls the shared workspace', async () => {
     const secret = 'validated-once-secret';
-    const encryptedPayload = CryptoJS.AES.encrypt(JSON.stringify({
+    const encryptedPayload = await encryptV2Fixture({
       activeView: 'AAPL',
       balance: 0,
       lastRolloverTimestamp: Date.now()
-    }), secret).toString();
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
-      JSON.stringify({ encryptedPayload }),
-      { status: 200, headers: { 'Content-Type': 'application/json', ETag: '"5"' } }
-    ));
+    }, secret);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname === '/api/auth/me') {
+        return new Response(JSON.stringify({ user: { id: 'admin-1', role: 'admin' } }), {
+          status: 200, headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (pathname === '/api/state') {
+        return new Response(JSON.stringify({ encryptedPayload }), {
+          status: 200, headers: { 'Content-Type': 'application/json', ETag: '"5"' }
+        });
+      }
+      throw new Error('Unexpected request: ' + pathname);
+    });
     vi.stubGlobal('fetch', fetchMock);
     vi.spyOn(storage, 'saveState').mockReturnValue(true);
 
@@ -765,7 +868,9 @@ describe('Gateway validation response reuse', () => {
     }, reportResult);
 
     expect(reportResult).toHaveBeenCalledWith(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls.map(([input]) => new URL(String(input)).pathname)).toEqual([
+      '/api/auth/me', '/api/state'
+    ]);
   });
 });
 
