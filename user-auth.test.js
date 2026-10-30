@@ -39,7 +39,10 @@ async function bootstrap(store) {
   const response = await request(store, "/api/auth/bootstrap", {
     name: "Primary Admin",
     password: "a-long-password-123"
-  }, undefined, { "X-Bootstrap-Authorized": "true" });
+  }, undefined, {
+    "X-Bootstrap-Authorized": "true",
+    "X-Workspace-Encryption-Key": "legacy-shared-cloud-key"
+  });
   expect(response.status).toBe(201);
   return response.json();
 }
@@ -123,6 +126,37 @@ describe("Durable Object account authentication", () => {
 });
 
 describe("Worker session endpoints", () => {
+
+  it("validates the bootstrap secret and forwards it only as an internal workspace key", async () => {
+    const forwarded = [];
+    const doStub = {
+      fetch: vi.fn(async (request) => {
+        forwarded.push(request);
+        return new Response(JSON.stringify({ token: "admin-session" }), { status: 201 });
+      })
+    };
+    const response = await worker.fetch(new Request("https://worker.test/api/auth/bootstrap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "First Admin",
+        password: "a-long-password-123",
+        bootstrapSecret: "expected-gateway-secret"
+      })
+    }), {
+      GATEWAY_SECRET: "expected-gateway-secret",
+      PORTFOLIO_STATE_DO: { idFromName: () => "portfolio_state", get: () => doStub }
+    });
+    expect(response.status).toBe(201);
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0].headers.get("X-Bootstrap-Authorized")).toBe("true");
+    expect(forwarded[0].headers.get("X-Workspace-Encryption-Key")).toBe("expected-gateway-secret");
+    expect(await forwarded[0].json()).toEqual({
+      name: "First Admin",
+      password: "a-long-password-123"
+    });
+  });
+
   it("serves the existing shared encryption key to valid account sessions only", async () => {
     vi.stubGlobal("crypto", webcrypto);
     const authStub = {
