@@ -102,20 +102,22 @@ export function CashCushionDesk() {
 
       <div class="space-y-2">
         <div class="table-scroll-wrapper overflow-x-auto">
-          <table class="w-full min-w-0 table-fixed text-left text-xs border-collapse">
+          <table class="w-full min-w-[860px] table-fixed text-left text-xs border-collapse">
             <thead>
               <tr class="border-b border-slate-800 text-slate-400 font-medium">
-                <th class="w-[15%] py-2 px-2">Ticker</th>
-                <th class="w-[15%] py-2 px-2 text-right">Shares</th>
-                <th class="w-[20%] py-2 px-2 text-right">Price · Mkt</th>
-                <th class="w-[15%] py-2 px-2 text-right">Mkt Value</th>
-                <th class="w-[15%] py-2 px-2 text-right">Eq. Alloc</th>
+                <th class="w-[13%] py-2 px-2">Ticker</th>
+                <th class="w-[10%] py-2 px-2 text-right whitespace-nowrap">Shares</th>
+                <th class="w-[13%] py-2 px-2 text-right whitespace-nowrap">Price · Mkt</th>
+                <th class="w-[13%] py-2 px-2 text-right whitespace-nowrap">Avg Bought</th>
+                <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">vs Avg</th>
+                <th class="w-[17%] py-2 px-2 text-right whitespace-nowrap">Mkt Value</th>
+                <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Eq. Alloc</th>
               </tr>
             </thead>
             <tbody id="cashStocksTableBody" class="divide-y divide-slate-800/60 font-mono">
               {holdings.length === 0 ? (
                 <tr>
-                  <td colSpan={5} class="py-3 text-center text-slate-500 italic">
+                  <td colSpan={7} class="py-3 text-center text-slate-500 italic">
                     No broker-reported cash holdings available.
                   </td>
                 </tr>
@@ -169,32 +171,38 @@ export function CashCushionDesk() {
                       <td class="py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap">
                         {shares.toLocaleString('en-US', { maximumFractionDigits: 3 })}
                       </td>
-                      <td class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums">
+                      <td class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums whitespace-nowrap">
                         <span>{formatUSD(price)}</span>
-                        <span class="mt-0.5 block text-[9px] font-normal text-slate-300">
-                          Avg bought: {hasAveragePrice ? formatUSD(averagePrice) : '—'}
+                        {renderDailyQuoteSubtext(h.quoteDetails)}
+                        <span class="mt-0.5 block text-[9px] font-normal text-slate-500">
+                          {quoteMeta}
                         </span>
-                        {hasMarketComparison && (
+                      </td>
+                      <td class="py-2 px-3 text-right text-slate-200 font-semibold tabular-nums whitespace-nowrap">
+                        {hasAveragePrice ? formatUSD(averagePrice) : '—'}
+                      </td>
+                      <td class="py-2 px-3 text-right font-semibold tabular-nums whitespace-nowrap">
+                        {hasMarketComparison ? (
                           <span
-                            class={`mt-0.5 block text-[9px] font-normal tabular-nums ${
+                            class={
                               marketDifference! > 0
                                 ? 'text-emerald-400'
                                 : marketDifference! < 0
                                   ? 'text-rose-400'
                                   : 'text-slate-400'
-                            }`}
+                            }
                             title="Market price minus average bought price, per share"
                           >
-                            vs Avg: {marketDifference! > 0 ? '+' : marketDifference! < 0 ? '−' : ''}
-                            {formatUSD(Math.abs(marketDifference!))} (
-                            {marketDifferencePercent! > 0 ? '+' : ''}
-                            {marketDifferencePercent!.toFixed(2)}%)
+                            {marketDifference! > 0 ? '+' : marketDifference! < 0 ? '−' : ''}
+                            {formatUSD(Math.abs(marketDifference!))}
+                            <span class="block text-[10px] font-normal">
+                              {marketDifferencePercent! > 0 ? '+' : ''}
+                              {marketDifferencePercent!.toFixed(2)}%
+                            </span>
                           </span>
+                        ) : (
+                          <span class="text-slate-500">—</span>
                         )}
-                        {renderDailyQuoteSubtext(h.quoteDetails)}
-                        <span class="mt-0.5 block text-[9px] font-normal text-slate-500">
-                          {quoteMeta}
-                        </span>
                       </td>
                       <td class="py-2 px-3 text-right text-white font-semibold">
                         {formatUSD(val)}
@@ -210,7 +218,7 @@ export function CashCushionDesk() {
             <tfoot id="cashStocksTableFooter" class="border-t border-slate-700 font-mono">
               {holdings.length > 0 && (
                 <tr>
-                  <td class="py-2 px-3 text-slate-300 font-bold" colSpan={3}>
+                  <td class="py-2 px-3 text-slate-300 font-bold" colSpan={5}>
                     {holdings.length} holding{holdings.length === 1 ? '' : 's'}
                   </td>
                   <td class="py-2 px-3 text-right text-white font-bold">
