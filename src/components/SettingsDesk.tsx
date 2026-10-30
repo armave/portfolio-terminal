@@ -190,14 +190,15 @@ export function SettingsDesk() {
         </div>
 
         {/* Cluster 2: Polling & Backups */}
-        <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2" aria-label="Quote refresh and portfolio backup controls">
+        <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2" aria-label="Portfolio data refresh and backup controls">
           <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
             Update Interval
             <select
               id="quoteRefreshInterval"
               value={refreshInterval}
               onChange={handleIntervalChange}
-              aria-label="Automatic quote refresh interval"
+              aria-label="Automatic portfolio data refresh interval"
+              title="Quotes update at this interval. Broker balances, positions, trades and orders sync every 60 seconds. Guests refresh only their assigned stocks and assignment changes."
               class="h-8 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
             >
               <option value="0">Off</option>
