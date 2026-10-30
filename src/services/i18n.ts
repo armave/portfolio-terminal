@@ -233,8 +233,6 @@ const RU: Record<string, string> = {
   'Share Price / Market Value': 'Цена акции / рыночная стоимость'
   'Update quotes': 'Обновить котировки',
   'Refresh live quotes': 'Обновить актуальные котировки',
-  'Add Cash Stock': 'Добавить акцию за собственные средства',
-  'Update quotes': 'Обновить котировки',
   'Portfolio Assets': 'Активы портфеля',
   'Show CLI command reference in terminal': 'Показать справочник команд терминала',
   'Clear terminal log output': 'Очистить журнал терминала',
@@ -252,16 +250,11 @@ const RU: Record<string, string> = {
   'Market insights': 'Рыночная аналитика',
   'Close scenario report': 'Закрыть отчёт по сценарию',
   'Scenario report details': 'Подробности отчёта по сценарию',
-  'Quick actions for the selected stock': 'Быстрые действия для выбранной акции',
-  'Account language': 'Язык учётной записи',
   'New user role': 'Роль нового пользователя',
-  'New user language': 'Язык нового пользователя',
   'Name for ': 'Имя: ',
   'Role for ': 'Роль: ',
   'Language for ': 'Язык: ',
   'New password for ': 'Новый пароль: ',
-  'Update quotes': 'Обновить котировки',
-  'Loading company news…': 'Загрузка новостей компании…',
   'Delete account': 'Удалить учётную запись',
 };
 
