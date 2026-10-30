@@ -71,6 +71,24 @@ describe('margin tranche quantity display', () => {
     expect(getMarginTrancheQuantity({ price: 329, date: '2026-10-22' }, brokerLots, 'GOOGL')).toBeNull();
   });
 
+  it('matches broker UTC timestamps against the TradeNet Armenia calendar date', () => {
+    const brokerLots = [{
+      id: 'GOOGL:late-utc-buy',
+      ticker: 'GOOGL',
+      name: 'GOOGL',
+      quantity: 5,
+      marketPrice: 423,
+      averagePrice: 282,
+      marketValue: 2115,
+      // 01:00 on 29 Oct in Armenia is still 28 Oct in UTC.
+      purchasedAt: Date.parse('2026-10-28T21:00:00.000Z')
+    }];
+
+    expect(getMarginTrancheQuantities([
+      { price: 282, date: '2026-10-29' }
+    ], brokerLots, 'GOOGL')).toEqual([5]);
+  });
+
   it('pairs repeated GOOGL price/date rows one-to-one with matching broker open lots', () => {
     const tranches = [
       { price: 282, date: '2026-10-29' },
