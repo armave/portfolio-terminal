@@ -65,7 +65,7 @@ export function CashCushionDesk({
 
   useEffect(() => {
     const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
-      setExecutedTrades(trades);
+      setExecutedTrades(trades as unknown as FreedomExecutedTradeLike[]);
     });
     const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => setExecutedTrades([]));
     emitBrokerEvent('broker:request-executed-trades');
