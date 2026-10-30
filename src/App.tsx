@@ -20,6 +20,7 @@ import { portfolioStore } from './store/portfolioStore';
 import { ScenarioReportModal } from './components/ScenarioReportModal';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import { restoreGatewaySecret } from './services/storage';
+import { addBrokerEventListener, emitBrokerEvent } from './services/brokerEventBus';
 
 let tradesRequest: Promise<void> | null = null;
 let accountRequest: Promise<void> | null = null;
@@ -332,10 +333,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   useEffect(() => {
     // Load broker executions so margin commissions can use Freedom-reported fees
     // when present; local commission rules remain the fallback.
+    const removeRequestListener = addBrokerEventListener('broker:request-executed-trades', () => {
+      void loadExecutedTrades();
+    });
     void loadExecutedTrades();
-    const onRequest = () => { void loadExecutedTrades(); };
-    window.addEventListener('tradenet:request-executed-trades', onRequest);
-    return () => window.removeEventListener('tradenet:request-executed-trades', onRequest);
+    return removeRequestListener;
   }, []);
 
   const loadFreedomAccount = async () => {
@@ -345,8 +347,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       if (!secret.trim()) throw new Error('Gateway Secret is not available.');
       const response = await fetchFreedomTradeNetPositions();
       const snapshot = normalizeFreedomPortfolio(response);
-      (window as any).__tradenetAccountInfo = snapshot;
-      window.dispatchEvent(new CustomEvent('tradenet:account-info', { detail: snapshot }));
+      emitBrokerEvent('broker:account-info', snapshot);
     })();
     try { await accountRequest; } finally { accountRequest = null; }
   };
@@ -359,23 +360,19 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       // Never issue the startup request until restoration has completed.
       const secret = await restoreGatewaySecret();
       if (!secret.trim()) {
-        if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tradenet:executed-trades-error'));
+        emitBrokerEvent('broker:executed-trades-error');
         return;
       }
       const response = await fetchFreedomTradeNetTrades();
       const normalizedTrades = normalizeFreedomTrades(response);
       // Keep broker executions separate from app-owned ClosedTrade records.
       // ClosedHistoryDesk subscribes to this event and renders the broker data.
-      if (typeof window !== 'undefined') {
-        (window as any).__tradenetExecutedTrades = normalizedTrades;
-        window.dispatchEvent(new CustomEvent('tradenet:executed-trades', { detail: normalizedTrades }));
-        // Account snapshots are emitted only after a successful account API
-        // request. Re-emitting the cached global here would falsely refresh its
-        // timestamp and could mark stale broker data as current.
-      }
+      emitBrokerEvent('broker:executed-trades', normalizedTrades);
+      // Account snapshots are emitted only after a successful account API request.
+      // A trade-history refresh must not make an older account snapshot look current.
     } catch (error) {
       console.error('Unable to load TradeNet executed trades:', error);
-      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tradenet:executed-trades-error'));
+      emitBrokerEvent('broker:executed-trades-error');
     } finally {
     }
     })();
@@ -392,18 +389,19 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           if (!secret.trim()) return;
           const response = await fetchFreedomTradeNetActiveOrders();
           const orders = normalizeFreedomActiveOrders(response);
-          window.dispatchEvent(new CustomEvent('tradenet:active-orders', { detail: orders }));
+          emitBrokerEvent('broker:active-orders', orders);
         } catch (error) {
           console.error('Unable to load active TradeNet orders:', error);
-          window.dispatchEvent(new CustomEvent('tradenet:active-orders-error'));
+          emitBrokerEvent('broker:active-orders-error');
         }
       })();
       try { await activeOrdersRequest; } finally { activeOrdersRequest = null; }
     };
-    const onRequest = () => { void loadActiveOrders(); };
-    window.addEventListener('tradenet:request-active-orders', onRequest);
+    const removeRequestListener = addBrokerEventListener('broker:request-active-orders', () => {
+      void loadActiveOrders();
+    });
     // The Margin desk requests active orders when it becomes visible.
-    return () => window.removeEventListener('tradenet:request-active-orders', onRequest);
+    return removeRequestListener;
   }, []);
 
   // Load account/balance/position data first on startup. Trade history is fetched
@@ -412,9 +410,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     void loadFreedomAccount().catch(() => {
       // Keep the saved portfolio intact, but notify the app shell so stale
       // broker data is never mistaken for a successful current snapshot.
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('tradenet:account-info-error'));
-      }
+      emitBrokerEvent('broker:account-info-error');
     });
   }, []);
 
