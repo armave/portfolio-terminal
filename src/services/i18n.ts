@@ -256,6 +256,14 @@ const RU: Record<string, string> = {
   'Language for ': 'Язык: ',
   'New password for ': 'Новый пароль: ',
   'Delete account': 'Удалить учётную запись',
+  'admin': 'администратор',
+  'guest': 'гость',
+  'No active cash-funded stocks are linked to your account yet.': 'К вашей учётной записи пока не привязаны акции, приобретённые за собственные средства.',
+  'Stocktwits': 'Stocktwits',
+  'Margin risk and account equity': 'Маржинальный риск и капитал счёта',
+  'Account equity percentage': 'Доля собственного капитала счёта',
+  'Margin-call buffer': 'Запас до маржин-колла',
+  'Portfolio financial summary': 'Финансовая сводка портфеля',
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
