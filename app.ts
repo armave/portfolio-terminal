@@ -87,7 +87,7 @@ const TRADERNET_RULES = { ...DEFAULT_TRADERNET_RULES };
 
 let state: any = createBlankState();
 // Guest sessions may read the shared snapshot, but must never enqueue cloud writes.
-let isGuestSession = false;
+let canWriteCloudState = false;
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
@@ -410,7 +410,7 @@ portfolioStore.subscribe(syncCalculatedPortfolioEquity);
 syncCalculatedPortfolioEquity(portfolioStore.getState());
 
 async function pushStateToCloud(forceImmediate = false) {
-  if (isGuestSession) {
+  if (!canWriteCloudState) {
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
     gistSyncTimeout = null;
     return;
@@ -1431,11 +1431,11 @@ setSecretGetter(() => getGatewaySecret());
 async function publishCurrentUser() {
   try {
     const user = await getCurrentUser();
-    isGuestSession = user.role === 'guest';
+    canWriteCloudState = user.role === 'admin';
     emitUiEvent('auth:user-changed', { user });
     return user;
   } catch {
-    isGuestSession = false;
+    canWriteCloudState = false;
     emitUiEvent('auth:user-changed', { user: null });
     return null;
   }
