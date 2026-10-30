@@ -2,9 +2,9 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import { useRef } from 'preact/hooks';
 import type { BrokerRules, QuoteDetails } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
-import { getQuoteRefreshInterval } from '../services/storage';
 import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
+import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import {
   calculateCommission,
   calculateMarginInterest
@@ -155,7 +155,7 @@ function computeMarginRiskDisplay(
 export function SummaryMetricsGrid() {
   const state = usePortfolio();
   const rules = state.brokerAssumptions;
-  const refreshIntervalMs = getQuoteRefreshInterval(60000);
+  const refreshIntervalMs = useQuoteRefreshInterval();
   const previousPricesRef = useRef<Record<string, number>>({});
   const dailyRate = rules.annualRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
