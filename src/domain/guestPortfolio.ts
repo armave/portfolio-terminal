@@ -123,3 +123,33 @@ export function calculateGuestPersonalEquity(holdings: GuestCashHolding[]): numb
     return total + (price === null ? 0 : Math.max(0, Number(holding.shares) || 0) * price);
   }, 0);
 }
+
+
+export interface GuestHoldingValuation {
+  shares: number;
+  currentPrice: number | null;
+  marketValue: number | null;
+  averagePrice: number | null;
+  costBasis: number | null;
+  unrealizedPnl: number | null;
+  unrealizedPnlPercent: number | null;
+}
+
+/**
+ * Calculate a guest card's values without treating a missing quote as $0.
+ * Cost basis and P/L stay unknown unless both required prices are available.
+ */
+export function getGuestHoldingValuation(
+  holding: Pick<GuestCashHolding, 'shares' | 'currentPrice' | 'price' | 'averagePrice'>
+): GuestHoldingValuation {
+  const shares = Math.max(0, Number(holding.shares) || 0);
+  const currentPrice = positiveNumber(holding.currentPrice) ?? positiveNumber(holding.price);
+  const averagePrice = positiveNumber(holding.averagePrice);
+  const marketValue = currentPrice === null ? null : shares * currentPrice;
+  const costBasis = averagePrice === null ? null : shares * averagePrice;
+  const unrealizedPnl = marketValue === null || costBasis === null ? null : marketValue - costBasis;
+  const unrealizedPnlPercent = unrealizedPnl === null || costBasis === null || costBasis <= 0
+    ? null
+    : unrealizedPnl / costBasis * 100;
+  return { shares, currentPrice, marketValue, averagePrice, costBasis, unrealizedPnl, unrealizedPnlPercent };
+}
