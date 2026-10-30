@@ -102,7 +102,6 @@ const RU: Record<string, string> = {
   'Use at least 6 characters.': 'Используйте не менее 6 символов.',
   'Gateway Secret': 'Секретный ключ шлюза',
   'Loading your portfolio and assigned stocks. Please wait…': 'Загрузка вашего портфеля и назначенных акций. Пожалуйста, подождите…',
-  'PORTFOLIO TERMINAL': 'ПОРТФЕЛЬНЫЙ ТЕРМИНАЛ',
   'Retry': 'Повторить',
   'Continue offline': 'Продолжить без подключения',
   'Projected portfolio net value, fees and commissions, margin fee, and balance by date.': 'Прогноз чистой стоимости портфеля, комиссий, маржинальных процентов и баланса по датам.',
@@ -244,7 +243,7 @@ export function getAppLanguage(): AppLanguage {
 
 export function translateText(value: string, language: AppLanguage = currentLanguage): string {
   if (language === 'en') return value;
-  const normalized = value.trim().replace(/\\s+/g, ' ');
+  const normalized = value.trim().replace(/\s+/g, ' ');
   if (!normalized) return value;
   const translated = RU[normalized];
   if (!translated) return value;
