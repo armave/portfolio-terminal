@@ -95,10 +95,6 @@ button {
   justify-content: center;
 }
 
-#refreshQuotesButton {
-  margin-right: 10px;
-}
-
 #terminalLog {
   height: 16rem;
   overflow-y: auto;
