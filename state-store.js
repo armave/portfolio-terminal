@@ -20,6 +20,7 @@ function jsonResponse(body, status = 200, revision = null) {
  */
 
 const AUTH_USERS_KEY = "auth:users";
+const AUTH_CLOUD_KEY_KEY = "auth:cloud-encryption-key";
 const AUTH_SESSION_PREFIX = "auth:session:";
 const AUTH_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PASSWORD_ITERATIONS = 210_000;
@@ -136,6 +137,8 @@ export class PortfolioStateDO {
 
     if (request.method === "POST" && pathname === "/api/auth/bootstrap") {
       if (request.headers.get("X-Bootstrap-Authorized") !== "true") return authJson({ error: "Initial setup requires the Gateway Secret." }, 401);
+      const workspaceEncryptionKey = request.headers.get("X-Workspace-Encryption-Key") || "";
+      if (!workspaceEncryptionKey) return authJson({ error: "Initial workspace encryption key is not configured." }, 500);
       const name = normalizeAccountName(body.name);
       if (!validAccountInput(name, body.password)) return authJson({ error: "Use a name of 2–60 characters and a password of 12–128 characters." }, 400);
       const salt = toHex(crypto.getRandomValues(new Uint8Array(16)));
@@ -148,6 +151,7 @@ export class PortfolioStateDO {
         const users = await txn.get(AUTH_USERS_KEY) || [];
         if (users.length) return false;
         await txn.put(AUTH_USERS_KEY, [user]);
+        await txn.put(AUTH_CLOUD_KEY_KEY, workspaceEncryptionKey);
         return true;
       });
       if (!created) return authJson({ error: "Initial admin account has already been created." }, 409);
@@ -163,6 +167,14 @@ export class PortfolioStateDO {
       const actual = await derivePasswordHash(body.password, salt);
       if (!user || !secureEqual(actual, expected)) return authJson({ error: "Invalid name or password." }, 401);
       return authJson(await this.issueSession(user));
+    }
+
+    if (request.method === "GET" && pathname === "/api/auth/cloud-key") {
+      const session = await this.resolveSession(request);
+      if (!session) return authJson({ error: "Authentication required." }, 401);
+      const key = await this.ctx.storage.get(AUTH_CLOUD_KEY_KEY);
+      if (typeof key !== "string" || !key) return authJson({ error: "Shared cloud encryption key is not initialized." }, 500);
+      return authJson({ key });
     }
 
     if (request.method === "POST" && pathname === "/api/auth/verify") {
