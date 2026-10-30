@@ -456,7 +456,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
         <div id="tradingWorkspaceGrid" class={"trading-workspace-grid " + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
-          <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
+          {permissions.canViewMarginDesk && <div id="mainDeskContainer" class="space-y-4">
             <div
               id="emptyStatePanel"
               class={"border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4 " + (emptyStateVisible ? "" : "hidden")}
@@ -510,7 +510,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 ><ProjectionsTable /></tbody>
               </table>
             </div>
-          </div>
+          </div>}
 
           {/* Cash Cushion Management Panel */}
           <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} />}</div>
