@@ -834,17 +834,27 @@ describe('Gateway validation response reuse', () => {
     vi.restoreAllMocks();
   });
 
-  it('uses the authenticated cloud payload for the initial pull without a second GET', async () => {
+  it('validates the session separately before an administrator pulls the shared workspace', async () => {
     const secret = 'validated-once-secret';
-    const encryptedPayload = CryptoJS.AES.encrypt(JSON.stringify({
+    const encryptedPayload = await encryptV2Fixture({
       activeView: 'AAPL',
       balance: 0,
       lastRolloverTimestamp: Date.now()
-    }), secret).toString();
-    const fetchMock = vi.fn().mockResolvedValue(new Response(
-      JSON.stringify({ encryptedPayload }),
-      { status: 200, headers: { 'Content-Type': 'application/json', ETag: '"5"' } }
-    ));
+    }, secret);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname === '/api/auth/me') {
+        return new Response(JSON.stringify({ user: { id: 'admin-1', role: 'admin' } }), {
+          status: 200, headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      if (pathname === '/api/state') {
+        return new Response(JSON.stringify({ encryptedPayload }), {
+          status: 200, headers: { 'Content-Type': 'application/json', ETag: '"5"' }
+        });
+      }
+      throw new Error('Unexpected request: ' + pathname);
+    });
     vi.stubGlobal('fetch', fetchMock);
     vi.spyOn(storage, 'saveState').mockReturnValue(true);
 
@@ -858,7 +868,9 @@ describe('Gateway validation response reuse', () => {
     }, reportResult);
 
     expect(reportResult).toHaveBeenCalledWith(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls.map(([input]) => new URL(String(input)).pathname)).toEqual([
+      '/api/auth/me', '/api/state'
+    ]);
   });
 });
 
