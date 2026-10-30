@@ -20,6 +20,7 @@ import {
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
+import { getMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
@@ -803,36 +804,6 @@ function setCurrentBalance(value: number) {
     balance: state.cashCushion?.freeCash || 0,
     debt: Math.abs(state.balance || 0)
   };
-}
-
-function saveCurrentBalance(signedValue: number) {
-  if (!Number.isFinite(signedValue)) return;
-  const { balance, debt } = setCurrentBalance(signedValue);
-  saveState(state, pushStateToGist);
-  renderBoard();
-  logTerminal(`[Balance]: Current balance/debt updated. Balance: ${formatUSD(balance)} | Margin debt: -${formatUSD(debt)}.`);
-}
-
-async function addCashStockFromDesk(ticker: string, shares: number, manualPrice: number) {
-  const cleanTicker = ticker.trim().toUpperCase();
-  if (!cleanTicker || !Number.isFinite(shares) || shares <= 0) return;
-  if (Number.isFinite(manualPrice) && manualPrice <= 0) return;
-  if (!Number.isFinite(manualPrice) && !Number.isNaN(manualPrice)) return;
-
-  addCashHolding(cleanTicker, shares, manualPrice);
-  saveState(state, pushStateToGist);
-  renderBoard();
-  logTerminal(`[Balance]: Added ${shares} ${cleanTicker}. Fetching live online quote...`);
-  await fetchLivePrice(cleanTicker);
-}
-
-function removeCashStock(index: number) {
-  const holding = state.cashCushion?.holdings?.[index];
-  if (!holding) return;
-  const removed = removeCashHolding(holding.ticker);
-  saveState(state, pushStateToGist);
-  renderBoard();
-  logTerminal(`[Cash Cushion]: Removed ${removed.ticker} from cash holdings.`);
 }
 
 async function requestLivePrice(symbol: string, force = false) {
