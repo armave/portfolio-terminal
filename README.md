@@ -47,7 +47,7 @@ Access the production build on [GitHub Pages](https://armave.github.io/portfolio
 
 ### Accounts and roles
 
-On the first visit after this upgrade, create the initial administrator account using the configured Worker Gateway Secret. The Gateway Secret is used only for this one-time bootstrap; subsequent sign-ins use the account name and password. Passwords must be 12–128 characters and are stored server-side as salted PBKDF2-SHA-256 hashes. Session tokens expire after seven days and are stored hashed by the Durable Object.
+On the first visit after this upgrade, create the initial administrator account using the configured Worker Gateway Secret. The one-time bootstrap credential also initializes the shared portfolio encryption key, which the Durable Object retains for authenticated accounts; subsequent sign-ins use the account name and password. Passwords must be 12–128 characters and are stored server-side as salted PBKDF2-SHA-256 hashes. Session tokens expire after seven days and are stored hashed by the Durable Object.
 
 Administrators can create, rename, change the role of, reset the password for, and delete accounts in **Settings → User management**. New accounts default to **guest**. Guests can read the shared portfolio but cannot write to the Cloudflare Worker. At least one administrator must remain, and an administrator cannot delete their own signed-in account.
 
