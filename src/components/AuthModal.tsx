@@ -100,8 +100,12 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
               class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
           </label>}
           <button type="submit" disabled={submitting} class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-black text-xs font-bold px-4 py-2 rounded transition">
-            {submitting ? "Signing in…" : setupRequired ? "Create admin account" : "Sign in"}
+            {submitting ? "Loading portfolio…" : setupRequired ? "Create admin account" : "Sign in"}
           </button>
+          {submitting && <div class="flex items-center justify-center gap-2 rounded border border-cyan-900/70 bg-cyan-950/30 px-3 py-3 text-xs text-cyan-200" role="status" aria-live="polite">
+            <span class="h-4 w-4 animate-spin rounded-full border-2 border-cyan-300/30 border-t-cyan-300" aria-hidden="true" />
+            <span>Loading your portfolio and assigned stocks. Please wait…</span>
+          </div>}
         </form>
       )}
       {error && <p class="text-xs text-red-400" role="alert">{error}</p>}
