@@ -168,7 +168,7 @@ describe('cloud state sync', () => {
       cashflows: [{ id: 'legacy-cashflow-1' }],
       lastRolloverTimestamp: Date.now()
     }, secret);
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(_input);
       if (url.endsWith('/api/state')) {
         return new Response(JSON.stringify({ encryptedPayload }), {
