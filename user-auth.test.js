@@ -36,7 +36,18 @@ describe("six-character account password minimum", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("accepts a six-character password for initial admin bootstrap and login", async () => {
-    vi.stubGlobal("crypto", webcrypto);
+    const deriveIterations = [];
+    vi.stubGlobal("crypto", {
+      subtle: {
+        importKey: (...args) => webcrypto.subtle.importKey(...args),
+        deriveBits: (algorithm, key, length) => {
+          deriveIterations.push(algorithm.iterations);
+          return webcrypto.subtle.deriveBits(algorithm, key, length);
+        }
+      },
+      getRandomValues: webcrypto.getRandomValues.bind(webcrypto),
+      randomUUID: webcrypto.randomUUID.bind(webcrypto)
+    });
     const { store } = createStore();
     const bootstrap = await post(store, "/api/auth/bootstrap", {
       name: "Primary Admin", password: "secret"
@@ -52,6 +63,7 @@ describe("six-character account password minimum", () => {
       name: "Primary Admin", password: "secret"
     });
     expect(login.status).toBe(200);
+    expect(deriveIterations).toEqual(Array(12).fill(100_000));
   });
 
   it("rejects passwords shorter than six characters at bootstrap and user creation", async () => {
