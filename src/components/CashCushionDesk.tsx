@@ -203,6 +203,19 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               const pnl = costValue !== null ? marketValue - costValue : null;
               const pnlPercent = costValue && costValue > 0 ? pnl! / costValue * 100 : null;
               const change = holding.quoteDetails?.changePercent;
+              const relatedTranches = activeTranches
+                .filter((tranche) => state.activeTrancheGuestAssignments?.[tranche.id] === guestUserId && tranche.ticker.toUpperCase() === holding.ticker)
+                .map((tranche) => {
+                  const trancheType = state.activeTrancheTypes?.[tranche.id] || state.activeTrancheTypes?.[holding.ticker] || 'cash';
+                  const mix = normalizeActiveTrancheMix(
+                    tranche.quantity,
+                    state.activeTrancheMixes?.[tranche.id] || state.activeTrancheMixes?.[holding.ticker]
+                  );
+                  const assignedShares = getAssignableActiveTrancheCashQuantity(trancheType, tranche.quantity, mix);
+                  return { ...tranche, trancheType, mix, assignedShares };
+                })
+                .filter((tranche) => tranche.assignedShares > 0)
+                .sort((a, b) => (b.purchasedAt ?? 0) - (a.purchasedAt ?? 0));
               return (
                 <article key={holding.ticker} class="guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-4 shadow-sm">
                   <div class="flex items-start justify-between gap-3">
@@ -220,6 +233,38 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     <div><p class="text-[10px] text-slate-500">Price · share</p><p class="mt-1 font-mono text-sm font-bold text-emerald-300">{price > 0 ? formatUSD(price) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Avg. entry</p><p class="mt-1 font-mono text-sm text-slate-300">{hasCost ? formatUSD(averagePrice) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Unrealized P/L</p><p class={`mt-1 font-mono text-sm font-bold ${pnl === null ? 'text-slate-500' : pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{pnl === null ? '—' : `${pnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(pnl))}`}{pnlPercent !== null ? <span class="block text-[10px] font-normal">{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%</span> : null}</p></div>
+                  </div>
+                  <div class="mt-4 border-t border-slate-800 pt-3">
+                    <div class="mb-2 flex items-center justify-between gap-2">
+                      <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Related active tranches</h4>
+                      <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[9px] font-semibold text-slate-300">{relatedTranches.length} {relatedTranches.length === 1 ? 'tranche' : 'tranches'}</span>
+                    </div>
+                    {relatedTranches.length === 0 ? (
+                      <p class="text-[10px] text-slate-500">No active tranche details available.</p>
+                    ) : (
+                      <div class="space-y-2">
+                        {relatedTranches.map((tranche) => {
+                          const trancheDate = tranche.purchasedAt !== null
+                            ? new Date(tranche.purchasedAt).toLocaleDateString()
+                            : 'Date unavailable';
+                          const tranchePrice = Number(tranche.marketPrice) || 0;
+                          return (
+                            <div key={tranche.id} class="rounded-lg border border-slate-800/80 bg-slate-900/60 p-2.5">
+                              <div class="flex flex-wrap items-center justify-between gap-2">
+                                <span class="text-[10px] font-semibold text-slate-200">{trancheDate}</span>
+                                <span class="rounded border border-cyan-900/70 bg-cyan-950/30 px-1.5 py-0.5 text-[9px] uppercase text-cyan-300">{tranche.trancheType === 'mix' ? 'Mix · cash portion' : 'Cash'}</span>
+                              </div>
+                              <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                                <div><p class="text-[9px] text-slate-500">Assigned shares</p><p class="font-mono text-[11px] font-semibold text-slate-200">{tranche.assignedShares.toLocaleString('en-US', { maximumFractionDigits: 3 })}</p></div>
+                                <div><p class="text-[9px] text-slate-500">Entry price</p><p class="font-mono text-[11px] text-slate-200">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</p></div>
+                                <div><p class="text-[9px] text-slate-500">Market price</p><p class="font-mono text-[11px] text-emerald-300">{tranchePrice > 0 ? formatUSD(tranchePrice) : '—'}</p></div>
+                                <div><p class="text-[9px] text-slate-500">Cash / margin split</p><p class="font-mono text-[11px] text-slate-300">{tranche.trancheType === 'mix' ? `${tranche.mix.cash.toLocaleString('en-US', { maximumFractionDigits: 3 })} / ${tranche.mix.margin.toLocaleString('en-US', { maximumFractionDigits: 3 })}` : '100% cash'}</p></div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                   <p class="mt-3 text-[9px] text-slate-500">{formatQuoteMetadata(holding, refreshIntervalMs)}</p>
                 </article>
