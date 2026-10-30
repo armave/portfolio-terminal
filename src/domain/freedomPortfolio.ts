@@ -225,6 +225,21 @@ export function getActiveTranchesFromTrades(
     }
     return 0;
   };
+  const firstPositivePrice = (...values: unknown[]): number | null => {
+    for (const value of values) {
+      if (value === null || value === undefined || value === '' || typeof value === 'boolean') continue;
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    return null;
+  };
+  const firstNonEmptyText = (...values: unknown[]): string => {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) return value;
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    }
+    return '';
+  };
   const firstTimestamp = (...values: unknown[]): number | null => {
     for (const value of values) {
       const parsed = operationTimestamp(value);
@@ -241,15 +256,13 @@ export function getActiveTranchesFromTrades(
     return {
       trade,
       rowIndex,
-      ticker: tickerKey(trade?.ticker ?? raw.instr_nm ?? raw.i ?? raw.ticker ?? raw.symbol),
+      ticker: tickerKey(firstNonEmptyText(trade?.ticker, raw.instr_nm, raw.i, raw.ticker, raw.symbol)),
       side,
       quantity: firstPositiveMagnitude(
         trade?.quantity, (trade as any)?.qty,
         raw.q, raw.quantity, raw.qty
       ),
-      price: positiveFinite(
-        trade?.price ?? raw.p ?? raw.price ?? raw.exec_price
-      ),
+      price: firstPositivePrice(trade?.price, raw.p, raw.price, raw.exec_price),
       at: firstTimestamp(
         trade?.executedAt, trade?.date, trade?.time,
         raw.date, raw.time, raw.datetime, raw.exec_time
