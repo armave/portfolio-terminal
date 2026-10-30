@@ -175,9 +175,15 @@ export interface FreedomExecutedTradeLike {
   id?: string;
   ticker?: string;
   side?: string;
+  /** Legacy broker aliases are accepted alongside the normalized fields. */
+  operation?: string | number | null;
+  type?: string | number | null;
+  date?: string | number | null;
+  time?: string | number | null;
   quantity?: number | null;
   price?: number | null;
   executedAt?: string | null;
+  commission?: number | string | null;
 }
 
 /** Derive still-open purchase operations from Freedom's executed-trades history using FIFO sells. */
