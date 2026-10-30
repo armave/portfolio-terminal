@@ -2,6 +2,7 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import { useRef } from 'preact/hooks';
 import type { BrokerRules, QuoteDetails } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
+import { getQuoteRefreshInterval } from '../services/storage';
 import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import {
@@ -43,11 +44,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
       <details class="margin-risk-mobile-details"><summary>Equity and collateral details</summary><div class="margin-risk-detail"><span>Account equity</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>Cash / collateral</span><strong>{collateralText}</strong></div><div class="margin-risk-disclaimer">Estimates use configured broker thresholds and are not live broker risk indicators.</div></details>
     </section>
   );
-}
-
-export interface SummaryMetricsGridProps {
-  rules: BrokerRules;
-  refreshIntervalMs?: number;
 }
 
 function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; className: string } | null {
@@ -156,11 +152,10 @@ function computeMarginRiskDisplay(
   };
 }
 
-export function SummaryMetricsGrid({
-  rules,
-  refreshIntervalMs = 60000
-}: SummaryMetricsGridProps) {
+export function SummaryMetricsGrid() {
   const state = usePortfolio();
+  const rules = state.brokerAssumptions;
+  const refreshIntervalMs = getQuoteRefreshInterval(60000);
   const previousPricesRef = useRef<Record<string, number>>({});
   const dailyRate = rules.annualRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
