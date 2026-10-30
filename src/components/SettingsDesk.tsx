@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { emitUiEvent, addUiEventListener, removeUiEventListener } from '../ui/uiEventBus';
+import { emitUiEvent, addUiEventListener, removeUiEventListener, type UiEvent } from '../ui/uiEventBus';
 import {
   areHeaderCredentialsConfigured,
   getGatewaySecret,
@@ -42,8 +42,8 @@ export function SettingsDesk() {
   const rules = portfolio.brokerAssumptions;
   const [secretValue, setSecretValue] = useState<string>(() => getGatewaySecret() || '');
   useEffect(() => {
-    const handleAuthenticated = (event: Event) => {
-      const secret = (event as CustomEvent<{ secret: string }>).detail?.secret || '';
+    const handleAuthenticated = (event: UiEvent<{ secret: string }>) => {
+      const secret = event.detail.secret;
       setSecretValue(secret);
       setCredentialsHidden(false);
       setIsConfigured(Boolean(secret));
