@@ -1,6 +1,6 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import { addBrokerEventListener } from './src/services/brokerEventBus';
-import { setTradingConsoleProps, setSettingsPropsState, setMarketInsightsPropsState, setExternalLinksPropsState } from './src/ui/uiStateStore';
+import { setSettingsPropsState } from './src/ui/uiStateStore';
 import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
@@ -90,8 +90,6 @@ let lastRenderedDeskView: string | null = null;
 let settingsPanelMounted = false;
 let lastSettingsRulesSignature: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
-let activeInsightSection = 'news';
-let insightRequestId = 0;
 let initialQuoteRefreshPending = false;
 const boardAnalystSnapshots = new Map<string, any>();
 const boardAnalystErrors = new Map<string, any>();
@@ -569,14 +567,6 @@ function setActiveView(view: string) {
 
 const switchView = setActiveView;
 
-function renderConsoleQuickActions() {
-  const position = state.positions[state.activeView];
-  setTradingConsoleProps({
-      position,
-      onExecuteCommand: (command?: string) => executeCommand(command ?? '')
-    } satisfies import('./src/components/TradingConsole').TradingConsoleProps);
-}
-
 function updateCombinedBreakeven() {
   const setText = (text: string) => setBreakevenText(text);
 
@@ -643,26 +633,12 @@ function updateCombinedBreakeven() {
   setText(`Combined Breakeven: ${beDays} days (${beDateStr})`);
 }
 
-function renderBoardExternalLinks() {
-  const activeTicker = state.positions[state.activeView] ? state.activeView : '';
-  setExternalLinksPropsState({ ticker: activeTicker } satisfies import('./src/components/BoardExternalLinks').BoardExternalLinksProps);
-}
-
 function renderBoard() {
   renderBoardUI(state, {
     rules: TRADERNET_RULES as any,
-    onSetActiveView: setActiveView,
-    onRefreshAllLivePrices: refreshAllLivePrices,
-    onSaveBalance: saveCurrentBalance,
-    onAddCashStock: addCashStockFromDesk,
     onRenderSettingsPanel: () => renderSettingsPanel(),
     onRenderAnalystConsensus: renderBoardAnalystConsensus,
-    onFetchLivePrice: fetchLivePrice,
-    onRemoveCashStock: removeCashStock,
-    onRenderExternalLinks: renderBoardExternalLinks,
-    onRenderConsoleQuickActions: renderConsoleQuickActions,
     onUpdateCombinedBreakeven: updateCombinedBreakeven,
-    onSyncMarketInsightsPanel: syncMarketInsightsPanel,
     refreshIntervalMs: getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS),
     lastDeskView: lastRenderedDeskView,
     onUpdateLastDeskView: (view: string) => { lastRenderedDeskView = view; }
@@ -672,42 +648,6 @@ function renderBoard() {
   // When settings are active, renderBoardUI calls renderSettingsPanel explicitly.
   if (!settingsPanelMounted) renderSettingsPanel();
 }
-
-function renderMarketInsightsComponent() {
-  const ticker = getMarketInsightsTicker();
-  setMarketInsightsPropsState({
-      ticker,
-      isOpen: true,
-      activeSection: activeInsightSection as InsightSection,
-      refreshTrigger: insightRequestId,
-      onSelectSection: (section: InsightSection) => {
-        activeInsightSection = section;
-        renderMarketInsightsComponent();
-      }
-    } satisfies import('./src/components/MarketInsightsPanel').MarketInsightsPanelProps);
-}
-
-function getMarketInsightsTicker() {
-  const currentView = state.activeView;
-  // Desk routes are not stock symbols. Never send them to quote/insights APIs.
-  const isPositionView = Boolean(
-    currentView &&
-    !['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(currentView) &&
-    state.positions?.[currentView]
-  );
-  if (isPositionView) return currentView;
-
-  const tickers = Object.keys(state.positions || {});
-  const preferredTicker = state.selectedTicker;
-  if (preferredTicker && state.positions?.[preferredTicker]) return preferredTicker;
-  return tickers[0] || '';
-}
-
-function syncMarketInsightsPanel() {
-  // Visibility is owned by App's active-desk JSX; this function only refreshes data props.
-  renderMarketInsightsComponent();
-}
-
 
 async function fetchBoardAnalystTarget(ticker: string, force = false) {
   if (!ticker) return null;
@@ -1601,6 +1541,15 @@ function bindStartupActions() {
     void initApp();
   });
   addUiEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
+  addUiEventListener('portfolio:set-active-view', (event) => {
+    setActiveView(event.detail.view);
+  });
+  addUiEventListener('portfolio:refresh-live-prices', (event) => {
+    void refreshAllLivePrices().finally(event.detail.resolve);
+  });
+  addUiEventListener('terminal:execute-command', (event) => {
+    void executeCommand(event.detail.command);
+  });
 }
 bindStartupActions();
 
