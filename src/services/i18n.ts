@@ -409,6 +409,17 @@ const RU: Record<string, string> = {
   "Show less": "Показать меньше",
   "New": "Новая",
   "Day:": "За день:",
+  "Sync failed": "Ошибка синхронизации",
+  "TODAY": "СЕГОДНЯ",
+  "BREAKEVEN": "БЕЗУБЫТОЧНОСТЬ",
+  "Portfolio CLI ready. Broker-synced portfolio data is available; refresh quotes or choose a quick action below.": "Терминал портфеля готов. Доступны синхронизированные с брокером данные; обновите котировки или выберите быстрое действие ниже.",
+  "Position value": "Стоимость позиции",
+  "Combined Breakeven": "Безубыточность портфеля",
+  "Buy More Projection": "Прогноз дополнительной покупки",
+  "MARGIN": "МАРЖА",
+  "Rows": "Строки",
+  "Page": "Страница",
+  "No quote for": "Нет котировки для",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -434,7 +445,12 @@ function translateDynamicText(normalized: string): string | undefined {
     ['Language for ', 'Language for ', ''],
     ['New password for ', 'New password for ', ''],
     ['Updated ', 'Updated', ' '],
+    ['Synced: ', 'Synced', ': '],
     ['Synced ', 'Synced', ' '],
+    ['MARGIN: ', 'MARGIN', ': '],
+    ['Combined Breakeven: ', 'Combined Breakeven', ': '],
+    ['Exit Comparison · ', 'Exit Comparison', ' · '],
+    ['Buy More Projection · ', 'Buy More Projection', ' · '],
     ['Read news: ', 'Read news', ': '],
     ['Stocktwits unavailable: ', 'Stocktwits unavailable', ': '],
     ['Quote status: ', 'Quote status', ': '],
@@ -446,6 +462,22 @@ function translateDynamicText(normalized: string): string | undefined {
     if (normalized.startsWith(prefix)) {
       return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
     }
+  }
+
+  const rows = normalized.match(/^Rows (.+) of (\d+)$/i);
+  if (rows) return `Строки ${rows[1]} из ${rows[2]}`;
+  const page = normalized.match(/^Page (\d+) of (\d+)$/i);
+  if (page) return `Страница ${page[1]} из ${page[2]}`;
+  const milestone = normalized.match(/^(EOW|NTD) · \+(\d+)d$/i);
+  if (milestone) {
+    const label = milestone[1].toUpperCase() === 'EOW' ? 'До конца недели' : 'Следующий торговый день';
+    return `${label} · +${milestone[2]} дн.`;
+  }
+  const positionValue = normalized.match(/^Position value ([\\d,]+(?:\\.[\\d]+)?)(?: \\(already\\s*([\\d.,]+)% below trigger\\))?$/i);
+  if (positionValue) {
+    return positionValue[2]
+      ? `Стоимость позиции ${positionValue[1]} (уже на ${positionValue[2]}% ниже порога)`
+      : `Стоимость позиции ${positionValue[1]}`;
   }
 
   const showTranches = normalized.match(/^Show (\d+) tranches$/i);
