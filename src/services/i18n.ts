@@ -407,6 +407,7 @@ const RU: Record<string, string> = {
   "A valid market quote is required to calculate market value and unrealized P/L.": "Для расчёта рыночной стоимости и нереализованной прибыли/убытка необходима корректная рыночная котировка.",
   "Stocktwits unavailable": "Stocktwits недоступен",
   "Show less": "Показать меньше",
+  "New": "Новая",
   "Day:": "За день:",
 };
 
