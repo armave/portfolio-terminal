@@ -1620,4 +1620,61 @@ export function publishGuestPortfolioSnapshot(
   return request;
 }
 
+export interface GuestPortfolioPublication {
+  guestId: string;
+  snapshot: GuestPortfolioSnapshot;
+}
+
+/** Publish all changed guest projections in one authenticated administrator request. */
+export function publishGuestPortfolioSnapshots(
+  publications: GuestPortfolioPublication[]
+): Promise<void> {
+  const token = getActiveGatewaySecret();
+  if (!token) return Promise.reject(new Error("Not signed in."));
+  if (!Array.isArray(publications) || publications.length === 0) return Promise.resolve();
+
+  const seenGuestIds = new Set<string>();
+  const changed = publications.filter(({ guestId, snapshot }) => {
+    const id = String(guestId || "").trim();
+    if (!id || seenGuestIds.has(id)) throw new Error("Guest portfolio batch contains a duplicate or missing guest ID.");
+    seenGuestIds.add(id);
+    if (!snapshot || !Array.isArray(snapshot.tranches)) throw new Error("Invalid guest portfolio snapshot.");
+    const cacheKey = JSON.stringify([token, id]);
+    return guestPortfolioPublicationFingerprints.get(cacheKey) !== JSON.stringify(snapshot.tranches);
+  }).map(({ guestId, snapshot }) => ({ guestId: guestId.trim(), snapshot }));
+
+  if (changed.length === 0) return Promise.resolve();
+  const requestKey = JSON.stringify([
+    "batch",
+    token,
+    changed.map(({ guestId, snapshot }) => [guestId, JSON.stringify(snapshot.tranches)])
+  ]);
+  const existing = guestPortfolioPublicationRequests.get(requestKey);
+  if (existing) return existing;
+
+  const request = authRequest<{ success: boolean; revisions?: Record<string, number> }>("/api/guest-portfolio", {
+    method: "POST",
+    token,
+    body: {
+      snapshots: changed.map(({ guestId, snapshot }) => ({
+        guestId,
+        snapshot: { updatedAt: snapshot.updatedAt, tranches: snapshot.tranches }
+      }))
+    }
+  }).then(() => {
+    for (const { guestId, snapshot } of changed) {
+      guestPortfolioPublicationFingerprints.set(
+        JSON.stringify([token, guestId]),
+        JSON.stringify(snapshot.tranches)
+      );
+    }
+  }).finally(() => {
+    if (guestPortfolioPublicationRequests.get(requestKey) === request) {
+      guestPortfolioPublicationRequests.delete(requestKey);
+    }
+  });
+  guestPortfolioPublicationRequests.set(requestKey, request);
+  return request;
+}
+
 
