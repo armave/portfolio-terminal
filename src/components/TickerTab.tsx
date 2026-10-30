@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { BoardState } from '../types/portfolio';
+import { usePortfolio } from '../store/portfolioStore';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
+import { emitUiEvent } from '../ui/uiEventBus';
 
-export interface TickerTabsProps {
-  state: BoardState;
-  onSetActiveView?: (view: string) => void;
-  onRefreshAllLivePrices?: () => void | Promise<void>;
-}
-
-export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: TickerTabsProps) {
+export function TickerTabs() {
+  const state = usePortfolio();
   const [isRefreshingQuotes, setIsRefreshingQuotes] = useState(false);
   const selectView = (view: string) => {
     // Persist at the actual navigation click site as well as through the store,
@@ -19,7 +15,7 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
     } catch {
       // Continue navigation when storage is unavailable.
     }
-    onSetActiveView?.(view);
+    emitUiEvent('portfolio:set-active-view', { view });
     // Entering or switching within the Margin workspace should pull fresh
     // quotes immediately instead of waiting for the polling interval.
     if (!['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(view)) {
@@ -75,7 +71,9 @@ export function TickerTabs({ state, onSetActiveView, onRefreshAllLivePrices }: T
 
     setIsRefreshingQuotes(true);
     try {
-      await onRefreshAllLivePrices?.();
+      await new Promise<void>((resolve) => {
+        emitUiEvent('portfolio:refresh-live-prices', { resolve });
+      });
     } finally {
       setIsRefreshingQuotes(false);
     }
