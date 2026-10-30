@@ -5,7 +5,6 @@ import { clearTerminalLog } from '../ui/notifications';
 import { useTerminalLogEntries } from '../ui/notificationStore';
 import { TerminalLog } from './TerminalLog';
 import { formatUSD } from '../utils/formatters';
-import type { PositionRecord } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { useAiStatus } from '../ui/uiStateStore';
