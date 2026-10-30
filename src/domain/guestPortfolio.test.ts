@@ -102,7 +102,6 @@ describe('guest holding valuation', () => {
   it('does not turn a missing market quote into a zero market value or false loss', async () => {
     const { getGuestHoldingValuation } = await import('./guestPortfolio');
     expect(getGuestHoldingValuation({
-      ticker: 'AAPL',
       shares: 4,
       averagePrice: 150,
       currentPrice: null,
@@ -122,7 +121,6 @@ describe('guest holding valuation', () => {
   it('calculates market value and unrealized P/L when both quotes are available', async () => {
     const { getGuestHoldingValuation } = await import('./guestPortfolio');
     expect(getGuestHoldingValuation({
-      ticker: 'AAPL',
       shares: 4,
       averagePrice: 150,
       currentPrice: 175,
