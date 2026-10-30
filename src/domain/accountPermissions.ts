@@ -25,3 +25,11 @@ export function getAccountPermissions(role: AccountRole | null | undefined): Acc
     canEditBrokerRules: isAdmin
   };
 }
+
+/** Local navigation permission check using the already authenticated session role. */
+export function canAccessPortfolioView(
+  role: AccountRole | null | undefined,
+  view: string
+): boolean {
+  return role === "admin" || view === "BALANCE" || view === "CASH_CUSHION" || view === "SETTINGS";
+}

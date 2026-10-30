@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { resolveTabNavigationIndex } from '../ui/tabNavigation';
+import { isMarginDeskView, resolveTabNavigationIndex, shouldRefreshQuotesOnNavigation } from '../ui/tabNavigation';
 import { usePortfolio } from '../store/portfolioStore';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
@@ -19,9 +19,9 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
       // Continue navigation when storage is unavailable.
     }
     emitUiEvent('portfolio:set-active-view', { view });
-    // Entering or switching within the Margin workspace should pull fresh
-    // quotes immediately instead of waiting for the polling interval.
-    if (!['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(view)) {
+    // Refresh the portfolio once when returning to the Margin desk. Switching
+    // between its ticker tabs does not require another all-symbol quote batch.
+    if (shouldRefreshQuotesOnNavigation(state.activeView, view, isAdmin)) {
       void handleRefreshQuotes();
     }
   };
@@ -30,15 +30,13 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
     state.activeView === 'CASH_CUSHION' || state.activeView === 'BALANCE';
   const isClosedHistoryActive = state.activeView === 'CLOSED_HISTORY';
   const isSettingsActive = state.activeView === 'SETTINGS';
-  const isMarginDeskActive =
-    isAdmin && !isCushionActive && !isClosedHistoryActive && !isSettingsActive;
+  const isMarginDeskActive = isMarginDeskView(state.activeView, isAdmin);
 
-  // The Margin desk is the surface whose targets depend on open broker orders.
-  // Refresh on first mount and whenever navigation returns to that desk, rather
-  // than relying on a user clicking a ticker tab.
+  // The Margin desk depends on open broker orders. Request them only when the
+  // user enters this workspace, not whenever they switch between ticker tabs.
   useEffect(() => {
     if (isMarginDeskActive) emitBrokerEvent('broker:request-active-orders');
-  }, [isMarginDeskActive, state.activeView]);
+  }, [isMarginDeskActive]);
 
   const tickers = Object.keys(state.positions || {});
   const marginDeskViews = tickers.length === 0
