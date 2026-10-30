@@ -234,6 +234,53 @@ describe('active broker tranches', () => {
     });
   });
 
+  it('recovers quantities from legacy persisted raw TradeNet rows', () => {
+    const trades = [
+      {
+        id: 'legacy-buy-1',
+        ticker: '',
+        side: 'Unknown',
+        quantity: null,
+        price: null,
+        executedAt: null,
+        raw: {
+          instr_nm: 'GOOGL.US',
+          operation: 'unrecognized',
+          type: '1',
+          q: '0',
+          quantity: '5',
+          p: '0',
+          price: '282',
+          date: '2026-10-29T09:00:00'
+        }
+      },
+      {
+        id: 'legacy-buy-2',
+        ticker: 'GOOGL.US',
+        side: 'BUY',
+        quantity: null,
+        price: null,
+        executedAt: null,
+        raw: {
+          q: '14',
+          p: '282',
+          date: '2026-10-29T09:10:00'
+        }
+      }
+    ];
+
+    const lots = getActiveTranchesFromTrades(trades);
+
+    expect(lots.map((lot) => ({
+      ticker: lot.ticker,
+      quantity: lot.quantity,
+      averagePrice: lot.averagePrice
+    }))).toEqual([
+      { ticker: 'GOOGL', quantity: 5, averagePrice: 282 },
+      { ticker: 'GOOGL', quantity: 14, averagePrice: 282 }
+    ]);
+  });
+
   it('uses broker-reported buy commission when available', () => {
     const result = getActiveTranchesFromTrades([
       { id: 'buy-1', ticker: 'MSFT', side: 'BUY', quantity: 3, price: 100, commission: 0.85, executedAt: '2026-01-01T10:00:00Z' }
