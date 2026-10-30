@@ -3,6 +3,7 @@ import { decodeHtmlEntities } from '../utils/formatters';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type StocktwitsStream } from '../services/api';
 import { usePortfolio } from '../store/portfolioStore';
+import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
 
 export type InsightSection = 'news' | 'fundamentals' | 'earnings' | 'analysts';
 
@@ -59,19 +60,7 @@ function renderStocktwitsBody(body: string) {
 
 export function MarketInsightsPanel() {
   const portfolio = usePortfolio();
-  const currentView = portfolio.activeView;
-  const isPositionView = Boolean(
-    currentView &&
-    !['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(currentView) &&
-    portfolio.positions?.[currentView]
-  );
-  const tickers = Object.keys(portfolio.positions || {});
-  const preferredTicker = portfolio.selectedTicker;
-  const ticker = isPositionView
-    ? currentView
-    : preferredTicker && portfolio.positions?.[preferredTicker]
-      ? preferredTicker
-      : tickers[0] || '';
+  const ticker = getMarketInsightsTicker(portfolio);
   const [activeSection, setActiveSection] = useState<InsightSection>('news');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
