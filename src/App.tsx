@@ -22,6 +22,7 @@ import { resolveActiveView } from './ui/renderBoard';
 import { ScenarioReportModal } from './components/ScenarioReportModal';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import { restoreGatewaySecret } from './services/storage';
+import { setAppLanguage, subscribeAppLanguage } from './services/i18n';
 import { addBrokerEventListener, emitBrokerEvent } from './services/brokerEventBus';
 
 let tradesRequest: Promise<void> | null = null;
@@ -35,6 +36,7 @@ interface AppProps {
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [, setLanguageRevision] = useState(0);
   const permissions = getAccountPermissions(currentUser?.role);
   const backupImportInputRef = useRef<HTMLInputElement>(null);
   const mainWorkspaceRef = useRef<HTMLElement>(null);
@@ -310,7 +312,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const handleBackupImportRequest = () => {
       if (permissions.canManageBackups) backupImportInputRef.current?.click();
     };
-    const handleAuthUserChanged = (event: UiEvent<{ user: AuthUser | null }>) => setCurrentUser(event.detail.user);
+    const handleAuthUserChanged = (event: UiEvent<{ user: AuthUser | null }>) => {
+      setCurrentUser(event.detail.user);
+      setAppLanguage(event.detail.user?.language ?? 'en');
+    };
+    const unsubscribeLanguage = subscribeAppLanguage(() => {
+      setLanguageRevision((revision) => revision + 1);
+    });
     const handleScrollWorkspace = () => {
       requestAnimationFrame(() => {
         mainWorkspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -330,6 +338,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
       removeUiEventListener('auth:user-changed', handleAuthUserChanged);
       removeUiEventListener('terminal:startup-state', handleStartupState);
+      unsubscribeLanguage();
     };
   }, [permissions.canManageBackups]);
 
