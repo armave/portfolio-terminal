@@ -47,6 +47,12 @@ async function bootstrap(store) {
   return response.json();
 }
 
+async function sessionStorageKey(token) {
+  const digest = await webcrypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const hex = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, "0")).join("");
+  return "auth:session:" + hex;
+}
+
 describe("Durable Object account authentication", () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -153,14 +159,84 @@ describe("Durable Object account authentication", () => {
     expect(demote.status).toBe(409);
   });
 
-  it("invalidates expired sessions", async () => {
+  it("keeps administrator sessions valid without a time-based expiry", async () => {
     vi.stubGlobal("crypto", webcrypto);
     const { store, storage } = createStore();
     const session = await bootstrap(store);
-    const sessionKey = [...storage.values.keys()].find(key => key.startsWith("auth:session:"));
+    expect(session.expiresAt).toBeNull();
+
+    // A legacy administrator token with an already-passed expiresAt is still valid.
+    const sessionKey = await sessionStorageKey(session.token);
     await storage.put(sessionKey, { userId: session.user.id, expiresAt: Date.now() - 1000 });
     const verify = await request(store, "/api/auth/verify", {}, session.token);
+    expect(verify.status).toBe(200);
+  });
+
+  it("issues guest sessions for 30 days and upgrades legacy guest sessions", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const admin = await bootstrap(store);
+    const created = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Viewer",
+      password: "another-long-password-123"
+    }, admin.token);
+    expect(created.status).toBe(201);
+    const guestUser = (await created.json()).user;
+
+    const login = await request(store, "/api/auth/login", {
+      name: "Viewer",
+      password: "another-long-password-123"
+    });
+    expect(login.status).toBe(200);
+    const guestSession = await login.json();
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+    expect(guestSession.expiresAt - Date.now()).toBeGreaterThan(thirtyDays - 5000);
+    expect(guestSession.expiresAt - Date.now()).toBeLessThanOrEqual(thirtyDays);
+
+    // Legacy sessions only stored expiresAt = issuedAt + seven days.
+    // They receive a full 30-day lifetime measured from their original issue time.
+    const sessionKey = await sessionStorageKey(guestSession.token);
+    const issuedAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
+    await storage.put(sessionKey, {
+      userId: guestUser.id,
+      expiresAt: issuedAt + 7 * 24 * 60 * 60 * 1000
+    });
+    const verify = await request(store, "/api/auth/verify", {}, guestSession.token);
+    expect(verify.status).toBe(200);
+    expect(await storage.get(sessionKey)).toEqual({
+      userId: guestUser.id,
+      issuedAt,
+      expiresAt: issuedAt + thirtyDays
+    });
+  });
+
+  it("rejects guest sessions more than 30 days after issuance", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const admin = await bootstrap(store);
+    const created = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Viewer",
+      password: "another-long-password-123"
+    }, admin.token);
+    const guestUser = (await created.json()).user;
+    const login = await request(store, "/api/auth/login", {
+      name: "Viewer",
+      password: "another-long-password-123"
+    });
+    const guestSession = await login.json();
+    const sessionKey = await sessionStorageKey(guestSession.token);
+    const issuedAt = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    await storage.put(sessionKey, {
+      userId: guestUser.id,
+      issuedAt,
+      expiresAt: issuedAt + 30 * 24 * 60 * 60 * 1000
+    });
+
+    const verify = await request(store, "/api/auth/verify", {}, guestSession.token);
     expect(verify.status).toBe(401);
+    expect(await storage.get(sessionKey)).toBeUndefined();
   });
 });
 
