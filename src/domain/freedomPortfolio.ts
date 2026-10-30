@@ -184,6 +184,7 @@ export interface FreedomExecutedTradeLike {
   price?: number | null;
   executedAt?: string | null;
   commission?: number | string | null;
+  raw?: Record<string, unknown>;
 }
 
 /** Derive still-open purchase operations from Freedom's executed-trades history using FIFO sells. */
@@ -216,15 +217,45 @@ export function getActiveTranchesFromTrades(
     marketPrice: number | null; averagePrice: number | null; buyCommission?: number;
     purchasedAt: number | null; lastPurchasedAt: number | null; rowIndex: number;
   };
-  const ordered = trades.map((trade, rowIndex) => ({
-    trade,
-    rowIndex,
-    ticker: tickerKey(trade?.ticker),
-    side: tradeSide(trade?.side ?? trade?.operation ?? trade?.type),
-    quantity: Number(trade?.quantity),
-    price: positiveFinite(trade?.price),
-    at: operationTimestamp(trade?.executedAt ?? trade?.date ?? trade?.time)
-  })).filter(item => item.ticker && item.side && Number.isFinite(item.quantity) && item.quantity > 0)
+  const firstPositiveMagnitude = (...values: unknown[]): number => {
+    for (const value of values) {
+      if (value === null || value === undefined || value === '' || typeof value === 'boolean') continue;
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed !== 0) return Math.abs(parsed);
+    }
+    return 0;
+  };
+  const firstTimestamp = (...values: unknown[]): number | null => {
+    for (const value of values) {
+      const parsed = operationTimestamp(value);
+      if (parsed !== null) return parsed;
+    }
+    return null;
+  };
+  const ordered = trades.map((trade, rowIndex) => {
+    const raw = trade?.raw && typeof trade.raw === 'object' ? trade.raw : {};
+    const side = [
+      trade?.side, trade?.operation, trade?.type,
+      raw.side, raw.operation, raw.oper, raw.buy_sell, raw.type
+    ].map(tradeSide).find((value): value is 'buy' | 'sell' => value !== null) || null;
+    return {
+      trade,
+      rowIndex,
+      ticker: tickerKey(trade?.ticker ?? raw.instr_nm ?? raw.i ?? raw.ticker ?? raw.symbol),
+      side,
+      quantity: firstPositiveMagnitude(
+        trade?.quantity, (trade as any)?.qty,
+        raw.q, raw.quantity, raw.qty
+      ),
+      price: positiveFinite(
+        trade?.price ?? raw.p ?? raw.price ?? raw.exec_price
+      ),
+      at: firstTimestamp(
+        trade?.executedAt, trade?.date, trade?.time,
+        raw.date, raw.time, raw.datetime, raw.exec_time
+      )
+    };
+  }).filter(item => item.ticker && item.side && Number.isFinite(item.quantity) && item.quantity > 0)
     .sort((a, b) => (a.at ?? 0) - (b.at ?? 0) || a.rowIndex - b.rowIndex);
 
   const lots: BuyLot[] = [];
