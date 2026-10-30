@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { addUiEventListener, removeUiEventListener } from '../ui/uiEventBus';
+import { addUiEventListener, removeUiEventListener, type UiEvent } from '../ui/uiEventBus';
 import { ConsoleQuickActions } from './ConsoleQuickActions';
 import { clearTerminalLog } from '../ui/notifications';
 import { useTerminalLogEntries } from '../ui/notificationStore';
@@ -135,7 +135,7 @@ export function TradingConsole() {
   };
 
   useEffect(() => {
-    const handleCommandPrefill = (event: CustomEvent<{ command: string; selectText?: string | null; cursorAtEnd?: boolean }>) => {
+    const handleCommandPrefill = (event: UiEvent<{ command: string; selectText?: string | null; cursorAtEnd?: boolean }>) => {
       prefillCommandRef.current(event.detail.command, event.detail.selectText, false, event.detail.cursorAtEnd);
     };
     addUiEventListener('terminal:command-prefill', handleCommandPrefill);
