@@ -467,7 +467,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         </div>
 
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
-        <div id="tradingWorkspaceGrid" class={"trading-workspace-grid " + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
+        <div id="tradingWorkspaceGrid" class={(!["BALANCE"].includes(activeDeskView) && "trading-workspace-grid ") + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
           {permissions.canViewMarginDesk && <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
             <div
@@ -529,7 +529,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} />}</div>
 
           {/* Keep the command console available on both Margin and Cash desks. */}
-          {permissions.canUseTerminal && <div id="tradingTerminalColumn" class="trading-terminal-column">
+          {permissions.canUseTerminal && !["BALANCE"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
             <section
               id="marketInsightsPanel"
               key={`market-insights-${activeDeskView}`}
