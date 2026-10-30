@@ -106,7 +106,6 @@ describe('guest holding valuation', () => {
       averagePrice: 150,
       currentPrice: null,
       price: null,
-      marketValue: null
     })).toEqual({
       shares: 4,
       currentPrice: null,
@@ -125,7 +124,6 @@ describe('guest holding valuation', () => {
       averagePrice: 150,
       currentPrice: 175,
       price: 175,
-      marketValue: 700
     })).toEqual({
       shares: 4,
       currentPrice: 175,
