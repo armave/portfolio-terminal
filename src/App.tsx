@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
-import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useTradingConsoleProps, useCashCushionProps, useTickerTabsProps, useSummaryMetricsProps, useProjectionsProps, useEmptyStateProps, useMarketInsightsProps, useExternalLinksProps, useSettingsProps } from './ui/uiStateStore';
+import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useCashCushionProps, useSummaryMetricsProps, useProjectionsProps, useSettingsProps } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -16,7 +16,7 @@ import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
 import { MarginIntelligenceModal, type MarginIntelligenceState, type MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/commandDispatcher';
 import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest } from './services/api';
-import { portfolioStore, usePortfolioSelector } from './store/portfolioStore';
+import { portfolioStore, usePortfolio, usePortfolioSelector } from './store/portfolioStore';
 import { resolveActiveView } from './ui/renderBoard';
 import { ScenarioReportModal } from './components/ScenarioReportModal';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
@@ -36,18 +36,20 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const backupImportInputRef = useRef<HTMLInputElement>(null);
   const mainWorkspaceRef = useRef<HTMLElement>(null);
   const activeDeskView = usePortfolioSelector(resolveActiveView);
+  const portfolioSnapshot = usePortfolio();
+  const emptyStateVisible = Object.keys(portfolioSnapshot.positions || {}).length === 0 && activeDeskView === 'COMBINED';
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
   const cashCushionProps = useCashCushionProps();
   const settingsProps = useSettingsProps();
-  const tickerTabsProps = useTickerTabsProps();
+
   const summaryMetricsProps = useSummaryMetricsProps();
   const projectionsProps = useProjectionsProps();
-  const emptyStateProps = useEmptyStateProps();
-  const marketInsightsProps = useMarketInsightsProps();
-  const externalLinksProps = useExternalLinksProps();
-  const tradingConsoleProps = useTradingConsoleProps();
+
+
+
+
   const { title: boardTitle, showDailyMove } = useBoardTitle();
   const breakevenText = useBreakevenText();
   const analystConsensus = useAnalystConsensus();
@@ -431,7 +433,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets">{tickerTabsProps && <TickerTabs {...tickerTabsProps} />}</div>
+          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs /></div>
           <div
             class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             id="daysToBreakeven"
@@ -441,17 +443,17 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         </div>
 
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
-        <div id="tradingWorkspaceGrid" class={"trading-workspace-grid " + (emptyStateProps ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
+        <div id="tradingWorkspaceGrid" class={"trading-workspace-grid " + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
           <div id="mainDeskContainer" class={"space-y-4 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
             <div
               id="emptyStatePanel"
-              class={"border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4 " + (emptyStateProps ? "" : "hidden")}
-            >{emptyStateProps && <EmptyStatePanel {...emptyStateProps} />}</div>
+              class={"border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4 " + (emptyStateVisible ? "" : "hidden")}
+            >{emptyStateVisible && <EmptyStatePanel />}</div>
 
             <div
               id="boardTitleRow"
-              class={"board-title-row flex flex-wrap items-center justify-between gap-2 " + (emptyStateProps ? "hidden" : "")}
+              class={"board-title-row flex flex-wrap items-center justify-between gap-2 " + (emptyStateVisible ? "hidden" : "")}
             >
               <div class="min-w-0 flex-1 text-lg font-bold text-white" id="boardTitle">
                 {boardTitle}
@@ -466,18 +468,18 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             >
               <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
               <div id="boardAnalystConsensus" class={analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
-              <div id="boardExternalLinks" class="flex items-center gap-2">{externalLinksProps && <BoardExternalLinks {...externalLinksProps} />}</div>
+              <div id="boardExternalLinks" class="flex items-center gap-2"><BoardExternalLinks /></div>
             </div>
 
             <div
               id="portfolioMetricsGrid"
               aria-label="Portfolio summary metrics"
-              class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateProps ? "hidden" : "")}
+              class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateVisible ? "hidden" : "")}
             >{summaryMetricsProps && <SummaryMetricsGrid {...summaryMetricsProps} />}</div>
 
             {/* Projection Table */}
             <div
-              class={"table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none " + (emptyStateProps ? "hidden" : "")}
+              class={"table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none " + (emptyStateVisible ? "hidden" : "")}
               id="projectionTableContainer"
             >
               <table aria-label="Portfolio projection by date" class="w-full min-w-[300px] text-xs border-collapse">
@@ -509,12 +511,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               key={`market-insights-${activeDeskView}`}
               class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
               aria-label="Market insights"
-            >{marketInsightsProps && <MarketInsightsPanel {...marketInsightsProps} />}</section>
+            >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(activeDeskView) ? <MarketInsightsPanel /> : null}</section>
             <div
               id="tradingConsoleCard"
               key={`trading-console-${activeDeskView}`}
               class={"desk-view-transition trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
-            >{tradingConsoleProps && <TradingConsole {...tradingConsoleProps} />}</div>
+            ><TradingConsole /></div>
           </div>
 
         </div>
