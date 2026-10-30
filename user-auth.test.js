@@ -490,3 +490,97 @@ describe("Cloudflare PBKDF2 iteration compatibility", () => {
     expect(deriveIterations).toEqual(Array(12).fill(100_000));
   });
 });
+
+
+describe("account language preferences", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("defaults new accounts to English and lets each user change their own language", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const admin = await bootstrap(store);
+    expect(admin.user.language).toBe("en");
+
+    const created = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Viewer",
+      password: "another-long-password-123"
+    }, admin.token);
+    expect(created.status).toBe(201);
+    const createdUser = (await created.json()).user;
+    expect(createdUser.language).toBe("en");
+
+    const login = await request(store, "/api/auth/login", {
+      name: "Viewer",
+      password: "another-long-password-123"
+    });
+    const guest = await login.json();
+
+    const changed = await request(store, "/api/auth/me", { language: "ru" }, guest.token);
+    expect(changed.status).toBe(200);
+    expect((await changed.json()).user).toMatchObject({ id: createdUser.id, language: "ru" });
+
+    const current = await store.fetch(new Request("https://durable.test/api/auth/me", {
+      headers: { Authorization: "Bearer " + guest.token }
+    }));
+    expect((await current.json()).user.language).toBe("ru");
+
+    const invalid = await request(store, "/api/auth/me", { language: "fr" }, guest.token);
+    expect(invalid.status).toBe(400);
+  });
+
+  it("lets administrators set another account's language and keeps legacy accounts in English", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const admin = await bootstrap(store);
+    const created = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Viewer",
+      password: "another-long-password-123",
+      language: "ru"
+    }, admin.token);
+    expect((await created.json()).user.language).toBe("ru");
+    const user = (await created.json()).user;
+
+    const updated = await request(store, "/api/auth/users", {
+      action: "update",
+      id: user.id,
+      language: "en"
+    }, admin.token);
+    expect((await updated.json()).user.language).toBe("en");
+
+    const storedUsers = await storage.get("auth:users");
+    const legacyUsers = storedUsers.map(({ language, ...legacyUser }) => legacyUser);
+    await storage.put("auth:users", legacyUsers);
+    const current = await store.fetch(new Request("https://durable.test/api/auth/me", {
+      headers: { Authorization: "Bearer " + admin.token }
+    }));
+    expect((await current.json()).user.language).toBe("en");
+  });
+
+  it("rejects unsupported languages when creating or administratively updating accounts", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const admin = await bootstrap(store);
+    const invalidCreate = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Bad Language",
+      password: "another-long-password-123",
+      language: "fr"
+    }, admin.token);
+    expect(invalidCreate.status).toBe(400);
+
+    const created = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Viewer",
+      password: "another-long-password-123"
+    }, admin.token);
+    const user = (await created.json()).user;
+    const invalidUpdate = await request(store, "/api/auth/users", {
+      action: "update",
+      id: user.id,
+      language: "fr"
+    }, admin.token);
+    expect(invalidUpdate.status).toBe(400);
+  });
+});
