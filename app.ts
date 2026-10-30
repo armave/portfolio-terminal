@@ -987,8 +987,10 @@ function refreshSupplementalPortfolioData() {
   if (currentAccountRole === 'guest') {
     // Guests need assignment and trade-lot changes, never broker-wide account balances.
     if (guestCloudRefreshInFlight) return;
-    const request = syncCloudState('pull').then(() => {
-      emitBrokerEvent('broker:request-executed-trades');
+    const request = syncCloudState('pull').then(async () => {
+      await new Promise<void>((resolve) => {
+        emitBrokerEvent('broker:request-executed-trades-and-wait', { resolve });
+      });
       return refreshAllLivePrices();
     }).finally(() => {
       if (guestCloudRefreshInFlight === request) guestCloudRefreshInFlight = null;
