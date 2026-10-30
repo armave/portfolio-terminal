@@ -7,6 +7,13 @@ import {
   pullCloudHistory,
   syncCloudState,
   proxyFetch,
+  getCurrentUser,
+  listUsers,
+  createUser,
+  getGuestPortfolioSnapshot,
+  publishGuestPortfolioSnapshot,
+  publishGuestPortfolioSnapshots,
+  clearApiRequestCaches,
   fetchFallbackQuote,
   normalizeYahooBatchResults,
   validateGatewaySecret,
@@ -22,9 +29,11 @@ import * as storage from './storage';
 // Most API tests exercise successful proxy requests; give them a deterministic
 // credential. Tests for missing credentials explicitly override this value.
 beforeEach(() => {
+  clearApiRequestCaches();
   storage.setGatewaySecret('test-gateway-secret');
 });
 afterEach(() => {
+  clearApiRequestCaches();
   storage.setGatewaySecret('');
 });
 
@@ -44,6 +53,69 @@ async function encryptV2Fixture(value: unknown, secret: string): Promise<string>
   };
   return `aesgcm:v2:${toBase64(nonce)}:${toBase64(new Uint8Array(ciphertext))}`;
 }
+
+
+
+describe('authenticated read request deduplication', () => {
+  it('reuses the user returned by initial session validation', async () => {
+    const user = { id: 'admin-1', name: 'Admin', role: 'admin', createdAt: '2026-01-01T00:00:00.000Z' };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ user }), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    storage.setGatewaySecret('validated-session-secret');
+    await expect(validateGatewaySecret('validated-session-secret')).resolves.toBe(true);
+    await expect(getCurrentUser()).resolves.toEqual(user);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses the user directory briefly and invalidates it after a user mutation', async () => {
+    let version = 1;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({
+          user: { id: 'guest-2', name: 'Guest 2', role: 'guest', createdAt: '2026-01-02T00:00:00.000Z' }
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({
+        users: [{ id: 'guest-' + version, name: 'Guest ' + version, role: 'guest', createdAt: '2026-01-01T00:00:00.000Z' }]
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(listUsers()).resolves.toHaveLength(1);
+    await expect(listUsers()).resolves.toEqual(await listUsers());
+    expect(fetchMock.mock.calls.filter((call) => (call[1] as RequestInit)?.method !== 'POST')).toHaveLength(1);
+
+    await createUser({ name: 'Guest 2', password: 'test-password', role: 'guest' });
+    version = 2;
+    await expect(listUsers()).resolves.toMatchObject([{ id: 'guest-2' }]);
+    expect(fetchMock.mock.calls.filter((call) => (call[1] as RequestInit)?.method === 'POST')).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter((call) => (call[1] as RequestInit)?.method !== 'POST')).toHaveLength(2);
+  });
+
+  it('coalesces simultaneous guest projection reads without caching later reads', async () => {
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolvers.push(resolve); }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = getGuestPortfolioSnapshot();
+    const second = getGuestPortfolioSnapshot();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const response = () => new Response(JSON.stringify({ snapshot: { updatedAt: 10, tranches: [] } }), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    });
+    resolvers[0](response());
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { updatedAt: 10, tranches: [] }, { updatedAt: 10, tranches: [] }
+    ]);
+
+    const nextRead = getGuestPortfolioSnapshot();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    resolvers[1](response());
+    await expect(nextRead).resolves.toEqual({ updatedAt: 10, tranches: [] });
+  });
+});
 
 describe('proxy request coalescing', () => {
   it('shares identical concurrent market-data requests', async () => {
@@ -472,26 +544,60 @@ describe('guest portfolio projection API', () => {
     });
   });
 
+  it('publishes changed guest projections in one batch request and skips unchanged snapshots', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true, revisions: { 'guest-1': 1, 'guest-2': 1 }
+    }), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const publications = [
+      { guestId: 'guest-1', snapshot: { updatedAt: 100, tranches: [{ id: 'AAPL:1', ticker: 'AAPL', quantity: 2 }] as any } },
+      { guestId: 'guest-2', snapshot: { updatedAt: 100, tranches: [{ id: 'MSFT:1', ticker: 'MSFT', quantity: 3 }] as any } }
+    ];
+
+    await publishGuestPortfolioSnapshots(publications);
+    await publishGuestPortfolioSnapshots(publications.map(item => ({
+      ...item, snapshot: { ...item.snapshot, updatedAt: 200 }
+    })));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/guest-portfolio');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('POST');
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({
+      snapshots: [
+        { guestId: 'guest-1', snapshot: { tranches: [expect.objectContaining({ ticker: 'AAPL' })] } },
+        { guestId: 'guest-2', snapshot: { tranches: [expect.objectContaining({ ticker: 'MSFT' })] } }
+      ]
+    });
+  });
+
   it('publishes a guest-only projection using the authenticated administrator session', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, revision: 4 }), {
       status: 200, headers: { 'Content-Type': 'application/json' }
     }));
     vi.stubGlobal('fetch', fetchMock);
-
-    const { publishGuestPortfolioSnapshot } = await import('./api');
-    await publishGuestPortfolioSnapshot('guest-1', {
+    const snapshot = {
       updatedAt: 200,
       tranches: [{
         id: 'MSFT:buy-2', ticker: 'MSFT', name: 'Microsoft', quantity: 1.5,
         averagePrice: 300, marketPrice: 320, marketValue: 480, purchasedAt: 60
       } as any]
-    });
+    };
+    await publishGuestPortfolioSnapshot('guest-1', snapshot);
+    await publishGuestPortfolioSnapshot('guest-1', { ...snapshot, updatedAt: 300 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/guest-portfolio');
     expect(fetchMock.mock.calls[0][1].method).toBe('POST');
     expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({
       guestId: 'guest-1',
       snapshot: { tranches: [expect.objectContaining({ ticker: 'MSFT', quantity: 1.5 })] }
     });
+    await publishGuestPortfolioSnapshot('guest-1', {
+      ...snapshot, updatedAt: 400,
+      tranches: [{ ...snapshot.tranches[0], marketPrice: 321, marketValue: 481.5 }]
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -1171,6 +1277,28 @@ describe('closed-history migration revision reuse', () => {
   });
 });
 
+
+
+
+describe('cloud state write deduplication', () => {
+  it('skips an unchanged snapshot when only lastUpdated differs', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ETag: '"31"' }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ETag: '"32"' }
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+    const options = { secret: 'cloud-state-dedupe-secret', showToast: vi.fn() };
+    const state = { activeView: 'BALANCE', balance: 100, lastUpdated: 100 };
+    await expect(pushCloudState(state, options)).resolves.toBe(true);
+    await expect(pushCloudState({ ...state, lastUpdated: 200 }, options)).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await expect(pushCloudState({ ...state, balance: 101, lastUpdated: 300 }, options)).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe('closed-history migration/read race', () => {
   afterEach(() => {
