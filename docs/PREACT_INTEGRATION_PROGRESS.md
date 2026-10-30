@@ -60,3 +60,9 @@ Typecheck, tests, production build, dead-code validation, and production depende
 - [x] Add focused tests for broker payload delivery, multiple subscribers, unsubscribe behavior, and payload-free refresh requests.
 - [ ] Next: reduce the remaining `uiStateStore` / `renderBoard.ts` prop-mirror boundary by moving one coherent presentation slice at a time into store selectors/hooks. Keep calculation rules in `src/domain`.
 - [ ] Next: audit and migrate the remaining in-process `window` CustomEvents individually; retain true platform/browser integration APIs and document any external contracts instead of removing them wholesale.
+
+
+## Active desk state ownership — 2026-10-30
+- [x] Remove the duplicated active-desk state mirror from `uiStateStore`; the Preact app now subscribes directly to the portfolio store and applies the same pure `resolveActiveView` selector used by the presentation bridge.
+- [x] Keep the view-fallback rule in one shared selector so stale/missing ticker views still resolve to `COMBINED`.
+- [ ] Next: migrate one data-driven presentation prop group out of `renderBoard.ts` / `uiStateStore` at a time, with action handlers kept in their service/UI boundaries.
