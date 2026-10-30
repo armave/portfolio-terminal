@@ -446,12 +446,12 @@ function translateDynamicText(normalized: string): string | undefined {
     }
   }
 
-  const showTranches = normalized.match(/^Show (\\d+) tranches$/i);
+  const showTranches = normalized.match(/^Show (\d+) tranches$/i);
   if (showTranches) {
     return `Показать ${showTranches[1]} ${russianPlural(Number(showTranches[1]), 'лот', 'лота', 'лотов')}`;
   }
 
-  const count = normalized.match(/^(\\d+) (tranches|records|holdings|days|hrs|shares)$/i);
+  const count = normalized.match(/^(\d+) (tranches|records|holdings|days|hrs|shares)$/i);
   if (count) {
     const amount = Number(count[1]);
     const noun = count[2].toLowerCase();
@@ -467,8 +467,8 @@ function translateDynamicText(normalized: string): string | undefined {
   const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
   if (riskPrefix) {
     return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
-      .replace(/\\bequity\\b/g, 'собственного капитала')
-      .replace(/\\bmaintenance\\b/g, 'поддерживающая маржа');
+      .replace(/\bequity\b/g, 'собственного капитала')
+      .replace(/\bmaintenance\b/g, 'поддерживающая маржа');
   }
 
   if (normalized.startsWith('e.g. quote ')) {
@@ -480,7 +480,7 @@ function translateDynamicText(normalized: string): string | undefined {
 export function translateText(value: string, language: AppLanguage = currentLanguage): string {
   if (language === 'en') return value;
   const trimmed = value.trim();
-  const normalized = trimmed.replace(/\\s+/g, ' ');
+  const normalized = trimmed.replace(/\s+/g, ' ');
   if (!normalized) return value;
   const translated = RU[normalized] ?? translateDynamicText(normalized);
   if (!translated) return value;
