@@ -8,6 +8,7 @@ import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEvent
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { listUsers, type AuthUser } from '../services/api';
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
+import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings } from '../domain/guestPortfolio';
 
 const BADGE_STYLES: Record<string, string> = {
   bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
@@ -53,7 +54,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   );
 }
 
-export function CashCushionDesk({ showActiveTranches = false }: { showActiveTranches?: boolean } = {}) {
+export function CashCushionDesk({ showActiveTranches = false, guestUserId }: { showActiveTranches?: boolean; guestUserId?: string } = {}) {
   const state = usePortfolio();
   const refreshIntervalMs = useQuoteRefreshInterval();
   const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTradeLike[]>(() =>
@@ -99,8 +100,18 @@ export function CashCushionDesk({ showActiveTranches = false }: { showActiveTran
     return () => { cancelled = true; };
   }, [showActiveTranches]);
 
-  const holdings = state.cashCushion?.holdings || [];
   const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
+  const holdings = guestUserId
+    ? getGuestAssignedCashHoldings({
+      guestId: guestUserId,
+      activeTranches,
+      assignments: state.activeTrancheGuestAssignments,
+      types: state.activeTrancheTypes,
+      mixes: state.activeTrancheMixes,
+      cashHoldings: state.cashCushion?.holdings || []
+    })
+    : state.cashCushion?.holdings || [];
+  const personalEquity = guestUserId ? calculateGuestPersonalEquity(holdings) : null;
   const setActiveTrancheType = (
     ticker: string,
     type: ActiveTrancheType,
@@ -123,10 +134,20 @@ export function CashCushionDesk({ showActiveTranches = false }: { showActiveTran
       <div class="flex justify-between items-center border-b border-slate-800 pb-2">
         <div>
           <h2 class="text-lg font-black text-cyan-400 tracking-wide">
-            CASH &amp; NON-MARGIN HOLDINGS
+            {guestUserId ? 'YOUR ASSIGNED STOCKS' : 'CASH & NON-MARGIN HOLDINGS'}
           </h2>
         </div>
       </div>
+
+      {guestUserId && (
+        <section class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-900/70 bg-slate-950/60 px-4 py-3" aria-label="Personal equity balance">
+          <div>
+            <h3 class="text-[10px] font-bold uppercase tracking-wider text-cyan-300">PERSONAL EQUITY · ASSIGNED STOCKS</h3>
+            <p class="mt-1 text-[10px] text-slate-500">Market value of your cash-funded shares only. Shared account cash, margin debt, and other guests' stocks are excluded.</p>
+          </div>
+          <strong class="text-xl font-black tabular-nums text-white">{formatUSD(personalEquity || 0)}</strong>
+        </section>
+      )}
 
       <div class="space-y-2">
         <div class="table-scroll-wrapper overflow-x-auto">
@@ -147,7 +168,7 @@ export function CashCushionDesk({ showActiveTranches = false }: { showActiveTran
               {holdings.length === 0 ? (
                 <tr>
                   <td colSpan={8} class="py-3 text-center text-slate-500 italic">
-                    No broker-reported cash holdings available.
+                    {guestUserId ? 'No active cash-funded stocks are linked to your account.' : 'No broker-reported cash holdings available.'}
                   </td>
                 </tr>
               ) : (
