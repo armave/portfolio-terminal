@@ -4,6 +4,7 @@ import type { BrokerRules, QuoteDetails } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
+import { getAppLanguage } from '../services/i18n';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import {
   calculateCommission,
@@ -489,7 +490,7 @@ export function SummaryMetricsGrid() {
             <span class="portfolio-metric-label text-[10px]">Shares / Tranches</span>
             <div id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
               <div class="flex flex-wrap justify-end gap-x-2 gap-y-1">
-                <span class="whitespace-nowrap">{pos.shares.toLocaleString()} shares</span>
+                <span class="whitespace-nowrap">{pos.shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')} shares</span>
               </div>
               {hiddenTrancheCount > 0 && (
                 <>
@@ -503,7 +504,7 @@ export function SummaryMetricsGrid() {
                           const date = tranche.date ?? value.purchaseDate ?? value.entryDate;
                           return (
                             <span key={`${pos.ticker}-overflow-${index}`}>
-                              {quantity !== null ? `${quantity.toLocaleString()} @ ` : ''}{formatUSD(price)} <br></br> ({formatTrancheDate(date)})
+                              {quantity !== null ? `${quantity.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')} @ ` : ''}{formatUSD(price)} <br></br> ({formatTrancheDate(date)})
                             </span>
                           );
                         })}
