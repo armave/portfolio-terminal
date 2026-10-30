@@ -4,7 +4,8 @@ import { usePortfolio } from '../store/portfolioStore';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
 import { emitUiEvent } from '../ui/uiEventBus';
-import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings } from '../domain/guestPortfolio';
+import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
+import { getAppLanguage } from '../services/i18n';
 
 export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; userId?: string } = {}) {
   const state = usePortfolio();
@@ -61,17 +62,27 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
     ? Object.fromEntries(guestTranches.map((tranche) => [tranche.id, userId]))
     : {};
   const guestTypes = Object.fromEntries(guestTranches.map((tranche) => [tranche.id, 'cash' as const]));
-  const guestEquity = !isAdmin && userId
-    ? calculateGuestPersonalEquity(getGuestAssignedCashHoldings({
+  const guestHoldings = !isAdmin && userId
+    ? getGuestAssignedCashHoldings({
       guestId: userId,
       activeTranches: guestTranches,
       assignments: guestAssignments,
       types: guestTypes,
       cashHoldings: state.cashCushion?.holdings || []
-    }))
-    : 0;
+    })
+    : [];
+  const guestEquity = calculateGuestPersonalEquity(guestHoldings);
   const displayedEquity = isAdmin ? portfolioValuation.equity : guestEquity;
-  const equityBadgeText = (displayedEquity >= 0 ? '+$' : '−$') + Math.abs(displayedEquity).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  const hasUnpricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice === null);
+  const hasPricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice !== null);
+  const equityBadgeText = !isAdmin && userId
+    ? guestHoldings.length === 0 ? '$0'
+      : !hasPricedGuestHoldings ? '—'
+        : (hasUnpricedGuestHoldings ? '≥$' : '+$') + Math.abs(displayedEquity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 0 })
+    : (displayedEquity >= 0 ? '+$' : '−$') + Math.abs(displayedEquity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 0 });
+  const equityBadgeTitle = !isAdmin && hasUnpricedGuestHoldings
+    ? 'Partial value: holdings without a valid market quote are excluded.'
+    : 'Current market value of your assigned cash-funded stocks.';
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     const currentButton = event.currentTarget as HTMLButtonElement;
@@ -99,17 +110,18 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
 
   return (
     <>
-      {isAdmin && tickers.length > 0 && (
+      {((isAdmin && tickers.length > 0) || (!isAdmin && Boolean(userId) && guestHoldings.length > 0)) && (
         <button
           id="refreshQuotesButton"
           type="button"
           title="Update quotes"
           aria-label="Refresh live quotes"
+          aria-busy={isRefreshingQuotes}
           disabled={isRefreshingQuotes}
           onClick={handleRefreshQuotes}
           class="h-8 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
         >
-          <span>↻</span>
+          <span class={isRefreshingQuotes ? 'animate-spin' : ''}>↻</span>
         </button>
       )}
 
@@ -202,7 +214,7 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
           onKeyDown={handleTabKeyDown}
       >
         <span>🛡️ BALANCE</span>
-        <span
+        <span title={equityBadgeTitle} aria-label={`Assigned stock value: ${equityBadgeText}`}
           class={`text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
             }`}
         >

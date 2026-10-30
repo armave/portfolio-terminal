@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { getAppLanguage } from '../services/i18n';
 
 export interface TerminalLogEntry {
   id: number;
@@ -46,7 +47,7 @@ function notifyErrorToasts(): void {
 }
 
 function formatTime(): string {
-  return new Date().toLocaleTimeString([], {
+  return new Date().toLocaleTimeString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',

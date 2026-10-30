@@ -65,7 +65,7 @@ describe('authenticated read request deduplication', () => {
     vi.stubGlobal('fetch', fetchMock);
     storage.setGatewaySecret('validated-session-secret');
     await expect(validateGatewaySecret('validated-session-secret')).resolves.toBe(true);
-    await expect(getCurrentUser()).resolves.toEqual(user);
+    await expect(getCurrentUser()).resolves.toEqual({ ...user, language: 'en' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

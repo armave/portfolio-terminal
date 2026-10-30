@@ -1,5 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
+import { formatRelativeTime } from '../utils/relativeTime';
+import { getAppLanguage, translateText } from '../services/i18n';
 
 export interface MarginIntelligenceArticle {
   ticker: string;
@@ -29,24 +31,19 @@ interface MarginIntelligenceModalProps {
 }
 
 function publishedLabel(timestamp?: number): string {
-  if (!timestamp || !Number.isFinite(timestamp)) return 'Publication time unavailable';
+  if (!timestamp || !Number.isFinite(timestamp)) return translateText('Publication time unavailable');
   const date = new Date(timestamp > 1e12 ? timestamp : timestamp * 1000);
-  return Number.isNaN(date.getTime()) ? 'Publication time unavailable' : date.toLocaleString();
+  const locale = getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US';
+  return Number.isNaN(date.getTime())
+    ? translateText('Publication time unavailable')
+    : date.toLocaleString(locale);
 }
 
 function relativeSyncLabel(syncedAt?: string, now = Date.now()): string {
-  if (!syncedAt) return 'Not synced yet';
+  if (!syncedAt) return translateText('Not synced yet');
   const timestamp = Date.parse(syncedAt);
-  if (!Number.isFinite(timestamp)) return 'Sync time unavailable';
-  const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
-  if (seconds < 10) return 'Synced just now';
-  if (seconds < 60) return `Synced ${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `Synced ${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Synced ${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `Synced ${days}d ago`;
+  if (!Number.isFinite(timestamp)) return translateText('Sync time unavailable');
+  return `${translateText('Synced')} ${formatRelativeTime(timestamp, now)}`;
 }
 
 function renderInlineMarkdown(text: string) {
@@ -151,7 +148,7 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
             <div class="text-[10px] font-mono font-bold uppercase tracking-widest text-cyan-400">Gemini · Margin Intelligence</div>
             <h2 id="marginIntelligenceTitle" class="mt-1 text-lg font-bold text-white">{data.title}</h2>
             <p class="mt-1 text-xs text-slate-400">Read-only · No broker orders are changed</p>
-            <p class="mt-1 text-[11px] text-slate-500" title={data.syncedAt ? new Date(data.syncedAt).toLocaleString() : 'No server-synced digest yet'}>{relativeSyncLabel(data.syncedAt, now)}{data.syncedAt ? ` · ${new Date(data.syncedAt).toLocaleString()}` : ''}</p>
+            <p class="mt-1 text-[11px] text-slate-500" title={data.syncedAt ? new Date(data.syncedAt).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US') : 'No server-synced digest yet'}>{relativeSyncLabel(data.syncedAt, now)}{data.syncedAt ? ` · ${new Date(data.syncedAt).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}` : ''}</p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <button type="button" onClick={onRefresh} disabled={data.loading} class="rounded border border-cyan-800 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-950/50 disabled:cursor-not-allowed disabled:opacity-50">{data.loading ? 'Refreshing…' : '↻ Refresh'}</button>

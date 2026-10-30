@@ -8,7 +8,8 @@ import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEvent
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { listUsers, type AuthUser } from '../services/api';
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
-import { getGuestAssignedCashHoldings } from '../domain/guestPortfolio';
+import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
+import { getAppLanguage } from '../services/i18n';
 
 const BADGE_STYLES: Record<string, string> = {
   bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
@@ -201,7 +202,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       <div class="flex justify-between items-center border-b border-slate-800 pb-2">
         <div>
           <h2 class="text-lg font-black text-cyan-400 tracking-wide">
-            {guestUserId ? 'YOUR ASSIGNED STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE'}
+            {guestUserId ? 'YOUR STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE'}
           </h2>
         </div>
       </div>
@@ -210,16 +211,21 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
         {guestUserId ? (
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Your active stock cards">
             {guestHoldings.length === 0 ? (
-              <div class="col-span-full rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-500">No active cash-funded stocks are linked to your account yet.</div>
+              <div class="col-span-full rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400" role="status">
+                <p class="font-semibold text-slate-200">No stocks are assigned to your account yet.</p>
+                <p class="mt-2 text-xs leading-relaxed text-slate-500">Ask your administrator to assign the cash-funded portion of an active stock purchase. Your assigned stocks will appear here automatically.</p>
+              </div>
             ) : guestHoldings.map((holding) => {
-              const shares = Number(holding.shares) || 0;
-              const price = Number(holding.currentPrice ?? holding.price) || 0;
-              const marketValue = shares * price;
-              const averagePrice = Number(holding.averagePrice);
-              const hasCost = Number.isFinite(averagePrice) && averagePrice > 0;
-              const costValue = hasCost ? shares * averagePrice : null;
-              const pnl = costValue !== null ? marketValue - costValue : null;
-              const pnlPercent = costValue && costValue > 0 ? pnl! / costValue * 100 : null;
+              const {
+                shares,
+                currentPrice: price,
+                marketValue,
+                averagePrice,
+                unrealizedPnl: pnl,
+                unrealizedPnlPercent: pnlPercent
+              } = getGuestHoldingValuation(holding);
+              const hasMarketPrice = price !== null;
+              const hasCost = averagePrice !== null;
               const change = holding.quoteDetails?.changePercent;
               const relatedTranches = activeTranches
                 .filter((tranche) => activeTrancheGuestAssignments?.[tranche.id] === guestUserId && tranche.ticker.toUpperCase() === holding.ticker)
@@ -244,11 +250,12 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                   </div>
                   <div class="mt-4">
                     <p class="text-[10px] uppercase tracking-wider text-slate-500">Current market value</p>
-                    <p class="mt-1 text-2xl font-black tabular-nums text-white">{formatUSD(marketValue)}</p>
+                    <p class="mt-1 text-2xl font-black tabular-nums text-white">{marketValue !== null ? formatUSD(marketValue) : '—'}</p>
+                    {!hasMarketPrice && <p class="mt-1 text-[10px] leading-relaxed text-amber-300" role="status">Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.</p>}
                   </div>
                   <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-800 pt-3">
-                    <div><p class="text-[10px] text-slate-500">Assigned shares</p><p class="mt-1 font-mono text-sm font-bold text-slate-200">{shares.toLocaleString('en-US', { maximumFractionDigits: 3 })}</p></div>
-                    <div><p class="text-[10px] text-slate-500">Price · share</p><p class="mt-1 font-mono text-sm font-bold text-emerald-300">{price > 0 ? formatUSD(price) : '—'}</p></div>
+                    <div><p class="text-[10px] text-slate-500">Total shares</p><p class="mt-1 font-mono text-sm font-bold text-slate-200">{shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
+                    <div><p class="text-[10px] text-slate-500">Price · share</p><p class="mt-1 font-mono text-sm font-bold text-emerald-300">{price !== null ? formatUSD(price) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Avg. entry</p><p class="mt-1 font-mono text-sm text-slate-300">{hasCost ? formatUSD(averagePrice) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Unrealized P/L</p><p class={`mt-1 font-mono text-sm font-bold ${pnl === null ? 'text-slate-500' : pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{pnl === null ? '—' : `${pnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(pnl))}`}{pnlPercent !== null ? <span class="block text-[10px] font-normal">{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%</span> : null}</p></div>
                   </div>
@@ -262,7 +269,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       <div class="space-y-2">
                         {relatedTranches.map((tranche) => {
                           const trancheDate = tranche.purchasedAt !== null
-                            ? new Date(tranche.purchasedAt).toLocaleDateString()
+                            ? new Date(tranche.purchasedAt).toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')
                             : 'Date unavailable';
                           return (
                             <div key={tranche.id} class="rounded-lg border border-slate-800/80 bg-slate-900/60 p-2.5">
@@ -270,7 +277,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                 <span class="text-[10px] font-semibold text-slate-200">{trancheDate}</span>
                               </div>
                               <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
-                                <div><p class="text-[9px] text-slate-500">Assigned shares</p><p class="font-mono text-[11px] font-semibold text-slate-200">{tranche.assignedShares.toLocaleString('en-US', { maximumFractionDigits: 3 })}</p></div>
+                                <div><p class="text-[9px] text-slate-500">Shares</p><p class="font-mono text-[11px] font-semibold text-slate-200">{tranche.assignedShares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
                                 <div><p class="text-[9px] text-slate-500">Entry price</p><p class="font-mono text-[11px] text-slate-200">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</p></div>
                               </div>
                             </div>
@@ -359,7 +366,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                             </div>
                           </td>
                           <td data-label="Shares" class="py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap">
-                            {shares.toLocaleString('en-US', { maximumFractionDigits: 3 })}
+                            {shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}
                           </td>
                           <td data-label="Market price" class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums whitespace-nowrap">
                             <span>{formatUSD(price)}</span>

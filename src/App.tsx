@@ -22,6 +22,7 @@ import { resolveActiveView } from './ui/renderBoard';
 import { ScenarioReportModal } from './components/ScenarioReportModal';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import { restoreGatewaySecret } from './services/storage';
+import { setAppLanguage, subscribeAppLanguage } from './services/i18n';
 import { addBrokerEventListener, emitBrokerEvent } from './services/brokerEventBus';
 
 let tradesRequest: Promise<void> | null = null;
@@ -35,9 +36,11 @@ interface AppProps {
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [, setLanguageRevision] = useState(0);
   const permissions = getAccountPermissions(currentUser?.role);
   const backupImportInputRef = useRef<HTMLInputElement>(null);
   const mainWorkspaceRef = useRef<HTMLElement>(null);
+  const previousCurrentUserRef = useRef<AuthUser | null>(null);
   const activeDeskView = usePortfolioSelector(resolveActiveView);
   const portfolioSnapshot = usePortfolio();
   const emptyStateVisible = Object.keys(portfolioSnapshot.positions || {}).length === 0 && activeDeskView === 'COMBINED';
@@ -310,7 +313,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const handleBackupImportRequest = () => {
       if (permissions.canManageBackups) backupImportInputRef.current?.click();
     };
-    const handleAuthUserChanged = (event: UiEvent<{ user: AuthUser | null }>) => setCurrentUser(event.detail.user);
+    const handleAuthUserChanged = (event: UiEvent<{ user: AuthUser | null }>) => {
+      setCurrentUser(event.detail.user);
+      setAppLanguage(event.detail.user?.language ?? 'en');
+    };
+    const unsubscribeLanguage = subscribeAppLanguage(() => {
+      setLanguageRevision((revision) => revision + 1);
+    });
     const handleScrollWorkspace = () => {
       requestAnimationFrame(() => {
         mainWorkspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -330,8 +339,20 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
       removeUiEventListener('auth:user-changed', handleAuthUserChanged);
       removeUiEventListener('terminal:startup-state', handleStartupState);
+      unsubscribeLanguage();
     };
   }, [permissions.canManageBackups]);
+
+  useEffect(() => {
+    const previousUser = previousCurrentUserRef.current;
+    previousCurrentUserRef.current = currentUser;
+    // A guest may use Settings after signing in, but the sign-in transition itself
+    // always starts at Balance. Do not repeat this when their language changes.
+    if (currentUser?.role === 'guest' &&
+        (previousUser?.id !== currentUser.id || previousUser?.role !== 'guest')) {
+      emitUiEvent('portfolio:set-active-view', { view: 'BALANCE' });
+    }
+  }, [currentUser?.id, currentUser?.role]);
 
   useEffect(() => {
     if (currentUser?.role === 'guest' && !['CASH_CUSHION', 'BALANCE', 'SETTINGS'].includes(activeDeskView)) {
@@ -554,7 +575,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       >{permissions.canViewClosedHistory && hasOpenedClosedHistory && <ClosedHistoryDesk />}</div>
 
       {/* Settings */}
-      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && <SettingsDesk />}</div>
+      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && <SettingsDesk currentUser={currentUser} />}</div>
 
       {/* Authentication is part of the application tree, not a second Preact root. */}
       <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>

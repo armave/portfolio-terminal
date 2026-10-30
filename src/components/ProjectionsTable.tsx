@@ -7,6 +7,7 @@ import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { formatUSD } from '../utils/formatters';
 import { usePortfolio } from '../store/portfolioStore';
 import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
+import { getAppLanguage } from '../services/i18n';
 
 const ROWS_PER_PAGE = 8;
 const MAX_BREAKEVEN_SEARCH_DAYS = 3650;
@@ -62,7 +63,7 @@ export function ProjectionsTable() {
     <>
       {visibleItems.map((item, idx) => {
         const { date, daysFromToday, kind } = item;
-        const dateFormatted = date.toLocaleDateString('en-US', {
+        const dateFormatted = date.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', {
           weekday: 'short',
           month: 'short',
           day: 'numeric'
