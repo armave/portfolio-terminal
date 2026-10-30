@@ -11,6 +11,7 @@ import {
 } from '../domain/portfolio';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
+import { loadSavedHistory } from '../services/storage';
 
 function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string; rules: BrokerRules }) {
   const stopOutTitle = `Estimate assumes the configured ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
@@ -157,40 +158,85 @@ export function getMarginTranchePreview<T>(tranches: T[], expanded = false): T[]
   return expanded ? tranches : [];
 }
 
+function getStoredMarginTrancheQuantity(tranche: unknown): number | null {
+  if (!tranche || typeof tranche !== 'object') return null;
+  const value = tranche as { qty?: unknown; shares?: unknown; quantity?: unknown };
+  for (const candidate of [value.qty, value.shares, value.quantity]) {
+    if (candidate === null || candidate === undefined || candidate === '' || typeof candidate === 'boolean') continue;
+    const quantity = Number(candidate);
+    if (Number.isFinite(quantity) && quantity > 0) return quantity;
+  }
+  return null;
+}
+
+function getTranchePriceAndDate(tranche: unknown): { price: number; date: string } | null {
+  if (!tranche || typeof tranche !== 'object') return null;
+  const value = tranche as {
+    price?: unknown; entryPrice?: unknown; averagePrice?: unknown;
+    date?: unknown; purchaseDate?: unknown; entryDate?: unknown;
+  };
+  const price = Number(value.price ?? value.entryPrice ?? value.averagePrice);
+  const rawDate = value.date ?? value.purchaseDate ?? value.entryDate;
+  if (!Number.isFinite(price) || price <= 0 || typeof rawDate !== 'string' || !rawDate.trim()) return null;
+  const date = rawDate.trim().match(/^(\\d{4}-\\d{2}-\\d{2})/)?.[1] ||
+    (() => {
+      const parsed = Date.parse(rawDate);
+      return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : rawDate;
+    })();
+  return { price, date };
+}
+
+/**
+ * Resolve all visible lot quantities together. This allows repeated price/date
+ * rows (e.g. two separate GOOGL buys at 282.00 on 29 Oct) to be paired one-to-one
+ * with their FIFO broker open lots instead of treating each repeated match as
+ * ambiguous in isolation.
+ */
+export function getMarginTrancheQuantities(
+  tranches: unknown[],
+  brokerLots: ReturnType<typeof getActiveTranchesFromTrades> = [],
+  ticker?: string
+): Array<number | null> {
+  const quantities = tranches.map(getStoredMarginTrancheQuantity);
+  const missingByKey = new Map<string, number[]>();
+  const lotsByKey = new Map<string, typeof brokerLots>();
+
+  tranches.forEach((tranche, index) => {
+    if (quantities[index] !== null) return;
+    const match = getTranchePriceAndDate(tranche);
+    if (!match) return;
+    const key = `${match.price.toFixed(2)}|${match.date}`;
+    missingByKey.set(key, [...(missingByKey.get(key) || []), index]);
+  });
+
+  brokerLots.forEach((lot) => {
+    if (ticker && lot.ticker !== ticker.toUpperCase()) return;
+    if (lot.averagePrice === null || !Number.isFinite(lot.averagePrice) || lot.averagePrice <= 0 || lot.purchasedAt === null) return;
+    const key = `${Number(lot.averagePrice).toFixed(2)}|${new Date(lot.purchasedAt).toISOString().slice(0, 10)}`;
+    lotsByKey.set(key, [...(lotsByKey.get(key) || []), lot]);
+  });
+
+  for (const [key, indices] of missingByKey) {
+    const candidates = lotsByKey.get(key) || [];
+    // Assign only a complete one-to-one group. An incomplete or excess broker
+    // match remains unresolved rather than inventing a quantity.
+    if (candidates.length !== indices.length) continue;
+    indices.forEach((index, candidateIndex) => {
+      const quantity = Number(candidates[candidateIndex].quantity);
+      if (Number.isFinite(quantity) && quantity > 0) quantities[index] = quantity;
+    });
+  }
+
+  return quantities;
+}
+
+/** Resolve one lot quantity when its broker match is unique. */
 export function getMarginTrancheQuantity(
   tranche: unknown,
   brokerLots: ReturnType<typeof getActiveTranchesFromTrades> = [],
   ticker?: string
 ): number | null {
-  if (!tranche || typeof tranche !== 'object') return null;
-  const value = tranche as {
-    qty?: unknown; shares?: unknown; quantity?: unknown;
-    price?: unknown; entryPrice?: unknown; averagePrice?: unknown;
-    date?: unknown; purchaseDate?: unknown; entryDate?: unknown;
-  };
-  // Prefer quantity persisted on the lot, including legacy aliases.
-  for (const candidate of [value.qty, value.shares, value.quantity]) {
-    if (candidate === null || candidate === undefined || candidate === '') continue;
-    const quantity = Number(candidate);
-    if (Number.isFinite(quantity) && quantity > 0) return quantity;
-  }
-
-  // Older TradeNet imports sometimes persisted the lot's price/date but lost
-  // its quantity. Reconcile only an unambiguous exact price + calendar-date
-  // match against FIFO open lots reconstructed from the broker execution log.
-  const price = Number(value.price ?? value.entryPrice ?? value.averagePrice);
-  const dateValue = value.date ?? value.purchaseDate ?? value.entryDate;
-  const date = typeof dateValue === 'string' && dateValue.trim()
-    ? dateValue.slice(0, 10)
-    : '';
-  if (!Number.isFinite(price) || price <= 0 || !date) return null;
-  const matches = brokerLots.filter((lot) => {
-    if (ticker && lot.ticker !== ticker.toUpperCase()) return false;
-    if (lot.averagePrice === null || Math.abs(lot.averagePrice - price) > 0.005) return false;
-    if (lot.purchasedAt === null) return false;
-    return new Date(lot.purchasedAt).toISOString().slice(0, 10) === date;
-  });
-  return matches.length === 1 && matches[0].quantity > 0 ? matches[0].quantity : null;
+  return getMarginTrancheQuantities([tranche], brokerLots, ticker)[0] ?? null;
 }
 
 export function SummaryMetricsGrid() {
@@ -375,8 +421,12 @@ export function SummaryMetricsGrid() {
   const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
 
   const positionTranches = pos.tranches || [];
+  const persistedBrokerTrades = loadSavedHistory().brokerExecutedTrades;
+  const brokerTrades = Array.isArray(state.brokerExecutedTrades) && state.brokerExecutedTrades.length
+    ? state.brokerExecutedTrades
+    : persistedBrokerTrades;
   const brokerOpenLots = getActiveTranchesFromTrades(
-    state.brokerExecutedTrades,
+    brokerTrades,
     state.brokerAccountInfo as any,
     {
       commPerShare: Number(rules.commPerShare ?? rules.commissionPerShare ?? 0),
@@ -384,6 +434,7 @@ export function SummaryMetricsGrid() {
       minCommOrder: Number(rules.minCommOrder ?? rules.commissionMin ?? 0)
     }
   );
+  const trancheQuantities = getMarginTrancheQuantities(positionTranches, brokerOpenLots, pos.ticker);
   const tranchesExpanded = expandedTrancheTicker === pos.ticker;
   const visibleTranches = getMarginTranchePreview(positionTranches, tranchesExpanded);
   const hiddenTrancheCount = positionTranches.length;
@@ -431,7 +482,7 @@ export function SummaryMetricsGrid() {
                     <div class="expandable-motion__inner">
                       <div class="mt-1 flex flex-wrap justify-end gap-x-2 gap-y-1">
                         {visibleTranches.map((tranche, index) => {
-                          const quantity = getMarginTrancheQuantity(tranche, brokerOpenLots, pos.ticker);
+                          const quantity = trancheQuantities[index];
                           const value = tranche as typeof tranche & { entryPrice?: number; averagePrice?: number; purchaseDate?: string; entryDate?: string };
                           const price = Number(tranche.price ?? value.entryPrice ?? value.averagePrice);
                           const date = tranche.date ?? value.purchaseDate ?? value.entryDate;
