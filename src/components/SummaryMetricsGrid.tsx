@@ -497,13 +497,14 @@ export function SummaryMetricsGrid() {
                     <div class="expandable-motion__inner">
                       <div class="mt-1 flex flex-wrap justify-end gap-x-2 gap-y-1">
                         {visibleTranches.map((tranche, index) => {
+                          debugger;
                           const quantity = trancheQuantities[index];
                           const value = tranche as typeof tranche & { entryPrice?: number; averagePrice?: number; purchaseDate?: string; entryDate?: string };
                           const price = Number(tranche.price ?? value.entryPrice ?? value.averagePrice);
                           const date = tranche.date ?? value.purchaseDate ?? value.entryDate;
                           return (
-                            <span key={`${pos.ticker}-overflow-${index}`} class="whitespace-nowrap">
-                              {quantity !== null ? `${quantity.toLocaleString()} @ ` : ''}{formatUSD(price)} ({formatTrancheDate(date)})
+                            <span key={`${pos.ticker}-overflow-${index}`}>
+                              {quantity !== null ? `${quantity.toLocaleString()} @ ` : ''}{formatUSD(price)} <br></br> ({formatTrancheDate(date)})
                             </span>
                           );
                         })}
