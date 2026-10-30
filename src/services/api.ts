@@ -1344,3 +1344,66 @@ export function normalizeFreedomPortfolio(response: any): FreedomPortfolioSnapsh
   })) : [];
   return { loaded: true, balances, positions };
 }
+
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  role: "guest" | "admin";
+  createdAt: string;
+}
+export interface AuthSession { token: string; user: AuthUser; expiresAt: number; }
+const AUTH_API_URL = "https://trading-proxy.armenavetisyan-sa.workers.dev";
+
+async function authRequest<T>(path: string, options: { method?: "GET" | "POST"; body?: Record<string, unknown>; token?: string } = {}): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+    headers["X-App-Auth"] = options.token;
+  }
+  const response = await fetch(new URL(path, AUTH_API_URL), {
+    method: options.method || "GET", headers,
+    ...(options.body ? { body: JSON.stringify(options.body) } : {}), cache: "no-store"
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.error || `Authentication request failed (HTTP ${response.status}).`);
+  return payload as T;
+}
+export function getAuthStatus(): Promise<{ setupRequired: boolean; userCount: number }> {
+  return authRequest("/api/auth/status");
+}
+export function loginAccount(name: string, password: string): Promise<AuthSession> {
+  return authRequest("/api/auth/login", { method: "POST", body: { name, password } });
+}
+export function bootstrapAdmin(name: string, password: string, bootstrapSecret: string): Promise<AuthSession> {
+  return authRequest("/api/auth/bootstrap", { method: "POST", body: { name, password, bootstrapSecret } });
+}
+export async function getCurrentUser(): Promise<AuthUser> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  return (await authRequest<{ user: AuthUser }>("/api/auth/me", { token })).user;
+}
+export async function listUsers(): Promise<AuthUser[]> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  return (await authRequest<{ users: AuthUser[] }>("/api/auth/users", { token })).users;
+}
+export async function createUser(input: { name: string; password: string; role: "guest" | "admin" }): Promise<AuthUser> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  return (await authRequest<{ user: AuthUser }>("/api/auth/users", { method: "POST", token, body: { action: "create", ...input } })).user;
+}
+export async function updateUser(id: string, input: { name: string; role: "guest" | "admin"; password?: string }): Promise<AuthUser> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  return (await authRequest<{ user: AuthUser }>("/api/auth/users", { method: "POST", token, body: { action: "update", id, ...input } })).user;
+}
+export async function deleteUser(id: string): Promise<void> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  await authRequest<{ success: boolean }>("/api/auth/users", { method: "POST", token, body: { action: "delete", id } });
+}
+export async function logoutAccount(): Promise<void> {
+  const token = getActiveGatewaySecret();
+  if (token) await authRequest<{ success: boolean }>("/api/auth/logout", { method: "POST", token, body: {} });
+}
