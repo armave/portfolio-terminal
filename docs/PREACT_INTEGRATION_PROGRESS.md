@@ -66,3 +66,9 @@ Typecheck, tests, production build, dead-code validation, and production depende
 - [x] Remove the duplicated active-desk state mirror from `uiStateStore`; the Preact app now subscribes directly to the portfolio store and applies the same pure `resolveActiveView` selector used by the presentation bridge.
 - [x] Keep the view-fallback rule in one shared selector so stale/missing ticker views still resolve to `COMBINED`.
 - [ ] Next: migrate one data-driven presentation prop group out of `renderBoard.ts` / `uiStateStore` at a time, with action handlers kept in their service/UI boundaries.
+
+
+## Summary metrics store ownership — 2026-10-30
+- [x] Remove the full `BoardState` snapshot from `SummaryMetricsGridProps`; the Preact component now subscribes directly to the portfolio store.
+- [x] Keep only component configuration (`rules` and refresh interval) in the shared UI prop state.
+- [ ] Next: migrate the remaining summary/projection presentation outputs and action-bearing prop groups individually, retaining their existing calculations and callbacks.
