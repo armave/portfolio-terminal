@@ -539,8 +539,9 @@ describe("account language preferences", () => {
       password: "another-long-password-123",
       language: "ru"
     }, admin.token);
-    expect((await created.json()).user.language).toBe("ru");
-    const user = (await created.json()).user;
+    const createdPayload = await created.json();
+    expect(createdPayload.user.language).toBe("ru");
+    const user = createdPayload.user;
 
     const updated = await request(store, "/api/auth/users", {
       action: "update",
