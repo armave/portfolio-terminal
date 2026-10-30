@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
-import { addBrokerEventListener } from './src/services/brokerEventBus';
+import { addBrokerEventListener, emitBrokerEvent } from './src/services/brokerEventBus';
 import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
@@ -63,6 +63,7 @@ import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/sto
 import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
+import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 
@@ -89,8 +90,11 @@ let state: any = createBlankState();
 // Guest sessions may read the shared snapshot, but must never enqueue cloud writes.
 let canWriteCloudState = false;
 let currentAccountRole: 'admin' | 'guest' | null = null;
+let currentAccountId: string | null = null;
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let supplementalRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let guestCloudRefreshInFlight: Promise<unknown> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
@@ -103,6 +107,8 @@ const BOARD_ANALYST_RETRY_MS = 60 * 1000;
 
 const DEFAULT_QUOTE_REFRESH_INTERVAL_MS = 60 * 1000;
 const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
+// Broker balances, executions, and assignments change more slowly than quotes.
+const SUPPLEMENTAL_REFRESH_INTERVAL_MS = 60 * 1000;
 
 // Cached broker limit prices must win over default targets during asynchronous refreshes.
 let activeLimitSellTargets: Record<string, number> = {};
@@ -933,11 +939,23 @@ function refreshAllLivePrices(): Promise<void> {
 }
 
 async function performRefreshAllLivePrices() {
-  const cashHoldings = state.cashCushion && state.cashCushion.holdings;
-  const tickersArray = Array.from(new Set<string>([
-    ...Object.keys(state.positions || {}),
-    ...(cashHoldings || []).map((holding: any) => holding.ticker)
-  ]));
+  const current = portfolioStore.getState();
+  const cashHoldings = current.cashCushion && current.cashCushion.holdings;
+  const tickersArray = currentAccountRole === 'guest'
+    ? Array.from(new Set(getGuestAssignedCashHoldings({
+        guestId: currentAccountId || '',
+        activeTranches: getActiveTranchesFromTrades(current.brokerExecutedTrades, current.brokerAccountInfo),
+        assignments: current.activeTrancheGuestAssignments,
+        types: current.activeTrancheTypes,
+        mixes: current.activeTrancheMixes,
+        cashHoldings: cashHoldings || []
+      }).map((holding) => holding.ticker)))
+    : currentAccountRole === 'admin'
+      ? Array.from(new Set<string>([
+          ...Object.keys(current.positions || {}),
+          ...(cashHoldings || []).map((holding: any) => holding.ticker)
+        ]))
+      : [];
   if (tickersArray.length === 0) return;
 
   try {
@@ -956,6 +974,29 @@ async function performRefreshAllLivePrices() {
   }
 }
 
+function refreshSupplementalPortfolioData() {
+  if (document.hidden) return;
+
+  if (currentAccountRole === 'admin') {
+    emitBrokerEvent('broker:request-account-info');
+    emitBrokerEvent('broker:request-executed-trades');
+    emitBrokerEvent('broker:request-active-orders');
+    return;
+  }
+
+  if (currentAccountRole === 'guest') {
+    // Guests need assignment and trade-lot changes, never broker-wide account balances.
+    if (guestCloudRefreshInFlight) return;
+    const request = syncCloudState('pull').then(() => {
+      emitBrokerEvent('broker:request-executed-trades');
+      return refreshAllLivePrices();
+    }).finally(() => {
+      if (guestCloudRefreshInFlight === request) guestCloudRefreshInFlight = null;
+    });
+    guestCloudRefreshInFlight = request;
+  }
+}
+
 function setQuoteRefreshInterval(interval: number | string) {
   const intervalMs = Number(interval);
   if (!QUOTE_REFRESH_INTERVALS.has(intervalMs)) {
@@ -963,13 +1004,18 @@ function setQuoteRefreshInterval(interval: number | string) {
   }
 
   if (quoteRefreshTimer !== null) clearInterval(quoteRefreshTimer);
+  if (supplementalRefreshTimer !== null) clearInterval(supplementalRefreshTimer);
   quoteRefreshTimer = null;
+  supplementalRefreshTimer = null;
   saveQuoteRefreshInterval(intervalMs, currentAccountRole === 'guest' ? 'guest' : 'admin');
 
   if (intervalMs > 0) {
     quoteRefreshTimer = setInterval(() => {
       if (!document.hidden) void refreshAllLivePrices();
     }, intervalMs);
+    if (currentAccountRole) {
+      supplementalRefreshTimer = setInterval(refreshSupplementalPortfolioData, SUPPLEMENTAL_REFRESH_INTERVAL_MS);
+    }
   }
 }
 
@@ -1438,11 +1484,13 @@ async function publishCurrentUser() {
   try {
     const user = await getCurrentUser();
     currentAccountRole = user.role;
+    currentAccountId = user.id;
     canWriteCloudState = user.role === 'admin';
     emitUiEvent('auth:user-changed', { user });
     return user;
   } catch {
     currentAccountRole = null;
+    currentAccountId = null;
     canWriteCloudState = false;
     emitUiEvent('auth:user-changed', { user: null });
     return null;
@@ -1517,6 +1565,7 @@ async function startApp(secret: string) {
   if (secret) await publishCurrentUser();
   else {
     currentAccountRole = null;
+    currentAccountId = null;
     canWriteCloudState = false;
   }
   portfolioStore.setState({ gatewaySecret: secret });
