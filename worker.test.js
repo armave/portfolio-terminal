@@ -174,9 +174,16 @@ describe('gateway browser-origin boundary', () => {
         PORTFOLIO_STATE_DO: {
           idFromName: vi.fn().mockReturnValue('personal-state'),
           get: vi.fn().mockReturnValue({
-            fetch: vi.fn().mockResolvedValue(new Response(JSON.stringify({ encryptedPayload: 'ciphertext' }), {
-              status: 200, headers: { ETag: '"4"' }
-            }))
+            fetch: vi.fn(async (request) => {
+              if (new URL(request.url).pathname === '/api/auth/verify') {
+                return new Response(JSON.stringify({ user: { id: 'admin-id', role: 'admin', name: 'Admin' } }), {
+                  status: 200, headers: { 'Content-Type': 'application/json' }
+                });
+              }
+              return new Response(JSON.stringify({ encryptedPayload: 'ciphertext' }), {
+                status: 200, headers: { ETag: '"4"' }
+              });
+            })
           })
         }
       }
