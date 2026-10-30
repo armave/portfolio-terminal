@@ -14,6 +14,7 @@ export interface UiEventPayloads {
   'terminal:execute-command': { command: string };
   'portfolio:set-active-view': { view: string };
   'portfolio:refresh-live-prices': { resolve: () => void };
+  'settings:gateway-secret-authenticated': { secret: string };
   'settings:save-broker-rules': { values: { annualRate: string; dayCountBasis: string; maintenanceMargin: string; stopOutRatio: string; rolloverTime: string; commPerShare: string; commVolumePct: string; minCommOrder: string } };
   'settings:reset-broker-rules': undefined;
   'settings:save-api-keys': { secret: string; resolve: (saved: boolean) => void };
