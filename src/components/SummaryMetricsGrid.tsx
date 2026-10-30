@@ -159,8 +159,15 @@ export function getMarginTranchePreview<T>(tranches: T[], expanded = false): T[]
 export function getMarginTrancheQuantity(tranche: unknown): number | null {
   if (!tranche || typeof tranche !== 'object') return null;
   const value = tranche as { qty?: unknown; shares?: unknown; quantity?: unknown };
-  const quantity = Number(value.qty ?? value.shares ?? value.quantity);
-  return Number.isFinite(quantity) && quantity > 0 ? quantity : null;
+  // Some migrated lots retain a zero/blank canonical qty alongside a valid
+  // legacy shares/quantity value. Pick the first positive finite field rather
+  // than letting that placeholder hide the actual lot size.
+  for (const candidate of [value.qty, value.shares, value.quantity]) {
+    if (candidate === null || candidate === undefined || candidate === '') continue;
+    const quantity = Number(candidate);
+    if (Number.isFinite(quantity) && quantity > 0) return quantity;
+  }
+  return null;
 }
 
 export function SummaryMetricsGrid() {
