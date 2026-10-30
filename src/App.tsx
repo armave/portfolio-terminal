@@ -552,7 +552,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         id="importFileInput"
         class="hidden"
         accept=".json"
-        onChange={(event: Event) => importBackupJSON(event)}
+        onChange={(event: Event) => {
+          const input = event.currentTarget as HTMLInputElement;
+          const file = input.files?.[0];
+          input.value = '';
+          if (file) emitUiEvent('terminal:backup-import-file', { file });
+        }}
       />
       {startupState.visible && <div class="startup-loading fixed inset-0 z-[100] flex items-center justify-center" role="status" aria-live="polite">
         <div class="startup-loading__content">
