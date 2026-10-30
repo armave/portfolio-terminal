@@ -1,6 +1,5 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import { addBrokerEventListener } from './src/services/brokerEventBus';
-import { setSettingsPropsState } from './src/ui/uiStateStore';
 import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
@@ -88,8 +87,6 @@ let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
-let settingsPanelMounted = false;
-let lastSettingsRulesSignature: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
 let initialQuoteRefreshPending = false;
 const boardAnalystSnapshots = new Map<string, any>();
@@ -491,7 +488,6 @@ function saveBrokerRuleInputs(values: import('./src/components/SettingsDesk').Br
   }
   verifyTradernetRulesOnload();
   renderBoard();
-  renderSettingsPanel(true);
 }
 function resetBrokerRules() {
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
@@ -637,7 +633,6 @@ function updateCombinedBreakeven() {
 function renderBoard() {
   renderBoardUI(state, {
     rules: TRADERNET_RULES as any,
-    onRenderSettingsPanel: () => renderSettingsPanel(),
     onRenderAnalystConsensus: renderBoardAnalystConsensus,
     onUpdateCombinedBreakeven: updateCombinedBreakeven,
     refreshIntervalMs: getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS),
@@ -645,9 +640,6 @@ function renderBoard() {
     onUpdateLastDeskView: (view: string) => { lastRenderedDeskView = view; }
   });
 
-  // Keep the settings form mounted and its local edits intact during quote refreshes.
-  // When settings are active, renderBoardUI calls renderSettingsPanel explicitly.
-  if (!settingsPanelMounted) renderSettingsPanel();
 }
 
 async function fetchBoardAnalystTarget(ticker: string, force = false) {
@@ -1363,38 +1355,6 @@ async function executeCommand(commandText: string) {
   }
 }
 
-function renderSettingsPanel(force = false) {
-  const rules = { ...TRADERNET_RULES };
-  const rulesSignature = JSON.stringify(rules);
-  if (settingsPanelMounted && !force && rulesSignature === lastSettingsRulesSignature) return;
-
-  // SettingsDesk is owned by App. Send current callbacks/rules as props instead
-  // of creating a separate Preact root in the settings container.
-  setSettingsPropsState({
-      rules,
-      defaultRefreshIntervalMs: DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
-      onSaveBrokerRules: saveBrokerRuleInputs,
-      onResetBrokerRules: () => {
-        resetBrokerRules();
-        renderSettingsPanel(true);
-      },
-      onSaveApiKeys: async (secret: string) => {
-        const saved = await saveApiKeys({ secret, showToast: (message, type) => showToast(message, type as any), logTerminal });
-        if (saved) {
-          portfolioStore.setState({ gatewaySecret: secret.trim() });
-          await syncCloudState('pull');
-        }
-      },
-      onPullCloudState: () => syncCloudState('pull'),
-      onChangeRefreshInterval: (val: string) => setQuoteRefreshInterval(val),
-      onExportBackup: exportBackupJSON,
-      onImportBackup: importBackupJSON,
-      onResetToBlankState: resetToBlankState
-    } satisfies import('./src/components/SettingsDesk').SettingsDeskProps);
-  settingsPanelMounted = true;
-  lastSettingsRulesSignature = rulesSignature;
-}
-
 let appInitialized = false;
 
 function hideStartupLoading() {
@@ -1521,6 +1481,40 @@ function bindStartupActions() {
   addUiEventListener('terminal:execute-command', (event) => {
     void executeCommand(event.detail.command);
   });
+  addUiEventListener('settings:save-broker-rules', (event) => {
+    saveBrokerRuleInputs(event.detail.values);
+  });
+  addUiEventListener('settings:reset-broker-rules', () => {
+    resetBrokerRules();
+  });
+  addUiEventListener('settings:save-api-keys', (event) => {
+    void (async () => {
+      let saved = false;
+      try {
+        saved = await saveApiKeys({
+          secret: event.detail.secret,
+          showToast: (message, type) => showToast(message, type as any),
+          logTerminal
+        });
+        if (saved) {
+          portfolioStore.setState({ gatewaySecret: event.detail.secret.trim() });
+          await syncCloudState('pull');
+        }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : String(error), 'error');
+      } finally {
+        event.detail.resolve(saved);
+      }
+    })();
+  });
+  addUiEventListener('settings:pull-cloud-state', () => { void syncCloudState('pull'); });
+  addUiEventListener('settings:change-refresh-interval', (event) => {
+    const intervalMs = Number(event.detail.intervalMs);
+    setQuoteRefreshInterval(event.detail.intervalMs);
+    emitUiEvent('settings:refresh-interval-changed', { intervalMs });
+  });
+  addUiEventListener('settings:export-backup', () => exportBackupJSON());
+  addUiEventListener('settings:reset-to-blank-state', () => resetToBlankState());
 }
 bindStartupActions();
 
