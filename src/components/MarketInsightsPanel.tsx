@@ -253,9 +253,8 @@ export function MarketInsightsPanel({
     onSelectSection(nextTab.id);
   };
 
-  // Show ten recent standalone posts. Don't discard valid posts just because
-  // they contain multiple cashtags or little text; those filters made the feed
-  // appear nearly empty even when the API returned a full stream.
+  // Keep terse and multi-cashtag standalone posts, but exclude bearish entries.
+  // Apply the ten-post limit after those two content filters.
   const filteredStocktwitsMessages = getVisibleStocktwitsMessages(stocktwitsData?.messages ?? [], 10);
 
   const renderContent = () => {

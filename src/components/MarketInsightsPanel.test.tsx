@@ -83,7 +83,7 @@ describe('isBearishStocktwitsMessage', () => {
 });
 
 describe('getVisibleStocktwitsMessages', () => {
-  it('shows up to ten recent standalone posts without filtering their content', () => {
+  it('shows up to ten recent standalone non-bearish posts', () => {
     const messages = Array.from({ length: 14 }, (_, id) => ({
       id,
       body: id === 0 ? '$AAPL' : id === 1 ? '$AAPL $MSFT' : `Post ${id}`,
