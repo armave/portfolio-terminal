@@ -473,7 +473,7 @@ function translateDynamicText(normalized: string): string | undefined {
     const label = milestone[1].toUpperCase() === 'EOW' ? 'До конца недели' : 'Следующий торговый день';
     return `${label} · +${milestone[2]} дн.`;
   }
-  const positionValue = normalized.match(/^Position value ([\\d,]+(?:\\.[\\d]+)?)(?: \\(already\\s*([\\d.,]+)% below trigger\\))?$/i);
+  const positionValue = normalized.match(/^Position value ([\d,]+(?:\.[\d]+)?)(?: \(already\s*([\d.,]+)% below trigger\))?$/i);
   if (positionValue) {
     return positionValue[2]
       ? `Стоимость позиции ${positionValue[1]} (уже на ${positionValue[2]}% ниже порога)`
