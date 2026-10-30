@@ -3,8 +3,9 @@ import { emitUiEvent } from '../ui/uiEventBus';
 import { getQuoteRefreshInterval } from '../services/storage';
 import { BrokerRules } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
-import { getCurrentUser, listUsers, createUser, updateUser, deleteUser, type AuthUser } from '../services/api';
+import { getCurrentUser, listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
+import type { AppLanguage } from '../services/i18n';
 
 
 export interface BrokerRulesFormValues {
@@ -45,8 +46,11 @@ export function SettingsDesk() {
   const [newName, setNewName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"guest" | "admin">("guest");
+  const [newLanguage, setNewLanguage] = useState<AppLanguage>("en");
   const [savingUser, setSavingUser] = useState(false);
-  const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; password: string }>>({});
+  const [savingLanguage, setSavingLanguage] = useState(false);
+  const [languageError, setLanguageError] = useState("");
+  const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
   const refreshUsers = async () => {
     try {
@@ -56,7 +60,7 @@ export function SettingsDesk() {
       if (current.role === "admin") {
         const records = await listUsers();
         setUsers(records);
-        setEditValues(Object.fromEntries(records.map((user) => [user.id, { name: user.name, role: user.role, password: "" }])));
+        setEditValues(Object.fromEntries(records.map((user) => [user.id, { name: user.name, role: user.role, language: user.language ?? "en", password: "" }])));
       } else {
         setUsers([]);
       }
@@ -75,10 +79,11 @@ export function SettingsDesk() {
     setSavingUser(true);
     setUsersError("");
     try {
-      await createUser({ name: newName.trim(), password: newPassword, role: newRole });
+      await createUser({ name: newName.trim(), password: newPassword, role: newRole, language: newLanguage });
       setNewName("");
       setNewPassword("");
       setNewRole("guest");
+      setNewLanguage("en");
       await refreshUsers();
     } catch (error) {
       setUsersError(error instanceof Error ? error.message : "Could not create user.");
@@ -96,6 +101,7 @@ export function SettingsDesk() {
       await updateUser(userId, {
         name: values.name.trim(),
         role: values.role,
+        language: values.language,
         ...(values.password ? { password: values.password } : {})
       });
       await refreshUsers();
@@ -103,6 +109,22 @@ export function SettingsDesk() {
       setUsersError(error instanceof Error ? error.message : "Could not update user.");
     } finally {
       setSavingUser(false);
+    }
+  };
+
+  const handleLanguageChange = async (event: Event) => {
+    const language = (event.currentTarget as HTMLSelectElement).value as AppLanguage;
+    if (!account || savingLanguage || language === account.language) return;
+    setSavingLanguage(true);
+    setLanguageError("");
+    try {
+      const updated = await updateMyLanguage(language);
+      setAccount(updated);
+      emitUiEvent('auth:user-changed', { user: updated });
+    } catch (error) {
+      setLanguageError(error instanceof Error ? error.message : "Could not update language.");
+    } finally {
+      setSavingLanguage(false);
     }
   };
 
@@ -185,6 +207,14 @@ export function SettingsDesk() {
           <div class="text-xs text-slate-300">
             {account ? <><span class="font-bold text-white">{account.name}</span><span class="ml-2 rounded bg-slate-800 px-2 py-1 uppercase text-[10px] text-cyan-300">{account.role}</span></> : "Account information unavailable"}
           </div>
+          {account && <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
+            Language
+            <select aria-label="Account language" value={account.language ?? "en"} disabled={savingLanguage} onChange={(event) => void handleLanguageChange(event)} class="h-8 rounded border border-slate-700 bg-slate-900 px-2 text-xs text-slate-300">
+              <option value="en">English</option>
+              <option value="ru">Russian</option>
+            </select>
+          </label>}
+          {languageError && <span role="alert" class="text-[10px] text-rose-300">{languageError}</span>}
           <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-8 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">Sign out</button>
           {account?.role === "admin" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title="Pull the latest shared portfolio state" class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>}
         </div>
@@ -250,17 +280,19 @@ export function SettingsDesk() {
           {account?.role === "admin" && <span class="text-[10px] uppercase tracking-wider text-emerald-400">Admin controls</span>}
         </div>
         {account?.role === "admin" ? <>
-          <form onSubmit={handleCreateUser} class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_130px_auto]">
+          <form onSubmit={handleCreateUser} class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_110px_120px_auto]">
             <input type="text" minLength={2} maxLength={60} required value={newName} onInput={(event) => setNewName((event.target as HTMLInputElement).value)} placeholder="User name" class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
             <input type="password" minLength={6} maxLength={128} required value={newPassword} onInput={(event) => setNewPassword((event.target as HTMLInputElement).value)} placeholder="Password (6+ characters)" autoComplete="new-password" class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
-            <select value={newRole} onChange={(event) => setNewRole((event.target as HTMLSelectElement).value as "guest" | "admin")} class="rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white"><option value="guest">Guest</option><option value="admin">Admin</option></select>
+            <select value={newRole} onChange={(event) => setNewRole((event.target as HTMLSelectElement).value as "guest" | "admin")} aria-label="New user role" class="rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white"><option value="guest">Guest</option><option value="admin">Admin</option></select>
+            <select value={newLanguage} onChange={(event) => setNewLanguage((event.target as HTMLSelectElement).value as AppLanguage)} aria-label="New user language" class="rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white"><option value="en">English</option><option value="ru">Russian</option></select>
             <button type="submit" disabled={savingUser} class="rounded bg-cyan-800 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-700 disabled:opacity-50">Add user</button>
           </form>
-          <div class="table-scroll-wrapper overflow-x-auto"><table class="w-full min-w-[620px] text-left text-xs">
-            <thead class="text-[10px] uppercase tracking-wider text-slate-500"><tr><th class="p-2">Name</th><th class="p-2">Role</th><th class="p-2">New password</th><th class="p-2">Actions</th></tr></thead>
+          <div class="table-scroll-wrapper overflow-x-auto"><table class="w-full min-w-[790px] text-left text-xs">
+            <thead class="text-[10px] uppercase tracking-wider text-slate-500"><tr><th class="p-2">Name</th><th class="p-2">Role</th><th class="p-2">Language</th><th class="p-2">New password</th><th class="p-2">Actions</th></tr></thead>
             <tbody>{users.map((user) => <tr key={user.id} class="border-t border-slate-800">
               <td class="p-2"><input aria-label={`Name for ${user.name}`} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
               <td class="p-2"><select aria-label={`Role for ${user.name}`} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white"><option value="guest">Guest</option><option value="admin">Admin</option></select></td>
+              <td class="p-2"><select aria-label={`Language for ${user.name}`} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white"><option value="en">English</option><option value="ru">Russian</option></select></td>
               <td class="p-2"><input aria-label={`New password for ${user.name}`} type="password" minLength={6} maxLength={128} autoComplete="new-password" placeholder="Leave blank to keep" value={editValues[user.id]?.password ?? ""} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], password: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
               <td class="whitespace-nowrap p-2"><button type="button" disabled={savingUser} onClick={() => void handleUpdateUser(user.id)} class="mr-2 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">Save</button>
                 {user.id !== account.id && <button type="button" disabled={savingUser} onClick={() => void handleDeleteUser(user)} class="rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">Delete</button>}</td>
