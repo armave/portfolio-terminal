@@ -641,6 +641,8 @@ export interface SyncOptions {
   showToast?: (msg: string, type: string) => void;
   logTerminal?: (msg: string) => void;
   onStatusChange?: (status: 'synced' | 'error') => void;
+  /** Guest sessions may pull shared state but must not perform migration/upgrade writes. */
+  allowCloudWrites?: boolean;
 }
 
 /**
@@ -866,7 +868,7 @@ export async function pullCloudState(
       setCloudRevision(pulledRevision);
     }
 
-    if (wasUpdated || requiresEncryptionUpgrade || mergedLocalData) {
+    if (handlers.allowCloudWrites !== false && (wasUpdated || requiresEncryptionUpgrade || mergedLocalData)) {
       pushCloudState(parsedState, {
         ...handlers,
         secret: currentSecret,

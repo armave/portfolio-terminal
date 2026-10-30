@@ -468,6 +468,7 @@ async function syncCloudState(mode = 'push') {
   return syncCloudStateService(mode, {
     state,
     getState: () => state,
+    allowCloudWrites: canWriteCloudState,
     pullCloudAndRewriteLocal,
     showToast: (msg: string, type?: string) => showToast(msg, type as any),
     logTerminal,
