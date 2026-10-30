@@ -378,6 +378,7 @@ export function classifyFreedomPortfolio(
 ): { positions: Record<string, PositionRecord>; cashStocks: any[] } {
   const positions: Record<string, PositionRecord> = {};
   const cashByTicker = new Map<string, any>();
+  const cashCostByTicker = new Map<string, { totalCost: number; pricedQuantity: number }>();
   const marginByTicker = new Map<string, { tranche: ActiveBrokerTranche; prior: PositionRecord | undefined; currentPrice: number; entryTranches: Array<{ qty: number; price: number; date?: string; buyCommission?: number }> }>();
   const previousCash = new Map<string, any>();
   for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
@@ -427,6 +428,15 @@ export function classifyFreedomPortfolio(
     if (cashQuantity > 1e-8) {
       const existing = cashByTicker.get(tranche.ticker);
       const quantity = (Number(existing?.shares) || 0) + cashQuantity;
+      const hasKnownEntryPrice = tranche.averagePrice !== null &&
+        Number.isFinite(tranche.averagePrice) && tranche.averagePrice > 0;
+      const previousCost = cashCostByTicker.get(tranche.ticker);
+      cashCostByTicker.set(tranche.ticker, {
+        totalCost: (previousCost?.totalCost || 0) +
+          (hasKnownEntryPrice ? cashQuantity * tranche.averagePrice! : 0),
+        pricedQuantity: (previousCost?.pricedQuantity || 0) +
+          (hasKnownEntryPrice ? cashQuantity : 0)
+      });
       cashByTicker.set(tranche.ticker, { ...(existing || priorCash || {}), ticker: tranche.ticker, shares: quantity, ...(tranche.marketPrice !== null ? { currentPrice: tranche.marketPrice, price: tranche.marketPrice } : {}) });
     }
   }
@@ -455,7 +465,18 @@ export function classifyFreedomPortfolio(
       ...(tranche.marketPrice !== null ? { quoteDetails: { ...(prior?.quoteDetails || {}), price: tranche.marketPrice, freshness: 'unknown', receivedAt } } : {})
     };
   }
-  const cashStocks = [...cashByTicker.values()];
+  const cashStocks = [...cashByTicker.values()].map((holding) => {
+    const cost = cashCostByTicker.get(tickerKey(holding.ticker));
+    const quantity = Number(holding.shares) || 0;
+    const hasCompleteCostBasis = cost !== undefined && quantity > 0 &&
+      Math.abs(cost.pricedQuantity - quantity) <= 1e-8;
+    return {
+      ...holding,
+      // Do not show a partial or fabricated average when any open cash shares
+      // are missing a purchase price.
+      averagePrice: hasCompleteCostBasis ? cost.totalCost / quantity : null
+    };
+  });
   return { positions, cashStocks };
 }
 
