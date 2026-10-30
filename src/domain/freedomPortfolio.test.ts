@@ -276,8 +276,8 @@ describe('active broker tranches', () => {
       quantity: lot.quantity,
       averagePrice: lot.averagePrice
     }))).toEqual([
-      { ticker: 'GOOGL', quantity: 5, averagePrice: 282 },
-      { ticker: 'GOOGL', quantity: 14, averagePrice: 282 }
+      { ticker: 'GOOGL', quantity: 14, averagePrice: 282 },
+      { ticker: 'GOOGL', quantity: 5, averagePrice: 282 }
     ]);
   });
 
