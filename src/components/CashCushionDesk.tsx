@@ -102,22 +102,23 @@ export function CashCushionDesk() {
 
       <div class="space-y-2">
         <div class="table-scroll-wrapper overflow-x-auto">
-          <table class="w-full min-w-[860px] table-fixed text-left text-xs border-collapse">
+          <table class="w-full min-w-[1040px] table-fixed text-left text-xs border-collapse">
             <thead>
               <tr class="border-b border-slate-800 text-slate-400 font-medium">
-                <th class="w-[13%] py-2 px-2">Ticker</th>
-                <th class="w-[10%] py-2 px-2 text-right whitespace-nowrap">Shares</th>
-                <th class="w-[13%] py-2 px-2 text-right whitespace-nowrap">Price · Mkt</th>
-                <th class="w-[13%] py-2 px-2 text-right whitespace-nowrap">Avg Bought</th>
-                <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">vs Avg</th>
-                <th class="w-[17%] py-2 px-2 text-right whitespace-nowrap">Mkt Value</th>
-                <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Eq. Alloc</th>
+                <th class="w-[12%] py-2 px-2">Ticker</th>
+                <th class="w-[9%] py-2 px-2 text-right whitespace-nowrap">Shares</th>
+                <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Price · Mkt</th>
+                <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Avg Bought</th>
+                <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Avg Value</th>
+                <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Mkt Value</th>
+                <th class="w-[13%] py-2 px-2 text-right whitespace-nowrap">P/L</th>
+                <th class="w-[10%] py-2 px-2 text-right whitespace-nowrap">Eq. Alloc</th>
               </tr>
             </thead>
             <tbody id="cashStocksTableBody" class="divide-y divide-slate-800/60 font-mono">
               {holdings.length === 0 ? (
                 <tr>
-                  <td colSpan={7} class="py-3 text-center text-slate-500 italic">
+                  <td colSpan={8} class="py-3 text-center text-slate-500 italic">
                     No broker-reported cash holdings available.
                   </td>
                 </tr>
@@ -128,11 +129,12 @@ export function CashCushionDesk() {
                   const averagePrice = Number(h.averagePrice);
                   const hasAveragePrice = Number.isFinite(averagePrice) && averagePrice > 0;
                   const hasMarketComparison = hasAveragePrice && price > 0;
-                  const marketDifference = hasMarketComparison ? price - averagePrice : null;
-                  const marketDifferencePercent = hasMarketComparison
-                    ? (marketDifference! / averagePrice) * 100
-                    : null;
+                  const averageValue = hasAveragePrice ? shares * averagePrice : null;
                   const val = shares * price;
+                  const totalDifference = hasMarketComparison ? val - averageValue! : null;
+                  const totalDifferencePercent = hasMarketComparison && averageValue! > 0
+                    ? (totalDifference! / averageValue!) * 100
+                    : null;
                   const allocation = stocksTotal > 0 ? (val / stocksTotal) * 100 : 0;
                   const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
 
@@ -181,31 +183,34 @@ export function CashCushionDesk() {
                       <td class="py-2 px-3 text-right text-slate-200 font-semibold tabular-nums whitespace-nowrap">
                         {hasAveragePrice ? formatUSD(averagePrice) : '—'}
                       </td>
+                      <td class="py-2 px-3 text-right text-slate-200 font-semibold tabular-nums whitespace-nowrap">
+                        {averageValue !== null ? formatUSD(averageValue) : '—'}
+                      </td>
+                      <td class="py-2 px-3 text-right text-white font-semibold tabular-nums whitespace-nowrap">
+                        {formatUSD(val)}
+                      </td>
                       <td class="py-2 px-3 text-right font-semibold tabular-nums whitespace-nowrap">
                         {hasMarketComparison ? (
                           <span
                             class={
-                              marketDifference! > 0
+                              totalDifference! > 0
                                 ? 'text-emerald-400'
-                                : marketDifference! < 0
+                                : totalDifference! < 0
                                   ? 'text-rose-400'
                                   : 'text-slate-400'
                             }
-                            title="Market price minus average bought price, per share"
+                            title="Market value minus average purchase value"
                           >
-                            {marketDifference! > 0 ? '+' : marketDifference! < 0 ? '−' : ''}
-                            {formatUSD(Math.abs(marketDifference!))}
+                            {totalDifference! > 0 ? '+' : totalDifference! < 0 ? '−' : ''}
+                            {formatUSD(Math.abs(totalDifference!))}
                             <span class="block text-[10px] font-normal">
-                              {marketDifferencePercent! > 0 ? '+' : ''}
-                              {marketDifferencePercent!.toFixed(2)}%
+                              {totalDifferencePercent! > 0 ? '+' : ''}
+                              {totalDifferencePercent!.toFixed(2)}%
                             </span>
                           </span>
                         ) : (
                           <span class="text-slate-500">—</span>
                         )}
-                      </td>
-                      <td class="py-2 px-3 text-right text-white font-semibold">
-                        {formatUSD(val)}
                       </td>
                       <td class="py-2 px-3 text-right text-slate-300 tabular-nums">
                         {allocation.toFixed(1)}%
@@ -218,7 +223,7 @@ export function CashCushionDesk() {
             <tfoot id="cashStocksTableFooter" class="border-t border-slate-700 font-mono">
               {holdings.length > 0 && (
                 <tr>
-                  <td class="py-2 px-3 text-slate-300 font-bold" colSpan={5}>
+                  <td class="py-2 px-3 text-slate-300 font-bold" colSpan={6}>
                     {holdings.length} holding{holdings.length === 1 ? '' : 's'}
                   </td>
                   <td class="py-2 px-3 text-right text-white font-bold">
