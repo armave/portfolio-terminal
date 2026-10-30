@@ -59,7 +59,6 @@ import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
-import { InsightSection } from './src/components/MarketInsightsPanel';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 
@@ -910,12 +909,7 @@ function exportBackupJSON() {
   logTerminal(`[Backup]: Exported state to ${filename}.`);
 }
 
-async function importBackupJSON(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-  input.value = '';
-
+async function importBackupFile(file: File) {
   try {
     const parsed = JSON.parse(await file.text());
     if (parsed && typeof parsed === 'object' && 'marginBalance' in parsed) {
@@ -1515,6 +1509,9 @@ function bindStartupActions() {
   });
   addUiEventListener('settings:export-backup', () => exportBackupJSON());
   addUiEventListener('settings:reset-to-blank-state', () => resetToBlankState());
+  addUiEventListener('terminal:backup-import-file', (event) => {
+    void importBackupFile(event.detail.file);
+  });
 }
 bindStartupActions();
 
