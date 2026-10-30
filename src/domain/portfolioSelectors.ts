@@ -29,7 +29,7 @@ export function getMarketInsightsTicker(state?: BoardState | null): string {
     !['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(currentView) &&
     state.positions?.[currentView]
   );
-  if (isPositionView) return currentView;
+  if (isPositionView) return currentView || '';
   const tickers = Object.keys(state.positions || {});
   const preferredTicker = state.selectedTicker;
   if (preferredTicker && state.positions?.[preferredTicker]) return preferredTicker;
