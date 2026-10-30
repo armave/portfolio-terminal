@@ -8,7 +8,7 @@ import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEvent
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { listUsers, type AuthUser } from '../services/api';
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
-import { getGuestAssignedCashHoldings } from '../domain/guestPortfolio';
+import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage } from '../services/i18n';
 
 const BADGE_STYLES: Record<string, string> = {
@@ -219,17 +219,16 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 <p class="mt-2 text-xs leading-relaxed text-slate-500">Ask your administrator to assign the cash-funded portion of an active stock purchase. Your assigned stocks will appear here automatically.</p>
               </div>
             ) : guestHoldings.map((holding) => {
-              const shares = Number(holding.shares) || 0;
-              const parsedPrice = Number(holding.currentPrice ?? holding.price);
-              const hasMarketPrice = Number.isFinite(parsedPrice) && parsedPrice > 0;
-              const price = hasMarketPrice ? parsedPrice : null;
-              const marketValue = price !== null ? shares * price : null;
-              const averagePrice = Number(holding.averagePrice);
-              const hasCost = Number.isFinite(averagePrice) && averagePrice > 0;
-              const costValue = hasCost ? shares * averagePrice : null;
-              // A missing quote is unknown, not a zero-dollar price or an unrealized loss.
-              const pnl = marketValue !== null && costValue !== null ? marketValue - costValue : null;
-              const pnlPercent = pnl !== null && costValue !== null && costValue > 0 ? pnl / costValue * 100 : null;
+              const {
+                shares,
+                currentPrice: price,
+                marketValue,
+                averagePrice,
+                unrealizedPnl: pnl,
+                unrealizedPnlPercent: pnlPercent
+              } = getGuestHoldingValuation(holding);
+              const hasMarketPrice = price !== null;
+              const hasCost = averagePrice !== null;
               const change = holding.quoteDetails?.changePercent;
               const relatedTranches = activeTranches
                 .filter((tranche) => activeTrancheGuestAssignments?.[tranche.id] === guestUserId && tranche.ticker.toUpperCase() === holding.ticker)
