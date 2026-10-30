@@ -100,7 +100,19 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     return () => { cancelled = true; };
   }, [showActiveTranches]);
 
-  const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
+  const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo)
+    .map((tranche) => {
+      const cashHolding = (state.cashCushion?.holdings || []).find(
+        (holding) => String(holding.ticker || '').trim().toUpperCase() === tranche.ticker
+      );
+      const marginPosition = state.positions?.[tranche.ticker];
+      const latestPrice = Number(
+        cashHolding?.currentPrice ?? cashHolding?.price ??
+        marginPosition?.currentPrice ?? tranche.marketPrice
+      );
+      if (!Number.isFinite(latestPrice) || latestPrice <= 0 || latestPrice === tranche.marketPrice) return tranche;
+      return { ...tranche, marketPrice: latestPrice, marketValue: latestPrice * tranche.quantity };
+    });
   const guestHoldings = guestUserId
     ? getGuestAssignedCashHoldings({
       guestId: guestUserId,
