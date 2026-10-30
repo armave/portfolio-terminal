@@ -236,7 +236,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                   </div>
                   <div class="mt-4 border-t border-slate-800 pt-3">
                     <div class="mb-2 flex items-center justify-between gap-2">
-                      <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Related active tranches</h4>
                       <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[9px] font-semibold text-slate-300">{relatedTranches.length} {relatedTranches.length === 1 ? 'tranche' : 'tranches'}</span>
                     </div>
                     {relatedTranches.length === 0 ? (
@@ -247,18 +246,14 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                           const trancheDate = tranche.purchasedAt !== null
                             ? new Date(tranche.purchasedAt).toLocaleDateString()
                             : 'Date unavailable';
-                          const tranchePrice = Number(tranche.marketPrice) || 0;
                           return (
                             <div key={tranche.id} class="rounded-lg border border-slate-800/80 bg-slate-900/60 p-2.5">
                               <div class="flex flex-wrap items-center justify-between gap-2">
                                 <span class="text-[10px] font-semibold text-slate-200">{trancheDate}</span>
-                                <span class="rounded border border-cyan-900/70 bg-cyan-950/30 px-1.5 py-0.5 text-[9px] uppercase text-cyan-300">{tranche.trancheType === 'mix' ? 'Mix · cash portion' : 'Cash'}</span>
                               </div>
                               <div class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
                                 <div><p class="text-[9px] text-slate-500">Assigned shares</p><p class="font-mono text-[11px] font-semibold text-slate-200">{tranche.assignedShares.toLocaleString('en-US', { maximumFractionDigits: 3 })}</p></div>
                                 <div><p class="text-[9px] text-slate-500">Entry price</p><p class="font-mono text-[11px] text-slate-200">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</p></div>
-                                <div><p class="text-[9px] text-slate-500">Market price</p><p class="font-mono text-[11px] text-emerald-300">{tranchePrice > 0 ? formatUSD(tranchePrice) : '—'}</p></div>
-                                <div><p class="text-[9px] text-slate-500">Cash / margin split</p><p class="font-mono text-[11px] text-slate-300">{tranche.trancheType === 'mix' ? `${tranche.mix.cash.toLocaleString('en-US', { maximumFractionDigits: 3 })} / ${tranche.mix.margin.toLocaleString('en-US', { maximumFractionDigits: 3 })}` : '100% cash'}</p></div>
                               </div>
                             </div>
                           );
