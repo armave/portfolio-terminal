@@ -10,12 +10,11 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
   const [invalid, setInvalid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const saveButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      inputRef.current?.focus();
-    }
-  }, [isOpen]);
+    if (isOpen && !submitting) inputRef.current?.focus();
+  }, [isOpen, submitting]);
 
   const handleDialogKeyDown = (event: KeyboardEvent) => {
     if (submitting && event.key === 'Escape') {
@@ -31,15 +30,14 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
     }
 
     if (event.key !== 'Tab') return;
-    const form = inputRef.current?.form;
-    const saveButton = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
     const input = inputRef.current;
+    const saveButton = saveButtonRef.current;
     if (!input || !saveButton) return;
 
-    if (event.shiftKey && document.activeElement === input) {
+    if (event.shiftKey && event.target === input) {
       event.preventDefault();
       saveButton.focus();
-    } else if (!event.shiftKey && document.activeElement === saveButton) {
+    } else if (!event.shiftKey && event.target === saveButton) {
       event.preventDefault();
       input.focus();
     }
@@ -63,9 +61,6 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
       setInvalid(true);
     } finally {
       setSubmitting(false);
-      window.setTimeout(() => {
-        if (inputRef.current && !inputRef.current.disabled) inputRef.current.focus();
-      }, 0);
     }
   };
 
@@ -96,6 +91,7 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
           class={"flex-1 bg-slate-900 text-slate-200 border rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500 disabled:opacity-60 disabled:cursor-wait " + (invalid ? "border-red-500" : "border-slate-700")} aria-invalid={invalid}
         />
         <button
+          ref={saveButtonRef}
           id="authSaveButton"
           type="submit"
           disabled={submitting}
