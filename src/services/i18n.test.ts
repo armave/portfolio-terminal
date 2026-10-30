@@ -33,6 +33,15 @@ describe('app localization', () => {
     expect(translateText('Show 4 tranches', 'ru')).toBe('Показать 4 лота');
   });
 
+  it('localizes dynamic projection, sync, and risk labels', () => {
+    expect(translateText('Synced: 12:30 PM', 'ru')).toBe('Синхронизировано: 12:30 PM');
+    expect(translateText('Rows 1–8 of 16', 'ru')).toBe('Строки 1–8 из 16');
+    expect(translateText('Page 2 of 4', 'ru')).toBe('Страница 2 из 4');
+    expect(translateText('EOW · +3d', 'ru')).toBe('До конца недели · +3 дн.');
+    expect(translateText('NTD · +1d', 'ru')).toBe('Следующий торговый день · +1 дн.');
+    expect(translateText('Position value 90.00 (already10.0% below trigger)', 'ru')).toBe('Стоимость позиции 90.00 (уже на 10.0% ниже порога)');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
