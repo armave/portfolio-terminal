@@ -8,7 +8,7 @@ import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEvent
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { listUsers, type AuthUser } from '../services/api';
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
-import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings } from '../domain/guestPortfolio';
+import { getGuestAssignedCashHoldings } from '../domain/guestPortfolio';
 
 const BADGE_STYLES: Record<string, string> = {
   bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
