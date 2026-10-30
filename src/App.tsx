@@ -40,6 +40,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const permissions = getAccountPermissions(currentUser?.role);
   const backupImportInputRef = useRef<HTMLInputElement>(null);
   const mainWorkspaceRef = useRef<HTMLElement>(null);
+  const previousCurrentUserRef = useRef<AuthUser | null>(null);
   const activeDeskView = usePortfolioSelector(resolveActiveView);
   const portfolioSnapshot = usePortfolio();
   const emptyStateVisible = Object.keys(portfolioSnapshot.positions || {}).length === 0 && activeDeskView === 'COMBINED';
@@ -343,6 +344,17 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   }, [permissions.canManageBackups]);
 
   useEffect(() => {
+    const previousUser = previousCurrentUserRef.current;
+    previousCurrentUserRef.current = currentUser;
+    // A guest may use Settings after signing in, but the sign-in transition itself
+    // always starts at Balance. Do not repeat this when their language changes.
+    if (currentUser?.role === 'guest' &&
+        (previousUser?.id !== currentUser.id || previousUser?.role !== 'guest')) {
+      emitUiEvent('portfolio:set-active-view', { view: 'BALANCE' });
+    }
+  }, [currentUser?.id, currentUser?.role]);
+
+  useEffect(() => {
     if (currentUser?.role === 'guest' && !['CASH_CUSHION', 'BALANCE', 'SETTINGS'].includes(activeDeskView)) {
       emitUiEvent('portfolio:set-active-view', { view: 'BALANCE' });
     }
@@ -563,7 +575,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       >{permissions.canViewClosedHistory && hasOpenedClosedHistory && <ClosedHistoryDesk />}</div>
 
       {/* Settings */}
-      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && <SettingsDesk />}</div>
+      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && <SettingsDesk currentUser={currentUser} />}</div>
 
       {/* Authentication is part of the application tree, not a second Preact root. */}
       <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>
