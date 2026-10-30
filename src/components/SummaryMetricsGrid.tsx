@@ -1,6 +1,7 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { useRef } from 'preact/hooks';
-import type { BoardState, BrokerRules, QuoteDetails } from '../types/portfolio';
+import type { BrokerRules, QuoteDetails } from '../types/portfolio';
+import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import {
@@ -45,7 +46,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
 }
 
 export interface SummaryMetricsGridProps {
-  state: BoardState;
   rules: BrokerRules;
   refreshIntervalMs?: number;
 }
@@ -157,10 +157,10 @@ function computeMarginRiskDisplay(
 }
 
 export function SummaryMetricsGrid({
-  state,
   rules,
   refreshIntervalMs = 60000
 }: SummaryMetricsGridProps) {
+  const state = usePortfolio();
   const previousPricesRef = useRef<Record<string, number>>({});
   const dailyRate = rules.annualRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
