@@ -235,7 +235,7 @@ export class PortfolioStateDO {
           id: crypto.randomUUID(), name, normalizedName: name.toLocaleLowerCase("en-US"),
           role, salt, passwordHash, createdAt: new Date().toISOString()
         };
-        const created = await this.ctx.storage.transaction(async (txn) => {
+        const created = await this.ctx.storage.transaction(async () => {
           const users = await this.ctx.storage.get(AUTH_USERS_KEY) || [];
           if (users.some((item) => item.normalizedName === user.normalizedName)) return false;
           await this.ctx.storage.put(AUTH_USERS_KEY, [...users, user]);
