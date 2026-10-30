@@ -29,7 +29,8 @@ import {
   syncCloudState as syncCloudStateService,
   validateGatewaySecret,
   getAuthStatus,
-  getCurrentUser
+  getCurrentUser,
+  listUsers
 } from './src/services/api';
 import {
   areHeaderCredentialsConfigured,
@@ -61,6 +62,7 @@ import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
+import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 
@@ -200,10 +202,10 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     const current = portfolioStore.getState();
     const activeTrancheTypes = { ...(current.activeTrancheTypes || {}), [operationId]: selectedType };
     const activeTrancheMixes = { ...(current.activeTrancheMixes || {}) };
+    const availableTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+    const activeTranche = getActiveTranchesFromTrades(availableTrades, current.brokerAccountInfo)
+      .find((tranche) => tranche.id === operationId);
     if (selectedType === 'mix') {
-      const availableTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
-      const activeTranche = getActiveTranchesFromTrades(availableTrades, current.brokerAccountInfo)
-        .find((tranche) => tranche.id === operationId);
       const previousType = current.activeTrancheTypes?.[operationId] ||
         current.activeTrancheTypes?.[operationId.split(':')[0]] || 'cash';
       const requestedMix = detail.mix || activeTrancheMixes[operationId] ||
@@ -215,9 +217,18 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
       activeTrancheMixes[operationId] = normalizeActiveTrancheMix(quantity, requestedMix);
     }
 
+    const activeTrancheGuestAssignments = { ...(current.activeTrancheGuestAssignments || {}) };
+    if (activeTranche && getAssignableActiveTrancheCashQuantity(
+      selectedType,
+      activeTranche.quantity,
+      activeTrancheMixes[operationId]
+    ) <= 0) {
+      delete activeTrancheGuestAssignments[operationId];
+    }
+
     const snapshot = current.brokerAccountInfo;
     if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) {
-      portfolioStore.setState({ activeTrancheTypes, activeTrancheMixes });
+      portfolioStore.setState({ activeTrancheTypes, activeTrancheMixes, activeTrancheGuestAssignments });
       // Persist the preference even when broker data is not ready yet.
       saveState(state);
       pushStateToGist();
@@ -243,6 +254,7 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     portfolioStore.setState({
       activeTrancheTypes,
       activeTrancheMixes,
+      activeTrancheGuestAssignments,
       positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
       cashStocks: brokerCashHoldings,
       cashCushion: {
@@ -255,6 +267,55 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     pushStateToGist();
     const ticker = operationId.split(':')[0];
     logTerminal(`[Freedom] ${ticker} purchase operation classified as ${selectedType}.`);
+    renderBoard();
+  });
+
+  addBrokerEventListener('broker:assign-active-tranche-guest', async (detail) => {
+    if (!(await requireAdmin('assign cash tranches to guests'))) return;
+    const trancheId = String(detail?.trancheId || '').trim();
+    const guestId = String(detail?.guestId || '').trim();
+    if (!trancheId) return;
+
+    const current = portfolioStore.getState();
+    if (guestId) {
+      const trades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+      const tranche = getActiveTranchesFromTrades(trades, current.brokerAccountInfo)
+        .find((item) => item.id === trancheId);
+      if (!tranche) {
+        showToast('Only an active purchase tranche can be linked to a guest.', 'error');
+        return;
+      }
+      const type = current.activeTrancheTypes?.[trancheId] ||
+        current.activeTrancheTypes?.[tranche.ticker] || 'cash';
+      const mix = normalizeActiveTrancheMix(
+        tranche.quantity,
+        current.activeTrancheMixes?.[trancheId] || current.activeTrancheMixes?.[tranche.ticker]
+      );
+      if (getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix) <= 0) {
+        showToast('Only a tranche with a positive cash allocation can be linked to a guest.', 'error');
+        return;
+      }
+
+      let users;
+      try {
+        users = await listUsers();
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Could not verify guest account.', 'error');
+        return;
+      }
+      if (!users.some((user) => user.id === guestId && user.role === 'guest')) {
+        showToast('Select an existing guest account.', 'error');
+        return;
+      }
+    }
+
+    const assignments = { ...(current.activeTrancheGuestAssignments || {}) };
+    if (guestId) assignments[trancheId] = guestId;
+    else delete assignments[trancheId];
+
+    portfolioStore.setState({ activeTrancheGuestAssignments: assignments });
+    saveState(state);
+    pushStateToGist();
     renderBoard();
   });
 
