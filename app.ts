@@ -1478,8 +1478,14 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
     appInitialized = true;
   } else {
     await publishCurrentUser();
+    // Re-authentication must also finish the shared-state pull and initial quotes
+    // before dismissing the modal.
+    await syncCloudState('pull');
+    await refreshAllLivePrices();
   }
-  // Keep the modal visible until startup and the initial cloud-data pull finish.
+  // Guests always land on their own Balance view, but only after data is ready.
+  if (currentAccountRole === 'guest') setActiveView('BALANCE');
+  // Keep the modal visible until startup, cloud data, and initial quotes finish.
   hideAuthContainer();
   return true;
 }
