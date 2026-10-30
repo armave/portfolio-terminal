@@ -750,9 +750,9 @@ function applyOvernightRollover() {
 
 function setActiveView(view: string) {
   const normalizedView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED');
-  // Preserve the prior view-only behavior; selectedTicker is managed separately.
+  // Desk selection is a per-browser preference. The store persists it locally;
+  // a tab switch should not POST the entire shared portfolio to KV.
   portfolioStore.setState({ activeView: normalizedView });
-  saveState(state, pushStateToGist);
   renderBoard();
 }
 
