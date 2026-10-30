@@ -13,6 +13,7 @@ import {
   resolveSaleQuantity,
 } from './src/domain/portfolio';
 import { evaluateIntent, parseAiIntent } from './src/features/ai/intent';
+import { canAccessPortfolioView } from './src/domain/accountPermissions';
 import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
   calculateTargetUpsidePercent,
@@ -32,7 +33,7 @@ import {
   getCurrentUser,
   listUsers,
   getGuestPortfolioSnapshot,
-  publishGuestPortfolioSnapshot,
+  publishGuestPortfolioSnapshots,
   clearCloudEncryptionSecretCache
 } from './src/services/api';
 import {
@@ -165,9 +166,14 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     void publishGuestPortfolioSnapshots();
   });
 
+  addBrokerEventListener('broker:executed-trades-error', () => {
+    if (currentAccountRole === 'admin') brokerTradeHistoryLoaded = false;
+  });
+
   addBrokerEventListener('broker:executed-trades', (trades) => {
     if (currentAccountRole !== 'admin') return;
     if (!Array.isArray(trades)) return;
+    brokerTradeHistoryLoaded = true;
     const current = portfolioStore.getState();
     // portfolioStore.setState persists synchronously. Reattach local fee allocations
     // BEFORE setting raw broker rows, otherwise this listener overwrites the
@@ -396,6 +402,7 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
   });
 
 let guestPortfolioPublishQueue: Promise<void> = Promise.resolve();
+let brokerTradeHistoryLoaded = false;
 
 /** Publish only cash-backed lots assigned to each guest. Never include account balances,
  * margin positions, closed history, unassigned lots, or another guest's assignments. */
@@ -405,35 +412,39 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
     if (currentAccountRole !== 'admin') return;
     const current = portfolioStore.getState();
     if (!current.brokerAccountInfo?.loaded || !Array.isArray(current.brokerAccountInfo.positions) ||
-        !Array.isArray(current.brokerExecutedTrades)) return;
+        !brokerTradeHistoryLoaded || !Array.isArray(current.brokerExecutedTrades)) return;
 
     const activeTranches = getActiveTranchesFromTrades(current.brokerExecutedTrades, current.brokerAccountInfo);
     const guests = (await listUsers()).filter((user) => user.role === 'guest');
     const updatedAt = Date.now();
-    await Promise.all(guests.map(async (guest) => {
-      const tranches = activeTranches.flatMap((tranche) => {
-        if (current.activeTrancheGuestAssignments?.[tranche.id] !== guest.id) return [];
-        const type = current.activeTrancheTypes?.[tranche.id] ||
-          current.activeTrancheTypes?.[tranche.ticker] || 'cash';
-        const mix = normalizeActiveTrancheMix(
-          tranche.quantity,
-          current.activeTrancheMixes?.[tranche.id] || current.activeTrancheMixes?.[tranche.ticker]
-        );
-        const assignedQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
-        if (!Number.isFinite(assignedQuantity) || assignedQuantity <= 0) return [];
-        return [{
-          id: tranche.id,
-          ticker: tranche.ticker,
-          name: tranche.name,
-          quantity: assignedQuantity,
-          averagePrice: tranche.averagePrice,
-          marketPrice: tranche.marketPrice,
-          marketValue: tranche.marketPrice === null ? null : tranche.marketPrice * assignedQuantity,
-          purchasedAt: tranche.purchasedAt
-        }];
-      });
-      await publishGuestPortfolioSnapshot(guest.id, { updatedAt, tranches });
+    const publications = guests.map((guest) => ({
+      guestId: guest.id,
+      snapshot: {
+        updatedAt,
+        tranches: activeTranches.flatMap((tranche) => {
+          if (current.activeTrancheGuestAssignments?.[tranche.id] !== guest.id) return [];
+          const type = current.activeTrancheTypes?.[tranche.id] ||
+            current.activeTrancheTypes?.[tranche.ticker] || 'cash';
+          const mix = normalizeActiveTrancheMix(
+            tranche.quantity,
+            current.activeTrancheMixes?.[tranche.id] || current.activeTrancheMixes?.[tranche.ticker]
+          );
+          const assignedQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
+          if (!Number.isFinite(assignedQuantity) || assignedQuantity <= 0) return [];
+          return [{
+            id: tranche.id,
+            ticker: tranche.ticker,
+            name: tranche.name,
+            quantity: assignedQuantity,
+            averagePrice: tranche.averagePrice,
+            marketPrice: tranche.marketPrice,
+            marketValue: tranche.marketPrice === null ? null : tranche.marketPrice * assignedQuantity,
+            purchasedAt: tranche.purchasedAt
+          }];
+        })
+      }
     }));
+    await publishGuestPortfolioSnapshots(publications);
   });
   guestPortfolioPublishQueue = operation.catch((error) => {
     console.error('Unable to publish guest portfolio projections:', error);
@@ -488,6 +499,9 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
   renderBoard();
 }
 
+let startupCloudWritesSuppressed = true;
+let startupCloudWritePending = false;
+
 const syncCalculatedPortfolioEquity = (nextStoreState: ReturnType<typeof portfolioStore.getState>) => {
   state = nextStoreState as any;
 
@@ -526,6 +540,11 @@ async function pushStateToCloud(forceImmediate = false) {
 
   if (!areHeaderCredentialsConfigured()) {
     setCloudStatus('idle', 'ADD SECRET');
+    return;
+  }
+
+  if (startupCloudWritesSuppressed) {
+    startupCloudWritePending = true;
     return;
   }
 
@@ -749,9 +768,9 @@ function applyOvernightRollover() {
 
 function setActiveView(view: string) {
   const normalizedView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED');
-  // Preserve the prior view-only behavior; selectedTicker is managed separately.
+  // Desk selection is a per-browser preference. The store persists it locally;
+  // a tab switch should not POST the entire shared portfolio to KV.
   portfolioStore.setState({ activeView: normalizedView });
-  saveState(state, pushStateToGist);
   renderBoard();
 }
 
@@ -1722,6 +1741,11 @@ async function startApp(secret: string) {
   initialQuoteRefreshPending = false;
   if (currentAccountRole === 'guest') setActiveView('BALANCE');
   renderBoardAnalystConsensus(getMarketInsightsTicker());
+  startupCloudWritesSuppressed = false;
+  if (startupCloudWritePending) {
+    startupCloudWritePending = false;
+    await pushStateToCloud();
+  }
   hideStartupLoading();
 }
 
@@ -1768,15 +1792,14 @@ function bindStartupActions() {
   });
   addUiEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
   addUiEventListener('portfolio:set-active-view', (event) => {
-    void (async () => {
-      const requestedView = event.detail.view;
-      const user = await getCurrentUser().catch(() => null);
-      if (user?.role !== 'admin' && !['BALANCE', 'CASH_CUSHION', 'SETTINGS'].includes(requestedView)) {
-        setActiveView('BALANCE');
-        return;
-      }
-      setActiveView(requestedView);
-    })();
+    const requestedView = event.detail.view;
+    // The session role is verified during startup and authentication changes.
+    // Navigation is local UI state; do not revalidate the same session for every tab click.
+    if (!canAccessPortfolioView(currentAccountRole, requestedView)) {
+      setActiveView('BALANCE');
+      return;
+    }
+    setActiveView(requestedView);
   });
   addUiEventListener('portfolio:refresh-live-prices', (event) => {
     void refreshAllLivePrices().finally(event.detail.resolve);
