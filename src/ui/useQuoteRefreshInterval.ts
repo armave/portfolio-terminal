@@ -12,6 +12,8 @@ export function useQuoteRefreshInterval(fallbackMs = 60000): number {
       if (Number.isFinite(next) && next >= 0) setIntervalMs(next);
     };
     addUiEventListener('settings:refresh-interval-changed', onChanged);
+    // Re-read after subscribing so a Settings update between render and effect setup is not lost.
+    setIntervalMs(getQuoteRefreshInterval(fallbackMs));
     return () => removeUiEventListener('settings:refresh-interval-changed', onChanged);
   }, []);
 
