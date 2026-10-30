@@ -696,7 +696,17 @@ export async function validateGatewaySecret(secret: string): Promise<boolean> {
       cache: 'no-store'
     });
     validatedCloudResponse = null;
-    return response.ok;
+    if (!response.ok) {
+      currentUserCache = null;
+      return false;
+    }
+    // Reuse the identity returned during validation instead of issuing a second
+    // identical /api/auth/me read during startup.
+    const payload = typeof response.json === 'function'
+      ? await response.json().catch(() => null)
+      : null;
+    if (isAuthUser(payload?.user)) rememberCurrentUser(cleanSecret, payload.user);
+    return true;
   } catch (error) {
     validatedCloudResponse = null;
     console.warn('Account session validation failed:', error);
@@ -741,6 +751,7 @@ export async function pullCloudState(
     const pulledRevision = readCloudRevision(res.headers);
 
     if (res.status === 404) {
+      cloudStatePushFingerprints.delete(currentSecret);
       // A confirmed empty cloud store is safe to use as the current base revision.
       if (pulledRevision !== null) {
         cloudPullGeneration += 1;
@@ -851,6 +862,7 @@ export async function pullCloudState(
       throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
     }
 
+    cloudStatePushFingerprints.delete(currentSecret);
     // Only trust the cloud revision after its payload was decrypted, validated,
     // and persisted locally. A failed pull must not authorize a later overwrite.
     if (pulledRevision !== null) {
@@ -1104,6 +1116,14 @@ async function performPushCloudState(
       }));
     }
     delete stateToEncrypt.closedHistory;
+    const fingerprintState = { ...stateToEncrypt };
+    delete fingerprintState.lastUpdated;
+    const stateFingerprint = JSON.stringify(fingerprintState);
+    if (cloudStatePushFingerprints.get(currentSecret) === stateFingerprint) {
+      handlers.onStatusChange?.('synced');
+      return true;
+    }
+
     const serializedState = JSON.stringify(stateToEncrypt);
     const serializedBytes = new TextEncoder().encode(serializedState).byteLength;
     if (serializedBytes > 3500 * 1024) {
@@ -1134,6 +1154,7 @@ async function performPushCloudState(
 
     const savedRevision = readCloudRevision(res.headers);
     if (savedRevision !== null) setCloudRevision(savedRevision);
+    cloudStatePushFingerprints.set(currentSecret, stateFingerprint);
 
     handlers.onStatusChange?.('synced');
     return true;
@@ -1377,7 +1398,78 @@ export interface AuthUser {
 export interface AuthSession { token: string; user: AuthUser; expiresAt: number; }
 const AUTH_API_URL = WORKER_PROXY_URL;
 
-async function authRequest<T>(path: string, options: { method?: "GET" | "POST"; body?: Record<string, unknown>; token?: string } = {}): Promise<T> {
+const AUTH_READ_TTL_MS = 15_000;
+const CURRENT_USER_READ_TTL_MS = 5_000;
+const authReadRequests = new Map<string, Promise<unknown>>();
+const cloudStatePushFingerprints = new Map<string, string>();
+const guestPortfolioPublicationFingerprints = new Map<string, string>();
+const guestPortfolioPublicationRequests = new Map<string, Promise<void>>();
+
+let currentUserCache: { token: string; expiresAt: number; user: AuthUser } | null = null;
+let usersCache: { token: string; expiresAt: number; users: AuthUser[] } | null = null;
+let usersRequest: { token: string; generation: number; promise: Promise<AuthUser[]> } | null = null;
+let usersCacheGeneration = 0;
+
+function isAuthUser(value: unknown): value is AuthUser {
+  if (!value || typeof value !== "object") return false;
+  const user = value as Partial<AuthUser>;
+  return typeof user.id === "string" && typeof user.name === "string" &&
+    (user.role === "admin" || user.role === "guest") && typeof user.createdAt === "string";
+}
+
+function rememberCurrentUser(token: string, user: AuthUser): void {
+  currentUserCache = { token, user, expiresAt: Date.now() + CURRENT_USER_READ_TTL_MS };
+}
+
+function invalidateUserDirectoryCache(token: string): void {
+  usersCacheGeneration += 1;
+  usersCache = null;
+  usersRequest = null;
+  currentUserCache = null;
+  authReadRequests.delete(JSON.stringify(["/api/auth/users", token]));
+}
+
+export function clearGuestPortfolioPublicationCache(): void {
+  guestPortfolioPublicationFingerprints.clear();
+  guestPortfolioPublicationRequests.clear();
+}
+
+export function clearApiRequestCaches(): void {
+  authReadRequests.clear();
+  currentUserCache = null;
+  usersCache = null;
+  usersRequest = null;
+  usersCacheGeneration += 1;
+  cloudStatePushFingerprints.clear();
+  clearGuestPortfolioPublicationCache();
+  validatedCloudResponse = null;
+}
+
+function authRequest<T>(
+  path: string,
+  options: { method?: "GET" | "POST"; body?: Record<string, unknown>; token?: string } = {}
+): Promise<T> {
+  const method = (options.method || "GET").toUpperCase();
+  if (method === "GET" && !options.body) {
+    const key = JSON.stringify([path, options.token || ""]);
+    const existing = authReadRequests.get(key);
+    if (existing) return existing as Promise<T>;
+    const request = performAuthRequest<T>(path, options);
+    authReadRequests.set(key, request);
+    void request.finally(() => {
+      if (authReadRequests.get(key) === request) authReadRequests.delete(key);
+    }).catch(() => {
+      // The original caller owns error handling; ignore the cleanup chain.
+    });
+    return request;
+  }
+  return performAuthRequest<T>(path, options);
+}
+
+async function performAuthRequest<T>(
+  path: string,
+  options: { method?: "GET" | "POST"; body?: Record<string, unknown>; token?: string } = {}
+): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (options.token) {
     headers.Authorization = `Bearer ${options.token}`;
@@ -1400,34 +1492,77 @@ export function loginAccount(name: string, password: string): Promise<AuthSessio
 export function bootstrapAdmin(name: string, password: string, bootstrapSecret: string): Promise<AuthSession> {
   return authRequest("/api/auth/bootstrap", { method: "POST", body: { name, password, bootstrapSecret } });
 }
-export async function getCurrentUser(): Promise<AuthUser> {
+export function getCurrentUser(): Promise<AuthUser> {
   const token = getActiveGatewaySecret();
-  if (!token) throw new Error("Not signed in.");
-  return (await authRequest<{ user: AuthUser }>("/api/auth/me", { token })).user;
+  if (!token) return Promise.reject(new Error("Not signed in."));
+  if (currentUserCache?.token === token && currentUserCache.expiresAt > Date.now()) {
+    return Promise.resolve(currentUserCache.user);
+  }
+  return authRequest<{ user: AuthUser }>("/api/auth/me", { token }).then((payload) => {
+    if (!isAuthUser(payload?.user)) throw new Error("The authenticated user response was invalid.");
+    rememberCurrentUser(token, payload.user);
+    return payload.user;
+  });
 }
-export async function listUsers(): Promise<AuthUser[]> {
+
+export function listUsers(): Promise<AuthUser[]> {
   const token = getActiveGatewaySecret();
-  if (!token) throw new Error("Not signed in.");
-  return (await authRequest<{ users: AuthUser[] }>("/api/auth/users", { token })).users;
+  if (!token) return Promise.reject(new Error("Not signed in."));
+  if (usersCache?.token === token && usersCache.expiresAt > Date.now()) {
+    return Promise.resolve(usersCache.users);
+  }
+  if (usersRequest?.token === token && usersRequest.generation === usersCacheGeneration) {
+    return usersRequest.promise;
+  }
+  const generation = usersCacheGeneration;
+  const request = authRequest<{ users: AuthUser[] }>("/api/auth/users", { token })
+    .then((payload) => {
+      const users = Array.isArray(payload?.users) ? payload.users : [];
+      if (generation === usersCacheGeneration) {
+        usersCache = { token, users, expiresAt: Date.now() + AUTH_READ_TTL_MS };
+      }
+      return users;
+    })
+    .finally(() => {
+      if (usersRequest?.promise === request) usersRequest = null;
+    });
+  usersRequest = { token, generation, promise: request };
+  return request;
 }
 export async function createUser(input: { name: string; password: string; role: "guest" | "admin" }): Promise<AuthUser> {
   const token = getActiveGatewaySecret();
   if (!token) throw new Error("Not signed in.");
-  return (await authRequest<{ user: AuthUser }>("/api/auth/users", { method: "POST", token, body: { action: "create", ...input } })).user;
+  invalidateUserDirectoryCache(token);
+  try {
+    return (await authRequest<{ user: AuthUser }>("/api/auth/users", { method: "POST", token, body: { action: "create", ...input } })).user;
+  } finally {
+    invalidateUserDirectoryCache(token);
+  }
 }
 export async function updateUser(id: string, input: { name: string; role: "guest" | "admin"; password?: string }): Promise<AuthUser> {
   const token = getActiveGatewaySecret();
   if (!token) throw new Error("Not signed in.");
-  return (await authRequest<{ user: AuthUser }>("/api/auth/users", { method: "POST", token, body: { action: "update", id, ...input } })).user;
+  invalidateUserDirectoryCache(token);
+  try {
+    return (await authRequest<{ user: AuthUser }>("/api/auth/users", { method: "POST", token, body: { action: "update", id, ...input } })).user;
+  } finally {
+    invalidateUserDirectoryCache(token);
+  }
 }
 export async function deleteUser(id: string): Promise<void> {
   const token = getActiveGatewaySecret();
   if (!token) throw new Error("Not signed in.");
-  await authRequest<{ success: boolean }>("/api/auth/users", { method: "POST", token, body: { action: "delete", id } });
+  invalidateUserDirectoryCache(token);
+  try {
+    await authRequest<{ success: boolean }>("/api/auth/users", { method: "POST", token, body: { action: "delete", id } });
+  } finally {
+    invalidateUserDirectoryCache(token);
+  }
 }
 export async function logoutAccount(): Promise<void> {
   const token = getActiveGatewaySecret();
   if (token) await authRequest<{ success: boolean }>("/api/auth/logout", { method: "POST", token, body: {} });
+  clearApiRequestCaches();
 }
 
 
@@ -1455,17 +1590,91 @@ export async function getGuestPortfolioSnapshot(): Promise<GuestPortfolioSnapsho
 }
 
 /** Administrator-only publication of one already-filtered guest projection. */
-export async function publishGuestPortfolioSnapshot(
+export function publishGuestPortfolioSnapshot(
   guestId: string,
   snapshot: GuestPortfolioSnapshot
 ): Promise<void> {
   const token = getActiveGatewaySecret();
-  if (!token) throw new Error("Not signed in.");
-  await authRequest<{ success: boolean }>("/api/guest-portfolio", {
+  if (!token) return Promise.reject(new Error("Not signed in."));
+  const cacheKey = JSON.stringify([token, guestId]);
+  // updatedAt is metadata; only a change in assigned holdings requires a write.
+  const fingerprint = JSON.stringify(snapshot.tranches);
+  if (guestPortfolioPublicationFingerprints.get(cacheKey) === fingerprint) return Promise.resolve();
+
+  const requestKey = JSON.stringify([cacheKey, fingerprint]);
+  const existing = guestPortfolioPublicationRequests.get(requestKey);
+  if (existing) return existing;
+
+  const request = authRequest<{ success: boolean }>("/api/guest-portfolio", {
     method: "POST",
     token,
     body: { guestId, snapshot: { updatedAt: snapshot.updatedAt, tranches: snapshot.tranches } }
+  }).then(() => {
+    guestPortfolioPublicationFingerprints.set(cacheKey, fingerprint);
+  }).finally(() => {
+    if (guestPortfolioPublicationRequests.get(requestKey) === request) {
+      guestPortfolioPublicationRequests.delete(requestKey);
+    }
   });
+  guestPortfolioPublicationRequests.set(requestKey, request);
+  return request;
+}
+
+export interface GuestPortfolioPublication {
+  guestId: string;
+  snapshot: GuestPortfolioSnapshot;
+}
+
+/** Publish all changed guest projections in one authenticated administrator request. */
+export function publishGuestPortfolioSnapshots(
+  publications: GuestPortfolioPublication[]
+): Promise<void> {
+  const token = getActiveGatewaySecret();
+  if (!token) return Promise.reject(new Error("Not signed in."));
+  if (!Array.isArray(publications) || publications.length === 0) return Promise.resolve();
+
+  const seenGuestIds = new Set<string>();
+  const changed = publications.filter(({ guestId, snapshot }) => {
+    const id = String(guestId || "").trim();
+    if (!id || seenGuestIds.has(id)) throw new Error("Guest portfolio batch contains a duplicate or missing guest ID.");
+    seenGuestIds.add(id);
+    if (!snapshot || !Array.isArray(snapshot.tranches)) throw new Error("Invalid guest portfolio snapshot.");
+    const cacheKey = JSON.stringify([token, id]);
+    return guestPortfolioPublicationFingerprints.get(cacheKey) !== JSON.stringify(snapshot.tranches);
+  }).map(({ guestId, snapshot }) => ({ guestId: guestId.trim(), snapshot }));
+
+  if (changed.length === 0) return Promise.resolve();
+  const requestKey = JSON.stringify([
+    "batch",
+    token,
+    changed.map(({ guestId, snapshot }) => [guestId, JSON.stringify(snapshot.tranches)])
+  ]);
+  const existing = guestPortfolioPublicationRequests.get(requestKey);
+  if (existing) return existing;
+
+  const request = authRequest<{ success: boolean; revisions?: Record<string, number> }>("/api/guest-portfolio", {
+    method: "POST",
+    token,
+    body: {
+      snapshots: changed.map(({ guestId, snapshot }) => ({
+        guestId,
+        snapshot: { updatedAt: snapshot.updatedAt, tranches: snapshot.tranches }
+      }))
+    }
+  }).then(() => {
+    for (const { guestId, snapshot } of changed) {
+      guestPortfolioPublicationFingerprints.set(
+        JSON.stringify([token, guestId]),
+        JSON.stringify(snapshot.tranches)
+      );
+    }
+  }).finally(() => {
+    if (guestPortfolioPublicationRequests.get(requestKey) === request) {
+      guestPortfolioPublicationRequests.delete(requestKey);
+    }
+  });
+  guestPortfolioPublicationRequests.set(requestKey, request);
+  return request;
 }
 
 
