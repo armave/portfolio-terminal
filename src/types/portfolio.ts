@@ -205,6 +205,8 @@ export interface PortfolioState {
   activeTrancheTypes?: Record<string, ActiveTrancheType>;
   /** Per-operation share quantities for mixed cash/margin classifications. */
   activeTrancheMixes?: Record<string, ActiveTrancheMix>;
+  /** Guest account linked to each active operation's cash-funded share quantity. */
+  activeTrancheGuestAssignments?: Record<string, string>;
   brokerAccountInfo?: {
     loaded: boolean;
     balances: Array<{ currency: string; amount: number; forecastIn: number; forecastOut: number; t2In: number; t2Out: number }>;
