@@ -8,6 +8,17 @@ import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToC
 
 type ImportedCashflow = { id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw: Record<string, string> };
 
+export function shouldShowCashflowImportProgress(savedRows?: ImportedCashflow[]): boolean {
+  // Saved rows are recalculated in the background; only an uploaded file owns
+  // the visible import button's progress state.
+  return savedRows === undefined;
+}
+
+export function isSupportedCashflowWorkbook(file: Pick<File, 'name'>): boolean {
+  return file.name.trim().toLowerCase().endsWith('.xlsx');
+}
+
+
 function xmlText(node: Element | null): string {
   return node?.textContent ?? '';
 }
@@ -184,11 +195,13 @@ export function ClosedHistoryDesk() {
     });
   }, [brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, brokerTrades]);
   const handleImportCashflows = async (file: File | null, savedRows?: any[]) => {
-    const showImportMessage = !savedRows;
-    setCashflowImporting(true);
-    if (showImportMessage) setCashflowImportMessage('');
+    const showImportProgress = shouldShowCashflowImportProgress(savedRows);
+    if (showImportProgress) {
+      setCashflowImporting(true);
+      setCashflowImportMessage('');
+    }
     try {
-      if (!savedRows && (!file || !file.name.toLowerCase().endsWith('.xlsx'))) throw new Error('Please select an Excel .xlsx file.');
+      if (!savedRows && (!file || !isSupportedCashflowWorkbook(file))) throw new Error('Please select an Excel .xlsx file.');
       const rows = savedRows ?? normalizeCashflowRows(await readXlsxRows(await file!.arrayBuffer()));
       const imported = savedRows ? savedRows as ReturnType<typeof normalizeCashflowRows> : rows as ReturnType<typeof normalizeCashflowRows>;
       if (!imported.length) throw new Error('No cashflow rows were found in this workbook.');
@@ -329,14 +342,14 @@ export function ClosedHistoryDesk() {
           if (!synced) throw new Error('Cloud history did not confirm the update.');
         } catch (error) {
           console.error('Failed to sync closed-history cashflows and fees:', error);
-          if (showImportMessage) {
+          if (showImportProgress) {
             setCashflowImportMessage(`History was updated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}. Retry the import before navigating away.`);
             return;
           }
         }
       }
       if (!updatedTradeCount && (matchedFeeRows > 0 || appMatchedFeeRows > 0)) {
-        if (showImportMessage) {
+        if (showImportProgress) {
           const matchedForMessage = brokerExecutions.length ? matchedFeeRows : appMatchedFeeRows;
           setCashflowImportMessage(`Saved ${imported.length} cashflow rows; ${matchedForMessage} fee dates matched closed trades, and existing allocations were already current. No trade rows needed updating.`);
         }
@@ -349,19 +362,20 @@ export function ClosedHistoryDesk() {
         const tradeRange = executions.map(row => row.time).filter(Number.isFinite);
         const feeSpan = feeRange.length ? new Date(Math.min(...feeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...feeRange)).toISOString().slice(0, 10) : 'unparseable';
         const tradeSpan = tradeRange.length ? new Date(Math.min(...tradeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...tradeRange)).toISOString().slice(0, 10) : 'unparseable';
-        if (showImportMessage) setCashflowImportMessage(`Saved ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows (${validFeeDates} with valid dates; ${feeSpan}), but none overlapped ${segments.length} FIFO-matched closed trade segments from ${validTradeDates} dated broker executions (${tradeSpan}). Cashflow data is saved; check the date ranges and broker execution data to allocate fees.`);
+        if (showImportProgress) setCashflowImportMessage(`Saved ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows (${validFeeDates} with valid dates; ${feeSpan}), but none overlapped ${segments.length} FIFO-matched closed trade segments from ${validTradeDates} dated broker executions (${tradeSpan}). Cashflow data is saved; check the date ranges and broker execution data to allocate fees.`);
         return true;
       }
       if (brokerExecutions.length) setBrokerTrades(updatedExecutions);
       const allocatedForMessage = brokerExecutions.length ? allocatedDailyFees : appAllocatedDailyFees;
       const matchedForMessage = brokerExecutions.length ? matchedFeeRows : appMatchedFeeRows;
-      if (showImportMessage) setCashflowImportMessage(`Saved ${imported.length} cashflow rows; allocated ${allocatedForMessage.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} changed closed-trade rows (${matchedForMessage} fee dates matched). Saved rows can be reused after refresh.`);
+      if (showImportProgress) setCashflowImportMessage(`Saved ${imported.length} cashflow rows; allocated ${allocatedForMessage.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} changed closed-trade rows (${matchedForMessage} fee dates matched). Saved rows can be reused after refresh.`);
       return true;
     } catch (error) {
-      if (showImportMessage) setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
+      if (showImportProgress) setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
+      else console.error('Unable to recalculate saved closed-history cashflows:', error);
       return false;
     } finally {
-      setCashflowImporting(false);
+      if (showImportProgress) setCashflowImporting(false);
     }
   };
   useEffect(() => {
@@ -589,7 +603,7 @@ export function ClosedHistoryDesk() {
         <div class="flex flex-wrap items-center gap-2">
           <label class="h-8 rounded border border-amber-600 bg-amber-600 px-3 text-xs font-bold text-black hover:bg-amber-500 cursor-pointer inline-flex items-center justify-center">
             {cashflowImporting ? "Importing…" : "Import Cashflows"}
-            <input type="file" accept=".xlsx,.xls" disabled={cashflowImporting} class="sr-only" onChange={(event) => {
+            <input type="file" accept=".xlsx" disabled={cashflowImporting} class="sr-only" onChange={(event) => {
               const input = event.currentTarget as HTMLInputElement;
               const file = input.files?.[0];
               if (file) void handleImportCashflows(file);

@@ -34,6 +34,20 @@ export function isStandaloneStocktwitsMessage(message: unknown): boolean {
     value.reply_to == null;
 }
 
+function getStocktwitsSentiment(message: unknown): string | null {
+  if (!message || typeof message !== 'object') return null;
+  const value = message as {
+    sentiment?: { basic?: string | null } | null;
+    entities?: { sentiment?: { basic?: string | null } | null } | null;
+  };
+  const sentiment = value.sentiment?.basic ?? value.entities?.sentiment?.basic;
+  return typeof sentiment === 'string' ? sentiment.trim() : null;
+}
+
+export function isBearishStocktwitsMessage(message: unknown): boolean {
+  return getStocktwitsSentiment(message)?.toLowerCase() === 'bearish';
+}
+
 export function getStocktwitsCashtags(body: unknown): string[] {
   if (typeof body !== 'string') return [];
   return Array.from(new Set(
@@ -52,6 +66,7 @@ export function hasStocktwitsCommentary(body: unknown): boolean {
 export function getVisibleStocktwitsMessages<T>(messages: T[], limit = 10): T[] {
   return messages
     .filter(isStandaloneStocktwitsMessage)
+    .filter((message) => !isBearishStocktwitsMessage(message))
     .slice(0, Math.max(0, Math.floor(limit)));
 }
 
@@ -238,9 +253,8 @@ export function MarketInsightsPanel({
     onSelectSection(nextTab.id);
   };
 
-  // Show ten recent standalone posts. Don't discard valid posts just because
-  // they contain multiple cashtags or little text; those filters made the feed
-  // appear nearly empty even when the API returned a full stream.
+  // Keep terse and multi-cashtag standalone posts, but exclude bearish entries.
+  // Apply the ten-post limit after those two content filters.
   const filteredStocktwitsMessages = getVisibleStocktwitsMessages(stocktwitsData?.messages ?? [], 10);
 
   const renderContent = () => {
@@ -592,7 +606,7 @@ export function MarketInsightsPanel({
               {filteredStocktwitsMessages.length === 0 ? (
                 <p class="rounded border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">No single-ticker messages found.</p>
               ) : filteredStocktwitsMessages.map((message, idx) => {
-                const sentiment = message.sentiment?.basic ?? message.entities?.sentiment?.basic ?? null;
+                const sentiment = getStocktwitsSentiment(message);
                 const sentimentClass = sentiment?.toLowerCase() === 'bullish'
                   ? 'text-emerald-400 border-emerald-900/70'
                   : sentiment?.toLowerCase() === 'bearish'
