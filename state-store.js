@@ -13,11 +13,10 @@ function jsonResponse(body, status = 200, revision = null) {
 }
 
 /**
- * Serializes cloud portfolio writes and enforces optimistic concurrency.
- * This application intentionally uses one owner-controlled portfolio shared
- * across the owner's devices; the Worker Gateway Secret is the access boundary.
- * It is not a multi-tenant store. The single named instance is authoritative;
- * KV is only used to migrate the existing portfolio_state value on first access.
+ * Stores the shared encrypted portfolio and account records in one durable
+ * instance. Accounts are role-based (admin/guest), not tenant-isolated; all
+ * authenticated users see the same portfolio. The Gateway Secret is used only
+ * by the public Worker to authorize one-time initial admin bootstrap.
  */
 
 const AUTH_USERS_KEY = "auth:users";
