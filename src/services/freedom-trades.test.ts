@@ -132,8 +132,8 @@ describe('normalizeFreedomTrades', () => {
       qty: tranche.qty,
       price: tranche.price
     }))).toEqual([
-      { qty: 5, price: 282 },
       { qty: 14, price: 282 },
+      { qty: 5, price: 282 },
       { qty: 10, price: 328 },
       { qty: 20, price: 336.3 },
       { qty: 20, price: 341.4 }
