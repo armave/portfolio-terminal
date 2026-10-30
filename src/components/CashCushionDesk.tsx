@@ -205,7 +205,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             {guestUserId ? 'YOUR ASSIGNED STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE'}
           </h2>
           {guestUserId && <p class="mt-1 max-w-3xl text-xs leading-relaxed text-slate-400">
-            Read-only guest account. Only cash-funded shares assigned to you by an administrator appear here. Contact an administrator to change your assignments.
+            Only cash-funded shares assigned to you by an administrator appear here.
           </p>}
         </div>
       </div>

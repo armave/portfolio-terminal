@@ -266,7 +266,7 @@ const RU: Record<string, string> = {
   'Portfolio financial summary': 'Финансовая сводка портфеля',
   "YOUR ASSIGNED STOCKS": "НАЗНАЧЕННЫЕ ВАМ АКЦИИ",
   "CASH & NON-MARGIN HOLDINGS": "ДЕНЕЖНЫЕ СРЕДСТВА И АКЦИИ БЕЗ МАРЖИ",
-  "Read-only guest account. Only cash-funded shares assigned to you by an administrator appear here. Contact an administrator to change your assignments.": "Гостевая учётная запись с доступом только для чтения. Здесь отображаются только акции, приобретённые за денежные средства и назначенные вам администратором. Чтобы изменить назначения, обратитесь к администратору.",
+  "Only cash-funded shares assigned to you by an administrator appear here.": "Здесь отображаются ваши акции.",
   "No stocks are assigned to your account yet.": "В вашей учётной записи пока нет назначенных акций.",
   "Ask your administrator to assign the cash-funded portion of an active stock purchase. Your assigned stocks will appear here automatically.": "Попросите администратора назначить вам денежную часть активной покупки акций. Назначенные акции автоматически появятся здесь.",
   "Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.": "Рыночная котировка недоступна. Рыночная стоимость и нереализованная прибыль/убыток появятся после получения корректной котировки.",
