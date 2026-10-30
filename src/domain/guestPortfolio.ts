@@ -70,9 +70,11 @@ export function getGuestAssignedCashHoldings(input: {
     if (shares <= 0) continue;
 
     const quote = quotesByTicker.get(ticker);
-    const marketPrice = positiveNumber(tranche.marketPrice) ??
-      positiveNumber(quote?.currentPrice) ??
-      positiveNumber(quote?.price);
+    // Live cash-holding quotes are refreshed more frequently than the broker
+    // execution snapshot used to derive tranche metadata.
+    const marketPrice = positiveNumber(quote?.currentPrice) ??
+      positiveNumber(quote?.price) ??
+      positiveNumber(tranche.marketPrice);
     const averagePrice = positiveNumber(tranche.averagePrice);
     const aggregate = aggregates.get(ticker) || {
       shares: 0,
