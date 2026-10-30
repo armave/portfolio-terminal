@@ -10,6 +10,7 @@ import {
   calculateMarginInterest
 } from '../domain/portfolio';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
+import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 
 function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string; rules: BrokerRules }) {
   const stopOutTitle = `Estimate assumes the configured ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
@@ -156,18 +157,40 @@ export function getMarginTranchePreview<T>(tranches: T[], expanded = false): T[]
   return expanded ? tranches : [];
 }
 
-export function getMarginTrancheQuantity(tranche: unknown): number | null {
+export function getMarginTrancheQuantity(
+  tranche: unknown,
+  brokerLots: ReturnType<typeof getActiveTranchesFromTrades> = [],
+  ticker?: string
+): number | null {
   if (!tranche || typeof tranche !== 'object') return null;
-  const value = tranche as { qty?: unknown; shares?: unknown; quantity?: unknown };
-  // Some migrated lots retain a zero/blank canonical qty alongside a valid
-  // legacy shares/quantity value. Pick the first positive finite field rather
-  // than letting that placeholder hide the actual lot size.
+  const value = tranche as {
+    qty?: unknown; shares?: unknown; quantity?: unknown;
+    price?: unknown; entryPrice?: unknown; averagePrice?: unknown;
+    date?: unknown; purchaseDate?: unknown; entryDate?: unknown;
+  };
+  // Prefer quantity persisted on the lot, including legacy aliases.
   for (const candidate of [value.qty, value.shares, value.quantity]) {
     if (candidate === null || candidate === undefined || candidate === '') continue;
     const quantity = Number(candidate);
     if (Number.isFinite(quantity) && quantity > 0) return quantity;
   }
-  return null;
+
+  // Older TradeNet imports sometimes persisted the lot's price/date but lost
+  // its quantity. Reconcile only an unambiguous exact price + calendar-date
+  // match against FIFO open lots reconstructed from the broker execution log.
+  const price = Number(value.price ?? value.entryPrice ?? value.averagePrice);
+  const dateValue = value.date ?? value.purchaseDate ?? value.entryDate;
+  const date = typeof dateValue === 'string' && dateValue.trim()
+    ? dateValue.slice(0, 10)
+    : '';
+  if (!Number.isFinite(price) || price <= 0 || !date) return null;
+  const matches = brokerLots.filter((lot) => {
+    if (ticker && lot.ticker !== ticker.toUpperCase()) return false;
+    if (lot.averagePrice === null || Math.abs(lot.averagePrice - price) > 0.005) return false;
+    if (lot.purchasedAt === null) return false;
+    return new Date(lot.purchasedAt).toISOString().slice(0, 10) === date;
+  });
+  return matches.length === 1 && matches[0].quantity > 0 ? matches[0].quantity : null;
 }
 
 export function SummaryMetricsGrid() {
@@ -352,6 +375,15 @@ export function SummaryMetricsGrid() {
   const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
 
   const positionTranches = pos.tranches || [];
+  const brokerOpenLots = getActiveTranchesFromTrades(
+    state.brokerExecutedTrades,
+    state.brokerAccountInfo as any,
+    {
+      commPerShare: Number(rules.commPerShare ?? rules.commissionPerShare ?? 0),
+      commVolumePct: Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0),
+      minCommOrder: Number(rules.minCommOrder ?? rules.commissionMin ?? 0)
+    }
+  );
   const tranchesExpanded = expandedTrancheTicker === pos.ticker;
   const visibleTranches = getMarginTranchePreview(positionTranches, tranchesExpanded);
   const hiddenTrancheCount = positionTranches.length;
@@ -399,7 +431,7 @@ export function SummaryMetricsGrid() {
                     <div class="expandable-motion__inner">
                       <div class="mt-1 flex flex-wrap justify-end gap-x-2 gap-y-1">
                         {visibleTranches.map((tranche, index) => {
-                          const quantity = getMarginTrancheQuantity(tranche);
+                          const quantity = getMarginTrancheQuantity(tranche, brokerOpenLots, pos.ticker);
                           const value = tranche as typeof tranche & { entryPrice?: number; averagePrice?: number; purchaseDate?: string; entryDate?: string };
                           const price = Number(tranche.price ?? value.entryPrice ?? value.averagePrice);
                           const date = tranche.date ?? value.purchaseDate ?? value.entryDate;
