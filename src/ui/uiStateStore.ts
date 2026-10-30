@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { CashCushionDeskProps } from '../components/CashCushionDesk';
-import type { SettingsDeskProps } from '../components/SettingsDesk';
 import type { SummaryMetricsGridProps } from '../components/SummaryMetricsGrid';
 import type { ProjectionsTableProps } from '../components/ProjectionsTable';
 
@@ -145,14 +144,12 @@ export function useBoardTitle(): BoardTitleState {
 
 type UiPropStateMap = {
   cashCushionProps: CashCushionDeskProps;
-  settingsProps: SettingsDeskProps | null;
   summaryMetricsProps: SummaryMetricsGridProps | null;
   projectionsProps: ProjectionsTableProps | null;
 };
 type UiPropKey = keyof UiPropStateMap;
 const uiPropState: UiPropStateMap = {
   cashCushionProps: {},
-  settingsProps: null,
   summaryMetricsProps: null,
   projectionsProps: null
 };
@@ -181,11 +178,9 @@ function useUiProp<K extends UiPropKey>(key: K): UiPropStateMap[K] {
 }
 
 export const setCashCushionPropsState = (value: CashCushionDeskProps) => setUiProp('cashCushionProps', value);
-export const setSettingsPropsState = (value: SettingsDeskProps | null) => setUiProp('settingsProps', value);
 export const setSummaryMetricsPropsState = (value: SummaryMetricsGridProps) => setUiProp('summaryMetricsProps', value);
 export const setProjectionsPropsState = (value: ProjectionsTableProps) => setUiProp('projectionsProps', value);
 
 export const useCashCushionProps = () => useUiProp('cashCushionProps');
-export const useSettingsProps = () => useUiProp('settingsProps');
 export const useSummaryMetricsProps = () => useUiProp('summaryMetricsProps');
 export const useProjectionsProps = () => useUiProp('projectionsProps');
