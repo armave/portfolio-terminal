@@ -17,7 +17,7 @@ import {
   saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
-import { calculateCommission, calculateMarginInterest } from '../domain/portfolio';
+import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche } from '../domain/portfolio';
 
 const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
   broker: 'Freedom Broker Armenia (Tradernet)',
@@ -294,10 +294,12 @@ export class PortfolioStore {
           currentPrice: Number.isFinite(Number(record.currentPrice)) ? Number(record.currentPrice) : 0,
           pt: Number.isFinite(Number(record.pt)) ? Number(record.pt) : 0,
           commBuy: Number.isFinite(Number(record.commBuy)) ? Number(record.commBuy) : 0,
-          tranches: Array.isArray(record.tranches) ? record.tranches.filter((tranche) =>
-            tranche && Number.isFinite(Number(tranche.qty)) && Number(tranche.qty) > 0 &&
-            Number.isFinite(Number(tranche.price)) && Number(tranche.price) > 0
-          ) : []
+          tranches: Array.isArray(record.tranches)
+            ? record.tranches
+              .filter((tranche) => tranche && typeof tranche === 'object' && !Array.isArray(tranche))
+              .map((tranche) => normalizePortfolioTranche(tranche as Record<string, unknown>))
+              .filter((tranche) => tranche.qty > 0 && tranche.price > 0)
+            : []
         }];
       })
     ) as Record<string, PositionRecord>;
