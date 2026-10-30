@@ -281,6 +281,35 @@ describe('canonical trade lifecycle and persistence', () => {
     ]);
   });
 
+  it('keeps legacy tranche quantities when hydrating persisted canonical positions', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    stored.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+      positions: {
+        GOOGL: {
+          ticker: 'GOOGL',
+          shares: 69,
+          currentPrice: 423,
+          pt: 353,
+          commBuy: 0,
+          tranches: [
+            { id: 'legacy-shares', shares: 5, entryPrice: 282, purchaseDate: '2026-10-29' },
+            { id: 'zero-qty-placeholder', qty: 0, shares: 14, price: 282, date: '2026-10-29' },
+            { id: 'broker-quantity', quantity: 10, averagePrice: 328, entryDate: '2026-10-22' }
+          ]
+        }
+      }
+    }));
+
+    const state = new PortfolioStore().getState();
+
+    expect(state.positions.GOOGL.tranches).toMatchObject([
+      { qty: 5, price: 282, date: '2026-10-29' },
+      { qty: 14, price: 282, date: '2026-10-29' },
+      { qty: 10, price: 328, date: '2026-10-22' }
+    ]);
+    expect(state.holdings[0].tranches.map((tranche) => tranche.shares)).toEqual([5, 14, 10]);
+  });
+
   it('restores operation-level cash/margin classifications from persisted state', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     stored.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
