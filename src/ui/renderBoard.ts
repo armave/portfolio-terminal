@@ -1,11 +1,6 @@
-import {
-  setBoardTitle, setCashCushionPropsState,
-  setSummaryMetricsPropsState, setProjectionsPropsState
-} from './uiStateStore';
+import { setBoardTitle } from './uiStateStore';
 import { formatUSD } from '../utils/formatters';
-import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatUSD } from '../utils/formatters';
-import { calculateCommission, calculateMarginInterest, collectOpenPositionTranches } from '../domain/portfolio';
 import {
   BrokerRules,
   PositionRecord,
@@ -27,23 +22,8 @@ export function resolveActiveView(state: BoardState): string {
   return currentView;
 }
 
-interface RenderCashCushionOptions {
-  refreshIntervalMs?: number;
-}
-
-function renderCashCushion(
-  _state: BoardState,
-  options: RenderCashCushionOptions = {}
-): void {
-  const refreshIntervalMs = options.refreshIntervalMs ?? 60000;
-  // The App component owns this desk's Preact instance. Send changing action
-  // handlers as props rather than mounting a second renderer into its container.
-  setCashCushionPropsState({ refreshIntervalMs });
-}
-
 interface RenderSummaryCardsOptions {
   rules: BrokerRules;
-  refreshIntervalMs?: number;
   onRenderAnalystConsensus?: (ticker: string) => void;
 }
 
@@ -52,15 +32,12 @@ function renderSummaryCards(
   state: BoardState,
   options: RenderSummaryCardsOptions
 ): void {
-  const { rules, onRenderAnalystConsensus, refreshIntervalMs = 60000 } = options;
+  const { rules, onRenderAnalystConsensus } = options;
   if (!rules) return;
 
   const dailyRate = rules.annualRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
   const isCombined = state.activeView === 'COMBINED' || (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
-
-  setSummaryMetricsPropsState({ rules, refreshIntervalMs });
-
 
   if (isCombined) {
     const metrics = calculateCombinedMetrics(state, rules, tickers, dailyRate);
@@ -76,14 +53,7 @@ function renderSummaryCards(
       onRenderAnalystConsensus(tickers[0]);
     }
 
-    renderPositionsTable(
-      metrics.totalGrossTarget,
-      metrics.totalComms,
-      metrics.totalDebt,
-      metrics.totalMarginCharged,
-      resolvePositionEntryDate(collectOpenPositionTranches(state.positions || {}), state.startDate),
-      dailyRate
-    );
+
   } else {
     const pos = (state.activeView ? state.positions?.[state.activeView] : undefined) || state.positions?.[tickers[0]];
     if (!pos) return;
@@ -99,18 +69,11 @@ function renderSummaryCards(
       onRenderAnalystConsensus(pos.ticker);
     }
 
-    renderPositionsTable(
-      metrics.gross,
-      metrics.totalComms,
-      metrics.allocatedDebt,
-      metrics.posMarginCharged,
-      resolvePositionEntryDate(pos.tranches, pos.startDate || state.startDate),
-      dailyRate
-    );
+
   }
 }
 
-export interface RenderBoardOptions extends RenderCashCushionOptions {
+export interface RenderBoardOptions {
   rules: BrokerRules;
   onRenderAnalystConsensus?: (ticker: string) => void;
   onUpdateCombinedBreakeven?: () => void;
@@ -123,7 +86,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
     rules,
     onRenderAnalystConsensus = () => { },
     onUpdateCombinedBreakeven = () => { },
-    refreshIntervalMs = 60000,
     onUpdateLastDeskView = () => { }
   } = options;
 
@@ -146,7 +108,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   if (isCushionActive) {
     
     onUpdateLastDeskView('CASH_CUSHION');
-    renderCashCushion(state, { refreshIntervalMs });
     return;
   }
 
@@ -167,7 +128,6 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   renderSummaryCards(state, {
     rules,
-    refreshIntervalMs,
     onRenderAnalystConsensus
   });
 }
