@@ -1649,7 +1649,10 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
 
   saveGatewaySecret(submittedSecret);
   // Resolve the account role before any store update can trigger the cloud-write subscriber.
-  await publishCurrentUser();
+  const authenticatedUser = await publishCurrentUser();
+  // Move a guest into their own Balance view immediately. The startup/pull path
+  // below may take time or fail transiently; navigation must not depend on it.
+  if (authenticatedUser?.role === 'guest') setActiveView('BALANCE');
   const persisted = await persistGatewaySecret();
   portfolioStore.setState({ gatewaySecret: submittedSecret });
   if (!persisted) {
