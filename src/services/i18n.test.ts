@@ -23,6 +23,16 @@ describe('app localization', () => {
     expect(vnode.props['aria-label']).toBe('Выйти');
   });
 
+  it('translates dynamic accessibility labels, update text, and quantity counters', () => {
+    expect(translateText('Updated 4m ago', 'ru')).toBe('Обновлено 4m ago');
+    expect(translateText('Read news: Apple announces results', 'ru')).toBe('Читать новость: Apple announces results');
+    expect(translateText('Stocktwits unavailable: Network error', 'ru')).toBe('Stocktwits недоступен: Network error');
+    expect(translateText('Assigned stock value: ≥$1,200', 'ru')).toBe('Стоимость назначенных акций: ≥$1,200');
+    expect(translateText('3 tranches', 'ru')).toBe('3 лота');
+    expect(translateText('2 records', 'ru')).toBe('2 записи');
+    expect(translateText('Show 4 tranches', 'ru')).toBe('Показать 4 лотов');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
