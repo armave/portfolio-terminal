@@ -1242,18 +1242,32 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   };
+  // A broker row can include placeholder aliases (for example q=0 alongside
+  // quantity=5). Prefer a real positive magnitude instead of letting the first
+  // non-null placeholder erase an otherwise valid execution.
+  const positiveMagnitudeOrNull = (...values: unknown[]): number | null => {
+    for (const value of values) {
+      if (value === null || value === undefined || value === '' || typeof value === 'boolean') continue;
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed !== 0) return Math.abs(parsed);
+    }
+    return null;
+  };
+  const normalizedSide = (...values: unknown[]): 'BUY' | 'SELL' | null => {
+    for (const value of values) {
+      const side = String(value ?? '').trim().toLowerCase();
+      if (side === '1' || side === 'b' || /\\b(buy|bought|purchase)\\b/.test(side)) return 'BUY';
+      if (side === '2' || side === 's' || /\\b(sell|sold|sale)\\b/.test(side)) return 'SELL';
+    }
+    return null;
+  };
   return rows.map((row: any, index: number) => ({
     id: String(row?.id ?? row?.trade_id ?? row?.tradeId ?? row?.order_id ?? index),
     ticker: String(row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? ''),
-    // TradeNet example uses type "1" for buy and "2" for sell.
-    side: row?.operation != null ? String(row.operation)
-      : row?.side != null ? String(row.side)
-        : row?.buy_sell != null ? String(row.buy_sell)
-          : String(row?.type) === '1' ? 'BUY'
-            : String(row?.type) === '2' ? 'SELL'
-              : 'Unknown',
-    quantity: numberOrNull(row?.q ?? row?.quantity ?? row?.qty),
-    price: numberOrNull(row?.p ?? row?.price ?? row?.exec_price),
+    // Ignore unrecognized operation placeholders and continue to side/type aliases.
+    side: normalizedSide(row?.operation, row?.side, row?.buy_sell, row?.type) || 'Unknown',
+    quantity: positiveMagnitudeOrNull(row?.q, row?.quantity, row?.qty),
+    price: positiveMagnitudeOrNull(row?.p, row?.price, row?.exec_price),
     currency: String(row?.curr_c ?? row?.curr ?? row?.currency ?? row?.base_currency ?? ''),
     executedAt: row?.date ?? row?.time ?? row?.datetime ?? row?.exec_time ?? null,
     tradeValue: numberOrNull(row?.v ?? row?.summ ?? row?.value),
