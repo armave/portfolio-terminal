@@ -341,8 +341,37 @@ export default {
                 if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
                     return jsonError("Authentication requests must use application/json.", 415, corsHeaders);
                 }
-                const rawBody = await request.text();
-                if (rawBody.length > 8192) return jsonError("Authentication request exceeds the 8 KB limit.", 413, corsHeaders);
+                const declaredLength = Number(request.headers.get("Content-Length") || 0);
+                if (Number.isFinite(declaredLength) && declaredLength > 8192) {
+                    return jsonError("Authentication request exceeds the 8 KB limit.", 413, corsHeaders);
+                }
+                let rawBody = "";
+                const reader = request.body?.getReader();
+                if (reader) {
+                    const chunks = [];
+                    let receivedBytes = 0;
+                    try {
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            receivedBytes += value.byteLength;
+                            if (receivedBytes > 8192) {
+                                await reader.cancel("Authentication request exceeds the configured limit.");
+                                return jsonError("Authentication request exceeds the 8 KB limit.", 413, corsHeaders);
+                            }
+                            chunks.push(value);
+                        }
+                    } finally {
+                        reader.releaseLock();
+                    }
+                    const bytes = new Uint8Array(receivedBytes);
+                    let offset = 0;
+                    for (const chunk of chunks) {
+                        bytes.set(chunk, offset);
+                        offset += chunk.byteLength;
+                    }
+                    rawBody = new TextDecoder().decode(bytes);
+                }
                 let payload;
                 try { payload = JSON.parse(rawBody); } catch { return jsonError("Invalid JSON request body.", 400, corsHeaders); }
                 if (!payload || typeof payload !== "object" || Array.isArray(payload)) return jsonError("Invalid JSON request body.", 400, corsHeaders);
