@@ -1,5 +1,6 @@
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
+  'auth:logout': undefined;
   'terminal:auth-visibility': { isOpen: boolean };
   'terminal:backup-import-request': undefined;
   'terminal:backup-import-file': { file: File };
