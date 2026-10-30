@@ -5,10 +5,8 @@ import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment
 import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
 import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
-
-export interface CashCushionDeskProps {
-  refreshIntervalMs?: number;
-}
+import { addUiEventListener, removeUiEventListener } from '../ui/uiEventBus';
+import { getQuoteRefreshInterval } from '../services/storage';
 
 const BADGE_STYLES: Record<string, string> = {
   bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
@@ -54,14 +52,22 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   );
 }
 
-export function CashCushionDesk({
-  refreshIntervalMs = 60000
-}: CashCushionDeskProps) {
+export function CashCushionDesk() {
   const state = usePortfolio();
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState(() => getQuoteRefreshInterval(60000));
   const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTradeLike[]>(() =>
     Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
   );
   const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    const onRefreshIntervalChanged = (event: CustomEvent<{ intervalMs: number }>) => {
+      const interval = Number(event.detail?.intervalMs);
+      if (Number.isFinite(interval) && interval >= 0) setRefreshIntervalMs(interval);
+    };
+    addUiEventListener('settings:refresh-interval-changed', onRefreshIntervalChanged);
+    return () => removeUiEventListener('settings:refresh-interval-changed', onRefreshIntervalChanged);
+  }, []);
 
   useEffect(() => {
     const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
