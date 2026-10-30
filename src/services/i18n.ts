@@ -405,6 +405,8 @@ const RU: Record<string, string> = {
   "Partial value": "Частичная стоимость",
   "Market quote": "Рыночная котировка",
   "A valid market quote is required to calculate market value and unrealized P/L.": "Для расчёта рыночной стоимости и нереализованной прибыли/убытка необходима корректная рыночная котировка.",
+  "Stocktwits unavailable": "Stocktwits недоступен",
+  "Updated": "Обновлено",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -415,18 +417,65 @@ export function getAppLanguage(): AppLanguage {
   return currentLanguage;
 }
 
+function translateDynamicText(normalized: string): string | undefined {
+  const prefixes: Array<[string, string]> = [
+    ['Name for ', 'Name for '],
+    ['Role for ', 'Role for '],
+    ['Language for ', 'Language for '],
+    ['New password for ', 'New password for '],
+    ['Updated ', 'Updated'],
+    ['Synced ', 'Synced'],
+    ['Read news: ', 'Read news'],
+    ['Stocktwits unavailable: ', 'Stocktwits unavailable'],
+    ['Quote status: ', 'Quote status'],
+    ['Assigned stock value: ', 'Assigned stock value'],
+    ['Immediately pull latest quote for ', 'Immediately pull latest quote for'],
+    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for']
+  ];
+  for (const [prefix, dictionaryKey] of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      return (RU[dictionaryKey] || dictionaryKey) + normalized.slice(prefix.length);
+    }
+  }
+
+  const showTranches = normalized.match(/^Show (\\d+) tranches$/i);
+  if (showTranches) return `Показать ${showTranches[1]} лотов`;
+
+  const count = normalized.match(/^(\\d+) (tranches|records|holdings|days|hrs|shares)$/i);
+  if (count) {
+    const amount = Number(count[1]);
+    const noun = count[2].toLowerCase();
+    if (noun === 'tranches') return `${amount} ${amount % 10 === 1 && amount % 100 !== 11 ? 'лот' : amount % 10 >= 2 && amount % 10 <= 4 && (amount % 100 < 12 || amount % 100 > 14) ? 'лота' : 'лотов'}`;
+    if (noun === 'records') return `${amount} ${amount % 10 === 1 && amount % 100 !== 11 ? 'запись' : amount % 10 >= 2 && amount % 10 <= 4 && (amount % 100 < 12 || amount % 100 > 14) ? 'записи' : 'записей'}`;
+    if (noun === 'holdings') return `${amount} ${amount % 10 === 1 && amount % 100 !== 11 ? 'позиция' : amount % 10 >= 2 && amount % 10 <= 4 && (amount % 100 < 12 || amount % 100 > 14) ? 'позиции' : 'позиций'}`;
+    if (noun === 'days') return `${amount} дн.`;
+    if (noun === 'hrs') return `${amount} ч`;
+    return `${amount} акций`;
+  }
+
+  const riskPrefixes = ['Healthy', 'No margin debt', 'Elevated', 'Stop-out level', 'Margin-call level'];
+  const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
+  if (riskPrefix) {
+    return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
+      .replace(/\\bequity\\b/g, 'собственного капитала')
+      .replace(/\\bmaintenance\\b/g, 'поддерживающая маржа');
+  }
+
+  if (normalized.startsWith('e.g. quote ')) {
+    return 'например: quote ' + normalized.slice('e.g. quote '.length);
+  }
+  return undefined;
+}
+
 export function translateText(value: string, language: AppLanguage = currentLanguage): string {
   if (language === 'en') return value;
-  const normalized = value.trim().replace(/\s+/g, ' ');
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/\\s+/g, ' ');
   if (!normalized) return value;
-  const translated = RU[normalized] ??
-    (normalized.startsWith('Name for ') ? RU['Name for '] + normalized.slice('Name for '.length) : undefined) ??
-    (normalized.startsWith('Role for ') ? RU['Role for '] + normalized.slice('Role for '.length) : undefined) ??
-    (normalized.startsWith('Language for ') ? RU['Language for '] + normalized.slice('Language for '.length) : undefined) ??
-    (normalized.startsWith('New password for ') ? RU['New password for '] + normalized.slice('New password for '.length) : undefined);
+  const translated = RU[normalized] ?? translateDynamicText(normalized);
   if (!translated) return value;
-  const start = value.indexOf(value.trim());
-  const end = start + value.trim().length;
+  const start = value.indexOf(trimmed);
+  const end = start + trimmed.length;
   return value.slice(0, start) + translated + value.slice(end);
 }
 
