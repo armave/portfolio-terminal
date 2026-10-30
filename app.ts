@@ -27,7 +27,8 @@ import {
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
-  validateGatewaySecret
+  validateGatewaySecret,
+  getAuthStatus
 } from './src/services/api';
 import {
   areHeaderCredentialsConfigured,
@@ -1440,7 +1441,10 @@ export async function initApp() {
       hideAuthContainer();
       await startApp(secret);
     } else {
-      if (secret) {
+      const authStatus = await getAuthStatus();
+      // During first account setup the old Gateway Secret is still needed to
+      // decrypt existing cloud state. Keep it until the admin bootstrap succeeds.
+      if (secret && !authStatus.setupRequired) {
         saveGatewaySecret('');
         await persistGatewaySecret();
       }
