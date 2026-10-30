@@ -1,21 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { getMarginTranchePreview } from './SummaryMetricsGrid';
+import { getMarginTranchePreview, getMarginTrancheQuantity } from './SummaryMetricsGrid';
 
 describe('margin tranche preview', () => {
-  it('shows only the first three tranches by default', () => {
-    const tranches = ['oldest', 'second', 'third', 'fourth', 'newest'];
-    expect(getMarginTranchePreview(tranches)).toEqual(['oldest', 'second', 'third']);
+  it('hides every individual tranche by default', () => {
+    expect(getMarginTranchePreview(['oldest', 'second', 'third', 'fourth'])).toEqual([]);
   });
 
-  it('keeps all tranches visible when there are three or fewer', () => {
-    expect(getMarginTranchePreview(['one', 'two', 'three'])).toEqual(['one', 'two', 'three']);
-    expect(getMarginTranchePreview(['one', 'two'])).toEqual(['one', 'two']);
-    expect(getMarginTranchePreview([])).toEqual([]);
+  it('shows every tranche when expanded, without a three-lot cutoff', () => {
+    const tranches = ['oldest', 'second', 'third', 'fourth', 'newest'];
+    expect(getMarginTranchePreview(tranches, true)).toEqual(tranches);
   });
 
   it('does not mutate the stored tranche array', () => {
     const tranches = [1, 2, 3, 4];
-    getMarginTranchePreview(tranches);
+    getMarginTranchePreview(tranches, true);
     expect(tranches).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe('margin tranche quantity display', () => {
+  it('uses canonical qty first and supports legacy shares and broker quantity fields', () => {
+    expect(getMarginTrancheQuantity({ qty: 5, shares: 9, quantity: 12 })).toBe(5);
+    expect(getMarginTrancheQuantity({ shares: 9 })).toBe(9);
+    expect(getMarginTrancheQuantity({ quantity: 12 })).toBe(12);
+  });
+
+  it('returns null for missing, invalid, or non-positive quantities', () => {
+    expect(getMarginTrancheQuantity({})).toBeNull();
+    expect(getMarginTrancheQuantity({ qty: 'invalid' })).toBeNull();
+    expect(getMarginTrancheQuantity({ qty: 0, shares: 0 })).toBeNull();
   });
 });
