@@ -207,7 +207,8 @@ function executedBuyCommission(trade: FreedomExecutedTradeLike, quantity: number
 export function getActiveTranchesFromTrades(
   trades: FreedomExecutedTradeLike[] | undefined,
   snapshot?: FreedomPortfolioSnapshotLike,
-  commissionRules?: CommissionConfig
+  commissionRules?: CommissionConfig,
+  groupBuysWithinFiveMinutes = true
 ): ActiveBrokerTranche[] {
   if (!Array.isArray(trades)) return [];
   type BuyLot = {
@@ -262,7 +263,7 @@ export function getActiveTranchesFromTrades(
   const grouped: BuyLot[] = [];
   for (const lot of openLots) {
     const previous = grouped[grouped.length - 1];
-    const withinWindow = previous && previous.ticker === lot.ticker && previous.lastPurchasedAt !== null && lot.purchasedAt !== null && lot.purchasedAt - previous.lastPurchasedAt <= 5 * 60 * 1000;
+    const withinWindow = groupBuysWithinFiveMinutes && previous && previous.ticker === lot.ticker && previous.lastPurchasedAt !== null && lot.purchasedAt !== null && lot.purchasedAt - previous.lastPurchasedAt <= 5 * 60 * 1000;
     if (!withinWindow) { grouped.push({ ...lot }); continue; }
     const previousQuantity = previous.quantity;
     const totalQuantity = previousQuantity + lot.quantity;
