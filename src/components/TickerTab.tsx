@@ -73,7 +73,7 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
     }))
     : 0;
   const displayedEquity = isAdmin ? portfolioValuation.equity : guestEquity;
-  const equityBadgeText = (displayedEquity >= 0 ? '+
+  const equityCurrencyPrefix = displayedEquity >= 0 ? '+' + '
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     const currentButton = event.currentTarget as HTMLButtonElement;
@@ -248,7 +248,7 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
     </>
   );
 }
- : '−
+ : '−' + '
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     const currentButton = event.currentTarget as HTMLButtonElement;
@@ -423,7 +423,8 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
     </>
   );
 }
-) + Math.abs(displayedEquity).toLocaleString('en-US', { maximumFractionDigits: 0 });
+;
+  const equityBadgeText = equityCurrencyPrefix + Math.abs(displayedEquity).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     const currentButton = event.currentTarget as HTMLButtonElement;
