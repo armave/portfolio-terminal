@@ -1,4 +1,4 @@
-import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
+import { emitUiEvent, addUiEventListener, removeUiEventListener, type UiEvent } from './ui/uiEventBus';
 import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
@@ -61,8 +61,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
   useEffect(() => {
     let requestGeneration = 0;
-    const handleMarginIntelligence = async (event: Event) => {
-      const detail = (event as CustomEvent<{ ticker?: string; refresh?: boolean }>).detail;
+    const handleMarginIntelligence = async (event: UiEvent<{ ticker?: string; refresh?: boolean }>) => {
+      const detail = event.detail;
       const requestedTicker = String(detail?.ticker || '').trim().toUpperCase();
       const snapshot = portfolioStore.getState();
       const allPositions = Object.values(snapshot.positions || {}).filter((position: any) =>
@@ -295,11 +295,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   // Register shell event listeners synchronously after mount. Startup dispatches
   // auth/loading events immediately after render; passive effects can miss them.
   useLayoutEffect(() => {
-    const handleAuthVisibility = (event: Event) => {
-      const detail = (event as CustomEvent<{ isOpen?: boolean }>).detail;
-      setAuthOpen(Boolean(detail?.isOpen));
+    const handleAuthVisibility = (event: UiEvent<{ isOpen: boolean }>) => {
+      setAuthOpen(event.detail.isOpen);
     };
-    const handleScenarioModal = (event: Event) => setScenarioModalData((event as CustomEvent<ScenarioModalData | null>).detail ?? null);
+    const handleScenarioModal = (event: UiEvent<unknown>) => setScenarioModalData((event.detail as ScenarioModalData | null) ?? null);
     const handleBackupImportRequest = () => backupImportInputRef.current?.click();
     const handleScrollWorkspace = () => {
       requestAnimationFrame(() => {
@@ -310,7 +309,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     addUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
     addUiEventListener('terminal:scenario-modal', handleScenarioModal);
     addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
-    const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
+    const handleStartupState = (event: UiEvent<{ visible: boolean; failed: boolean }>) => setStartupState(event.detail);
     addUiEventListener('terminal:startup-state', handleStartupState);
     return () => {
       removeUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
