@@ -286,7 +286,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           </div>
         ) : (
           <div class="table-scroll-wrapper overflow-x-auto">
-            <table class="w-full min-w-[1040px] table-fixed text-left text-xs border-collapse">
+            <table class="cash-holdings-table w-full min-w-[960px] table-fixed text-left text-xs border-collapse">
               <thead>
                 <tr class="border-b border-slate-800 text-slate-400 font-medium">
                   <th class="w-[12%] py-2 px-2">Ticker</th>
@@ -299,9 +299,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                   <th class="w-[10%] py-2 px-2 text-right whitespace-nowrap">Eq. Alloc</th>
                 </tr>
               </thead>
-              <tbody id="cashStocksTableBody" class="divide-y divide-slate-800/60 font-mono">
+              <tbody id="cashStocksTableBody" class="cash-holdings-body divide-y divide-slate-800/60 font-mono">
                 {displayHoldings.length === 0 ? (
-                  <tr>
+                  <tr class="cash-holding-empty-row">
                     <td colSpan={8} class="py-3 text-center text-slate-500 italic">
                       {!isAdmin && !guestUserId ? 'Verifying account access…' : guestUserId ? 'No active cash-funded stocks are linked to your account.' : 'No broker-reported cash holdings available.'}
                     </td>
@@ -337,11 +337,11 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
                     return (
                       <>
-                        {isAdmin && h.isGroupStart && <tr key={`group-${h.groupKey}`} class="border-t border-slate-700 bg-slate-900/70">
+                        {isAdmin && h.isGroupStart && <tr key={`group-${h.groupKey}`} class="cash-holding-group-row border-t border-slate-700 bg-slate-900/70">
                           <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-cyan-300">{h.groupLabel}</td>
                         </tr>}
-                        <tr key={`${h.groupKey}-${h.ticker}`} class="hover:bg-slate-900/40">
-                          <td class="py-2 px-3 text-cyan-300 font-bold">
+                        <tr key={`${h.groupKey}-${h.ticker}`} class="cash-holding-row hover:bg-slate-900/40">
+                          <td data-label="Ticker" class="py-2 px-3 text-cyan-300 font-bold">
                             <div class="inline-flex items-center gap-1.5">
                               <span>{h.ticker}</span>
                               <span
@@ -358,26 +358,26 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                               </span>
                             </div>
                           </td>
-                          <td class="py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap">
+                          <td data-label="Shares" class="py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap">
                             {shares.toLocaleString('en-US', { maximumFractionDigits: 3 })}
                           </td>
-                          <td class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums whitespace-nowrap">
+                          <td data-label="Market price" class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums whitespace-nowrap">
                             <span>{formatUSD(price)}</span>
                             {renderDailyQuoteSubtext(h.quoteDetails)}
                             <span class="mt-0.5 block text-[9px] font-normal text-slate-500">
                               {quoteMeta}
                             </span>
                           </td>
-                          <td class="py-2 px-3 text-right text-slate-200 font-semibold tabular-nums whitespace-nowrap">
+                          <td data-label="Average entry" class="py-2 px-3 text-right text-slate-200 font-semibold tabular-nums whitespace-nowrap">
                             {hasAveragePrice ? formatUSD(averagePrice) : '—'}
                           </td>
-                          <td class="py-2 px-3 text-right text-slate-200 font-semibold tabular-nums whitespace-nowrap">
+                          <td data-label="Average value" class="py-2 px-3 text-right text-slate-200 font-semibold tabular-nums whitespace-nowrap">
                             {averageValue !== null ? formatUSD(averageValue) : '—'}
                           </td>
-                          <td class="py-2 px-3 text-right text-white font-semibold tabular-nums whitespace-nowrap">
+                          <td data-label="Market value" class="py-2 px-3 text-right text-white font-semibold tabular-nums whitespace-nowrap">
                             {formatUSD(val)}
                           </td>
-                          <td class="py-2 px-3 text-right font-semibold tabular-nums whitespace-nowrap">
+                          <td data-label="Unrealized P/L" class="py-2 px-3 text-right font-semibold tabular-nums whitespace-nowrap">
                             {hasMarketComparison ? (
                               <span
                                 class={
@@ -400,7 +400,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                               <span class="text-slate-500">—</span>
                             )}
                           </td>
-                          <td class="py-2 px-3 text-right text-slate-300 tabular-nums">
+                          <td data-label="Allocation" class="py-2 px-3 text-right text-slate-300 tabular-nums">
                             {allocation.toFixed(1)}%
                           </td>
                         </tr>
@@ -409,16 +409,16 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                   })
                 )}
               </tbody>
-              <tfoot id="cashStocksTableFooter" class="border-t border-slate-700 font-mono">
+              <tfoot id="cashStocksTableFooter" class="cash-holdings-footer border-t border-slate-700 font-mono">
                 {holdings.length > 0 && (
                   <tr>
-                    <td class="py-2 px-3 text-slate-300 font-bold" colSpan={6}>
+                    <td data-label="Summary" class="py-2 px-3 text-slate-300 font-bold" colSpan={6}>
                       {holdings.length} holding{holdings.length === 1 ? '' : 's'}
                     </td>
-                    <td class="py-2 px-3 text-right text-white font-bold">
+                    <td data-label="Market value" class="py-2 px-3 text-right text-white font-bold">
                       {formatUSD(stocksTotal)}
                     </td>
-                    <td class="py-2 px-3 text-right text-slate-300 font-bold">
+                    <td data-label="Allocation" class="py-2 px-3 text-right text-slate-300 font-bold">
                       {stocksTotal > 0 ? '100.0%' : '—'}
                     </td>
                   </tr>
@@ -450,8 +450,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           >
             <div class="expandable-motion__inner">
               <div class="table-scroll-wrapper overflow-x-auto">
-                <table id="activeTranchesTable" class="w-full min-w-[920px] text-left text-xs border-collapse">
-                  <thead>
+                <table id="activeTranchesTable" class="active-tranches-table w-full min-w-[900px] text-left text-xs border-collapse">
+                  <thead class="active-tranches-head">
                     <tr class="border-b border-slate-800 text-slate-500">
                       <th class="py-2 px-2">Ticker</th>
                       <th class="py-2 px-2">Purchase date</th>
@@ -462,9 +462,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       <th class="py-2 px-2 text-center">Guest · cash shares</th>
                     </tr>
                   </thead>
-                  <tbody class="divide-y divide-slate-800/60 font-mono">
+                  <tbody class="active-tranches-body divide-y divide-slate-800/60 font-mono">
                     {activeTranches.length === 0 ? (
-                      <tr><td colSpan={7} class="py-4 px-2 text-center font-sans text-slate-500 italic">
+                      <tr class="active-tranche-empty-row"><td colSpan={7} class="py-4 px-2 text-center font-sans text-slate-500 italic">
                         {executedTrades.length ? 'No active purchase operations.' : 'Active purchase operations will appear after Freedom trade history loads.'}
                       </td></tr>
                     ) : activeTranches.map((tranche) => {
@@ -510,13 +510,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         setExpandedMixTranches((current) => new Set(current).add(tranche.id));
                       };
                       return (
-                        <tr key={tranche.id} class="hover:bg-slate-900/50">
-                          <td class="py-2 px-2 font-bold text-cyan-300">{tranche.ticker}</td>
-                          <td class="py-2 px-2 text-slate-400 tabular-nums whitespace-nowrap">{tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString(undefined, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '—'}</td>
-                          <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
-                          <td class="py-2 px-2 text-right text-slate-300 tabular-nums">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</td>
-                          <td class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.marketValue !== null ? formatUSD(tranche.marketValue) : '—'}</td>
-                          <td class="py-2 px-2 text-center">
+                        <tr key={tranche.id} class="active-tranche-row hover:bg-slate-900/50">
+                          <td data-label="Ticker" class="py-2 px-2 font-bold text-cyan-300">{tranche.ticker}</td>
+                          <td data-label="Purchase date" class="py-2 px-2 text-slate-400 tabular-nums whitespace-nowrap">{tranche.purchasedAt !== null ? new Date(tranche.purchasedAt).toLocaleString(undefined, { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '—'}</td>
+                          <td data-label="Shares" class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}</td>
+                          <td data-label="Average cost" class="py-2 px-2 text-right text-slate-300 tabular-nums">{tranche.averagePrice !== null ? formatUSD(tranche.averagePrice) : '—'}</td>
+                          <td data-label="Market value" class="py-2 px-2 text-right text-slate-200 tabular-nums">{tranche.marketValue !== null ? formatUSD(tranche.marketValue) : '—'}</td>
+                          <td data-label="Operation" class="py-2 px-2 text-center">
                             <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={tranche.ticker + ' operation type'}>
                               <button type="button" aria-pressed={type === 'cash'} onClick={() => setActiveTrancheType(tranche.id, 'cash')}
                                 class={type === 'cash' ? 'rounded px-2 py-1 text-[10px] font-bold transition bg-cyan-950 text-cyan-300' : 'rounded px-2 py-1 text-[10px] font-bold transition text-slate-500 hover:text-slate-300'}>Cash</button>
@@ -569,7 +569,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                               </div>
                             </div>
                           </td>
-                          <td class="py-2 px-2 text-center">
+                          <td data-label="Guest assignment" class="py-2 px-2 text-center">
                             {cashQuantity > 0 ? (
                               <div class="flex flex-col items-center gap-1">
                                 <select
