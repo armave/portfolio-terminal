@@ -99,6 +99,22 @@ describe('active broker tranches', () => {
     ]);
   });
 
+  it('can preserve individual same-price FIFO lots instead of grouping nearby buys', () => {
+    const trades = [
+      { id: 'buy-5', ticker: 'GOOGL.US', side: 'BUY', quantity: 5, price: 282, executedAt: '2026-10-29T09:00:00Z' },
+      { id: 'buy-14', ticker: 'GOOGL.US', side: 'BUY', quantity: 14, price: 282, executedAt: '2026-10-29T09:04:00Z' }
+    ];
+
+    const grouped = getActiveTranchesFromTrades(trades);
+    const individual = getActiveTranchesFromTrades(trades, undefined, undefined, false);
+
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0]).toMatchObject({ quantity: 19, averagePrice: 282 });
+    expect(individual).toHaveLength(2);
+    expect(individual.map((lot) => lot.quantity)).toEqual([14, 5]);
+    expect(individual.map((lot) => lot.averagePrice)).toEqual([282, 282]);
+  });
+
   it('groups same-ticker buys within five minutes, leaves later buys separate, and removes sold quantity FIFO', () => {
     const trades = [
       { id: 'b1', ticker: 'AAPL.US', side: 'BUY', quantity: 3, price: 100, executedAt: '2026-01-01T10:00:00Z' },
