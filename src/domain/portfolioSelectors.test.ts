@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getCashCushionTotal, getTotalPortfolioInvested } from './portfolioSelectors';
+import {
+  getCashCushionTotal,
+  getTotalPortfolioInvested,
+  getPortfolioProjectionInputs,
+  resolvePositionEntryDate
+} from './portfolioSelectors';
 import type { BoardState } from '../types/portfolio';
 
 describe('portfolio selectors', () => {
