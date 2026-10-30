@@ -99,3 +99,24 @@ describe('portfolio UI action requests', () => {
     removeUiEventListener('portfolio:refresh-live-prices', listener);
   });
 });
+
+
+describe('UI event listener identity', () => {
+  it('removes the same callback from only the requested event channel', () => {
+    const listener = vi.fn();
+    addUiEventListener('terminal:auth-visibility', listener);
+    addUiEventListener('terminal:command-prefill', listener);
+
+    removeUiEventListener('terminal:auth-visibility', listener);
+    emitUiEvent('terminal:auth-visibility', { isOpen: true });
+    emitUiEvent('terminal:command-prefill', { command: 'help' });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0]).toMatchObject({
+      type: 'terminal:command-prefill',
+      detail: { command: 'help' }
+    });
+
+    removeUiEventListener('terminal:command-prefill', listener);
+  });
+});
