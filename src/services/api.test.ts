@@ -12,6 +12,7 @@ import {
   createUser,
   getGuestPortfolioSnapshot,
   publishGuestPortfolioSnapshot,
+  publishGuestPortfolioSnapshots,
   clearApiRequestCaches,
   fetchFallbackQuote,
   normalizeYahooBatchResults,
@@ -540,6 +541,34 @@ describe('guest portfolio projection API', () => {
     expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
       Authorization: 'Bearer test-gateway-secret',
       'X-App-Auth': 'test-gateway-secret'
+    });
+  });
+
+  it('publishes changed guest projections in one batch request and skips unchanged snapshots', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true, revisions: { 'guest-1': 1, 'guest-2': 1 }
+    }), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const publications = [
+      { guestId: 'guest-1', snapshot: { updatedAt: 100, tranches: [{ id: 'AAPL:1', ticker: 'AAPL', quantity: 2 }] as any } },
+      { guestId: 'guest-2', snapshot: { updatedAt: 100, tranches: [{ id: 'MSFT:1', ticker: 'MSFT', quantity: 3 }] as any } }
+    ];
+
+    await publishGuestPortfolioSnapshots(publications);
+    await publishGuestPortfolioSnapshots(publications.map(item => ({
+      ...item, snapshot: { ...item.snapshot, updatedAt: 200 }
+    })));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/guest-portfolio');
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('POST');
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({
+      snapshots: [
+        { guestId: 'guest-1', snapshot: { tranches: [expect.objectContaining({ ticker: 'AAPL' })] } },
+        { guestId: 'guest-2', snapshot: { tranches: [expect.objectContaining({ ticker: 'MSFT' })] } }
+      ]
     });
   });
 
