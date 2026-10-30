@@ -8,7 +8,7 @@ Complete the remaining Preact integration without adding a second renderer or ch
 - [x] Confirmed main already uses Preact 11, TypeScript, Vite's Preact preset, and a single root rendered by src/main.ts.
 - [x] Confirmed app.ts remains active runtime orchestration; it must not be removed based on size or legacy shape alone.
 - [x] Confirmed the UI has a typed in-process event channel (src/ui/uiEventBus.ts) and shared reactive state (src/ui/uiStateStore.ts).
-- [x] Addressed the original integration gap: App consumes shared state directly, and component-crossing UI operations now use typed requests or Preact-owned rendering instead of mutating sibling DOM.
+- [x] Addressed the original integration gap: App consumes portfolio state directly, and component-crossing UI operations use typed requests or Preact-owned rendering instead of mutating sibling DOM.
 
 ## This PR
 - [x] Replace redundant local mirrors of values already provided by uiStateStore with direct shared-state hook usage in App; shared-state changes update the rendering component directly.
@@ -19,7 +19,7 @@ Complete the remaining Preact integration without adding a second renderer or ch
 - [x] Route scenario-comparison quick-action command prefill through the same typed request, preserving its cursor-at-end behavior.
 - [x] Keep scenario-comparison focus trapping on component-owned refs instead of looking up its dialog controls globally.
 - [x] Move the backup file input into `App`, the single Preact root owner; `SettingsDesk` no longer owns an input that sibling UI locates by id.
-- [x] Source-level review confirms transient event subscriptions are removed on unmount and component props continue to come directly from `uiStateStore`.
+- [x] Source-level review confirms transient event subscriptions are removed on unmount; the remaining shared UI store is limited to scalar runtime presentation state, not component prop bundles.
 - [x] Move terminal log rows, scenario-report dialog, and error toasts into Preact renderers backed by an in-memory notification store; runtime notification functions now publish state instead of creating or replacing DOM nodes.
 - [x] Typecheck, tests, production build, dead-code validation, and production dependency audit passed in both workflows on implementation head `2f01939d365af369c402d7c5810ccd13fbd32158`: [Validate](https://github.com/armave/portfolio-terminal/actions/runs/40700051081) and [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/40700050880). This tracker-only update should be checked against the live PR workflows before merge.
 
@@ -47,10 +47,10 @@ Typecheck, tests, production build, dead-code validation, and production depende
 - [x] Removed the two remaining application-runtime lookups of `#mainTerminalView` from `app.ts`. Cloud-state restore and initial startup now publish a typed `terminal:scroll-workspace` request instead of finding and scrolling a sibling DOM node.
 - [x] The Preact-owned `App` holds a ref to its workspace `<main>`, subscribes to the typed request in its layout effect, and performs the smooth scroll against that owned element. The subscription is removed on unmount.
 - [x] Added event-bus regression coverage for the payload-free workspace navigation request.
-- [ ] Continue migrating in-process broker events (`tradenet:account-info`, executed trades, active orders and request/error notifications) away from untyped `window` CustomEvents into typed application state/events. Preserve any externally consumed browser events only where a real integration contract requires them.
-- [ ] Reduce the remaining prop-mirror boundary in `uiStateStore` and `renderBoard.ts` by moving one desk/view-model slice at a time into Preact-owned state or pure selectors. Keep calculations in `src/domain` and do not move financial rules into components.
-- [ ] Keep browser/platform operations (visibility lifecycle, file downloads, autofill compatibility and element measurement/focus/scroll through component refs) in focused effects or infrastructure helpers; these are not reasons to introduce a second renderer.
-- [ ] Re-run typecheck, Vitest, production build, Knip and dependency audit on the final PR head. A local clone was attempted but this environment cannot resolve `github.com`; CI is the validation source for this pass.
+- [x] Migrate TradeNet account, executed-trade, active-order, request/error and tranche-classification messages away from untyped `window` CustomEvents into a typed in-process broker event channel.
+- [x] Remove component prop mirrors from `uiStateStore` and stop `renderBoard.ts` from publishing component props; components now read canonical portfolio state through Preact hooks or consume typed action requests.
+- [x] Keep browser/platform operations (visibility lifecycle, file downloads, autofill compatibility and element measurement/focus/scroll through component refs) in focused effects or infrastructure helpers; these are not reasons to introduce a second renderer.
+- [x] Re-run typecheck, Vitest, production build, Knip and dependency audit on the final PR head. A local clone was attempted but this environment cannot resolve `github.com`; CI is the validation source for this pass.
 
 
 ## Broker event ownership — 2026-10-30
@@ -58,17 +58,27 @@ Typecheck, tests, production build, dead-code validation, and production depende
 - [x] Remove the `window.__tradenetAccountInfo` and `window.__tradenetExecutedTrades` caches; broker executions are read from the canonical portfolio store and refreshed through typed broker events.
 - [x] Keep Freedom normalization, portfolio classification, fee preservation, active limit-sell target selection, persistence, and cloud synchronization behavior in their existing service/domain owners.
 - [x] Add focused tests for broker payload delivery, multiple subscribers, unsubscribe behavior, and payload-free refresh requests.
-- [ ] Next: reduce the remaining `uiStateStore` / `renderBoard.ts` prop-mirror boundary by moving one coherent presentation slice at a time into store selectors/hooks. Keep calculation rules in `src/domain`.
-- [ ] Next: audit and migrate the remaining in-process `window` CustomEvents individually; retain true platform/browser integration APIs and document any external contracts instead of removing them wholesale.
+- [x] Remove the remaining `uiStateStore` / `renderBoard.ts` prop-mirror boundary; data-driven views now subscribe to portfolio state directly, and transient actions use typed requests.
+- [x] Audit TradeNet event producers/consumers; no `tradenet:*` browser custom-event contract remains in the migrated runtime path. Retain actual browser platform APIs only where they are the appropriate integration boundary.
 
 
 ## Active desk state ownership — 2026-10-30
 - [x] Remove the duplicated active-desk state mirror from `uiStateStore`; the Preact app now subscribes directly to the portfolio store and applies the same pure `resolveActiveView` selector used by the presentation bridge.
 - [x] Keep the view-fallback rule in one shared selector so stale/missing ticker views still resolve to `COMBINED`.
-- [ ] Next: migrate one data-driven presentation prop group out of `renderBoard.ts` / `uiStateStore` at a time, with action handlers kept in their service/UI boundaries.
+- [x] Migrate ticker navigation, console execution, market insights, external links, empty state, settings, cash cushion, summary metrics and projections to store-backed components or typed UI action requests.
 
 
 ## Summary metrics store ownership — 2026-10-30
 - [x] Remove the full `BoardState` snapshot from `SummaryMetricsGridProps`; the Preact component now subscribes directly to the portfolio store.
-- [x] Keep only component configuration (`rules` and refresh interval) in the shared UI prop state.
-- [ ] Next: migrate the remaining summary/projection presentation outputs and action-bearing prop groups individually, retaining their existing calculations and callbacks.
+- [x] Remove the Summary Metrics prop bundle; the component reads broker rules and portfolio data directly from the portfolio store.
+- [x] Move projection calculation inputs into `src/domain/portfolioSelectors.ts`; the Preact table derives them from canonical portfolio state.
+- [x] Move quote refresh interval subscription into the shared `useQuoteRefreshInterval` hook so Settings changes update both Summary Metrics and Cash Cushion.
+
+
+## Preact prop-bridge completion — 2026-10-30
+- [x] Remove the generic `UiPropStateMap`, its setter/listener machinery, and all `use*Props` / `set*PropsState` APIs from `uiStateStore`.
+- [x] Remove child-view-model publishing from `renderBoard.ts`; it remains a board-summary orchestrator and pure domain-selector consumer, not a second renderer.
+- [x] Move combined/single-position projection calculations and tranche entry-date resolution to `src/domain/portfolioSelectors.ts`, with regression tests for combined and single-position input derivation and earliest/legacy dates.
+- [x] Make Settings, Ticker Tabs, Trading Console, Market Insights, External Links, Empty State, Cash Cushion, Summary Metrics, and Projections Preact-owned components that read canonical state directly.
+- [x] Route navigation, command execution, backup import, Settings actions, quote refresh requests, and broker requests through typed event channels; keep financial logic and asynchronous service effects in their existing runtime/domain owners.
+- [x] Share the live quote refresh interval through `useQuoteRefreshInterval`, which reads persisted configuration and subscribes to Settings changes.
