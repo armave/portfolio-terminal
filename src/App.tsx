@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener } from './ui/uiEventBus';
-import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useCashCushionProps, useSummaryMetricsProps, useProjectionsProps, useSettingsProps } from './ui/uiStateStore';
+import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle, useCashCushionProps, useSummaryMetricsProps, useProjectionsProps } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
@@ -42,7 +42,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
   const cashCushionProps = useCashCushionProps();
-  const settingsProps = useSettingsProps();
 
   const summaryMetricsProps = useSummaryMetricsProps();
   const projectionsProps = useProjectionsProps();
@@ -530,7 +529,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       >{hasOpenedClosedHistory && <ClosedHistoryDesk />}</div>
 
       {/* Settings */}
-      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && settingsProps && <SettingsDesk {...settingsProps} />}</div>
+      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && <SettingsDesk />}</div>
 
       {/* Authentication is part of the application tree, not a second Preact root. */}
       <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>
@@ -553,7 +552,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         id="importFileInput"
         class="hidden"
         accept=".json"
-        onChange={(event: Event) => settingsProps?.onImportBackup(event)}
+        onChange={(event: Event) => importBackupJSON(event)}
       />
       {startupState.visible && <div class="startup-loading fixed inset-0 z-[100] flex items-center justify-center" role="status" aria-live="polite">
         <div class="startup-loading__content">
