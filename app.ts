@@ -13,6 +13,7 @@ import {
   resolveSaleQuantity,
 } from './src/domain/portfolio';
 import { evaluateIntent, parseAiIntent } from './src/features/ai/intent';
+import { canAccessPortfolioView } from './src/domain/accountPermissions';
 import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
   calculateTargetUpsidePercent,
@@ -1768,15 +1769,14 @@ function bindStartupActions() {
   });
   addUiEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
   addUiEventListener('portfolio:set-active-view', (event) => {
-    void (async () => {
-      const requestedView = event.detail.view;
-      const user = await getCurrentUser().catch(() => null);
-      if (user?.role !== 'admin' && !['BALANCE', 'CASH_CUSHION', 'SETTINGS'].includes(requestedView)) {
-        setActiveView('BALANCE');
-        return;
-      }
-      setActiveView(requestedView);
-    })();
+    const requestedView = event.detail.view;
+    // The session role is verified during startup and authentication changes.
+    // Navigation is local UI state; do not revalidate the same session for every tab click.
+    if (!canAccessPortfolioView(currentAccountRole, requestedView)) {
+      setActiveView('BALANCE');
+      return;
+    }
+    setActiveView(requestedView);
   });
   addUiEventListener('portfolio:refresh-live-prices', (event) => {
     void refreshAllLivePrices().finally(event.detail.resolve);
