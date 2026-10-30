@@ -5,27 +5,16 @@ import {
 } from '../domain/portfolio';
 import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { formatUSD } from '../utils/formatters';
-
-export interface ProjectionsTableProps {
-  gross: number;
-  totalComms: number;
-  debtToUse: number;
-  marginChargedToUse: number;
-  entryDate?: string;
-  dailyRate?: number;
-}
+import { usePortfolio } from '../store/portfolioStore';
+import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
 
 const ROWS_PER_PAGE = 8;
 const MAX_BREAKEVEN_SEARCH_DAYS = 3650;
 
-export function ProjectionsTable({
-  gross,
-  totalComms,
-  debtToUse,
-  marginChargedToUse,
-  entryDate,
-  dailyRate = 0
-}: ProjectionsTableProps) {
+export function ProjectionsTable() {
+  const state = usePortfolio();
+  const { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate } =
+    getPortfolioProjectionInputs(state, state.brokerAssumptions);
   const [page, setPage] = useState(0);
 
   useEffect(() => {
