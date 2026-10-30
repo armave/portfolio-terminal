@@ -1,5 +1,5 @@
 import { formatRelativeTime } from '../utils/relativeTime';
-import { useRef } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import type { BoardState, BrokerRules, QuoteDetails } from '../types/portfolio';
 import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
@@ -156,12 +156,19 @@ function computeMarginRiskDisplay(
   };
 }
 
+const MARGIN_TRANCHE_PREVIEW_LIMIT = 3;
+
+export function getMarginTranchePreview<T>(tranches: T[]): T[] {
+  return tranches.slice(0, MARGIN_TRANCHE_PREVIEW_LIMIT);
+}
+
 export function SummaryMetricsGrid({
   state,
   rules,
   refreshIntervalMs = 60000
 }: SummaryMetricsGridProps) {
   const previousPricesRef = useRef<Record<string, number>>({});
+  const [expandedTrancheTicker, setExpandedTrancheTicker] = useState<string | null>(null);
   const dailyRate = rules.annualRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
   const isCombined =
@@ -337,12 +344,10 @@ export function SummaryMetricsGrid({
   const unrealized = currentMktVal - totalInvested;
   const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
 
-  const tranchesText =
-    pos.tranches && pos.tranches.length > 0
-      ? pos.tranches
-        .map((t) => `${t.qty} @ ${formatUSD(t.price)} (${formatTrancheDate(t.date)})`)
-        .join(' + ')
-      : 'None';
+  const positionTranches = pos.tranches || [];
+  const visibleTranches = getMarginTranchePreview(positionTranches);
+  const hiddenTrancheCount = Math.max(0, positionTranches.length - MARGIN_TRANCHE_PREVIEW_LIMIT);
+  const tranchesExpanded = expandedTrancheTicker === pos.ticker;
 
   const investedText = `${formatUSD(totalInvested)} | ${formatUSD(avgPrice)}`;
   const unSign = unrealized >= 0 ? '+' : '';
@@ -377,7 +382,44 @@ export function SummaryMetricsGrid({
           <span class="portfolio-micro-heading">POSITION BASIS</span>
           <div class="portfolio-micro-row">
             <span class="portfolio-metric-label text-[10px]">Shares / Tranches</span>
-            <span id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">{pos.shares.toLocaleString()} shares · {tranchesText}</span>
+            <div id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
+              <div class="flex flex-wrap justify-end gap-x-2 gap-y-1">
+                <span class="whitespace-nowrap">{pos.shares.toLocaleString()} shares</span>
+                {visibleTranches.map((tranche, index) => (
+                  <span key={`${pos.ticker}-visible-${index}`} class="whitespace-nowrap">
+                    {tranche.qty} @ {formatUSD(tranche.price)} ({formatTrancheDate(tranche.date)})
+                  </span>
+                ))}
+              </div>
+              {hiddenTrancheCount > 0 && (
+                <>
+                  <div
+                    id="boardTranchesOverflow"
+                    class={`expandable-motion ${tranchesExpanded ? 'is-expanded' : ''}`}
+                    aria-hidden={!tranchesExpanded}
+                  >
+                    <div class="expandable-motion__inner">
+                      <div class="mt-1 flex flex-wrap justify-end gap-x-2 gap-y-1">
+                        {positionTranches.slice(MARGIN_TRANCHE_PREVIEW_LIMIT).map((tranche, index) => (
+                          <span key={`${pos.ticker}-overflow-${index}`} class="whitespace-nowrap">
+                            {tranche.qty} @ {formatUSD(tranche.price)} ({formatTrancheDate(tranche.date)})
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    class="mt-1 inline-flex items-center rounded border border-slate-700/80 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/40"
+                    aria-expanded={tranchesExpanded}
+                    aria-controls="boardTranchesOverflow"
+                    onClick={() => setExpandedTrancheTicker((current) => current === pos.ticker ? null : pos.ticker)}
+                  >
+                    {tranchesExpanded ? 'Show less' : `Show ${hiddenTrancheCount} more`}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
           <div class="portfolio-micro-row">
             <span class="portfolio-metric-label text-[10px]">Invested / Avg. Entry</span>
