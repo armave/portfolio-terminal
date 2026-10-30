@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTabNavigationIndex } from './tabNavigation';
+import { isMarginDeskView, resolveTabNavigationIndex, shouldRefreshQuotesOnNavigation } from './tabNavigation';
 
 describe('resolveTabNavigationIndex', () => {
   it('wraps left and right navigation across the tab list', () => {
@@ -19,5 +19,20 @@ describe('resolveTabNavigationIndex', () => {
     expect(resolveTabNavigationIndex(-1, 3, 'ArrowRight')).toBeNull();
     expect(resolveTabNavigationIndex(3, 3, 'ArrowLeft')).toBeNull();
     expect(resolveTabNavigationIndex(0, 1, 'ArrowRight')).toBeNull();
+  });
+});
+
+describe('Margin desk navigation request triggers', () => {
+  it('refreshes the portfolio only when entering the Margin desk', () => {
+    expect(shouldRefreshQuotesOnNavigation('BALANCE', 'COMBINED', true)).toBe(true);
+    expect(shouldRefreshQuotesOnNavigation('SETTINGS', 'AAPL', true)).toBe(true);
+    expect(shouldRefreshQuotesOnNavigation('COMBINED', 'AAPL', true)).toBe(false);
+    expect(shouldRefreshQuotesOnNavigation('AAPL', 'MSFT', true)).toBe(false);
+    expect(shouldRefreshQuotesOnNavigation('AAPL', 'AAPL', true)).toBe(false);
+  });
+
+  it('does not start Margin requests for guest or unknown roles', () => {
+    expect(isMarginDeskView('COMBINED', false)).toBe(false);
+    expect(shouldRefreshQuotesOnNavigation('BALANCE', 'COMBINED', false)).toBe(false);
   });
 });
