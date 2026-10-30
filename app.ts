@@ -88,6 +88,7 @@ const TRADERNET_RULES = { ...DEFAULT_TRADERNET_RULES };
 let state: any = createBlankState();
 // Guest sessions may read the shared snapshot, but must never enqueue cloud writes.
 let canWriteCloudState = false;
+let currentAccountRole: 'admin' | 'guest' | null = null;
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
@@ -1431,10 +1432,12 @@ setSecretGetter(() => getGatewaySecret());
 async function publishCurrentUser() {
   try {
     const user = await getCurrentUser();
+    currentAccountRole = user.role;
     canWriteCloudState = user.role === 'admin';
     emitUiEvent('auth:user-changed', { user });
     return user;
   } catch {
+    currentAccountRole = null;
     canWriteCloudState = false;
     emitUiEvent('auth:user-changed', { user: null });
     return null;
@@ -1498,7 +1501,10 @@ async function startApp(secret: string) {
   loadTradernetRules();
   // Establish read/write permissions before importing state or refreshing quotes.
   if (secret) await publishCurrentUser();
-  else canWriteCloudState = false;
+  else {
+    currentAccountRole = null;
+    canWriteCloudState = false;
+  }
   portfolioStore.setState({ gatewaySecret: secret });
   portfolioStore.importState(loadSavedState(portfolioStore.getState()));
   state = portfolioStore.getState();
@@ -1506,7 +1512,9 @@ async function startApp(secret: string) {
 
   if (secret) await syncCloudState('pull');
 
-  const initialQuoteRefreshInterval = getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS);
+  const initialQuoteRefreshInterval = getQuoteRefreshInterval(
+    currentAccountRole === 'guest' ? 15 * 1000 : DEFAULT_QUOTE_REFRESH_INTERVAL_MS
+  );
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
 
   if (rolloverTimer !== null) clearInterval(rolloverTimer);
