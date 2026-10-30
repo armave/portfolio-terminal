@@ -159,6 +159,49 @@ describe('cloud state sync', () => {
     expect(payload.encryptedPayload).toMatch(/^aesgcm:v2:[A-Za-z0-9+/]+=*:[A-Za-z0-9+/]+=*$/);
     expect(payload.encryptedPayload).not.toContain('cloud-encryption-secret');
   });
+  it('imports shared portfolio state for read-only guests without posting legacy cloud history', async () => {
+    const secret = 'guest-read-only-history-migration-secret';
+    const encryptedPayload = await encryptV2Fixture({
+      activeView: 'AAPL',
+      balance: 1250,
+      brokerExecutedTrades: [{ id: 'legacy-trade-1' }],
+      cashflows: [{ id: 'legacy-cashflow-1' }],
+      lastRolloverTimestamp: Date.now()
+    }, secret);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => {
+      const url = String(_input);
+      if (url.endsWith('/api/state')) {
+        return new Response(JSON.stringify({ encryptedPayload }), {
+          status: 200, headers: { 'Content-Type': 'application/json', ETag: '"8"' }
+        });
+      }
+      if (url.endsWith('/api/history')) {
+        return new Response(JSON.stringify({ error: 'Portfolio state not found.' }), {
+          status: 404, headers: { 'Content-Type': 'application/json', ETag: '"0"' }
+        });
+      }
+      throw new Error('Unexpected request: ' + url);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const rewriteLocal = vi.fn();
+    const reportResult = vi.fn();
+    vi.spyOn(storage, 'saveState').mockReturnValue(true);
+
+    const result = await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 0 },
+      secret,
+      allowCloudWrites: false,
+      pullCloudAndRewriteLocal: rewriteLocal,
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    }, reportResult);
+
+    expect(result.activeView).toBe('AAPL');
+    expect(rewriteLocal).toHaveBeenCalledWith(expect.objectContaining({ activeView: 'AAPL' }));
+    expect(reportResult).toHaveBeenCalledWith(true);
+    expect(fetchMock.mock.calls.map(call => (call[1] as RequestInit)?.method || 'GET')).toEqual(['GET', 'GET']);
+  });
+
   it('returns false when a failed cloud pull falls back to a truthy local state', async () => {
     const localState = { activeView: 'AAPL', balance: 1250 };
     const fetchMock = vi.fn().mockRejectedValue(new Error('Network unavailable'));
