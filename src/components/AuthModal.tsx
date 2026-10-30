@@ -1,6 +1,7 @@
 
 import { bootstrapAdmin, getAuthStatus, loginAccount } from "../services/api";
 import { useState, useEffect, useRef } from "preact/hooks";
+import { getGatewaySecret } from "../services/storage";
 
 export interface AuthModalProps {
   isOpen: boolean;
@@ -23,7 +24,11 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
     setStatusLoading(true);
     setError("");
     getAuthStatus()
-      .then((status) => { if (active) setSetupRequired(status.setupRequired); })
+      .then((status) => {
+        if (!active) return;
+        setSetupRequired(status.setupRequired);
+        if (status.setupRequired) setBootstrapSecret(getGatewaySecret());
+      })
       .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Could not connect to the authentication service."); })
       .finally(() => { if (active) setStatusLoading(false); });
     return () => { active = false; };
