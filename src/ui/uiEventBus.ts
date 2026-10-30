@@ -42,7 +42,8 @@ export function emitUiEvent<K extends UiEventName>(
   const bucket = listeners.get(type);
   if (!bucket?.size) return;
 
-  const event: UiEvent<UiEventPayloads[K]> = { type, detail: args[0] };
+  const detail = args[0] as UiEventPayloads[K];
+  const event: UiEvent<UiEventPayloads[K]> = { type, detail };
   [...bucket].forEach((listener) => listener(event as UiEvent<unknown>));
 }
 
