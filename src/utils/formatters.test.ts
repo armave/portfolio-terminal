@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { setAppLanguage } from './i18n';
+import { setAppLanguage } from '../services/i18n';
 import { decodeHtmlEntities, formatQuoteMetadata, formatRiskTrigger, formatTrancheDate, formatUSD, getQuoteFreshness } from './formatters';
 
 afterEach(() => setAppLanguage('en'));
