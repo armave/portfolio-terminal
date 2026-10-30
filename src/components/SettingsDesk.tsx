@@ -239,7 +239,7 @@ export function SettingsDesk() {
         Recovery tip: export a JSON backup before resetting local data or relying on cloud sync as your only copy.
       </p>}
 
-      <section class="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
+      {account?.role === "admin" && <section class="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div><h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">User management</h3>
             <p class="text-[10px] text-slate-500">Accounts share this portfolio. Guests have read-only access; admins can manage accounts.</p></div>
@@ -264,7 +264,7 @@ export function SettingsDesk() {
           </table></div>
         </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
-      </section>
+      </section>}
 
       {permissions.canEditBrokerRules && <details class="space-y-3">
         <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
