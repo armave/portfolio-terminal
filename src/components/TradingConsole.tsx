@@ -4,15 +4,19 @@ import { ConsoleQuickActions } from './ConsoleQuickActions';
 import { clearTerminalLog } from '../ui/notifications';
 import { useTerminalLogEntries } from '../ui/notificationStore';
 import { TerminalLog } from './TerminalLog';
-import { formatUSD, PositionRecord } from '../ui/renderBoard';
+import { formatUSD } from '../utils/formatters';
+import type { PositionRecord } from '../types/portfolio';
+import { usePortfolio } from '../store/portfolioStore';
+import { emitUiEvent } from '../ui/uiEventBus';
 import { useAiStatus } from '../ui/uiStateStore';
 
-export interface TradingConsoleProps {
-  position?: PositionRecord;
-  onExecuteCommand: (command?: string) => void | Promise<void>;
-}
-
-export function TradingConsole({ position, onExecuteCommand }: TradingConsoleProps) {
+export function TradingConsole() {
+  const portfolio = usePortfolio();
+  const position = portfolio.positions?.[portfolio.activeView];
+  const onExecuteCommand = (command?: string) => {
+    const value = String(command ?? '').trim();
+    if (value) emitUiEvent('terminal:execute-command', { command: value });
+  };
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState<number>(-1);
   const [command, setCommand] = useState('');
