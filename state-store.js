@@ -24,7 +24,8 @@ const AUTH_SESSION_PREFIX = "auth:session:";
 const AUTH_LOGIN_FAILURE_PREFIX = "auth:login-failure:";
 const AUTH_LOGIN_FAILURE_LIMIT = 10;
 const AUTH_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
-const AUTH_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const AUTH_GUEST_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const AUTH_LEGACY_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PASSWORD_HASH_VERSION = 2;
 const PASSWORD_ITERATIONS_PER_STAGE = 100_000;
 const PASSWORD_HASH_STAGES = 6;
@@ -112,23 +113,46 @@ export class PortfolioStateDO {
     if (!token || token.length > 256) return null;
     const sessionKey = AUTH_SESSION_PREFIX + await digestHex(token);
     const session = await this.ctx.storage.get(sessionKey);
-    if (!session || !Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now()) {
-      if (session) await this.ctx.storage.delete(sessionKey);
-      return null;
-    }
+    if (!session) return null;
+
     const user = (await this.getAuthUsers()).find((item) => item.id === session.userId);
     if (!user) {
       await this.ctx.storage.delete(sessionKey);
       return null;
     }
+
+    if (user.role === "guest") {
+      // Existing sessions predate issuedAt and carry a seven-day expiresAt.
+      // Reconstruct their original issue time so active legacy guest tokens
+      // receive the full 30-day policy without restarting the session clock.
+      const issuedAt = Number.isFinite(session.issuedAt)
+        ? session.issuedAt
+        : Number.isFinite(session.expiresAt)
+          ? session.expiresAt - AUTH_LEGACY_SESSION_TTL_MS
+          : NaN;
+      const expiresAt = issuedAt + AUTH_GUEST_SESSION_TTL_MS;
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        await this.ctx.storage.delete(sessionKey);
+        return null;
+      }
+      if (session.issuedAt !== issuedAt || session.expiresAt !== expiresAt) {
+        await this.ctx.storage.put(sessionKey, { ...session, issuedAt, expiresAt });
+      }
+    }
+
+    // Administrator sessions are intentionally non-expiring. Logout,
+    // password changes, and account deletion still revoke them explicitly.
     return { user, sessionKey };
   }
 
   async issueSession(user) {
     const token = toHex(crypto.getRandomValues(new Uint8Array(32)));
-    const expiresAt = Date.now() + AUTH_SESSION_TTL_MS;
+    const issuedAt = Date.now();
+    const expiresAt = user.role === "guest"
+      ? issuedAt + AUTH_GUEST_SESSION_TTL_MS
+      : null;
     const sessionKey = AUTH_SESSION_PREFIX + await digestHex(token);
-    await this.ctx.storage.put(sessionKey, { userId: user.id, expiresAt });
+    await this.ctx.storage.put(sessionKey, { userId: user.id, issuedAt, expiresAt });
     return { token, user: publicUser(user), expiresAt };
   }
 
