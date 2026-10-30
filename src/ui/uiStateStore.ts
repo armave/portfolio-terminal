@@ -1,13 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { TradingConsoleProps } from '../components/TradingConsole';
 import type { CashCushionDeskProps } from '../components/CashCushionDesk';
 import type { SettingsDeskProps } from '../components/SettingsDesk';
-import type { TickerTabsProps } from '../components/TickerTab';
 import type { SummaryMetricsGridProps } from '../components/SummaryMetricsGrid';
 import type { ProjectionsTableProps } from '../components/ProjectionsTable';
-import type { MarketInsightsPanelProps } from '../components/MarketInsightsPanel';
-import type { BoardExternalLinksProps } from '../components/BoardExternalLinks';
-import type { EmptyStatePanelProps } from '../components/EmptyStatePanel';
 
 let aiStatus = 'READY';
 const aiStatusListeners = new Set<(status: string) => void>();
@@ -148,45 +143,18 @@ export function useBoardTitle(): BoardTitleState {
   return state;
 }
 
-let tradingConsoleProps: TradingConsoleProps | null = null;
-const tradingConsolePropsListeners = new Set<(props: TradingConsoleProps | null) => void>();
-
-/** Publish the latest console inputs through shared Preact state. */
-export function setTradingConsoleProps(props: TradingConsoleProps): void {
-  tradingConsoleProps = props;
-  tradingConsolePropsListeners.forEach((listener) => listener(tradingConsoleProps));
-}
-
-export function useTradingConsoleProps(): TradingConsoleProps | null {
-  const [props, setProps] = useState<TradingConsoleProps | null>(tradingConsoleProps);
-  useEffect(() => {
-    tradingConsolePropsListeners.add(setProps);
-    setProps(tradingConsoleProps);
-    return () => tradingConsolePropsListeners.delete(setProps);
-  }, []);
-  return props;
-}
-
 type UiPropStateMap = {
   cashCushionProps: CashCushionDeskProps;
   settingsProps: SettingsDeskProps | null;
-  tickerTabsProps: TickerTabsProps | null;
   summaryMetricsProps: SummaryMetricsGridProps | null;
   projectionsProps: ProjectionsTableProps | null;
-  marketInsightsProps: MarketInsightsPanelProps | null;
-  externalLinksProps: BoardExternalLinksProps | null;
-  emptyStateProps: EmptyStatePanelProps | null;
 };
 type UiPropKey = keyof UiPropStateMap;
 const uiPropState: UiPropStateMap = {
   cashCushionProps: {},
   settingsProps: null,
-  tickerTabsProps: null,
   summaryMetricsProps: null,
-  projectionsProps: null,
-  marketInsightsProps: null,
-  externalLinksProps: null,
-  emptyStateProps: null
+  projectionsProps: null
 };
 const uiPropListeners = new Map<UiPropKey, Set<(value: unknown) => void>>();
 
@@ -214,18 +182,10 @@ function useUiProp<K extends UiPropKey>(key: K): UiPropStateMap[K] {
 
 export const setCashCushionPropsState = (value: CashCushionDeskProps) => setUiProp('cashCushionProps', value);
 export const setSettingsPropsState = (value: SettingsDeskProps | null) => setUiProp('settingsProps', value);
-export const setTickerTabsPropsState = (value: TickerTabsProps) => setUiProp('tickerTabsProps', value);
 export const setSummaryMetricsPropsState = (value: SummaryMetricsGridProps) => setUiProp('summaryMetricsProps', value);
 export const setProjectionsPropsState = (value: ProjectionsTableProps) => setUiProp('projectionsProps', value);
-export const setMarketInsightsPropsState = (value: MarketInsightsPanelProps) => setUiProp('marketInsightsProps', value);
-export const setExternalLinksPropsState = (value: BoardExternalLinksProps) => setUiProp('externalLinksProps', value);
-export const setEmptyStatePropsState = (value: EmptyStatePanelProps | null) => setUiProp('emptyStateProps', value);
 
 export const useCashCushionProps = () => useUiProp('cashCushionProps');
 export const useSettingsProps = () => useUiProp('settingsProps');
-export const useTickerTabsProps = () => useUiProp('tickerTabsProps');
 export const useSummaryMetricsProps = () => useUiProp('summaryMetricsProps');
 export const useProjectionsProps = () => useUiProp('projectionsProps');
-export const useMarketInsightsProps = () => useUiProp('marketInsightsProps');
-export const useExternalLinksProps = () => useUiProp('externalLinksProps');
-export const useEmptyStateProps = () => useUiProp('emptyStateProps');
