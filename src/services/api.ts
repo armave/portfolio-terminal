@@ -1353,7 +1353,7 @@ export interface AuthUser {
   createdAt: string;
 }
 export interface AuthSession { token: string; user: AuthUser; expiresAt: number; }
-const AUTH_API_URL = "https://trading-proxy.armenavetisyan-sa.workers.dev";
+const AUTH_API_URL = WORKER_PROXY_URL;
 
 async function authRequest<T>(path: string, options: { method?: "GET" | "POST"; body?: Record<string, unknown>; token?: string } = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
