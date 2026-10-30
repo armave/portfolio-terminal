@@ -230,7 +230,7 @@ const RU: Record<string, string> = {
   'Accrued Margin Interest': 'Начисленные проценты по марже',
   'Shares / Tranches': 'Акции / лоты',
   'Invested / Avg. Entry': 'Инвестировано / средний вход',
-  'Share Price / Market Value': 'Цена акции / рыночная стоимость'
+  'Share Price / Market Value': 'Цена акции / рыночная стоимость',
   'Update quotes': 'Обновить котировки',
   'Refresh live quotes': 'Обновить актуальные котировки',
   'Portfolio Assets': 'Активы портфеля',
