@@ -101,19 +101,18 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   }, [showActiveTranches]);
 
   const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
-  const holdings = isAdmin
-    ? state.cashCushion?.holdings || []
-    : guestUserId
-      ? getGuestAssignedCashHoldings({
+  const guestHoldings = guestUserId
+    ? getGuestAssignedCashHoldings({
       guestId: guestUserId,
       activeTranches,
       assignments: state.activeTrancheGuestAssignments,
       types: state.activeTrancheTypes,
       mixes: state.activeTrancheMixes,
       cashHoldings: state.cashCushion?.holdings || []
-      })
-      : [];
-  const personalEquity = guestUserId ? calculateGuestPersonalEquity(holdings) : null;
+    })
+    : [];
+  const holdings = isAdmin ? state.cashCushion?.holdings || [] : guestHoldings;
+  const personalEquity = guestUserId ? calculateGuestPersonalEquity(guestHoldings) : null;
   const setActiveTrancheType = (
     ticker: string,
     type: ActiveTrancheType,
