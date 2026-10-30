@@ -1,4 +1,4 @@
-import type { ActiveBrokerTranche, ActiveTrancheMix, ActiveTrancheType } from '../types/portfolio';
+import type { ActiveBrokerTranche, ActiveTrancheMix, ActiveTrancheType, QuoteDetails } from '../types/portfolio';
 import { getAssignableActiveTrancheCashQuantity } from './activeTrancheGuestAssignment';
 import { normalizeActiveTrancheMix } from './freedomPortfolio';
 
@@ -11,7 +11,7 @@ export interface GuestCashHolding {
   marketValue: number | null;
   quoteUpdatedAt?: number;
   quoteSource?: string;
-  quoteDetails?: Record<string, unknown>;
+  quoteDetails?: QuoteDetails;
 }
 
 interface CashHoldingQuoteLike {
@@ -20,7 +20,7 @@ interface CashHoldingQuoteLike {
   price?: unknown;
   quoteUpdatedAt?: number;
   quoteSource?: string;
-  quoteDetails?: Record<string, unknown>;
+  quoteDetails?: QuoteDetails;
 }
 
 function positiveNumber(value: unknown): number | null {
