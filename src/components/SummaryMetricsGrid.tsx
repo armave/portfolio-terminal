@@ -152,10 +152,15 @@ function computeMarginRiskDisplay(
   };
 }
 
-const MARGIN_TRANCHE_PREVIEW_LIMIT = 3;
+export function getMarginTranchePreview<T>(tranches: T[], expanded = false): T[] {
+  return expanded ? tranches : [];
+}
 
-export function getMarginTranchePreview<T>(tranches: T[]): T[] {
-  return tranches.slice(0, MARGIN_TRANCHE_PREVIEW_LIMIT);
+export function getMarginTrancheQuantity(tranche: unknown): number | null {
+  if (!tranche || typeof tranche !== 'object') return null;
+  const value = tranche as { qty?: unknown; shares?: unknown; quantity?: unknown };
+  const quantity = Number(value.qty ?? value.shares ?? value.quantity);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : null;
 }
 
 export function SummaryMetricsGrid() {
@@ -340,8 +345,8 @@ export function SummaryMetricsGrid() {
   const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
 
   const positionTranches = pos.tranches || [];
-  const visibleTranches = getMarginTranchePreview(positionTranches);
-  const hiddenTrancheCount = Math.max(0, positionTranches.length - MARGIN_TRANCHE_PREVIEW_LIMIT);
+  const visibleTranches = getMarginTranchePreview(positionTranches, tranchesExpanded);
+  const hiddenTrancheCount = positionTranches.length;
   const tranchesExpanded = expandedTrancheTicker === pos.ticker;
 
   const investedText = `${formatUSD(totalInvested)} | ${formatUSD(avgPrice)}`;
@@ -380,27 +385,28 @@ export function SummaryMetricsGrid() {
             <div id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
               <div class="flex flex-wrap justify-end gap-x-2 gap-y-1">
                 <span class="whitespace-nowrap">{pos.shares.toLocaleString()} shares</span>
-                {visibleTranches.map((tranche, index) => (
-                  <span key={`${pos.ticker}-visible-${index}`} class="whitespace-nowrap">
-                    {tranche.qty} @ {formatUSD(tranche.price)} ({formatTrancheDate(tranche.date)})
-                  </span>
-                ))}
               </div>
               {hiddenTrancheCount > 0 && (
                 <>
                   <div id="boardTranchesOverflow" class={`expandable-motion ${tranchesExpanded ? 'is-expanded' : ''}`} aria-hidden={!tranchesExpanded}>
                     <div class="expandable-motion__inner">
                       <div class="mt-1 flex flex-wrap justify-end gap-x-2 gap-y-1">
-                        {positionTranches.slice(MARGIN_TRANCHE_PREVIEW_LIMIT).map((tranche, index) => (
-                          <span key={`${pos.ticker}-overflow-${index}`} class="whitespace-nowrap">
-                            {tranche.qty} @ {formatUSD(tranche.price)} ({formatTrancheDate(tranche.date)})
-                          </span>
-                        ))}
+                        {visibleTranches.map((tranche, index) => {
+                          const quantity = getMarginTrancheQuantity(tranche);
+                          const value = tranche as typeof tranche & { entryPrice?: number; averagePrice?: number; purchaseDate?: string; entryDate?: string };
+                          const price = Number(tranche.price ?? value.entryPrice ?? value.averagePrice);
+                          const date = tranche.date ?? value.purchaseDate ?? value.entryDate;
+                          return (
+                            <span key={`${pos.ticker}-overflow-${index}`} class="whitespace-nowrap">
+                              {quantity !== null ? `${quantity.toLocaleString()} @ ` : ''}{formatUSD(price)} ({formatTrancheDate(date)})
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
                   <button type="button" class="mt-1 inline-flex items-center rounded border border-slate-700/80 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/40" aria-expanded={tranchesExpanded} aria-controls="boardTranchesOverflow" onClick={() => setExpandedTrancheTicker((current) => current === pos.ticker ? null : pos.ticker)}>
-                    {tranchesExpanded ? 'Show less' : `Show ${hiddenTrancheCount} more`}
+                    {tranchesExpanded ? 'Show less' : `Show ${hiddenTrancheCount} tranches`}
                   </button>
                 </>
               )}
