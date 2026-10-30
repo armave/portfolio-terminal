@@ -122,6 +122,60 @@ describe("Durable Object account authentication", () => {
   });
 });
 
+describe("Worker session endpoints", () => {
+  it("serves the existing shared encryption key to valid account sessions only", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const authStub = {
+      fetch: vi.fn(async () => new Response(JSON.stringify({
+        user: { id: "admin-id", name: "Admin", role: "admin" }
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+    };
+    const response = await worker.fetch(new Request("https://worker.test/api/auth/cloud-key", {
+      headers: { Authorization: "Bearer valid-session" }
+    }), {
+      GATEWAY_SECRET: "legacy-shared-cloud-key",
+      PORTFOLIO_STATE_DO: { idFromName: () => "portfolio_state", get: () => authStub }
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ key: "legacy-shared-cloud-key" });
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+
+    authStub.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: "expired" }), { status: 401 }));
+    const denied = await worker.fetch(new Request("https://worker.test/api/auth/cloud-key", {
+      headers: { Authorization: "Bearer expired-session" }
+    }), {
+      GATEWAY_SECRET: "legacy-shared-cloud-key",
+      PORTFOLIO_STATE_DO: { idFromName: () => "portfolio_state", get: () => authStub }
+    });
+    expect(denied.status).toBe(401);
+  });
+
+  it("bounds streamed authentication request bodies before buffering them", async () => {
+    let chunksSent = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        if (chunksSent === 5) {
+          controller.close();
+          return;
+        }
+        chunksSent += 1;
+        controller.enqueue(new Uint8Array(4096));
+      }
+    });
+    const request = new Request("https://worker.test/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      duplex: "half"
+    });
+    const response = await worker.fetch(request, {
+      PORTFOLIO_STATE_DO: { idFromName: () => "portfolio_state", get: () => ({ fetch: vi.fn() }) }
+    });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: "Authentication request exceeds the 8 KB limit." });
+  });
+});
+
 describe("Worker role enforcement", () => {
   it("blocks guest write requests before invoking protected actions", async () => {
     vi.stubGlobal("crypto", webcrypto);
