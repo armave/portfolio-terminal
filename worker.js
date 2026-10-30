@@ -380,7 +380,17 @@ export default {
         const authHeader = request.headers.get("Authorization") || "";
         const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim();
         const clientSecret = request.headers.get("X-App-Auth") || bearerToken;
+        const isBootstrapCredential = Boolean(env.GATEWAY_SECRET && clientSecret === env.GATEWAY_SECRET);
+        let legacyBootstrapAccess = false;
         let accountRole = "";
+        if (env.PORTFOLIO_STATE_DO && isBootstrapCredential) {
+            const authStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
+            const statusResponse = await authStub.fetch(new Request("https://auth.internal/api/auth/status"));
+            const authStatus = statusResponse.ok ? await statusResponse.json().catch(() => null) : null;
+            // Keep existing Gateway-Secret-only clients working until the first
+            // admin account is created. Bootstrap closes this compatibility path.
+            legacyBootstrapAccess = authStatus?.setupRequired === true;
+        }
         if (env.PORTFOLIO_STATE_DO && clientSecret) {
             const authStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
             const verifyResponse = await authStub.fetch(new Request("https://auth.internal/api/auth/verify", {
@@ -393,9 +403,9 @@ export default {
                 accountRole = principal?.user?.role || "";
             }
         }
-        // Keep the old secret-only contract for environments without the account
-        // store. Production uses the Gateway Secret only for one-time bootstrap.
-        const gatewayAdmin = !env.PORTFOLIO_STATE_DO && Boolean(env.GATEWAY_SECRET && clientSecret === env.GATEWAY_SECRET);
+        // Retain the Gateway Secret path only for deployments without the account
+        // store and during the one-time upgrade window before the first admin.
+        const gatewayAdmin = !env.PORTFOLIO_STATE_DO && isBootstrapCredential || legacyBootstrapAccess;
         if (!gatewayAdmin && !accountRole) return jsonError("Unauthorized gateway access.", 401, corsHeaders);
         if (request.method === "POST" && accountRole !== "admin" && !gatewayAdmin) {
             return jsonError("Guest accounts have read-only access.", 403, corsHeaders);
