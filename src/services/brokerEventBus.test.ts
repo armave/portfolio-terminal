@@ -10,8 +10,18 @@ describe('typed broker event bus', () => {
     const listener = vi.fn();
     const snapshot = {
       loaded: true,
-      balances: [{ currency: 'USD', amount: 1250 }],
-      positions: [{ ticker: 'AAPL', quantity: 3, marketPrice: 190 }]
+      balances: [{ currency: 'USD', amount: 1250, forecastIn: 0, forecastOut: 0, t2In: 0, t2Out: 0 }],
+      positions: [{
+        ticker: 'AAPL',
+        name: 'Apple',
+        quantity: 3,
+        currency: 'USD',
+        marketPrice: 190,
+        marketValue: 570,
+        averagePrice: 180,
+        profitClose: 30,
+        accountPositionId: 1
+      }]
     };
     const unsubscribe = addBrokerEventListener('broker:account-info', listener);
 
@@ -27,7 +37,21 @@ describe('typed broker event bus', () => {
     const unsubscribe = addBrokerEventListener('broker:executed-trades', listener);
     unsubscribe();
 
-    emitBrokerEvent('broker:executed-trades', [{ ticker: 'AAPL', side: 'buy', quantity: 2, price: 100 }]);
+    emitBrokerEvent('broker:executed-trades', [{
+      id: 'trade-1',
+      ticker: 'AAPL',
+      side: 'buy',
+      quantity: 2,
+      price: 100,
+      currency: 'USD',
+      executedAt: '2026-10-30T10:00:00Z',
+      tradeValue: 200,
+      profit: null,
+      marginFee: null,
+      commission: null,
+      commissionCurrency: 'USD',
+      raw: {}
+    }]);
 
     expect(listener).not.toHaveBeenCalled();
   });
