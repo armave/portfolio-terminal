@@ -1,3 +1,5 @@
+import { getAppLanguage, translateText } from '../services/i18n';
+
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export function formatTrancheDate(dateStr?: string | number | null): string {
@@ -79,13 +81,16 @@ export function formatQuoteMetadata(
   refreshIntervalMs = 60000
 ): string {
   const freshness = getQuoteFreshness(holding, Date.now(), refreshIntervalMs);
-  if (freshness === 'unavailable') return holding.quoteSource || 'Not fetched';
+  if (freshness === 'unavailable') return holding.quoteSource || translateText('Not fetched');
   const source = holding.quoteSource ? `${holding.quoteSource} · ` : '';
-  if (freshness === 'unknown') return `${holding.quoteSource || 'source unavailable'}`;
+  if (freshness === 'unknown') return `${holding.quoteSource || translateText('Source unavailable')}`;
 
   const sourceTimestamp = Number(holding.sourceTimestamp ?? holding.quoteDetails?.sourceTimestamp);
-  const time = new Date(sourceTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const freshnessLabel = freshness === 'stale' ? 'Stale · ' : freshness === 'delayed' ? 'Delayed · ' : '';
+  const locale = getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US';
+  const time = new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(sourceTimestamp);
+  const freshnessLabel = freshness === 'stale'
+    ? `${translateText('Stale')} · `
+    : freshness === 'delayed' ? `${translateText('Delayed')} · ` : '';
   return `${freshnessLabel}${source}${time}`;
 }
 
