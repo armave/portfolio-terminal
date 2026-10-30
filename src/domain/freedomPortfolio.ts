@@ -26,9 +26,8 @@ export function normalizeActiveTrancheMix(
 
 export interface FreedomPortfolioSnapshotLike {
   loaded: boolean;
-  balances: Array<{ currency: string; amount: number; [key: string]: unknown }>;
-  positions: Array<{ ticker: string; quantity: number; marketPrice: number | null; [key: string]: unknown }>;
-  [key: string]: unknown;
+  balances: Array<{ currency: string; amount: number }>;
+  positions: Array<{ ticker: string; quantity: number; marketPrice: number | null }>;
 }
 
 interface FreedomQuantityMismatch {
@@ -179,7 +178,6 @@ export interface FreedomExecutedTradeLike {
   quantity?: number | null;
   price?: number | null;
   executedAt?: string | null;
-  [key: string]: unknown;
 }
 
 /** Derive still-open purchase operations from Freedom's executed-trades history using FIFO sells. */
