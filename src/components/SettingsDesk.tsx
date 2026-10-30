@@ -1,12 +1,10 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { emitUiEvent, addUiEventListener, removeUiEventListener, type UiEvent } from '../ui/uiEventBus';
-import {
-  areHeaderCredentialsConfigured,
-  getGatewaySecret,
-  getQuoteRefreshInterval
-} from '../services/storage';
+import { emitUiEvent } from '../ui/uiEventBus';
+import { getQuoteRefreshInterval } from '../services/storage';
 import { BrokerRules } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
+import { getCurrentUser, listUsers, createUser, updateUser, deleteUser, type AuthUser } from '../services/api';
+import { getAccountPermissions } from '../domain/accountPermissions';
 
 
 export interface BrokerRulesFormValues {
@@ -40,23 +38,88 @@ export function toBrokerRulesFormValues(rules: BrokerRules): BrokerRulesFormValu
 export function SettingsDesk() {
   const portfolio = usePortfolio();
   const rules = portfolio.brokerAssumptions;
-  const [secretValue, setSecretValue] = useState<string>(() => getGatewaySecret() || '');
-  useEffect(() => {
-    const handleAuthenticated = (event: UiEvent<{ secret: string }>) => {
-      const secret = event.detail.secret;
-      setSecretValue(secret);
-      setCredentialsHidden(false);
-      setIsConfigured(Boolean(secret));
-    };
-    addUiEventListener('settings:gateway-secret-authenticated', handleAuthenticated);
-    return () => removeUiEventListener('settings:gateway-secret-authenticated', handleAuthenticated);
-  }, []);
-  const [isConfigured, setIsConfigured] = useState<boolean>(() =>
-    areHeaderCredentialsConfigured()
-  );
-  const [credentialsHidden, setCredentialsHidden] = useState<boolean>(() =>
-    areHeaderCredentialsConfigured()
-  );
+  const [account, setAccount] = useState<AuthUser | null>(null);
+  const permissions = getAccountPermissions(account?.role);
+  const [users, setUsers] = useState<AuthUser[]>([]);
+  const [usersError, setUsersError] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<"guest" | "admin">("guest");
+  const [savingUser, setSavingUser] = useState(false);
+  const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; password: string }>>({});
+
+  const refreshUsers = async () => {
+    try {
+      const current = await getCurrentUser();
+      setAccount(current);
+      emitUiEvent('auth:user-changed', { user: current });
+      if (current.role === "admin") {
+        const records = await listUsers();
+        setUsers(records);
+        setEditValues(Object.fromEntries(records.map((user) => [user.id, { name: user.name, role: user.role, password: "" }])));
+      } else {
+        setUsers([]);
+      }
+      setUsersError("");
+    } catch (error) {
+      setAccount(null);
+      emitUiEvent('auth:user-changed', { user: null });
+      setUsersError(error instanceof Error ? error.message : "Could not load users.");
+    }
+  };
+  useEffect(() => { void refreshUsers(); }, []);
+
+  const handleCreateUser = async (event: Event) => {
+    event.preventDefault();
+    if (savingUser) return;
+    setSavingUser(true);
+    setUsersError("");
+    try {
+      await createUser({ name: newName.trim(), password: newPassword, role: newRole });
+      setNewName("");
+      setNewPassword("");
+      setNewRole("guest");
+      await refreshUsers();
+    } catch (error) {
+      setUsersError(error instanceof Error ? error.message : "Could not create user.");
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const handleUpdateUser = async (userId: string) => {
+    const values = editValues[userId];
+    if (!values || savingUser) return;
+    setSavingUser(true);
+    setUsersError("");
+    try {
+      await updateUser(userId, {
+        name: values.name.trim(),
+        role: values.role,
+        ...(values.password ? { password: values.password } : {})
+      });
+      await refreshUsers();
+    } catch (error) {
+      setUsersError(error instanceof Error ? error.message : "Could not update user.");
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
+  const handleDeleteUser = async (user: AuthUser) => {
+    if (savingUser || !window.confirm(`Delete account "${user.name}"?`)) return;
+    setSavingUser(true);
+    setUsersError("");
+    try {
+      await deleteUser(user.id);
+      await refreshUsers();
+    } catch (error) {
+      setUsersError(error instanceof Error ? error.message : "Could not delete user.");
+    } finally {
+      setSavingUser(false);
+    }
+  };
+
   const [refreshInterval, setRefreshInterval] = useState<string>(() =>
     String(getQuoteRefreshInterval(60000))
   );
@@ -87,27 +150,6 @@ export function SettingsDesk() {
     setRuleValues((current) => ({ ...current, [field]: value }));
   };
 
-  const handleSecretInput = (e: Event) => {
-    const val = (e.target as HTMLInputElement).value;
-    setSecretValue(val);
-    const configured = Boolean(val.trim()) || areHeaderCredentialsConfigured();
-    setIsConfigured(configured);
-    if (!configured) {
-      setCredentialsHidden(false);
-    }
-  };
-
-  const handleSaveKeysClick = async () => {
-    const saved = await new Promise<boolean>((resolve) => {
-      emitUiEvent('settings:save-api-keys', { secret: secretValue, resolve });
-    });
-    if (saved) {
-      const configured = areHeaderCredentialsConfigured();
-      setIsConfigured(configured);
-      setCredentialsHidden(configured);
-    }
-  };
-
   const handleIntervalChange = (e: Event) => {
     const val = (e.target as HTMLSelectElement).value;
     setRefreshInterval(val);
@@ -121,70 +163,20 @@ export function SettingsDesk() {
           TERMINAL SETTINGS &amp; SYNC
         </h2>
         <p class="text-xs text-slate-400">
-          Configure broker margin assumptions, cloud KV synchronization, quote polling, and
-          backups.
+          {account?.role === 'guest'
+            ? 'Manage your account and quote refresh preferences.'
+            : 'Configure broker assumptions, cloud synchronization, quote polling, and account access.'}
         </p>
       </div>
 
       <div class="terminal-toolbar flex flex-col lg:flex-row w-full items-center lg:divide-x divide-slate-700 gap-y-3 lg:gap-y-0 py-1">
-        {/* Cluster 1: Cloud & Secret */}
-        <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2">
-          <div
-            id="headerCredentialsFields"
-            class={`credentials-motion ${isConfigured && credentialsHidden ? '' : 'is-expanded'} flex items-center`}
-          >
-            <input
-              id="headerGatewaySecretInput"
-              // Use a text input with visual masking: password inputs can trigger
-              // Google Password Manager's saved-password bottom sheet on mobile.
-              type="text"
-              value={secretValue}
-              onInput={handleSecretInput}
-              placeholder="Gateway Secret..."
-              autoComplete="off"
-              data-lpignore="true"
-              data-1p-ignore="true"
-              data-bwignore="true"
-              data-protonpass-ignore="true"
-              data-form-type="other"
-              style={{ WebkitTextSecurity: 'disc' }}
-              class="w-36 h-8 bg-slate-800 text-slate-200 border border-slate-700 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-blue-500"
-            />
+        <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-2 lg:px-2">
+          <div class="text-xs text-slate-300">
+            {account ? <><span class="font-bold text-white">{account.name}</span><span class="ml-2 rounded bg-slate-800 px-2 py-1 uppercase text-[10px] text-cyan-300">{account.role}</span></> : "Account information unavailable"}
           </div>
-          <button
-            id="toggleHeaderCredentialsButton"
-            type="button"
-            onClick={() => setCredentialsHidden((prev) => !prev)}
-            aria-expanded={!credentialsHidden}
-            title={credentialsHidden ? 'Show credential inputs' : 'Hide credential inputs'}
-            class={`${isConfigured ? '' : 'hidden '
-              }h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center`}
-          >
-            {credentialsHidden ? 'Show inputs' : 'Hide inputs'}
-          </button>
-          <div
-            id="headerCredentialsActions"
-            class={`credentials-motion ${isConfigured && credentialsHidden ? '' : 'is-expanded'} flex items-center gap-1.5`}
-          >
-            <button
-              id="saveApiKeysButton"
-              type="button"
-              onClick={handleSaveKeysClick}
-              title="Save keys and pull latest cloud state"
-              class="secret-action-btn h-8 bg-emerald-600 hover:bg-emerald-500 text-black text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
-            >
-              Save
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => emitUiEvent('settings:pull-cloud-state')}
-            title="Force pull cloud data and rewrite local storage"
-            class="secret-action-btn h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
-          >
-            <span>☁↓</span>
-            Pull
-          </button>
+          {account?.role === "guest" && <span class="text-[10px] text-amber-300">Guest access · cloud changes disabled</span>}
+          <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-8 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">Sign out</button>
+          <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title="Pull the latest shared portfolio state" class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>
         </div>
 
         {/* Cluster 2: Polling & Backups */}
@@ -204,6 +196,7 @@ export function SettingsDesk() {
               <option value="60000">1 min</option>
             </select>
           </label>
+          {permissions.canManageBackups && <>
           <button
             type="button"
             onClick={() => emitUiEvent('settings:export-backup')}
@@ -231,14 +224,42 @@ export function SettingsDesk() {
           >
             Reset
           </button>
+          </>}
         </div>
       </div>
 
-      <p class="w-full text-center text-[10px] leading-relaxed text-slate-500">
+      {permissions.canManageBackups && <p class="w-full text-center text-[10px] leading-relaxed text-slate-500">
         Recovery tip: export a JSON backup before resetting local data or relying on cloud sync as your only copy.
-      </p>
+      </p>}
 
-      <details class="space-y-3">
+      <section class="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div><h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">User management</h3>
+            <p class="text-[10px] text-slate-500">Accounts share this portfolio. Guests have read-only access; admins can manage accounts.</p></div>
+          {account?.role === "admin" && <span class="text-[10px] uppercase tracking-wider text-emerald-400">Admin controls</span>}
+        </div>
+        {account?.role === "admin" ? <>
+          <form onSubmit={handleCreateUser} class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_130px_auto]">
+            <input type="text" minLength={2} maxLength={60} required value={newName} onInput={(event) => setNewName((event.target as HTMLInputElement).value)} placeholder="User name" class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
+            <input type="password" minLength={6} maxLength={128} required value={newPassword} onInput={(event) => setNewPassword((event.target as HTMLInputElement).value)} placeholder="Password (6+ characters)" autoComplete="new-password" class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
+            <select value={newRole} onChange={(event) => setNewRole((event.target as HTMLSelectElement).value as "guest" | "admin")} class="rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white"><option value="guest">Guest</option><option value="admin">Admin</option></select>
+            <button type="submit" disabled={savingUser} class="rounded bg-cyan-800 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-700 disabled:opacity-50">Add user</button>
+          </form>
+          <div class="table-scroll-wrapper overflow-x-auto"><table class="w-full min-w-[620px] text-left text-xs">
+            <thead class="text-[10px] uppercase tracking-wider text-slate-500"><tr><th class="p-2">Name</th><th class="p-2">Role</th><th class="p-2">New password</th><th class="p-2">Actions</th></tr></thead>
+            <tbody>{users.map((user) => <tr key={user.id} class="border-t border-slate-800">
+              <td class="p-2"><input aria-label={`Name for ${user.name}`} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
+              <td class="p-2"><select aria-label={`Role for ${user.name}`} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white"><option value="guest">Guest</option><option value="admin">Admin</option></select></td>
+              <td class="p-2"><input aria-label={`New password for ${user.name}`} type="password" minLength={6} maxLength={128} autoComplete="new-password" placeholder="Leave blank to keep" value={editValues[user.id]?.password ?? ""} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], password: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
+              <td class="whitespace-nowrap p-2"><button type="button" disabled={savingUser} onClick={() => void handleUpdateUser(user.id)} class="mr-2 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">Save</button>
+                {user.id !== account.id && <button type="button" disabled={savingUser} onClick={() => void handleDeleteUser(user)} class="rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">Delete</button>}</td>
+            </tr>)}</tbody>
+          </table></div>
+        </> : <p class="text-xs text-slate-400">Only administrators can view or manage the user list.</p>}
+        {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
+      </section>
+
+      {permissions.canEditBrokerRules && <details class="space-y-3">
         <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
           Broker Rules
         </summary>
@@ -388,7 +409,7 @@ export function SettingsDesk() {
             </div>
           </form>
         </div>
-      </details>
+      </details>}
     </>
   );
 }

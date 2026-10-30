@@ -5,10 +5,11 @@ import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
 import { emitUiEvent } from '../ui/uiEventBus';
 
-export function TickerTabs() {
+export function TickerTabs({ isAdmin = false }: { isAdmin?: boolean } = {}) {
   const state = usePortfolio();
   const [isRefreshingQuotes, setIsRefreshingQuotes] = useState(false);
   const selectView = (view: string) => {
+    if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS') return;
     // Persist at the actual navigation click site as well as through the store,
     // so a view change is durable even if a later render/hydration races it.
     try {
@@ -29,7 +30,7 @@ export function TickerTabs() {
   const isClosedHistoryActive = state.activeView === 'CLOSED_HISTORY';
   const isSettingsActive = state.activeView === 'SETTINGS';
   const isMarginDeskActive =
-    !isCushionActive && !isClosedHistoryActive && !isSettingsActive;
+    isAdmin && !isCushionActive && !isClosedHistoryActive && !isSettingsActive;
 
   // The Margin desk is the surface whose targets depend on open broker orders.
   // Refresh on first mount and whenever navigation returns to that desk, rather
@@ -44,7 +45,10 @@ export function TickerTabs() {
     : tickers.length === 1
       ? [tickers[0]]
       : ['COMBINED', ...tickers];
-  const navigationViews = [...marginDeskViews, 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'];
+  const navigationViews = isAdmin
+    ? [...marginDeskViews, 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']
+    : ['BALANCE', 'SETTINGS'];
+  const balanceNavIndex = isAdmin ? marginDeskViews.length : 0;
   const tabButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const portfolioValuation = calculatePortfolioValuation({
@@ -95,7 +99,7 @@ export function TickerTabs() {
         </button>
       )}
 
-      {tickers.length === 0 && (
+      {isAdmin && tickers.length === 0 && (
         <button
           type="button"
           data-nav-tab="true"
@@ -113,7 +117,7 @@ export function TickerTabs() {
         </button>
       )}
 
-      {tickers.length === 1 && (
+      {isAdmin && tickers.length === 1 && (
         <button
           type="button"
           onClick={() => selectView(tickers[0])}
@@ -131,7 +135,7 @@ export function TickerTabs() {
         </button>
       )}
 
-      {tickers.length > 1 && (
+      {isAdmin && tickers.length > 1 && (
         <>
           <button
             type="button"
@@ -179,8 +183,8 @@ export function TickerTabs() {
           : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
           }`}
           data-nav-tab="true"
-          data-nav-index={marginDeskViews.length}
-          ref={(element) => { tabButtonRefs.current[marginDeskViews.length] = element; }}
+          data-nav-index={balanceNavIndex}
+          ref={(element) => { tabButtonRefs.current[balanceNavIndex] = element; }}
           onKeyDown={handleTabKeyDown}
       >
         <span>🛡️ BALANCE</span>
@@ -192,7 +196,7 @@ export function TickerTabs() {
         </span>
       </button>
 
-      <button
+      {isAdmin && <button
         type="button"
         onClick={() => selectView('CLOSED_HISTORY')}
         aria-pressed={isClosedHistoryActive}
@@ -201,12 +205,12 @@ export function TickerTabs() {
           : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
           }`}
           data-nav-tab="true"
-          data-nav-index={marginDeskViews.length + 1}
-          ref={(element) => { tabButtonRefs.current[marginDeskViews.length + 1] = element; }}
+          data-nav-index={balanceNavIndex + 1}
+          ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
           onKeyDown={handleTabKeyDown}
       >
         CLOSED HISTORY
-      </button>
+      </button>}
 
       <button
         id="settingsBtn"
@@ -219,8 +223,8 @@ export function TickerTabs() {
             : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition'
         }
           data-nav-tab="true"
-          data-nav-index={marginDeskViews.length + 2}
-          ref={(element) => { tabButtonRefs.current[marginDeskViews.length + 2] = element; }}
+          data-nav-index={balanceNavIndex + (isAdmin ? 2 : 1)}
+          ref={(element) => { tabButtonRefs.current[balanceNavIndex + (isAdmin ? 2 : 1)] = element; }}
           onKeyDown={handleTabKeyDown}
       >
         <span>⚙️ SETTINGS</span>

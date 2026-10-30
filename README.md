@@ -31,7 +31,7 @@ It is **not** a broker connection, order-entry system, source of official accoun
 * **Conversational Trading Console:** Evaluates natural-language portfolio entries and exit scenario modeling using Google Gemini with an explicit confirmation safeguard.
 
 
-* **Zero-Backend Persistence & Cloud Sync:** Saves state locally in browser storage with optional AES-256-GCM encrypted GitHub Gist synchronization and JSON export/import.
+* **Account Roles & Cloud Sync:** Uses Worker-backed accounts with `admin` and `guest` roles, password-hashed credentials, expiring sessions, and server-enforced read-only guest access. Portfolio state remains encrypted before cloud synchronization.
 
 
 
@@ -43,7 +43,15 @@ All calculations, broker formulas, and valuations are estimates intended for tra
 
 ### Hosted Application
 
-Access the production build on [GitHub Pages](https://armave.github.io/portfolio-terminal/). The application executes client-side in the browser. Portfolio state and broker preferences are stored in `localStorage`; the Gateway Secret is handled separately and, when supported, stored as ciphertext in `localStorage` with a non-extractable device key in IndexedDB. Other provider API keys may be stored in browser storage, so use a trusted device and browser profile.
+Access the production build on [GitHub Pages](https://armave.github.io/portfolio-terminal/). Portfolio state and broker preferences remain browser-side; authenticated cloud requests are handled by the Cloudflare Worker and Durable Object. Account session tokens are stored encrypted on the device using the browser's non-extractable IndexedDB key. Other provider API keys may be stored in browser storage, so use a trusted device and browser profile.
+
+### Accounts and roles
+
+On the first visit after this upgrade, create the initial administrator account using the configured Worker Gateway Secret. The one-time bootstrap credential also initializes the shared portfolio encryption key, which the Durable Object retains for authenticated accounts; subsequent sign-ins use the account name and password. Passwords must be 6–128 characters and are stored server-side as salted PBKDF2-SHA-256 hashes. Session tokens expire after seven days and are stored hashed by the Durable Object.
+
+Administrators can create, rename, change the role of, reset the password for, and delete accounts in **Settings → User management**. New accounts default to **guest**. Guests can read the shared portfolio but cannot write to the Cloudflare Worker. At least one administrator must remain, and an administrator cannot delete their own signed-in account.
+
+All accounts currently access the same shared portfolio; accounts are not separate tenants and do not receive isolated portfolio data. A guest's local, offline edits do not update the shared cloud portfolio.
 
 ### Local Development
 
@@ -243,12 +251,12 @@ Deployment to GitHub Pages is handled via `.github/workflows/deploy.yml` upon pu
 
 ## Deployment origin and ownership model
 
-The hosted app and cloud portfolio currently use a **single-owner** model: authorized devices share one cloud portfolio protected by the Worker Gateway Secret. This is not a multi-user account system, and the Worker does not create separate portfolios for different users. Do not share the Gateway Secret with other people.
+The app supports multiple named accounts with **shared portfolio access**. Each account has an `admin` or `guest` role, but all accounts use the same single Durable Object portfolio record; this is role-based access, not tenant-isolated storage. The Gateway Secret is required for the initial administrator bootstrap and is captured once during bootstrap and stored by the Durable Object as the shared workspace-encryption key. Authenticated accounts can retrieve that key over HTTPS to read the same encrypted workspace; keep account access restricted.
 
-The Worker restricts browser requests to `https://armave.github.io` and local Vite development origins by default. For a trusted custom deployment, configure the Cloudflare Worker variable `ALLOWED_ORIGINS` as a comma-separated list of exact origins (scheme and host, with port when applicable). This origin policy is defense in depth, not authentication; the Gateway Secret remains required. If the app becomes multi-user, replace the shared-secret/single-record model with per-user identity, authorization, and isolated state before opening access to other users.
+The Worker restricts browser requests to `https://armave.github.io` and local Vite development origins by default. For a trusted custom deployment, configure the Cloudflare Worker variable `ALLOWED_ORIGINS` as a comma-separated list of exact origins (scheme and host, with port when applicable). The origin policy is defense in depth; each protected request also requires a valid account session.
 
 ## Gateway and cloud-sync safety notes
 
-The Cloudflare Worker requires the Gateway Secret and accepts only its documented quote/news, Gemini, and cloud-state actions. Requests are bounded to 64 KB; ticker batches are limited to 10 symbols, Gemini prompts to 12,000 characters, and Gemini model selection is allowlisted. Upstream requests have bounded timeouts. Cloud-state writes require an `If-Match` revision and a non-empty encrypted payload; stale writes return HTTP 409 rather than overwriting newer state.
+The Cloudflare Worker accepts account sessions for protected quote/news, Gemini, and cloud-state actions. The Gateway Secret is checked by the one-time initial admin bootstrap endpoint and is also used to initialize the shared portfolio encryption key, which the Durable Object retains across later Gateway Secret rotations. Authenticated accounts can retrieve that key over HTTPS to work with the shared portfolio. Guest sessions can read shared data but cannot submit Worker write requests. Requests are bounded to 64 KB; ticker batches are limited to 10 symbols, Gemini prompts to 12,000 characters, and Gemini model selection is allowlisted. Upstream requests have bounded timeouts. Cloud-state writes require an `If-Match` revision and a non-empty encrypted payload; stale writes return HTTP 409 rather than overwriting newer state.
 
-For recovery, keep a current JSON export in a trusted location before major changes. Verify that export/import works before relying on it as your only backup. Cloud sync is a separate copy and may reject stale writes; pull the latest state and resolve the conflict rather than repeatedly forcing a write. The Gateway Secret is device-profile bound: clearing browser site data or losing the browser's IndexedDB key can require re-entering it. The app cannot restore a lost secret from the encrypted ciphertext alone.
+For recovery, keep a current JSON export in a trusted location before major changes. Verify that export/import works before relying on it as your only backup. Cloud sync is a separate copy and may reject stale writes; pull the latest state and resolve the conflict rather than repeatedly forcing a write. The account session token is device-profile bound: clearing browser site data or losing the browser's IndexedDB key requires signing in again. The app cannot restore a lost session token from encrypted ciphertext alone.
