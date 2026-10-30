@@ -22,6 +22,9 @@ function jsonResponse(body, status = 200, revision = null) {
 const AUTH_USERS_KEY = "auth:users";
 const AUTH_CLOUD_KEY_KEY = "auth:cloud-encryption-key";
 const AUTH_SESSION_PREFIX = "auth:session:";
+const AUTH_LOGIN_FAILURE_PREFIX = "auth:login-failure:";
+const AUTH_LOGIN_FAILURE_LIMIT = 10;
+const AUTH_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PASSWORD_ITERATIONS = 210_000;
 const authEncoder = new TextEncoder();
@@ -161,11 +164,30 @@ export class PortfolioStateDO {
     if (request.method === "POST" && pathname === "/api/auth/login") {
       const name = normalizeAccountName(body.name);
       if (!name || typeof body.password !== "string" || body.password.length > 128) return authJson({ error: "Invalid name or password." }, 400);
+      const ipAddress = request.headers.get("CF-Connecting-IP") || "unknown";
+      const failureKey = AUTH_LOGIN_FAILURE_PREFIX + await digestHex(name.toLocaleLowerCase("en-US") + "|" + ipAddress);
+      const previousFailures = await this.ctx.storage.get(failureKey);
+      if (previousFailures && previousFailures.expiresAt > Date.now() && previousFailures.count >= AUTH_LOGIN_FAILURE_LIMIT) {
+        return new Response(JSON.stringify({ error: "Too many failed sign-in attempts. Try again in 15 minutes." }), {
+          status: 429, headers: { ...CORS_HEADERS, "Retry-After": "900" }
+        });
+      }
       const user = (await this.getAuthUsers()).find((item) => item.normalizedName === name.toLocaleLowerCase("en-US"));
       const salt = user?.salt || "portfolio-terminal-login-validation";
       const expected = user?.passwordHash || await derivePasswordHash("invalid-password", salt);
       const actual = await derivePasswordHash(body.password, salt);
-      if (!user || !secureEqual(actual, expected)) return authJson({ error: "Invalid name or password." }, 401);
+      if (!user || !secureEqual(actual, expected)) {
+        const activeFailures = previousFailures && previousFailures.expiresAt > Date.now() ? previousFailures : { count: 0, expiresAt: Date.now() + AUTH_LOGIN_FAILURE_WINDOW_MS };
+        const count = activeFailures.count + 1;
+        await this.ctx.storage.put(failureKey, { count, expiresAt: activeFailures.expiresAt });
+        if (count >= AUTH_LOGIN_FAILURE_LIMIT) {
+          return new Response(JSON.stringify({ error: "Too many failed sign-in attempts. Try again in 15 minutes." }), {
+            status: 429, headers: { ...CORS_HEADERS, "Retry-After": "900" }
+          });
+        }
+        return authJson({ error: "Invalid name or password." }, 401);
+      }
+      await this.ctx.storage.delete(failureKey);
       return authJson(await this.issueSession(user));
     }
 
