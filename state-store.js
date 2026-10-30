@@ -70,8 +70,17 @@ function secureEqual(left, right) {
   for (let i = 0; i < left.length; i += 1) mismatch |= left.charCodeAt(i) ^ right.charCodeAt(i);
   return mismatch === 0;
 }
+function isSupportedLanguage(value) {
+  return value === "en" || value === "ru";
+}
 function publicUser(user) {
-  return { id: user.id, name: user.name, role: user.role, createdAt: user.createdAt };
+  return {
+    id: user.id,
+    name: user.name,
+    role: user.role,
+    language: isSupportedLanguage(user.language) ? user.language : "en",
+    createdAt: user.createdAt
+  };
 }
 function validAccountInput(name, password) {
   return name.length >= 2 && name.length <= 60 &&
@@ -186,7 +195,7 @@ export class PortfolioStateDO {
       const passwordHash = await derivePasswordHash(body.password, salt);
       const user = {
         id: crypto.randomUUID(), name, normalizedName: name.toLocaleLowerCase("en-US"),
-        role: "admin", salt, passwordHash, passwordHashVersion: PASSWORD_HASH_VERSION, createdAt: new Date().toISOString()
+        role: "admin", language: "en", salt, passwordHash, passwordHashVersion: PASSWORD_HASH_VERSION, createdAt: new Date().toISOString()
       };
       const created = await this.ctx.storage.transaction(async () => {
         const users = await this.ctx.storage.get(AUTH_USERS_KEY) || [];
@@ -247,6 +256,23 @@ export class PortfolioStateDO {
     const session = await this.resolveSession(request);
     if (!session) return authJson({ error: "Authentication required." }, 401);
     if (request.method === "GET" && pathname === "/api/auth/me") return authJson({ user: publicUser(session.user) });
+    if (request.method === "POST" && pathname === "/api/auth/me") {
+      if (!isSupportedLanguage(body.language)) {
+        return authJson({ error: "Language must be either en or ru." }, 400);
+      }
+      const updated = await this.ctx.storage.transaction(async () => {
+        const users = await this.ctx.storage.get(AUTH_USERS_KEY) || [];
+        const index = users.findIndex((item) => item.id === session.user.id);
+        if (index < 0) return null;
+        const next = { ...users[index], language: body.language };
+        const nextUsers = [...users];
+        nextUsers[index] = next;
+        await this.ctx.storage.put(AUTH_USERS_KEY, nextUsers);
+        return next;
+      });
+      if (!updated) return authJson({ error: "User not found." }, 404);
+      return authJson({ user: publicUser(updated) });
+    }
     if (request.method === "POST" && pathname === "/api/auth/logout") {
       await this.ctx.storage.delete(session.sessionKey);
       return authJson({ success: true });
@@ -263,13 +289,15 @@ export class PortfolioStateDO {
       if (body.action === "create") {
         const name = normalizeAccountName(body.name);
         if (body.role !== undefined && body.role !== "admin" && body.role !== "guest") return authJson({ error: "Role must be either admin or guest." }, 400);
+        if (body.language !== undefined && !isSupportedLanguage(body.language)) return authJson({ error: "Language must be either en or ru." }, 400);
         const role = body.role === "admin" ? "admin" : "guest";
+        const language = body.language === "ru" ? "ru" : "en";
         if (!validAccountInput(name, body.password)) return authJson({ error: "Use a name of 2–60 characters and a password of 6–128 characters." }, 400);
         const salt = toHex(crypto.getRandomValues(new Uint8Array(16)));
         const passwordHash = await derivePasswordHash(body.password, salt);
         const user = {
           id: crypto.randomUUID(), name, normalizedName: name.toLocaleLowerCase("en-US"),
-          role, salt, passwordHash, passwordHashVersion: PASSWORD_HASH_VERSION, createdAt: new Date().toISOString()
+          role, language, salt, passwordHash, passwordHashVersion: PASSWORD_HASH_VERSION, createdAt: new Date().toISOString()
         };
         const created = await this.ctx.storage.transaction(async () => {
           const users = await this.ctx.storage.get(AUTH_USERS_KEY) || [];
@@ -285,8 +313,9 @@ export class PortfolioStateDO {
         const id = typeof body.id === "string" ? body.id : "";
         const name = body.name === undefined ? undefined : normalizeAccountName(body.name);
         const role = body.role === undefined ? undefined : (body.role === "admin" || body.role === "guest" ? body.role : null);
+        const language = body.language === undefined ? undefined : (isSupportedLanguage(body.language) ? body.language : null);
         const password = body.password;
-        if (!id || (name !== undefined && (name.length < 2 || name.length > 60)) || role === null ||
+        if (!id || (name !== undefined && (name.length < 2 || name.length > 60)) || role === null || language === null ||
             (password !== undefined && password !== "" && (typeof password !== "string" || password.length < 6 || password.length > 128))) {
           return authJson({ error: "Invalid update. Passwords must be 6–128 characters when changing them." }, 400);
         }
@@ -305,6 +334,7 @@ export class PortfolioStateDO {
             ...current,
             ...(name ? { name, normalizedName: name.toLocaleLowerCase("en-US") } : {}),
             ...(role ? { role } : {}),
+            ...(language ? { language } : {}),
             ...(passwordSalt && passwordHash ? { salt: passwordSalt, passwordHash, passwordHashVersion: PASSWORD_HASH_VERSION } : {})
           };
           const nextUsers = [...users];
