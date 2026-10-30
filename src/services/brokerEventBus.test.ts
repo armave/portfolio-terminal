@@ -56,6 +56,27 @@ describe('typed broker event bus', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+
+  it('delivers normalized active orders to subscribers', () => {
+    const listener = vi.fn();
+    const orders = [{
+      id: 'order-1',
+      ticker: 'AAPL',
+      operation: 3,
+      orderType: 2,
+      limitPrice: 220,
+      remainingQuantity: 3,
+      status: '10',
+      raw: {}
+    }];
+    const unsubscribe = addBrokerEventListener('broker:active-orders', listener);
+
+    emitBrokerEvent('broker:active-orders', orders);
+
+    expect(listener).toHaveBeenCalledWith(orders);
+    unsubscribe();
+  });
+
   it('supports payload-free refresh requests and multiple subscribers', () => {
     const first = vi.fn();
     const second = vi.fn();
