@@ -124,6 +124,14 @@ export function SettingsDesk() {
     String(getQuoteRefreshInterval(60000))
   );
 
+  // Guests get a 15-second default when no preference has been saved.
+  useEffect(() => {
+    if (account?.role !== "guest") return;
+    const interval = String(getQuoteRefreshInterval(15_000));
+    setRefreshInterval(interval);
+    emitUiEvent('settings:change-refresh-interval', { intervalMs: interval });
+  }, [account?.role]);
+
   const [ruleValues, setRuleValues] = useState<BrokerRulesFormValues>(() =>
     toBrokerRulesFormValues(rules)
   );
@@ -176,7 +184,7 @@ export function SettingsDesk() {
           </div>
           {account?.role === "guest" && <span class="text-[10px] text-amber-300">Guest access · cloud changes disabled</span>}
           <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-8 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">Sign out</button>
-          <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title="Pull the latest shared portfolio state" class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>
+          {account?.role !== "guest" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title="Pull the latest shared portfolio state" class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>}
         </div>
 
         {/* Cluster 2: Polling & Backups */}
