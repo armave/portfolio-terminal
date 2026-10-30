@@ -10,6 +10,11 @@ interface ActiveTrancheTypeRequest {
   mix?: { cash?: number; margin?: number };
 }
 
+interface ActiveTrancheGuestAssignmentRequest {
+  trancheId?: string;
+  guestId?: string;
+}
+
 export interface BrokerEventPayloads {
   'broker:account-info': FreedomPortfolioSnapshot;
   'broker:account-info-error': undefined;
@@ -20,6 +25,7 @@ export interface BrokerEventPayloads {
   'broker:request-executed-trades': undefined;
   'broker:request-active-orders': undefined;
   'broker:set-active-tranche-type': ActiveTrancheTypeRequest;
+  'broker:assign-active-tranche-guest': ActiveTrancheGuestAssignmentRequest;
 }
 
 export type BrokerEventName = keyof BrokerEventPayloads;
