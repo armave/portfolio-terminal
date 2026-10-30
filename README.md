@@ -31,7 +31,7 @@ It is **not** a broker connection, order-entry system, source of official accoun
 * **Conversational Trading Console:** Evaluates natural-language portfolio entries and exit scenario modeling using Google Gemini with an explicit confirmation safeguard.
 
 
-* **Zero-Backend Persistence & Cloud Sync:** Saves state locally in browser storage with optional AES-256-GCM encrypted GitHub Gist synchronization and JSON export/import.
+* **Account Roles & Cloud Sync:** Uses Worker-backed accounts with `admin` and `guest` roles, password-hashed credentials, expiring sessions, and server-enforced read-only guest access. Portfolio state remains encrypted before cloud synchronization.
 
 
 
@@ -43,7 +43,15 @@ All calculations, broker formulas, and valuations are estimates intended for tra
 
 ### Hosted Application
 
-Access the production build on [GitHub Pages](https://armave.github.io/portfolio-terminal/). The application executes client-side in the browser. Portfolio state and broker preferences are stored in `localStorage`; the Gateway Secret is handled separately and, when supported, stored as ciphertext in `localStorage` with a non-extractable device key in IndexedDB. Other provider API keys may be stored in browser storage, so use a trusted device and browser profile.
+Access the production build on [GitHub Pages](https://armave.github.io/portfolio-terminal/). Portfolio state and broker preferences remain browser-side; authenticated cloud requests are handled by the Cloudflare Worker and Durable Object. Account session tokens are stored encrypted on the device using the browser's non-extractable IndexedDB key. Other provider API keys may be stored in browser storage, so use a trusted device and browser profile.
+
+### Accounts and roles
+
+On the first visit after this upgrade, create the initial administrator account using the configured Worker Gateway Secret. The Gateway Secret is used only for this one-time bootstrap; subsequent sign-ins use the account name and password. Passwords must be 12–128 characters and are stored server-side as salted PBKDF2-SHA-256 hashes. Session tokens expire after seven days and are stored hashed by the Durable Object.
+
+Administrators can create, rename, change the role of, reset the password for, and delete accounts in **Settings → User management**. New accounts default to **guest**. Guests can read the shared portfolio but cannot write to the Cloudflare Worker. At least one administrator must remain, and an administrator cannot delete their own signed-in account.
+
+All accounts currently access the same shared portfolio; accounts are not separate tenants and do not receive isolated portfolio data. A guest's local, offline edits do not update the shared cloud portfolio.
 
 ### Local Development
 
