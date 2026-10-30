@@ -80,10 +80,10 @@ export class PortfolioStateDO {
       ? await this.env.PORTFOLIO_KV.get("portfolio_state")
       : null;
 
-    await this.ctx.storage.transaction(async (txn) => {
-      const current = await txn.get("record");
+    await this.ctx.storage.transaction(async () => {
+      const current = await this.ctx.storage.get("record");
       if (!current && legacyPayload) {
-        await txn.put("record", { payload: legacyPayload, revision: 1 });
+        await this.ctx.storage.put("record", { payload: legacyPayload, revision: 1 });
       }
     });
   }
@@ -153,11 +153,11 @@ export class PortfolioStateDO {
         id: crypto.randomUUID(), name, normalizedName: name.toLocaleLowerCase("en-US"),
         role: "admin", salt, passwordHash, createdAt: new Date().toISOString()
       };
-      const created = await this.ctx.storage.transaction(async (txn) => {
-        const users = await txn.get(AUTH_USERS_KEY) || [];
+      const created = await this.ctx.storage.transaction(async () => {
+        const users = await this.ctx.storage.get(AUTH_USERS_KEY) || [];
         if (users.length) return false;
-        await txn.put(AUTH_USERS_KEY, [user]);
-        await txn.put(AUTH_CLOUD_KEY_KEY, workspaceEncryptionKey);
+        await this.ctx.storage.put(AUTH_USERS_KEY, [user]);
+        await this.ctx.storage.put(AUTH_CLOUD_KEY_KEY, workspaceEncryptionKey);
         return true;
       });
       if (!created) return authJson({ error: "Initial admin account has already been created." }, 409);
@@ -236,9 +236,9 @@ export class PortfolioStateDO {
           role, salt, passwordHash, createdAt: new Date().toISOString()
         };
         const created = await this.ctx.storage.transaction(async (txn) => {
-          const users = await txn.get(AUTH_USERS_KEY) || [];
+          const users = await this.ctx.storage.get(AUTH_USERS_KEY) || [];
           if (users.some((item) => item.normalizedName === user.normalizedName)) return false;
-          await txn.put(AUTH_USERS_KEY, [...users, user]);
+          await this.ctx.storage.put(AUTH_USERS_KEY, [...users, user]);
           return true;
         });
         if (!created) return authJson({ error: "A user with this name already exists." }, 409);
@@ -257,8 +257,8 @@ export class PortfolioStateDO {
         const passwordSalt = typeof password === "string" && password
           ? toHex(crypto.getRandomValues(new Uint8Array(16))) : undefined;
         const passwordHash = passwordSalt ? await derivePasswordHash(password, passwordSalt) : undefined;
-        const updated = await this.ctx.storage.transaction(async (txn) => {
-          const users = await txn.get(AUTH_USERS_KEY) || [];
+        const updated = await this.ctx.storage.transaction(async () => {
+          const users = await this.ctx.storage.get(AUTH_USERS_KEY) || [];
           const index = users.findIndex((item) => item.id === id);
           if (index < 0) return { error: "User not found.", status: 404 };
           const current = users[index];
@@ -273,7 +273,7 @@ export class PortfolioStateDO {
           };
           const nextUsers = [...users];
           nextUsers[index] = next;
-          await txn.put(AUTH_USERS_KEY, nextUsers);
+          await this.ctx.storage.put(AUTH_USERS_KEY, nextUsers);
           return { user: next, passwordChanged: Boolean(passwordSalt) };
         });
         if (updated.error) return authJson({ error: updated.error }, updated.status);
@@ -284,12 +284,12 @@ export class PortfolioStateDO {
       if (body.action === "delete") {
         const id = typeof body.id === "string" ? body.id : "";
         if (!id || id === session.user.id) return authJson({ error: "You cannot delete the currently signed-in account." }, 400);
-        const removed = await this.ctx.storage.transaction(async (txn) => {
-          const users = await txn.get(AUTH_USERS_KEY) || [];
+        const removed = await this.ctx.storage.transaction(async () => {
+          const users = await this.ctx.storage.get(AUTH_USERS_KEY) || [];
           const target = users.find((item) => item.id === id);
           if (!target) return { error: "User not found.", status: 404 };
           if (target.role === "admin" && users.filter((item) => item.role === "admin").length <= 1) return { error: "At least one admin account must remain.", status: 409 };
-          await txn.put(AUTH_USERS_KEY, users.filter((item) => item.id !== id));
+          await this.ctx.storage.put(AUTH_USERS_KEY, users.filter((item) => item.id !== id));
           return { success: true };
         });
         if (removed.error) return authJson({ error: removed.error }, removed.status);
@@ -400,14 +400,14 @@ export class PortfolioStateDO {
       return jsonResponse({ error: "Cloud state must contain a non-empty encryptedPayload string." }, 400);
     }
 
-    const result = await this.ctx.storage.transaction(async (txn) => {
-      const current = await txn.get(recordKey);
+    const result = await this.ctx.storage.transaction(async () => {
+      const current = await this.ctx.storage.get(recordKey);
       const currentRevision = current?.revision ?? 0;
       if (currentRevision !== expectedRevision) {
         return { conflict: true, revision: currentRevision };
       }
       const nextRevision = currentRevision + 1;
-      await txn.put(recordKey, { payload: JSON.stringify(body), revision: nextRevision });
+      await this.ctx.storage.put(recordKey, { payload: JSON.stringify(body), revision: nextRevision });
       return { conflict: false, revision: nextRevision };
     });
 
