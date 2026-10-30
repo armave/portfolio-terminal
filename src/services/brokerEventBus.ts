@@ -22,6 +22,7 @@ export interface BrokerEventPayloads {
   'broker:executed-trades-error': undefined;
   'broker:active-orders': FreedomActiveOrder[];
   'broker:active-orders-error': undefined;
+  'broker:request-account-info': undefined;
   'broker:request-executed-trades': undefined;
   'broker:request-active-orders': undefined;
   'broker:set-active-tranche-type': ActiveTrancheTypeRequest;
