@@ -1,8 +1,7 @@
 import {
-  setBoardTitle, setCashCushionPropsState, setTickerTabsPropsState,
-  setSummaryMetricsPropsState, setProjectionsPropsState, setEmptyStatePropsState
+  setBoardTitle, setCashCushionPropsState,
+  setSummaryMetricsPropsState, setProjectionsPropsState
 } from './uiStateStore';
-import { emitUiEvent } from './uiEventBus';
 import { formatUSD } from '../utils/formatters';
 import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 export { formatUSD } from '../utils/formatters';
@@ -29,10 +28,6 @@ export function resolveActiveView(state: BoardState): string {
 }
 
 interface RenderCashCushionOptions {
-  onFetchLivePrice?: (ticker: string) => void;
-  onRemoveCashStock?: (index: number) => void;
-  onSaveBalance?: (signedValue: number) => void;
-  onAddCashStock?: (ticker: string, shares: number, manualPrice: number) => void;
   refreshIntervalMs?: number;
 }
 
@@ -169,7 +164,6 @@ function calculatePositionMetrics(state: BoardState, pos: PositionRecord, rules:
 interface RenderSummaryCardsOptions {
   rules: BrokerRules;
   refreshIntervalMs?: number;
-  onRenderExternalLinks?: () => void;
   onRenderAnalystConsensus?: (ticker: string) => void;
 }
 
@@ -236,21 +230,11 @@ function renderSummaryCards(
   }
 }
 
-function prefillTerminalCommand(command: string): void {
-  // The TradingConsole owns its controlled input and selection state.
-  emitUiEvent('terminal:command-prefill', { command });
-}
-
 export interface RenderBoardOptions extends RenderCashCushionOptions {
   rules: BrokerRules;
-  onSetActiveView?: (view: string) => void;
-  onRefreshAllLivePrices?: () => void | Promise<void>;
   onRenderSettingsPanel?: () => void;
   onRenderAnalystConsensus?: (ticker: string) => void;
-  onRenderExternalLinks?: () => void;
-  onRenderConsoleQuickActions?: () => void;
   onUpdateCombinedBreakeven?: () => void;
-  onSyncMarketInsightsPanel?: () => void;
   lastDeskView?: string | null;
   onUpdateLastDeskView?: (view: string) => void;
 }
@@ -258,16 +242,9 @@ export interface RenderBoardOptions extends RenderCashCushionOptions {
 export function renderBoard(state: BoardState, options: RenderBoardOptions): void {
   const {
     rules,
-    onSetActiveView = () => { },
-    onRefreshAllLivePrices = () => { },
     onRenderSettingsPanel = () => { },
     onRenderAnalystConsensus = () => { },
-    onFetchLivePrice = () => { },
-    onRemoveCashStock = () => { },
-    onRenderExternalLinks = () => { },
-    onRenderConsoleQuickActions = () => { },
     onUpdateCombinedBreakeven = () => { },
-    onSyncMarketInsightsPanel = () => { },
     refreshIntervalMs = 60000,
     onUpdateLastDeskView = () => { }
   } = options;
@@ -281,21 +258,17 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
   const isSettingsActive = currentView === 'SETTINGS';
 
-  setTickerTabsPropsState({ state, onSetActiveView, onRefreshAllLivePrices });
-
   // Hidden desks do not need their derived metrics or insights panel refreshed.
   // They will be updated when the user returns to a position/combined desk.
   if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) {
     onUpdateCombinedBreakeven();
-    onSyncMarketInsightsPanel();
   }
 
 
   if (isCushionActive) {
     
     onUpdateLastDeskView('CASH_CUSHION');
-    renderCashCushion(state, { onFetchLivePrice, onRemoveCashStock, refreshIntervalMs });
-    onRenderConsoleQuickActions();
+    renderCashCushion(state, { refreshIntervalMs });
     return;
   }
 
@@ -313,32 +286,11 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
   onUpdateLastDeskView(currentView);
 
 
-  if (tickers.length === 0) {
-    setEmptyStatePropsState({
-        onQuickBuy: () => {
-          const todayIso = new Date().toISOString().split('T')[0];
-          prefillTerminalCommand(`bought [shares] [TICKER] for [price] on [${todayIso}]`);
-        },
-        onAddCashStock: () => {
-          prefillTerminalCommand('add cash stock [shares] [TICKER] for [price]');
-        },
-        onImportBackup: () => {
-          emitUiEvent('terminal:backup-import-request');
-        }
-      } satisfies import('../components/EmptyStatePanel').EmptyStatePanelProps);
-    onRenderConsoleQuickActions();
-    return;
-  }
-
-  setEmptyStatePropsState(null);
+  if (tickers.length === 0) return;
 
   renderSummaryCards(state, {
     rules,
     refreshIntervalMs,
-    onRenderExternalLinks,
     onRenderAnalystConsensus
   });
-
-  onRenderExternalLinks();
-  onRenderConsoleQuickActions();
 }
