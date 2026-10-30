@@ -24,6 +24,7 @@ export interface BrokerEventPayloads {
   'broker:active-orders-error': undefined;
   'broker:request-account-info': undefined;
   'broker:request-executed-trades': undefined;
+  'broker:request-executed-trades-and-wait': { resolve: () => void };
   'broker:request-active-orders': undefined;
   'broker:set-active-tranche-type': ActiveTrancheTypeRequest;
   'broker:assign-active-tranche-guest': ActiveTrancheGuestAssignmentRequest;
