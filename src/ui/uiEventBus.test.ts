@@ -69,3 +69,33 @@ describe('typed UI event bus', () => {
     removeUiEventListener('terminal:startup-retry', listener);
   });
 });
+
+
+describe('portfolio UI action requests', () => {
+  it('delivers navigation and execution requests with their typed payloads', () => {
+    const navigation = vi.fn();
+    const execution = vi.fn();
+    addUiEventListener('portfolio:set-active-view', navigation);
+    addUiEventListener('terminal:execute-command', execution);
+
+    emitUiEvent('portfolio:set-active-view', { view: 'AAPL' });
+    emitUiEvent('terminal:execute-command', { command: 'quote AAPL' });
+
+    expect(navigation.mock.calls[0][0].detail).toEqual({ view: 'AAPL' });
+    expect(execution.mock.calls[0][0].detail).toEqual({ command: 'quote AAPL' });
+    removeUiEventListener('portfolio:set-active-view', navigation);
+    removeUiEventListener('terminal:execute-command', execution);
+  });
+
+  it('allows the quote refresh owner to complete a Preact request', () => {
+    const listener = vi.fn((event) => event.detail.resolve());
+    const resolve = vi.fn();
+    addUiEventListener('portfolio:refresh-live-prices', listener);
+
+    emitUiEvent('portfolio:refresh-live-prices', { resolve });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledTimes(1);
+    removeUiEventListener('portfolio:refresh-live-prices', listener);
+  });
+});
