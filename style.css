@@ -2724,3 +2724,9 @@ summary:focus-visible {
     overflow-x: visible;
   }
 }
+
+@media (max-width: 767px) {
+  .active-tranches-table .active-tranche-row td:nth-child(5) {
+    grid-column: 1 / -1;
+  }
+}
