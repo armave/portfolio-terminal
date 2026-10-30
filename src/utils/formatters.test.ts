@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { setAppLanguage } from './i18n';
 import { decodeHtmlEntities, formatQuoteMetadata, formatRiskTrigger, formatTrancheDate, formatUSD, getQuoteFreshness } from './formatters';
+
+afterEach(() => setAppLanguage('en'));
 
 describe('display formatters', () => {
   it('decodes common HTML character entities into plain text', () => {
@@ -23,6 +26,14 @@ describe('display formatters', () => {
     expect(formatTrancheDate('7 Jan')).toBe('07Jan');
     expect(formatTrancheDate('New')).toBe('New');
     expect(formatTrancheDate(null)).toBe('New');
+  });
+
+  it('formats dates and financial numbers with the selected locale', () => {
+    setAppLanguage('ru');
+    expect(formatUSD(1234.5)).toMatch(/^1\\s234,50$/);
+    expect(formatTrancheDate('2026-10-20')).toMatch(/^20.*окт/i);
+    expect(formatTrancheDate('7 Jan')).toMatch(/^07\\s+янв/i);
+    expect(formatTrancheDate('New')).toBe('Новая');
   });
 
   it('formats risk trigger context without changing calculations', () => {
