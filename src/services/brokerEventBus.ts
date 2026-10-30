@@ -1,17 +1,13 @@
 import type {
-  FreedomPortfolioSnapshotLike,
-  FreedomExecutedTradeLike,
-  FreedomActiveLimitSellOrderLike
-} from '../domain/freedomPortfolio';
+  FreedomActiveOrder,
+  FreedomExecutedTrade,
+  FreedomPortfolioSnapshot
+} from './api';
 
-export interface BrokerActiveOrder extends FreedomActiveLimitSellOrderLike {
-  id?: string;
-  operation?: number | null;
-  orderType?: number | null;
-  limitPrice?: number | null;
-  remainingQuantity?: number | null;
-  status?: string | number | null;
-}
+export type BrokerAccountSnapshot = FreedomPortfolioSnapshot & {
+  receivedAt?: number;
+  status?: 'current' | 'stale';
+};
 
 export interface ActiveTrancheTypeRequest {
   ticker?: string;
@@ -20,11 +16,11 @@ export interface ActiveTrancheTypeRequest {
 }
 
 export interface BrokerEventPayloads {
-  'broker:account-info': FreedomPortfolioSnapshotLike;
+  'broker:account-info': FreedomPortfolioSnapshot;
   'broker:account-info-error': undefined;
-  'broker:executed-trades': FreedomExecutedTradeLike[];
+  'broker:executed-trades': FreedomExecutedTrade[];
   'broker:executed-trades-error': undefined;
-  'broker:active-orders': BrokerActiveOrder[];
+  'broker:active-orders': FreedomActiveOrder[];
   'broker:active-orders-error': undefined;
   'broker:request-executed-trades': undefined;
   'broker:request-active-orders': undefined;
