@@ -1,7 +1,4 @@
 import { useEffect, useState } from 'preact/hooks';
-import type { CashCushionDeskProps } from '../components/CashCushionDesk';
-import type { SummaryMetricsGridProps } from '../components/SummaryMetricsGrid';
-import type { ProjectionsTableProps } from '../components/ProjectionsTable';
 
 let aiStatus = 'READY';
 const aiStatusListeners = new Set<(status: string) => void>();
@@ -141,46 +138,3 @@ export function useBoardTitle(): BoardTitleState {
   useEffect(() => subscribeBoardTitle(setState), []);
   return state;
 }
-
-type UiPropStateMap = {
-  cashCushionProps: CashCushionDeskProps;
-  summaryMetricsProps: SummaryMetricsGridProps | null;
-  projectionsProps: ProjectionsTableProps | null;
-};
-type UiPropKey = keyof UiPropStateMap;
-const uiPropState: UiPropStateMap = {
-  cashCushionProps: {},
-  summaryMetricsProps: null,
-  projectionsProps: null
-};
-const uiPropListeners = new Map<UiPropKey, Set<(value: unknown) => void>>();
-
-function setUiProp<K extends UiPropKey>(key: K, value: UiPropStateMap[K]): void {
-  if (uiPropState[key] === value) return;
-  uiPropState[key] = value;
-  uiPropListeners.get(key)?.forEach((listener) => listener(value));
-}
-
-function useUiProp<K extends UiPropKey>(key: K): UiPropStateMap[K] {
-  const [value, setValue] = useState<UiPropStateMap[K]>(uiPropState[key]);
-  useEffect(() => {
-    const listeners = uiPropListeners.get(key) ?? new Set<(next: unknown) => void>();
-    const listener = (next: unknown) => setValue(next as UiPropStateMap[K]);
-    listeners.add(listener);
-    uiPropListeners.set(key, listeners);
-    setValue(uiPropState[key]);
-    return () => {
-      listeners.delete(listener);
-      if (!listeners.size) uiPropListeners.delete(key);
-    };
-  }, [key]);
-  return value;
-}
-
-export const setCashCushionPropsState = (value: CashCushionDeskProps) => setUiProp('cashCushionProps', value);
-export const setSummaryMetricsPropsState = (value: SummaryMetricsGridProps) => setUiProp('summaryMetricsProps', value);
-export const setProjectionsPropsState = (value: ProjectionsTableProps) => setUiProp('projectionsProps', value);
-
-export const useCashCushionProps = () => useUiProp('cashCushionProps');
-export const useSummaryMetricsProps = () => useUiProp('summaryMetricsProps');
-export const useProjectionsProps = () => useUiProp('projectionsProps');
