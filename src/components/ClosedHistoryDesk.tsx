@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
+import { getAppLanguage } from '../services/i18n';
 import { pullCloudHistory, pushCloudHistory } from '../services/api';
 import { loadSavedHistory, saveSavedHistory } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
@@ -684,7 +685,7 @@ export function ClosedHistoryDesk() {
 
                 const dateText =
                   closedDate && !Number.isNaN(closedDate.getTime())
-                    ? closedDate.toLocaleDateString('en-GB', {
+                    ? closedDate.toLocaleDateString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-GB', {
                       day: '2-digit',
                       month: 'short',
                       year: '2-digit'
