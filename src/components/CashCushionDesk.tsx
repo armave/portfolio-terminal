@@ -54,7 +54,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   );
 }
 
-export function CashCushionDesk({ showActiveTranches = false, guestUserId }: { showActiveTranches?: boolean; guestUserId?: string } = {}) {
+export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, guestUserId }: { showActiveTranches?: boolean; isAdmin?: boolean; guestUserId?: string } = {}) {
   const state = usePortfolio();
   const refreshIntervalMs = useQuoteRefreshInterval();
   const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTradeLike[]>(() =>
@@ -101,16 +101,18 @@ export function CashCushionDesk({ showActiveTranches = false, guestUserId }: { s
   }, [showActiveTranches]);
 
   const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
-  const holdings = guestUserId
-    ? getGuestAssignedCashHoldings({
+  const holdings = isAdmin
+    ? state.cashCushion?.holdings || []
+    : guestUserId
+      ? getGuestAssignedCashHoldings({
       guestId: guestUserId,
       activeTranches,
       assignments: state.activeTrancheGuestAssignments,
       types: state.activeTrancheTypes,
       mixes: state.activeTrancheMixes,
       cashHoldings: state.cashCushion?.holdings || []
-    })
-    : state.cashCushion?.holdings || [];
+      })
+      : [];
   const personalEquity = guestUserId ? calculateGuestPersonalEquity(holdings) : null;
   const setActiveTrancheType = (
     ticker: string,
@@ -134,7 +136,7 @@ export function CashCushionDesk({ showActiveTranches = false, guestUserId }: { s
       <div class="flex justify-between items-center border-b border-slate-800 pb-2">
         <div>
           <h2 class="text-lg font-black text-cyan-400 tracking-wide">
-            {guestUserId ? 'YOUR ASSIGNED STOCKS' : 'CASH & NON-MARGIN HOLDINGS'}
+            {guestUserId ? 'YOUR ASSIGNED STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE'}
           </h2>
         </div>
       </div>
@@ -168,7 +170,7 @@ export function CashCushionDesk({ showActiveTranches = false, guestUserId }: { s
               {holdings.length === 0 ? (
                 <tr>
                   <td colSpan={8} class="py-3 text-center text-slate-500 italic">
-                    {guestUserId ? 'No active cash-funded stocks are linked to your account.' : 'No broker-reported cash holdings available.'}
+                    {!isAdmin && !guestUserId ? 'Verifying account access…' : guestUserId ? 'No active cash-funded stocks are linked to your account.' : 'No broker-reported cash holdings available.'}
                   </td>
                 </tr>
               ) : (
