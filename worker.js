@@ -312,15 +312,103 @@ export default {
             return jsonError("Method not allowed.", 405, corsHeaders);
         }
 
-        // SECURITY CHECK: Validate Gateway Secret
+
+        const incomingUrl = new URL(request.url);
+        if (incomingUrl.pathname.startsWith("/api/auth/")) {
+            if (!env.PORTFOLIO_STATE_DO) return jsonError("PORTFOLIO_STATE_DO binding is missing.", 500, corsHeaders);
+
+            let forwardedRequest = request;
+            if (request.method === "POST") {
+                if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
+                    return jsonError("Authentication requests must use application/json.", 415, corsHeaders);
+                }
+                const declaredLength = Number(request.headers.get("Content-Length") || 0);
+                if (Number.isFinite(declaredLength) && declaredLength > 8192) {
+                    return jsonError("Authentication request exceeds the 8 KB limit.", 413, corsHeaders);
+                }
+                let rawBody = "";
+                const reader = request.body?.getReader();
+                if (reader) {
+                    const chunks = [];
+                    let receivedBytes = 0;
+                    try {
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+                            receivedBytes += value.byteLength;
+                            if (receivedBytes > 8192) {
+                                await reader.cancel("Authentication request exceeds the configured limit.");
+                                return jsonError("Authentication request exceeds the 8 KB limit.", 413, corsHeaders);
+                            }
+                            chunks.push(value);
+                        }
+                    } finally {
+                        reader.releaseLock();
+                    }
+                    const bytes = new Uint8Array(receivedBytes);
+                    let offset = 0;
+                    for (const chunk of chunks) {
+                        bytes.set(chunk, offset);
+                        offset += chunk.byteLength;
+                    }
+                    rawBody = new TextDecoder().decode(bytes);
+                }
+                let payload;
+                try { payload = JSON.parse(rawBody); } catch { return jsonError("Invalid JSON request body.", 400, corsHeaders); }
+                if (!payload || typeof payload !== "object" || Array.isArray(payload)) return jsonError("Invalid JSON request body.", 400, corsHeaders);
+                const headers = new Headers(request.headers);
+                headers.delete("Content-Length");
+                if (incomingUrl.pathname === "/api/auth/bootstrap") {
+                    if (!env.GATEWAY_SECRET || payload.bootstrapSecret !== env.GATEWAY_SECRET) {
+                        return jsonError("Initial setup requires the configured Gateway Secret.", 401, corsHeaders);
+                    }
+                    delete payload.bootstrapSecret;
+                    headers.set("X-Bootstrap-Authorized", "true");
+                    headers.set("X-Workspace-Encryption-Key", env.GATEWAY_SECRET);
+                }
+                headers.set("Content-Type", "application/json");
+                forwardedRequest = new Request(request.url, { method: "POST", headers, body: JSON.stringify(payload) });
+            }
+            const authStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
+            const authResponse = await authStub.fetch(forwardedRequest);
+            const authHeaders = new Headers(authResponse.headers);
+            Object.entries(corsHeaders).forEach(([name, value]) => authHeaders.set(name, value));
+            return new Response(authResponse.body, { status: authResponse.status, statusText: authResponse.statusText, headers: authHeaders });
+        }
+
+        // SECURITY CHECK: Validate an account session (the Gateway Secret is bootstrap-only).
         const authHeader = request.headers.get("Authorization") || "";
         const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : authHeader.trim();
         const clientSecret = request.headers.get("X-App-Auth") || bearerToken;
-        if (!env.GATEWAY_SECRET || clientSecret !== env.GATEWAY_SECRET) {
-            return new Response(JSON.stringify({ error: "Unauthorized gateway access." }), {
-                status: 401,
-                headers: corsHeaders
-            });
+        const isBootstrapCredential = Boolean(env.GATEWAY_SECRET && clientSecret === env.GATEWAY_SECRET);
+        let legacyBootstrapAccess = false;
+        let accountRole = "";
+        if (env.PORTFOLIO_STATE_DO && isBootstrapCredential) {
+            const authStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
+            const statusResponse = await authStub.fetch(new Request("https://auth.internal/api/auth/status"));
+            const authStatus = statusResponse.ok ? await statusResponse.json().catch(() => null) : null;
+            // Keep existing Gateway-Secret-only clients working until the first
+            // admin account is created. Bootstrap closes this compatibility path.
+            legacyBootstrapAccess = authStatus?.setupRequired === true;
+        }
+        if (env.PORTFOLIO_STATE_DO && clientSecret) {
+            const authStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
+            const verifyResponse = await authStub.fetch(new Request("https://auth.internal/api/auth/verify", {
+                method: "POST",
+                headers: { Authorization: "Bearer " + clientSecret, "Content-Type": "application/json" },
+                body: "{}"
+            }));
+            if (verifyResponse.ok) {
+                const principal = await verifyResponse.json().catch(() => null);
+                accountRole = principal?.user?.role || "";
+            }
+        }
+        // Retain the Gateway Secret path only for deployments without the account
+        // store and during the one-time upgrade window before the first admin.
+        const gatewayAdmin = !env.PORTFOLIO_STATE_DO && isBootstrapCredential || legacyBootstrapAccess;
+        if (!gatewayAdmin && !accountRole) return jsonError("Unauthorized gateway access.", 401, corsHeaders);
+        if (request.method === "POST" && accountRole !== "admin" && !gatewayAdmin) {
+            return jsonError("Guest accounts have read-only access.", 403, corsHeaders);
         }
 
         // Parse and validate the request contract before reading any POST body.
