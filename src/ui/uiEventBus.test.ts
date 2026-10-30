@@ -47,6 +47,17 @@ describe('typed UI event bus', () => {
     removeUiEventListener('terminal:backup-import-request', backupListener);
   });
 
+  it('delivers Preact-owned workspace scroll requests without DOM lookup payloads', () => {
+    const listener = vi.fn();
+    addUiEventListener('terminal:scroll-workspace', listener);
+
+    emitUiEvent('terminal:scroll-workspace');
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0].detail).toBeUndefined();
+    removeUiEventListener('terminal:scroll-workspace', listener);
+  });
+
   it('supports events without payloads', () => {
     const listener = vi.fn();
     addUiEventListener('terminal:startup-retry', listener);
@@ -56,5 +67,56 @@ describe('typed UI event bus', () => {
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0][0].detail).toBeUndefined();
     removeUiEventListener('terminal:startup-retry', listener);
+  });
+});
+
+
+describe('portfolio UI action requests', () => {
+  it('delivers navigation and execution requests with their typed payloads', () => {
+    const navigation = vi.fn();
+    const execution = vi.fn();
+    addUiEventListener('portfolio:set-active-view', navigation);
+    addUiEventListener('terminal:execute-command', execution);
+
+    emitUiEvent('portfolio:set-active-view', { view: 'AAPL' });
+    emitUiEvent('terminal:execute-command', { command: 'quote AAPL' });
+
+    expect(navigation.mock.calls[0][0].detail).toEqual({ view: 'AAPL' });
+    expect(execution.mock.calls[0][0].detail).toEqual({ command: 'quote AAPL' });
+    removeUiEventListener('portfolio:set-active-view', navigation);
+    removeUiEventListener('terminal:execute-command', execution);
+  });
+
+  it('allows the quote refresh owner to complete a Preact request', () => {
+    const listener = vi.fn((event) => event.detail.resolve());
+    const resolve = vi.fn();
+    addUiEventListener('portfolio:refresh-live-prices', listener);
+
+    emitUiEvent('portfolio:refresh-live-prices', { resolve });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledTimes(1);
+    removeUiEventListener('portfolio:refresh-live-prices', listener);
+  });
+});
+
+
+describe('UI event listener identity', () => {
+  it('removes the same callback from only the requested event channel', () => {
+    const listener = vi.fn();
+    addUiEventListener('terminal:auth-visibility', listener);
+    addUiEventListener('terminal:command-prefill', listener);
+
+    removeUiEventListener('terminal:auth-visibility', listener);
+    emitUiEvent('terminal:auth-visibility', { isOpen: true });
+    emitUiEvent('terminal:command-prefill', { command: 'help' });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0]).toMatchObject({
+      type: 'terminal:command-prefill',
+      detail: { command: 'help' }
+    });
+
+    removeUiEventListener('terminal:command-prefill', listener);
   });
 });

@@ -26,9 +26,8 @@ export function normalizeActiveTrancheMix(
 
 export interface FreedomPortfolioSnapshotLike {
   loaded: boolean;
-  balances: Array<{ currency: string; amount: number; [key: string]: unknown }>;
-  positions: Array<{ ticker: string; quantity: number; marketPrice: number | null; [key: string]: unknown }>;
-  [key: string]: unknown;
+  balances: Array<{ currency: string; amount: number }>;
+  positions: Array<{ ticker: string; quantity: number; marketPrice: number | null }>;
 }
 
 interface FreedomQuantityMismatch {
@@ -176,10 +175,16 @@ export interface FreedomExecutedTradeLike {
   id?: string;
   ticker?: string;
   side?: string;
+  /** Legacy broker aliases are accepted alongside the normalized fields. */
+  operation?: string | number | null;
+  type?: string | number | null;
+  date?: string | number | null;
+  time?: string | number | null;
   quantity?: number | null;
   price?: number | null;
   executedAt?: string | null;
-  [key: string]: unknown;
+  commission?: number | string | null;
+  raw?: Record<string, unknown>;
 }
 
 /** Derive still-open purchase operations from Freedom's executed-trades history using FIFO sells. */
@@ -203,7 +208,8 @@ function executedBuyCommission(trade: FreedomExecutedTradeLike, quantity: number
 export function getActiveTranchesFromTrades(
   trades: FreedomExecutedTradeLike[] | undefined,
   snapshot?: FreedomPortfolioSnapshotLike,
-  commissionRules?: CommissionConfig
+  commissionRules?: CommissionConfig,
+  groupBuysWithinFiveMinutes = true
 ): ActiveBrokerTranche[] {
   if (!Array.isArray(trades)) return [];
   type BuyLot = {
@@ -211,15 +217,58 @@ export function getActiveTranchesFromTrades(
     marketPrice: number | null; averagePrice: number | null; buyCommission?: number;
     purchasedAt: number | null; lastPurchasedAt: number | null; rowIndex: number;
   };
-  const ordered = trades.map((trade, rowIndex) => ({
-    trade,
-    rowIndex,
-    ticker: tickerKey(trade?.ticker),
-    side: tradeSide(trade?.side ?? trade?.operation ?? trade?.type),
-    quantity: Number(trade?.quantity),
-    price: positiveFinite(trade?.price),
-    at: operationTimestamp(trade?.executedAt ?? trade?.date ?? trade?.time)
-  })).filter(item => item.ticker && item.side && Number.isFinite(item.quantity) && item.quantity > 0)
+  const firstPositiveMagnitude = (...values: unknown[]): number => {
+    for (const value of values) {
+      if (value === null || value === undefined || value === '' || typeof value === 'boolean') continue;
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed !== 0) return Math.abs(parsed);
+    }
+    return 0;
+  };
+  const firstPositivePrice = (...values: unknown[]): number | null => {
+    for (const value of values) {
+      if (value === null || value === undefined || value === '' || typeof value === 'boolean') continue;
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    return null;
+  };
+  const firstNonEmptyText = (...values: unknown[]): string => {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) return value;
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    }
+    return '';
+  };
+  const firstTimestamp = (...values: unknown[]): number | null => {
+    for (const value of values) {
+      const parsed = operationTimestamp(value);
+      if (parsed !== null) return parsed;
+    }
+    return null;
+  };
+  const ordered = trades.map((trade, rowIndex) => {
+    const raw = trade?.raw && typeof trade.raw === 'object' ? trade.raw : {};
+    const side = [
+      trade?.side, trade?.operation, trade?.type,
+      raw.side, raw.operation, raw.oper, raw.buy_sell, raw.type
+    ].map(tradeSide).find((value): value is 'buy' | 'sell' => value !== null) || null;
+    return {
+      trade,
+      rowIndex,
+      ticker: tickerKey(firstNonEmptyText(trade?.ticker, raw.instr_nm, raw.i, raw.ticker, raw.symbol)),
+      side,
+      quantity: firstPositiveMagnitude(
+        trade?.quantity, (trade as any)?.qty,
+        raw.q, raw.quantity, raw.qty
+      ),
+      price: firstPositivePrice(trade?.price, raw.p, raw.price, raw.exec_price),
+      at: firstTimestamp(
+        trade?.executedAt, trade?.date, trade?.time,
+        raw.date, raw.time, raw.datetime, raw.exec_time
+      )
+    };
+  }).filter(item => item.ticker && item.side && Number.isFinite(item.quantity) && item.quantity > 0)
     .sort((a, b) => (a.at ?? 0) - (b.at ?? 0) || a.rowIndex - b.rowIndex);
 
   const lots: BuyLot[] = [];
@@ -258,7 +307,7 @@ export function getActiveTranchesFromTrades(
   const grouped: BuyLot[] = [];
   for (const lot of openLots) {
     const previous = grouped[grouped.length - 1];
-    const withinWindow = previous && previous.ticker === lot.ticker && previous.lastPurchasedAt !== null && lot.purchasedAt !== null && lot.purchasedAt - previous.lastPurchasedAt <= 5 * 60 * 1000;
+    const withinWindow = groupBuysWithinFiveMinutes && previous && previous.ticker === lot.ticker && previous.lastPurchasedAt !== null && lot.purchasedAt !== null && lot.purchasedAt - previous.lastPurchasedAt <= 5 * 60 * 1000;
     if (!withinWindow) { grouped.push({ ...lot }); continue; }
     const previousQuantity = previous.quantity;
     const totalQuantity = previousQuantity + lot.quantity;
@@ -329,6 +378,7 @@ export function classifyFreedomPortfolio(
 ): { positions: Record<string, PositionRecord>; cashStocks: any[] } {
   const positions: Record<string, PositionRecord> = {};
   const cashByTicker = new Map<string, any>();
+  const cashCostByTicker = new Map<string, { totalCost: number; pricedQuantity: number }>();
   const marginByTicker = new Map<string, { tranche: ActiveBrokerTranche; prior: PositionRecord | undefined; currentPrice: number; entryTranches: Array<{ qty: number; price: number; date?: string; buyCommission?: number }> }>();
   const previousCash = new Map<string, any>();
   for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
@@ -378,6 +428,15 @@ export function classifyFreedomPortfolio(
     if (cashQuantity > 1e-8) {
       const existing = cashByTicker.get(tranche.ticker);
       const quantity = (Number(existing?.shares) || 0) + cashQuantity;
+      const hasKnownEntryPrice = tranche.averagePrice !== null &&
+        Number.isFinite(tranche.averagePrice) && tranche.averagePrice > 0;
+      const previousCost = cashCostByTicker.get(tranche.ticker);
+      cashCostByTicker.set(tranche.ticker, {
+        totalCost: (previousCost?.totalCost || 0) +
+          (hasKnownEntryPrice ? cashQuantity * tranche.averagePrice! : 0),
+        pricedQuantity: (previousCost?.pricedQuantity || 0) +
+          (hasKnownEntryPrice ? cashQuantity : 0)
+      });
       cashByTicker.set(tranche.ticker, { ...(existing || priorCash || {}), ticker: tranche.ticker, shares: quantity, ...(tranche.marketPrice !== null ? { currentPrice: tranche.marketPrice, price: tranche.marketPrice } : {}) });
     }
   }
@@ -406,7 +465,18 @@ export function classifyFreedomPortfolio(
       ...(tranche.marketPrice !== null ? { quoteDetails: { ...(prior?.quoteDetails || {}), price: tranche.marketPrice, freshness: 'unknown', receivedAt } } : {})
     };
   }
-  const cashStocks = [...cashByTicker.values()];
+  const cashStocks = [...cashByTicker.values()].map((holding) => {
+    const cost = cashCostByTicker.get(tickerKey(holding.ticker));
+    const quantity = Number(holding.shares) || 0;
+    const hasCompleteCostBasis = cost !== undefined && quantity > 0 &&
+      Math.abs(cost.pricedQuantity - quantity) <= 1e-8;
+    return {
+      ...holding,
+      // Do not show a partial or fabricated average when any open cash shares
+      // are missing a purchase price.
+      averagePrice: hasCompleteCostBasis ? cost.totalCost / quantity : null
+    };
+  });
   return { positions, cashStocks };
 }
 

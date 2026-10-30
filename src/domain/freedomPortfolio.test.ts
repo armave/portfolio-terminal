@@ -99,6 +99,22 @@ describe('active broker tranches', () => {
     ]);
   });
 
+  it('can preserve individual same-price FIFO lots instead of grouping nearby buys', () => {
+    const trades = [
+      { id: 'buy-5', ticker: 'GOOGL.US', side: 'BUY', quantity: 5, price: 282, executedAt: '2026-10-29T09:00:00Z' },
+      { id: 'buy-14', ticker: 'GOOGL.US', side: 'BUY', quantity: 14, price: 282, executedAt: '2026-10-29T09:04:00Z' }
+    ];
+
+    const grouped = getActiveTranchesFromTrades(trades);
+    const individual = getActiveTranchesFromTrades(trades, undefined, undefined, false);
+
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0]).toMatchObject({ quantity: 19, averagePrice: 282 });
+    expect(individual).toHaveLength(2);
+    expect(individual.map((lot) => lot.quantity)).toEqual([14, 5]);
+    expect(individual.map((lot) => lot.averagePrice)).toEqual([282, 282]);
+  });
+
   it('groups same-ticker buys within five minutes, leaves later buys separate, and removes sold quantity FIFO', () => {
     const trades = [
       { id: 'b1', ticker: 'AAPL.US', side: 'BUY', quantity: 3, price: 100, executedAt: '2026-01-01T10:00:00Z' },
@@ -216,6 +232,53 @@ describe('active broker tranches', () => {
       pt: 105,
       tranches: [{ qty: 2, price: 100 }]
     });
+  });
+
+  it('recovers quantities from legacy persisted raw TradeNet rows', () => {
+    const trades = [
+      {
+        id: 'legacy-buy-1',
+        ticker: '',
+        side: 'Unknown',
+        quantity: null,
+        price: null,
+        executedAt: null,
+        raw: {
+          instr_nm: 'GOOGL.US',
+          operation: 'unrecognized',
+          type: '1',
+          q: '0',
+          quantity: '5',
+          p: '0',
+          price: '282',
+          date: '2026-10-29T09:00:00'
+        }
+      },
+      {
+        id: 'legacy-buy-2',
+        ticker: 'GOOGL.US',
+        side: 'BUY',
+        quantity: null,
+        price: null,
+        executedAt: null,
+        raw: {
+          q: '14',
+          p: '282',
+          date: '2026-10-29T09:10:00'
+        }
+      }
+    ];
+
+    const lots = getActiveTranchesFromTrades(trades);
+
+    expect(lots.map((lot) => ({
+      ticker: lot.ticker,
+      quantity: lot.quantity,
+      averagePrice: lot.averagePrice
+    }))).toEqual([
+      { ticker: 'GOOGL', quantity: 14, averagePrice: 282 },
+      { ticker: 'GOOGL', quantity: 5, averagePrice: 282 }
+    ]);
   });
 
   it('uses broker-reported buy commission when available', () => {
@@ -339,5 +402,59 @@ describe('active limit sell target synchronization', () => {
       { ticker: 'AAPL', operation: 3, orderType: 1, limitPrice: 353, remainingQuantity: 50 },
       { ticker: 'AAPL', operation: 3, orderType: 2, limitPrice: 353, remainingQuantity: 0 }
     ])).toEqual({});
+  });
+});
+
+
+describe('cash holdings average purchase price', () => {
+  it('weights open cash lots by their allocated quantity and excludes margin shares', () => {
+    const trades = [
+      { id: 'buy-cash', ticker: 'AAPL.US', side: 'BUY', quantity: 4, price: 100, executedAt: '2026-01-01T10:00:00Z' },
+      { id: 'buy-mix', ticker: 'AAPL.US', side: 'BUY', quantity: 6, price: 120, executedAt: '2026-01-01T10:10:00Z' }
+    ];
+    const snapshot = {
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'AAPL.US', quantity: 10, marketPrice: 130 }]
+    };
+    const mixedTranche = getActiveTranchesFromTrades(trades, snapshot)
+      .find((tranche) => tranche.purchasedAt === Date.parse('2026-01-01T10:10:00Z'));
+    expect(mixedTranche).toBeDefined();
+
+    const result = classifyFreedomPortfolio(
+      snapshot,
+      {},
+      [],
+      { [mixedTranche!.id]: 'mix' },
+      123,
+      trades,
+      undefined,
+      { [mixedTranche!.id]: { cash: 3, margin: 3 } }
+    );
+
+    expect(result.cashStocks).toHaveLength(1);
+    expect(result.cashStocks[0]).toMatchObject({
+      ticker: 'AAPL',
+      shares: 7,
+      currentPrice: 130
+    });
+    expect(result.cashStocks[0].averagePrice).toBeCloseTo(760 / 7, 8);
+  });
+
+  it('does not fabricate an average when an open cash lot has no purchase price', () => {
+    const trades = [
+      { id: 'buy-priced', ticker: 'MSFT', side: 'BUY', quantity: 2, price: 100, executedAt: '2026-01-01T10:00:00Z' },
+      { id: 'buy-unpriced', ticker: 'MSFT', side: 'BUY', quantity: 3, executedAt: '2026-01-01T10:10:00Z' }
+    ];
+    const snapshot = {
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'MSFT', quantity: 5, marketPrice: 110 }]
+    };
+
+    const result = classifyFreedomPortfolio(snapshot, {}, [], {}, 123, trades);
+
+    expect(result.cashStocks[0].shares).toBe(5);
+    expect(result.cashStocks[0].averagePrice).toBeNull();
   });
 });

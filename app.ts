@@ -1,5 +1,5 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
-import { setTradingConsoleProps, setSettingsPropsState, setMarketInsightsPropsState, setExternalLinksPropsState } from './src/ui/uiStateStore';
+import { addBrokerEventListener } from './src/services/brokerEventBus';
 import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
@@ -19,6 +19,7 @@ import {
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
+import { getMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
@@ -58,7 +59,6 @@ import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
 import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
-import { InsightSection } from './src/components/MarketInsightsPanel';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 
@@ -86,11 +86,7 @@ let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
-let settingsPanelMounted = false;
-let lastSettingsRulesSignature: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
-let activeInsightSection = 'news';
-let insightRequestId = 0;
 let initialQuoteRefreshPending = false;
 const boardAnalystSnapshots = new Map<string, any>();
 const boardAnalystErrors = new Map<string, any>();
@@ -113,14 +109,10 @@ function setCloudStatus(status: string, text: string) {
 
 // Freedom is authoritative for broker-reported account balance, aggregate
 // holdings and available broker prices. App-owned lots/cost basis remain local.
-if (typeof window !== 'undefined') {
-  window.addEventListener('tradenet:account-info', (event: Event) => {
-    const snapshot = (event as CustomEvent).detail;
+addBrokerEventListener('broker:account-info', (snapshot) => {
     if (!snapshot || snapshot.loaded !== true || !Array.isArray(snapshot.positions) || !Array.isArray(snapshot.balances)) return;
     const current = portfolioStore.getState();
-    const executedTrades = Array.isArray((window as any).__tradenetExecutedTrades)
-      ? (window as any).__tradenetExecutedTrades
-      : Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+    const executedTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
     const classified = classifyFreedomPortfolio(
       snapshot,
       current.positions || {},
@@ -155,8 +147,7 @@ if (typeof window !== 'undefined') {
     renderBoard();
   });
 
-  window.addEventListener('tradenet:executed-trades', (event: Event) => {
-    const trades = (event as CustomEvent).detail;
+  addBrokerEventListener('broker:executed-trades', (trades) => {
     if (!Array.isArray(trades)) return;
     const current = portfolioStore.getState();
     // portfolioStore.setState persists synchronously. Reattach local fee allocations
@@ -198,12 +189,7 @@ if (typeof window !== 'undefined') {
     renderBoard();
   });
 
-  window.addEventListener('tradenet:set-active-tranche-type', (event: Event) => {
-    const detail = (event as CustomEvent<{
-      ticker?: string;
-      type?: 'cash' | 'margin' | 'mix';
-      mix?: { cash?: number; margin?: number };
-    }>).detail;
+  addBrokerEventListener('broker:set-active-tranche-type', (detail) => {
     const operationId = String(detail?.ticker || '').trim();
     const selectedType = detail?.type;
     if (!operationId || (selectedType !== 'cash' && selectedType !== 'margin' && selectedType !== 'mix')) return;
@@ -212,9 +198,7 @@ if (typeof window !== 'undefined') {
     const activeTrancheTypes = { ...(current.activeTrancheTypes || {}), [operationId]: selectedType };
     const activeTrancheMixes = { ...(current.activeTrancheMixes || {}) };
     if (selectedType === 'mix') {
-      const availableTrades = Array.isArray((window as any).__tradenetExecutedTrades)
-        ? (window as any).__tradenetExecutedTrades
-        : Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+      const availableTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
       const activeTranche = getActiveTranchesFromTrades(availableTrades, current.brokerAccountInfo)
         .find((tranche) => tranche.id === operationId);
       const previousType = current.activeTrancheTypes?.[operationId] ||
@@ -236,9 +220,7 @@ if (typeof window !== 'undefined') {
       pushStateToGist();
       return;
     }
-    const executedTrades = Array.isArray((window as any).__tradenetExecutedTrades)
-      ? (window as any).__tradenetExecutedTrades
-      : Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
+    const executedTrades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
     const classified = classifyFreedomPortfolio(
       snapshot,
       current.positions || {},
@@ -273,11 +255,7 @@ if (typeof window !== 'undefined') {
     renderBoard();
   });
 
-  window.addEventListener('tradenet:active-orders', (event: Event) => {
-    const orders = (event as CustomEvent<Array<{
-      id: string; ticker: string; operation: number | null; orderType: number | null;
-      limitPrice: number | null; remainingQuantity: number | null; status: string;
-    }>>).detail;
+  addBrokerEventListener('broker:active-orders', (orders) => {
     if (!Array.isArray(orders)) return;
 
     // Cache the broker's exact limit price so a slower account/trade refresh
@@ -325,7 +303,7 @@ if (typeof window !== 'undefined') {
     renderBoard();
   });
 
-  window.addEventListener('tradenet:account-info-error', () => {
+  addBrokerEventListener('broker:account-info-error', () => {
     const current = portfolioStore.getState();
     if (current.brokerAccountInfo) {
       portfolioStore.setState({
@@ -335,7 +313,6 @@ if (typeof window !== 'undefined') {
     showToast('Freedom account data unavailable — saved portfolio data is being retained.', 'warning');
     logTerminal('[Freedom Warning] Account refresh failed; retained local data and marked the last broker snapshot stale.');
   });
-}
 
 const syncCalculatedPortfolioEquity = (nextStoreState: ReturnType<typeof portfolioStore.getState>) => {
   state = nextStoreState as any;
@@ -411,12 +388,7 @@ function pullCloudAndRewriteLocal(parsedState: any) {
   state = portfolioStore.getState();
   switchView(state.activeView);
   console.log("[Sync]: Cloud state ingested and UI re-rendered successfully.", state);
-  setTimeout(() => {
-    const mainView = document.getElementById('mainTerminalView');
-    if (mainView) {
-      mainView.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, 100);
+  emitUiEvent('terminal:scroll-workspace');
 }
 
 async function syncCloudState(mode = 'push') {
@@ -515,7 +487,6 @@ function saveBrokerRuleInputs(values: import('./src/components/SettingsDesk').Br
   }
   verifyTradernetRulesOnload();
   renderBoard();
-  renderSettingsPanel(true);
 }
 function resetBrokerRules() {
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
@@ -592,14 +563,6 @@ function setActiveView(view: string) {
 
 const switchView = setActiveView;
 
-function renderConsoleQuickActions() {
-  const position = state.positions[state.activeView];
-  setTradingConsoleProps({
-      position,
-      onExecuteCommand: (command?: string) => executeCommand(command ?? '')
-    } satisfies import('./src/components/TradingConsole').TradingConsoleProps);
-}
-
 function updateCombinedBreakeven() {
   const setText = (text: string) => setBreakevenText(text);
 
@@ -666,71 +629,16 @@ function updateCombinedBreakeven() {
   setText(`Combined Breakeven: ${beDays} days (${beDateStr})`);
 }
 
-function renderBoardExternalLinks() {
-  const activeTicker = state.positions[state.activeView] ? state.activeView : '';
-  setExternalLinksPropsState({ ticker: activeTicker } satisfies import('./src/components/BoardExternalLinks').BoardExternalLinksProps);
-}
-
 function renderBoard() {
   renderBoardUI(state, {
     rules: TRADERNET_RULES as any,
-    onSetActiveView: setActiveView,
-    onRefreshAllLivePrices: refreshAllLivePrices,
-    onSaveBalance: saveCurrentBalance,
-    onAddCashStock: addCashStockFromDesk,
-    onRenderSettingsPanel: () => renderSettingsPanel(),
     onRenderAnalystConsensus: renderBoardAnalystConsensus,
-    onFetchLivePrice: fetchLivePrice,
-    onRemoveCashStock: removeCashStock,
-    onRenderExternalLinks: renderBoardExternalLinks,
-    onRenderConsoleQuickActions: renderConsoleQuickActions,
     onUpdateCombinedBreakeven: updateCombinedBreakeven,
-    onSyncMarketInsightsPanel: syncMarketInsightsPanel,
-    refreshIntervalMs: getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS),
     lastDeskView: lastRenderedDeskView,
     onUpdateLastDeskView: (view: string) => { lastRenderedDeskView = view; }
   });
 
-  // Keep the settings form mounted and its local edits intact during quote refreshes.
-  // When settings are active, renderBoardUI calls renderSettingsPanel explicitly.
-  if (!settingsPanelMounted) renderSettingsPanel();
 }
-
-function renderMarketInsightsComponent() {
-  const ticker = getMarketInsightsTicker();
-  setMarketInsightsPropsState({
-      ticker,
-      isOpen: true,
-      activeSection: activeInsightSection as InsightSection,
-      refreshTrigger: insightRequestId,
-      onSelectSection: (section: InsightSection) => {
-        activeInsightSection = section;
-        renderMarketInsightsComponent();
-      }
-    } satisfies import('./src/components/MarketInsightsPanel').MarketInsightsPanelProps);
-}
-
-function getMarketInsightsTicker() {
-  const currentView = state.activeView;
-  // Desk routes are not stock symbols. Never send them to quote/insights APIs.
-  const isPositionView = Boolean(
-    currentView &&
-    !['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(currentView) &&
-    state.positions?.[currentView]
-  );
-  if (isPositionView) return currentView;
-
-  const tickers = Object.keys(state.positions || {});
-  const preferredTicker = state.selectedTicker;
-  if (preferredTicker && state.positions?.[preferredTicker]) return preferredTicker;
-  return tickers[0] || '';
-}
-
-function syncMarketInsightsPanel() {
-  // Visibility is owned by App's active-desk JSX; this function only refreshes data props.
-  renderMarketInsightsComponent();
-}
-
 
 async function fetchBoardAnalystTarget(ticker: string, force = false) {
   if (!ticker) return null;
@@ -888,36 +796,6 @@ function setCurrentBalance(value: number) {
   };
 }
 
-function saveCurrentBalance(signedValue: number) {
-  if (!Number.isFinite(signedValue)) return;
-  const { balance, debt } = setCurrentBalance(signedValue);
-  saveState(state, pushStateToGist);
-  renderBoard();
-  logTerminal(`[Balance]: Current balance/debt updated. Balance: ${formatUSD(balance)} | Margin debt: -${formatUSD(debt)}.`);
-}
-
-async function addCashStockFromDesk(ticker: string, shares: number, manualPrice: number) {
-  const cleanTicker = ticker.trim().toUpperCase();
-  if (!cleanTicker || !Number.isFinite(shares) || shares <= 0) return;
-  if (Number.isFinite(manualPrice) && manualPrice <= 0) return;
-  if (!Number.isFinite(manualPrice) && !Number.isNaN(manualPrice)) return;
-
-  addCashHolding(cleanTicker, shares, manualPrice);
-  saveState(state, pushStateToGist);
-  renderBoard();
-  logTerminal(`[Balance]: Added ${shares} ${cleanTicker}. Fetching live online quote...`);
-  await fetchLivePrice(cleanTicker);
-}
-
-function removeCashStock(index: number) {
-  const holding = state.cashCushion?.holdings?.[index];
-  if (!holding) return;
-  const removed = removeCashHolding(holding.ticker);
-  saveState(state, pushStateToGist);
-  renderBoard();
-  logTerminal(`[Cash Cushion]: Removed ${removed.ticker} from cash holdings.`);
-}
-
 async function requestLivePrice(symbol: string, force = false) {
   const existingRequest = livePriceRequests.get(symbol);
   if (existingRequest && !force) return existingRequest;
@@ -1030,12 +908,7 @@ function exportBackupJSON() {
   logTerminal(`[Backup]: Exported state to ${filename}.`);
 }
 
-async function importBackupJSON(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) return;
-  input.value = '';
-
+async function importBackupFile(file: File) {
   try {
     const parsed = JSON.parse(await file.text());
     if (parsed && typeof parsed === 'object' && 'marginBalance' in parsed) {
@@ -1475,38 +1348,6 @@ async function executeCommand(commandText: string) {
   }
 }
 
-function renderSettingsPanel(force = false) {
-  const rules = { ...TRADERNET_RULES };
-  const rulesSignature = JSON.stringify(rules);
-  if (settingsPanelMounted && !force && rulesSignature === lastSettingsRulesSignature) return;
-
-  // SettingsDesk is owned by App. Send current callbacks/rules as props instead
-  // of creating a separate Preact root in the settings container.
-  setSettingsPropsState({
-      rules,
-      defaultRefreshIntervalMs: DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
-      onSaveBrokerRules: saveBrokerRuleInputs,
-      onResetBrokerRules: () => {
-        resetBrokerRules();
-        renderSettingsPanel(true);
-      },
-      onSaveApiKeys: async (secret: string) => {
-        const saved = await saveApiKeys({ secret, showToast: (message, type) => showToast(message, type as any), logTerminal });
-        if (saved) {
-          portfolioStore.setState({ gatewaySecret: secret.trim() });
-          await syncCloudState('pull');
-        }
-      },
-      onPullCloudState: () => syncCloudState('pull'),
-      onChangeRefreshInterval: (val: string) => setQuoteRefreshInterval(val),
-      onExportBackup: exportBackupJSON,
-      onImportBackup: importBackupJSON,
-      onResetToBlankState: resetToBlankState
-    } satisfies import('./src/components/SettingsDesk').SettingsDeskProps);
-  settingsPanelMounted = true;
-  lastSettingsRulesSignature = rulesSignature;
-}
-
 let appInitialized = false;
 
 function hideStartupLoading() {
@@ -1533,7 +1374,7 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
     showToast('Secure storage failed. Re-enter the Gateway Secret after refresh.', 'error');
   }
 
-  window.dispatchEvent(new CustomEvent('gateway-secret-authenticated', { detail: { secret: submittedSecret } }));
+  emitUiEvent('settings:gateway-secret-authenticated', { secret: submittedSecret });
   if (!appInitialized) {
     await startApp(submittedSecret);
     appInitialized = true;
@@ -1582,12 +1423,7 @@ async function startApp(secret: string) {
   // batch already contains the same deep Yahoo data for all tracked symbols.
   initialQuoteRefreshPending = true;
   switchView(state.activeView);
-  setTimeout(() => {
-    const mainView = document.getElementById('mainTerminalView');
-    if (mainView) {
-      mainView.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, 100);
+  emitUiEvent('terminal:scroll-workspace');
   await refreshAllLivePrices();
   initialQuoteRefreshPending = false;
   renderBoardAnalystConsensus(getMarketInsightsTicker());
@@ -1629,6 +1465,52 @@ function bindStartupActions() {
     void initApp();
   });
   addUiEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
+  addUiEventListener('portfolio:set-active-view', (event) => {
+    setActiveView(event.detail.view);
+  });
+  addUiEventListener('portfolio:refresh-live-prices', (event) => {
+    void refreshAllLivePrices().finally(event.detail.resolve);
+  });
+  addUiEventListener('terminal:execute-command', (event) => {
+    void executeCommand(event.detail.command);
+  });
+  addUiEventListener('settings:save-broker-rules', (event) => {
+    saveBrokerRuleInputs(event.detail.values);
+  });
+  addUiEventListener('settings:reset-broker-rules', () => {
+    resetBrokerRules();
+  });
+  addUiEventListener('settings:save-api-keys', (event) => {
+    void (async () => {
+      let saved = false;
+      try {
+        saved = await saveApiKeys({
+          secret: event.detail.secret,
+          showToast: (message, type) => showToast(message, type as any),
+          logTerminal
+        });
+        if (saved) {
+          portfolioStore.setState({ gatewaySecret: event.detail.secret.trim() });
+          await syncCloudState('pull');
+        }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : String(error), 'error');
+      } finally {
+        event.detail.resolve(saved);
+      }
+    })();
+  });
+  addUiEventListener('settings:pull-cloud-state', () => { void syncCloudState('pull'); });
+  addUiEventListener('settings:change-refresh-interval', (event) => {
+    const intervalMs = Number(event.detail.intervalMs);
+    setQuoteRefreshInterval(event.detail.intervalMs);
+    emitUiEvent('settings:refresh-interval-changed', { intervalMs });
+  });
+  addUiEventListener('settings:export-backup', () => exportBackupJSON());
+  addUiEventListener('settings:reset-to-blank-state', () => resetToBlankState());
+  addUiEventListener('terminal:backup-import-file', (event) => {
+    void importBackupFile(event.detail.file);
+  });
 }
 bindStartupActions();
 

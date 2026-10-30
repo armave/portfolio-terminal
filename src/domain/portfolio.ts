@@ -431,6 +431,27 @@ function finiteNumber(value: unknown, fallback: number): number {
   return Number.isFinite(number) ? number : fallback;
 }
 
+/** Resolve legacy/canonical tranche aliases into the quantity and price used by portfolio calculations. */
+export function normalizePortfolioTranche(tranche: Record<string, unknown>): TradeTranche {
+  const firstPositive = (...values: unknown[]): number => {
+    for (const value of values) {
+      if (value === null || value === undefined || value === '' || typeof value === 'boolean') continue;
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) return numeric;
+    }
+    return 0;
+  };
+  const date = [tranche.date, tranche.purchaseDate, tranche.entryDate]
+    .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+  return {
+    ...tranche,
+    qty: firstPositive(tranche.qty, tranche.shares, tranche.quantity),
+    price: firstPositive(tranche.price, tranche.entryPrice, tranche.averagePrice),
+    ...(date ? { date } : {})
+  } as TradeTranche;
+}
+
 export function createBlankState(now = Date.now()): PortfolioState {
   return {
     activeView: 'COMBINED',
@@ -473,14 +494,7 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
 
       const tranches = (Array.isArray(holding.tranches) ? holding.tranches : [])
         .filter(isRecord)
-        .map((tranche) => ({
-          ...tranche,
-          qty: finiteNumber(tranche.qty ?? tranche.shares, 0),
-          price: finiteNumber(tranche.price ?? tranche.entryPrice, 0),
-          date: typeof (tranche.date ?? tranche.purchaseDate) === 'string'
-            ? String(tranche.date ?? tranche.purchaseDate)
-            : undefined
-        }))
+        .map(normalizePortfolioTranche)
         .filter((tranche) => tranche.qty > 0 && tranche.price > 0);
       const shares = tranches.reduce((total, tranche) => total + tranche.qty, 0);
       if (shares <= 0) return;
@@ -504,11 +518,7 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
   Object.entries(positions).forEach(([ticker, position]) => {
     if (!isRecord(position)) return;
     const tranches = Array.isArray(position.tranches)
-      ? position.tranches.filter(isRecord).map(tranche => ({
-        ...tranche,
-        qty: finiteNumber(tranche.qty, 0),
-        price: finiteNumber(tranche.price, 0)
-      }))
+      ? position.tranches.filter(isRecord).map(normalizePortfolioTranche)
       : [];
     // Define the property explicitly: imported JSON can contain a ticker key
     // named "__proto__", and assignment to that key on a plain object changes

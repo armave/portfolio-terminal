@@ -1,6 +1,4 @@
-export interface BoardExternalLinksProps {
-  ticker?: string;
-}
+import { usePortfolio } from '../store/portfolioStore';
 
 const PROVIDERS = [
   {
@@ -29,7 +27,9 @@ const PROVIDERS = [
   }
 ] as const;
 
-export function BoardExternalLinks({ ticker }: BoardExternalLinksProps) {
+export function BoardExternalLinks() {
+  const state = usePortfolio();
+  const ticker = state.positions?.[state.activeView] ? state.activeView : '';
   if (!ticker) return null;
 
   const symbol = encodeURIComponent(ticker);

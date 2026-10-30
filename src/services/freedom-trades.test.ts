@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeFreedomTrades } from './api';
+import { classifyFreedomPortfolio } from '../domain/freedomPortfolio';
 
 describe('normalizeFreedomTrades', () => {
   it('normalizes TradeNet trade history aliases without inventing absent fields', () => {
@@ -84,6 +85,59 @@ describe('normalizeFreedomTrades', () => {
       commissionCurrency: 'USD'
     });
     expect(trades[1]).toMatchObject({ ticker: 'SHEL.US', side: 'SELL', profit: 2.26 });
+  });
+
+  it('falls through zero quantity/price placeholders and unrecognized operation aliases', () => {
+    const trades = normalizeFreedomTrades({
+      data: {
+        trades: { trade: [{
+          id: 'buy-alias-fallback',
+          instr_nm: 'GOOGL.US',
+          operation: 'not-a-side-code',
+          type: '1',
+          q: '0',
+          quantity: '5',
+          p: '0',
+          price: '282.00',
+          date: '2026-10-29T09:00:00'
+        }] }
+      }
+    });
+
+    expect(trades[0]).toMatchObject({
+      side: 'BUY',
+      quantity: 5,
+      price: 282,
+      executedAt: '2026-10-29T09:00:00'
+    });
+  });
+
+  it('carries normalized broker quantities into classified GOOGL position tranches', () => {
+    const rawRows = [
+      { id: 'buy-5', instr_nm: 'GOOGL.US', operation: 'unknown', type: '1', q: 0, quantity: 5, p: 0, price: 282, date: '2026-10-29T09:00:00' },
+      { id: 'buy-14', instr_nm: 'GOOGL.US', operation: '1', q: 14, p: 282, date: '2026-10-29T09:10:00' },
+      { id: 'buy-10', instr_nm: 'GOOGL.US', type: '1', q: 10, p: 328, date: '2026-10-22T10:00:00' },
+      { id: 'buy-20a', instr_nm: 'GOOGL.US', type: '1', q: 20, p: 336.3, date: '2026-10-21T10:00:00' },
+      { id: 'buy-20b', instr_nm: 'GOOGL.US', type: '1', q: 20, p: 341.4, date: '2026-10-20T10:00:00' }
+    ];
+    const trades = normalizeFreedomTrades({ data: { trades: { trade: rawRows } } });
+    const result = classifyFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'GOOGL.US', quantity: 69, marketPrice: 280.66 }]
+    }, {}, [], { GOOGL: 'margin' }, 123, trades);
+
+    expect(result.positions.GOOGL.shares).toBe(69);
+    expect(result.positions.GOOGL.tranches?.map((tranche) => ({
+      qty: tranche.qty,
+      price: tranche.price
+    }))).toEqual([
+      { qty: 14, price: 282 },
+      { qty: 5, price: 282 },
+      { qty: 10, price: 328 },
+      { qty: 20, price: 336.3 },
+      { qty: 20, price: 341.4 }
+    ]);
   });
 
   it('returns an empty list for unrecognized response shapes', () => {

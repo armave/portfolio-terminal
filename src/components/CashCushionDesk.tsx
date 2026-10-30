@@ -4,10 +4,8 @@ import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
 import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
-
-export interface CashCushionDeskProps {
-  refreshIntervalMs?: number;
-}
+import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
+import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 
 const BADGE_STYLES: Record<string, string> = {
   bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
@@ -53,29 +51,23 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   );
 }
 
-export function CashCushionDesk({
-  refreshIntervalMs = 60000
-}: CashCushionDeskProps) {
+export function CashCushionDesk() {
   const state = usePortfolio();
+  const refreshIntervalMs = useQuoteRefreshInterval();
   const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTradeLike[]>(() =>
-    typeof window !== 'undefined' && Array.isArray((window as any).__tradenetExecutedTrades)
-      ? (window as any).__tradenetExecutedTrades
-      : Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
+    Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
   );
   const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
-    const onTrades = (event: Event) => {
-      const trades = (event as CustomEvent<FreedomExecutedTradeLike[]>).detail;
-      if (Array.isArray(trades)) setExecutedTrades(trades);
-    };
-    const onTradesError = () => setExecutedTrades([]);
-    window.addEventListener('tradenet:executed-trades', onTrades);
-    window.addEventListener('tradenet:executed-trades-error', onTradesError);
-    window.dispatchEvent(new CustomEvent('tradenet:request-executed-trades'));
+    const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
+      setExecutedTrades(trades as unknown as FreedomExecutedTradeLike[]);
+    });
+    const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => setExecutedTrades([]));
+    emitBrokerEvent('broker:request-executed-trades');
     return () => {
-      window.removeEventListener('tradenet:executed-trades', onTrades);
-      window.removeEventListener('tradenet:executed-trades-error', onTradesError);
+      removeTradesListener();
+      removeErrorListener();
     };
   }, []);
 
@@ -86,9 +78,9 @@ export function CashCushionDesk({
     type: ActiveTrancheType,
     mix?: { cash: number; margin: number }
   ) => {
-    window.dispatchEvent(new CustomEvent('tradenet:set-active-tranche-type', {
-      detail: { ticker, type, ...(mix ? { mix } : {}) }
-    }));
+    emitBrokerEvent('broker:set-active-tranche-type', {
+      ticker, type, ...(mix ? { mix } : {})
+    });
   };
 
   const [activeTranchesExpanded, setActiveTranchesExpanded] = useState(false);
@@ -110,20 +102,23 @@ export function CashCushionDesk({
 
       <div class="space-y-2">
         <div class="table-scroll-wrapper overflow-x-auto">
-          <table class="w-full min-w-0 table-fixed text-left text-xs border-collapse">
+          <table class="w-full min-w-[1040px] table-fixed text-left text-xs border-collapse">
             <thead>
               <tr class="border-b border-slate-800 text-slate-400 font-medium">
-                <th class="w-[15%] py-2 px-2">Ticker</th>
-                <th class="w-[15%] py-2 px-2 text-right">Shares</th>
-                <th class="w-[20%] py-2 px-2 text-right">Price · Mkt</th>
-                <th class="w-[15%] py-2 px-2 text-right">Mkt Value</th>
-                <th class="w-[15%] py-2 px-2 text-right">Eq. Alloc</th>
+                <th class="w-[12%] py-2 px-2">Ticker</th>
+                <th class="w-[9%] py-2 px-2 text-right whitespace-nowrap">Shares</th>
+                <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Price · Mkt</th>
+                <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Avg Bought</th>
+                <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Avg Value</th>
+                <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Mkt Value</th>
+                <th class="w-[13%] py-2 px-2 text-right whitespace-nowrap">P/L</th>
+                <th class="w-[10%] py-2 px-2 text-right whitespace-nowrap">Eq. Alloc</th>
               </tr>
             </thead>
             <tbody id="cashStocksTableBody" class="divide-y divide-slate-800/60 font-mono">
               {holdings.length === 0 ? (
                 <tr>
-                  <td colSpan={5} class="py-3 text-center text-slate-500 italic">
+                  <td colSpan={8} class="py-3 text-center text-slate-500 italic">
                     No broker-reported cash holdings available.
                   </td>
                 </tr>
@@ -131,7 +126,15 @@ export function CashCushionDesk({
                 holdings.map((h) => {
                   const shares = Number(h.shares) || 0;
                   const price = Number(h.currentPrice ?? h.price) || 0;
+                  const averagePrice = Number(h.averagePrice);
+                  const hasAveragePrice = Number.isFinite(averagePrice) && averagePrice > 0;
+                  const hasMarketComparison = hasAveragePrice && price > 0;
+                  const averageValue = hasAveragePrice ? shares * averagePrice : null;
                   const val = shares * price;
+                  const totalDifference = hasMarketComparison ? val - averageValue! : null;
+                  const totalDifferencePercent = hasMarketComparison && averageValue! > 0
+                    ? (totalDifference! / averageValue!) * 100
+                    : null;
                   const allocation = stocksTotal > 0 ? (val / stocksTotal) * 100 : 0;
                   const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
 
@@ -170,15 +173,44 @@ export function CashCushionDesk({
                       <td class="py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap">
                         {shares.toLocaleString('en-US', { maximumFractionDigits: 3 })}
                       </td>
-                      <td class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums">
+                      <td class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums whitespace-nowrap">
                         <span>{formatUSD(price)}</span>
                         {renderDailyQuoteSubtext(h.quoteDetails)}
                         <span class="mt-0.5 block text-[9px] font-normal text-slate-500">
                           {quoteMeta}
                         </span>
                       </td>
-                      <td class="py-2 px-3 text-right text-white font-semibold">
+                      <td class="py-2 px-3 text-right text-slate-200 font-semibold tabular-nums whitespace-nowrap">
+                        {hasAveragePrice ? formatUSD(averagePrice) : '—'}
+                      </td>
+                      <td class="py-2 px-3 text-right text-slate-200 font-semibold tabular-nums whitespace-nowrap">
+                        {averageValue !== null ? formatUSD(averageValue) : '—'}
+                      </td>
+                      <td class="py-2 px-3 text-right text-white font-semibold tabular-nums whitespace-nowrap">
                         {formatUSD(val)}
+                      </td>
+                      <td class="py-2 px-3 text-right font-semibold tabular-nums whitespace-nowrap">
+                        {hasMarketComparison ? (
+                          <span
+                            class={
+                              totalDifference! > 0
+                                ? 'text-emerald-400'
+                                : totalDifference! < 0
+                                  ? 'text-rose-400'
+                                  : 'text-slate-400'
+                            }
+                            title="Market value minus average purchase value"
+                          >
+                            {totalDifference! > 0 ? '+' : totalDifference! < 0 ? '−' : ''}
+                            {formatUSD(Math.abs(totalDifference!))}
+                            <span class="block text-[10px] font-normal">
+                              {totalDifferencePercent! > 0 ? '+' : ''}
+                              {totalDifferencePercent!.toFixed(2)}%
+                            </span>
+                          </span>
+                        ) : (
+                          <span class="text-slate-500">—</span>
+                        )}
                       </td>
                       <td class="py-2 px-3 text-right text-slate-300 tabular-nums">
                         {allocation.toFixed(1)}%
@@ -191,7 +223,7 @@ export function CashCushionDesk({
             <tfoot id="cashStocksTableFooter" class="border-t border-slate-700 font-mono">
               {holdings.length > 0 && (
                 <tr>
-                  <td class="py-2 px-3 text-slate-300 font-bold" colSpan={3}>
+                  <td class="py-2 px-3 text-slate-300 font-bold" colSpan={6}>
                     {holdings.length} holding{holdings.length === 1 ? '' : 's'}
                   </td>
                   <td class="py-2 px-3 text-right text-white font-bold">

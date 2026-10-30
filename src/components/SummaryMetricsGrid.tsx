@@ -1,13 +1,17 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { useRef, useState } from 'preact/hooks';
-import type { BoardState, BrokerRules, QuoteDetails } from '../types/portfolio';
+import type { BrokerRules, QuoteDetails } from '../types/portfolio';
+import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
+import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import {
   calculateCommission,
   calculateMarginInterest
 } from '../domain/portfolio';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
+import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
+import { loadSavedHistory } from '../services/storage';
 
 function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string; rules: BrokerRules }) {
   const stopOutTitle = `Estimate assumes the configured ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
@@ -42,12 +46,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
       <details class="margin-risk-mobile-details"><summary>Equity and collateral details</summary><div class="margin-risk-detail"><span>Account equity</span><strong>{equityText}</strong></div><div class="margin-risk-detail"><span>Cash / collateral</span><strong>{collateralText}</strong></div><div class="margin-risk-disclaimer">Estimates use configured broker thresholds and are not live broker risk indicators.</div></details>
     </section>
   );
-}
-
-export interface SummaryMetricsGridProps {
-  state: BoardState;
-  rules: BrokerRules;
-  refreshIntervalMs?: number;
 }
 
 function getDailyQuoteMeta(details?: QuoteDetails | null): { text: string; className: string } | null {
@@ -156,17 +154,109 @@ function computeMarginRiskDisplay(
   };
 }
 
-const MARGIN_TRANCHE_PREVIEW_LIMIT = 3;
-
-export function getMarginTranchePreview<T>(tranches: T[]): T[] {
-  return tranches.slice(0, MARGIN_TRANCHE_PREVIEW_LIMIT);
+export function getMarginTranchePreview<T>(tranches: T[], expanded = false): T[] {
+  return expanded ? tranches : [];
 }
 
-export function SummaryMetricsGrid({
-  state,
-  rules,
-  refreshIntervalMs = 60000
-}: SummaryMetricsGridProps) {
+function getStoredMarginTrancheQuantity(tranche: unknown): number | null {
+  if (!tranche || typeof tranche !== 'object') return null;
+  const value = tranche as { qty?: unknown; shares?: unknown; quantity?: unknown };
+  for (const candidate of [value.qty, value.shares, value.quantity]) {
+    if (candidate === null || candidate === undefined || candidate === '' || typeof candidate === 'boolean') continue;
+    const quantity = Number(candidate);
+    if (Number.isFinite(quantity) && quantity > 0) return quantity;
+  }
+  return null;
+}
+
+function getTradeNetCalendarDate(timestamp: number): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Yerevan',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date(timestamp));
+  const part = (type: string) => parts.find((item) => item.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+function getTranchePriceAndDate(tranche: unknown): { price: number; date: string } | null {
+  if (!tranche || typeof tranche !== 'object') return null;
+  const value = tranche as {
+    price?: unknown; entryPrice?: unknown; averagePrice?: unknown;
+    date?: unknown; purchaseDate?: unknown; entryDate?: unknown;
+  };
+  const price = Number(value.price ?? value.entryPrice ?? value.averagePrice);
+  const rawDate = value.date ?? value.purchaseDate ?? value.entryDate;
+  if (!Number.isFinite(price) || price <= 0 || typeof rawDate !== 'string' || !rawDate.trim()) return null;
+  // Persisted tranche dates are broker-local calendar dates (TradeNet Armenia).
+  // Broker execution timestamps may be UTC and cross midnight relative to that date.
+  const date = rawDate.trim().match(/^(\d{4}-\d{2}-\d{2})(?![T\d])/)?.[1] ||
+    (() => {
+      const parsed = Date.parse(rawDate);
+      if (!Number.isFinite(parsed)) return rawDate;
+      return getTradeNetCalendarDate(parsed);
+    })();
+  return { price, date };
+}
+
+/**
+ * Resolve all visible lot quantities together. This allows repeated price/date
+ * rows (e.g. two separate GOOGL buys at 282.00 on 29 Oct) to be paired one-to-one
+ * with their FIFO broker open lots instead of treating each repeated match as
+ * ambiguous in isolation.
+ */
+export function getMarginTrancheQuantities(
+  tranches: unknown[],
+  brokerLots: ReturnType<typeof getActiveTranchesFromTrades> = [],
+  ticker?: string
+): Array<number | null> {
+  const quantities = tranches.map(getStoredMarginTrancheQuantity);
+  const missingByKey = new Map<string, number[]>();
+  const lotsByKey = new Map<string, typeof brokerLots>();
+
+  tranches.forEach((tranche, index) => {
+    if (quantities[index] !== null) return;
+    const match = getTranchePriceAndDate(tranche);
+    if (!match) return;
+    const key = `${match.price.toFixed(2)}|${match.date}`;
+    missingByKey.set(key, [...(missingByKey.get(key) || []), index]);
+  });
+
+  brokerLots.forEach((lot) => {
+    if (ticker && lot.ticker !== ticker.toUpperCase()) return;
+    if (lot.averagePrice === null || !Number.isFinite(lot.averagePrice) || lot.averagePrice <= 0 || lot.purchasedAt === null) return;
+    const key = `${Number(lot.averagePrice).toFixed(2)}|${getTradeNetCalendarDate(lot.purchasedAt)}`;
+    lotsByKey.set(key, [...(lotsByKey.get(key) || []), lot]);
+  });
+
+  for (const [key, indices] of missingByKey) {
+    const candidates = lotsByKey.get(key) || [];
+    // Assign only a complete one-to-one group. An incomplete or excess broker
+    // match remains unresolved rather than inventing a quantity.
+    if (candidates.length !== indices.length) continue;
+    indices.forEach((index, candidateIndex) => {
+      const quantity = Number(candidates[candidateIndex].quantity);
+      if (Number.isFinite(quantity) && quantity > 0) quantities[index] = quantity;
+    });
+  }
+
+  return quantities;
+}
+
+/** Resolve one lot quantity when its broker match is unique. */
+export function getMarginTrancheQuantity(
+  tranche: unknown,
+  brokerLots: ReturnType<typeof getActiveTranchesFromTrades> = [],
+  ticker?: string
+): number | null {
+  return getMarginTrancheQuantities([tranche], brokerLots, ticker)[0] ?? null;
+}
+
+export function SummaryMetricsGrid() {
+  const state = usePortfolio();
+  const rules = state.brokerAssumptions;
+  const refreshIntervalMs = useQuoteRefreshInterval();
   const previousPricesRef = useRef<Record<string, number>>({});
   const [expandedTrancheTicker, setExpandedTrancheTicker] = useState<string | null>(null);
   const dailyRate = rules.annualRate / rules.dayCountBasis;
@@ -345,9 +435,24 @@ export function SummaryMetricsGrid({
   const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
 
   const positionTranches = pos.tranches || [];
-  const visibleTranches = getMarginTranchePreview(positionTranches);
-  const hiddenTrancheCount = Math.max(0, positionTranches.length - MARGIN_TRANCHE_PREVIEW_LIMIT);
+  const persistedBrokerTrades = loadSavedHistory().brokerExecutedTrades;
+  const brokerTrades = Array.isArray(state.brokerExecutedTrades) && state.brokerExecutedTrades.length
+    ? state.brokerExecutedTrades
+    : persistedBrokerTrades;
+  const brokerOpenLots = getActiveTranchesFromTrades(
+    brokerTrades,
+    state.brokerAccountInfo as any,
+    {
+      commPerShare: Number(rules.commPerShare ?? rules.commissionPerShare ?? 0),
+      commVolumePct: Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0),
+      minCommOrder: Number(rules.minCommOrder ?? rules.commissionMin ?? 0)
+    },
+    false
+  );
+  const trancheQuantities = getMarginTrancheQuantities(positionTranches, brokerOpenLots, pos.ticker);
   const tranchesExpanded = expandedTrancheTicker === pos.ticker;
+  const visibleTranches = getMarginTranchePreview(positionTranches, tranchesExpanded);
+  const hiddenTrancheCount = positionTranches.length;
 
   const investedText = `${formatUSD(totalInvested)} | ${formatUSD(avgPrice)}`;
   const unSign = unrealized >= 0 ? '+' : '';
@@ -385,37 +490,29 @@ export function SummaryMetricsGrid({
             <div id="boardTranches" class="portfolio-metric-value text-xs sm:text-sm">
               <div class="flex flex-wrap justify-end gap-x-2 gap-y-1">
                 <span class="whitespace-nowrap">{pos.shares.toLocaleString()} shares</span>
-                {visibleTranches.map((tranche, index) => (
-                  <span key={`${pos.ticker}-visible-${index}`} class="whitespace-nowrap">
-                    {tranche.qty} @ {formatUSD(tranche.price)} ({formatTrancheDate(tranche.date)})
-                  </span>
-                ))}
               </div>
               {hiddenTrancheCount > 0 && (
                 <>
-                  <div
-                    id="boardTranchesOverflow"
-                    class={`expandable-motion ${tranchesExpanded ? 'is-expanded' : ''}`}
-                    aria-hidden={!tranchesExpanded}
-                  >
+                  <div id="boardTranchesOverflow" class={`expandable-motion ${tranchesExpanded ? 'is-expanded' : ''}`} aria-hidden={!tranchesExpanded}>
                     <div class="expandable-motion__inner">
                       <div class="mt-1 flex flex-wrap justify-end gap-x-2 gap-y-1">
-                        {positionTranches.slice(MARGIN_TRANCHE_PREVIEW_LIMIT).map((tranche, index) => (
-                          <span key={`${pos.ticker}-overflow-${index}`} class="whitespace-nowrap">
-                            {tranche.qty} @ {formatUSD(tranche.price)} ({formatTrancheDate(tranche.date)})
-                          </span>
-                        ))}
+                        {visibleTranches.map((tranche, index) => {
+                          debugger;
+                          const quantity = trancheQuantities[index];
+                          const value = tranche as typeof tranche & { entryPrice?: number; averagePrice?: number; purchaseDate?: string; entryDate?: string };
+                          const price = Number(tranche.price ?? value.entryPrice ?? value.averagePrice);
+                          const date = tranche.date ?? value.purchaseDate ?? value.entryDate;
+                          return (
+                            <span key={`${pos.ticker}-overflow-${index}`}>
+                              {quantity !== null ? `${quantity.toLocaleString()} @ ` : ''}{formatUSD(price)} <br></br> ({formatTrancheDate(date)})
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    class="mt-1 inline-flex items-center rounded border border-slate-700/80 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/40"
-                    aria-expanded={tranchesExpanded}
-                    aria-controls="boardTranchesOverflow"
-                    onClick={() => setExpandedTrancheTicker((current) => current === pos.ticker ? null : pos.ticker)}
-                  >
-                    {tranchesExpanded ? 'Show less' : `Show ${hiddenTrancheCount} more`}
+                  <button type="button" class="mt-1 inline-flex items-center rounded border border-slate-700/80 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 hover:bg-cyan-950/40" aria-expanded={tranchesExpanded} aria-controls="boardTranchesOverflow" onClick={() => setExpandedTrancheTicker((current) => current === pos.ticker ? null : pos.ticker)}>
+                    {tranchesExpanded ? 'Show less' : `Show ${hiddenTrancheCount} tranches`}
                   </button>
                 </>
               )}

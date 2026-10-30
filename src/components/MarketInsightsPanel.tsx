@@ -2,16 +2,10 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import { decodeHtmlEntities } from '../utils/formatters';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type StocktwitsStream } from '../services/api';
+import { usePortfolio } from '../store/portfolioStore';
+import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
 
 export type InsightSection = 'news' | 'fundamentals' | 'earnings' | 'analysts';
-
-export interface MarketInsightsPanelProps {
-  ticker: string;
-  isOpen: boolean;
-  activeSection: InsightSection;
-  refreshTrigger?: number;
-  onSelectSection: (section: InsightSection) => void;
-}
 
 const INSIGHT_TABS: Array<{ id: InsightSection; domId: string; label: string }> = [
   { id: 'news', domId: 'insightTabNews', label: 'News' },
@@ -79,13 +73,10 @@ function renderStocktwitsBody(body: string) {
   );
 }
 
-export function MarketInsightsPanel({
-  ticker,
-  isOpen,
-  activeSection,
-  refreshTrigger = 0,
-  onSelectSection
-}: MarketInsightsPanelProps) {
+export function MarketInsightsPanel() {
+  const portfolio = usePortfolio();
+  const ticker = getMarketInsightsTicker(portfolio);
+  const [activeSection, setActiveSection] = useState<InsightSection>('news');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newsData, setNewsData] = useState<any[]>([]);
@@ -113,9 +104,6 @@ export function MarketInsightsPanel({
   const stocktwitsRequestIdRef = useRef(0);
   const newsRequestIdRef = useRef(0);
   const requestIdRef = useRef(0);
-  const lastRefreshTriggerRef = useRef(refreshTrigger);
-  const lastNewsRefreshTriggerRef = useRef(refreshTrigger);
-  const lastStocktwitsRefreshTriggerRef = useRef(refreshTrigger);
   const lastNewsManualRefreshRef = useRef(0);
   const lastStocktwitsManualRefreshRef = useRef(0);
   const newsTickerRef = useRef(ticker);
@@ -125,7 +113,7 @@ export function MarketInsightsPanel({
   // Keep the detailed fundamentals/earnings/analyst request separate from news.
   // Background refreshes must not replace the current panel with a loading screen.
   useEffect(() => {
-    if (!isOpen || !ticker) return;
+    if (!ticker) return;
     if (activeSection === 'news') {
       setLoading(false);
       setError(null);
@@ -133,8 +121,7 @@ export function MarketInsightsPanel({
     }
 
     const currentRequestId = ++requestIdRef.current;
-    const forceRefresh = refreshTrigger !== lastRefreshTriggerRef.current;
-    lastRefreshTriggerRef.current = refreshTrigger;
+    const forceRefresh = false;
     setLoading(true);
     setError(null);
 
@@ -154,14 +141,13 @@ export function MarketInsightsPanel({
     return () => {
       requestIdRef.current += 1;
     };
-  }, [ticker, isOpen, activeSection, refreshTrigger]);
+  }, [ticker, activeSection]);
 
   // Company news loads on open and refreshes only when requested.
   useEffect(() => {
-    if (!isOpen || !ticker) return;
+    if (!ticker) return;
 
-    const forceOnStart = refreshTrigger !== lastNewsRefreshTriggerRef.current || newsRefreshRequest !== lastNewsManualRefreshRef.current;
-    lastNewsRefreshTriggerRef.current = refreshTrigger;
+    const forceOnStart = newsRefreshRequest !== lastNewsManualRefreshRef.current;
     lastNewsManualRefreshRef.current = newsRefreshRequest;
     if (newsTickerRef.current !== ticker) {
       newsTickerRef.current = ticker;
@@ -193,14 +179,13 @@ export function MarketInsightsPanel({
       disposed = true;
       newsRequestIdRef.current += 1;
     };
-  }, [ticker, isOpen, refreshTrigger, newsRefreshRequest]);
+  }, [ticker, newsRefreshRequest]);
 
   // Stocktwits is an optional secondary feed; defer its request until the user asks for it.
   useEffect(() => {
-    if (!isOpen || !ticker || !stocktwitsRequested) return;
+    if (!ticker || !stocktwitsRequested) return;
 
-    const forceOnStart = refreshTrigger !== lastStocktwitsRefreshTriggerRef.current || stocktwitsRefreshRequest !== lastStocktwitsManualRefreshRef.current;
-    lastStocktwitsRefreshTriggerRef.current = refreshTrigger;
+    const forceOnStart = stocktwitsRefreshRequest !== lastStocktwitsManualRefreshRef.current;
     lastStocktwitsManualRefreshRef.current = stocktwitsRefreshRequest;
     if (stocktwitsTickerRef.current !== ticker) {
       stocktwitsTickerRef.current = ticker;
@@ -232,7 +217,7 @@ export function MarketInsightsPanel({
       disposed = true;
       stocktwitsRequestIdRef.current += 1;
     };
-  }, [ticker, isOpen, refreshTrigger, stocktwitsRefreshRequest, stocktwitsRequested]);
+  }, [ticker, stocktwitsRefreshRequest, stocktwitsRequested]);
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -250,7 +235,7 @@ export function MarketInsightsPanel({
 
     const nextTab = INSIGHT_TABS[nextIndex];
     tabRefs.current[nextTab.id]?.focus();
-    onSelectSection(nextTab.id);
+    setActiveSection(nextTab.id);
   };
 
   // Keep terse and multi-cashtag standalone posts, but exclude bearish entries.
@@ -537,7 +522,7 @@ export function MarketInsightsPanel({
               type="button"
               id={tab.domId}
               data-insight={tab.id}
-              onClick={() => onSelectSection(tab.id)}
+              onClick={() => setActiveSection(tab.id)}
               onKeyDown={handleTabKeyDown}
               role="tab"
               aria-controls="marketInsightsContent"

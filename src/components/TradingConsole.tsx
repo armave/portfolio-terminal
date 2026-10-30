@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { addUiEventListener, removeUiEventListener } from '../ui/uiEventBus';
+import { addUiEventListener, removeUiEventListener, type UiEvent } from '../ui/uiEventBus';
 import { ConsoleQuickActions } from './ConsoleQuickActions';
 import { clearTerminalLog } from '../ui/notifications';
 import { useTerminalLogEntries } from '../ui/notificationStore';
 import { TerminalLog } from './TerminalLog';
-import { formatUSD, PositionRecord } from '../ui/renderBoard';
+import { formatUSD } from '../utils/formatters';
+import { usePortfolio } from '../store/portfolioStore';
+import { emitUiEvent } from '../ui/uiEventBus';
 import { useAiStatus } from '../ui/uiStateStore';
 
-export interface TradingConsoleProps {
-  position?: PositionRecord;
-  onExecuteCommand: (command?: string) => void | Promise<void>;
-}
-
-export function TradingConsole({ position, onExecuteCommand }: TradingConsoleProps) {
+export function TradingConsole() {
+  const portfolio = usePortfolio();
+  const position = portfolio.positions?.[portfolio.activeView];
+  const onExecuteCommand = (command?: string) => {
+    const value = String(command ?? '').trim();
+    if (value) emitUiEvent('terminal:execute-command', { command: value });
+  };
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState<number>(-1);
   const [command, setCommand] = useState('');
@@ -132,7 +135,7 @@ export function TradingConsole({ position, onExecuteCommand }: TradingConsolePro
   };
 
   useEffect(() => {
-    const handleCommandPrefill = (event: CustomEvent<{ command: string; selectText?: string | null; cursorAtEnd?: boolean }>) => {
+    const handleCommandPrefill = (event: UiEvent<{ command: string; selectText?: string | null; cursorAtEnd?: boolean }>) => {
       prefillCommandRef.current(event.detail.command, event.detail.selectText, false, event.detail.cursorAtEnd);
     };
     addUiEventListener('terminal:command-prefill', handleCommandPrefill);

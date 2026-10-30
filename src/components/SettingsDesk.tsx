@@ -1,25 +1,13 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { emitUiEvent } from '../ui/uiEventBus';
+import { emitUiEvent, addUiEventListener, removeUiEventListener, type UiEvent } from '../ui/uiEventBus';
 import {
   areHeaderCredentialsConfigured,
   getGatewaySecret,
   getQuoteRefreshInterval
 } from '../services/storage';
 import { BrokerRules } from '../types/portfolio';
+import { usePortfolio } from '../store/portfolioStore';
 
-
-export interface SettingsDeskProps {
-  rules: BrokerRules;
-  defaultRefreshIntervalMs?: number;
-  onSaveBrokerRules: (values: BrokerRulesFormValues) => void;
-  onResetBrokerRules: () => void;
-  onSaveApiKeys: (secret: string) => void | Promise<void>;
-  onPullCloudState: () => void;
-  onChangeRefreshInterval: (intervalMs: string) => void;
-  onExportBackup: () => void;
-  onImportBackup: (event: Event) => void;
-  onResetToBlankState: () => void;
-}
 
 export interface BrokerRulesFormValues {
   annualRate: string;
@@ -49,27 +37,19 @@ export function toBrokerRulesFormValues(rules: BrokerRules): BrokerRulesFormValu
   };
 }
 
-export function SettingsDesk({
-  rules,
-  defaultRefreshIntervalMs = 60000,
-  onSaveBrokerRules,
-  onResetBrokerRules,
-  onSaveApiKeys,
-  onPullCloudState,
-  onChangeRefreshInterval,
-  onExportBackup,
-  onResetToBlankState
-}: SettingsDeskProps) {
+export function SettingsDesk() {
+  const portfolio = usePortfolio();
+  const rules = portfolio.brokerAssumptions;
   const [secretValue, setSecretValue] = useState<string>(() => getGatewaySecret() || '');
   useEffect(() => {
-    const handleAuthenticated = (event: Event) => {
-      const secret = (event as CustomEvent<{ secret: string }>).detail?.secret || '';
+    const handleAuthenticated = (event: UiEvent<{ secret: string }>) => {
+      const secret = event.detail.secret;
       setSecretValue(secret);
       setCredentialsHidden(false);
       setIsConfigured(Boolean(secret));
     };
-    window.addEventListener('gateway-secret-authenticated', handleAuthenticated);
-    return () => window.removeEventListener('gateway-secret-authenticated', handleAuthenticated);
+    addUiEventListener('settings:gateway-secret-authenticated', handleAuthenticated);
+    return () => removeUiEventListener('settings:gateway-secret-authenticated', handleAuthenticated);
   }, []);
   const [isConfigured, setIsConfigured] = useState<boolean>(() =>
     areHeaderCredentialsConfigured()
@@ -78,7 +58,7 @@ export function SettingsDesk({
     areHeaderCredentialsConfigured()
   );
   const [refreshInterval, setRefreshInterval] = useState<string>(() =>
-    String(getQuoteRefreshInterval(defaultRefreshIntervalMs))
+    String(getQuoteRefreshInterval(60000))
   );
 
   const [ruleValues, setRuleValues] = useState<BrokerRulesFormValues>(() =>
@@ -118,16 +98,20 @@ export function SettingsDesk({
   };
 
   const handleSaveKeysClick = async () => {
-    await onSaveApiKeys(secretValue);
-    const configured = areHeaderCredentialsConfigured();
-    setIsConfigured(configured);
-    setCredentialsHidden(configured);
+    const saved = await new Promise<boolean>((resolve) => {
+      emitUiEvent('settings:save-api-keys', { secret: secretValue, resolve });
+    });
+    if (saved) {
+      const configured = areHeaderCredentialsConfigured();
+      setIsConfigured(configured);
+      setCredentialsHidden(configured);
+    }
   };
 
   const handleIntervalChange = (e: Event) => {
     const val = (e.target as HTMLSelectElement).value;
     setRefreshInterval(val);
-    onChangeRefreshInterval(val);
+    emitUiEvent('settings:change-refresh-interval', { intervalMs: val });
   };
 
   return (
@@ -194,7 +178,7 @@ export function SettingsDesk({
           </div>
           <button
             type="button"
-            onClick={onPullCloudState}
+            onClick={() => emitUiEvent('settings:pull-cloud-state')}
             title="Force pull cloud data and rewrite local storage"
             class="secret-action-btn h-8 bg-slate-800 hover:bg-slate-700 border border-purple-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
           >
@@ -222,7 +206,7 @@ export function SettingsDesk({
           </label>
           <button
             type="button"
-            onClick={onExportBackup}
+            onClick={() => emitUiEvent('settings:export-backup')}
             aria-label="Export portfolio backup as JSON"
             title="Export portfolio state to JSON file"
             class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
@@ -240,7 +224,7 @@ export function SettingsDesk({
           </button>
           <button
             type="button"
-            onClick={onResetToBlankState}
+            onClick={() => emitUiEvent('settings:reset-to-blank-state')}
             title="Clear all local data and return to blank slate. Export a backup first if you may need this portfolio again."
             aria-label="Reset all local portfolio data"
             class="h-8 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
@@ -259,7 +243,7 @@ export function SettingsDesk({
           Broker Rules
         </summary>
         <div class="mt-3">
-          <form id="brokerRulesForm" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement; if (!form.reportValidity()) return; const values = { ...ruleValues }; const stopOut = Number(values.stopOutRatio); const maintenance = Number(values.maintenanceMargin); if (stopOut > maintenance) { stopOutInputRef.current?.setCustomValidity("Stop-out equity must not exceed maintenance equity."); stopOutInputRef.current?.reportValidity(); return; } stopOutInputRef.current?.setCustomValidity(""); onSaveBrokerRules(values); }} class="space-y-2">
+          <form id="brokerRulesForm" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement; if (!form.reportValidity()) return; const values = { ...ruleValues }; const stopOut = Number(values.stopOutRatio); const maintenance = Number(values.maintenanceMargin); if (stopOut > maintenance) { stopOutInputRef.current?.setCustomValidity("Stop-out equity must not exceed maintenance equity."); stopOutInputRef.current?.reportValidity(); return; } stopOutInputRef.current?.setCustomValidity(""); emitUiEvent('settings:save-broker-rules', { values }); }} class="space-y-2">
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
               Margin and commission rules (USD)
             </p>
@@ -393,7 +377,7 @@ export function SettingsDesk({
               <button
                 id="resetBrokerRulesButton"
                 type="button"
-                onClick={onResetBrokerRules}
+                onClick={() => emitUiEvent('settings:reset-broker-rules')}
                 class="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
               >
                 Restore defaults
