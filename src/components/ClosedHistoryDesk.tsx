@@ -5,6 +5,7 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import { pullCloudHistory, pushCloudHistory } from '../services/api';
 import { loadSavedHistory, saveSavedHistory } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
+import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 
 type ImportedCashflow = { id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw: Record<string, string> };
 
@@ -421,29 +422,28 @@ export function ClosedHistoryDesk() {
       }
     };
     const readCurrentTrades = () => {
-      const current = (window as any).__tradenetExecutedTrades;
-      if (Array.isArray(current)) persistBrokerTrades(current);
-      else {
-        const saved = portfolioStore.getState().brokerExecutedTrades;
-        if (Array.isArray(saved) && saved.length) {
-          setBrokerTrades(saved);
-          setBrokerTradesLoading(false);
-          setBrokerTradesError(false);
-        }
+      const current = portfolioStore.getState().brokerExecutedTrades;
+      if (Array.isArray(current) && current.length) {
+        persistBrokerTrades(current);
+        return;
       }
-    };
-    const onTrades = (event: Event) => {
-      const trades = (event as CustomEvent).detail;
-      if (Array.isArray(trades)) persistBrokerTrades(trades);
+      const saved = loadSavedHistory().brokerExecutedTrades;
+      if (Array.isArray(saved) && saved.length) persistBrokerTrades(saved);
     };
     readCurrentTrades();
-    // If the route opens directly, App's initial fetch may already have fired.
-    // Ask App to fetch now as well; both the event and shared cache are supported.
-    const onTradesError = () => { setBrokerTradesLoading(false); setBrokerTradesError(true); };
-    window.addEventListener('tradenet:executed-trades', onTrades);
-    window.addEventListener('tradenet:executed-trades-error', onTradesError);
-    window.dispatchEvent(new CustomEvent('tradenet:request-executed-trades'));
-    return () => { window.removeEventListener('tradenet:executed-trades', onTrades); window.removeEventListener('tradenet:executed-trades-error', onTradesError); };
+    // Closed History requests a refresh on mount; the canonical cache remains in portfolioStore.
+    const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
+      persistBrokerTrades(trades);
+    });
+    const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => {
+      setBrokerTradesLoading(false);
+      setBrokerTradesError(true);
+    });
+    emitBrokerEvent('broker:request-executed-trades');
+    return () => {
+      removeTradesListener();
+      removeErrorListener();
+    };
   }, []);
   const appTrades = (state.closedTrades || []).map((trade, index) => {
     // Never use feesAndCommissions as a commission fallback: that aggregate may already include margin fees, which are displayed separately below.
