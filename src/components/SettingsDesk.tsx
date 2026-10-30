@@ -3,7 +3,7 @@ import { emitUiEvent } from '../ui/uiEventBus';
 import { getQuoteRefreshInterval } from '../services/storage';
 import { BrokerRules } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
-import { getCurrentUser, listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
+import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 
@@ -36,10 +36,14 @@ export function toBrokerRulesFormValues(rules: BrokerRules): BrokerRulesFormValu
   };
 }
 
-export function SettingsDesk() {
+interface SettingsDeskProps {
+  currentUser: AuthUser | null;
+}
+
+export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const portfolio = usePortfolio();
   const rules = portfolio.brokerAssumptions;
-  const [account, setAccount] = useState<AuthUser | null>(null);
+  const [account, setAccount] = useState<AuthUser | null>(currentUser);
   const permissions = getAccountPermissions(account?.role);
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [usersError, setUsersError] = useState("");
@@ -53,25 +57,28 @@ export function SettingsDesk() {
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
   const refreshUsers = async () => {
+    // The application already owns the verified session identity. Refresh only
+    // the admin directory here; a transient directory error must not sign out
+    // the active user or erase their account details from Settings.
+    if (currentUser?.role !== "admin") {
+      setUsers([]);
+      setEditValues({});
+      setUsersError("");
+      return;
+    }
     try {
-      const current = await getCurrentUser();
-      setAccount(current);
-      emitUiEvent('auth:user-changed', { user: current });
-      if (current.role === "admin") {
-        const records = await listUsers();
-        setUsers(records);
-        setEditValues(Object.fromEntries(records.map((user) => [user.id, { name: user.name, role: user.role, language: user.language ?? "en", password: "" }])));
-      } else {
-        setUsers([]);
-      }
+      const records = await listUsers();
+      setUsers(records);
+      setEditValues(Object.fromEntries(records.map((user) => [user.id, { name: user.name, role: user.role, language: user.language ?? "en", password: "" }])));
       setUsersError("");
     } catch (error) {
-      setAccount(null);
-      emitUiEvent('auth:user-changed', { user: null });
       setUsersError(error instanceof Error ? error.message : "Could not load users.");
     }
   };
-  useEffect(() => { void refreshUsers(); }, []);
+  useEffect(() => {
+    setAccount(currentUser);
+    void refreshUsers();
+  }, [currentUser]);
 
   const handleCreateUser = async (event: Event) => {
     event.preventDefault();
@@ -98,12 +105,16 @@ export function SettingsDesk() {
     setSavingUser(true);
     setUsersError("");
     try {
-      await updateUser(userId, {
+      const updated = await updateUser(userId, {
         name: values.name.trim(),
         role: values.role,
         language: values.language,
         ...(values.password ? { password: values.password } : {})
       });
+      if (updated.id === account?.id) {
+        setAccount(updated);
+        emitUiEvent('auth:user-changed', { user: updated });
+      }
       await refreshUsers();
     } catch (error) {
       setUsersError(error instanceof Error ? error.message : "Could not update user.");
