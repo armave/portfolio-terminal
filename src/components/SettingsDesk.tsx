@@ -182,7 +182,6 @@ export function SettingsDesk() {
           <div class="text-xs text-slate-300">
             {account ? <><span class="font-bold text-white">{account.name}</span><span class="ml-2 rounded bg-slate-800 px-2 py-1 uppercase text-[10px] text-cyan-300">{account.role}</span></> : "Account information unavailable"}
           </div>
-          {account?.role === "guest" && <span class="text-[10px] text-amber-300">Guest access · cloud changes disabled</span>}
           <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-8 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">Sign out</button>
           {account?.role !== "guest" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title="Pull the latest shared portfolio state" class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>}
         </div>
