@@ -185,7 +185,7 @@ function renderSummaryCards(
   const tickers = Object.keys(state.positions || {});
   const isCombined = state.activeView === 'COMBINED' || (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
-  setSummaryMetricsPropsState({ state, rules, refreshIntervalMs });
+  setSummaryMetricsPropsState({ rules, refreshIntervalMs });
 
 
   if (isCombined) {
