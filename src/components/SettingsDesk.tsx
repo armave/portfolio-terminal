@@ -5,7 +5,7 @@ import { BrokerRules } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { getCurrentUser, listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
-import type { AppLanguage } from '../services/i18n';
+import { translateText, type AppLanguage } from '../services/i18n';
 
 
 export interface BrokerRulesFormValues {
@@ -129,7 +129,7 @@ export function SettingsDesk() {
   };
 
   const handleDeleteUser = async (user: AuthUser) => {
-    if (savingUser || !window.confirm(`Delete account "${user.name}"?`)) return;
+    if (savingUser || !window.confirm(`${translateText('Delete account')} "${user.name}"?`)) return;
     setSavingUser(true);
     setUsersError("");
     try {
