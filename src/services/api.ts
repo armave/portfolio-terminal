@@ -2,6 +2,7 @@ import CryptoJS from 'crypto-js';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, PortfolioState } from '../types/portfolio';
+import type { AppLanguage } from './i18n';
 
 export interface SyncedMarginDigest {
   key: string;
@@ -1393,6 +1394,7 @@ export interface AuthUser {
   id: string;
   name: string;
   role: "guest" | "admin";
+  language: AppLanguage;
   createdAt: string;
 }
 export interface AuthSession { token: string; user: AuthUser; expiresAt: number; }
@@ -1410,11 +1412,21 @@ let usersCache: { token: string; expiresAt: number; users: AuthUser[] } | null =
 let usersRequest: { token: string; generation: number; promise: Promise<AuthUser[]> } | null = null;
 let usersCacheGeneration = 0;
 
-function isAuthUser(value: unknown): value is AuthUser {
-  if (!value || typeof value !== "object") return false;
+function normalizeAuthUser(value: unknown): AuthUser | null {
+  if (!value || typeof value !== "object") return null;
   const user = value as Partial<AuthUser>;
-  return typeof user.id === "string" && typeof user.name === "string" &&
-    (user.role === "admin" || user.role === "guest") && typeof user.createdAt === "string";
+  if (typeof user.id !== "string" || typeof user.name !== "string" ||
+      (user.role !== "admin" && user.role !== "guest") || typeof user.createdAt !== "string") {
+    return null;
+  }
+  // Accounts created before language preferences were introduced remain English by default.
+  return { ...user, language: user.language === "ru" ? "ru" : "en" } as AuthUser;
+}
+
+function normalizeAuthSession(session: AuthSession): AuthSession {
+  const user = normalizeAuthUser(session?.user);
+  if (!user) throw new Error("The authenticated user response was invalid.");
+  return { ...session, user };
 }
 
 function rememberCurrentUser(token: string, user: AuthUser): void {
@@ -1486,11 +1498,13 @@ async function performAuthRequest<T>(
 export function getAuthStatus(): Promise<{ setupRequired: boolean; userCount: number }> {
   return authRequest("/api/auth/status");
 }
-export function loginAccount(name: string, password: string): Promise<AuthSession> {
-  return authRequest("/api/auth/login", { method: "POST", body: { name, password } });
+export async function loginAccount(name: string, password: string): Promise<AuthSession> {
+  const session = await authRequest<AuthSession>("/api/auth/login", { method: "POST", body: { name, password } });
+  return normalizeAuthSession(session);
 }
-export function bootstrapAdmin(name: string, password: string, bootstrapSecret: string): Promise<AuthSession> {
-  return authRequest("/api/auth/bootstrap", { method: "POST", body: { name, password, bootstrapSecret } });
+export async function bootstrapAdmin(name: string, password: string, bootstrapSecret: string): Promise<AuthSession> {
+  const session = await authRequest<AuthSession>("/api/auth/bootstrap", { method: "POST", body: { name, password, bootstrapSecret } });
+  return normalizeAuthSession(session);
 }
 export function getCurrentUser(): Promise<AuthUser> {
   const token = getActiveGatewaySecret();
@@ -1498,10 +1512,11 @@ export function getCurrentUser(): Promise<AuthUser> {
   if (currentUserCache?.token === token && currentUserCache.expiresAt > Date.now()) {
     return Promise.resolve(currentUserCache.user);
   }
-  return authRequest<{ user: AuthUser }>("/api/auth/me", { token }).then((payload) => {
-    if (!isAuthUser(payload?.user)) throw new Error("The authenticated user response was invalid.");
-    rememberCurrentUser(token, payload.user);
-    return payload.user;
+  return authRequest<{ user: unknown }>("/api/auth/me", { token }).then((payload) => {
+    const user = normalizeAuthUser(payload?.user);
+    if (!user) throw new Error("The authenticated user response was invalid.");
+    rememberCurrentUser(token, user);
+    return user;
   });
 }
 
@@ -1515,9 +1530,11 @@ export function listUsers(): Promise<AuthUser[]> {
     return usersRequest.promise;
   }
   const generation = usersCacheGeneration;
-  const request = authRequest<{ users: AuthUser[] }>("/api/auth/users", { token })
+  const request = authRequest<{ users: unknown[] }>("/api/auth/users", { token })
     .then((payload) => {
-      const users = Array.isArray(payload?.users) ? payload.users : [];
+      const users = Array.isArray(payload?.users)
+        ? payload.users.map(normalizeAuthUser).filter((user): user is AuthUser => user !== null)
+        : [];
       if (generation === usersCacheGeneration) {
         usersCache = { token, users, expiresAt: Date.now() + AUTH_READ_TTL_MS };
       }
@@ -1529,7 +1546,7 @@ export function listUsers(): Promise<AuthUser[]> {
   usersRequest = { token, generation, promise: request };
   return request;
 }
-export async function createUser(input: { name: string; password: string; role: "guest" | "admin" }): Promise<AuthUser> {
+export async function createUser(input: { name: string; password: string; role: "guest" | "admin"; language?: AppLanguage }): Promise<AuthUser> {
   const token = getActiveGatewaySecret();
   if (!token) throw new Error("Not signed in.");
   invalidateUserDirectoryCache(token);
@@ -1539,7 +1556,7 @@ export async function createUser(input: { name: string; password: string; role: 
     invalidateUserDirectoryCache(token);
   }
 }
-export async function updateUser(id: string, input: { name: string; role: "guest" | "admin"; password?: string }): Promise<AuthUser> {
+export async function updateUser(id: string, input: { name: string; role: "guest" | "admin"; language?: AppLanguage; password?: string }): Promise<AuthUser> {
   const token = getActiveGatewaySecret();
   if (!token) throw new Error("Not signed in.");
   invalidateUserDirectoryCache(token);
@@ -1548,6 +1565,21 @@ export async function updateUser(id: string, input: { name: string; role: "guest
   } finally {
     invalidateUserDirectoryCache(token);
   }
+}
+
+export async function updateMyLanguage(language: AppLanguage): Promise<AuthUser> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  invalidateUserDirectoryCache(token);
+  const payload = await authRequest<{ user: unknown }>("/api/auth/me", {
+    method: "POST",
+    token,
+    body: { language }
+  });
+  const user = normalizeAuthUser(payload?.user);
+  if (!user) throw new Error("The authenticated user response was invalid.");
+  rememberCurrentUser(token, user);
+  return user;
 }
 export async function deleteUser(id: string): Promise<void> {
   const token = getActiveGatewaySecret();
