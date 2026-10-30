@@ -64,7 +64,7 @@ export function resolvePositionEntryDate(
     }
     if (typeof value !== 'string' || !value.trim()) return undefined;
     const raw = value.trim();
-    const iso = raw.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (iso) {
       const [, year, month, day] = iso;
       const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
@@ -76,10 +76,10 @@ export function resolvePositionEntryDate(
     }
 
     // Tranche dates are also persisted/displayed in the legacy "22 Oct" form.
-    const short = raw.match(/^(\\d{1,2})\\s+([A-Za-z]{3,})$/) ||
-      raw.match(/^([A-Za-z]{3,})\\s+(\\d{1,2})$/);
+    const short = raw.match(/^(\d{1,2})\s+([A-Za-z]{3,})$/) ||
+      raw.match(/^([A-Za-z]{3,})\s+(\d{1,2})$/);
     if (!short) return undefined;
-    const dayFirst = /^\\d+$/.test(short[1]);
+    const dayFirst = /^\d+$/.test(short[1]);
     const day = Number(dayFirst ? short[1] : short[2]);
     const monthName = (dayFirst ? short[2] : short[1]).slice(0, 3).toLowerCase();
     const month = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(monthName);
