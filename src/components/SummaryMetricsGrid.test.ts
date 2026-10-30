@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getMarginTranchePreview, getMarginTrancheQuantity } from './SummaryMetricsGrid';
+import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities } from './SummaryMetricsGrid';
 
 describe('margin tranche preview', () => {
   it('hides every individual tranche by default', () => {
@@ -69,5 +69,34 @@ describe('margin tranche quantity display', () => {
     expect(getMarginTrancheQuantity({ price: 328, date: '2026-10-22' }, [...brokerLots, ...brokerLots], 'GOOGL')).toBeNull();
     expect(getMarginTrancheQuantity({ price: 328, date: '2026-10-22' }, brokerLots, 'AAPL')).toBeNull();
     expect(getMarginTrancheQuantity({ price: 329, date: '2026-10-22' }, brokerLots, 'GOOGL')).toBeNull();
+  });
+
+  it('pairs repeated GOOGL price/date rows one-to-one with matching broker open lots', () => {
+    const tranches = [
+      { price: 282, date: '2026-10-29' },
+      { price: 282, date: '2026-10-29' },
+      { price: 328, date: '2026-10-22' },
+      { price: 336.3, date: '2026-10-21' },
+      { price: 341.4, date: '2026-10-20' }
+    ];
+    const lot = (quantity: number, averagePrice: number, date: string, id: string) => ({
+      id,
+      ticker: 'GOOGL',
+      name: 'GOOGL',
+      quantity,
+      marketPrice: 423,
+      averagePrice,
+      marketValue: quantity * 423,
+      purchasedAt: Date.parse(date + 'T09:30:00.000Z')
+    });
+    const brokerLots = [
+      lot(5, 282, '2026-10-29', 'lot-1'),
+      lot(14, 282, '2026-10-29', 'lot-2'),
+      lot(10, 328, '2026-10-22', 'lot-3'),
+      lot(20, 336.3, '2026-10-21', 'lot-4'),
+      lot(20, 341.4, '2026-10-20', 'lot-5')
+    ];
+
+    expect(getMarginTrancheQuantities(tranches, brokerLots, 'GOOGL')).toEqual([5, 14, 10, 20, 20]);
   });
 });
