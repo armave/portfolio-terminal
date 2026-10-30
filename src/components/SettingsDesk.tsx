@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { emitUiEvent } from '../ui/uiEventBus';
+import { emitUiEvent, addUiEventListener, removeUiEventListener } from '../ui/uiEventBus';
 import {
   areHeaderCredentialsConfigured,
   getGatewaySecret,
@@ -48,8 +48,8 @@ export function SettingsDesk() {
       setCredentialsHidden(false);
       setIsConfigured(Boolean(secret));
     };
-    window.addEventListener('gateway-secret-authenticated', handleAuthenticated);
-    return () => window.removeEventListener('gateway-secret-authenticated', handleAuthenticated);
+    addUiEventListener('settings:gateway-secret-authenticated', handleAuthenticated);
+    return () => removeUiEventListener('settings:gateway-secret-authenticated', handleAuthenticated);
   }, []);
   const [isConfigured, setIsConfigured] = useState<boolean>(() =>
     areHeaderCredentialsConfigured()
