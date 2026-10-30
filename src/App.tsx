@@ -345,8 +345,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   // Closed History asks for trade history when mounted; do not also fetch from
   // a global navigation click listener, which caused duplicate broker requests.
   useEffect(() => {
-    // Load broker executions so margin commissions can use Freedom-reported fees
-    // when present; local commission rules remain the fallback.
+    // Broker execution history is account-wide administrator data. Guests receive
+    // only the assigned-tranche projection from /api/guest-portfolio.
+    if (currentUser?.role !== 'admin') return;
     const removeRequestListener = addBrokerEventListener('broker:request-executed-trades', () => {
       void loadExecutedTrades();
     });
@@ -358,7 +359,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeRequestListener();
       removeAwaitableRequestListener();
     };
-  }, []);
+  }, [currentUser?.role]);
 
   const loadFreedomAccount = async () => {
     if (accountRequest) return accountRequest;

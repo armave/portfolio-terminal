@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
-import { PortfolioState } from '../types/portfolio';
+import { ActiveBrokerTranche, PortfolioState } from '../types/portfolio';
 
 export interface SyncedMarginDigest {
   key: string;
@@ -154,6 +154,11 @@ export function setSecretGetter(getter: () => string): void {
 }
 
 let cloudEncryptionSecretPromise: Promise<string> | null = null;
+
+/** Drop the administrator-only workspace key when the signed-in identity changes. */
+export function clearCloudEncryptionSecretCache(): void {
+  cloudEncryptionSecretPromise = null;
+}
 
 async function resolveCloudEncryptionSecret(sessionToken: string): Promise<string> {
   if (!activeSecretGetter) return sessionToken;
@@ -679,41 +684,22 @@ export async function validateGatewaySecret(secret: string): Promise<boolean> {
   if (!cleanSecret) return false;
 
   try {
-    const url = new URL('/api/state', WORKER_PROXY_URL);
-    const response = await fetch(url.toString(), {
+    // Validate the session through the identity endpoint. Do not use /api/state:
+    // guests must never download the shared encrypted administrator portfolio.
+    const response = await fetch(new URL('/api/auth/me', WORKER_PROXY_URL), {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
         'X-App-Auth': cleanSecret,
         Authorization: `Bearer ${cleanSecret}`
-      }
+      },
+      cache: 'no-store'
     });
-
-    // The validation GET already contains the cloud payload. Keep its body
-    // briefly so startup can use it as the initial pull instead of downloading
-    // the same encrypted portfolio a second time.
-    if (response.ok || response.status === 404) {
-      // Real Fetch responses are readable; keep compatibility with minimal
-      // response mocks used by callers/tests that only expose status and ok.
-      if (typeof response.text === 'function') {
-        validatedCloudResponse = {
-          secret: cleanSecret,
-          checkedAt: Date.now(),
-          status: response.status,
-          etag: response.headers?.get('ETag') ?? null,
-          contentType: response.headers?.get('Content-Type') ?? null,
-          body: await response.text()
-        };
-      } else {
-        validatedCloudResponse = null;
-      }
-      return true;
-    }
     validatedCloudResponse = null;
-    return false;
+    return response.ok;
   } catch (error) {
     validatedCloudResponse = null;
-    console.warn('Gateway Secret validation failed:', error);
+    console.warn('Account session validation failed:', error);
     return false;
   }
 }
@@ -1443,3 +1429,43 @@ export async function logoutAccount(): Promise<void> {
   const token = getActiveGatewaySecret();
   if (token) await authRequest<{ success: boolean }>("/api/auth/logout", { method: "POST", token, body: {} });
 }
+
+
+export interface GuestPortfolioSnapshot {
+  updatedAt: number;
+  tranches: ActiveBrokerTranche[];
+}
+
+const EMPTY_GUEST_PORTFOLIO: GuestPortfolioSnapshot = { updatedAt: 0, tranches: [] };
+
+/** Read only the guest projection bound by the server to the current session. */
+export async function getGuestPortfolioSnapshot(): Promise<GuestPortfolioSnapshot> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  const response = await authRequest<{ snapshot?: GuestPortfolioSnapshot }>("/api/guest-portfolio", { token });
+  const snapshot = response?.snapshot;
+  if (!snapshot || !Array.isArray(snapshot.tranches)) return EMPTY_GUEST_PORTFOLIO;
+  return {
+    updatedAt: Number(snapshot.updatedAt) || 0,
+    tranches: snapshot.tranches.filter((tranche) =>
+      tranche && typeof tranche.id === "string" && typeof tranche.ticker === "string" &&
+      Number.isFinite(Number(tranche.quantity)) && Number(tranche.quantity) > 0
+    )
+  };
+}
+
+/** Administrator-only publication of one already-filtered guest projection. */
+export async function publishGuestPortfolioSnapshot(
+  guestId: string,
+  snapshot: GuestPortfolioSnapshot
+): Promise<void> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  await authRequest<{ success: boolean }>("/api/guest-portfolio", {
+    method: "POST",
+    token,
+    body: { guestId, snapshot: { updatedAt: snapshot.updatedAt, tranches: snapshot.tranches } }
+  });
+}
+
+

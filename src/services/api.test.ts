@@ -419,9 +419,12 @@ describe('Gateway Secret validation', () => {
     await expect((await import('./api')).validateGatewaySecret('valid-secret')).resolves.toBe(true);
   });
 
-  it('accepts valid credentials when no cloud portfolio exists yet', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+  it('validates a guest session without requesting the shared portfolio endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal('fetch', fetchMock);
     await expect((await import('./api')).validateGatewaySecret('valid-secret')).resolves.toBe(true);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/auth/me');
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('/api/state');
   });
 
   it('rejects invalid credentials', async () => {
@@ -442,6 +445,53 @@ describe('Gateway Secret validation', () => {
     vi.stubGlobal('fetch', fetchMock);
     await expect((await import('./api')).validateGatewaySecret('  ')).resolves.toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('guest portfolio projection API', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads only the authenticated guest projection', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      snapshot: { updatedAt: 100, tranches: [{
+        id: 'AAPL:buy-1', ticker: 'AAPL', name: 'Apple', quantity: 2,
+        averagePrice: 100, marketPrice: 120, marketValue: 240, purchasedAt: 50
+      }] },
+      revision: 3
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { getGuestPortfolioSnapshot } = await import('./api');
+    const snapshot = await getGuestPortfolioSnapshot();
+    expect(snapshot.tranches).toHaveLength(1);
+    expect(snapshot.tranches[0]).toMatchObject({ ticker: 'AAPL', quantity: 2 });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/guest-portfolio');
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
+      Authorization: 'Bearer test-gateway-secret',
+      'X-App-Auth': 'test-gateway-secret'
+    });
+  });
+
+  it('publishes a guest-only projection using the authenticated administrator session', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, revision: 4 }), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { publishGuestPortfolioSnapshot } = await import('./api');
+    await publishGuestPortfolioSnapshot('guest-1', {
+      updatedAt: 200,
+      tranches: [{
+        id: 'MSFT:buy-2', ticker: 'MSFT', name: 'Microsoft', quantity: 1.5,
+        averagePrice: 300, marketPrice: 320, marketValue: 480, purchasedAt: 60
+      } as any]
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/guest-portfolio');
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({
+      guestId: 'guest-1',
+      snapshot: { tranches: [expect.objectContaining({ ticker: 'MSFT', quantity: 1.5 })] }
+    });
   });
 });
 

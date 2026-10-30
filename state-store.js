@@ -13,10 +13,9 @@ function jsonResponse(body, status = 200, revision = null) {
 }
 
 /**
- * Stores the shared encrypted portfolio and account records in one durable
- * instance. Accounts are role-based (admin/guest), not tenant-isolated; all
- * authenticated users see the same portfolio. The Gateway Secret is used only
- * by the public Worker to authorize one-time initial admin bootstrap.
+ * Stores the administrator's encrypted workspace and server-owned guest projections.
+ * Guest projection reads are bound to the authenticated guest session; guests cannot
+ * read the shared workspace, closed history, or its encryption key.
  */
 
 const AUTH_USERS_KEY = "auth:users";
@@ -209,6 +208,7 @@ export class PortfolioStateDO {
     if (request.method === "GET" && pathname === "/api/auth/cloud-key") {
       const session = await this.resolveSession(request);
       if (!session) return authJson({ error: "Authentication required." }, 401);
+      if (session.user.role !== "admin") return authJson({ error: "Administrator access required." }, 403);
       const key = await this.ctx.storage.get(AUTH_CLOUD_KEY_KEY);
       if (typeof key !== "string" || !key) return authJson({ error: "Shared cloud encryption key is not initialized." }, 500);
       return authJson({ key });
@@ -289,6 +289,9 @@ export class PortfolioStateDO {
           return { user: next, passwordChanged: Boolean(passwordSalt) };
         });
         if (updated.error) return authJson({ error: updated.error }, updated.status);
+        // A role/name/password change invalidates any previously published
+        // guest projection until the administrator republishes the current assignment.
+        await this.ctx.storage.delete("guest-portfolio:" + id);
         if (updated.passwordChanged) await this.revokeUserSessions(id, session.sessionKey);
         return authJson({ user: publicUser(updated.user) });
       }
@@ -306,10 +309,157 @@ export class PortfolioStateDO {
         });
         if (removed.error) return authJson({ error: removed.error }, removed.status);
         await this.revokeUserSessions(id);
+        await this.ctx.storage.delete("guest-portfolio:" + id);
         return authJson({ success: true });
       }
     }
     return authJson({ error: "Unsupported authentication endpoint." }, 404);
+  }
+
+  async encryptGuestProjection(snapshot) {
+    const workspaceKey = await this.ctx.storage.get(AUTH_CLOUD_KEY_KEY);
+    if (typeof workspaceKey !== "string" || !workspaceKey) {
+      throw new Error("Workspace encryption key is not initialized.");
+    }
+    const digest = await crypto.subtle.digest("SHA-256", authEncoder.encode(workspaceKey));
+    const key = await crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt"]);
+    const nonce = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: nonce, tagLength: 128 },
+      key,
+      authEncoder.encode(JSON.stringify(snapshot))
+    );
+    const toBase64 = (bytes) => {
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary);
+    };
+    return "aesgcm:v1:" + toBase64(nonce) + ":" + toBase64(new Uint8Array(ciphertext));
+  }
+
+  async decryptGuestProjection(envelope) {
+    if (typeof envelope !== "string" || !envelope.startsWith("aesgcm:v1:")) {
+      throw new Error("Invalid guest portfolio envelope.");
+    }
+    const workspaceKey = await this.ctx.storage.get(AUTH_CLOUD_KEY_KEY);
+    if (typeof workspaceKey !== "string" || !workspaceKey) {
+      throw new Error("Workspace encryption key is not initialized.");
+    }
+    const parts = envelope.slice("aesgcm:v1:".length).split(":");
+    if (parts.length !== 2) throw new Error("Invalid guest portfolio envelope.");
+    const fromBase64 = (value) => {
+      const binary = atob(value);
+      return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    };
+    const nonce = fromBase64(parts[0]);
+    const ciphertext = fromBase64(parts[1]);
+    if (nonce.byteLength !== 12 || ciphertext.byteLength < 16) {
+      throw new Error("Invalid guest portfolio envelope.");
+    }
+    const digest = await crypto.subtle.digest("SHA-256", authEncoder.encode(workspaceKey));
+    const key = await crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["decrypt"]);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: nonce, tagLength: 128 },
+      key,
+      ciphertext
+    );
+    const parsed = JSON.parse(new TextDecoder().decode(plaintext));
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.tranches)) {
+      throw new Error("Invalid guest portfolio snapshot.");
+    }
+    return parsed;
+  }
+
+  async handleGuestPortfolio(request) {
+    const session = await this.resolveSession(request);
+    if (!session) return authJson({ error: "Authentication required." }, 401);
+
+    if (request.method === "GET") {
+      if (session.user.role !== "guest") return authJson({ error: "Guest account required." }, 403);
+      const record = await this.ctx.storage.get("guest-portfolio:" + session.user.id);
+      const revision = Number.isSafeInteger(record?.revision) ? record.revision : 0;
+      let snapshot = { updatedAt: 0, tranches: [] };
+      if (record?.encryptedSnapshot) {
+        try {
+          snapshot = await this.decryptGuestProjection(record.encryptedSnapshot);
+        } catch {
+          return authJson({ error: "Guest portfolio snapshot could not be decrypted." }, 500);
+        }
+      }
+      return new Response(JSON.stringify({ snapshot, revision }), {
+        status: 200,
+        headers: { ...CORS_HEADERS, "Cache-Control": "no-store", ETag: `"${revision}"` }
+      });
+    }
+
+    if (request.method !== "POST" || session.user.role !== "admin") {
+      return authJson({ error: "Administrator role required." }, 403);
+    }
+
+    const rawBody = await request.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 512 * 1024) {
+      return authJson({ error: "Guest portfolio snapshot exceeds the 512 KB limit." }, 413);
+    }
+    let body;
+    try { body = JSON.parse(rawBody); } catch { return authJson({ error: "Invalid guest portfolio JSON." }, 400); }
+    const guestId = typeof body?.guestId === "string" ? body.guestId.trim() : "";
+    const source = body?.snapshot;
+    if (!guestId || !source || typeof source !== "object" || Array.isArray(source) ||
+        !Number.isFinite(Number(source.updatedAt)) || !Array.isArray(source.tranches) ||
+        source.tranches.length > 500) {
+      return authJson({ error: "Invalid guest portfolio snapshot." }, 400);
+    }
+
+    const guest = (await this.getAuthUsers()).find((user) => user.id === guestId && user.role === "guest");
+    if (!guest) return authJson({ error: "Target guest account does not exist." }, 404);
+
+    const seenIds = new Set();
+    const tranches = [];
+    for (const item of source.tranches) {
+      const id = typeof item?.id === "string" ? item.id.trim() : "";
+      const ticker = typeof item?.ticker === "string" ? item.ticker.trim().toUpperCase() : "";
+      const name = typeof item?.name === "string" ? item.name.trim().slice(0, 120) : ticker;
+      const quantity = Number(item?.quantity);
+      if (!id || id.length > 200 || seenIds.has(id) || !/^[A-Z0-9.^=-]{1,20}$/.test(ticker) ||
+          !Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9) {
+        return authJson({ error: "Guest portfolio contains an invalid tranche." }, 400);
+      }
+      seenIds.add(id);
+      const positiveOrNull = (value) => {
+        const parsed = Number(value);
+        return value !== null && value !== undefined && value !== "" && Number.isFinite(parsed) && parsed > 0
+          ? parsed : null;
+      };
+      const purchasedAt = Number(item?.purchasedAt);
+      const averagePrice = positiveOrNull(item?.averagePrice);
+      const marketPrice = positiveOrNull(item?.marketPrice);
+      tranches.push({
+        id, ticker, name, quantity,
+        averagePrice,
+        marketPrice,
+        marketValue: marketPrice === null ? null : marketPrice * quantity,
+        purchasedAt: Number.isFinite(purchasedAt) && purchasedAt > 0 ? purchasedAt : null
+      });
+    }
+
+    const snapshot = { updatedAt: Number(source.updatedAt), tranches };
+    let encryptedSnapshot;
+    try {
+      encryptedSnapshot = await this.encryptGuestProjection(snapshot);
+    } catch {
+      return authJson({ error: "Guest portfolio snapshot could not be encrypted." }, 500);
+    }
+    const key = "guest-portfolio:" + guestId;
+    const revision = await this.ctx.storage.transaction(async () => {
+      const current = await this.ctx.storage.get(key);
+      const nextRevision = (Number.isSafeInteger(current?.revision) ? current.revision : 0) + 1;
+      await this.ctx.storage.put(key, { encryptedSnapshot, revision: nextRevision });
+      return nextRevision;
+    });
+    return new Response(JSON.stringify({ success: true, revision }), {
+      status: 200,
+      headers: { ...CORS_HEADERS, "Cache-Control": "no-store", ETag: `"${revision}"` }
+    });
   }
 
   async fetch(request) {
@@ -323,6 +473,7 @@ export class PortfolioStateDO {
 
     const requestUrl = new URL(request.url);
     if (requestUrl.pathname.startsWith("/api/auth/")) return this.handleAuth(request);
+    if (requestUrl.pathname === "/api/guest-portfolio") return this.handleGuestPortfolio(request);
 
     await this.ensureInitialized();
     const requestPath = requestUrl.pathname;

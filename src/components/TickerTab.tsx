@@ -4,7 +4,6 @@ import { usePortfolio } from '../store/portfolioStore';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
 import { emitUiEvent } from '../ui/uiEventBus';
-import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings } from '../domain/guestPortfolio';
 
 export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; userId?: string } = {}) {
@@ -59,16 +58,17 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
     marginPositions: Object.values(state.positions || {}),
     cashHoldings: state.cashCushion?.holdings || []
   });
+  const guestTranches = state.guestPortfolioSnapshot?.tranches || [];
+  const guestAssignments = userId
+    ? Object.fromEntries(guestTranches.map((tranche) => [tranche.id, userId]))
+    : {};
+  const guestTypes = Object.fromEntries(guestTranches.map((tranche) => [tranche.id, 'cash' as const]));
   const guestEquity = !isAdmin && userId
     ? calculateGuestPersonalEquity(getGuestAssignedCashHoldings({
       guestId: userId,
-      activeTranches: getActiveTranchesFromTrades(
-        state.brokerExecutedTrades as any,
-        state.brokerAccountInfo
-      ),
-      assignments: state.activeTrancheGuestAssignments,
-      types: state.activeTrancheTypes,
-      mixes: state.activeTrancheMixes,
+      activeTranches: guestTranches,
+      assignments: guestAssignments,
+      types: guestTypes,
       cashHoldings: state.cashCushion?.holdings || []
     }))
     : 0;

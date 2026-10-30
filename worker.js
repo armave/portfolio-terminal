@@ -424,13 +424,20 @@ export default {
         if (request.method === "POST" && accountRole !== "admin" && !gatewayAdmin) {
             return jsonError("Guest accounts have read-only access.", 403, corsHeaders);
         }
-
         // Parse and validate the request contract before reading any POST body.
         // Authenticated but invalid requests should not consume the body budget.
         const url = new URL(request.url);
         const action = url.searchParams.get("action");
         const pathname = url.pathname;
         const symbol = (url.searchParams.get("symbol") || url.searchParams.get("ticker") || "").toUpperCase();
+
+        if (accountRole === "guest") {
+            const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest"].includes(pathname);
+            const sharedDataAction = ["state", "history", "freedom-test", "freedom-positions", "freedom-trades", "freedom-orders", "freedom-cashflows"].includes(action);
+            if (sharedDataPath || sharedDataAction) {
+                return jsonError("This data is restricted to administrator accounts.", 403, corsHeaders);
+            }
+        }
 
         if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
@@ -611,7 +618,7 @@ export default {
             }
 
             // --- ACTION 0: Durable Object cloud portfolio state ---
-            if (pathname === "/api/state" || pathname === "/api/history" || pathname === "/api/margin-digest" || action === "state" || action === "history") {
+            if (pathname === "/api/state" || pathname === "/api/history" || pathname === "/api/margin-digest" || pathname === "/api/guest-portfolio" || action === "state" || action === "history") {
                 if (!env.PORTFOLIO_STATE_DO) {
                     return new Response(JSON.stringify({ error: "PORTFOLIO_STATE_DO binding is missing." }), {
                         status: 500,

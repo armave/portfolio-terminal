@@ -70,7 +70,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       setExecutedTrades(trades as unknown as FreedomExecutedTradeLike[]);
     });
     const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => setExecutedTrades([]));
-    emitBrokerEvent('broker:request-executed-trades');
+    // Guests never request account-wide broker execution history.
+    if (showActiveTranches || isAdmin) emitBrokerEvent('broker:request-executed-trades');
     return () => {
       removeTradesListener();
       removeErrorListener();
@@ -100,26 +101,31 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     return () => { cancelled = true; };
   }, [showActiveTranches]);
 
-  const activeTranches = getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo)
-    .map((tranche) => {
-      const cashHolding = (state.cashCushion?.holdings || []).find(
-        (holding) => String(holding.ticker || '').trim().toUpperCase() === tranche.ticker
-      );
-      const marginPosition = state.positions?.[tranche.ticker];
-      const latestPrice = Number(
-        cashHolding?.currentPrice ?? cashHolding?.price ??
-        marginPosition?.currentPrice ?? tranche.marketPrice
-      );
-      if (!Number.isFinite(latestPrice) || latestPrice <= 0 || latestPrice === tranche.marketPrice) return tranche;
-      return { ...tranche, marketPrice: latestPrice, marketValue: latestPrice * tranche.quantity };
-    });
+  const activeTrancheSource = guestUserId
+    ? (state.guestPortfolioSnapshot?.tranches || [])
+    : getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
+  const activeTrancheGuestAssignments = guestUserId
+    ? Object.fromEntries(activeTrancheSource.map((tranche) => [tranche.id, guestUserId]))
+    : state.activeTrancheGuestAssignments;
+  const activeTrancheTypes = guestUserId
+    ? Object.fromEntries(activeTrancheSource.map((tranche) => [tranche.id, 'cash' as ActiveTrancheType]))
+    : state.activeTrancheTypes;
+  const activeTrancheMixes = guestUserId ? {} : state.activeTrancheMixes;
+  const activeTranches = activeTrancheSource.map((tranche) => {
+    const cashHolding = (state.cashCushion?.holdings || []).find(
+      (holding) => String(holding.ticker || '').trim().toUpperCase() === tranche.ticker
+    );
+    const latestPrice = Number(cashHolding?.currentPrice ?? cashHolding?.price ?? tranche.marketPrice);
+    if (!Number.isFinite(latestPrice) || latestPrice <= 0 || latestPrice === tranche.marketPrice) return tranche;
+    return { ...tranche, marketPrice: latestPrice, marketValue: latestPrice * tranche.quantity };
+  });
   const guestHoldings = guestUserId
     ? getGuestAssignedCashHoldings({
       guestId: guestUserId,
       activeTranches,
-      assignments: state.activeTrancheGuestAssignments,
-      types: state.activeTrancheTypes,
-      mixes: state.activeTrancheMixes,
+      assignments: activeTrancheGuestAssignments,
+      types: activeTrancheTypes,
+      mixes: activeTrancheMixes,
       cashHoldings: state.cashCushion?.holdings || []
     })
     : [];
@@ -216,12 +222,12 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               const pnlPercent = costValue && costValue > 0 ? pnl! / costValue * 100 : null;
               const change = holding.quoteDetails?.changePercent;
               const relatedTranches = activeTranches
-                .filter((tranche) => state.activeTrancheGuestAssignments?.[tranche.id] === guestUserId && tranche.ticker.toUpperCase() === holding.ticker)
+                .filter((tranche) => activeTrancheGuestAssignments?.[tranche.id] === guestUserId && tranche.ticker.toUpperCase() === holding.ticker)
                 .map((tranche) => {
-                  const trancheType = state.activeTrancheTypes?.[tranche.id] || state.activeTrancheTypes?.[holding.ticker] || 'cash';
+                  const trancheType = activeTrancheTypes?.[tranche.id] || activeTrancheTypes?.[holding.ticker] || 'cash';
                   const mix = normalizeActiveTrancheMix(
                     tranche.quantity,
-                    state.activeTrancheMixes?.[tranche.id] || state.activeTrancheMixes?.[holding.ticker]
+                    activeTrancheMixes?.[tranche.id] || activeTrancheMixes?.[holding.ticker]
                   );
                   const assignedShares = getAssignableActiveTrancheCashQuantity(trancheType, tranche.quantity, mix);
                   return { ...tranche, trancheType, mix, assignedShares };
