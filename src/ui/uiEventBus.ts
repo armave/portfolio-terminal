@@ -1,4 +1,3 @@
-
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
   'terminal:auth-visibility': { isOpen: boolean };
@@ -26,37 +25,42 @@ export interface UiEventPayloads {
 }
 
 export type UiEventName = keyof UiEventPayloads;
-const listeners = new Map<UiEventName, Set<(detail: unknown) => void>>();
-const listenerWrappers = new WeakMap<(event: Event) => void, (detail: unknown) => void>();
 
-/** Publish a typed UI update to current subscribers. */
+export interface UiEvent<Detail = unknown> {
+  readonly type: UiEventName;
+  readonly detail: Detail;
+}
+
+type AnyUiEventListener = (event: UiEvent<unknown>) => void;
+const listeners = new Map<UiEventName, Set<AnyUiEventListener>>();
+
+/** Publish a typed application message to a snapshot of the active subscribers. */
 export function emitUiEvent<K extends UiEventName>(
   type: K,
   ...args: UiEventPayloads[K] extends undefined ? [detail?: undefined] : [detail: UiEventPayloads[K]]
 ): void {
-  const detail = args[0];
-  listeners.get(type)?.forEach((listener) => listener(detail));
+  const bucket = listeners.get(type);
+  if (!bucket?.size) return;
+
+  const event: UiEvent<UiEventPayloads[K]> = { type, detail: args[0] };
+  [...bucket].forEach((listener) => listener(event as UiEvent<unknown>));
 }
 
 export function addUiEventListener<K extends UiEventName>(
   type: K,
-  listener: (event: CustomEvent<UiEventPayloads[K]>) => void
+  listener: (event: UiEvent<UiEventPayloads[K]>) => void
 ): void {
-  const bucket = listeners.get(type) ?? new Set<(detail: unknown) => void>();
-  const wrapped = (detail: unknown) => listener({ type, detail } as CustomEvent<UiEventPayloads[K]>);
-  listenerWrappers.set(listener as (event: Event) => void, wrapped);
-  bucket.add(wrapped);
+  const bucket = listeners.get(type) ?? new Set<AnyUiEventListener>();
+  bucket.add(listener as unknown as AnyUiEventListener);
   listeners.set(type, bucket);
 }
 
 export function removeUiEventListener<K extends UiEventName>(
   type: K,
-  listener: (event: CustomEvent<UiEventPayloads[K]>) => void
+  listener: (event: UiEvent<UiEventPayloads[K]>) => void
 ): void {
   const bucket = listeners.get(type);
-  const wrapped = listenerWrappers.get(listener as (event: Event) => void);
-  if (!bucket || !wrapped) return;
-  bucket.delete(wrapped);
-  listenerWrappers.delete(listener as (event: Event) => void);
+  if (!bucket) return;
+  bucket.delete(listener as unknown as AnyUiEventListener);
   if (bucket.size === 0) listeners.delete(type);
 }
