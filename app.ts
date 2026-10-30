@@ -1374,7 +1374,7 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
     showToast('Secure storage failed. Re-enter the Gateway Secret after refresh.', 'error');
   }
 
-  window.dispatchEvent(new CustomEvent('gateway-secret-authenticated', { detail: { secret: submittedSecret } }));
+  emitUiEvent('settings:gateway-secret-authenticated', { secret: submittedSecret });
   if (!appInitialized) {
     await startApp(submittedSecret);
     appInitialized = true;
