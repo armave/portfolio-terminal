@@ -1498,7 +1498,7 @@ async function startApp(secret: string) {
   loadTradernetRules();
   // Establish read/write permissions before importing state or refreshing quotes.
   if (secret) await publishCurrentUser();
-  else isGuestSession = false;
+  else canWriteCloudState = false;
   portfolioStore.setState({ gatewaySecret: secret });
   portfolioStore.importState(loadSavedState(portfolioStore.getState()));
   state = portfolioStore.getState();
