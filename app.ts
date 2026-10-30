@@ -634,7 +634,6 @@ function renderBoard() {
     rules: TRADERNET_RULES as any,
     onRenderAnalystConsensus: renderBoardAnalystConsensus,
     onUpdateCombinedBreakeven: updateCombinedBreakeven,
-    refreshIntervalMs: getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS),
     lastDeskView: lastRenderedDeskView,
     onUpdateLastDeskView: (view: string) => { lastRenderedDeskView = view; }
   });
