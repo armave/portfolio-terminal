@@ -63,7 +63,7 @@ function publicUser(user) {
 }
 function validAccountInput(name, password) {
   return name.length >= 2 && name.length <= 60 &&
-    typeof password === "string" && password.length >= 12 && password.length <= 128;
+    typeof password === "string" && password.length >= 6 && password.length <= 128;
 }
 
 export class PortfolioStateDO {
@@ -146,7 +146,7 @@ export class PortfolioStateDO {
       const workspaceEncryptionKey = request.headers.get("X-Workspace-Encryption-Key") || "";
       if (!workspaceEncryptionKey) return authJson({ error: "Initial workspace encryption key is not configured." }, 500);
       const name = normalizeAccountName(body.name);
-      if (!validAccountInput(name, body.password)) return authJson({ error: "Use a name of 2–60 characters and a password of 12–128 characters." }, 400);
+      if (!validAccountInput(name, body.password)) return authJson({ error: "Use a name of 2–60 characters and a password of 6–128 characters." }, 400);
       const salt = toHex(crypto.getRandomValues(new Uint8Array(16)));
       const passwordHash = await derivePasswordHash(body.password, salt);
       const user = {
@@ -228,7 +228,7 @@ export class PortfolioStateDO {
         const name = normalizeAccountName(body.name);
         if (body.role !== undefined && body.role !== "admin" && body.role !== "guest") return authJson({ error: "Role must be either admin or guest." }, 400);
         const role = body.role === "admin" ? "admin" : "guest";
-        if (!validAccountInput(name, body.password)) return authJson({ error: "Use a name of 2–60 characters and a password of 12–128 characters." }, 400);
+        if (!validAccountInput(name, body.password)) return authJson({ error: "Use a name of 2–60 characters and a password of 6–128 characters." }, 400);
         const salt = toHex(crypto.getRandomValues(new Uint8Array(16)));
         const passwordHash = await derivePasswordHash(body.password, salt);
         const user = {
@@ -251,8 +251,8 @@ export class PortfolioStateDO {
         const role = body.role === undefined ? undefined : (body.role === "admin" || body.role === "guest" ? body.role : null);
         const password = body.password;
         if (!id || (name !== undefined && (name.length < 2 || name.length > 60)) || role === null ||
-            (password !== undefined && password !== "" && (typeof password !== "string" || password.length < 12 || password.length > 128))) {
-          return authJson({ error: "Invalid update. Passwords must be 12–128 characters when changing them." }, 400);
+            (password !== undefined && password !== "" && (typeof password !== "string" || password.length < 6 || password.length > 128))) {
+          return authJson({ error: "Invalid update. Passwords must be 6–128 characters when changing them." }, 400);
         }
         const passwordSalt = typeof password === "string" && password
           ? toHex(crypto.getRandomValues(new Uint8Array(16))) : undefined;
