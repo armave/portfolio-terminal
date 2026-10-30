@@ -15,8 +15,9 @@ import { EmptyStatePanel } from './components/EmptyStatePanel';
 import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
 import { MarginIntelligenceModal, type MarginIntelligenceState, type MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/commandDispatcher';
-import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest } from './services/api';
+import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
 import { portfolioStore, usePortfolio, usePortfolioSelector } from './store/portfolioStore';
+import { getAccountPermissions } from './domain/accountPermissions';
 import { resolveActiveView } from './ui/renderBoard';
 import { ScenarioReportModal } from './components/ScenarioReportModal';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
@@ -33,6 +34,8 @@ interface AppProps {
 
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const permissions = getAccountPermissions(currentUser?.role);
   const backupImportInputRef = useRef<HTMLInputElement>(null);
   const mainWorkspaceRef = useRef<HTMLElement>(null);
   const activeDeskView = usePortfolioSelector(resolveActiveView);
@@ -60,8 +63,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
 
   useEffect(() => {
+    if (!permissions.canViewMarginDesk) {
+      setMarginIntelligence(null);
+      return;
+    }
     let requestGeneration = 0;
     const handleMarginIntelligence = async (event: UiEvent<{ ticker?: string; refresh?: boolean }>) => {
+      if (!permissions.canViewMarginDesk) return;
       const detail = event.detail;
       const requestedTicker = String(detail?.ticker || '').trim().toUpperCase();
       const snapshot = portfolioStore.getState();
@@ -290,7 +298,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       requestGeneration += 1;
       removeUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
     };
-  }, []);
+  }, [permissions.canViewMarginDesk]);
 
   // Register shell event listeners synchronously after mount. Startup dispatches
   // auth/loading events immediately after render; passive effects can miss them.
@@ -299,7 +307,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       setAuthOpen(event.detail.isOpen);
     };
     const handleScenarioModal = (event: UiEvent<unknown>) => setScenarioModalData((event.detail as ScenarioModalData | null) ?? null);
-    const handleBackupImportRequest = () => backupImportInputRef.current?.click();
+    const handleBackupImportRequest = () => {
+      if (permissions.canManageBackups) backupImportInputRef.current?.click();
+    };
+    const handleAuthUserChanged = (event: UiEvent<{ user: AuthUser | null }>) => setCurrentUser(event.detail.user);
     const handleScrollWorkspace = () => {
       requestAnimationFrame(() => {
         mainWorkspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -309,6 +320,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     addUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
     addUiEventListener('terminal:scenario-modal', handleScenarioModal);
     addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
+    addUiEventListener('auth:user-changed', handleAuthUserChanged);
     const handleStartupState = (event: UiEvent<{ visible: boolean; failed: boolean }>) => setStartupState(event.detail);
     addUiEventListener('terminal:startup-state', handleStartupState);
     return () => {
@@ -316,15 +328,19 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
       removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
+      removeUiEventListener('auth:user-changed', handleAuthUserChanged);
       removeUiEventListener('terminal:startup-state', handleStartupState);
     };
-  }, []);
+  }, [permissions.canManageBackups]);
 
   useEffect(() => {
-    if (activeDeskView === 'CLOSED_HISTORY') setHasOpenedClosedHistory(true);
+    if (currentUser?.role === 'guest' && !['CASH_CUSHION', 'BALANCE', 'SETTINGS'].includes(activeDeskView)) {
+      emitUiEvent('portfolio:set-active-view', { view: 'BALANCE' });
+    }
+    if (activeDeskView === 'CLOSED_HISTORY' && permissions.canViewClosedHistory) setHasOpenedClosedHistory(true);
     if (activeDeskView === 'CASH_CUSHION' || activeDeskView === 'BALANCE') setHasOpenedCashCushion(true);
     if (activeDeskView === 'SETTINGS') setHasOpenedSettings(true);
-  }, [activeDeskView]);
+  }, [activeDeskView, currentUser?.role, permissions.canViewClosedHistory]);
 
   // Closed History asks for trade history when mounted; do not also fetch from
   // a global navigation click listener, which caused duplicate broker requests.
@@ -428,7 +444,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs /></div>
+          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs isAdmin={permissions.isAdmin} /></div>
           <div
             class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             id="daysToBreakeven"
@@ -440,7 +456,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
         <div id="tradingWorkspaceGrid" class={"trading-workspace-grid " + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
-          <div id="mainDeskContainer" class={"space-y-4 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
+          <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
             <div
               id="emptyStatePanel"
               class={"border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4 " + (emptyStateVisible ? "" : "hidden")}
@@ -497,10 +513,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           </div>
 
           {/* Cash Cushion Management Panel */}
-          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk />}</div>
+          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} />}</div>
 
           {/* Keep the command console available on both Margin and Cash desks. */}
-          <div id="tradingTerminalColumn" class="trading-terminal-column">
+          {permissions.canUseTerminal && <div id="tradingTerminalColumn" class="trading-terminal-column">
             <section
               id="marketInsightsPanel"
               key={`market-insights-${activeDeskView}`}
@@ -512,7 +528,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               key={`trading-console-${activeDeskView}`}
               class={"desk-view-transition trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             ><TradingConsole /></div>
-          </div>
+          </div>}
 
         </div>
       </main>
@@ -521,8 +537,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       <div
         id="closedHistoryContainer"
        
-        class={"desk-view-transition rounded-lg " + (activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
-      >{hasOpenedClosedHistory && <ClosedHistoryDesk />}</div>
+        class={"desk-view-transition rounded-lg " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
+      >{permissions.canViewClosedHistory && hasOpenedClosedHistory && <ClosedHistoryDesk />}</div>
 
       {/* Settings */}
       <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && <SettingsDesk />}</div>
@@ -533,16 +549,16 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       </div>
       {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} />}
       {scenarioReport !== null && <ScenarioReportModal key={scenarioReport} report={scenarioReport} onClose={dismissScenarioReport} />}
-      {marginIntelligence && <MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} />}
+      {permissions.canViewMarginDesk && marginIntelligence && <MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} />}
       <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="assertive">
         {errorToasts.map((toast) => <div key={toast.id} role="alert" class={'pointer-events-auto rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all ' + (toast.isClosing ? 'opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
       </div>
-      <div id="cloudStatus" class="flex items-center gap-2 text-[10px] font-mono text-slate-400" aria-live="polite">
+      {permissions.canViewKvStatus && <div id="cloudStatus" class="flex items-center gap-2 text-[10px] font-mono text-slate-400" aria-live="polite">
         <span class={`w-1.5 h-1.5 rounded-full ${cloudStatus.status === 'syncing' ? 'bg-amber-400 animate-pulse' : cloudStatus.status === 'synced' ? 'bg-emerald-400' : cloudStatus.status === 'error' ? 'bg-rose-400' : 'bg-slate-500'}`} />
         <span>KV: {cloudStatus.text.toUpperCase()}</span>
         {cloudSyncStatus.text && <span class={`ml-2 ${cloudSyncStatus.status === 'synced' ? 'text-emerald-400' : 'text-rose-400'}`}>{cloudSyncStatus.text}</span>}
-      </div>
-      <input
+      </div>}
+      {permissions.canManageBackups && <input
         ref={backupImportInputRef}
         type="file"
         id="importFileInput"
@@ -552,9 +568,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           const input = event.currentTarget as HTMLInputElement;
           const file = input.files?.[0];
           input.value = '';
-          if (file) emitUiEvent('terminal:backup-import-file', { file });
+          if (file && permissions.canManageBackups) emitUiEvent('terminal:backup-import-file', { file });
         }}
-      />
+      />}
       {startupState.visible && <div class="startup-loading fixed inset-0 z-[100] flex items-center justify-center" role="status" aria-live="polite">
         <div class="startup-loading__content">
           <div class="startup-loading__mark" aria-hidden="true">PT</div>

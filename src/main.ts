@@ -17,7 +17,7 @@ registerSW({ immediate: true });
  * be needed.
  */
 function disableAutofillForNonAuthFields() {
-  const authFieldSelector = '#gatewaySecretInput';
+  const authFieldSelector = '#gatewaySecretInput, #authUserName, #authPassword, #bootstrapSecret';
   const fieldSelector = 'input, textarea, select';
 
   const configureField = (field: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement) => {

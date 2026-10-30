@@ -27,7 +27,9 @@ import {
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
-  validateGatewaySecret
+  validateGatewaySecret,
+  getAuthStatus,
+  getCurrentUser
 } from './src/services/api';
 import {
   areHeaderCredentialsConfigured,
@@ -189,7 +191,8 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     renderBoard();
   });
 
-  addBrokerEventListener('broker:set-active-tranche-type', (detail) => {
+  addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
+    if (!(await requireAdmin('change active tranche classifications'))) return;
     const operationId = String(detail?.ticker || '').trim();
     const selectedType = detail?.type;
     if (!operationId || (selectedType !== 'cash' && selectedType !== 'margin' && selectedType !== 'mix')) return;
@@ -1356,10 +1359,28 @@ function hideStartupLoading() {
 
 setSecretGetter(() => getGatewaySecret());
 
+async function publishCurrentUser() {
+  try {
+    const user = await getCurrentUser();
+    emitUiEvent('auth:user-changed', { user });
+    return user;
+  } catch {
+    emitUiEvent('auth:user-changed', { user: null });
+    return null;
+  }
+}
+
+async function requireAdmin(action: string): Promise<boolean> {
+  const user = await publishCurrentUser();
+  if (user?.role === 'admin') return true;
+  showToast(`Only administrators can ${action}.`, 'error');
+  return false;
+}
+
 export async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
   const submittedSecret = secret.trim();
   if (!submittedSecret) {
-    showToast('Please enter the Gateway Secret.', 'error');
+    showToast('Please sign in with your account.', 'error');
     return false;
   }
 
@@ -1371,13 +1392,15 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
   const persisted = await persistGatewaySecret();
   portfolioStore.setState({ gatewaySecret: submittedSecret });
   if (!persisted) {
-    showToast('Secure storage failed. Re-enter the Gateway Secret after refresh.', 'error');
+    showToast('Secure session storage failed. Sign in again after refresh.', 'error');
   }
 
   emitUiEvent('settings:gateway-secret-authenticated', { secret: submittedSecret });
   if (!appInitialized) {
     await startApp(submittedSecret);
     appInitialized = true;
+  } else {
+    await publishCurrentUser();
   }
   // Keep the modal visible until startup and the initial cloud-data pull finish.
   hideAuthContainer();
@@ -1406,6 +1429,7 @@ async function startApp(secret: string) {
   applyOvernightRollover();
 
   if (secret) await syncCloudState('pull');
+  await publishCurrentUser();
 
   const initialQuoteRefreshInterval = getQuoteRefreshInterval(DEFAULT_QUOTE_REFRESH_INTERVAL_MS);
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
@@ -1435,11 +1459,18 @@ export async function initApp() {
 
   try {
     const secret = await restoreGatewaySecret();
-    if (secret) {
+    if (secret && await validateGatewaySecret(secret)) {
       appInitialized = true;
       hideAuthContainer();
       await startApp(secret);
     } else {
+      const authStatus = await getAuthStatus();
+      // During first account setup the old Gateway Secret is still needed to
+      // decrypt existing cloud state. Keep it until the admin bootstrap succeeds.
+      if (secret && !authStatus.setupRequired) {
+        saveGatewaySecret('');
+        await persistGatewaySecret();
+      }
       loadTradernetRules();
       portfolioStore.importState(loadSavedState(portfolioStore.getState()));
       state = portfolioStore.getState();
@@ -1466,19 +1497,34 @@ function bindStartupActions() {
   });
   addUiEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
   addUiEventListener('portfolio:set-active-view', (event) => {
-    setActiveView(event.detail.view);
+    void (async () => {
+      const requestedView = event.detail.view;
+      const user = await getCurrentUser().catch(() => null);
+      if (user?.role !== 'admin' && !['BALANCE', 'CASH_CUSHION', 'SETTINGS'].includes(requestedView)) {
+        setActiveView('BALANCE');
+        return;
+      }
+      setActiveView(requestedView);
+    })();
   });
   addUiEventListener('portfolio:refresh-live-prices', (event) => {
     void refreshAllLivePrices().finally(event.detail.resolve);
   });
   addUiEventListener('terminal:execute-command', (event) => {
-    void executeCommand(event.detail.command);
+    void (async () => {
+      if (!(await requireAdmin('use the trading terminal'))) return;
+      await executeCommand(event.detail.command);
+    })();
   });
   addUiEventListener('settings:save-broker-rules', (event) => {
-    saveBrokerRuleInputs(event.detail.values);
+    void requireAdmin('change broker rules').then((allowed) => {
+      if (allowed) saveBrokerRuleInputs(event.detail.values);
+    });
   });
   addUiEventListener('settings:reset-broker-rules', () => {
-    resetBrokerRules();
+    void requireAdmin('reset broker rules').then((allowed) => {
+      if (allowed) resetBrokerRules();
+    });
   });
   addUiEventListener('settings:save-api-keys', (event) => {
     void (async () => {
@@ -1500,16 +1546,42 @@ function bindStartupActions() {
       }
     })();
   });
+
+  addUiEventListener('auth:logout', () => {
+    void (async () => {
+      try {
+        const { logoutAccount } = await import('./src/services/api');
+        await logoutAccount();
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Could not sign out cleanly.', 'error');
+      } finally {
+        saveGatewaySecret('');
+        await persistGatewaySecret();
+        portfolioStore.setState({ gatewaySecret: '' });
+        window.location.reload();
+      }
+    })();
+  });
   addUiEventListener('settings:pull-cloud-state', () => { void syncCloudState('pull'); });
   addUiEventListener('settings:change-refresh-interval', (event) => {
     const intervalMs = Number(event.detail.intervalMs);
     setQuoteRefreshInterval(event.detail.intervalMs);
     emitUiEvent('settings:refresh-interval-changed', { intervalMs });
   });
-  addUiEventListener('settings:export-backup', () => exportBackupJSON());
-  addUiEventListener('settings:reset-to-blank-state', () => resetToBlankState());
+  addUiEventListener('settings:export-backup', () => {
+    void requireAdmin('export portfolio backups').then((allowed) => {
+      if (allowed) exportBackupJSON();
+    });
+  });
+  addUiEventListener('settings:reset-to-blank-state', () => {
+    void requireAdmin('reset the portfolio').then((allowed) => {
+      if (allowed) resetToBlankState();
+    });
+  });
   addUiEventListener('terminal:backup-import-file', (event) => {
-    void importBackupFile(event.detail.file);
+    void requireAdmin('import portfolio backups').then((allowed) => {
+      if (allowed) void importBackupFile(event.detail.file);
+    });
   });
 }
 bindStartupActions();

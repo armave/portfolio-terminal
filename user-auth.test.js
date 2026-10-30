@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { webcrypto } from "node:crypto";
+import worker from "./worker.js";
 import { PortfolioStateDO } from "./state-store.js";
 
 class MemoryDurableStorage {
@@ -24,22 +25,376 @@ function createStore() {
   return { store: new PortfolioStateDO({ storage }, {}), storage };
 }
 
-function post(store, path, body, token, headers = {}) {
+function request(store, path, body, token, headers = {}) {
   const requestHeaders = { "Content-Type": "application/json", ...headers };
   if (token) requestHeaders.Authorization = "Bearer " + token;
   return store.fetch(new Request("https://durable.test" + path, {
-    method: "POST", headers: requestHeaders, body: JSON.stringify(body)
+    method: "POST",
+    headers: requestHeaders,
+    body: JSON.stringify(body)
   }));
 }
 
-describe("six-character account password minimum", () => {
+async function bootstrap(store) {
+  const response = await request(store, "/api/auth/bootstrap", {
+    name: "Primary Admin",
+    password: "a-long-password-123"
+  }, undefined, {
+    "X-Bootstrap-Authorized": "true",
+    "X-Workspace-Encryption-Key": "legacy-shared-cloud-key"
+  });
+  expect(response.status).toBe(201);
+  return response.json();
+}
+
+describe("Durable Object account authentication", () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it("creates one initial admin account and persists only a salted password hash", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const session = await bootstrap(store);
+    expect(session.user).toMatchObject({ name: "Primary Admin", role: "admin" });
+    expect(session.token).toMatch(/^[a-f0-9]{64}$/);
+    const users = await storage.get("auth:users");
+    expect(users[0]).not.toHaveProperty("password");
+    expect(users[0].salt).toMatch(/^[a-f0-9]{32}$/);
+    expect(users[0].passwordHash).toMatch(/^[a-f0-9]{64}$/);
+
+    const duplicate = await request(store, "/api/auth/bootstrap", {
+      name: "Second Admin",
+      password: "another-long-password-123"
+    }, undefined, {
+      "X-Bootstrap-Authorized": "true",
+      "X-Workspace-Encryption-Key": "legacy-shared-cloud-key"
+    });
+    expect(duplicate.status).toBe(409);
+  });
+
+
+  it("returns the stable shared encryption key only to an active account session", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const session = await bootstrap(store);
+    expect(await storage.get("auth:cloud-encryption-key")).toBe("legacy-shared-cloud-key");
+
+    const result = await store.fetch(new Request("https://durable.test/api/auth/cloud-key", {
+      headers: { Authorization: "Bearer " + session.token }
+    }));
+    expect(result.status).toBe(200);
+    expect(await result.json()).toEqual({ key: "legacy-shared-cloud-key" });
+
+    const denied = await store.fetch(new Request("https://durable.test/api/auth/cloud-key"));
+    expect(denied.status).toBe(401);
+  });
+
+  it("blocks sign-in while the per-name and per-IP failure window is locked", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    await bootstrap(store);
+    const identity = new TextEncoder().encode("primary admin|unknown");
+    const digest = await webcrypto.subtle.digest("SHA-256", identity);
+    const digestHex = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, "0")).join("");
+    await storage.put("auth:login-failure:" + digestHex, {
+      count: 10,
+      expiresAt: Date.now() + 15 * 60 * 1000
+    });
+    const result = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "a-long-password-123"
+    });
+    expect(result.status).toBe(429);
+    expect(result.headers.get("Retry-After")).toBe("900");
+  });
+
+  it("creates guest users by default and blocks guest account administration", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const admin = await bootstrap(store);
+    const created = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Viewer",
+      password: "another-long-password-123"
+    }, admin.token);
+    expect(created.status).toBe(201);
+    expect((await created.json()).user.role).toBe("guest");
+
+    const login = await request(store, "/api/auth/login", {
+      name: "viewer",
+      password: "another-long-password-123"
+    });
+    expect(login.status).toBe(200);
+    const guest = await login.json();
+    const denied = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Not Allowed",
+      password: "another-long-password-123",
+      role: "admin"
+    }, guest.token);
+    expect(denied.status).toBe(403);
+  });
+
+  it("rejects incorrect passwords and does not allow the final admin to be demoted", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const admin = await bootstrap(store);
+    const wrongPassword = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "incorrect-password"
+    });
+    expect(wrongPassword.status).toBe(401);
+
+    const demote = await request(store, "/api/auth/users", {
+      action: "update",
+      id: admin.user.id,
+      name: admin.user.name,
+      role: "guest"
+    }, admin.token);
+    expect(demote.status).toBe(409);
+  });
+
+  it("invalidates expired sessions", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const session = await bootstrap(store);
+    const sessionKey = [...storage.values.keys()].find(key => key.startsWith("auth:session:"));
+    await storage.put(sessionKey, { userId: session.user.id, expiresAt: Date.now() - 1000 });
+    const verify = await request(store, "/api/auth/verify", {}, session.token);
+    expect(verify.status).toBe(401);
+  });
+});
+
+describe("Worker session endpoints", () => {
+
+  it("validates the bootstrap secret and forwards it only as an internal workspace key", async () => {
+    const forwarded = [];
+    const doStub = {
+      fetch: vi.fn(async (request) => {
+        forwarded.push(request);
+        return new Response(JSON.stringify({ token: "admin-session" }), { status: 201 });
+      })
+    };
+    const response = await worker.fetch(new Request("https://worker.test/api/auth/bootstrap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "First Admin",
+        password: "a-long-password-123",
+        bootstrapSecret: "expected-gateway-secret"
+      })
+    }), {
+      GATEWAY_SECRET: "expected-gateway-secret",
+      PORTFOLIO_STATE_DO: { idFromName: () => "portfolio_state", get: () => doStub }
+    });
+    expect(response.status).toBe(201);
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0].headers.get("X-Bootstrap-Authorized")).toBe("true");
+    expect(forwarded[0].headers.get("X-Workspace-Encryption-Key")).toBe("expected-gateway-secret");
+    expect(await forwarded[0].json()).toEqual({
+      name: "First Admin",
+      password: "a-long-password-123"
+    });
+  });
+
+  it("serves the existing shared encryption key to valid account sessions only", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const authStub = {
+      fetch: vi.fn(async (request) => {
+        if (new URL(request.url).pathname === "/api/auth/cloud-key") {
+          const token = request.headers.get("Authorization");
+          return token === "Bearer valid-session"
+            ? new Response(JSON.stringify({ key: "legacy-shared-cloud-key" }), { status: 200, headers: { "Content-Type": "application/json" } })
+            : new Response(JSON.stringify({ error: "expired" }), { status: 401 });
+        }
+        return new Response(JSON.stringify({ user: { id: "admin-id", name: "Admin", role: "admin" } }), { status: 200 });
+      })
+    };
+    const response = await worker.fetch(new Request("https://worker.test/api/auth/cloud-key", {
+      headers: { Authorization: "Bearer valid-session" }
+    }), {
+      PORTFOLIO_STATE_DO: { idFromName: () => "portfolio_state", get: () => authStub }
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ key: "legacy-shared-cloud-key" });
+
+    const denied = await worker.fetch(new Request("https://worker.test/api/auth/cloud-key", {
+      headers: { Authorization: "Bearer expired-session" }
+    }), {
+      PORTFOLIO_STATE_DO: { idFromName: () => "portfolio_state", get: () => authStub }
+    });
+    expect(denied.status).toBe(401);
+  });
+
+  it("bounds streamed authentication request bodies before buffering them", async () => {
+    let chunksSent = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        if (chunksSent === 5) {
+          controller.close();
+          return;
+        }
+        chunksSent += 1;
+        controller.enqueue(new Uint8Array(4096));
+      }
+    });
+    const request = new Request("https://worker.test/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      duplex: "half"
+    });
+    const response = await worker.fetch(request, {
+      PORTFOLIO_STATE_DO: { idFromName: () => "portfolio_state", get: () => ({ fetch: vi.fn() }) }
+    });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: "Authentication request exceeds the 8 KB limit." });
+  });
+});
+
+describe("Worker role enforcement", () => {
+  it("blocks guest write requests before invoking protected actions", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const doStub = {
+      fetch: vi.fn(async () => new Response(JSON.stringify({
+        user: { id: "guest-id", name: "Guest", role: "guest" }
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+    };
+    const response = await worker.fetch(new Request("https://worker.test/?action=gemini", {
+      method: "POST",
+      headers: { Authorization: "Bearer guest-session", "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "should never reach the provider" })
+    }), {
+      PORTFOLIO_STATE_DO: { idFromName: () => "portfolio_state", get: () => doStub }
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Guest accounts have read-only access." });
+    expect(doStub.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("six-character account password minimum", () => {
   it("accepts a six-character password for initial admin bootstrap and login", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const bootstrapResponse = await request(store, "/api/auth/bootstrap", {
+      name: "Primary Admin",
+      password: "secret"
+    }, undefined, {
+      "X-Bootstrap-Authorized": "true",
+      "X-Workspace-Encryption-Key": "shared-key"
+    });
+    expect(bootstrapResponse.status).toBe(201);
+
+    const login = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "secret"
+    });
+    expect(login.status).toBe(200);
+  });
+
+  it("rejects passwords shorter than six characters at bootstrap and user creation", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const shortBootstrap = await request(store, "/api/auth/bootstrap", {
+      name: "Primary Admin",
+      password: "12345"
+    }, undefined, {
+      "X-Bootstrap-Authorized": "true",
+      "X-Workspace-Encryption-Key": "shared-key"
+    });
+    expect(shortBootstrap.status).toBe(400);
+
+    const admin = await bootstrap(store);
+    const shortUser = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Viewer",
+      password: "12345"
+    }, admin.token);
+    expect(shortUser.status).toBe(400);
+  });
+
+  it("accepts six-character new-user and password-reset values", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const admin = await bootstrap(store);
+    const created = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Viewer",
+      password: "guest6!"
+    }, admin.token);
+    expect(created.status).toBe(201);
+    const user = (await created.json()).user;
+
+    const reset = await request(store, "/api/auth/users", {
+      action: "update",
+      id: user.id,
+      password: "reset6!"
+    }, admin.token);
+    expect(reset.status).toBe(200);
+  });
+});
+
+describe("six-character account password minimum", () => {
+  it("accepts a six-character password for initial admin bootstrap and login", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const bootstrapResponse = await request(store, "/api/auth/bootstrap", {
+      name: "Primary Admin",
+      password: "secret"
+    }, undefined, {
+      "X-Bootstrap-Authorized": "true",
+      "X-Workspace-Encryption-Key": "shared-key"
+    });
+    expect(bootstrapResponse.status).toBe(201);
+    const login = await request(store, "/api/auth/login", {
+      name: "Primary Admin", password: "secret"
+    });
+    expect(login.status).toBe(200);
+  });
+
+  it("rejects passwords shorter than six characters at bootstrap and user creation", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const shortBootstrap = await request(store, "/api/auth/bootstrap", {
+      name: "Primary Admin", password: "12345"
+    }, undefined, {
+      "X-Bootstrap-Authorized": "true",
+      "X-Workspace-Encryption-Key": "shared-key"
+    });
+    expect(shortBootstrap.status).toBe(400);
+    const admin = await bootstrap(store);
+    const shortUser = await request(store, "/api/auth/users", {
+      action: "create", name: "Viewer", password: "12345"
+    }, admin.token);
+    expect(shortUser.status).toBe(400);
+  });
+
+  it("accepts six-character new-user and password-reset values", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const admin = await bootstrap(store);
+    const created = await request(store, "/api/auth/users", {
+      action: "create", name: "Viewer", password: "guest6!"
+    }, admin.token);
+    expect(created.status).toBe(201);
+    const user = (await created.json()).user;
+    const reset = await request(store, "/api/auth/users", {
+      action: "update", id: user.id, password: "reset6!"
+    }, admin.token);
+    expect(reset.status).toBe(200);
+  });
+});
+
+
+describe("Cloudflare PBKDF2 iteration compatibility", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps every PBKDF2 operation at or below the Worker iteration limit", async () => {
     const deriveIterations = [];
     vi.stubGlobal("crypto", {
       subtle: {
         importKey: (...args) => webcrypto.subtle.importKey(...args),
+        digest: (...args) => webcrypto.subtle.digest(...args),
         deriveBits: (algorithm, key, length) => {
           deriveIterations.push(algorithm.iterations);
           return webcrypto.subtle.deriveBits(algorithm, key, length);
@@ -48,66 +403,14 @@ describe("six-character account password minimum", () => {
       getRandomValues: webcrypto.getRandomValues.bind(webcrypto),
       randomUUID: webcrypto.randomUUID.bind(webcrypto)
     });
-    const { store } = createStore();
-    const bootstrap = await post(store, "/api/auth/bootstrap", {
-      name: "Primary Admin", password: "secret"
-    }, undefined, {
-      "X-Bootstrap-Authorized": "true",
-      "X-Workspace-Encryption-Key": "shared-key"
-    });
-    expect(bootstrap.status).toBe(201);
-    const [createdAdmin] = await store.getAuthUsers();
-    expect(createdAdmin.passwordHashVersion).toBe(2);
 
-    const login = await post(store, "/api/auth/login", {
-      name: "Primary Admin", password: "secret"
+    const { store } = createStore();
+    await bootstrap(store);
+    const login = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "a-long-password-123"
     });
     expect(login.status).toBe(200);
     expect(deriveIterations).toEqual(Array(12).fill(100_000));
-  });
-
-  it("rejects passwords shorter than six characters at bootstrap and user creation", async () => {
-    vi.stubGlobal("crypto", webcrypto);
-    const { store } = createStore();
-    const shortBootstrap = await post(store, "/api/auth/bootstrap", {
-      name: "Primary Admin", password: "12345"
-    }, undefined, {
-      "X-Bootstrap-Authorized": "true",
-      "X-Workspace-Encryption-Key": "shared-key"
-    });
-    expect(shortBootstrap.status).toBe(400);
-
-    const admin = await post(store, "/api/auth/bootstrap", {
-      name: "Primary Admin", password: "secret"
-    }, undefined, {
-      "X-Bootstrap-Authorized": "true",
-      "X-Workspace-Encryption-Key": "shared-key"
-    });
-    const session = await admin.json();
-    const shortUser = await post(store, "/api/auth/users", {
-      action: "create", name: "Viewer", password: "12345"
-    }, session.token);
-    expect(shortUser.status).toBe(400);
-  });
-
-  it("accepts six-character new-user and password-reset values", async () => {
-    vi.stubGlobal("crypto", webcrypto);
-    const { store } = createStore();
-    const adminResponse = await post(store, "/api/auth/bootstrap", {
-      name: "Primary Admin", password: "secret"
-    }, undefined, {
-      "X-Bootstrap-Authorized": "true",
-      "X-Workspace-Encryption-Key": "shared-key"
-    });
-    const admin = await adminResponse.json();
-    const created = await post(store, "/api/auth/users", {
-      action: "create", name: "Viewer", password: "guest6!"
-    }, admin.token);
-    expect(created.status).toBe(201);
-    const user = (await created.json()).user;
-    const reset = await post(store, "/api/auth/users", {
-      action: "update", id: user.id, password: "reset6!"
-    }, admin.token);
-    expect(reset.status).toBe(200);
   });
 });

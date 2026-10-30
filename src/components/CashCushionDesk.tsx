@@ -51,7 +51,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   );
 }
 
-export function CashCushionDesk() {
+export function CashCushionDesk({ showActiveTranches = false }: { showActiveTranches?: boolean } = {}) {
   const state = usePortfolio();
   const refreshIntervalMs = useQuoteRefreshInterval();
   const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTradeLike[]>(() =>
@@ -238,7 +238,7 @@ export function CashCushionDesk() {
           </table>
         </div>
 
-        <section class="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2" id="activeTranches" aria-labelledby="activeTranchesHeading">
+        {showActiveTranches && <section class="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2" id="activeTranches" aria-labelledby="activeTranchesHeading">
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
             <div>
               <h2 id="activeTranchesHeading" class="text-sm font-black uppercase tracking-wide text-cyan-300">Active Tranches ({activeTranches.length})</h2>
@@ -387,7 +387,7 @@ export function CashCushionDesk() {
               </div>
             </div>
           </div>
-        </section>
+        </section>}
       </div>
     </>
   );

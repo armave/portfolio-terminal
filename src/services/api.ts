@@ -108,15 +108,17 @@ async function deriveCloudEncryptionKey(secret: string): Promise<CryptoKey> {
 async function encryptCloudPayload(plaintext: string, secret: string): Promise<string> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) throw new Error('Secure cloud encryption is unavailable in this browser.');
+  const encryptionSecret = await resolveCloudEncryptionSecret(secret);
   const nonce = globalThis.crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveCloudEncryptionKey(secret);
+  const key = await deriveCloudEncryptionKey(encryptionSecret);
   const ciphertext = await subtle.encrypt({ name: 'AES-GCM', iv: nonce, tagLength: 128 }, key, new TextEncoder().encode(plaintext));
   return CLOUD_CIPHERTEXT_V2_PREFIX + bytesToBase64(nonce) + ':' + bytesToBase64(new Uint8Array(ciphertext));
 }
 
 async function decryptCloudPayload(payload: string, secret: string): Promise<{ plaintext: string; legacy: boolean }> {
+  const encryptionSecret = await resolveCloudEncryptionSecret(secret);
   if (!payload.startsWith(CLOUD_CIPHERTEXT_V2_PREFIX)) {
-    const bytes = CryptoJS.AES.decrypt(payload, secret);
+    const bytes = CryptoJS.AES.decrypt(payload, encryptionSecret);
     const plaintext = bytes ? bytes.toString(CryptoJS.enc.Utf8) : '';
     if (!plaintext) throw new Error('Legacy decryption failed — verify the Gateway Secret.');
     return { plaintext, legacy: true };
@@ -130,7 +132,7 @@ async function decryptCloudPayload(payload: string, secret: string): Promise<{ p
   if (nonce.byteLength !== 12 || ciphertext.byteLength < 16) throw new Error('Invalid AES-GCM cloud payload envelope.');
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) throw new Error('Secure cloud decryption is unavailable in this browser.');
-  const key = await deriveCloudEncryptionKey(secret);
+  const key = await deriveCloudEncryptionKey(encryptionSecret);
   // Copy to standalone ArrayBuffers to satisfy strict DOM BufferSource typing.
   const iv = nonce.slice().buffer as ArrayBuffer;
   const encryptedBytes = ciphertext.slice().buffer as ArrayBuffer;
@@ -150,6 +152,34 @@ let activeSecretGetter: (() => string) | null = null;
 export function setSecretGetter(getter: () => string): void {
   activeSecretGetter = getter;
 }
+
+let cloudEncryptionSecretPromise: Promise<string> | null = null;
+
+async function resolveCloudEncryptionSecret(sessionToken: string): Promise<string> {
+  if (!activeSecretGetter) return sessionToken;
+  if (!cloudEncryptionSecretPromise) {
+    cloudEncryptionSecretPromise = (async () => {
+      const response = await fetch(new URL("/api/auth/cloud-key", WORKER_PROXY_URL), {
+        method: "GET",
+        headers: {
+          "X-App-Auth": sessionToken,
+          Authorization: `Bearer ${sessionToken}`
+        },
+        cache: "no-store"
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || typeof payload?.key !== "string" || !payload.key) {
+        throw new Error(payload?.error || "Could not retrieve the shared cloud encryption key.");
+      }
+      return payload.key;
+    })().catch((error) => {
+      cloudEncryptionSecretPromise = null;
+      throw error;
+    });
+  }
+  return cloudEncryptionSecretPromise;
+}
+
 
 function getActiveGatewaySecret(): string {
   // Credentials are managed only by the dedicated secret store/input. Portfolio
@@ -1343,4 +1373,67 @@ export function normalizeFreedomPortfolio(response: any): FreedomPortfolioSnapsh
     accountPositionId: finiteOrNull(item?.acc_pos_id)
   })) : [];
   return { loaded: true, balances, positions };
+}
+
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  role: "guest" | "admin";
+  createdAt: string;
+}
+export interface AuthSession { token: string; user: AuthUser; expiresAt: number; }
+const AUTH_API_URL = WORKER_PROXY_URL;
+
+async function authRequest<T>(path: string, options: { method?: "GET" | "POST"; body?: Record<string, unknown>; token?: string } = {}): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+    headers["X-App-Auth"] = options.token;
+  }
+  const response = await fetch(new URL(path, AUTH_API_URL), {
+    method: options.method || "GET", headers,
+    ...(options.body ? { body: JSON.stringify(options.body) } : {}), cache: "no-store"
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.error || `Authentication request failed (HTTP ${response.status}).`);
+  return payload as T;
+}
+export function getAuthStatus(): Promise<{ setupRequired: boolean; userCount: number }> {
+  return authRequest("/api/auth/status");
+}
+export function loginAccount(name: string, password: string): Promise<AuthSession> {
+  return authRequest("/api/auth/login", { method: "POST", body: { name, password } });
+}
+export function bootstrapAdmin(name: string, password: string, bootstrapSecret: string): Promise<AuthSession> {
+  return authRequest("/api/auth/bootstrap", { method: "POST", body: { name, password, bootstrapSecret } });
+}
+export async function getCurrentUser(): Promise<AuthUser> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  return (await authRequest<{ user: AuthUser }>("/api/auth/me", { token })).user;
+}
+export async function listUsers(): Promise<AuthUser[]> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  return (await authRequest<{ users: AuthUser[] }>("/api/auth/users", { token })).users;
+}
+export async function createUser(input: { name: string; password: string; role: "guest" | "admin" }): Promise<AuthUser> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  return (await authRequest<{ user: AuthUser }>("/api/auth/users", { method: "POST", token, body: { action: "create", ...input } })).user;
+}
+export async function updateUser(id: string, input: { name: string; role: "guest" | "admin"; password?: string }): Promise<AuthUser> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  return (await authRequest<{ user: AuthUser }>("/api/auth/users", { method: "POST", token, body: { action: "update", id, ...input } })).user;
+}
+export async function deleteUser(id: string): Promise<void> {
+  const token = getActiveGatewaySecret();
+  if (!token) throw new Error("Not signed in.");
+  await authRequest<{ success: boolean }>("/api/auth/users", { method: "POST", token, body: { action: "delete", id } });
+}
+export async function logoutAccount(): Promise<void> {
+  const token = getActiveGatewaySecret();
+  if (token) await authRequest<{ success: boolean }>("/api/auth/logout", { method: "POST", token, body: {} });
 }

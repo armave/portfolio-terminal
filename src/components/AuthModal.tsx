@@ -1,109 +1,110 @@
-import { useState, useEffect, useRef } from 'preact/hooks';
+
+import { bootstrapAdmin, getAuthStatus, loginAccount } from "../services/api";
+import { useState, useEffect, useRef } from "preact/hooks";
+import { getGatewaySecret } from "../services/storage";
 
 export interface AuthModalProps {
   isOpen: boolean;
-  onSaveSecret: (secret: string) => boolean | void | Promise<boolean | void>;
+  onSaveSecret: (sessionToken: string) => boolean | void | Promise<boolean | void>;
 }
 
 export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
-  const [secret, setSecret] = useState('');
-  const [invalid, setInvalid] = useState(false);
+  const [setupRequired, setSetupRequired] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [bootstrapSecret, setBootstrapSecret] = useState("");
+  const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const saveButtonRef = useRef<HTMLButtonElement | null>(null);
+  const nameRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (isOpen && !submitting) inputRef.current?.focus();
-  }, [isOpen, submitting]);
+    if (!isOpen) return;
+    let active = true;
+    setStatusLoading(true);
+    setError("");
+    getAuthStatus()
+      .then((status) => {
+        if (!active) return;
+        setSetupRequired(status.setupRequired);
+        if (status.setupRequired) setBootstrapSecret(getGatewaySecret());
+      })
+      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Could not connect to the authentication service."); })
+      .finally(() => { if (active) setStatusLoading(false); });
+    return () => { active = false; };
+  }, [isOpen]);
 
-  const handleDialogKeyDown = (event: KeyboardEvent) => {
-    if (submitting && event.key === 'Escape') {
-      event.preventDefault();
-      return;
-    }
+  useEffect(() => {
+    if (isOpen && !statusLoading) nameRef.current?.focus();
+  }, [isOpen, statusLoading]);
 
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      setSecret('');
-      inputRef.current?.focus();
-      return;
-    }
-
-    if (event.key !== 'Tab') return;
-    const input = inputRef.current;
-    const saveButton = saveButtonRef.current;
-    if (!input || !saveButton) return;
-
-    if (event.shiftKey && event.target === input) {
-      event.preventDefault();
-      saveButton.focus();
-    } else if (!event.shiftKey && event.target === saveButton) {
-      event.preventDefault();
-      input.focus();
-    }
-  };
-
-  const handleSubmit = async (e: Event) => {
-    e.preventDefault();
+  const handleSubmit = async (event: Event) => {
+    event.preventDefault();
     if (submitting) return;
     setSubmitting(true);
-    setInvalid(false);
+    setError("");
     try {
-      const accepted = await onSaveSecret(secret.trim());
-      if (accepted === false) {
-        setSecret('');
-        setInvalid(true);
-      } else {
-        setSecret('');
+      const session = setupRequired
+        ? await bootstrapAdmin(name.trim(), password, bootstrapSecret)
+        : await loginAccount(name.trim(), password);
+      const accepted = await onSaveSecret(session.token);
+      if (accepted === false) throw new Error("The account was created, but this device could not establish its session.");
+      setPassword("");
+      setBootstrapSecret("");
+    } catch (reason) {
+      setPassword("");
+      setError(reason instanceof Error ? reason.message : "Authentication failed.");
+      if (setupRequired) {
+        const status = await getAuthStatus().catch(() => null);
+        if (status) setSetupRequired(status.setupRequired);
       }
-    } catch {
-      setSecret('');
-      setInvalid(true);
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div class={"auth-card border-card " + (submitting ? "cursor-wait" : "")} role="dialog" aria-modal="true" aria-busy={submitting} aria-labelledby="authModalTitle" onKeyDown={handleDialogKeyDown}>
+    <div class="auth-card border-card" role="dialog" aria-modal="true" aria-labelledby="authModalTitle" aria-busy={submitting}>
       <div class="space-y-1">
         <h2 id="authModalTitle" class="text-sm font-bold text-emerald-400 tracking-wider uppercase">
-          Gateway Authentication
+          {setupRequired ? "Create administrator account" : "Portfolio Terminal sign in"}
         </h2>
         <p class="text-xs text-slate-400">
-          Enter Gateway Secret to unlock the terminal and sync data.
+          {setupRequired
+            ? "Initial setup is one-time. Use the Worker Gateway Secret to create the first admin account."
+            : "Sign in with the account created by an administrator."}
         </p>
       </div>
-      <form onSubmit={handleSubmit} class="flex flex-col sm:flex-row gap-2 pt-2">
-        <input
-          ref={inputRef}
-          type="password"
-          id="gatewaySecretInput"
-          value={secret}
-          disabled={submitting}
-          onInput={(e) => { setSecret((e.target as HTMLInputElement).value); setInvalid(false); }}
-          autoComplete="current-password"
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellcheck={false}
-          placeholder="Enter Gateway Secret"
-          required
-          class={"flex-1 bg-slate-900 text-slate-200 border rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500 disabled:opacity-60 disabled:cursor-wait " + (invalid ? "border-red-500" : "border-slate-700")} aria-invalid={invalid}
-        />
-        <button
-          ref={saveButtonRef}
-          id="authSaveButton"
-          type="submit"
-          disabled={submitting}
-          aria-disabled={submitting}
-          class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-wait text-black text-xs font-bold px-4 py-2 rounded transition inline-flex items-center justify-center gap-2"
-        >
-          {submitting && <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-black/30 border-t-black" aria-hidden="true" />}
-          {submitting ? 'Syncing data…' : 'Save'}
-        </button>
-      </form>
-      {submitting && <p class="text-xs text-cyan-300" role="status">Authenticating and loading your portfolio data. Please wait…</p>}
-      {invalid && <p class="text-xs text-red-400" role="alert">Invalid Gateway Secret. Please try again.</p>}
+      {statusLoading ? <p class="text-xs text-slate-400" role="status">Checking account setup…</p> : (
+        <form onSubmit={handleSubmit} class="flex flex-col gap-2 pt-2">
+          <label class="flex flex-col gap-1 text-xs text-slate-400">
+            Name
+            <input id="authUserName" name="username" ref={nameRef} type="text" value={name}
+              onInput={(event) => setName((event.target as HTMLInputElement).value)}
+              minLength={2} maxLength={60} required autoComplete="username" disabled={submitting}
+              class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
+          </label>
+          <label class="flex flex-col gap-1 text-xs text-slate-400">
+            Password
+            <input id="authPassword" name="password" type="password" value={password}
+              onInput={(event) => setPassword((event.target as HTMLInputElement).value)}
+              minLength={6} maxLength={128} required autoComplete={setupRequired ? "new-password" : "current-password"} disabled={submitting}
+              class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
+            {setupRequired && <span class="text-[10px] text-slate-500">Use at least 6 characters.</span>}
+          </label>
+          {setupRequired && <label class="flex flex-col gap-1 text-xs text-slate-400">
+            Gateway Secret
+            <input id="bootstrapSecret" name="bootstrapSecret" type="password" value={bootstrapSecret}
+              onInput={(event) => setBootstrapSecret((event.target as HTMLInputElement).value)}
+              required autoComplete="off" disabled={submitting}
+              class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
+          </label>}
+          <button type="submit" disabled={submitting} class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-black text-xs font-bold px-4 py-2 rounded transition">
+            {submitting ? "Signing in…" : setupRequired ? "Create admin account" : "Sign in"}
+          </button>
+        </form>
+      )}
+      {error && <p class="text-xs text-red-400" role="alert">{error}</p>}
     </div>
   );
 }
