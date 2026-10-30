@@ -61,27 +61,29 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
     ? Object.fromEntries(guestTranches.map((tranche) => [tranche.id, userId]))
     : {};
   const guestTypes = Object.fromEntries(guestTranches.map((tranche) => [tranche.id, 'cash' as const]));
-  const guestEquity = !isAdmin && userId
-    ? calculateGuestPersonalEquity(getGuestAssignedCashHoldings({
+  const guestHoldings = !isAdmin && userId
+    ? getGuestAssignedCashHoldings({
       guestId: userId,
       activeTranches: guestTranches,
       assignments: guestAssignments,
       types: guestTypes,
       cashHoldings: state.cashCushion?.holdings || []
-    }))
-    : 0;
+    })
+    : [];
+  const guestEquity = calculateGuestPersonalEquity(guestHoldings);
   const displayedEquity = isAdmin ? portfolioValuation.equity : guestEquity;
-  const hasUnpricedGuestHoldings = !isAdmin && guestHoldings.some((holding) => {
+  const hasUnpricedGuestHoldings = guestHoldings.some((holding) => {
     const price = Number(holding.currentPrice ?? holding.price);
     return !Number.isFinite(price) || price <= 0;
   });
-  const hasPricedGuestHoldings = !isAdmin && guestHoldings.some((holding) => {
+  const hasPricedGuestHoldings = guestHoldings.some((holding) => {
     const price = Number(holding.currentPrice ?? holding.price);
     return Number.isFinite(price) && price > 0;
   });
-  const equityBadgeText = !isAdmin && guestHoldings.length > 0
-    ? !hasPricedGuestHoldings ? '—'
-      : (hasUnpricedGuestHoldings ? '≥' : '+') + '
+  const equityBadgeText = !isAdmin && userId
+    ? guestHoldings.length === 0 ? '$0'
+      : !hasPricedGuestHoldings ? '—'
+        : (hasUnpricedGuestHoldings ? '≥
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     const currentButton = event.currentTarget as HTMLButtonElement;
@@ -212,7 +214,7 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
           onKeyDown={handleTabKeyDown}
       >
         <span>🛡️ BALANCE</span>
-        <span title={equityBadgeTitle} aria-label={`Assigned stock value: ${equityBadgeText}`}
+        <span
           class={`text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
             }`}
         >
@@ -256,7 +258,182 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
     </>
   );
 }
- + Math.abs(displayedEquity).toLocaleString('en-US', { maximumFractionDigits: 0 })
+ : '+
+
+  const handleTabKeyDown = (event: KeyboardEvent) => {
+    const currentButton = event.currentTarget as HTMLButtonElement;
+    const currentIndex = Number(currentButton.dataset.navIndex);
+    const nextIndex = resolveTabNavigationIndex(currentIndex, navigationViews.length, event.key);
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    tabButtonRefs.current[nextIndex]?.focus();
+    selectView(navigationViews[nextIndex]);
+  };
+
+  const handleRefreshQuotes = async () => {
+    if (isRefreshingQuotes) return;
+
+    setIsRefreshingQuotes(true);
+    try {
+      await new Promise<void>((resolve) => {
+        emitUiEvent('portfolio:refresh-live-prices', { resolve });
+      });
+    } finally {
+      setIsRefreshingQuotes(false);
+    }
+  };
+
+  return (
+    <>
+      {isAdmin && tickers.length > 0 && (
+        <button
+          id="refreshQuotesButton"
+          type="button"
+          title="Update quotes"
+          aria-label="Refresh live quotes"
+          disabled={isRefreshingQuotes}
+          onClick={handleRefreshQuotes}
+          class="h-8 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
+        >
+          <span>↻</span>
+        </button>
+      )}
+
+      {isAdmin && tickers.length === 0 && (
+        <button
+          type="button"
+          data-nav-tab="true"
+          data-nav-index={0}
+          ref={(element) => { tabButtonRefs.current[0] = element; }}
+          onKeyDown={handleTabKeyDown}
+          onClick={() => selectView('COMBINED')}
+          aria-pressed={isMarginDeskActive}
+          class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
+            ? 'bg-emerald-600 text-black'
+            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            }`}
+        >
+          MARGIN DESK
+        </button>
+      )}
+
+      {isAdmin && tickers.length === 1 && (
+        <button
+          type="button"
+          onClick={() => selectView(tickers[0])}
+          aria-pressed={state.activeView === tickers[0]}
+          class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0] && isMarginDeskActive
+            ? 'bg-emerald-600 text-black'
+            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            }`}
+          data-nav-tab="true"
+          data-nav-index={0}
+          ref={(element) => { tabButtonRefs.current[0] = element; }}
+          onKeyDown={handleTabKeyDown}
+        >
+          MARGIN: {tickers[0]}
+        </button>
+      )}
+
+      {isAdmin && tickers.length > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={() => selectView('COMBINED')}
+            aria-pressed={state.activeView === 'COMBINED'}
+            class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === 'COMBINED' && isMarginDeskActive
+              ? 'bg-emerald-600 text-black'
+              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              }`}
+          data-nav-tab="true"
+          data-nav-index={0}
+          ref={(element) => { tabButtonRefs.current[0] = element; }}
+          onKeyDown={handleTabKeyDown}
+          >
+            COMBINED PORTFOLIO
+          </button>
+
+          {tickers.map((t, index) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => selectView(t)}
+              aria-pressed={state.activeView === t}
+              class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === t && isMarginDeskActive
+                ? 'bg-emerald-600 text-black'
+                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                }`}
+          data-nav-tab="true"
+          data-nav-index={index + 1}
+          ref={(element) => { tabButtonRefs.current[index + 1] = element; }}
+          onKeyDown={handleTabKeyDown}
+            >
+              {t}
+            </button>
+          ))}
+        </>
+      )}
+
+      <button
+        type="button"
+        onClick={() => selectView('BALANCE')}
+        aria-pressed={isCushionActive}
+        class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
+          ? 'bg-cyan-500 text-black'
+          : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
+          }`}
+          data-nav-tab="true"
+          data-nav-index={balanceNavIndex}
+          ref={(element) => { tabButtonRefs.current[balanceNavIndex] = element; }}
+          onKeyDown={handleTabKeyDown}
+      >
+        <span>🛡️ BALANCE</span>
+        <span
+          class={`text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
+            }`}
+        >
+          {equityBadgeText}
+        </span>
+      </button>
+
+      {isAdmin && <button
+        type="button"
+        onClick={() => selectView('CLOSED_HISTORY')}
+        aria-pressed={isClosedHistoryActive}
+        class={`px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive
+          ? 'bg-purple-500 text-black'
+          : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
+          }`}
+          data-nav-tab="true"
+          data-nav-index={balanceNavIndex + 1}
+          ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
+          onKeyDown={handleTabKeyDown}
+      >
+        CLOSED HISTORY
+      </button>}
+
+      <button
+        id="settingsBtn"
+        type="button"
+        aria-pressed={isSettingsActive}
+        onClick={() => selectView('SETTINGS')}
+        class={
+          isSettingsActive
+            ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
+            : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition'
+        }
+          data-nav-tab="true"
+          data-nav-index={balanceNavIndex + (isAdmin ? 2 : 1)}
+          ref={(element) => { tabButtonRefs.current[balanceNavIndex + (isAdmin ? 2 : 1)] = element; }}
+          onKeyDown={handleTabKeyDown}
+      >
+        <span>⚙️ SETTINGS</span>
+      </button>
+    </>
+  );
+}
+) + Math.abs(displayedEquity).toLocaleString('en-US', { maximumFractionDigits: 0 })
     : (displayedEquity >= 0 ? '+
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
