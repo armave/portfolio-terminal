@@ -149,7 +149,13 @@ function resolveCorsHeaders(request, env = {}) {
         ? env.ALLOWED_ORIGINS.split(",").map(origin => origin.trim()).filter(Boolean)
         : [];
     const origin = request.headers.get("Origin");
-    if (origin && !configuredOrigins.includes(origin)) return null;
+    // Permit the exact local Vite development origins used by this project.
+    // All other browser origins must still be explicitly configured.
+    const localDevelopmentOrigins = new Set([
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+    ]);
+    if (origin && !configuredOrigins.includes(origin) && !localDevelopmentOrigins.has(origin)) return null;
     return {
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": origin || configuredOrigins[0],
@@ -369,8 +375,16 @@ export default {
                 headers.set("Content-Type", "application/json");
                 forwardedRequest = new Request(request.url, { method: "POST", headers, body: JSON.stringify(payload) });
             }
-            const authStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
-            const authResponse = await authStub.fetch(forwardedRequest);
+            let authResponse;
+            try {
+                const authStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
+                authResponse = await authStub.fetch(forwardedRequest);
+            } catch (error) {
+                // Preserve CORS headers so the browser can display a useful
+                // JSON failure instead of masking the Durable Object error.
+                console.error("Account Durable Object request failed", error);
+                return jsonError("Account service unavailable. Check the Cloudflare Worker logs.", 503, corsHeaders);
+            }
             const authHeaders = new Headers(authResponse.headers);
             Object.entries(corsHeaders).forEach(([name, value]) => authHeaders.set(name, value));
             return new Response(authResponse.body, { status: authResponse.status, statusText: authResponse.statusText, headers: authHeaders });
