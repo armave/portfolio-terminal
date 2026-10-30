@@ -31,7 +31,7 @@ It is **not** a broker connection, order-entry system, source of official accoun
 * **Conversational Trading Console:** Evaluates natural-language portfolio entries and exit scenario modeling using Google Gemini with an explicit confirmation safeguard.
 
 
-* **Account Roles & Cloud Sync:** Uses Worker-backed accounts with `admin` and `guest` roles, password-hashed credentials, expiring sessions, and server-enforced read-only guest access. Portfolio state remains encrypted before cloud synchronization.
+* **Account Roles & Cloud Sync:** Uses Worker-backed accounts with `admin` and `guest` roles, password-hashed credentials, role-specific session lifetimes, and server-enforced read-only guest access. Portfolio state remains encrypted before cloud synchronization.
 
 
 
@@ -47,7 +47,7 @@ Access the production build on [GitHub Pages](https://armave.github.io/portfolio
 
 ### Accounts and roles
 
-On the first visit after this upgrade, create the initial administrator account using the configured Worker Gateway Secret. The one-time bootstrap credential also initializes the shared portfolio encryption key, which the Durable Object retains for authenticated accounts; subsequent sign-ins use the account name and password. Passwords must be 6–128 characters and are stored server-side as salted PBKDF2-SHA-256 hashes. Session tokens expire after seven days and are stored hashed by the Durable Object.
+On the first visit after this upgrade, create the initial administrator account using the configured Worker Gateway Secret. The one-time bootstrap credential also initializes the shared portfolio encryption key, which the Durable Object retains for authenticated accounts; subsequent sign-ins use the account name and password. Passwords must be 6–128 characters and are stored server-side as salted PBKDF2-SHA-256 hashes. Guest session tokens expire after 30 days; administrator sessions do not expire automatically. Session tokens are stored hashed by the Durable Object. Logging out, changing a password, or deleting an account still revokes the relevant sessions.
 
 Administrators can create, rename, change the role of, reset the password for, and delete accounts in **Settings → User management**. New accounts default to **guest**. Guests can read the shared portfolio but cannot write to the Cloudflare Worker. At least one administrator must remain, and an administrator cannot delete their own signed-in account.
 
