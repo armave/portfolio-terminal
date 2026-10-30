@@ -1,4 +1,9 @@
 import { setBoardTitle } from './uiStateStore';
+import {
+  calculateCombinedMetrics,
+  calculatePositionMetrics
+} from '../domain/portfolioSelectors';
+export { resolvePositionEntryDate } from '../domain/portfolioSelectors';
 import { formatUSD } from '../utils/formatters';
 export { formatUSD } from '../utils/formatters';
 import {
