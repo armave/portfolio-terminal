@@ -45,6 +45,8 @@ describe("six-character account password minimum", () => {
       "X-Workspace-Encryption-Key": "shared-key"
     });
     expect(bootstrap.status).toBe(201);
+    const [createdAdmin] = await store.getAuthUsers();
+    expect(createdAdmin.passwordHashVersion).toBe(2);
 
     const login = await post(store, "/api/auth/login", {
       name: "Primary Admin", password: "secret"
