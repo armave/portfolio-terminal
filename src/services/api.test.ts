@@ -93,20 +93,26 @@ describe('authenticated read request deduplication', () => {
   });
 
   it('coalesces simultaneous guest projection reads without caching later reads', async () => {
-    let resolveFetch!: (response: Response) => void;
-    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveFetch = resolve; }));
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolvers.push(resolve); }));
     vi.stubGlobal('fetch', fetchMock);
+
     const first = getGuestPortfolioSnapshot();
     const second = getGuestPortfolioSnapshot();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    resolveFetch(new Response(JSON.stringify({ snapshot: { updatedAt: 10, tranches: [] } }), {
+
+    const response = () => new Response(JSON.stringify({ snapshot: { updatedAt: 10, tranches: [] } }), {
       status: 200, headers: { 'Content-Type': 'application/json' }
-    }));
+    });
+    resolvers[0](response());
     await expect(Promise.all([first, second])).resolves.toEqual([
       { updatedAt: 10, tranches: [] }, { updatedAt: 10, tranches: [] }
     ]);
-    await getGuestPortfolioSnapshot();
+
+    const nextRead = getGuestPortfolioSnapshot();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    resolvers[1](response());
+    await expect(nextRead).resolves.toEqual({ updatedAt: 10, tranches: [] });
   });
 });
 
