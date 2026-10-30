@@ -1435,11 +1435,15 @@ export async function initApp() {
 
   try {
     const secret = await restoreGatewaySecret();
-    if (secret) {
+    if (secret && await validateGatewaySecret(secret)) {
       appInitialized = true;
       hideAuthContainer();
       await startApp(secret);
     } else {
+      if (secret) {
+        saveGatewaySecret('');
+        await persistGatewaySecret();
+      }
       loadTradernetRules();
       portfolioStore.importState(loadSavedState(portfolioStore.getState()));
       state = portfolioStore.getState();
@@ -1497,6 +1501,22 @@ function bindStartupActions() {
         showToast(error instanceof Error ? error.message : String(error), 'error');
       } finally {
         event.detail.resolve(saved);
+      }
+    })();
+  });
+
+  addUiEventListener('auth:logout', () => {
+    void (async () => {
+      try {
+        const { logoutAccount } = await import('./src/services/api');
+        await logoutAccount();
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : 'Could not sign out cleanly.', 'error');
+      } finally {
+        saveGatewaySecret('');
+        await persistGatewaySecret();
+        portfolioStore.setState({ gatewaySecret: '' });
+        window.location.reload();
       }
     })();
   });
