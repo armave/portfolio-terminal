@@ -178,10 +178,20 @@ function getTranchePriceAndDate(tranche: unknown): { price: number; date: string
   const price = Number(value.price ?? value.entryPrice ?? value.averagePrice);
   const rawDate = value.date ?? value.purchaseDate ?? value.entryDate;
   if (!Number.isFinite(price) || price <= 0 || typeof rawDate !== 'string' || !rawDate.trim()) return null;
-  const date = rawDate.trim().match(/^(\\d{4}-\\d{2}-\\d{2})/)?.[1] ||
+  // Persisted tranche dates are broker-local calendar dates (TradeNet Armenia).
+  // Broker execution timestamps may be UTC and cross midnight relative to that date.
+  const date = rawDate.trim().match(/^(\d{4}-\d{2}-\d{2})(?![T\d])/)?.[1] ||
     (() => {
       const parsed = Date.parse(rawDate);
-      return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : rawDate;
+      if (!Number.isFinite(parsed)) return rawDate;
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Yerevan',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).formatToParts(new Date(parsed));
+      const part = (type: string) => parts.find((item) => item.type === type)?.value || '';
+      return `${part('year')}-${part('month')}-${part('day')}`;
     })();
   return { price, date };
 }
