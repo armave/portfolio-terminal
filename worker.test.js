@@ -786,6 +786,78 @@ describe('Freedom cashflows Worker action', () => {
 
 
 describe('gateway authentication and request contract', () => {
+
+  it('allows the exact local Vite origin for initial admin bootstrap', async () => {
+    const forwarded = [];
+    const response = await worker.fetch(new Request('https://worker.test/api/auth/bootstrap', {
+      method: 'POST',
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: 'Primary Admin',
+        password: 'a-long-password-123',
+        bootstrapSecret: 'test-gateway-secret'
+      })
+    }), {
+      GATEWAY_SECRET: 'test-gateway-secret',
+      PORTFOLIO_STATE_DO: {
+        idFromName: vi.fn().mockReturnValue('portfolio_state'),
+        get: vi.fn().mockReturnValue({
+          fetch: vi.fn(async (request) => {
+            forwarded.push(request);
+            return new Response(JSON.stringify({ token: 'session-token' }), {
+              status: 201,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          })
+        })
+      }
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    expect(await response.json()).toEqual({ token: 'session-token' });
+    expect(forwarded).toHaveLength(1);
+    expect(forwarded[0].headers.get('X-Bootstrap-Authorized')).toBe('true');
+    expect(forwarded[0].headers.get('X-Workspace-Encryption-Key')).toBe('test-gateway-secret');
+    expect(await forwarded[0].json()).toEqual({
+      name: 'Primary Admin',
+      password: 'a-long-password-123'
+    });
+  });
+
+  it('returns a CORS-readable diagnostic when the account Durable Object throws', async () => {
+    const response = await worker.fetch(new Request('https://worker.test/api/auth/bootstrap', {
+      method: 'POST',
+      headers: {
+        Origin: 'http://localhost:5173',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: 'Primary Admin',
+        password: 'a-long-password-123',
+        bootstrapSecret: 'test-gateway-secret'
+      })
+    }), {
+      GATEWAY_SECRET: 'test-gateway-secret',
+      PORTFOLIO_STATE_DO: {
+        idFromName: vi.fn().mockReturnValue('portfolio_state'),
+        get: vi.fn().mockReturnValue({
+          fetch: vi.fn().mockRejectedValue(new Error('Durable Object unavailable'))
+        })
+      }
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    expect(await response.json()).toEqual({
+      error: 'Account service unavailable. Check the Cloudflare Worker logs.'
+    });
+  });
+
+
   afterEach(() => {
     vi.unstubAllGlobals();
   });
