@@ -1222,6 +1222,73 @@ describe('Durable Object guest portfolio ownership', () => {
     await expect(guestTwo.json()).resolves.toMatchObject({ snapshot: { updatedAt: 0, tranches: [] } });
   });
 
+  it('publishes multiple guest projections in one atomic batch request', async () => {
+    const { store, values } = await makeScopedStore();
+    const response = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({
+        snapshots: [
+          {
+            guestId: 'guest-1',
+            snapshot: {
+              updatedAt: 20,
+              tranches: [{
+                id: 'AAPL:buy-1', ticker: 'aapl', name: 'Apple', quantity: 2.5,
+                averagePrice: 100, marketPrice: 120, unexpected: 'must-not-persist'
+              }]
+            }
+          },
+          {
+            guestId: 'guest-2',
+            snapshot: { updatedAt: 30, tranches: [] }
+          }
+        ]
+      })
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      revisions: { 'guest-1': 1, 'guest-2': 1 }
+    });
+    expect(values.get('guest-portfolio:guest-1').encryptedSnapshot).toMatch(/^aesgcm:v1:/);
+    expect(values.get('guest-portfolio:guest-2').encryptedSnapshot).toMatch(/^aesgcm:v1:/);
+
+    const guestOne = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-one-token')
+    }));
+    await expect(guestOne.json()).resolves.toMatchObject({
+      snapshot: {
+        updatedAt: 20,
+        tranches: [{ id: 'AAPL:buy-1', ticker: 'AAPL', quantity: 2.5, marketValue: 300 }]
+      }
+    });
+    const guestTwo = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-two-token')
+    }));
+    await expect(guestTwo.json()).resolves.toMatchObject({
+      snapshot: { updatedAt: 30, tranches: [] }
+    });
+  });
+
+  it('rejects an invalid guest batch without partially writing any projection', async () => {
+    const { store, values } = await makeScopedStore();
+    const response = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({
+        snapshots: [
+          { guestId: 'guest-1', snapshot: { updatedAt: 20, tranches: [] } },
+          { guestId: 'not-a-guest', snapshot: { updatedAt: 30, tranches: [] } }
+        ]
+      })
+    }));
+    expect(response.status).toBe(404);
+    expect(values.has('guest-portfolio:guest-1')).toBe(false);
+    expect(values.has('guest-portfolio:guest-2')).toBe(false);
+  });
+
   it('rejects guest writes, cross-guest reads, and guest access to the workspace key', async () => {
     const { store } = await makeScopedStore();
     const guestWrite = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
