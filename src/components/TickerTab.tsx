@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { resolveTabNavigationIndex } from '../ui/tabNavigation';
 import { usePortfolio } from '../store/portfolioStore';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
@@ -38,6 +39,13 @@ export function TickerTabs() {
   }, [isMarginDeskActive, state.activeView]);
 
   const tickers = Object.keys(state.positions || {});
+  const marginDeskViews = tickers.length === 0
+    ? ['COMBINED']
+    : tickers.length === 1
+      ? [tickers[0]]
+      : ['COMBINED', ...tickers];
+  const navigationViews = [...marginDeskViews, 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'];
+  const tabButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const portfolioValuation = calculatePortfolioValuation({
     signedAccountBalance: state.balance,
@@ -48,22 +56,14 @@ export function TickerTabs() {
   const equityBadgeText = (portfolioValuation.equity >= 0 ? '+$' : '−$') + Math.abs(portfolioValuation.equity).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     const currentButton = event.currentTarget as HTMLButtonElement;
-    const buttons = Array.from(
-      currentButton.parentElement?.querySelectorAll<HTMLButtonElement>('button[data-nav-tab="true"]') || []
-    );
-    const currentIndex = buttons.indexOf(currentButton);
-    if (currentIndex < 0 || buttons.length < 2) return;
+    const currentIndex = Number(currentButton.dataset.navIndex);
+    const nextIndex = resolveTabNavigationIndex(currentIndex, navigationViews.length, event.key);
+    if (nextIndex === null) return;
+
     event.preventDefault();
-    const nextIndex = event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? buttons.length - 1
-        : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
-    const next = buttons[nextIndex];
-    next.focus();
-    next.click();
+    tabButtonRefs.current[nextIndex]?.focus();
+    selectView(navigationViews[nextIndex]);
   };
 
   const handleRefreshQuotes = async () => {
@@ -99,6 +99,8 @@ export function TickerTabs() {
         <button
           type="button"
           data-nav-tab="true"
+          data-nav-index={0}
+          ref={(element) => { tabButtonRefs.current[0] = element; }}
           onKeyDown={handleTabKeyDown}
           onClick={() => selectView('COMBINED')}
           aria-pressed={isMarginDeskActive}
@@ -121,6 +123,8 @@ export function TickerTabs() {
             : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
             }`}
           data-nav-tab="true"
+          data-nav-index={0}
+          ref={(element) => { tabButtonRefs.current[0] = element; }}
           onKeyDown={handleTabKeyDown}
         >
           MARGIN: {tickers[0]}
@@ -138,12 +142,14 @@ export function TickerTabs() {
               : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
               }`}
           data-nav-tab="true"
+          data-nav-index={0}
+          ref={(element) => { tabButtonRefs.current[0] = element; }}
           onKeyDown={handleTabKeyDown}
           >
             COMBINED PORTFOLIO
           </button>
 
-          {tickers.map((t) => (
+          {tickers.map((t, index) => (
             <button
               key={t}
               type="button"
@@ -154,6 +160,8 @@ export function TickerTabs() {
                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                 }`}
           data-nav-tab="true"
+          data-nav-index={index + 1}
+          ref={(element) => { tabButtonRefs.current[index + 1] = element; }}
           onKeyDown={handleTabKeyDown}
             >
               {t}
@@ -171,6 +179,8 @@ export function TickerTabs() {
           : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
           }`}
           data-nav-tab="true"
+          data-nav-index={marginDeskViews.length}
+          ref={(element) => { tabButtonRefs.current[marginDeskViews.length] = element; }}
           onKeyDown={handleTabKeyDown}
       >
         <span>🛡️ BALANCE</span>
@@ -191,6 +201,8 @@ export function TickerTabs() {
           : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
           }`}
           data-nav-tab="true"
+          data-nav-index={marginDeskViews.length + 1}
+          ref={(element) => { tabButtonRefs.current[marginDeskViews.length + 1] = element; }}
           onKeyDown={handleTabKeyDown}
       >
         CLOSED HISTORY
@@ -207,6 +219,8 @@ export function TickerTabs() {
             : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition'
         }
           data-nav-tab="true"
+          data-nav-index={marginDeskViews.length + 2}
+          ref={(element) => { tabButtonRefs.current[marginDeskViews.length + 2] = element; }}
           onKeyDown={handleTabKeyDown}
       >
         <span>⚙️ SETTINGS</span>
