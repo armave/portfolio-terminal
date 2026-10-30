@@ -223,6 +223,7 @@ export class PortfolioStateDO {
 
       if (body.action === "create") {
         const name = normalizeAccountName(body.name);
+        if (body.role !== undefined && body.role !== "admin" && body.role !== "guest") return authJson({ error: "Role must be either admin or guest." }, 400);
         const role = body.role === "admin" ? "admin" : "guest";
         if (!validAccountInput(name, body.password)) return authJson({ error: "Use a name of 2–60 characters and a password of 12–128 characters." }, 400);
         const salt = toHex(crypto.getRandomValues(new Uint8Array(16)));
