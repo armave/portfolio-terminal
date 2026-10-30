@@ -411,12 +411,7 @@ function pullCloudAndRewriteLocal(parsedState: any) {
   state = portfolioStore.getState();
   switchView(state.activeView);
   console.log("[Sync]: Cloud state ingested and UI re-rendered successfully.", state);
-  setTimeout(() => {
-    const mainView = document.getElementById('mainTerminalView');
-    if (mainView) {
-      mainView.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, 100);
+  emitUiEvent('terminal:scroll-workspace');
 }
 
 async function syncCloudState(mode = 'push') {
@@ -1582,12 +1577,7 @@ async function startApp(secret: string) {
   // batch already contains the same deep Yahoo data for all tracked symbols.
   initialQuoteRefreshPending = true;
   switchView(state.activeView);
-  setTimeout(() => {
-    const mainView = document.getElementById('mainTerminalView');
-    if (mainView) {
-      mainView.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, 100);
+  emitUiEvent('terminal:scroll-workspace');
   await refreshAllLivePrices();
   initialQuoteRefreshPending = false;
   renderBoardAnalystConsensus(getMarketInsightsTicker());

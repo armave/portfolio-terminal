@@ -40,3 +40,14 @@ Typecheck, tests, production build, dead-code validation, and production depende
 - [x] Display up to the ten newest standalone messages returned by the existing Stocktwits stream.
 - [x] Add regression coverage proving ten posts are shown when available and replies remain excluded.
 - [x] Typecheck, tests, production build, dead-code validation, and production dependency audit passed on Stocktwits implementation head `bb3e6fa9734c67e9ff7ae5af83e481bb6ee8c7ea`: [Validate](https://github.com/armave/portfolio-terminal/actions/runs/40701076600) and [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/40701076162).
+
+
+## Workspace navigation ownership — 2026-10-30
+
+- [x] Removed the two remaining application-runtime lookups of `#mainTerminalView` from `app.ts`. Cloud-state restore and initial startup now publish a typed `terminal:scroll-workspace` request instead of finding and scrolling a sibling DOM node.
+- [x] The Preact-owned `App` holds a ref to its workspace `<main>`, subscribes to the typed request in its layout effect, and performs the smooth scroll against that owned element. The subscription is removed on unmount.
+- [x] Added event-bus regression coverage for the payload-free workspace navigation request.
+- [ ] Continue migrating in-process broker events (`tradenet:account-info`, executed trades, active orders and request/error notifications) away from untyped `window` CustomEvents into typed application state/events. Preserve any externally consumed browser events only where a real integration contract requires them.
+- [ ] Reduce the remaining prop-mirror boundary in `uiStateStore` and `renderBoard.ts` by moving one desk/view-model slice at a time into Preact-owned state or pure selectors. Keep calculations in `src/domain` and do not move financial rules into components.
+- [ ] Keep browser/platform operations (visibility lifecycle, file downloads, autofill compatibility and element measurement/focus/scroll through component refs) in focused effects or infrastructure helpers; these are not reasons to introduce a second renderer.
+- [ ] Re-run typecheck, Vitest, production build, Knip and dependency audit on the final PR head. A local clone was attempted but this environment cannot resolve `github.com`; CI is the validation source for this pass.

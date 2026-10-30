@@ -32,6 +32,7 @@ interface AppProps {
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
   const backupImportInputRef = useRef<HTMLInputElement>(null);
+  const mainWorkspaceRef = useRef<HTMLElement>(null);
   const activeDeskView = useActiveDeskView();
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
@@ -300,13 +301,20 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     };
     const handleScenarioModal = (event: Event) => setScenarioModalData((event as CustomEvent<ScenarioModalData | null>).detail ?? null);
     const handleBackupImportRequest = () => backupImportInputRef.current?.click();
+    const handleScrollWorkspace = () => {
+      requestAnimationFrame(() => {
+        mainWorkspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    };
     addUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
+    addUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
     addUiEventListener('terminal:scenario-modal', handleScenarioModal);
     addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
     const handleStartupState = (event: Event) => { const detail = (event as CustomEvent<{visible:boolean;failed:boolean}>).detail; if (detail) setStartupState(detail); };
     addUiEventListener('terminal:startup-state', handleStartupState);
     return () => {
       removeUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
+      removeUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
       removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
       removeUiEventListener('terminal:startup-state', handleStartupState);
@@ -416,6 +424,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     <>
       {/* Active Position Header Panel */}
       <main
+        ref={mainWorkspaceRef}
         id="mainTerminalView"
         aria-label="Portfolio workspace"
         class="border-card p-4 sm:p-6 rounded-xl space-y-2 max-w-6xl mx-auto"

@@ -47,6 +47,17 @@ describe('typed UI event bus', () => {
     removeUiEventListener('terminal:backup-import-request', backupListener);
   });
 
+  it('delivers Preact-owned workspace scroll requests without DOM lookup payloads', () => {
+    const listener = vi.fn();
+    addUiEventListener('terminal:scroll-workspace', listener);
+
+    emitUiEvent('terminal:scroll-workspace');
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0].detail).toBeUndefined();
+    removeUiEventListener('terminal:scroll-workspace', listener);
+  });
+
   it('supports events without payloads', () => {
     const listener = vi.fn();
     addUiEventListener('terminal:startup-retry', listener);

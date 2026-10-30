@@ -9,6 +9,7 @@ export interface UiEventPayloads {
   'terminal:startup-offline': undefined;
   'terminal:startup-retry': undefined;
   'terminal:startup-state': { visible: boolean; failed: boolean };
+  'terminal:scroll-workspace': undefined;
 }
 
 export type UiEventName = keyof UiEventPayloads;
