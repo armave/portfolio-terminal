@@ -307,3 +307,17 @@ This is a boundary-typing and test-coverage change only. The FIFO matching order
 - [x] Exact-head validation and PR CI passed on `8ddb729785a4d4e5b49b11161e2792c51af24e7b`: [Validate run 41204009743](https://github.com/armave/portfolio-terminal/actions/runs/41204009743) and [Pull Request CI run 41204009739](https://github.com/armave/portfolio-terminal/actions/runs/41204009739).
 
 This extends the P2 typed-boundary work to the untrusted API edge. It does not change the normalized `FreedomExecutedTrade` field set, saved history schema, FIFO allocation, commissions, P/L, or account authorization.
+
+
+## Follow-on implementation — complete TradeNet execution history for FIFO calculations (2026-10-31)
+
+- [x] Trace the missing Trades metrics to a server request bounded to the latest 100 TradeNet executions (`max: 100`, `sort: 1`).
+- [x] Change the read-only Worker request to `getTradesHistory` with `sort: 0` and no `max`, matching TradeNet's documented full-history mode.
+- [x] Add a Worker integration test asserting the request body contains `{ sort: 0 }` and no `max`, and that older opening buys are returned with recent sells.
+- [x] Update Trades/history comments and the market-data integration notes to record the full-history requirement for FIFO duration and buy-commission matching.
+- [ ] Verify the broker returns the complete history for the configured account and review the recalculated Trades summary after deployment.
+- [ ] Confirm exact-head PR CI and Validate after the client documentation updates.
+
+The screenshot showed sell rows with known selling fees but missing holding duration/net P&L. `ClosedHistoryDesk` computes buy commission and holding duration by FIFO-matching sells against opening buys. The Worker had been requesting only the latest 100 executions, which can exclude older opening lots. TradeNet's `getTradesHistory` documentation states that `sort=0` with `max` omitted returns the full history count; this request now removes the artificial latest-100 cap. Financial formulas and persisted schemas are unchanged.
+
+Source: [TradeNet — Retrieving trades history](https://tradernet.com/tradernet-api/get-trades-history?site_lang=en).
