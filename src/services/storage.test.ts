@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   saveState,
   loadSavedState,
+  loadSavedHistory,
+  saveSavedHistory,
   clearLocalData,
   getGatewaySecret,
   setGatewaySecret,
@@ -369,6 +371,30 @@ describe('storage service', () => {
       saveQuoteRefreshInterval(30000, 'guest');
       expect(getQuoteRefreshInterval(15000, 'guest')).toBe(30000);
       expect(getQuoteRefreshInterval(60000, 'admin')).toBe(60000);
+    });
+  });
+
+  describe('separate closed history persistence', () => {
+    it('persists an explicit empty history snapshot so a full reset cannot restore old rows', () => {
+      storageMap.set('portfolio_closed_history_v1', JSON.stringify({
+        brokerExecutedTrades: [{ id: 'old-trade' }],
+        cashflows: [{ id: 'old-fee' }]
+      }));
+
+      expect(saveSavedHistory({ brokerExecutedTrades: [], cashflows: [] })).toBe(true);
+      expect(loadSavedHistory()).toEqual({ brokerExecutedTrades: [], cashflows: [] });
+      expect(JSON.parse(storageMap.get('portfolio_closed_history_v1')!)).toEqual({
+        brokerExecutedTrades: [],
+        cashflows: []
+      });
+    });
+
+    it('reports when the separate history record cannot be persisted', () => {
+      localStorageMock.setItem.mockImplementationOnce(() => {
+        throw new Error('quota exceeded');
+      });
+
+      expect(saveSavedHistory({ brokerExecutedTrades: [], cashflows: [] })).toBe(false);
     });
   });
 
