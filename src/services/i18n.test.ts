@@ -42,6 +42,16 @@ describe('app localization', () => {
     expect(translateText('Position value 90.00 (already10.0% below trigger)', 'ru')).toBe('Стоимость позиции 90.00 (уже на 10.0% ниже порога)');
   });
 
+  it('localizes TradeNet history recovery and accessible table copy', () => {
+    expect(translateText('TradeNet refresh failed. Showing saved history, which may be out of date.', 'ru'))
+      .toBe('Не удалось обновить историю TradeNet. Показана сохранённая история, которая может быть устаревшей.');
+    expect(translateText('Retry TradeNet history', 'ru')).toBe('Повторить загрузку истории TradeNet');
+    expect(translateText('Refreshing TradeNet history…', 'ru')).toBe('Обновление истории TradeNet…');
+    expect(translateText('Retrying…', 'ru')).toBe('Повторная попытка…');
+    expect(translateText('Closed trade history with ticker, closing date, quantity, duration, fees, commissions, and net profit.', 'ru'))
+      .toBe('История закрытых сделок с тикером, датой закрытия, количеством акций, сроком удержания, сборами, комиссиями и чистой прибылью.');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
