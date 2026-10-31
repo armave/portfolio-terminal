@@ -648,7 +648,9 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
         quantity: shares,
         averagePrice: Number.isFinite(averagePriceValue) && averagePriceValue > 0 ? averagePriceValue : null,
         purchasedAt: trade?.buyDate ?? trade?.purchaseDate ?? null,
-        operationAt: trade?.sellDate ?? trade?.exitDate ?? trade?.closedAt ?? trade?.date ?? null,
+        // LOTS dates are lifecycle-specific: the close timestamp for a Trade,
+        // never its original buy date; Tranche rows use purchasedAt below.
+        operationAt: trade?.closedAt ?? trade?.exitDate ?? trade?.sellDate ?? trade?.date ?? null,
         value: saleValue,
         netProfit
       };
