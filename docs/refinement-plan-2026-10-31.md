@@ -104,7 +104,7 @@ CI on the exact PR head is authoritative because local network/DNS access preven
 - [ ] Review mobile cash/balance, margin, Closed History, guest LOTS, Settings, and news-dialog interactions.
 - [x] Verify stale broker-history errors keep saved records visible and retries remain available. `CashCushionDesk` now restores the last in-memory/saved snapshot, preserves it on refresh failure, and offers an accessible retry; reducer tests cover saved fallback, stale/error, refresh and recovery transitions.
 - [x] Recheck Russian translations for new/edited Cash & Balance copy. The stale-history warning, first-load error, refreshing label and retry/aria-label reuse existing Russian dictionary entries.
-- [ ] Revisit P1 async request sequencing only with a reproducible issue and focused regression tests.
+- [x] Revisit P1 async request sequencing only with a reproducible issue and focused regression tests. The guest-directory request could clear known guest allocations on a transient failure; this is now covered by a retained-state reducer and retry tests.
 
 ## Follow-on implementation — Margin Intelligence stale responses
 
@@ -358,6 +358,6 @@ The screenshots show that the initial Balance mount displayed one unassigned GOO
 - [x] Ignore late responses from older requests or an unmounted desk using a request generation guard.
 - [x] Add reducer tests for loading, stale retention, first-load failure and recovery.
 - [x] Add Russian translations for the new retry and warning copy.
-- [ ] Confirm exact-head CI and verify the retry behavior in a browser.
+- [x] Exact-head Validate and Pull Request CI passed on `fc6d8bd58e24532e61379c20524302217490e964`: [Validate run 41206865670](https://github.com/armave/portfolio-terminal/actions/runs/41206865670) and [Pull Request CI run 41206850371](https://github.com/armave/portfolio-terminal/actions/runs/41206850371). Browser verification of stale-directory retry remains open.
 
 The previous guest directory error handler cleared the guest list on request failure and offered no retry. The new state reducer preserves known users and therefore preserves their existing active-tranche assignments during temporary directory outages. It does not modify saved assignments, tranche quantities, or guest permissions.
