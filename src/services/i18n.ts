@@ -503,7 +503,6 @@ const RU: Record<string, string> = {
   "Date to": "Дата по",
   "Open shares": "Остаток акций",
   "Avg. cost": "Средняя цена",
-  "Value": "Стоимость",
   "Assigned cost basis across filtered records:": "Себестоимость назначенных лотов по выбранным записям:",
   "· Some open holdings have no current quote": "· Для некоторых открытых активов нет актуальной котировки",
   "Value shows current market value for open tranches and gross sale proceeds for closed trades. Net P&L appears only when the closed trade's net result is available.": "В столбце «Стоимость» показана текущая рыночная стоимость открытых лотов и валовая выручка от продажи закрытых сделок. Чистая прибыль/убыток отображается только при наличии итоговых данных закрытой сделки.",
