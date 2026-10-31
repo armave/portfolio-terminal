@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders } from './worker.js';
+import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 
 describe('upstream timeout coverage', () => {
@@ -1324,5 +1324,44 @@ describe('Durable Object guest portfolio ownership', () => {
     }));
     expect(invalid.status).toBe(400);
     expect(missing.status).toBe(404);
+  });
+});
+
+
+describe('sanitizeFreedomMarketDepth', () => {
+  it('normalizes and sorts the initial full TradeNet order-book snapshot', () => {
+    const result = sanitizeFreedomMarketDepth({
+      dom: [{ i: 'AAPL.US', min_step: 0.01, cnt: 3, n: 19, ins: [
+        { p: 101.2, s: 'S', q: 5, k: 0 }, { p: 100.9, s: 'B', q: 8, k: 1 },
+        { p: 101.1, s: 'S', q: 7, k: 2 }, { p: 100.8, s: 'B', q: 2, k: 3 },
+        { p: 0, s: 'B', q: 100, k: 4 }, { p: 101, s: 'X', q: 1, k: 5 }
+      ] }]
+    }, 'AAPL.US');
+    expect(result).toMatchObject({
+      symbol: 'AAPL.US', depth: 3, minPriceStep: 0.01, sequence: 19,
+      bids: [{ price: 100.9, quantity: 8, position: 1 }, { price: 100.8, quantity: 2, position: 3 }],
+      asks: [{ price: 101.1, quantity: 7, position: 2 }, { price: 101.2, quantity: 5, position: 0 }]
+    });
+    expect(JSON.stringify(result)).not.toContain('"side"');
+  });
+  it('rejects another ticker and an empty order book', () => {
+    expect(() => sanitizeFreedomMarketDepth({ dom: [{ i: 'MSFT.US', ins: [] }] }, 'AAPL.US')).toThrow();
+    expect(() => sanitizeFreedomMarketDepth({ dom: [{ i: 'AAPL.US', ins: [] }] }, 'AAPL.US')).toThrow();
+  });
+});
+
+describe('Freedom market-depth proxy', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it('does not connect to demo market data when the live SID secret is missing', async () => {
+    const WebSocketMock = vi.fn();
+    vi.stubGlobal('WebSocket', WebSocketMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=AAPL.US', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), {
+      GATEWAY_SECRET: 'test-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key'
+    });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('FREEDOM_MARKET_DATA_SID') });
+    expect(WebSocketMock).not.toHaveBeenCalled();
   });
 });
