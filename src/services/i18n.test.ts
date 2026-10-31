@@ -91,12 +91,14 @@ describe('app localization', () => {
     expect(translateText('Open cost basis', 'ru')).toBe('Себестоимость открытых лотов');
     expect(translateText('Open market value', 'ru')).toBe('Рыночная стоимость открытых лотов');
     expect(translateText('All statuses', 'ru')).toBe('Все статусы');
-    expect(translateText('Assigned from', 'ru')).toBe('Назначено с');
-    expect(translateText('Assigned to', 'ru')).toBe('Назначено по');
+    expect(translateText('Tranche date', 'ru')).toBe('Дата покупки');
+    expect(translateText('Tranche date from', 'ru')).toBe('Дата покупки с');
+    expect(translateText('Tranche date to', 'ru')).toBe('Дата покупки по');
+    expect(translateText('Net P&L', 'ru')).toBe('Чистая прибыль/убыток');
     expect(translateText('No assignments match these filters.', 'ru'))
       .toBe('Нет назначений, соответствующих выбранным фильтрам.');
-    expect(translateText('Market value is shown only for open assigned holdings. Realized profit/loss is not inferred from assignment history. Pre-feature open assignments are dated when first recorded.', 'ru'))
-      .toContain('Рыночная стоимость показывается только для открытых назначенных активов.');
+    expect(translateText("Market value is shown only for open assigned holdings. Net P&L appears only when the closed trade's net result is available.", 'ru'))
+      .toBe('Рыночная стоимость показывается только для открытых назначенных активов. Чистая прибыль/убыток отображается только при наличии итоговых данных закрытой сделки.');
   });
 
   it('localizes dynamic record counts, unassigned rows, and risk buffers', () => {
