@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClosedTradeAllocation } from '../types/portfolio';
-import { buildClosedTradeGuestLedgerUpserts } from './closedTradeGuestAssignments';
+import { buildClosedTradeGuestLedgerUpserts, resolveClosedTradeOperationDate } from './closedTradeGuestAssignments';
 
 const sourceRows = [
   { allocationKey: 'broker:sell-1', ticker: 'AAPL', name: 'Apple' },
@@ -154,6 +154,43 @@ describe('closed trade guest ledger projection', () => {
 
     expect(result[0].record.operationAt).toBe(1721000000000);
     expect(result[0].record.value).toBe(150);
+  });
+
+  it('prefers the same closing-date fields as the Trades table over closedAt', () => {
+    expect(resolveClosedTradeOperationDate({
+      exitDate: '2026-08-18T15:30:00.000Z',
+      sellDate: '2026-08-18',
+      closedAt: '2026-10-29T12:00:00.000Z',
+      date: '2026-10-29'
+    })).toBe('2026-08-18T15:30:00.000Z');
+    expect(resolveClosedTradeOperationDate({
+      sellDate: '2026-08-18',
+      closedAt: '2026-10-29T12:00:00.000Z'
+    })).toBe('2026-08-18');
+    expect(resolveClosedTradeOperationDate({
+      closedAt: '2026-10-29T12:00:00.000Z'
+    })).toBe('2026-10-29T12:00:00.000Z');
+  });
+
+  it('does not substitute the original buy date when a Trade close date is missing', () => {
+    const result = buildClosedTradeGuestLedgerUpserts({
+      'broker:sell-1': {
+        fundingType: 'cash',
+        cashQuantity: 1,
+        marginQuantity: 0,
+        guestId: 'guest-a',
+        assignedAt: 1721000000000
+      }
+    }, [{
+      allocationKey: 'broker:sell-1',
+      ticker: 'AAPL',
+      quantity: 1,
+      purchasedAt: 1720000000000
+    }], 1722000000000);
+
+    expect(result[0].record.operationAt).toBeNull();
+    expect(result[0].record.purchasedAt).toBe(1720000000000);
+    expect(result[0].record.assignedAt).toBe(1721000000000);
   });
 
   it('uses stable assignment identifiers across repeated publications', () => {
