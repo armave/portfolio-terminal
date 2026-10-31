@@ -26,6 +26,16 @@ describe('TableScrollRegion', () => {
     expect(region.props.children).toBe(table);
   });
 
+  it('can leave the tab order while its containing panel is collapsed', () => {
+    const region = TableScrollRegion({
+      label: 'Active tranches and guest assignments',
+      children: h('table', null),
+      tabIndex: -1
+    });
+
+    expect(region.props.tabIndex).toBe(-1);
+  });
+
   it('localizes its accessible region name', () => {
     setAppLanguage('ru');
     const region = TableScrollRegion({
