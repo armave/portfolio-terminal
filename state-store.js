@@ -465,6 +465,7 @@ export class PortfolioStateDO {
       tranches.push({
         id, ticker, name, quantity,
         averagePrice,
+        netProfit,
         marketPrice,
         marketValue: marketPrice === null ? null : marketPrice * quantity,
         purchasedAt: Number.isFinite(purchasedAt) && purchasedAt > 0 ? purchasedAt : null
@@ -507,6 +508,11 @@ export class PortfolioStateDO {
     const endedAt = Number(source.endedAt);
     const averagePrice = positiveOrNull(source.averagePrice);
     const marketPrice = positiveOrNull(source.marketPrice);
+    const netProfit = source.netProfit === null || source.netProfit === undefined
+      ? null : Number(source.netProfit);
+    if (netProfit !== null && !Number.isFinite(netProfit)) {
+      return { error: "Guest tranche ledger contains an invalid net profit value." };
+    }
     return {
       record: {
         assignmentId,
