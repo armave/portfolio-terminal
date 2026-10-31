@@ -105,3 +105,15 @@ CI on the exact PR head is authoritative because local network/DNS access preven
 - [ ] Verify stale broker-history errors keep saved records visible and retries remain available.
 - [ ] Recheck Russian translations for any new or edited user-facing copy.
 - [ ] Revisit P1 async request sequencing only with a reproducible issue and focused regression tests.
+
+## Follow-on implementation — Margin Intelligence stale responses
+
+A follow-up audit found that the invalid-ticker branch displayed an error without advancing the request generation. An earlier in-flight analysis could therefore finish later and replace the newer error state.
+
+- [x] Add a small latest-request guard with explicit begin, current-request, and invalidation operations.
+- [x] Advance the guard immediately when a Margin Intelligence event arrives, before validating its ticker.
+- [x] Invalidate pending responses when the owning effect is cleaned up.
+- [x] Add unit tests for out-of-order completion, a newer request rejected before async work, and effect cleanup.
+- [ ] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
+
+The change affects client-side request sequencing only. It does not change portfolio calculations, broker requests, stored digests, authorization, server code, or localization.
