@@ -20,6 +20,15 @@ describe('closed trade manual allocation resolution', () => {
     });
   });
 
+  it('preserves known cash-funded guest shares when a sale is otherwise unclassified', () => {
+    expect(resolveClosedTradeAllocation(4, 'unclassified', [{ guestId: 'guest-a', quantity: 1 }], null, 1)).toEqual({
+      fundingType: 'mix',
+      cashQuantity: 1,
+      marginQuantity: 3,
+      guestAllocations: [{ guestId: 'guest-a', quantity: 1 }]
+    });
+  });
+
   it('lets a saved Margin override clear a previously inferred guest assignment', () => {
     expect(resolveClosedTradeAllocation(5, 'cash', [{ guestId: 'guest-a', quantity: 5 }], {
       fundingType: 'margin',
