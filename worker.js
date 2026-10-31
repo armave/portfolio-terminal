@@ -972,6 +972,8 @@ export default {
                     return jsonError("Freedom market-data credentials are not configured in the Worker.", 503, corsHeaders);
                 }
                 const command = action === "freedom-quote" ? "getStockQuotesJson" : action === "freedom-news" ? "getNews" : "getHloc";
+                // requestTradeNet targets the API-key v2 route: the command is in the URL,
+                // and the signed JSON body contains only these method parameters.
                 const params = action === "freedom-quote" ? { tickers: [symbol] } : action === "freedom-news" ? { ticker: symbol, limit: 10 } : { ticker: symbol, interval: "D", limit: 100 };
                 try {
                     const data = action === "freedom-quote"
