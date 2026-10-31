@@ -13,6 +13,10 @@ type ClosedTradeFundingType = ActiveTrancheType | 'unclassified';
 
 export interface ClosedTradeAttribution {
   fundingType: ClosedTradeFundingType;
+  /** Matched shares funded by cash, including unassigned cash lots. */
+  cashQuantity: number;
+  /** Matched shares funded by margin. Unmatched shares remain outside this amount. */
+  marginQuantity: number;
   guestAllocations: ClosedTradeGuestAllocation[];
   /** Shares whose opening purchase could not be matched to the available history. */
   unmatchedQuantity: number;
@@ -199,7 +203,7 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
       const totalOpenQuantity = group.lots.reduce((sum, lot) => sum + lot.quantity, 0);
       const fundingType = validTrancheType(types[groupId])
         ? types[groupId]
-        : inherited?.fundingType || (validTrancheType(types[group.ticker]) ? types[group.ticker] : 'cash');
+        : inherited?.fundingType || (validTrancheType(types[group.ticker]) ? types[group.ticker] : 'margin');
       const mix = mixes[groupId]
         ? mixes[groupId]
         : inherited?.fundingType === 'mix'
@@ -238,6 +242,8 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
     let remainingToSell = event.quantity;
     const guestAllocations = new Map<string, number>();
     const fundingTypes = new Set<ActiveTrancheType>();
+    let cashQuantitySold = 0;
+    let marginQuantitySold = 0;
     const eligibleLots = lots.filter((lot) =>
       lot.ticker === event.ticker &&
       lot.quantity > EPSILON &&
@@ -250,8 +256,11 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
       if (remainingToSell <= EPSILON) break;
       const sold = Math.min(lot.quantity, remainingToSell);
       const metadata = lot.metadata;
-      const fundingType = metadata?.fundingType || 'cash';
+      const fundingType = metadata?.fundingType || 'margin';
       fundingTypes.add(fundingType);
+      const cashRatio = metadata?.cashRatio ?? (fundingType === 'cash' ? 1 : 0);
+      cashQuantitySold += sold * cashRatio;
+      marginQuantitySold += sold * (1 - cashRatio);
 
       const assignmentIsActive = Boolean(metadata?.guestId) &&
         (metadata?.assignedAt === null || event.at === null || event.at >= metadata!.assignedAt);
@@ -283,6 +292,8 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
         : Array.from(uniqueFundingTypes)[0];
     attributions.set(event.trade, {
       fundingType,
+      cashQuantity: cashQuantitySold,
+      marginQuantity: marginQuantitySold,
       guestAllocations: Array.from(guestAllocations.entries())
         .filter(([, quantity]) => quantity > EPSILON)
         .map(([guestId, quantity]) => ({ guestId, quantity }))
