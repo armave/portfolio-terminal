@@ -221,6 +221,8 @@ const RU: Record<string, string> = {
   'Unable to load TradeNet history. Please retry.': 'Не удалось загрузить историю TradeNet. Повторите попытку.',
   'TradeNet refresh failed. Showing saved history, which may be out of date.': 'Не удалось обновить историю TradeNet. Показана сохранённая история, которая может быть устаревшей.',
   'Retry TradeNet history': 'Повторить загрузку истории TradeNet',
+  'Refreshing TradeNet history…': 'Обновление истории TradeNet…',
+  'Retrying…': 'Повторная попытка…',
   'Closed trade history with ticker, closing date, quantity, duration, fees, commissions, and net profit.': 'История закрытых сделок с тикером, датой закрытия, количеством акций, сроком удержания, сборами, комиссиями и чистой прибылью.',
   'No closed trades recorded yet.': 'Закрытых сделок пока нет.',
   'Closed trade history': 'История закрытых сделок',
