@@ -290,7 +290,7 @@ describe('Freedom quote endpoint', () => {
 
   it('uses the documented getStockQuotesJson command and tickers array', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      quotes: [{
+      q: [{
         c: 'GOOGL.US',
         ltp: '279.84',
         pp: '274.00',
@@ -318,7 +318,7 @@ describe('Freedom quote endpoint', () => {
       provider: 'Freedom TradeNet',
       symbol: 'GOOGL.US',
       data: {
-        quotes: [{ c: 'GOOGL.US', ltp: '279.84', pp: '274.00', chg: '5.84', pcp: '2.1314' }]
+        q: [{ c: 'GOOGL.US', ltp: '279.84', pp: '274.00', chg: '5.84', pcp: '2.1314' }]
       }
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
