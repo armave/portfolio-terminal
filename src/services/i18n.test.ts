@@ -241,6 +241,17 @@ describe('app localization', () => {
       .toBe('Только оценка · портфель не изменяется.');
   });
 
+  it('localizes command help examples and simulation output', () => {
+    expect(translateText('Usage: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200', 'ru'))
+      .toBe('Формат: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200');
+    expect(translateText('Select a ticker tab or specify a ticker (e.g., "sell AAPL today for $180 vs sell 14 days later for $185").', 'ru'))
+      .toBe('Выберите вкладку тикера или укажите тикер (например, "sell AAPL today for $180 vs sell 14 days later for $185").');
+    expect(translateText('• bought <shares> <ticker> for <price> (e.g. bought 10 AAPL for $185.50)', 'ru'))
+      .toBe('• bought <shares> <ticker> for <price> (например, bought 10 AAPL for $185.50)');
+    expect(translateText('[Sim AAPL @ $205.00 in 14d]: Gross $200.00 | Comms -$4.00 | Margin -$3.00 → Net P&L: +$193.00', 'ru'))
+      .toBe('[Симуляция AAPL @ $205.00 через 14 дн.]: Валовая прибыль: $200.00 | Комиссии: -$4.00 | Маржинальные проценты: -$3.00 → Чистая прибыль/убыток: +$193.00');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
