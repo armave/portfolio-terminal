@@ -625,8 +625,10 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
       const shares = Math.abs(Number(trade?.shares) || 0);
       const averagePriceValue = Number(trade?.avgBuyPrice ?? trade?.entryPrice);
       const sellPriceValue = Number(trade?.sellPrice ?? trade?.exitPrice);
-      const directSaleValue = Number(trade?.sellValue ?? trade?.exitValue ?? trade?.proceeds);
-      const saleValue = Number.isFinite(directSaleValue) && directSaleValue >= 0
+      const directSaleValueRaw = trade?.sellValue ?? trade?.exitValue ?? trade?.proceeds;
+      const directSaleValue = directSaleValueRaw === null || directSaleValueRaw === undefined || directSaleValueRaw === ''
+        ? NaN : Number(directSaleValueRaw);
+      const saleValue = Number.isFinite(directSaleValue) && directSaleValue > 0
         ? directSaleValue
         : Number.isFinite(sellPriceValue) && sellPriceValue > 0 && shares > 0
           ? sellPriceValue * shares : null;
