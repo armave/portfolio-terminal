@@ -537,10 +537,13 @@ export class PortfolioStateDO {
       records.set(item.assignmentId, {
         ...previous,
         ...item,
-        // Keep the first assignment timestamp and preserve the largest observed
-        // assigned quantity as buys are grouped into the same broker operation.
+        // Keep the first assignment timestamp. Active tranche records preserve
+        // the largest observed quantity as buys are grouped; closed-trade edits
+        // replace their manually assigned cash quantity exactly.
         assignedAt: previous?.assignedAt || item.assignedAt,
-        assignedQuantity: Math.max(Number(previous?.assignedQuantity) || 0, item.assignedQuantity),
+        assignedQuantity: String(item.trancheId || "").startsWith("closed-trade:")
+          ? item.assignedQuantity
+          : Math.max(Number(previous?.assignedQuantity) || 0, item.assignedQuantity),
         purchasedAt: previous?.purchasedAt ?? item.purchasedAt,
         updatedAt: Math.max(Number(previous?.updatedAt) || 0, item.updatedAt),
         ...(item.status === "active" ? { endedAt: null } : {})
