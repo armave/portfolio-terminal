@@ -123,34 +123,6 @@ function parseAmount(value: unknown): number | null {
   return parenthesizedNegative ? -Math.abs(parsed) : parsed;
 }
 
-function dateIdentity(value: string): string {
-  const text = value.trim();
-  if (!text) return "";
-  const serial = Number(text);
-  if (/^\d{4,6}(?:\.\d+)?$/.test(text) && serial > 20000 && serial < 100000) {
-    return new Date(Date.UTC(1899, 11, 30) + serial * 86400000).toISOString().slice(0, 10);
-  }
-  const dmy = text.match(/^(\d{1,2})[.-](\d{1,2})[.-](\d{4})$/);
-  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
-  const us = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (us) return `${us[3]}-${us[1].padStart(2, "0")}-${us[2].padStart(2, "0")}`;
-  const timestamp = Date.parse(text);
-  if (Number.isFinite(timestamp)) return new Date(timestamp).toISOString().slice(0, 10);
-  return text.toLowerCase();
-}
-
-type CashflowFingerprintInput = Pick<NormalizedFreedomCashflow, "date" | "type" | "amount" | "currency" | "description">;
-
-function cashflowFingerprint(row: CashflowFingerprintInput): string {
-  return [
-    dateIdentity(row.date),
-    row.type.trim().toLowerCase().replace(/\s+/g, " "),
-    Number(row.amount).toFixed(8),
-    String(row.currency ?? "").trim().toLowerCase(),
-    String(row.description ?? "").trim().toLowerCase().replace(/\s+/g, " ")
-  ].join("|");
-}
-
 /**
  * Normalize broker cashflows into the row shape already consumed by Closed
  * History. Unknown response shapes and malformed non-empty payloads fail closed.
@@ -222,15 +194,16 @@ export function normalizeFreedomCashflowRows(response: unknown): NormalizedFreed
 
 /**
  * Older saved rows may predate raw-field persistence. Normalize those at the
- * merge boundary while keeping newly normalized/imported rows fully typed.
+ * merge boundary while keeping broker rows fully typed.
  */
 type CashflowMergeInput = Omit<NormalizedFreedomCashflow, "raw"> & {
   raw?: Record<string, string>;
 };
 
 /**
- * Incrementally merge broker rows without deleting historical records. The
- * field fingerprint also matches broker operation IDs to prior XLSX imports.
+ * Incrementally merge broker rows by stable ID only. Existing saved history
+ * is retained, and distinct broker operations are never collapsed simply
+ * because their visible fields happen to match.
  */
 export function mergeFreedomCashflowRows(
   existing: CashflowMergeInput[],
@@ -241,32 +214,15 @@ export function mergeFreedomCashflowRows(
     raw: { ...(row.raw || {}) }
   }));
   const byId = new Map<string, number>();
-  // A fingerprint is only a migration bridge from old XLSX-generated IDs to
-  // broker operation IDs. Never collapse two different broker IDs just because
-  // their visible values happen to be identical.
-  const workbookRowsByFingerprint = new Map<string, number>();
-
   merged.forEach((row, index) => {
     if (!byId.has(row.id)) byId.set(row.id, index);
-    if (row.id.startsWith("cashflow-")) {
-      const fingerprint = cashflowFingerprint(row);
-      if (!workbookRowsByFingerprint.has(fingerprint)) {
-        workbookRowsByFingerprint.set(fingerprint, index);
-      }
-    }
   });
 
   for (const row of incoming) {
-    const fingerprint = cashflowFingerprint(row);
-    let matchedIndex = byId.get(row.id);
-    if (matchedIndex === undefined && row.id.startsWith("freedom-")) {
-      matchedIndex = workbookRowsByFingerprint.get(fingerprint);
-      // One imported workbook row can correspond to only one broker operation.
-      if (matchedIndex !== undefined) workbookRowsByFingerprint.delete(fingerprint);
-    }
+    const matchedIndex = byId.get(row.id);
     if (matchedIndex !== undefined) {
       const previous = merged[matchedIndex];
-      const updated: NormalizedFreedomCashflow = {
+      merged[matchedIndex] = {
         ...previous,
         ...row,
         id: previous.id,
@@ -274,9 +230,6 @@ export function mergeFreedomCashflowRows(
         description: row.description || previous.description,
         raw: { ...(previous.raw || {}), ...(row.raw || {}) }
       };
-      merged[matchedIndex] = updated;
-      byId.set(updated.id, matchedIndex);
-      byId.set(row.id, matchedIndex);
     } else {
       const index = merged.length;
       merged.push({ ...row, raw: { ...(row.raw || {}) } });

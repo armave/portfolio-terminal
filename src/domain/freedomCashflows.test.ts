@@ -61,44 +61,43 @@ describe("Freedom cashflow normalization", () => {
 });
 
 describe("Freedom cashflow incremental merge", () => {
-  it("retains historical rows, deduplicates XLSX matches and preserves saved row IDs", () => {
-    const older: NormalizedFreedomCashflow = {
-      id: "cashflow-old", date: "2026-09-01", type: "Margin Fee", amount: -4.25,
-      currency: "USD", description: "Daily margin fee", raw: { Source: "XLSX" }
+  it("preserves saved history and updates broker rows by operation ID only", () => {
+    const olderSaved: NormalizedFreedomCashflow = {
+      id: "cashflow-legacy", date: "2026-09-01", type: "Margin Fee", amount: -4.25,
+      currency: "USD", description: "Previously saved fee", raw: { legacy_note: "preserved" }
     };
-    const workbookMatch: NormalizedFreedomCashflow = {
-      id: "cashflow-workbook-match", date: "2026-10-01", type: "Margin Fee", amount: -5,
-      currency: "USD", description: "Daily margin fee", raw: { Source: "XLSX" }
-    };
-    const brokerMatch: NormalizedFreedomCashflow = {
-      id: "freedom-100", date: "2026-10-01T00:00:00Z", type: "Margin Fee", amount: -5,
+    const existingBrokerRow: NormalizedFreedomCashflow = {
+      id: "freedom-100", date: "2026-10-01", type: "Margin Fee", amount: -5,
       currency: "USD", description: "Daily margin fee", raw: { operation_id: "100" }
     };
-    const identicalBrokerOperation: NormalizedFreedomCashflow = {
+    const updatedBrokerRow: NormalizedFreedomCashflow = {
+      id: "freedom-100", date: "2026-10-01T00:00:00Z", type: "Margin Fee", amount: -5,
+      currency: "USD", description: "Updated broker description", raw: { operation_id: "100" }
+    };
+    const distinctBrokerOperation: NormalizedFreedomCashflow = {
       id: "freedom-102", date: "2026-10-01T00:00:00Z", type: "Margin Fee", amount: -5,
       currency: "USD", description: "Daily margin fee", raw: { operation_id: "102" }
     };
-    const newer: NormalizedFreedomCashflow = {
+    const newerBrokerOperation: NormalizedFreedomCashflow = {
       id: "freedom-101", date: "2026-10-31", type: "Margin Fee", amount: -1.25,
       currency: "USD", description: "Daily margin fee", raw: { operation_id: "101" }
     };
 
     const merged = mergeFreedomCashflowRows(
-      [older, workbookMatch],
-      [brokerMatch, identicalBrokerOperation, newer]
+      [olderSaved, existingBrokerRow],
+      [updatedBrokerRow, distinctBrokerOperation, newerBrokerOperation]
     );
 
     expect(merged).toHaveLength(4);
-    expect(merged[0]).toMatchObject({ id: "cashflow-old", amount: -4.25 });
-    expect(merged[1]).toMatchObject({ id: "cashflow-workbook-match", amount: -5 });
-    expect(merged[1].raw.operation_id).toBe("100");
+    expect(merged[0]).toEqual(olderSaved);
+    expect(merged[1]).toMatchObject({ id: "freedom-100", description: "Updated broker description" });
     expect(merged[2]).toMatchObject({ id: "freedom-102", amount: -5 });
     expect(merged[3]).toMatchObject({ id: "freedom-101", amount: -1.25 });
   });
 
   it("keeps prior cashflows when the broker returns an empty recent page", () => {
     const existing: NormalizedFreedomCashflow[] = [{
-      id: "cashflow-older", date: "2025-01-01", type: "Margin Fee", amount: -2,
+      id: "freedom-older", date: "2025-01-01", type: "Margin Fee", amount: -2,
       currency: "USD", description: "Daily margin fee", raw: {}
     }];
 

@@ -46,7 +46,7 @@ export function applyCashflowAllocationsToBrokerExecutions(
   return executions.map((trade, index) => {
     if (!SELL_SIDES.has(String(trade.side ?? '').toLowerCase())) return trade;
 
-    // Rebuild from the currently imported cashflows. Keeping the old allocation
+    // Rebuild from the current broker cashflows. Keeping the old allocation
     // object here would retain fees from cashflow rows that were replaced/removed.
     const marginFeeAllocations = Object.fromEntries(
       Object.entries(allocationsBySell.get(index) ?? {})

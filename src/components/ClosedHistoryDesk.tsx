@@ -9,129 +9,20 @@ import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToC
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 
-type ImportedCashflow = NormalizedFreedomCashflow;
-
-export function shouldShowCashflowImportProgress(savedRows?: ImportedCashflow[]): boolean {
-  // Saved rows are recalculated in the background; only an uploaded file owns
-  // the visible import button's progress state.
-  return savedRows === undefined;
-}
-
-export function isSupportedCashflowWorkbook(file: Pick<File, 'name'>): boolean {
-  return file.name.trim().toLowerCase().endsWith('.xlsx');
-}
-
-
-function xmlText(node: Element | null): string {
-  return node?.textContent ?? '';
-}
-
-function columnIndex(cellRef: string): number {
-  const letters = (cellRef.match(/^[A-Z]+/) || ['A'])[0];
-  return letters.split('').reduce((n, char) => n * 26 + char.charCodeAt(0) - 64, 0) - 1;
-}
-
-// Minimal XLSX reader for the workbook's first worksheet, using the browser's ZIP and XML APIs.
-async function readXlsxRows(buffer: ArrayBuffer): Promise<string[][]> {
-  const bytes = new Uint8Array(buffer);
-  const view = new DataView(buffer);
-  const decoder = new TextDecoder();
-  const entries = new Map<string, Uint8Array>();
-  const inflate = async (data: Uint8Array, method: number) => {
-    if (method === 0) return data;
-    if (method !== 8 || typeof DecompressionStream === 'undefined') throw new Error('This browser cannot unpack the XLSX workbook.');
-    const stream = new Blob([data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer]).stream().pipeThrough(new DecompressionStream('deflate-raw' as CompressionFormat));
-    return new Uint8Array(await new Response(stream).arrayBuffer());
-  };
-  let offset = 0;
-  while (offset + 30 < bytes.length && view.getUint32(offset, true) === 0x04034b50) {
-    const method = view.getUint16(offset + 8, true);
-    const compressedSize = view.getUint32(offset + 18, true);
-    const nameLength = view.getUint16(offset + 26, true);
-    const extraLength = view.getUint16(offset + 28, true);
-    const name = decoder.decode(bytes.slice(offset + 30, offset + 30 + nameLength));
-    const start = offset + 30 + nameLength + extraLength;
-    if (compressedSize === 0xffffffff) throw new Error('Unsupported XLSX ZIP64 archive.');
-    entries.set(name, await inflate(bytes.slice(start, start + compressedSize), method));
-    offset = start + compressedSize;
-  }
-  const parseXml = (name: string) => {
-    const data = entries.get(name);
-    if (!data) return null;
-    return new DOMParser().parseFromString(decoder.decode(data), 'application/xml');
-  };
-  const sharedDoc = parseXml('xl/sharedStrings.xml');
-  const shared = sharedDoc ? Array.from(sharedDoc.getElementsByTagName('si')).map(si =>
-    Array.from(si.getElementsByTagName('t')).map(t => t.textContent || '').join('')
-  ) : [];
-  const sheet = parseXml('xl/worksheets/sheet1.xml');
-  if (!sheet) throw new Error('The workbook has no first worksheet.');
-  const rows: string[][] = [];
-  for (const row of Array.from(sheet.getElementsByTagName('row'))) {
-    const values: string[] = [];
-    for (const cell of Array.from(row.children).filter(el => el.localName === 'c')) {
-      const idx = columnIndex(cell.getAttribute('r') || 'A1');
-      const type = cell.getAttribute('t');
-      const value = xmlText(cell.getElementsByTagName('v')[0] || null);
-      values[idx] = type === 's' ? (shared[Number(value)] ?? '') : type === 'inlineStr'
-        ? Array.from(cell.getElementsByTagName('t')).map(t => t.textContent || '').join('')
-        : value;
-    }
-    rows.push(values.map(value => value ?? ''));
-  }
-  return rows.filter(row => row.some(value => value.trim() !== ''));
-}
-
-function normalizeCashflowRows(rows: string[][]): ImportedCashflow[] {
-  if (rows.length < 2) throw new Error('The workbook contains no transaction rows.');
-  const headers = rows[0].map(value => value.trim().toLowerCase());
-  const find = (...names: string[]) => headers.findIndex(header => names.includes(header.replace(/[ _-]+/g, '')));
-  const dateIdx = headers.findIndex(header => /date|time|дата|ժամանակ|датаоперации/.test(header.replace(/[ _-]+/g, '')));
-  const amountIdx = headers.findIndex(header => /amount|sum|value|cashflow|fee|interest|commission|сумма|начислен|списан|процент|комис|տոկոս|գումար/.test(header.replace(/[ _-]+/g, '')));
-  const typeIdx = headers.findIndex(header => /type|direction|operation|kind|description|comment|details|назначение|операц|тип|описан|մեկնաբան|գործարք/.test(header.replace(/[ _-]+/g, '')));
-  const currencyIdx = find('currency', 'curr');
-  const descIdx = headers.findIndex(header => /description|comment|details|name|purpose|ticker|symbol|instrument|asset|назначение|описан|коммент|тикер|инструмент|ценнаябумага|актив|մեկնաբան|գործիք/.test(header.replace(/[ _-]+/g, '')));
-  if (dateIdx < 0 || amountIdx < 0) {
-    throw new Error('Could not identify date and amount columns. Workbook columns: ' + rows[0].join(', '));
-  }
-  const seen = new Set<string>();
-  const result: ImportedCashflow[] = [];
-  for (const row of rows.slice(1)) {
-    const date = (row[dateIdx] || '').trim();
-    const amountText = (row[amountIdx] || '').trim().replace(/\s/g, '').replace(',', '.');
-    if (!date && !amountText) continue;
-    const amount = Number(amountText.replace(/[^0-9.+-]/g, ''));
-    if (!date || !Number.isFinite(amount)) continue;
-    const raw: Record<string, string> = {};
-    rows[0].forEach((header, i) => { raw[header.trim()] = row[i] ?? ''; });
-    const type = typeIdx >= 0 ? (row[typeIdx] || 'Cashflow').trim() : 'Cashflow';
-    const description = descIdx >= 0 ? (row[descIdx] || '').trim() : '';
-    const currency = currencyIdx >= 0 ? (row[currencyIdx] || '').trim() : '';
-    const fingerprint = [date, type, amount.toFixed(8), currency, description].join('|').toLowerCase();
-    if (seen.has(fingerprint)) continue;
-    seen.add(fingerprint);
-    result.push({ id: 'cashflow-' + fingerprint, date, type, amount, currency: currency || undefined, description: description || undefined, raw });
-  }
-  if (!result.length) throw new Error('No valid cashflow rows were found. Check the workbook columns.');
-  return result;
-}
-
-
 export function ClosedHistoryDesk() {
   const state = usePortfolio();
   const [brokerTrades, setBrokerTrades] = useState<any[]>([]);
   const [brokerTradesLoading, setBrokerTradesLoading] = useState(true);
   const [brokerTradesError, setBrokerTradesError] = useState(false);
-  const [cashflowImporting, setCashflowImporting] = useState(false);
-  const [cashflowImportMessage, setCashflowImportMessage] = useState('');
+  const [cashflowSyncMessage, setCashflowSyncMessage] = useState('');
   const [cashflowSyncing, setCashflowSyncing] = useState(false);
   const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
   const [lastCashflowSyncAt, setLastCashflowSyncAt] = useState<number | null>(null);
   const [tradesPage, setTradesPage] = useState(1);
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
-  // Load cloud history once. An imported workbook is a complete snapshot: do not
-  // union it with an older cloud workbook, which can resurrect stale rows.
+  // Load cloud history once. An existing cloud history record is authoritative;
+  // local history is used only when no cloud record exists.
   useEffect(() => {
     let active = true;
     void pullCloudHistory().then(async history => {
@@ -183,8 +74,8 @@ export function ClosedHistoryDesk() {
     });
     return () => { active = false; };
   }, []);
-  // Recalculate once per distinct input snapshot, not whenever the import's own
-  // loading flag toggles. This prevents the calculation effect from re-entering.
+  // Recalculate once per distinct cashflow/execution snapshot. Excluding
+  // calculated metadata prevents the allocation effect from re-entering.
   useEffect(() => {
     const cashflows = state.cashflows || [];
     if (brokerTradesLoading || !cashflows.length) return;
@@ -198,25 +89,17 @@ export function ClosedHistoryDesk() {
     );
     const key = JSON.stringify({ cashflows, executions: sourceExecutions });
     if (key === lastRecalculationKey.current) return;
-    void handleImportCashflows(null, cashflows).then((success) => {
+    void processCashflowRows(cashflows).then((success) => {
       if (success) lastRecalculationKey.current = key;
     });
   }, [brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, brokerTrades]);
-  const handleImportCashflows = async (file: File | null, savedRows?: any[], requireCloudSync = false) => {
-    const showImportProgress = shouldShowCashflowImportProgress(savedRows);
-    if (showImportProgress) {
-      setCashflowImporting(true);
-      setCashflowImportMessage('');
-    }
+  const processCashflowRows = async (cashflowRows: NormalizedFreedomCashflow[], requireCloudSync = false): Promise<boolean> => {
     try {
-      if (!savedRows && (!file || !isSupportedCashflowWorkbook(file))) throw new Error('Please select an Excel .xlsx file.');
-      const rows = savedRows ?? normalizeCashflowRows(await readXlsxRows(await file!.arrayBuffer()));
-      const imported = savedRows ? savedRows as ReturnType<typeof normalizeCashflowRows> : rows as ReturnType<typeof normalizeCashflowRows>;
-      if (!imported.length) throw new Error('No cashflow rows were found in this workbook.');
+      if (!cashflowRows.length) return true;
 
-      // Persist normalized cashflow rows as the source of truth. This lets the
-      // application re-run allocations after refresh without requiring the file again.
-      const feeRows = imported.filter(item => {
+      // Persist broker-normalized cashflow rows as the source of truth so fee
+      // allocations can be recalculated after refresh without another API read.
+      const feeRows = cashflowRows.filter(item => {
         const text = [item.type, item.description, ...Object.values(item.raw)].join(' ').toLowerCase();
         // Exports commonly label the direction in a separate "Direction" column,
         // while the "Operation №" column is only an ID. Inspect every cell so
@@ -258,13 +141,13 @@ export function ClosedHistoryDesk() {
         const parsed = Date.parse(text);
         return Number.isFinite(parsed) ? Date.UTC(new Date(parsed).getUTCFullYear(), new Date(parsed).getUTCMonth(), new Date(parsed).getUTCDate()) : NaN;
       };
-      const feeDate = (fee: typeof imported[number]) => {
+      const feeDate = (fee: typeof cashflowRows[number]) => {
         const parsed = parseTradeDate(fee.date); if (Number.isFinite(parsed)) return parsed;
         const match = [fee.description, ...Object.values(fee.raw)].join(' ').match(/balance as at (\d{4}-\d{2}-\d{2})/i);
         return match ? parseTradeDate(match[1]) : NaN;
       };
       const allocationsBySell = new Map<number, Record<string, number>>();
-      let allocatedDailyFees = 0, matchedFeeRows = 0;
+      let matchedFeeRows = 0;
       for (const fee of feeRows) {
         const date = feeDate(fee), amount = Math.abs(fee.amount); if (!Number.isFinite(date) || amount <= 0) continue;
         const open = segments.filter(segment => {
@@ -279,7 +162,7 @@ export function ClosedHistoryDesk() {
           byFee[fee.id] = (byFee[fee.id] || 0) + amount * segment.quantity * segment.buyPrice / totalWeight;
           allocationsBySell.set(segment.sellIndex, byFee);
         }
-        allocatedDailyFees += amount; matchedFeeRows++;
+        matchedFeeRows++;
       }
       const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(brokerExecutions, allocationsBySell);
       let updatedTradeCount = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
@@ -288,7 +171,7 @@ export function ClosedHistoryDesk() {
       // the same daily cashflow rows independently to app trades would allocate
       // each fee twice across two representations of the portfolio.
       const appAllocations = new Map<number, number>();
-      let appAllocatedDailyFees = 0, appMatchedFeeRows = 0;
+      let appMatchedFeeRows = 0;
       if (!brokerExecutions.length) {
         for (const fee of feeRows) {
           const date = feeDate(fee), amount = Math.abs(fee.amount);
@@ -303,7 +186,6 @@ export function ClosedHistoryDesk() {
           const totalWeight = open.reduce((sum, t) => sum + t.weight, 0);
           if (!open.length || totalWeight <= 0) continue;
           for (const position of open) appAllocations.set(position.index, (appAllocations.get(position.index) || 0) + amount * position.weight / totalWeight);
-          appAllocatedDailyFees += amount;
           appMatchedFeeRows++;
         }
       }
@@ -312,11 +194,11 @@ export function ClosedHistoryDesk() {
       const changedAppRows = updatedTrades.filter((trade, index) => trade !== appTrades[index]).length;
       updatedTradeCount = changedBrokerRows + changedAppRows;
       const currentCashflows = portfolioStore.getState().cashflows || [];
-      const cashflowsChanged = JSON.stringify(currentCashflows) !== JSON.stringify(imported);
+      const cashflowsChanged = JSON.stringify(currentCashflows) !== JSON.stringify(cashflowRows);
       // Persist the uploaded source rows even when no fee date overlaps a closed
       // trade yet. A later broker refresh can then retry allocation from the store.
       const nextState: Record<string, unknown> = {};
-      if (cashflowsChanged) nextState.cashflows = imported;
+      if (cashflowsChanged) nextState.cashflows = cashflowRows;
       // Compare the complete recalculated records before writing. This prevents
       // repeated post-load recalculation from causing redundant Worker syncs.
       if (changedBrokerRows && JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions)) {
@@ -330,7 +212,7 @@ export function ClosedHistoryDesk() {
       // trigger unrelated portfolio saves and a fresh broker-history hydration.
       saveSavedHistory({
         brokerExecutedTrades: brokerExecutions.length ? updatedExecutions : (portfolioStore.getState().brokerExecutedTrades || []),
-        cashflows: imported
+        cashflows: cashflowRows
       });
       // The closed-history collection lives in its own cloud record; saving the
       // portfolio snapshot alone does not upload updated fee allocations. Without
@@ -338,59 +220,39 @@ export function ClosedHistoryDesk() {
       // freshly recalculated local rows.
       const brokerExecutionsChanged = brokerExecutions.length > 0 &&
         JSON.stringify(brokerExecutions) !== JSON.stringify(updatedExecutions);
-      // Sync the history record when either source cashflows or calculated
-      // execution metadata changes. A cashflow-only update must not be left in
-      // local state while the cloud record retains an older, partial workbook.
+      // Sync the history record when source cashflows or calculated execution
+      // metadata changes so local and cloud history remain consistent.
       if (cashflowsChanged || brokerExecutionsChanged) {
         try {
           const synced = await pushCloudHistory({
             brokerExecutedTrades: brokerExecutionsChanged ? updatedExecutions : brokerExecutions,
-            cashflows: imported
+            cashflows: cashflowRows
           });
           if (!synced) throw new Error('Cloud history did not confirm the update.');
         } catch (error) {
           console.error('Failed to sync closed-history cashflows and fees:', error);
-          if (showImportProgress || requireCloudSync) {
-            setCashflowImportMessage(`History was updated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}. Retry the refresh before navigating away.`);
+          if (requireCloudSync) {
+            setCashflowSyncMessage(`History was updated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}.`);
             return false;
           }
         }
       }
-      if (!updatedTradeCount && (matchedFeeRows > 0 || appMatchedFeeRows > 0)) {
-        if (showImportProgress) {
-          const matchedForMessage = brokerExecutions.length ? matchedFeeRows : appMatchedFeeRows;
-          setCashflowImportMessage(`Saved ${imported.length} cashflow rows; ${matchedForMessage} fee dates matched closed trades, and existing allocations were already current. No trade rows needed updating.`);
-        }
-        return true;
-      }
-      if (!updatedTradeCount) {
-        const validTradeDates = brokerExecutions.filter(trade => Number.isFinite(Date.parse(String(trade.executedAt ?? trade.date ?? '')))).length;
-        const validFeeDates = feeRows.filter(fee => Number.isFinite(feeDate(fee))).length;
-        const feeRange = feeRows.map(fee => feeDate(fee)).filter(Number.isFinite);
-        const tradeRange = executions.map(row => row.time).filter(Number.isFinite);
-        const feeSpan = feeRange.length ? new Date(Math.min(...feeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...feeRange)).toISOString().slice(0, 10) : 'unparseable';
-        const tradeSpan = tradeRange.length ? new Date(Math.min(...tradeRange)).toISOString().slice(0, 10) + '–' + new Date(Math.max(...tradeRange)).toISOString().slice(0, 10) : 'unparseable';
-        if (showImportProgress) setCashflowImportMessage(`Saved ${imported.length} workbook rows; detected ${feeRows.length} daily margin-fee rows (${validFeeDates} with valid dates; ${feeSpan}), but none overlapped ${segments.length} FIFO-matched closed trade segments from ${validTradeDates} dated broker executions (${tradeSpan}). Cashflow data is saved; check the date ranges and broker execution data to allocate fees.`);
-        return true;
-      }
+      if (!updatedTradeCount && (matchedFeeRows > 0 || appMatchedFeeRows > 0)) return true;
+      if (!updatedTradeCount) return true;
       if (brokerExecutions.length) setBrokerTrades(updatedExecutions);
-      const allocatedForMessage = brokerExecutions.length ? allocatedDailyFees : appAllocatedDailyFees;
-      const matchedForMessage = brokerExecutions.length ? matchedFeeRows : appMatchedFeeRows;
-      if (showImportProgress) setCashflowImportMessage(`Saved ${imported.length} cashflow rows; allocated ${allocatedForMessage.toFixed(2)} USD of daily negative-cash fees across ${updatedTradeCount} changed closed-trade rows (${matchedForMessage} fee dates matched). Saved rows can be reused after refresh.`);
       return true;
     } catch (error) {
-      if (showImportProgress) setCashflowImportMessage(error instanceof Error ? error.message : 'Cashflow import failed.');
-      else console.error('Unable to recalculate saved closed-history cashflows:', error);
+      const detail = error instanceof Error ? error.message : 'Unknown cashflow processing error.';
+      console.error('Unable to process saved closed-history cashflows:', detail);
+      if (requireCloudSync) setCashflowSyncMessage(`Freedom cashflow processing failed: ${detail}`);
       return false;
-    } finally {
-      if (showImportProgress) setCashflowImporting(false);
     }
   };
 
   const syncCashflowsFromFreedom = async (automatic = false) => {
     if (cashflowSyncing) return;
     setCashflowSyncing(true);
-    if (!automatic) setCashflowImportMessage('');
+    if (!automatic) setCashflowSyncMessage('');
     try {
       const response = await fetchFreedomCashflows();
       const fetchedRows = normalizeFreedomCashflowRows(response);
@@ -398,22 +260,21 @@ export function ClosedHistoryDesk() {
       const mergedRows = mergeFreedomCashflowRows(existingRows, fetchedRows);
 
       if (mergedRows.length > 0) {
-        const saved = await handleImportCashflows(null, mergedRows, true);
-        // Preserve the importer's detailed cloud-sync failure message.
+        const saved = await processCashflowRows(mergedRows, true);
         if (!saved) return;
       }
 
       setLastCashflowSyncAt(Date.now());
       if (fetchedRows.length === 0 && existingRows.length === 0) {
-        setCashflowImportMessage('Freedom returned no cashflow rows. Existing history was not changed; XLSX import remains available.');
+        setCashflowSyncMessage('Freedom returned no cashflow rows. Existing history was not changed.');
       } else {
         const added = Math.max(0, mergedRows.length - existingRows.length);
-        setCashflowImportMessage(`Freedom sync complete: ${fetchedRows.length} received, ${added} new, ${mergedRows.length} total saved. Older history was retained.`);
+        setCashflowSyncMessage(`Freedom sync complete: ${fetchedRows.length} received, ${added} new, ${mergedRows.length} total saved. Older history was retained.`);
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unknown broker API error.';
       const prefix = automatic ? 'Automatic Freedom cashflow sync failed:' : 'Freedom cashflow refresh failed:';
-      setCashflowImportMessage(`${prefix} ${detail} XLSX import remains available as a fallback.`);
+      setCashflowSyncMessage(`${prefix} ${detail}`);
       if (automatic) console.warn('Automatic Freedom cashflow sync failed:', detail);
     } finally {
       setCashflowSyncing(false);
@@ -647,19 +508,10 @@ export function ClosedHistoryDesk() {
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => void syncCashflowsFromFreedom()} disabled={cashflowSyncing || cashflowImporting}
+          <button type="button" onClick={() => void syncCashflowsFromFreedom()} disabled={cashflowSyncing}
             class="h-8 rounded border border-cyan-700 bg-cyan-950/70 px-3 text-xs font-bold text-cyan-200 hover:border-cyan-500 hover:bg-cyan-900 disabled:cursor-not-allowed disabled:opacity-50">
             {cashflowSyncing ? "Syncing…" : "Refresh from Freedom"}
           </button>
-          <label class="h-8 rounded border border-amber-700 bg-amber-950/70 px-3 text-xs font-bold text-amber-200 hover:border-amber-500 hover:bg-amber-900 cursor-pointer inline-flex items-center justify-center">
-            {cashflowImporting ? "Importing…" : "Import Cashflows"}
-            <input type="file" accept=".xlsx" disabled={cashflowImporting || cashflowSyncing} class="sr-only" onChange={(event) => {
-              const input = event.currentTarget as HTMLInputElement;
-              const file = input.files?.[0];
-              if (file) void handleImportCashflows(file);
-              input.value = "";
-            }} />
-          </label>
           <div class="text-xs font-mono text-slate-500">
             {trades.length} records
           </div>
@@ -667,7 +519,7 @@ export function ClosedHistoryDesk() {
       </div>
 
       {lastCashflowSyncAt !== null && <p class="text-[10px] text-slate-500">Last synced {formatRelativeTime(new Date(lastCashflowSyncAt))}</p>}
-      {cashflowImportMessage && <p role="status" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300 transition-all">{cashflowImportMessage}</p>}
+      {cashflowSyncMessage && <p role="status" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300 transition-all">{cashflowSyncMessage}</p>}
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Realized net P&amp;L</div>

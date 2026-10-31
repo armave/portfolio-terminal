@@ -7,7 +7,7 @@ import {
 } from './closedHistoryFees';
 
 describe('closed-history cashflow fee recalculation', () => {
-  it('replaces old broker fee allocations with the currently imported cashflows', () => {
+  it('replaces old broker fee allocations with the current broker cashflows', () => {
     const executions = [{
       id: 'sell-1',
       side: 'sell',
