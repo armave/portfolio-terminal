@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
-import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage } from '../services/i18n';
 import { fetchFreedomCashflows, pullCloudHistory, pushCloudHistory } from '../services/api';
 import { loadSavedHistory, saveSavedHistory } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
 import { isFreedomCashflowRow, mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
+import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 
 export function ClosedHistoryDesk() {
@@ -15,12 +15,12 @@ export function ClosedHistoryDesk() {
   const [brokerTradesLoading, setBrokerTradesLoading] = useState(true);
   const [brokerTradesError, setBrokerTradesError] = useState(false);
   const [cashflowSyncMessage, setCashflowSyncMessage] = useState('');
-  const [cashflowSyncing, setCashflowSyncing] = useState(false);
   const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
-  const [lastCashflowSyncAt, setLastCashflowSyncAt] = useState<number | null>(null);
+  const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
   const [tradesPage, setTradesPage] = useState(1);
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
+  const cashflowSyncStarted = useRef(false);
   // Load cloud history once. An existing cloud history record is authoritative;
   // local history is used only when no cloud record exists.
   useEffect(() => {
@@ -78,7 +78,7 @@ export function ClosedHistoryDesk() {
   // calculated metadata prevents the allocation effect from re-entering.
   useEffect(() => {
     const cashflows = state.cashflows || [];
-    if (brokerTradesLoading || !cashflows.length) return;
+    if (!cashflowHistoryReady || brokerTradesLoading || !cashflows.length) return;
     const storedExecutions = portfolioStore.getState().brokerExecutedTrades || [];
     const executions = storedExecutions.length ? storedExecutions : brokerTrades;
     // Exclude calculated metadata from the input fingerprint; otherwise a
@@ -92,7 +92,7 @@ export function ClosedHistoryDesk() {
     void processCashflowRows(cashflows).then((success) => {
       if (success) lastRecalculationKey.current = key;
     });
-  }, [brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, brokerTrades]);
+  }, [cashflowHistoryReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, brokerTrades]);
   const processCashflowRows = async (
     cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
     requireCloudSync = false
@@ -245,10 +245,9 @@ export function ClosedHistoryDesk() {
     }
   };
 
-  const syncCashflowsFromFreedom = async (automatic = false) => {
-    if (cashflowSyncing) return;
-    setCashflowSyncing(true);
-    if (!automatic) setCashflowSyncMessage('');
+  const syncCashflowsFromFreedom = async () => {
+    if (cashflowSyncStarted.current) return;
+    cashflowSyncStarted.current = true;
     try {
       const response = await fetchFreedomCashflows();
       const fetchedRows = normalizeFreedomCashflowRows(response);
@@ -260,26 +259,18 @@ export function ClosedHistoryDesk() {
         if (!saved) return;
       }
 
-      setLastCashflowSyncAt(Date.now());
-      if (fetchedRows.length === 0 && existingRows.length === 0) {
-        setCashflowSyncMessage('Freedom returned no cashflow rows. Existing history was not changed.');
-      } else {
-        const added = Math.max(0, mergedRows.length - existingRows.length);
-        setCashflowSyncMessage(`Freedom sync complete: ${fetchedRows.length} received, ${added} new, ${mergedRows.length} total saved. Older history was retained.`);
-      }
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unknown broker API error.';
-      const prefix = automatic ? 'Automatic Freedom cashflow sync failed:' : 'Freedom cashflow refresh failed:';
-      setCashflowSyncMessage(`${prefix} ${detail}`);
-      if (automatic) console.warn('Automatic Freedom cashflow sync failed:', detail);
+      setCashflowSyncMessage(`Automatic Freedom cashflow sync failed: ${detail}`);
+      console.warn('Automatic Freedom cashflow sync failed:', detail);
     } finally {
-      setCashflowSyncing(false);
+      setCashflowSyncReady(true);
     }
   };
 
   useEffect(() => {
     if (!cashflowHistoryReady) return;
-    void syncCashflowsFromFreedom(true);
+    void syncCashflowsFromFreedom();
   }, [cashflowHistoryReady]);
 
   useEffect(() => {
@@ -348,7 +339,7 @@ export function ClosedHistoryDesk() {
       if (Array.isArray(saved) && saved.length) persistBrokerTrades(saved);
     };
     readCurrentTrades();
-    // Closed History requests a refresh on mount; the canonical cache remains in portfolioStore.
+    // Trades requests a refresh on mount; the canonical cache remains in portfolioStore.
     const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
       persistBrokerTrades(trades);
     });
@@ -492,30 +483,33 @@ export function ClosedHistoryDesk() {
   const averageHoldingDays = knownDurations.length ? knownDurations.reduce((total, days) => total + days, 0) / knownDurations.length : null;
   const winRate = profitKnownTrades.length ? (winningTrades / profitKnownTrades.length) * 100 : 0;
 
+  if (brokerTradesLoading || !cashflowHistoryReady || !cashflowSyncReady) {
+    return <DeskLoading
+      title="Preparing trades"
+      message="Restoring saved trade history and loading the latest Freedom activity…"
+      accent="purple"
+    />;
+  }
+
   return (
-    <section class="rounded-xl border-card p-4 space-y-4" aria-label="Closed trade history">
+    <section class="rounded-xl border-card p-4 space-y-4" aria-label="Trades">
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
         <div>
           <h2 class="text-base font-black uppercase tracking-wider text-purple-300">
-            Closed Trade History
+            Trades
           </h2>
           <p class="text-xs text-slate-400">
             Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => void syncCashflowsFromFreedom()} disabled={cashflowSyncing}
-            class="h-8 rounded border border-cyan-700 bg-cyan-950/70 px-3 text-xs font-bold text-cyan-200 hover:border-cyan-500 hover:bg-cyan-900 disabled:cursor-not-allowed disabled:opacity-50">
-            {cashflowSyncing ? "Syncing…" : "Refresh from Freedom"}
-          </button>
           <div class="text-xs font-mono text-slate-500">
             {trades.length} records
           </div>
         </div>
       </div>
 
-      {lastCashflowSyncAt !== null && <p class="text-[10px] text-slate-500">Last synced {formatRelativeTime(new Date(lastCashflowSyncAt))}</p>}
-      {cashflowSyncMessage && <p role="status" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300 transition-all">{cashflowSyncMessage}</p>}
+      {cashflowSyncMessage && <p role="alert" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-200 transition-all">{cashflowSyncMessage}</p>}
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Realized net P&amp;L</div>

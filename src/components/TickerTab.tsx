@@ -235,7 +235,7 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
           ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
           onKeyDown={handleTabKeyDown}
       >
-        CLOSED HISTORY
+        TRADES
       </button>}
 
       <button

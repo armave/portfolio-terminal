@@ -593,7 +593,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         </div>
       </main>
 
-      {/* Closed Trade History */}
+      {/* Trades */}
       <div
         id="closedHistoryContainer"
        

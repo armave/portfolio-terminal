@@ -2726,3 +2726,27 @@ summary:focus-visible {
     grid-column: 1 / -1;
   }
 }
+
+
+/* Smooth desk loading while each section restores its required data. */
+.desk-section-loading {
+  animation: desk-section-loading-enter 220ms ease-out both;
+}
+.desk-section-loading__bar {
+  animation: desk-section-loading-sweep 1.55s cubic-bezier(0.3, 0.65, 0.25, 1) infinite;
+}
+@keyframes desk-section-loading-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes desk-section-loading-sweep {
+  from { transform: translateX(-130%); }
+  to { transform: translateX(260%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desk-section-loading,
+  .desk-section-loading__bar {
+    animation: none !important;
+    transform: none !important;
+  }
+}
