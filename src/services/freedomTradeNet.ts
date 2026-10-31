@@ -7,13 +7,13 @@ interface TradeNetWorkerEnv {
     FREEDOM_PRIVATE_KEY?: string;
 }
 
-export type TradeNetReadCommand = "getPositionJson" | "getTradesHistory" | "getQuotes" | "getNews" | "getHloc" | "getUserCashFlows" | "getNotifyOrderJson";
+export type TradeNetReadCommand = "getPositionJson" | "getTradesHistory" | "getStockQuotesJson" | "getNews" | "getHloc" | "getUserCashFlows" | "getNotifyOrderJson";
 
-export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetReadCommand = "getPositionJson", paramsOverride?: Record<string, string | number | boolean>): Promise<Record<string, unknown>> {
+export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetReadCommand = "getPositionJson", paramsOverride?: Record<string, string | number | boolean | string[]>): Promise<Record<string, unknown>> {
     if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
         throw new Error("Freedom API secrets are missing from this Worker environment.");
     }
-    if (!["getPositionJson", "getTradesHistory", "getQuotes", "getNews", "getHloc", "getUserCashFlows", "getNotifyOrderJson"].includes(command)) {
+    if (!["getPositionJson", "getTradesHistory", "getStockQuotesJson", "getNews", "getHloc", "getUserCashFlows", "getNotifyOrderJson"].includes(command)) {
         throw new Error("Unsupported read-only TradeNet command.");
     }
 
