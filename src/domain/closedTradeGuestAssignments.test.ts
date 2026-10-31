@@ -33,7 +33,7 @@ describe('closed trade guest ledger projection', () => {
         purchasedAt: null,
         assignedAt: 120,
         updatedAt: 500,
-        endedAt: 500,
+        endedAt: 120,
         status: 'closed'
       }
     });
