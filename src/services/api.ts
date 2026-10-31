@@ -1371,15 +1371,25 @@ export interface FreedomExecutedTrade {
 }
 
 /** Normalize common TradeNet history field aliases without fabricating missing values. */
-export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
-  const root = response?.data?.result ?? response?.data ?? response?.result ?? response;
+export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[] {
+  const asRecord = (value: unknown): Record<string, unknown> | null => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return value as Record<string, unknown>;
+  };
+  const responseRecord = asRecord(response);
+  const responseData = responseRecord?.data;
+  const dataRecord = asRecord(responseData);
+  const root = dataRecord?.result ?? responseData ?? responseRecord?.result ?? response;
+  const rootRecord = asRecord(root);
+  const tradesValue = rootRecord?.trades;
+  const tradesRecord = asRecord(tradesValue);
   // Actual Freedom wrapper shape from example.json: data.trades.trade[]
-  const rows = Array.isArray(root) ? root
-    : Array.isArray(root?.trades?.trade) ? root.trades.trade
-      : Array.isArray(root?.trades) ? root.trades
-        : Array.isArray(root?.items) ? root.items
-          : Array.isArray(root?.history) ? root.history
-            : Array.isArray(root?.data) ? root.data
+  const rows: unknown[] = Array.isArray(root) ? root
+    : Array.isArray(tradesRecord?.trade) ? tradesRecord.trade
+      : Array.isArray(tradesValue) ? tradesValue
+        : Array.isArray(rootRecord?.items) ? rootRecord.items
+          : Array.isArray(rootRecord?.history) ? rootRecord.history
+            : Array.isArray(rootRecord?.data) ? rootRecord.data
               : [];
   const numberOrNull = (v: unknown): number | null => {
     if (v === null || v === undefined || v === '') return null;
@@ -1406,16 +1416,16 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
     return null;
   };
   const fallbackOccurrences = new Map<string, number>();
-  const stableFallbackId = (row: any): string => {
+  const stableFallbackId = (row: Record<string, unknown>): string => {
     const fingerprint = JSON.stringify([
-      row?.order_id ?? row?.orderId ?? '',
-      row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? '',
-      row?.oper ?? row?.operation ?? row?.side ?? row?.buy_sell ?? row?.type ?? '',
-      row?.date ?? row?.time ?? row?.datetime ?? row?.exec_time ?? '',
-      row?.q ?? row?.quantity ?? row?.qty ?? '',
-      row?.p ?? row?.price ?? row?.exec_price ?? '',
-      row?.v ?? row?.summ ?? row?.value ?? '',
-      row?.profit ?? row?.pnl ?? ''
+      row.order_id ?? row.orderId ?? '',
+      row.instr_nm ?? row.i ?? row.ticker ?? row.symbol ?? row.instr ?? '',
+      row.oper ?? row.operation ?? row.side ?? row.buy_sell ?? row.type ?? '',
+      row.date ?? row.time ?? row.datetime ?? row.exec_time ?? '',
+      row.q ?? row.quantity ?? row.qty ?? '',
+      row.p ?? row.price ?? row.exec_price ?? '',
+      row.v ?? row.summ ?? row.value ?? '',
+      row.profit ?? row.pnl ?? ''
     ]);
     let hash = 2166136261;
     for (let index = 0; index < fingerprint.length; index += 1) {
@@ -1427,22 +1437,26 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
     fallbackOccurrences.set(key, occurrence + 1);
     return `fallback-${key}-${occurrence}`;
   };
-  return rows.map((row: any) => ({
-    id: String(row?.id ?? row?.trade_id ?? row?.tradeId ?? stableFallbackId(row)),
-    ticker: String(row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? ''),
-    // Ignore unrecognized operation placeholders and continue to side/type aliases.
-    side: normalizedSide(row?.operation, row?.side, row?.buy_sell, row?.type) || 'Unknown',
-    quantity: positiveMagnitudeOrNull(row?.q, row?.quantity, row?.qty),
-    price: positiveMagnitudeOrNull(row?.p, row?.price, row?.exec_price),
-    currency: String(row?.curr_c ?? row?.curr ?? row?.currency ?? row?.base_currency ?? ''),
-    executedAt: row?.date ?? row?.time ?? row?.datetime ?? row?.exec_time ?? null,
-    tradeValue: numberOrNull(row?.v ?? row?.summ ?? row?.value),
-    profit: numberOrNull(row?.profit ?? row?.pnl),
-    marginFee: numberOrNull(row?.margin_fee ?? row?.marginFee ?? row?.margin_interest ?? row?.marginInterest ?? row?.fee_margin ?? row?.feeMargin ?? row?.margin_commission ?? row?.margin_commiss),
-    commission: numberOrNull(row?.commission ?? row?.commiss ?? row?.commissions ?? row?.fee ?? row?.commiss_exchange),
-    commissionCurrency: String(row?.commission_currency ?? row?.curr_c ?? row?.currency ?? ''),
-    raw: row && typeof row === 'object' ? row : {}
-  }));
+  return rows.map((value): FreedomExecutedTrade => {
+    const row = asRecord(value) ?? {};
+    const executedAt = row.date ?? row.time ?? row.datetime ?? row.exec_time ?? null;
+    return {
+      id: String(row.id ?? row.trade_id ?? row.tradeId ?? stableFallbackId(row)),
+      ticker: String(row.instr_nm ?? row.i ?? row.ticker ?? row.symbol ?? row.instr ?? ''),
+      // Ignore unrecognized operation placeholders and continue to side/type aliases.
+      side: normalizedSide(row.operation, row.side, row.buy_sell, row.type) || 'Unknown',
+      quantity: positiveMagnitudeOrNull(row.q, row.quantity, row.qty),
+      price: positiveMagnitudeOrNull(row.p, row.price, row.exec_price),
+      currency: String(row.curr_c ?? row.curr ?? row.currency ?? row.base_currency ?? ''),
+      executedAt: executedAt === null || executedAt === undefined ? null : String(executedAt),
+      tradeValue: numberOrNull(row.v ?? row.summ ?? row.value),
+      profit: numberOrNull(row.profit ?? row.pnl),
+      marginFee: numberOrNull(row.margin_fee ?? row.marginFee ?? row.margin_interest ?? row.marginInterest ?? row.fee_margin ?? row.feeMargin ?? row.margin_commission ?? row.margin_commiss),
+      commission: numberOrNull(row.commission ?? row.commiss ?? row.commissions ?? row.fee ?? row.commiss_exchange),
+      commissionCurrency: String(row.commission_currency ?? row.curr_c ?? row.currency ?? ''),
+      raw: row
+    };
+  });
 }
 
 export interface FreedomCashBalance {

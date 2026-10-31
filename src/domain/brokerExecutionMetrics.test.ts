@@ -20,6 +20,65 @@ describe('broker execution FIFO metrics', () => {
     expect(metrics.get(secondSell)?.holdingDays).toBe(2);
   });
 
+  it('accepts allowlisted legacy aliases and numeric strings at the broker boundary', () => {
+    const buy = {
+      ticker: 'AAPL.US',
+      side: '1',
+      shares: '2',
+      commission: '0.50',
+      currency: 'USD',
+      date: '2026-02-01T00:00:00Z'
+    };
+    const sell = {
+      ticker: 'AAPL',
+      side: '2',
+      quantity: '2',
+      commission: '0.25',
+      commissionCurrency: 'USD',
+      executedAt: '2026-02-03T00:00:00Z'
+    };
+
+    expect(calculateBrokerExecutionMetrics([buy, sell]).get(sell)).toEqual({
+      holdingDays: 2,
+      buyCommission: 0.5
+    });
+  });
+
+  it('ignores malformed quantities and dates rather than inventing FIFO metrics', () => {
+    const malformedBuy = {
+      ticker: 'AAPL',
+      side: 'buy',
+      quantity: 'not-a-number',
+      commission: '1.00',
+      executedAt: '2026-02-01T00:00:00Z'
+    };
+    const sell = {
+      ticker: 'AAPL',
+      side: 'sell',
+      quantity: 2,
+      commission: 0.25,
+      executedAt: '2026-02-03T00:00:00Z'
+    };
+    const invalidDateBuy = {
+      ticker: 'MSFT',
+      side: 'buy',
+      quantity: 2,
+      commission: 1,
+      date: 'not-a-date'
+    };
+    const msftSell = {
+      ticker: 'MSFT',
+      side: 'sell',
+      quantity: 2,
+      commission: 0.25,
+      executedAt: '2026-02-03T00:00:00Z'
+    };
+
+    const metrics = calculateBrokerExecutionMetrics([malformedBuy, sell, invalidDateBuy, msftSell]);
+    expect(metrics.get(sell)).toEqual({ holdingDays: null, buyCommission: null });
+    expect(metrics.get(msftSell)).toEqual({ holdingDays: null, buyCommission: null });
+  });
+
   it('does not invent complete duration or buy commission when the buy history is incomplete', () => {
     const partialSell = { ticker: 'AAPL', side: 'sell', quantity: 5, commission: 1, executedAt: '2026-03-03T00:00:00Z' };
     expect(calculateBrokerExecutionMetrics([partialSell]).get(partialSell))
