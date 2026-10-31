@@ -261,3 +261,13 @@ The hooks register subscribers in effects. Immediate snapshot delivery on subscr
 - [x] Exact-head CI passed on `e9b30db165b7807c0134bf7d5ae50d62913d5f99`: [Validate run 41202393721](https://github.com/armave/portfolio-terminal/actions/runs/41202393721) and [Pull Request CI run 41202393803](https://github.com/armave/portfolio-terminal/actions/runs/41202393803) both passed install, typecheck, full tests, dead-code validation, production dependency audit, and build.
 
 The screenshot showed the Worker returning HTTP 404 from the Freedom quote path after the Terminal requested `GOOGL.US`; the Yahoo quote path still returned a price. The failure was caused by the TradeNet command/parameter mismatch, not by the Terminal command parser. The correction preserves concurrent Yahoo lookup and the existing Finnhub/Twelve Data fallback, and does not change portfolio accounting, quote ordering, broker orders, persisted state, or authorization.
+
+
+## Follow-on implementation — TradeNet API-key v2 HTTP 400 correction (2026-10-31)
+
+- [x] Change the signed API-key POST body from the legacy `{ cmd, params }` envelope to the method parameters alone; the command remains fixed in `/api/{command}`.
+- [x] Sign the exact serialized parameters body concatenated with the current Unix timestamp, matching the official API-key v2 rules.
+- [x] Update Worker contract tests for `getStockQuotesJson`, `getNotifyOrderJson`, and `getUserCashFlows`; assert the quote request HMAC as well as its URL and parameters.
+- [x] Update the Worker deployment path filter to include `src/services/freedomTradeNet.ts`, the shared adapter imported by `worker.js`.
+- [x] Publish the corrected helper and Worker tests directly to `main`; corrected Worker deployment passed [run 41202950522](https://github.com/armave/portfolio-terminal/actions/runs/41202950522).
+- [ ] Confirm a live authorized quote request in the app after the API-key v2 body correction; mock tests do not verify account entitlement or actual upstream data availability.
