@@ -6,6 +6,7 @@ function makeFocusable(name: string, hidden = false): HTMLElement {
     name,
     tabIndex: 0,
     focus: () => { focused.push(name); },
+    getClientRects: () => hidden ? [] : [{}] as unknown as DOMRectList,
     closest: () => hidden ? ({} as Element) : null
   } as unknown as HTMLElement;
 }
