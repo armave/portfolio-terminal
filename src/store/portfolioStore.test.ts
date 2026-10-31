@@ -109,6 +109,25 @@ describe('canonical portfolio-state migration', () => {
     }]);
   });
 
+  it('normalizes legacy ticker metadata and preserves the first matching row', () => {
+    const positions: Record<string, PositionRecord> = {
+      AAPL: { ticker: 'AAPL', shares: 2, currentPrice: 190, pt: 210, commBuy: 0, tranches: [] },
+      MSFT: { ticker: 'MSFT', shares: 3, currentPrice: 420, pt: 450, commBuy: 0, tranches: [] }
+    };
+    const legacy: Holding[] = [
+      { ticker: ' aapl ', isMargin: false, notes: 'First AAPL row', tranches: [] },
+      { ticker: 'AAPL', isMargin: true, notes: 'Duplicate AAPL row', tranches: [] },
+      { ticker: 'msft', isMargin: false, notes: 'MSFT metadata', tranches: [] }
+    ];
+
+    const projection = buildHoldingsProjection(positions, legacy, '2026-10-16');
+
+    expect(projection.map(({ ticker, notes, isMargin }) => ({ ticker, notes, isMargin }))).toEqual([
+      { ticker: 'AAPL', notes: 'First AAPL row', isMargin: true },
+      { ticker: 'MSFT', notes: 'MSFT metadata', isMargin: true }
+    ]);
+  });
+
   it('does not create compatibility holdings for an empty canonical positions map', () => {
     expect(buildHoldingsProjection({}, [], '2026-10-16')).toEqual([]);
   });
