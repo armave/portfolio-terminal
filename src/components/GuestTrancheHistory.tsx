@@ -128,8 +128,10 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
               {filteredRecords.map((record) => {
                 const active = activeTranches.find((tranche) => tranche.id === record.trancheId);
                 const marketValue = record.status === 'active' ? active?.marketValue : null;
-                const value = record.value ?? marketValue;
+                // Active rows use the latest guest-scoped snapshot value, not
+                // a stale market value persisted during the prior sync.
                 const isClosedTrade = record.trancheId.startsWith('closed-trade:');
+                const value = record.status === 'active' ? marketValue : record.value;
                 const operationAt = isClosedTrade
                   ? record.operationAt
                   : record.operationAt ?? record.purchasedAt;
