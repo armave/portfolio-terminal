@@ -208,6 +208,7 @@ A modal accessibility audit found inconsistent keyboard focus behavior across th
 - [x] Apply the shared behavior to Authentication, Margin Intelligence, Scenario Comparison, and Scenario Report.
 - [x] Preserve the authentication modal's mandatory sign-in behavior (Escape does not dismiss it) and preserve the scenario modal exit transitions.
 - [x] Add unit coverage for forward/reverse wrapping, outside-focus recovery, no-focusable-control fallback, hidden controls, and non-Tab keys.
-- [ ] Confirm typecheck, full test suite, production build, dead-code validation, and production dependency audit on the exact PR head.
+- [x] Exact-head `6cecf2f` passed typecheck, full tests, production build, dead-code validation, and production dependency audit.
+- [x] Both workflows passed: [Validate run 41198028237](https://github.com/armave/portfolio-terminal/actions/runs/41198028237) and [Pull Request CI run 41198028274](https://github.com/armave/portfolio-terminal/actions/runs/41198028274).
 
 No authentication API calls, portfolio state, broker behavior, scenario calculations, or server authorization behavior changed. Browser and assistive-technology verification remains outstanding.
