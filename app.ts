@@ -74,6 +74,7 @@ import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, GuestTrancheLedgerRecord } from './src/types/portfolio';
+import { buildClosedTradeGuestLedgerUpserts } from './src/domain/closedTradeGuestAssignments';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -334,17 +335,58 @@ addBrokerEventListener('broker:set-closed-trade-allocation', async (detail) => {
   }
 
   const current = portfolioStore.getState();
+  const previousAllocation = current.closedTradeAllocations?.[rowId];
+  const historyByGuest = new Map<string, { guestId: string; assignedQuantity: number; assignedAt: number }>();
+  for (const item of Array.isArray(previousAllocation?.guestAssignments) ? previousAllocation.guestAssignments : []) {
+    const previousId = String(item?.guestId || '').trim();
+    const previousQuantity = Number(item?.assignedQuantity);
+    const previousAssignedAt = Number(item?.assignedAt);
+    if (!previousId || !Number.isFinite(previousQuantity) || previousQuantity <= 0) continue;
+    historyByGuest.set(previousId, {
+      guestId: previousId,
+      assignedQuantity: previousQuantity,
+      assignedAt: Number.isFinite(previousAssignedAt) && previousAssignedAt > 0 ? previousAssignedAt : Date.now()
+    });
+  }
+  const previousGuestId = String(previousAllocation?.guestId || '').trim();
+  const previousCashQuantity = Number(previousAllocation?.cashQuantity);
+  if (previousGuestId && Number.isFinite(previousCashQuantity) && previousCashQuantity > 0) {
+    const previousHistory = historyByGuest.get(previousGuestId);
+    historyByGuest.set(previousGuestId, {
+      guestId: previousGuestId,
+      assignedQuantity: previousCashQuantity,
+      assignedAt: previousHistory?.assignedAt ||
+        (Number(previousAllocation?.assignedAt) > 0 ? Number(previousAllocation?.assignedAt) : Date.now())
+    });
+  }
+
+  const now = Date.now();
+  if (guestId) {
+    const previousHistory = historyByGuest.get(guestId);
+    historyByGuest.set(guestId, {
+      guestId,
+      assignedQuantity: cashQuantity,
+      assignedAt: previousHistory?.assignedAt || now
+    });
+  }
+  const guestAssignments = Array.from(historyByGuest.values());
+  const currentGuestAssignment = guestId
+    ? guestAssignments.find((item) => item.guestId === guestId)
+    : undefined;
+
   const closedTradeAllocations = { ...(current.closedTradeAllocations || {}) };
   closedTradeAllocations[rowId] = {
     fundingType,
     cashQuantity,
     marginQuantity,
-    ...(guestId ? { guestId } : {})
+    ...(guestId ? { guestId, assignedAt: currentGuestAssignment?.assignedAt || now } : {}),
+    ...(guestAssignments.length ? { guestAssignments } : {})
   };
   portfolioStore.setState({ closedTradeAllocations });
   state = portfolioStore.getState();
   saveState(state);
   pushStateToGist();
+  void publishGuestPortfolioSnapshots();
   renderBoard();
 });
 
@@ -572,8 +614,36 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
       pushStateToGist();
     }
 
+    // Closed Trades rows can be assigned directly after the broker sale. Mirror
+    // those cash-funded quantities into the same guest-only durable LOTS ledger.
+    const appTradeSources = (current.closedTrades || []).map((trade: any, index: number) => {
+      const ticker = String(trade?.ticker || '').trim().toUpperCase().replace(/\\.US$/i, '');
+      const fallback = String(trade?.closedAt ?? trade?.exitDate ?? trade?.date ?? index);
+      return {
+        allocationKey: 'app:' + String(trade?.id || `${ticker || 'trade'}:${fallback}`),
+        ticker,
+        name: String(trade?.name || ticker)
+      };
+    });
+    const brokerSellSources = (current.brokerExecutedTrades || [])
+      .filter((trade: any) => ['sell', 's', 'sale', 'sold', '2'].includes(String(trade?.side ?? '').toLowerCase()))
+      .map((trade: any, index: number) => {
+        const ticker = String(trade?.ticker || '').trim().toUpperCase().replace(/\\.US$/i, '');
+        return {
+          allocationKey: 'broker:' + String(trade?.id ?? ('tradenet-' + index)),
+          ticker,
+          name: String(trade?.name || ticker)
+        };
+      });
+    const closedTradeLedgerUpserts = buildClosedTradeGuestLedgerUpserts(
+      current.closedTradeAllocations || {},
+      [...appTradeSources, ...brokerSellSources],
+      updatedAt
+    );
+
     const publications = guests.map((guest) => {
-      const ledgerUpserts: GuestTrancheLedgerRecord[] = activeTranches.flatMap((tranche) => {
+      const ledgerUpserts: GuestTrancheLedgerRecord[] = [
+        ...activeTranches.flatMap((tranche) => {
         if (current.activeTrancheGuestAssignments?.[tranche.id] !== guest.id) return [];
         const detail = current.activeTrancheGuestAssignmentDetails?.[tranche.id];
         if (!detail || detail.guestId !== guest.id || !detail.assignmentId) return [];
@@ -598,8 +668,11 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
           updatedAt,
           endedAt: null,
           status: 'active' as const
-        }];
-      });
+        }]),
+        ...closedTradeLedgerUpserts
+          .filter((item) => item.guestId === guest.id)
+          .map((item) => item.record)
+      ];
       const retainedAssignmentIds = Object.entries(current.activeTrancheGuestAssignmentDetails || {})
         .filter(([trancheId, detail]) =>
           detail.guestId === guest.id && current.activeTrancheGuestAssignments?.[trancheId] === guest.id
