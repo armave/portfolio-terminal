@@ -20,7 +20,7 @@ function firstObject(value: unknown): Record<string, unknown> | null {
   }
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
-  for (const key of ["quotes", "quote", "data", "result", "items", "securities"]) {
+  for (const key of ["q", "quotes", "quote", "data", "result", "items", "securities"]) {
     if (record[key] && typeof record[key] === "object") {
       const nested = firstObject(record[key]);
       if (nested) return nested;
@@ -44,12 +44,12 @@ export function normalizeFreedomQuote(payload: unknown, symbol: string): Freedom
   if (!record) return null;
   const price = numeric(record, ["last", "lastPrice", "last_price", "price", "close", "c", "ltp", "last_trade_price"]);
   if (price === null || price <= 0) return null;
-  const previousClose = numeric(record, ["prevClose", "previousClose", "previous_close", "closePrev", "pc", "prev_close"]);
+  const previousClose = numeric(record, ["prevClose", "previousClose", "previous_close", "closePrev", "pc", "prev_close", "pp"]);
   const suppliedChange = numeric(record, ["change", "changeAbs", "change_abs", "chg", "d"]);
-  const suppliedPercent = numeric(record, ["changePercent", "change_percent", "changePct", "change_pct", "dp"]);
+  const suppliedPercent = numeric(record, ["changePercent", "change_percent", "changePct", "change_pct", "dp", "pcp"]);
   const change = suppliedChange ?? (previousClose !== null ? price - previousClose : null);
   const changePercent = suppliedPercent ?? (previousClose !== null && change !== null && previousClose !== 0 ? change / previousClose * 100 : null);
-  const timestampRaw = numeric(record, ["time", "timestamp", "lastTradeTime", "last_trade_time", "trade_time"]);
+  const timestampRaw = numeric(record, ["time", "timestamp", "lastTradeTime", "last_trade_time", "trade_time", "ltt"]);
   const sourceTimestamp = timestampRaw === null ? null : timestampRaw < 1e12 ? timestampRaw * 1000 : timestampRaw;
   return { symbol, price, previousClose, change, changePercent, sourceTimestamp, raw: payload };
 }

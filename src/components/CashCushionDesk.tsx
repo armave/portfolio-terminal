@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useReducer, useRef } from 'preact/hooks';
 import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
@@ -7,6 +7,9 @@ import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, FreedomExecuted
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { listUsers, type AuthUser } from '../services/api';
+import { loadSavedHistory } from '../services/storage';
+import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
+import { createGuestDirectoryState, guestDirectoryReducer } from '../domain/guestDirectoryState';
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage } from '../services/i18n';
@@ -61,55 +64,99 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
 export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, guestUserId }: { showActiveTranches?: boolean; isAdmin?: boolean; guestUserId?: string } = {}) {
   const state = usePortfolio();
   const refreshIntervalMs = useQuoteRefreshInterval(guestUserId ? 15_000 : 60_000, guestUserId ? 'guest' : 'admin');
-  const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTradeLike[]>(() =>
-    Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
+  const shouldReadBrokerHistory = !guestUserId && (showActiveTranches || isAdmin);
+  const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
+    brokerExecutionHistoryReducer<FreedomExecutedTradeLike>,
+    undefined,
+    () => createBrokerExecutionHistoryState(
+      guestUserId ? [] : state.brokerExecutedTrades as FreedomExecutedTradeLike[] | undefined,
+      shouldReadBrokerHistory ? loadSavedHistory().brokerExecutedTrades as FreedomExecutedTradeLike[] : [],
+      shouldReadBrokerHistory
+    )
   );
-  const [executedTradesLoading, setExecutedTradesLoading] = useState(() =>
-    (showActiveTranches || isAdmin) && !(Array.isArray(state.brokerExecutedTrades) && state.brokerExecutedTrades.length > 0)
-  );
+  const executedTrades = brokerExecutionHistory.trades;
+  const executedTradesLoading = brokerExecutionHistory.status === 'loading';
+  const retryExecutedTrades = () => {
+    dispatchBrokerExecutionHistory({ type: 'refresh' });
+    emitBrokerEvent('broker:request-executed-trades');
+  };
   const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
-  const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
-  const [guestUsersLoading, setGuestUsersLoading] = useState(showActiveTranches);
-  const [guestUsersError, setGuestUsersError] = useState('');
+  const [guestDirectory, dispatchGuestDirectory] = useReducer(
+    guestDirectoryReducer<AuthUser>,
+    undefined,
+    () => createGuestDirectoryState<AuthUser>(showActiveTranches)
+  );
+  const guestUsers = guestDirectory.users;
+  const guestUsersLoading = guestDirectory.status === 'loading';
+  const guestUsersRequestGeneration = useRef(0);
+  const loadGuestUsers = () => {
+    const requestId = ++guestUsersRequestGeneration.current;
+    dispatchGuestDirectory({ type: 'request' });
+    void listUsers()
+      .then((users) => {
+        if (guestUsersRequestGeneration.current !== requestId) return;
+        dispatchGuestDirectory({
+          type: 'success',
+          users: users.filter((user) => user.role === 'guest')
+        });
+      })
+      .catch((error) => {
+        if (guestUsersRequestGeneration.current !== requestId) return;
+        console.warn(
+          'Unable to refresh guest account list:',
+          error instanceof Error ? error.message : 'Unknown error'
+        );
+        dispatchGuestDirectory({
+          type: 'failure',
+          message: 'Could not load guest accounts.'
+        });
+      });
+  };
+  const retryGuestUsers = () => {
+    if (guestDirectory.status === 'loading' || guestDirectory.status === 'refreshing') return;
+    loadGuestUsers();
+  };
 
   useEffect(() => {
+    // Guests use their assigned portfolio snapshot and must not subscribe to
+    // account-wide broker execution events or restore the administrator's history.
+    if (!shouldReadBrokerHistory) return;
     const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
-      setExecutedTrades(trades as unknown as FreedomExecutedTradeLike[]);
-      setExecutedTradesLoading(false);
+      dispatchBrokerExecutionHistory({ type: 'success', trades: trades as unknown as FreedomExecutedTradeLike[] });
     });
     const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => {
-      setExecutedTrades([]);
-      setExecutedTradesLoading(false);
+      // Preserve the last good in-memory or saved snapshot; only mark it stale.
+      dispatchBrokerExecutionHistory({ type: 'failure' });
     });
-    // Guests never request account-wide broker execution history.
-    if (showActiveTranches || isAdmin) emitBrokerEvent('broker:request-executed-trades');
+    dispatchBrokerExecutionHistory({ type: 'refresh' });
+    emitBrokerEvent('broker:request-executed-trades');
     return () => {
       removeTradesListener();
       removeErrorListener();
     };
   }, []);
 
+  // App startup may finish broker hydration before this lazily mounted desk has
+  // installed its event listener. usePortfolio replays the current store snapshot
+  // after subscribing; reconcile that snapshot into this reducer as well.
+  useEffect(() => {
+    if (!shouldReadBrokerHistory) return;
+    const currentTrades = state.brokerExecutedTrades;
+    if (Array.isArray(currentTrades) && currentTrades.length > 0) {
+      dispatchBrokerExecutionHistory({
+        type: 'success',
+        trades: currentTrades as FreedomExecutedTradeLike[]
+      });
+    }
+  }, [state.brokerExecutedTrades, shouldReadBrokerHistory]);
+
   useEffect(() => {
     if (!showActiveTranches) return;
-    let cancelled = false;
-    setGuestUsersLoading(true);
-    listUsers()
-      .then((users) => {
-        if (!cancelled) {
-          setGuestUsers(users.filter((user) => user.role === 'guest'));
-          setGuestUsersError('');
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setGuestUsers([]);
-          setGuestUsersError(error instanceof Error ? error.message : 'Could not load guest accounts.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setGuestUsersLoading(false);
-      });
-    return () => { cancelled = true; };
+    loadGuestUsers();
+    return () => {
+      // Ignore a late response after the active-tranche desk unmounts.
+      guestUsersRequestGeneration.current += 1;
+    };
   }, [showActiveTranches]);
 
   const activeTrancheSource = guestUserId
@@ -225,6 +272,30 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           </h2>
         </div>
       </div>
+
+      {(brokerExecutionHistory.status === 'stale' || brokerExecutionHistory.status === 'error' || brokerExecutionHistory.status === 'refreshing') && (
+        <div
+          role={brokerExecutionHistory.status === 'refreshing' ? 'status' : 'alert'}
+          aria-live="polite"
+          class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span>
+            {brokerExecutionHistory.status === 'refreshing'
+              ? 'Refreshing TradeNet history…'
+              : brokerExecutionHistory.status === 'stale'
+                ? 'TradeNet refresh failed. Showing saved history, which may be out of date.'
+                : 'Unable to load TradeNet history. Please retry.'}
+          </span>
+          {brokerExecutionHistory.status !== 'refreshing' && (
+            <button
+              type="button"
+              onClick={retryExecutedTrades}
+              aria-label="Retry TradeNet history"
+              class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto"
+            >Retry</button>
+          )}
+        </div>
+      )}
 
       <div class="space-y-2">
         {guestUserId ? (
@@ -475,6 +546,28 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               </button>
             </div>
           </div>
+          {(guestDirectory.status === 'stale' || guestDirectory.status === 'error' || guestDirectory.status === 'refreshing') && (
+            <div
+              role={guestDirectory.status === 'refreshing' ? 'status' : 'alert'}
+              aria-live="polite"
+              class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span>
+                {guestDirectory.status === 'refreshing'
+                  ? 'Refreshing guest accounts…'
+                  : guestDirectory.users.length > 0
+                    ? 'Guest account refresh failed. Existing assignments are still shown.'
+                    : 'Could not load guest accounts. Retry to restore guest assignments.'}
+              </span>
+              <button
+                type="button"
+                disabled={guestDirectory.status === 'refreshing'}
+                onClick={retryGuestUsers}
+                aria-label="Retry guest account list"
+                class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-wait disabled:opacity-60 sm:self-auto"
+              >{guestDirectory.status === 'refreshing' ? 'Retrying…' : 'Retry'}</button>
+            </div>
+          )}
           <div
             id="activeTranchesPanel"
             class={`expandable-motion ${activeTranchesExpanded ? 'is-expanded' : ''}`}
@@ -623,8 +716,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                 <span class="text-[9px] tabular-nums text-slate-500">
                                   {cashQuantity.toLocaleString('en-US', { maximumFractionDigits: 4 })} cash shares
                                 </span>
-                                {guestUsersError && <span class="max-w-[12rem] text-[9px] text-amber-400">{guestUsersError}</span>}
-                                {!guestUsersLoading && guestUsers.length === 0 && !guestUsersError && (
+                                {!guestUsersLoading && guestUsers.length === 0 && !guestDirectory.error && (
                                   <span class="text-[9px] text-slate-500">No guest accounts</span>
                                 )}
                               </div>

@@ -99,11 +99,20 @@ export function buildHoldingsProjection(
   legacyHoldings: Holding[],
   fallbackDate = todayIso()
 ): Holding[] {
+  // Index compatibility metadata once. The previous per-position find() scanned
+  // the full legacy array for every ticker, which made normalization quadratic.
+  // Keep the first matching row to preserve Array.find() compatibility semantics.
+  const legacyByTicker = new Map<string, Holding>();
+  for (const holding of Array.isArray(legacyHoldings) ? legacyHoldings : []) {
+    const legacyTicker = String(holding?.ticker || '').trim().toUpperCase();
+    if (legacyTicker && !legacyByTicker.has(legacyTicker)) {
+      legacyByTicker.set(legacyTicker, holding);
+    }
+  }
+
   return Object.keys(positions).map((ticker) => {
     const position = positions[ticker];
-    const legacy = (Array.isArray(legacyHoldings) ? legacyHoldings : []).find(
-      (holding) => String(holding?.ticker || '').trim().toUpperCase() === ticker
-    );
+    const legacy = legacyByTicker.get(ticker);
     const tranches: Tranche[] = (position.tranches || []).map((tranche, index) => ({
       id: `${ticker}-${index}`,
       shares: Number(tranche.qty) || 0,
@@ -140,19 +149,28 @@ export function migrateLegacyCloudHoldingsToPositions(
   const localClosedTrades = Array.isArray(localState.closedTrades) ? localState.closedTrades : [];
   const legacyHoldings = Array.isArray(cloudState.holdings) ? cloudState.holdings : [];
 
+  // Index the latest local exit once instead of scanning the full trade history
+  // for every legacy holding. Keep the same date-field precedence and zero fallback
+  // as the former per-holding filter/map/reduce sequence.
+  const latestCloseByTicker = new Map<string, number>();
+  for (const trade of localClosedTrades) {
+    const ticker = String(trade?.ticker || '').trim().toUpperCase();
+    if (!ticker) continue;
+
+    const value = trade.closedAt ?? trade.exitDate ?? trade.sellDate ?? trade.date;
+    const timestamp = typeof value === 'number' ? value : Date.parse(String(value || ''));
+    const normalizedTimestamp = Number.isFinite(timestamp) ? timestamp : 0;
+    const previousTimestamp = latestCloseByTicker.get(ticker) ?? 0;
+    if (normalizedTimestamp > previousTimestamp) {
+      latestCloseByTicker.set(ticker, normalizedTimestamp);
+    }
+  }
+
   const safeHoldings = legacyHoldings.filter((holding) => {
     const ticker = String(holding?.ticker || '').trim().toUpperCase();
     if (!ticker || localPositions[ticker]) return false;
 
-    const latestClose = localClosedTrades
-      .filter((trade) => String(trade?.ticker || '').trim().toUpperCase() === ticker)
-      .map((trade) => {
-        const value = trade.closedAt ?? trade.exitDate ?? trade.sellDate ?? trade.date;
-        const timestamp = typeof value === 'number' ? value : Date.parse(String(value || ''));
-        return Number.isFinite(timestamp) ? timestamp : 0;
-      })
-      .reduce((latest, timestamp) => Math.max(latest, timestamp), 0);
-
+    const latestClose = latestCloseByTicker.get(ticker) ?? 0;
     if (!latestClose) return true;
 
     const latestLegacyPurchase = (Array.isArray(holding.tranches) ? holding.tranches : [])
@@ -1286,11 +1304,25 @@ export class PortfolioStore {
 
 export const portfolioStore = new PortfolioStore();
 
+/**
+ * Subscribe and immediately replay the current portfolio snapshot.
+ * Registering before reading closes the render-to-effect race: a state update
+ * between the initial render and effect installation cannot be missed.
+ */
+export function subscribeToPortfolioState(
+  listener: (state: PortfolioState) => void,
+  store: Pick<PortfolioStore, 'getState' | 'subscribe'> = portfolioStore
+): () => void {
+  const unsubscribe = store.subscribe(listener);
+  listener(store.getState());
+  return unsubscribe;
+}
+
 export function usePortfolio(): PortfolioState {
   const [state, setState] = useState<PortfolioState>(() => portfolioStore.getState());
 
   useEffect(() => {
-    return portfolioStore.subscribe((newState) => {
+    return subscribeToPortfolioState((newState) => {
       setState({ ...newState });
     });
   }, []);

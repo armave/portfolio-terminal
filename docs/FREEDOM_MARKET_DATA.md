@@ -15,6 +15,8 @@ The Worker still requires the existing `GATEWAY_SECRET` for all app requests. Af
 
 ## Read-only actions
 
+- `freedom-trades` retrieves the full TradeNet execution history for FIFO matching. The Worker requests `getTradesHistory` with `sort: 0` and intentionally omits `max`; TradeNet documents this combination as returning the full history count. The latest-first `sort: 1` mode defaults to a maximum of 100 executions when `max` is omitted, which can omit older opening buys and make closed-trade duration/buy-commission calculations incomplete.
+
 - `freedom-quote`: requests a quote for one symbol.
 - `freedom-news`: requests company news for one symbol.
 - `freedom-history`: requests daily historical data for one symbol.
@@ -22,11 +24,13 @@ The Worker still requires the existing `GATEWAY_SECRET` for all app requests. Af
 
 The browser cannot supply an arbitrary TradeNet command. The Worker chooses from a fixed allowlist and signs requests server-side. No order-placement command is exposed.
 
+The quote action uses TradeNet's `getStockQuotesJson` command with a `tickers` array (a one-element array for a single-symbol request). For the API-key v2 route, the command is in the URL (`/api/getStockQuotesJson`), and the JSON body contains only the command parameters (for example, `{"tickers":["GOOGL.US"]}`), not the legacy `{cmd, params}` envelope. The Worker signs the exact serialized body followed by the current Unix timestamp, as described by the [TradeNet API-key documentation](https://tradernet.global/tradernet-api/auth-api?site_lang=en). TradeNet returns quote records in the `q` array (for example, `{"q":[{"c":"GOOGL.US","ltp":279.84}]}`). The response normalizer unwraps this envelope, including when nested under `data`, and reads `ltp` (last price), `pp` (previous close), `chg` (absolute change), and `pcp` (percent change). See the [TradeNet quote API documentation](https://fbis.tradernet.ae/tradernet-api/quotes-get?site_lang=en).
+
 Symbols without an explicit exchange suffix are mapped to `.US`; symbols already containing a dot are passed through. Review this mapping for non-US instruments before relying on it.
 
 ## Validation status and limitations
 
-The adapter normalizes common quote field names and tolerates several response envelopes. TradeNet response schemas and parameter names may differ by API version/account. Before enabling this in production, validate the exact quote/news/history command parameters and response fields against an authorized Freedom Broker Armenia account. If the quote payload cannot be normalized or the API call fails, the terminal falls back to existing quote providers. If Freedom news is unavailable or returns no recognized stories, the existing Finnhub news path is used.
+The Worker regression test verifies the API-key v2 request URL, parameter-only JSON body, and HMAC signature; the frontend unit test covers the documented quote fields. The Worker deployment workflow also watches the shared TradeNet adapter file so changes to the imported signing/request helper are deployed. A successful response against the configured, authorized Freedom Broker Armenia account is still required to validate account entitlement and live symbol coverage. If Freedom quote retrieval fails, Yahoo remains a concurrent quote source and Finnhub/Twelve Data remain the fallback path. If Freedom news is unavailable or returns no recognized stories, the existing Finnhub news path is used.
 
 The target-price, analyst-consensus, detailed fundamentals, and earnings-estimate integrations are intentionally unchanged; this change does not claim those fields are available through Tradernet.
 

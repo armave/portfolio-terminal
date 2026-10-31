@@ -3,11 +3,27 @@ export interface BrokerExecutionMetrics {
   buyCommission: number | null;
 }
 
-type Execution = Record<string, any>;
+/**
+ * Minimal allowlisted broker execution fields consumed by FIFO metrics.
+ * Values stay unknown at this boundary because broker and persisted history
+ * payloads may contain numeric strings, nulls, or legacy aliases.
+ */
+export interface BrokerExecutionMetricInput {
+  ticker?: unknown;
+  side?: unknown;
+  quantity?: unknown;
+  shares?: unknown;
+  executedAt?: unknown;
+  date?: unknown;
+  commission?: unknown;
+  commissionCurrency?: unknown;
+  currency?: unknown;
+}
+
 const BUY_SIDES = new Set(['buy', 'b', 'purchase', 'bought', '1']);
 const SELL_SIDES = new Set(['sell', 's', 'sale', 'sold', '2']);
 
-function isUsdCommission(trade: Execution): boolean {
+function isUsdCommission(trade: BrokerExecutionMetricInput): boolean {
   const currency = String(trade.commissionCurrency ?? trade.currency ?? '').trim().toUpperCase();
   return currency === '' || currency === 'USD';
 }
@@ -17,7 +33,7 @@ export function normalizeExecutionTicker(value: unknown): string {
 }
 
 /** FIFO-match buy lots to sells; incomplete source history never becomes a fabricated zero. */
-export function calculateBrokerExecutionMetrics(executions: Execution[]): Map<Execution, BrokerExecutionMetrics> {
+export function calculateBrokerExecutionMetrics<T extends BrokerExecutionMetricInput>(executions: readonly T[]): Map<T, BrokerExecutionMetrics> {
   const sorted = executions.map((trade, index) => ({
     trade,
     index,
@@ -29,7 +45,7 @@ export function calculateBrokerExecutionMetrics(executions: Execution[]): Map<Ex
     .sort((a, b) => a.time - b.time || a.index - b.index);
 
   const queues = new Map<string, Array<{ date: number; quantity: number; commissionCentsRemaining: number | null }>>();
-  const metrics = new Map<Execution, BrokerExecutionMetrics>();
+  const metrics = new Map<T, BrokerExecutionMetrics>();
   for (const row of sorted) {
     if (BUY_SIDES.has(row.side)) {
       const queue = queues.get(row.ticker) ?? [];
