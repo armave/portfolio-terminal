@@ -192,6 +192,7 @@ The UI audit found three additional wide tables whose scroll containers were not
 - [x] Add visually hidden table captions to cash holdings, active tranches, guest assignment history, and user management; retain the existing detailed Closed History caption.
 - [x] Add English/Russian accessible names and translation regression coverage.
 - [x] Preserve the cash/tranche/guest/settings `table-scroll-wrapper` CSS hooks, including mobile layout behavior; keep Closed History's existing wrapper styling distinct.
+- [x] Keep the collapsible active-tranches region out of the tab order while closed, with focused regression coverage.
 - [ ] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
 
 This is a presentation/accessibility/localization-only change. Table data, order and assignment actions, portfolio calculations, broker requests, permissions, and persistence remain unchanged. Browser/mobile visual verification remains outstanding.
