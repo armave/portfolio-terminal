@@ -109,11 +109,12 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
         <p class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">No assignments match these filters.</p>
       ) : (
         <TableScrollRegion label="Guest assignment history table" className="table-scroll-wrapper" focusClassName="focus-visible:outline-indigo-400">
-          <table class="w-full min-w-[760px] border-collapse text-left text-xs">
+          <table class="w-full min-w-[860px] border-collapse text-left text-xs">
             <caption class="sr-only">Guest assignment history table</caption>
             <thead>
               <tr class="border-b border-slate-800 text-[9px] uppercase tracking-wide text-slate-500">
                 <th class="px-2 py-2">Assigned</th>
+                <th class="px-2 py-2">Source</th>
                 <th class="px-2 py-2">Ticker</th>
                 <th class="px-2 py-2 text-right">Shares</th>
                 <th class="px-2 py-2 text-right">Open shares</th>
@@ -129,6 +130,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
                 return (
                   <tr key={record.assignmentId} class="hover:bg-slate-900/60">
                     <td class="whitespace-nowrap px-2 py-2 text-slate-400">{formatAssignmentDate(record.assignedAt)}</td>
+                    <td class="px-2 py-2 text-slate-400">{record.trancheId.startsWith('closed-trade:') ? 'Trade' : 'Tranche'}</td>
                     <td class="px-2 py-2 font-bold text-cyan-300">{record.ticker}</td>
                     <td class="px-2 py-2 text-right tabular-nums text-slate-200">{record.assignedQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                     <td class="px-2 py-2 text-right tabular-nums text-slate-200">{record.openQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
@@ -145,7 +147,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
             </tbody>
             <tfoot>
               <tr class="border-t border-slate-700 text-[10px] text-slate-400">
-                <td colSpan={7} class="px-2 py-2">
+                <td colSpan={8} class="px-2 py-2">
                   Assigned cost basis across filtered records: {summary.totalAssignedCostBasis > 0 ? formatUSD(summary.totalAssignedCostBasis) : '—'}
                   {summary.unassignedAssignments > 0 ? ` · ${summary.unassignedAssignments} unassigned` : ''}
                   {summary.unpricedOpenTranches > 0 ? ' · Some open holdings have no current quote' : ''}
