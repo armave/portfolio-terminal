@@ -20,6 +20,8 @@ export interface ClosedTradeAttribution {
   /** Matched shares funded by margin. Unmatched shares remain outside this amount. */
   marginQuantity: number;
   guestAllocations: ClosedTradeGuestAllocation[];
+  /** FIFO cost and tranche-date metrics for each cash-assigned guest. */
+  guestMetrics: Record<string, ClosedTradeGuestMetrics>;
   /** FIFO-weighted acquisition price and earliest source purchase date for this sale. */
   averagePrice: number | null;
   purchasedAt: number | null;
@@ -353,14 +355,16 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
         ? earliestPurchasedAt : null,
       guestAllocations: Array.from(guestAllocationMetrics.entries())
         .filter(([, metrics]) => metrics.quantity > EPSILON)
-        .map(([guestId, metrics]) => ({
-          guestId,
+        .map(([guestId, metrics]) => ({ guestId, quantity: metrics.quantity }))
+        .sort((a, b) => a.guestId.localeCompare(b.guestId)),
+      guestMetrics: Object.fromEntries(Array.from(guestAllocationMetrics.entries())
+        .filter(([, metrics]) => metrics.quantity > EPSILON)
+        .map(([guestId, metrics]) => [guestId, {
           quantity: metrics.quantity,
           averagePrice: metrics.costKnown && metrics.quantity > EPSILON
             ? metrics.costBasis / metrics.quantity : null,
           purchasedAt: metrics.purchaseDateKnown ? metrics.purchasedAt : null
-        }))
-        .sort((a, b) => a.guestId.localeCompare(b.guestId)),
+        }])),
       unmatchedQuantity: Math.max(0, remainingToSell)
     });
   }
