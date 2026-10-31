@@ -120,6 +120,7 @@ const SUPPLEMENTAL_REFRESH_INTERVAL_MS = 60 * 1000;
 
 // Cached broker limit prices must win over default targets during asynchronous refreshes.
 let activeLimitSellTargets: Record<string, number> = {};
+let activeOrdersRefreshWarned = false;
 
 // ==========================================
 // CLOUDFLARE WORKERS KV REPLICATION ENGINE
@@ -376,6 +377,7 @@ addBrokerEventListener('broker:assign-active-tranche-guest', async (detail) => {
 addBrokerEventListener('broker:active-orders', (orders) => {
   if (currentAccountRole !== 'admin') return;
   if (!Array.isArray(orders)) return;
+  activeOrdersRefreshWarned = false;
 
   // Cache the broker's exact limit price so a slower account/trade refresh
   // cannot replace it with the locally calculated default target.
@@ -420,6 +422,14 @@ addBrokerEventListener('broker:active-orders', (orders) => {
     logTerminal(`[Freedom] Updated ${update.ticker} target from active limit sell: ${update.price.toFixed(2)}.`);
   }
   renderBoard();
+});
+
+addBrokerEventListener('broker:active-orders-error', () => {
+  if (currentAccountRole !== 'admin' || activeOrdersRefreshWarned) return;
+  // Keep the last known targets on failure and avoid repeating a warning on every poll.
+  activeOrdersRefreshWarned = true;
+  showToast(translateText('Freedom active orders are unavailable — existing position targets are unchanged.'), 'warning');
+  logTerminal(translateText('[Freedom Warning] Active-order refresh failed; existing position targets were left unchanged.'));
 });
 
 addBrokerEventListener('broker:account-info-error', () => {

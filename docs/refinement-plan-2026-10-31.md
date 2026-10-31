@@ -114,7 +114,8 @@ A follow-up audit found that the invalid-ticker branch displayed an error withou
 - [x] Advance the guard immediately when a Margin Intelligence event arrives, before validating its ticker.
 - [x] Invalidate pending responses when the owning effect is cleaned up.
 - [x] Add unit tests for out-of-order completion, a newer request rejected before async work, and effect cleanup.
-- [ ] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
+- [x] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
+- [x] Both final-head workflows completed successfully: [Validate run 41195019092](https://github.com/armave/portfolio-terminal/actions/runs/41195019092) and [Pull Request CI run 41195019175](https://github.com/armave/portfolio-terminal/actions/runs/41195019175).
 
 The change affects client-side request sequencing only. It does not change portfolio calculations, broker requests, stored digests, authorization, server code, or localization.
 
@@ -129,3 +130,16 @@ A second issue in the same request lifecycle could show a previous ticker's anal
 - [ ] Confirm all required CI checks on the final PR head.
 
 The modal already supports displaying an error and existing analysis/source cards together; the fix restores that intended stale-data fallback without presenting content from a different request.
+
+## Follow-on implementation — active-order refresh failure visibility
+
+The broker event bus already defined `broker:active-orders-error`, and the request owner emitted it on API failures, but no application listener consumed it. Also, an empty restored Gateway Secret returned silently without an error event. Consequently, an admin could continue seeing locally retained position targets without a warning that active broker orders had not refreshed.
+
+- [x] Report missing credentials, credential-restoration failures, and broker API failures through the same active-orders error event.
+- [x] Keep a successful empty active-order list distinct from a failed refresh.
+- [x] Show a localized warning and terminal log while leaving the last applied position targets untouched.
+- [x] Suppress repeated warning toasts during consecutive failed polls; a successful refresh resets the warning latch.
+- [x] Add unit coverage for missing credentials, storage/API rejection, successful empty responses, normalized success, and English/Russian warning copy.
+- [ ] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
+
+No order is submitted or modified. The refresh path remains read-only; this change makes its failure state visible without clearing valid last-known targets.
