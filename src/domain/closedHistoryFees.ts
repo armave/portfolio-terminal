@@ -80,7 +80,7 @@ export function applyCashflowAllocationsToClosedTrades(
 ): FeeRecord[] {
   return trades.map((trade, index) => {
     const addedFee = Number((allocationsByTrade.get(index) || 0).toFixed(2));
-    const previousMargin = Math.abs(Number(trade.marginInterest ?? trade.marginFee ?? 0)) || 0;
+    const previousMargin = Math.abs(Number(trade.marginInterest) || Number(trade.marginFee) || 0);
     if (addedFee <= 0 && previousMargin <= 0) return trade;
 
     // Undo the previous cashflow allocation before applying the current one.

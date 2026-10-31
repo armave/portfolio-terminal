@@ -1277,22 +1277,23 @@ export function normalizeFreedomActiveOrders(response: any): FreedomActiveOrder[
 
 /** Cache the full broker cashflow snapshot briefly to avoid repeat reads on quick Trades navigation. */
 const FREEDOM_CASHFLOW_CACHE_TTL_MS = 5 * 60 * 1000;
-let freedomCashflowCache: { expiresAt: number; data: any } | null = null;
-let freedomCashflowRequest: Promise<any> | null = null;
+let freedomCashflowCache: { secret: string; expiresAt: number; data: any } | null = null;
+let freedomCashflowRequest: { secret: string; promise: Promise<any> } | null = null;
 
 export async function fetchFreedomCashflows(): Promise<any> {
-  if (freedomCashflowCache && freedomCashflowCache.expiresAt > Date.now()) {
+  const secret = getActiveGatewaySecret().trim();
+  if (freedomCashflowCache && freedomCashflowCache.secret === secret && freedomCashflowCache.expiresAt > Date.now()) {
     recordApiMetric('cache_hit', { cache: 'freedom_cashflows' });
     return freedomCashflowCache.data;
   }
-  if (freedomCashflowRequest) {
+  if (freedomCashflowRequest?.secret === secret) {
     recordApiMetric('inflight_dedup', { operation: 'freedom_cashflows' });
-    return freedomCashflowRequest;
+    return freedomCashflowRequest.promise;
   }
 
   const request = proxyFetch('freedom-cashflows', {}, { cache: 'no-store' })
     .then((data) => {
-      freedomCashflowCache = { expiresAt: Date.now() + FREEDOM_CASHFLOW_CACHE_TTL_MS, data };
+      freedomCashflowCache = { secret, expiresAt: Date.now() + FREEDOM_CASHFLOW_CACHE_TTL_MS, data };
       return data;
     })
     .catch((error) => {
@@ -1300,9 +1301,9 @@ export async function fetchFreedomCashflows(): Promise<any> {
       throw new Error('Failed to fetch Freedom Broker cashflows due to a network error.');
     })
     .finally(() => {
-      if (freedomCashflowRequest === request) freedomCashflowRequest = null;
+      if (freedomCashflowRequest?.promise === request) freedomCashflowRequest = null;
     });
-  freedomCashflowRequest = request;
+  freedomCashflowRequest = { secret, promise: request };
   return request;
 }
 

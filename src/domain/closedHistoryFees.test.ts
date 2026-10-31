@@ -141,6 +141,20 @@ describe('closed-history idempotency and source deduplication', () => {
     expect(result[0]).toBe(sell);
   });
 
+  it('does not fabricate net P/L when an app trade has no known realized profit', () => {
+    const trade = { feesAndCommissions: 4, marginFee: 2, netProfit: null, netRealizedGain: null };
+    const result = applyCashflowAllocationsToClosedTrades([trade], new Map([[0, 3]]))[0];
+    expect(result).toMatchObject({ feesAndCommissions: 5, totalCommissions: 5, marginFee: 3, marginInterest: 3 });
+    expect(result.netProfit).toBeNull();
+    expect(result.netRealizedGain).toBeNull();
+  });
+
+  it('uses the non-zero margin fee when legacy margin fields disagree', () => {
+    const trade = { feesAndCommissions: 7, totalCommissions: 7, marginInterest: 0, marginFee: 5, netProfit: 93, netRealizedGain: 93 };
+    const result = applyCashflowAllocationsToClosedTrades([trade], new Map([[0, 2]]))[0];
+    expect(result).toMatchObject({ feesAndCommissions: 4, totalCommissions: 4, marginFee: 2, marginInterest: 2, netProfit: 96 });
+  });
+
   it('preserves object identity when app trade allocation is already applied', () => {
     const trade = {
       feesAndCommissions: 5,
