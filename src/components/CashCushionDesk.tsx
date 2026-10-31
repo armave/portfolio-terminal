@@ -103,6 +103,20 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     };
   }, []);
 
+  // App startup may finish broker hydration before this lazily mounted desk has
+  // installed its event listener. usePortfolio replays the current store snapshot
+  // after subscribing; reconcile that snapshot into this reducer as well.
+  useEffect(() => {
+    if (!shouldReadBrokerHistory) return;
+    const currentTrades = state.brokerExecutedTrades;
+    if (Array.isArray(currentTrades) && currentTrades.length > 0) {
+      dispatchBrokerExecutionHistory({
+        type: 'success',
+        trades: currentTrades as FreedomExecutedTradeLike[]
+      });
+    }
+  }, [state.brokerExecutedTrades, shouldReadBrokerHistory]);
+
   useEffect(() => {
     if (!showActiveTranches) return;
     let cancelled = false;
