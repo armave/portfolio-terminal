@@ -182,6 +182,23 @@ export interface ActiveTrancheMix {
   margin: number;
 }
 
+/** A guest who has been linked to a closed trade, retained for assignment history. */
+interface ClosedTradeGuestAssignmentHistory {
+  guestId: string;
+  assignedQuantity: number;
+  assignedAt: number;
+}
+
+/** Persisted administrator-editable funding and guest metadata for a closed-history row. */
+export interface ClosedTradeAllocation {
+  fundingType: ActiveTrancheType;
+  cashQuantity: number;
+  marginQuantity: number;
+  guestId?: string;
+  assignedAt?: number;
+  guestAssignments?: ClosedTradeGuestAssignmentHistory[];
+}
+
 export interface ActiveBrokerTranche {
   /** Stable identity for the open purchase operation or a 5-minute grouped batch. */
   id: string;
@@ -215,9 +232,15 @@ export interface GuestTrancheLedgerRecord {
   assignedQuantity: number;
   openQuantity: number;
   averagePrice: number | null;
+  /** Realized net profit allocated to this guest's closed-trade shares, when known. */
+  netProfit?: number | null;
   /** Market value is optional because closed tranches have no current valuation. */
   marketPrice?: number | null;
   marketValue?: number | null;
+  /** Date of the transaction represented by this ledger row (buy for Tranche, sell for Trade). */
+  operationAt?: number | null;
+  /** Current market value for open tranches or attributed sale proceeds for closed trades. */
+  value?: number | null;
   purchasedAt: number | null;
   assignedAt: number;
   updatedAt: number;
@@ -237,6 +260,8 @@ export interface PortfolioState {
   activeTrancheGuestAssignments?: Record<string, string>;
   /** Stable per-assignment lifecycle metadata used to reconcile persistent guest history. */
   activeTrancheGuestAssignmentDetails?: Record<string, ActiveTrancheGuestAssignmentDetail>;
+  /** Manual funding / guest overrides keyed by a stable closed-history row identity. */
+  closedTradeAllocations?: Record<string, ClosedTradeAllocation>;
   /** Server-filtered tranche projection returned only to the signed-in guest. */
   guestPortfolioSnapshot?: { updatedAt: number; tranches: ActiveBrokerTranche[] };
   /** Server-filtered assignment history returned only to the signed-in guest. */

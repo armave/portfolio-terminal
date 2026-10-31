@@ -31,8 +31,8 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
   const filteredRecords = useMemo(() => filterGuestTrancheLedger(records, {
     ticker: tickerFilter,
     status: statusFilter,
-    assignedFrom: fromDate ? new Date(fromDate + 'T00:00:00').getTime() : undefined,
-    assignedTo: toDate ? new Date(toDate + 'T23:59:59.999').getTime() : undefined
+    operationDateFrom: fromDate ? new Date(fromDate + 'T00:00:00').getTime() : undefined,
+    operationDateTo: toDate ? new Date(toDate + 'T23:59:59.999').getTime() : undefined
   }), [records, tickerFilter, statusFilter, fromDate, toDate]);
   const summary = useMemo(
     () => summarizeGuestTrancheLedger(filteredRecords, activeTranches),
@@ -90,12 +90,12 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
           </select>
         </label>
         <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-          Assigned from
+          Date from
           <input type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate((event.currentTarget as HTMLInputElement).value)}
             class="h-8 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200" />
         </label>
         <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
-          Assigned to
+          Date to
           <input type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate((event.currentTarget as HTMLInputElement).value)}
             class="h-8 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200" />
         </label>
@@ -109,16 +109,18 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
         <p class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">No assignments match these filters.</p>
       ) : (
         <TableScrollRegion label="Guest assignment history table" className="table-scroll-wrapper" focusClassName="focus-visible:outline-indigo-400">
-          <table class="w-full min-w-[760px] border-collapse text-left text-xs">
+          <table class="w-full min-w-[960px] border-collapse text-left text-xs">
             <caption class="sr-only">Guest assignment history table</caption>
             <thead>
               <tr class="border-b border-slate-800 text-[9px] uppercase tracking-wide text-slate-500">
-                <th class="px-2 py-2">Assigned</th>
+                <th class="px-2 py-2">Date</th>
+                <th class="px-2 py-2">Source</th>
                 <th class="px-2 py-2">Ticker</th>
                 <th class="px-2 py-2 text-right">Shares</th>
                 <th class="px-2 py-2 text-right">Open shares</th>
                 <th class="px-2 py-2 text-right">Avg. cost</th>
-                <th class="px-2 py-2 text-right">Open value</th>
+                <th class="px-2 py-2 text-right">Value</th>
+                <th class="px-2 py-2 text-right">Net P&amp;L</th>
                 <th class="px-2 py-2 text-right">Status</th>
               </tr>
             </thead>
@@ -126,14 +128,25 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
               {filteredRecords.map((record) => {
                 const active = activeTranches.find((tranche) => tranche.id === record.trancheId);
                 const marketValue = record.status === 'active' ? active?.marketValue : null;
+                // Active rows use the latest guest-scoped snapshot value, not
+                // a stale market value persisted during the prior sync.
+                const isClosedTrade = record.trancheId.startsWith('closed-trade:');
+                const value = record.status === 'active' ? marketValue : record.value;
+                const operationAt = isClosedTrade
+                  ? record.operationAt
+                  : record.operationAt ?? record.purchasedAt;
                 return (
                   <tr key={record.assignmentId} class="hover:bg-slate-900/60">
-                    <td class="whitespace-nowrap px-2 py-2 text-slate-400">{formatAssignmentDate(record.assignedAt)}</td>
+                    <td class="whitespace-nowrap px-2 py-2 text-slate-400">{formatAssignmentDate(operationAt)}</td>
+                    <td class="px-2 py-2 text-slate-400">{record.trancheId.startsWith('closed-trade:') ? 'Trade' : 'Tranche'}</td>
                     <td class="px-2 py-2 font-bold text-cyan-300">{record.ticker}</td>
                     <td class="px-2 py-2 text-right tabular-nums text-slate-200">{record.assignedQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                     <td class="px-2 py-2 text-right tabular-nums text-slate-200">{record.openQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                     <td class="px-2 py-2 text-right tabular-nums text-slate-300">{record.averagePrice !== null ? formatUSD(record.averagePrice) : '—'}</td>
-                    <td class="px-2 py-2 text-right tabular-nums text-slate-300">{marketValue !== null && marketValue !== undefined ? formatUSD(marketValue) : '—'}</td>
+                    <td class="px-2 py-2 text-right tabular-nums text-slate-300">{value !== null && value !== undefined && Number.isFinite(Number(value)) ? formatUSD(Number(value)) : '—'}</td>
+                    <td class={`px-2 py-2 text-right tabular-nums ${record.netProfit == null || !Number.isFinite(Number(record.netProfit)) ? 'text-slate-500' : Number(record.netProfit) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                      {record.netProfit != null && Number.isFinite(Number(record.netProfit)) ? formatUSD(Number(record.netProfit)) : '—'}
+                    </td>
                     <td class="px-2 py-2 text-right">
                       <span class={record.status === 'active' ? 'text-emerald-300' : record.status === 'closed' ? 'text-slate-300' : 'text-amber-300'}>
                         {STATUS_LABELS[record.status]}
@@ -145,7 +158,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
             </tbody>
             <tfoot>
               <tr class="border-t border-slate-700 text-[10px] text-slate-400">
-                <td colSpan={7} class="px-2 py-2">
+                <td colSpan={9} class="px-2 py-2">
                   Assigned cost basis across filtered records: {summary.totalAssignedCostBasis > 0 ? formatUSD(summary.totalAssignedCostBasis) : '—'}
                   {summary.unassignedAssignments > 0 ? ` · ${summary.unassignedAssignments} unassigned` : ''}
                   {summary.unpricedOpenTranches > 0 ? ' · Some open holdings have no current quote' : ''}
@@ -155,7 +168,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
           </table>
         </TableScrollRegion>
       )}
-      <p class="text-[9px] text-slate-600">Market value is shown only for open assigned holdings. Realized profit/loss is not inferred from assignment history. Pre-feature open assignments are dated when first recorded.</p>
+      <p class="text-[9px] text-slate-600">Value shows current market value for open tranches and sale proceeds for closed trades. Net P&amp;L appears only when the closed trade's net result is available.</p>
     </section>
   );
 }

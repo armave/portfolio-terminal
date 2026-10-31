@@ -128,8 +128,8 @@ export function calculateGuestPersonalEquity(holdings: GuestCashHolding[]): numb
 export interface GuestTrancheLedgerFilters {
   ticker?: string;
   status?: 'all' | 'active' | 'closed' | 'unassigned';
-  assignedFrom?: number;
-  assignedTo?: number;
+  operationDateFrom?: number;
+  operationDateTo?: number;
 }
 
 export interface GuestTrancheLedgerSummary {
@@ -155,17 +155,29 @@ export function filterGuestTrancheLedger(
     .filter((record) => {
       if (ticker && !String(record.ticker || '').toUpperCase().includes(ticker)) return false;
       if (status !== 'all' && record.status !== status) return false;
-      if (Number.isFinite(filters.assignedFrom) && record.assignedAt < Number(filters.assignedFrom)) return false;
-      if (Number.isFinite(filters.assignedTo) && record.assignedAt > Number(filters.assignedTo)) return false;
+      const isClosedTrade = record.trancheId.startsWith('closed-trade:');
+      const operationDateValue = isClosedTrade ? record.operationAt : record.operationAt ?? record.purchasedAt;
+      const operationDate = operationDateValue === null || operationDateValue === undefined
+        ? Number.NaN : Number(operationDateValue);
+      if (Number.isFinite(filters.operationDateFrom) &&
+          (!Number.isFinite(operationDate) || operationDate < Number(filters.operationDateFrom))) return false;
+      if (Number.isFinite(filters.operationDateTo) &&
+          (!Number.isFinite(operationDate) || operationDate > Number(filters.operationDateTo))) return false;
       return true;
     })
     .slice()
-    .sort((a, b) => b.assignedAt - a.assignedAt || a.ticker.localeCompare(b.ticker));
+    .sort((a, b) => {
+      const aDate = a.trancheId.startsWith('closed-trade:')
+        ? a.operationAt : a.operationAt ?? a.purchasedAt;
+      const bDate = b.trancheId.startsWith('closed-trade:')
+        ? b.operationAt : b.operationAt ?? b.purchasedAt;
+      return (bDate ?? Number.NEGATIVE_INFINITY) - (aDate ?? Number.NEGATIVE_INFINITY) ||
+        b.assignedAt - a.assignedAt || a.ticker.localeCompare(b.ticker);
+    });
 }
 
 /** Summarize historical assignment capital and today's open position value.
- * This intentionally does not estimate realized P/L: sold execution prices are
- * not attached to individual cash-assigned tranches by the current broker parser. */
+ * Realized net P&L is carried on closed-trade ledger records when the source is complete. */
 export function summarizeGuestTrancheLedger(
   records: GuestTrancheLedgerRecord[],
   activeTranches: ActiveBrokerTranche[] = []

@@ -3,10 +3,12 @@ import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage } from '../services/i18n';
-import { fetchFreedomCashflows, pullCloudHistory, pushCloudHistory } from '../services/api';
+import { fetchFreedomCashflows, listUsers, pullCloudHistory, pushCloudHistory, type AuthUser } from '../services/api';
 import { loadSavedHistory, saveSavedHistory } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
+import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
+import { resolveClosedTradeAllocation } from '../domain/closedTradeAllocation';
 import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFees';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from '../domain/brokerExecutionMetrics';
 import { DeskLoading } from './DeskLoading';
@@ -24,6 +26,7 @@ export function ClosedHistoryDesk() {
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
   const [cashflowAllocationReady, setCashflowAllocationReady] = useState(false);
   const [tradesPage, setTradesPage] = useState(1);
+  const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
   const cashflowSyncStarted = useRef(false);
@@ -33,6 +36,15 @@ export function ClosedHistoryDesk() {
     setBrokerTradesRefreshing(true);
     emitBrokerEvent('broker:request-executed-trades');
   };
+  useEffect(() => {
+    let active = true;
+    void listUsers().then((users) => {
+      if (active) setGuestUsers(users.filter((user) => user.role === 'guest'));
+    }).catch((error) => {
+      console.warn('Unable to load guest names for closed-trade attribution:', error);
+    });
+    return () => { active = false; };
+  }, []);
   // Load cloud history once. An existing cloud history record is authoritative;
   // local history is used only when no cloud record exists.
   useEffect(() => {
@@ -323,12 +335,23 @@ export function ClosedHistoryDesk() {
     const profit = resolveClosedTradeNetProfit(trade as any, feeBreakdown);
     return {
       trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const,
+      allocationKey: 'app:' + String((trade as any).id || `${String((trade as any).ticker || 'trade')}:${String((trade as any).closedAt ?? (trade as any).exitDate ?? (trade as any).date ?? index)}`),
       profit,
       commissionsComplete: feeBreakdown.commissionsKnown,
+      allocationType: 'unclassified' as const,
+      allocationTypes: ['unclassified' as const],
+      guestAllocations: [] as Array<{ guestId: string; quantity: number }>,
       ...feeBreakdown
     };
   });
   const brokerTradeMetrics = calculateBrokerExecutionMetrics(brokerTrades);
+  const trancheAttributions = attributeClosedTradeExecutions(brokerTrades, {
+    trancheTypes: state.activeTrancheTypes,
+    trancheMixes: state.activeTrancheMixes,
+    guestAssignments: state.activeTrancheGuestAssignments,
+    guestAssignmentDetails: state.activeTrancheGuestAssignmentDetails
+  });
+  const guestNameById = new Map(guestUsers.map((user) => [user.id, user.name]));
   const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold', '2'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => {
     const allocatedMarginFee = Object.values((broker.marginFeeAllocations || {}) as Record<string, number>)
       .reduce((sum, amount) => sum + (Number(amount) || 0), 0);
@@ -351,15 +374,24 @@ export function ClosedHistoryDesk() {
       ? null
       : Number((Number(broker.profit) - totalFees).toFixed(2));
     const ticker = normalizeExecutionTicker(broker.ticker);
+    const attribution = trancheAttributions.get(broker);
+    const allocationType = attribution?.fundingType || 'unclassified';
     return {
       trade: { id: broker.id ?? ('tradenet-' + index), ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: metrics?.holdingDays ?? null, feesAndCommissions: totalFees, netProfit: profit, side: broker.side, price: broker.price, source: 'tradenet' as const },
       index: -1,
       source: 'tradenet' as const,
+      allocationKey: 'broker:' + String(broker.id ?? ('tradenet-' + index)),
       profit,
       fees,
       commissions,
       commissionsComplete,
-      feesTotal: totalFees
+      feesTotal: totalFees,
+      allocationType,
+      allocationTypes: [allocationType],
+      cashQuantity: attribution?.cashQuantity || 0,
+      marginQuantity: attribution?.marginQuantity || 0,
+      guestAllocations: attribution?.guestAllocations || [],
+      unmatchedQuantity: attribution?.unmatchedQuantity || 0
     };
   });
   // Group same-ticker sell executions that occur within one hour into one closed-history row.
@@ -391,9 +423,33 @@ export function ClosedHistoryDesk() {
         previous.commissions = (previous.commissions || 0) + (row.commissions || 0);
         previous.commissionsComplete = previous.commissionsComplete && row.commissionsComplete;
         previous.feesTotal = (previous.feesTotal || 0) + (row.feesTotal || 0);
+        previous.cashQuantity = (previous.cashQuantity || 0) + (row.cashQuantity || 0);
+        previous.marginQuantity = (previous.marginQuantity || 0) + (row.marginQuantity || 0);
+        const allocationTypes = Array.from(new Set([
+          ...(previous.allocationTypes || [previous.allocationType]),
+          ...(row.allocationTypes || [row.allocationType])
+        ]));
+        const knownTypes = allocationTypes.filter((type) => type !== 'unclassified');
+        previous.allocationTypes = allocationTypes;
+        previous.allocationType = knownTypes.length > 1 || knownTypes.includes('mix')
+          ? 'mix'
+          : knownTypes[0] || 'unclassified';
+        const guestTotals = new Map<string, number>();
+        [...(previous.guestAllocations || []), ...(row.guestAllocations || [])].forEach((item) => {
+          guestTotals.set(item.guestId, (guestTotals.get(item.guestId) || 0) + item.quantity);
+        });
+        previous.guestAllocations = Array.from(guestTotals.entries())
+          .map(([guestId, quantity]) => ({ guestId, quantity }))
+          .sort((a, b) => a.guestId.localeCompare(b.guestId));
+        previous.unmatchedQuantity = (previous.unmatchedQuantity || 0) + (row.unmatchedQuantity || 0);
         (previous.trade as any).price = totalQty > 0 ? (Number((previous.trade as any).price ?? 0) * oldQty + Number((row.trade as any).price ?? 0) * newQty) / totalQty : (row.trade as any).price;
       } else {
-        groups.push({ ...row, trade: { ...(row.trade as any) } });
+        groups.push({
+          ...row,
+          trade: { ...(row.trade as any) },
+          allocationTypes: [...(row.allocationTypes || [row.allocationType])],
+          guestAllocations: [...(row.guestAllocations || [])]
+        });
       }
     }
     return groups;
@@ -410,7 +466,21 @@ export function ClosedHistoryDesk() {
     const parsed = Date.parse(String(raw ?? ''));
     return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
   };
-  const trades = [...uniqueAppTrades, ...groupedBrokerRows].sort((a, b) => getExitTimestamp(b) - getExitTimestamp(a));
+  const trades = [...uniqueAppTrades, ...groupedBrokerRows].map((row: any) => {
+    const allocation = resolveClosedTradeAllocation(
+      row.trade?.shares,
+      row.allocationType,
+      row.guestAllocations || [],
+      state.closedTradeAllocations?.[row.allocationKey],
+      row.cashQuantity
+    );
+    return {
+      ...row,
+      ...allocation,
+      allocationType: allocation.fundingType,
+      allocationTypes: [allocation.fundingType]
+    };
+  }).sort((a, b) => getExitTimestamp(b) - getExitTimestamp(a));
   const tradesPageSize = 10;
   const tradesPageCount = Math.max(1, Math.ceil(trades.length / tradesPageSize));
   const visibleTrades = trades.slice((tradesPage - 1) * tradesPageSize, tradesPage * tradesPageSize);
@@ -490,14 +560,15 @@ export function ClosedHistoryDesk() {
       </div>
 
       <TableScrollRegion label="Closed trade history" className="border border-slate-800 bg-slate-950/60">
-        <table class="w-full min-w-[760px] text-left text-xs font-mono">
-          <caption class="sr-only">Closed trade history with ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
+        <table class="w-full min-w-[900px] text-left text-xs font-mono">
+          <caption class="sr-only">Closed trade history with funding type, guest assignment, ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
           <thead class="border-b border-slate-800 bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-400">
             <tr>
               <th scope="col" class="py-2.5 px-3">Ticker</th>
               <th scope="col" class="py-2.5 px-3">Date Closed</th>
               <th scope="col" class="py-2.5 px-3 text-right">Shares</th>
               <th scope="col" class="py-2.5 px-3 text-right">Duration</th>
+              <th scope="col" class="py-2.5 px-3">Funding · guest · cash shares</th>
               <th scope="col" class="py-2.5 px-3 text-right">Fees</th>
               <th scope="col" class="py-2.5 px-3 text-right">Commissions</th>
               <th scope="col" class="py-2.5 px-3 text-right">Net Profit</th>
@@ -505,11 +576,11 @@ export function ClosedHistoryDesk() {
           </thead>
           <tbody id="closedTradesTableBody" class="divide-y divide-slate-800/60">
             {brokerTradesLoading && brokerTrades.length === 0 ? (
-              <tr><td colSpan={7} class="py-8 text-center text-slate-400">
+              <tr><td colSpan={8} class="py-8 text-center text-slate-400">
                 <span class="inline-flex items-center gap-2"><span class="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-purple-400" aria-hidden="true" />Loading closed trade history…</span>
               </td></tr>
             ) : brokerTradesError && trades.length === 0 ? (
-              <tr><td colSpan={7} class="py-8 text-center text-rose-400">
+              <tr><td colSpan={8} class="py-8 text-center text-rose-400">
                 <div class="flex flex-col items-center justify-center gap-2">
                   <span>Unable to load TradeNet history. Please retry.</span>
                   <button
@@ -523,12 +594,37 @@ export function ClosedHistoryDesk() {
               </td></tr>
             ) : trades.length === 0 ? (
               <tr>
-                <td colSpan={7} class="py-8 text-center text-slate-500 italic">
+                <td colSpan={8} class="py-8 text-center text-slate-500 italic">
                   No closed trades recorded yet.
                 </td>
               </tr>
             ) : (
-              visibleTrades.map(({ trade, index, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions, commissionsComplete }) => {
+              visibleTrades.map((row) => {
+                const { trade, index, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions, commissionsComplete } = row;
+                const allocationType = row.allocationType || 'margin';
+                const assignedGuests: Array<{ guestId: string; quantity: number }> = row.guestAllocations || [];
+                const allocationKey = String(row.allocationKey || ((source || 'trade') + ':' + String((trade as any).id || index)));
+                const savedAllocation = state.closedTradeAllocations?.[allocationKey];
+                const rowQuantity = Math.max(0, Number((trade as any).shares) || 0);
+                const selectedGuestId = savedAllocation
+                  ? String(savedAllocation.guestId || '')
+                  : assignedGuests.length === 1 ? assignedGuests[0].guestId : '';
+                const persistAllocation = (fundingType: 'cash' | 'margin' | 'mix', cashValue: number, guestId = selectedGuestId) => {
+                  const cashQuantity = fundingType === 'cash' ? rowQuantity
+                    : fundingType === 'margin' ? 0
+                      : Math.min(rowQuantity, Math.max(0, Number(cashValue) || 0));
+                  emitBrokerEvent('broker:set-closed-trade-allocation', {
+                    rowId: allocationKey,
+                    allocation: {
+                      fundingType,
+                      cashQuantity,
+                      marginQuantity: Math.max(0, rowQuantity - cashQuantity),
+                      guestId: fundingType === 'margin' ? '' : guestId
+                    }
+                  });
+                };
+                const updateMixCash = (value: string) => persistAllocation('mix', Math.min(rowQuantity, Math.max(0, Number(value) || 0)));
+                const updateMixMargin = (value: string) => persistAllocation('mix', rowQuantity - Math.min(rowQuantity, Math.max(0, Number(value) || 0)));
                 // 1. Resolve Exit Date
                 const rawDate =
                   (trade as any).exitDate ||
@@ -583,7 +679,7 @@ export function ClosedHistoryDesk() {
                 const sign = isPositive ? '+' : '-';
 
                 return (
-                  <tr key={(trade as any).id || (source + "-" + index)} class="hover:bg-slate-900/40 text-slate-300">
+                    <tr key={(trade as any).id || (source + "-" + index)} class="hover:bg-slate-900/40 text-slate-300">
                     <td class="py-2.5 px-3 font-bold text-white">{(trade as any).ticker?.replace('.US', '') || "—"}</td>
                     <td class="py-2.5 px-3 whitespace-nowrap">
                       <span>{dateText}</span>
@@ -599,6 +695,37 @@ export function ClosedHistoryDesk() {
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-400">
                       {durationDays === null ? '—' : durationDays < 1 ? Math.round(durationDays * 24) + ' hrs' : durationDays.toFixed(1) + ' days'}
                     </td>
+                    <td data-label="Funding · guest · cash shares" class="py-2 px-3 whitespace-nowrap text-slate-300">
+                      <div class="flex flex-col items-center gap-1.5">
+                        <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={String((trade as any).ticker || 'Trade') + ' funding type'}>
+                          <button type="button" aria-pressed={allocationType === 'cash'} onClick={() => persistAllocation('cash', rowQuantity)} class={allocationType === 'cash' ? 'rounded bg-cyan-950 px-2 py-1 text-[10px] font-bold text-cyan-300' : 'rounded px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-300'}>Cash</button>
+                          <button type="button" aria-pressed={allocationType === 'margin'} onClick={() => persistAllocation('margin', 0, '')} class={allocationType === 'margin' ? 'rounded bg-amber-950 px-2 py-1 text-[10px] font-bold text-amber-300' : 'rounded px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-300'}>Margin</button>
+                          <button type="button" aria-pressed={allocationType === 'mix'} onClick={() => persistAllocation('mix', allocationType === 'cash' ? rowQuantity : row.cashQuantity)} class={allocationType === 'mix' ? 'rounded bg-violet-950 px-2 py-1 text-[10px] font-bold text-violet-300' : 'rounded px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-300'}>Mix</button>
+                        </div>
+                        {allocationType === 'mix' && (
+                          <div class="flex items-center justify-center gap-2 rounded border border-slate-800 bg-slate-950/70 p-1.5 font-sans">
+                            <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">Cash shares
+                              <input aria-label={String((trade as any).ticker || 'Trade') + ' cash shares'} type="number" min="0" max={rowQuantity} step="any" value={row.cashQuantity} onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)} class="w-16 rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100" />
+                            </label>
+                            <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-amber-300">Margin shares
+                              <input aria-label={String((trade as any).ticker || 'Trade') + ' margin shares'} type="number" min="0" max={rowQuantity} step="any" value={row.marginQuantity} onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)} class="w-16 rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100" />
+                            </label>
+                          </div>
+                        )}
+                        {row.cashQuantity > 0 ? (
+                          <select aria-label={'Guest for ' + String((trade as any).ticker || 'trade') + ' cash shares'} value={selectedGuestId} onChange={(event) => persistAllocation(allocationType, row.cashQuantity, (event.currentTarget as HTMLSelectElement).value)} class="max-w-[11rem] rounded border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] text-slate-200">
+                            <option value="">Unassigned</option>
+                            {selectedGuestId && !guestUsers.some((user) => user.id === selectedGuestId) && <option value={selectedGuestId}>Guest unavailable</option>}
+                            {guestUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+                          </select>
+                        ) : <span class="text-[9px] text-slate-600">No cash allocation</span>}
+                        {assignedGuests.length > 0 && !savedAllocation && assignedGuests.map((assignment) => (
+                          <span key={assignment.guestId} class="text-[9px] text-cyan-300">
+                            {guestNameById.get(assignment.guestId) || assignment.guestId.slice(0, 8)} · {Number(assignment.quantity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 4 })}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
                       ${formatUSD(fees)}
                     </td>
@@ -611,7 +738,7 @@ export function ClosedHistoryDesk() {
                     >
                       {netProfit === null ? "—" : sign + "$" + formatUSD(Math.abs(netProfit))}
                     </td>
-                  </tr>
+                    </tr>
                 );
               })
             )}

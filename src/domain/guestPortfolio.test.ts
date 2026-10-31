@@ -147,29 +147,88 @@ describe('guest tranche ledger reports and filtering', () => {
     {
       assignmentId: 'assignment-aapl', trancheId: 'AAPL:buy-1', ticker: 'AAPL', name: 'Apple',
       assignedQuantity: 10, openQuantity: 4, averagePrice: 100, purchasedAt: 10,
-      assignedAt: 100, updatedAt: 300, endedAt: null, status: 'active'
+      operationAt: 40, assignedAt: 100, updatedAt: 300, endedAt: null, status: 'active'
     },
     {
       assignmentId: 'assignment-msft', trancheId: 'MSFT:buy-2', ticker: 'MSFT', name: 'Microsoft',
       assignedQuantity: 2, openQuantity: 0, averagePrice: 50, purchasedAt: 20,
-      assignedAt: 200, updatedAt: 250, endedAt: 250, status: 'closed'
+      operationAt: 220, assignedAt: 200, updatedAt: 250, endedAt: 250, status: 'closed'
     },
     {
       assignmentId: 'assignment-goog', trancheId: 'GOOG:buy-3', ticker: 'GOOG', name: 'Alphabet',
       assignedQuantity: 1, openQuantity: 0, averagePrice: 10, purchasedAt: 30,
-      assignedAt: 300, updatedAt: 350, endedAt: 350, status: 'unassigned'
+      operationAt: 330, assignedAt: 300, updatedAt: 350, endedAt: 350, status: 'unassigned'
     }
   ];
 
-  it('filters guest assignments by ticker, lifecycle state and assignment date', () => {
+  it('filters guest LOTS by ticker, lifecycle state and operation date', () => {
     expect(filterGuestTrancheLedger(records, {
       ticker: 'aap',
       status: 'active',
-      assignedFrom: 90,
-      assignedTo: 110
+      operationDateFrom: 35,
+      operationDateTo: 45
     })).toEqual([records[0]]);
+    expect(filterGuestTrancheLedger(records, {
+      operationDateFrom: 210,
+      operationDateTo: 230
+    })).toEqual([records[1]]);
+    expect(filterGuestTrancheLedger(records, {
+      operationDateFrom: 5,
+      operationDateTo: 15
+    })).toEqual([]);
     expect(filterGuestTrancheLedger(records, { status: 'closed' })).toEqual([records[1]]);
     expect(filterGuestTrancheLedger(records, { ticker: 'zzz' })).toEqual([]);
+  });
+
+  it('sorts by operation date and falls back to purchase date for older ledger records', () => {
+    expect(filterGuestTrancheLedger(records)).toEqual([records[2], records[1], records[0]]);
+    const legacyRecord: GuestTrancheLedgerRecord = {
+      assignmentId: 'legacy-aapl',
+      trancheId: 'AAPL:legacy',
+      ticker: 'AAPL',
+      name: 'Apple',
+      assignedQuantity: 1,
+      openQuantity: 1,
+      averagePrice: 100,
+      purchasedAt: 60,
+      assignedAt: 500,
+      updatedAt: 600,
+      endedAt: null,
+      status: 'active'
+    };
+    expect(filterGuestTrancheLedger([legacyRecord], {
+      operationDateFrom: 50,
+      operationDateTo: 70
+    })).toEqual([legacyRecord]);
+  });
+
+  it('filters closed Trade rows only by close date, never assignedAt or buy date', () => {
+    const closedTrade: GuestTrancheLedgerRecord = {
+      ...records[1],
+      assignmentId: 'closed-trade-meta',
+      trancheId: 'closed-trade:meta',
+      ticker: 'META',
+      assignedAt: 1721000000000,
+      purchasedAt: 1720000000000,
+      operationAt: 1723000000000
+    };
+
+    expect(filterGuestTrancheLedger([closedTrade], {
+      operationDateFrom: 1722990000000,
+      operationDateTo: 1723010000000
+    })).toEqual([closedTrade]);
+    expect(filterGuestTrancheLedger([closedTrade], {
+      operationDateFrom: 1720990000000,
+      operationDateTo: 1721010000000
+    })).toEqual([]);
+    expect(filterGuestTrancheLedger([closedTrade], {
+      operationDateFrom: 1719990000000,
+      operationDateTo: 1720010000000
+    })).toEqual([]);
+    expect(filterGuestTrancheLedger([{ ...closedTrade, operationAt: null }], {
+      operationDateFrom: 1719990000000,
+      operationDateTo: 1720010000000
+    })).toEqual([]);
   });
 
   it('summarizes historical assigned capital and current open value without inventing realized P/L', () => {
