@@ -12,6 +12,7 @@ import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domai
 import { getAppLanguage } from '../services/i18n';
 import { MarketDepthButton } from './MarketDepthButton';
 import { DeskLoading } from './DeskLoading';
+import { TableScrollRegion } from './TableScrollRegion';
 
 const BADGE_STYLES: Record<string, string> = {
   bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
@@ -312,8 +313,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             })}
           </div>
         ) : (
-          <div class="table-scroll-wrapper overflow-x-auto">
+          <TableScrollRegion label="Cash-funded stock holdings">
             <table class="cash-holdings-table w-full min-w-[960px] table-fixed text-left text-xs border-collapse">
+              <caption class="sr-only">Cash-funded stock holdings</caption>
               <thead>
                 <tr class="border-b border-slate-800 text-slate-400 font-medium">
                   <th class="w-[12%] py-2 px-2">Ticker</th>
@@ -455,7 +457,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 )}
               </tfoot>
             </table>
-          </div>
+          </TableScrollRegion>
         )}
 
         {showActiveTranches && <section class="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2" id="activeTranches" aria-labelledby="activeTranchesHeading">
@@ -479,8 +481,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             aria-hidden={!activeTranchesExpanded}
           >
             <div class="expandable-motion__inner">
-              <div class="table-scroll-wrapper overflow-x-auto">
+              <TableScrollRegion label="Active tranches and guest assignments">
                 <table id="activeTranchesTable" class="active-tranches-table w-full min-w-[900px] text-left text-xs border-collapse">
+                  <caption class="sr-only">Active tranches and guest assignments</caption>
                   <thead class="active-tranches-head">
                     <tr class="border-b border-slate-800 text-slate-500">
                       <th class="py-2 px-2">Ticker</th>
@@ -637,7 +640,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     <td colSpan={7} class="px-2 py-2 text-[10px] text-slate-500">{activeTranches.length} active purchase operation{activeTranches.length === 1 ? '' : 's'} · same-ticker purchases within 5 minutes are grouped</td>
                   </tr></tfoot>}
                 </table>
-              </div>
+              </TableScrollRegion>
             </div>
           </div>
         </section>}
