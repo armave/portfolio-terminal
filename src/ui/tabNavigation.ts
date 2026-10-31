@@ -28,7 +28,7 @@ export function resolveTabNavigationIndex(
   }
 }
 
-const NON_MARGIN_DESK_VIEWS = new Set(['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
+const NON_MARGIN_DESK_VIEWS = new Set(['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS']);
 
 /** Whether the current session can see the administrator Margin workspace. */
 export function isMarginDeskView(view: string, isAdmin: boolean): boolean {
