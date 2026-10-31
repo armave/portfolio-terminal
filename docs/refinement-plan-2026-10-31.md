@@ -238,3 +238,12 @@ The compatibility projection is derived from canonical `PortfolioState.positions
 - [ ] Keep financial calculations, saved data formats, and cloud authorization unchanged.
 
 This reduces the closed-history lookup work from O(H × C) to O(H + C), where H is the number of legacy holdings and C is the number of local closed trades. Legacy tranche-date inspection remains proportional to the tranche count. Together with the earlier indexed compatibility projection, both read-only legacy migration lookups now build their indexes once per normalization pass.
+
+## Follow-on implementation — Preact runtime store subscription snapshots (2026-10-31)
+
+- [x] Apply immediate current-snapshot delivery to AI status, breakeven text, cloud status, cloud-sync status, and board-title subscriptions.
+- [x] Keep the existing analyst-consensus snapshot behavior consistent with those stores.
+- [x] Add regression coverage for subscribing after a value has already been published, subsequent updates, and listener cleanup.
+- [ ] Re-run exact-head typecheck, full tests, dead-code validation, production dependency audit, and production build.
+
+The hooks register subscribers in effects. Immediate snapshot delivery on subscription closes the render-to-effect timing window in which a runtime update could otherwise be missed and leave a component displaying stale presentation state until a later update. This is presentation-state synchronization only; canonical portfolio data and persisted state are unchanged.
