@@ -36,3 +36,10 @@ The target-price, analyst-consensus, detailed fundamentals, and earnings-estimat
 The modal is available from a selected margin-position page and Balance holdings. The Worker authenticates the TradeNet Socket.IO session with the existing `FREEDOM_PUBLIC_KEY` and `FREEDOM_PRIVATE_KEY` using the API-key `getAuthInfo` challenge described in TradeNet's official SDK example. The private key and signature stay server-side. Demo or unverified account modes are rejected before order-book data is returned.
 
 The app requests a fresh snapshot when the modal opens or the user presses Refresh. It displays the first full order-book frame, with bids and asks sorted best-price first. No order placement, cancellation, or other trading command is exposed. This is a snapshot, not a permanently connected streaming widget.
+
+
+## Market-depth diagnostics
+
+The read-only `freedom-market-depth` response now includes a `diagnostics` object on success and failure. It records whether the production WebSocket opened, whether the `orderBook` subscription was sent, whether a matching `b` snapshot confirmed it, the initial `userData` production/demo status, received event names, observed order-book tickers, close code, and elapsed time. Cloudflare Worker logs emit the same structured diagnostics. Raw packets, SID values, and account/login identifiers are never included.
+
+The production WebSocket uses the documented `[event, data]` protocol at `wss://wss.tradernet.com/`. TradeNet's Node.js client sends `["orderBook", [ticker]]` and listens for event `b`; its order-book payload identifies the instrument with `i`. See the [TradeNet WebSocket documentation](https://rc.tradernet.com/tradernet-api/websocket?site_lang=en) and the [official Tradernet WebSocket client](https://github.com/tradernet-api/tn-ws-nodejs).
