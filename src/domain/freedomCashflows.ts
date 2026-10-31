@@ -5,7 +5,7 @@ export interface NormalizedFreedomCashflow {
   amount: number;
   currency?: string;
   description?: string;
-  raw?: Record<string, string>;
+  raw: Record<string, string>;
 }
 
 const ROW_COLLECTION_KEYS = [
@@ -219,12 +219,20 @@ export function normalizeFreedomCashflowRows(response: unknown): NormalizedFreed
 }
 
 /**
+ * Older saved rows may predate raw-field persistence. Normalize those at the
+ * merge boundary while keeping newly normalized/imported rows fully typed.
+ */
+type CashflowMergeInput = Omit<NormalizedFreedomCashflow, "raw"> & {
+  raw?: Record<string, string>;
+};
+
+/**
  * Incrementally merge broker rows without deleting historical records. The
  * field fingerprint also matches broker operation IDs to prior XLSX imports.
  */
 export function mergeFreedomCashflowRows(
-  existing: NormalizedFreedomCashflow[],
-  incoming: NormalizedFreedomCashflow[]
+  existing: CashflowMergeInput[],
+  incoming: CashflowMergeInput[]
 ): NormalizedFreedomCashflow[] {
   const merged = existing.map(row => ({ ...row, raw: { ...(row.raw || {}) } }));
   const byId = new Map<string, number>();
