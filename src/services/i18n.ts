@@ -166,6 +166,8 @@ const RU: Record<string, string> = {
   'No ask levels returned.': 'Нет уровней предложения.',
   'TradeNet authenticated a demo or unverified session. Demo order-book data is intentionally not shown.': 'TradeNet авторизовал демо- или неподтверждённую сессию. Демо-данные стакана намеренно не отображаются.',
   'Freedom API keys are not configured in this Worker.': 'API-ключи Freedom не настроены в Cloudflare Worker.',
+  'Freedom active orders are unavailable — existing position targets are unchanged.': 'Активные заявки Freedom недоступны — целевые цены позиций оставлены без изменений.',
+  '[Freedom Warning] Active-order refresh failed; existing position targets were left unchanged.': '[Предупреждение Freedom] Не удалось обновить активные заявки; целевые цены позиций оставлены без изменений.',
   'TradeNet market-depth feed is unavailable.': 'Поток данных стакана TradeNet недоступен.',
   'Syncing fresh news and regenerating the review…': 'Загрузка свежих новостей и обновление анализа…',
   'No news articles were returned by the connected provider. Treat any news-dependent conclusions as limited.': 'Подключённый провайдер не вернул новости. Выводы, зависящие от новостей, следует считать ограниченными.',
