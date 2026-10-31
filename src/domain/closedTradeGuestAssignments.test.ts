@@ -20,7 +20,7 @@ describe('closed trade guest ledger projection', () => {
     };
 
     const result = buildClosedTradeGuestLedgerUpserts(allocations, [
-      { ...sourceRows[0], quantity: 10, averagePrice: 123.45, purchasedAt: 50, netProfit: 80 }
+      { ...sourceRows[0], quantity: 10, averagePrice: 123.45, purchasedAt: 50, operationAt: 160, value: 1500, netProfit: 80 }
     ], 500);
 
     expect(result).toHaveLength(1);
@@ -33,6 +33,8 @@ describe('closed trade guest ledger projection', () => {
         openQuantity: 0,
         averagePrice: 123.45,
         netProfit: 20,
+        operationAt: 160000,
+        value: 375,
         purchasedAt: 50000,
         assignedAt: 120,
         updatedAt: 500,
@@ -116,6 +118,8 @@ describe('closed trade guest ledger projection', () => {
       averagePrice: 110,
       purchasedAt: 200,
       netProfit: 50,
+      operationAt: 300,
+      value: 500,
       guestMetrics: {
         'guest-a': { quantity: 2, averagePrice: 105, purchasedAt: 150 }
       }
@@ -125,6 +129,8 @@ describe('closed trade guest ledger projection', () => {
       assignedQuantity: 2,
       averagePrice: 105,
       purchasedAt: 150000,
+      operationAt: 300000,
+      value: 200,
       netProfit: 20
     });
   });
