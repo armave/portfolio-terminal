@@ -107,7 +107,7 @@ describe('app localization', () => {
     expect(translateText('Could not load guest accounts.', 'ru')).toBe('Не удалось загрузить список гостевых учётных записей.');
     expect(translateText('Loading holdings, trade activity and account allocations…', 'ru'))
       .toBe('Загрузка активов, истории сделок и распределения по счетам…');
-    expect(translateText('No stocks are assigned to your account yet.', 'ru')).toBe('Вам пока не назначены акции.');
+    expect(translateText('No stocks are assigned to your account yet.', 'ru')).toBe('В вашей учётной записи пока нет назначенных акций.');
     expect(translateText('Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.', 'ru'))
       .toBe('Рыночная котировка недоступна. Рыночная стоимость и нереализованная прибыль/убыток появятся после получения корректной котировки.');
     expect(translateText('Restoring saved trade history and loading the latest Freedom activity…', 'ru'))
