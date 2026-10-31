@@ -27,6 +27,7 @@ import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/n
 import { restoreGatewaySecret } from './services/storage';
 import { setAppLanguage, subscribeAppLanguage } from './services/i18n';
 import { addBrokerEventListener, emitBrokerEvent } from './services/brokerEventBus';
+import { refreshActiveOrders } from './services/activeOrdersRefresh';
 import { createLatestRequestGuard } from './utils/requestGeneration';
 import { getMatchingMarginIntelligenceState } from './features/ai/marginIntelligenceState';
 
@@ -478,19 +479,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   useEffect(() => {
     const loadActiveOrders = async () => {
       if (activeOrdersRequest) return activeOrdersRequest;
-      activeOrdersRequest = (async () => {
-        try {
-          // Restore the saved Gateway Secret before querying Freedom on startup.
-          const secret = await restoreGatewaySecret();
-          if (!secret.trim()) return;
-          const response = await fetchFreedomTradeNetActiveOrders();
-          const orders = normalizeFreedomActiveOrders(response);
-          emitBrokerEvent('broker:active-orders', orders);
-        } catch (error) {
-          console.error('Unable to load active TradeNet orders:', error);
-          emitBrokerEvent('broker:active-orders-error');
-        }
-      })();
+      activeOrdersRequest = refreshActiveOrders({
+        restoreGatewaySecret,
+        fetchActiveOrders: fetchFreedomTradeNetActiveOrders,
+        normalizeActiveOrders: normalizeFreedomActiveOrders,
+        onSuccess: (orders) => emitBrokerEvent('broker:active-orders', orders),
+        onError: () => emitBrokerEvent('broker:active-orders-error'),
+        logError: (error) => console.error('Unable to load active TradeNet orders:', error)
+      });
       try { await activeOrdersRequest; } finally { activeOrdersRequest = null; }
     };
     const removeRequestListener = addBrokerEventListener('broker:request-active-orders', () => {
