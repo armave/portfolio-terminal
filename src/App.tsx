@@ -16,7 +16,7 @@ import { EmptyStatePanel } from './components/EmptyStatePanel';
 import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
 import { MarginIntelligenceModal, type MarginIntelligenceState, type MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/commandDispatcher';
-import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
+import { ensureFreedomTradeNetSession, fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
 import { portfolioStore, usePortfolio, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { resolveActiveView } from './ui/renderBoard';
@@ -343,6 +343,28 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       unsubscribeLanguage();
     };
   }, [permissions.canManageBackups]);
+
+  useEffect(() => {
+    if (currentUser?.role !== 'admin') return;
+    let cancelled = false;
+    const initializeTradeNetSession = async () => {
+      try {
+        // Restore the signed-in app session before making the admin-only Worker request.
+        const gatewayToken = await restoreGatewaySecret();
+        if (!gatewayToken.trim()) return;
+        await ensureFreedomTradeNetSession();
+      } catch (error) {
+        if (!cancelled) {
+          console.warn(
+            'TradeNet live-data session initialization failed:',
+            error instanceof Error ? error.message : 'Unknown error'
+          );
+        }
+      }
+    };
+    void initializeTradeNetSession();
+    return () => { cancelled = true; };
+  }, [currentUser?.id, currentUser?.role]);
 
   useEffect(() => {
     const previousUser = previousCurrentUserRef.current;
