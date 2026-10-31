@@ -8,6 +8,9 @@ const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, finnhu
 const providerResponseCache = new Map();
 const providerCooldowns = new Map();
 const providerInFlight = new Map();
+const FREEDOM_SESSION_TTL_MS = 13 * 24 * 60 * 60 * 1000;
+const FREEDOM_SESSION_REFRESH_WINDOW_MS = 6 * 60 * 60 * 1000;
+let freedomSessionRequest = null;
 
 function providerMetric(metric, fields = {}) {
     // Do not include credentials, raw upstream URLs, or account data in telemetry.
@@ -245,14 +248,24 @@ export function sanitizeFreedomActiveOrders(response) {
 }
 
 export function sanitizeFreedomMarketDepth(response, requestedSymbol) {
-    const dom = Array.isArray(response?.dom) ? response.dom : Array.isArray(response?.data?.dom) ? response.data.dom : [];
+    const dom = Array.isArray(response?.dom) ? response.dom
+        : Array.isArray(response?.data?.dom) ? response.data.dom
+            : response?.i ? [response]
+                : response?.data?.i ? [response.data] : [];
     const ticker = String(requestedSymbol || "").trim().toUpperCase();
     const book = dom.find(row => String(row?.i || "").trim().toUpperCase() === ticker);
     if (!book) throw new Error("TradeNet did not return an order book for this symbol.");
     const rows = Array.isArray(book.ins) ? book.ins : [];
-    const toNumber = value => { const number = Number(value); return Number.isFinite(number) ? number : null; };
+    const toNumber = value => {
+        if (value === null || value === undefined || value === "") return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    };
     const levels = rows.map(row => ({
-        position: toNumber(row?.k), price: toNumber(row?.p), quantity: toNumber(row?.q), side: String(row?.s || "").toUpperCase()
+        position: toNumber(row?.k),
+        price: toNumber(row?.p),
+        quantity: toNumber(row?.q),
+        side: String(row?.s || "").toUpperCase()
     })).filter(row => row.price !== null && row.price > 0 && row.quantity !== null && row.quantity > 0 &&
         (row.side === "B" || row.side === "S"));
     const bids = levels.filter(row => row.side === "B")
@@ -262,58 +275,147 @@ export function sanitizeFreedomMarketDepth(response, requestedSymbol) {
         .sort((a, b) => a.price - b.price || (a.position ?? 0) - (b.position ?? 0))
         .map(({ price, quantity, position }) => ({ price, quantity, position }));
     if (bids.length === 0 && asks.length === 0) throw new Error("TradeNet returned an empty order-book snapshot for this symbol.");
-    const minPriceStep = toNumber(book.min_step);
+    const minPriceStep = toNumber(book.min_step ?? response?.min_step);
     return {
         symbol: ticker, bids, asks,
         depth: Math.max(0, Number(book.cnt) || bids.length + asks.length),
         minPriceStep: minPriceStep !== null && minPriceStep > 0 ? minPriceStep : null,
-        sequence: toNumber(book.n), updatedAt: Date.now()
+        sequence: toNumber(book.n),
+        updatedAt: Date.now()
     };
 }
 
-/** Sign the TradeNet Socket.IO API-key authentication challenge using the official
- * preSign format: alphabetically sorted key=value pairs, HMAC-SHA256 with the
- * private API key. Private material remains inside this Worker. */
-export async function signFreedomSocketAuth(data, privateKey) {
-    const payload = Object.keys(data).sort().map(key => {
-        const value = data[key];
-        return key + "=" + (value && typeof value === "object" && !Array.isArray(value)
-            ? Object.keys(value).sort().map(child => child + "=" + value[child]).join("&")
-            : String(value));
-    }).join("&");
-    const key = await crypto.subtle.importKey(
-        "raw",
-        new TextEncoder().encode(privateKey),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"]
-    );
-    const signed = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
-    return Array.from(new Uint8Array(signed)).map(byte => byte.toString(16).padStart(2, "0")).join("");
-}
-
-/** Obtain a full order-book snapshot through TradeNet's API-key-authenticated
- * Socket.IO feed. This uses the same public/private keys already configured for
- * REST; no browser credential or separate SID is required. */
-async function fetchFreedomMarketDepth(env, symbol) {
-    if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
-        const error = new Error("Freedom API keys are not configured in this Worker.");
+function freedomSessionStoreStub(env) {
+    if (!env.GATEWAY_SECRET || !env.PORTFOLIO_STATE_DO) {
+        const error = new Error("TradeNet session storage is unavailable in this Worker.");
         error.status = 503;
         throw error;
     }
-    const authData = {
-        apiKey: env.FREEDOM_PUBLIC_KEY,
-        cmd: "getAuthInfo",
-        nonce: Date.now()
-    };
-    const authSignature = await signFreedomSocketAuth(authData, env.FREEDOM_PRIVATE_KEY);
+    const id = env.PORTFOLIO_STATE_DO.idFromName("portfolio_state");
+    return env.PORTFOLIO_STATE_DO.get(id);
+}
 
+async function callFreedomSessionStore(env, method, body) {
+    const stub = freedomSessionStoreStub(env);
+    const headers = { "X-Internal-Worker-Auth": env.GATEWAY_SECRET };
+    const init = { method, headers };
+    if (body !== undefined) {
+        headers["Content-Type"] = "application/json";
+        init.body = JSON.stringify(body);
+    }
+    const response = await stub.fetch(new Request("https://portfolio-state.internal/internal/freedom-session", init));
+    if (response.status === 404) return null;
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+        const error = new Error(payload?.error || "TradeNet session storage request failed.");
+        error.status = response.status;
+        throw error;
+    }
+    return payload;
+}
+
+async function readFreedomTradeNetSession(env) {
+    const payload = await callFreedomSessionStore(env, "GET");
+    const session = payload?.session;
+    if (!session || typeof session.sid !== "string" || session.real !== true ||
+        !Number.isSafeInteger(session.expiresAt) || session.expiresAt <= Date.now()) return null;
+    return session;
+}
+
+async function saveFreedomTradeNetSession(env, session) {
+    await callFreedomSessionStore(env, "POST", session);
+}
+
+function safeTradeNetLoginFailure(payload) {
+    const value = payload?.errMsg ?? payload?.error ?? payload?.message;
+    if (typeof value !== "string" || !value.trim()) {
+        return "TradeNet rejected the configured login or requested additional verification.";
+    }
+    const safeMessage = value
+        .replace(/[\w.+-]+@[\w.-]+\.[A-Z]{2,}/gi, "[account]")
+        .replace(/(login|password|sid|token|secret)\s*[:=]\s*[^,\s;]+/gi, "$1=[redacted]")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 160);
+    return safeMessage || "TradeNet rejected the configured login or requested additional verification.";
+}
+
+/** Authenticate with the Worker-only login/password secrets and retain the SID in the Durable Object. */
+export async function ensureFreedomTradeNetSession(env, options = {}) {
+    const forceRefresh = options?.forceRefresh === true;
+    if (!env.FREEDOM_LOGIN || !env.FREEDOM_PASSWORD) {
+        const error = new Error("FREEDOM_LOGIN and FREEDOM_PASSWORD must be configured as Worker secrets.");
+        error.status = 503;
+        throw error;
+    }
+    if (!forceRefresh && freedomSessionRequest) return freedomSessionRequest;
+
+    const request = (async () => {
+        const existing = forceRefresh ? null : await readFreedomTradeNetSession(env);
+        if (existing && existing.expiresAt - Date.now() > FREEDOM_SESSION_REFRESH_WINDOW_MS) {
+            return {
+                authenticated: true,
+                real: true,
+                expiresAt: existing.expiresAt,
+                refreshed: false
+            };
+        }
+
+        const authRequest = {
+            cmd: "authByLogin",
+            params: {
+                login: env.FREEDOM_LOGIN,
+                password: env.FREEDOM_PASSWORD,
+                rememberMe: 1,
+                getAccounts: false
+            }
+        };
+        const form = new URLSearchParams({ q: JSON.stringify(authRequest) });
+        const response = await fetchWithTimeout("https://tradernet.am/api/", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: form.toString()
+        }, 12000);
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+            const error = new Error("TradeNet login endpoint returned HTTP " + response.status + ".");
+            error.status = response.status >= 500 ? 502 : 401;
+            throw error;
+        }
+        if (!payload || payload.success !== true || payload.logged !== true ||
+            typeof payload.SID !== "string" || payload.SID.length < 10 || payload.real !== true) {
+            const error = new Error("TradeNet login failed: " + safeTradeNetLoginFailure(payload));
+            error.status = payload?.real === false ? 403 : 401;
+            throw error;
+        }
+
+        const expiresAt = Date.now() + FREEDOM_SESSION_TTL_MS;
+        await saveFreedomTradeNetSession(env, {
+            sid: payload.SID,
+            expiresAt,
+            real: true,
+            createdAt: Date.now()
+        });
+        return {
+            authenticated: true,
+            real: true,
+            expiresAt,
+            refreshed: true
+        };
+    })();
+
+    freedomSessionRequest = request;
+    try {
+        return await request;
+    } finally {
+        if (freedomSessionRequest === request) freedomSessionRequest = null;
+    }
+}
+
+function fetchFreedomMarketDepthWithSid(symbol, session) {
     return new Promise((resolve, reject) => {
         let settled = false;
-        let namespaceConnected = false;
-        let authenticated = false;
         let socket;
-        const authAckId = "1";
         const finish = (error, result) => {
             if (settled) return;
             settled = true;
@@ -322,121 +424,102 @@ async function fetchFreedomMarketDepth(env, symbol) {
             if (error) reject(error); else resolve(result);
         };
         const timeout = setTimeout(() => {
-            const error = new Error("TradeNet market-depth connection timed out before returning an authenticated order book.");
+            const error = new Error("TradeNet market-depth connection timed out before returning an order book.");
             error.status = 504;
             finish(error);
         }, 10000);
 
         try {
-            const url = "wss://ws.tradernet.ru/socket.io/?EIO=3&transport=websocket";
-            socket = new WebSocket(url);
+            const url = new URL("wss://wss.tradernet.com/");
+            url.searchParams.set("SID", session.sid);
+            socket = new WebSocket(url.toString());
+            socket.addEventListener("open", () => {
+                // The official Tradernet WebSocket client subscribes with this event
+                // and receives the initial full order book on event "b".
+                socket.send(JSON.stringify(["orderBook", [symbol]]));
+            });
             socket.addEventListener("message", message => {
                 if (settled) return;
-                const frame = String(message.data || "");
-
-                // Engine.IO v3 handshake and heartbeat.
-                if (frame.startsWith("0{")) {
-                    socket.send("40");
+                let packet;
+                try {
+                    packet = JSON.parse(String(message.data || ""));
+                } catch {
                     return;
                 }
-                if (frame === "2" || frame.startsWith("2probe")) {
-                    socket.send(frame === "2" ? "3" : "3probe");
-                    return;
-                }
-                if (frame.startsWith("41")) {
-                    const error = new Error("TradeNet closed the Socket.IO session.");
-                    error.status = 502;
-                    finish(error);
-                    return;
-                }
-                if (frame.startsWith("44")) {
-                    const error = new Error("TradeNet rejected the Socket.IO connection.");
-                    error.status = 502;
-                    finish(error);
-                    return;
-                }
-
-                // Socket.IO namespace acknowledgement.
-                if (frame.startsWith("40")) {
-                    if (namespaceConnected) return;
-                    namespaceConnected = true;
-                    // Callback acknowledgement is packet id 1.
-                    socket.send("42" + authAckId + JSON.stringify(["auth", authData, authSignature]));
-                    return;
-                }
-
-                // API-key auth callback: [err, authInfo]. Require an explicit
-                // non-demo mode before accepting any order-book payload.
-                if (frame.startsWith("43")) {
-                    const ack = frame.slice(2).match(/^(\d+)(\[.*\])$/s);
-                    if (!ack || ack[1] !== authAckId || authenticated) return;
-                    let values;
-                    try { values = JSON.parse(ack[2]); } catch { values = null; }
-                    const authError = Array.isArray(values) ? values[0] : "invalid acknowledgement";
-                    const authInfo = Array.isArray(values) ? values[1] : null;
-                    if (authError || !authInfo || typeof authInfo !== "object") {
-                        const error = new Error("TradeNet API-key WebSocket authentication failed.");
-                        error.status = 401;
-                        finish(error);
-                        return;
-                    }
-                    const mode = String(authInfo.mode || "").trim().toLowerCase();
-                    if (!mode || ["demo", "test", "paper", "beta"].includes(mode)) {
-                        const error = new Error("TradeNet authenticated a demo or unverified session. Demo order-book data is intentionally not shown.");
+                if (!Array.isArray(packet) || typeof packet[0] !== "string") return;
+                const [event, payload] = packet;
+                if (event === "userData") {
+                    const mode = String(payload?.mode || "").trim().toLowerCase();
+                    if (payload?.isDemo === true || payload?.real === false ||
+                        ["demo", "test", "paper", "beta"].includes(mode)) {
+                        const error = new Error("TradeNet returned a demo session. Live market depth is disabled.");
                         error.status = 403;
                         finish(error);
-                        return;
                     }
-                    authenticated = true;
-                    // The official Socket.IO API documents this event for market depth.
-                    socket.send("42" + JSON.stringify(["notifyOrderBook", [symbol]]));
                     return;
                 }
-
-                // Socket.IO event packet: 4 (Engine.IO message) + 2 (event).
-                if (frame.startsWith("42")) {
-                    let packet;
-                    try { packet = JSON.parse(frame.slice(2)); } catch { return; }
-                    if (!Array.isArray(packet) || typeof packet[0] !== "string") return;
-                    const [event, payload] = packet;
-                    if (event === "error") {
-                        const error = new Error("TradeNet rejected the market-depth subscription.");
-                        error.status = 502;
-                        finish(error);
-                        return;
-                    }
-                    if (event === "b" && authenticated) {
-                        const hasTicker = Array.isArray(payload?.dom) && payload.dom.some(row =>
-                            String(row?.i || "").trim().toUpperCase() === symbol.toUpperCase());
-                        if (!hasTicker) return;
-                        try {
-                            finish(null, sanitizeFreedomMarketDepth(payload, symbol));
-                        } catch (error) {
-                            const failure = new Error(error instanceof Error ? error.message : "Invalid TradeNet order-book snapshot.");
-                            failure.status = 502;
-                            finish(failure);
-                        }
-                    }
+                if (event === "error") {
+                    const errorText = typeof payload === "string" ? payload : "";
+                    const needsReauth = /sid|session|auth|login|unauthori[sz]ed|expired/i.test(errorText);
+                    const error = new Error(needsReauth
+                        ? "TradeNet rejected the stored session. It will be renewed and retried."
+                        : "TradeNet rejected the market-depth subscription.");
+                    error.status = needsReauth ? 401 : 502;
+                    finish(error);
+                    return;
+                }
+                if (event !== "b") return;
+                const ticker = String(payload?.i || "").trim().toUpperCase();
+                if (ticker !== symbol.toUpperCase()) return;
+                try {
+                    finish(null, sanitizeFreedomMarketDepth(payload, symbol));
+                } catch (error) {
+                    const failure = new Error(error instanceof Error ? error.message : "Invalid TradeNet order-book snapshot.");
+                    failure.status = 502;
+                    finish(failure);
                 }
             });
             socket.addEventListener("error", () => {
-                const error = new Error("Could not connect to the TradeNet live market-depth feed.");
+                const error = new Error("Could not connect to the TradeNet production market-depth feed.");
                 error.status = 502;
                 finish(error);
             });
-            socket.addEventListener("close", () => {
+            socket.addEventListener("close", event => {
                 if (!settled) {
-                    const error = new Error("TradeNet closed the market-depth connection before a live snapshot arrived.");
-                    error.status = 502;
+                    const error = new Error("TradeNet closed the market-depth connection before a snapshot arrived.");
+                    error.status = event?.code === 1008 ? 401 : 502;
                     finish(error);
                 }
             });
         } catch {
-            const error = new Error("Could not initialize the TradeNet market-depth connection.");
+            const error = new Error("Could not initialize the TradeNet production market-depth connection.");
             error.status = 502;
             finish(error);
         }
     });
+}
+
+/** Fetch one live order-book snapshot from Tradernet's production WebSocket endpoint. */
+async function fetchFreedomMarketDepth(env, symbol) {
+    let session = await readFreedomTradeNetSession(env);
+    if (!session || session.expiresAt - Date.now() <= FREEDOM_SESSION_REFRESH_WINDOW_MS) {
+        await ensureFreedomTradeNetSession(env);
+        session = await readFreedomTradeNetSession(env);
+    }
+    if (!session) {
+        const error = new Error("TradeNet did not provide a valid live account session.");
+        error.status = 401;
+        throw error;
+    }
+    try {
+        return await fetchFreedomMarketDepthWithSid(symbol, session);
+    } catch (error) {
+        if (Number(error?.status) !== 401) throw error;
+        await ensureFreedomTradeNetSession(env, { forceRefresh: true });
+        const renewedSession = await readFreedomTradeNetSession(env);
+        if (!renewedSession) throw error;
+        return fetchFreedomMarketDepthWithSid(symbol, renewedSession);
+    }
 }
 
 export function sanitizeFreedomPositions(response) {
@@ -628,16 +711,16 @@ export default {
 
         if (accountRole === "guest") {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest"].includes(pathname);
-            const sharedDataAction = ["state", "history", "freedom-test", "freedom-positions", "freedom-trades", "freedom-orders", "freedom-cashflows"].includes(action);
+            const sharedDataAction = ["state", "history", "freedom-test", "freedom-positions", "freedom-trades", "freedom-orders", "freedom-cashflows", "freedom-session"].includes(action);
             if (sharedDataPath || sharedDataAction) {
                 return jsonError("This data is restricted to administrator accounts.", 403, corsHeaders);
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-market-depth", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-market-depth", "freedom-session", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-market-depth", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-market-depth", "freedom-session", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -686,6 +769,26 @@ export default {
         }
 
         try {
+            // Refresh the broker session once per admin dashboard initialization.
+            // The SID is kept in Durable Object storage and never returned to the browser.
+            if (action === "freedom-session") {
+                if (request.method !== "POST") return jsonError("TradeNet session initialization only supports POST.", 405, corsHeaders);
+                if (accountRole !== "admin" && !gatewayAdmin) return jsonError("Administrator access required.", 403, corsHeaders);
+                try {
+                    const session = await ensureFreedomTradeNetSession(env);
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Freedom TradeNet",
+                        authenticated: session.authenticated,
+                        real: session.real,
+                        expiresAt: session.expiresAt,
+                        refreshed: session.refreshed
+                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                } catch (error) {
+                    return jsonError(error instanceof Error ? error.message : "TradeNet session initialization failed.", Number(error?.status) || 502, corsHeaders);
+                }
+            }
+
             // Read-only Freedom TradeNet connectivity probe. Never accepts a command from the client.
             if (action === "freedom-test") {
                 if (request.method !== "GET") {
