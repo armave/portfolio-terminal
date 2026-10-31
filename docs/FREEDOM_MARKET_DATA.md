@@ -22,11 +22,13 @@ The Worker still requires the existing `GATEWAY_SECRET` for all app requests. Af
 
 The browser cannot supply an arbitrary TradeNet command. The Worker chooses from a fixed allowlist and signs requests server-side. No order-placement command is exposed.
 
+The quote action uses TradeNet's `getStockQuotesJson` command with a `tickers` array (a one-element array for a single-symbol request). The response normalizer reads `ltp` (last price), `pp` (previous close), `chg` (absolute change), `pcp` (percent change), and `ltt` (last-trade timestamp). See the [TradeNet quote API documentation](https://fbis.tradernet.ae/tradernet-api/quotes-get?site_lang=en).
+
 Symbols without an explicit exchange suffix are mapped to `.US`; symbols already containing a dot are passed through. Review this mapping for non-US instruments before relying on it.
 
 ## Validation status and limitations
 
-The adapter normalizes common quote field names and tolerates several response envelopes. TradeNet response schemas and parameter names may differ by API version/account. Before enabling this in production, validate the exact quote/news/history command parameters and response fields against an authorized Freedom Broker Armenia account. If the quote payload cannot be normalized or the API call fails, the terminal falls back to existing quote providers. If Freedom news is unavailable or returns no recognized stories, the existing Finnhub news path is used.
+The Worker regression test verifies the signed API-key request uses the documented quote command and `tickers` array; the frontend unit test covers the documented quote fields. A successful response against the configured, authorized Freedom Broker Armenia account is still required to validate account entitlement and live symbol coverage. If Freedom quote retrieval fails, Yahoo remains a concurrent quote source and Finnhub/Twelve Data remain the fallback path. If Freedom news is unavailable or returns no recognized stories, the existing Finnhub news path is used.
 
 The target-price, analyst-consensus, detailed fundamentals, and earnings-estimate integrations are intentionally unchanged; this change does not claim those fields are available through Tradernet.
 
