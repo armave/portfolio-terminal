@@ -30,16 +30,12 @@ import { addBrokerEventListener, emitBrokerEvent } from './services/brokerEventB
 import { refreshActiveOrders } from './services/activeOrdersRefresh';
 import { createLatestRequestGuard } from './utils/requestGeneration';
 import { getMatchingMarginIntelligenceState } from './features/ai/marginIntelligenceState';
-import { createSessionIdentityGuard, type SessionIdentityToken } from './utils/sessionIdentityGuard';
+import { createSessionIdentityGuard, getSessionIdentityRequestKey, type SessionIdentityToken } from './utils/sessionIdentityGuard';
 
 // In-flight broker reads are isolated by authenticated session generation.
 const tradesRequests = new Map<string, Promise<void>>();
 const accountRequests = new Map<string, Promise<void>>();
 const activeOrdersRequests = new Map<string, Promise<void>>();
-
-function sessionRequestKey(session: SessionIdentityToken): string {
-  return `${session.identity}\u0000${session.generation}`;
-}
 
 interface AppProps {
   onSaveGatewaySecret: (secret: string) => Promise<boolean>;
@@ -447,7 +443,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
   const loadFreedomAccount = async (session: SessionIdentityToken): Promise<void> => {
     if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
-    const requestKey = sessionRequestKey(session);
+    const requestKey = getSessionIdentityRequestKey(session);
     const existing = accountRequests.get(requestKey);
     if (existing) return existing;
 
@@ -471,7 +467,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
   const loadExecutedTrades = async (session: SessionIdentityToken): Promise<void> => {
     if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
-    const requestKey = sessionRequestKey(session);
+    const requestKey = getSessionIdentityRequestKey(session);
     const existing = tradesRequests.get(requestKey);
     if (existing) return existing;
 
@@ -512,7 +508,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     if (!session) return;
     const loadActiveOrders = async (): Promise<void> => {
       if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
-      const requestKey = sessionRequestKey(session);
+      const requestKey = getSessionIdentityRequestKey(session);
       const existing = activeOrdersRequests.get(requestKey);
       if (existing) return existing;
 
