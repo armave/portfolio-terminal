@@ -13,6 +13,9 @@ export interface ClosedTradeLedgerSourceRow {
   quantity?: number;
   averagePrice?: number | null;
   purchasedAt?: number | string | null;
+  operationAt?: number | string | null;
+  /** Gross value of the full sell operation, to be apportioned across guest shares. */
+  value?: number | null;
   netProfit?: number | null;
   guestMetrics?: Record<string, ClosedTradeGuestMetrics>;
 }
@@ -108,12 +111,16 @@ export function buildClosedTradeGuestLedgerUpserts(
       const purchasedAt = parseTrancheTimestamp(
         guestMetric ? guestMetric.purchasedAt : source.purchasedAt
       );
-      const profitQuantity = guestMetric && Number.isFinite(guestMetric.quantity) && guestMetric.quantity > 0
-        ? guestMetric.quantity : assignment.assignedQuantity;
+      const operationAt = parseTrancheTimestamp(source.operationAt) ?? purchasedAt;
+      const assignedQuantity = isCurrent ? currentCashQuantity : assignment.assignedQuantity;
+      const proportion = Number.isFinite(sourceQuantity) && sourceQuantity > 0
+        ? Math.min(1, assignedQuantity / sourceQuantity) : null;
       const netProfit = source.netProfit !== null && source.netProfit !== undefined &&
-        Number.isFinite(Number(source.netProfit)) && Number.isFinite(sourceQuantity) && sourceQuantity > 0
-        ? Number(source.netProfit) * Math.min(1, profitQuantity / sourceQuantity)
-        : null;
+        Number.isFinite(Number(source.netProfit)) && proportion !== null
+        ? Number(source.netProfit) * proportion : null;
+      const value = source.value !== null && source.value !== undefined &&
+        Number.isFinite(Number(source.value)) && Number(source.value) >= 0 && proportion !== null
+        ? Number(source.value) * proportion : null;
       result.push({
         guestId: assignment.guestId,
         record: {
@@ -127,6 +134,8 @@ export function buildClosedTradeGuestLedgerUpserts(
             ? Number(averagePrice) : null,
           netProfit,
           marketPrice: null,
+          operationAt,
+          value,
           purchasedAt,
           assignedAt: assignment.assignedAt,
           updatedAt,
