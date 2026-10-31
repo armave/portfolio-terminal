@@ -6,6 +6,22 @@ interface ClosedTradeGuestMetrics {
   purchasedAt: number | null;
 }
 
+export interface ClosedTradeOperationDateSource {
+  /** The same close-date precedence used by the Trades / Closed History table. */
+  exitDate?: unknown;
+  sellDate?: unknown;
+  closedAt?: unknown;
+  date?: unknown;
+}
+
+/** Match ClosedHistoryDesk's canonical Trade operation-date precedence. */
+export function resolveClosedTradeOperationDate(
+  trade: ClosedTradeOperationDateSource
+): number | string | null {
+  const value = trade.exitDate ?? trade.sellDate ?? trade.closedAt ?? trade.date;
+  return typeof value === 'number' || typeof value === 'string' ? value : null;
+}
+
 export interface ClosedTradeLedgerSourceRow {
   allocationKey: string;
   ticker: string;
@@ -119,7 +135,9 @@ export function buildClosedTradeGuestLedgerUpserts(
       const purchasedAt = parseTrancheTimestamp(
         guestMetric ? guestMetric.purchasedAt : source.purchasedAt
       );
-      const operationAt = parseTrancheTimestamp(source.operationAt) ?? purchasedAt;
+      // A Trade date must come from its closing operation, never from the
+      // source buy date or the time the guest assignment was created.
+      const operationAt = parseTrancheTimestamp(source.operationAt);
       const assignedQuantity = isCurrent ? currentCashQuantity : assignment.assignedQuantity;
       const proportion = Number.isFinite(sourceQuantity) && sourceQuantity > 0
         ? Math.min(1, assignedQuantity / sourceQuantity) : null;
