@@ -156,6 +156,18 @@ describe('app localization', () => {
       .toBe('AAPL: 10 акц. @ ЦУ $200 | MSFT: 5 акц. @ ЦУ $450');
   });
 
+  it('localizes remaining market-data hints and computed margin-risk summaries', () => {
+    expect(translateText('Check that FREEDOM_PUBLIC_KEY and FREEDOM_PRIVATE_KEY are configured as Cloudflare Worker secrets. Never expose the private key in browser code.', 'ru'))
+      .toBe('Проверьте, что FREEDOM_PUBLIC_KEY и FREEDOM_PRIVATE_KEY заданы как секреты Cloudflare Worker. Никогда не раскрывайте закрытый ключ в клиентском коде.');
+    expect(translateText('TBD', 'ru')).toBe('Пока неизвестно');
+    expect(translateText('No margin debt', 'ru')).toBe('Нет маржинального долга');
+    expect(translateText('negative equity', 'ru')).toBe('отрицательный собственный капитал');
+    expect(translateText('Healthy · 75.0% equity (25.0% maintenance)', 'ru'))
+      .toBe('Норма · 75.0% собственного капитала (25.0% по нормативу поддерживающей маржи)');
+    expect(translateText('Elevated · 32.0% equity (25.0% maintenance)', 'ru'))
+      .toBe('Повышенный риск · 32.0% собственного капитала (25.0% по нормативу поддерживающей маржи)');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
