@@ -147,30 +147,34 @@ describe('guest tranche ledger reports and filtering', () => {
     {
       assignmentId: 'assignment-aapl', trancheId: 'AAPL:buy-1', ticker: 'AAPL', name: 'Apple',
       assignedQuantity: 10, openQuantity: 4, averagePrice: 100, purchasedAt: 10,
-      assignedAt: 100, updatedAt: 300, endedAt: null, status: 'active'
+      operationAt: 40, assignedAt: 100, updatedAt: 300, endedAt: null, status: 'active'
     },
     {
       assignmentId: 'assignment-msft', trancheId: 'MSFT:buy-2', ticker: 'MSFT', name: 'Microsoft',
       assignedQuantity: 2, openQuantity: 0, averagePrice: 50, purchasedAt: 20,
-      assignedAt: 200, updatedAt: 250, endedAt: 250, status: 'closed'
+      operationAt: 220, assignedAt: 200, updatedAt: 250, endedAt: 250, status: 'closed'
     },
     {
       assignmentId: 'assignment-goog', trancheId: 'GOOG:buy-3', ticker: 'GOOG', name: 'Alphabet',
       assignedQuantity: 1, openQuantity: 0, averagePrice: 10, purchasedAt: 30,
-      assignedAt: 300, updatedAt: 350, endedAt: 350, status: 'unassigned'
+      operationAt: 330, assignedAt: 300, updatedAt: 350, endedAt: 350, status: 'unassigned'
     }
   ];
 
-  it('filters guest LOTS by ticker, lifecycle state and underlying tranche date', () => {
+  it('filters guest LOTS by ticker, lifecycle state and operation date', () => {
     expect(filterGuestTrancheLedger(records, {
       ticker: 'aap',
       status: 'active',
-      trancheDateFrom: 5,
-      trancheDateTo: 15
+      operationDateFrom: 35,
+      operationDateTo: 45
     })).toEqual([records[0]]);
     expect(filterGuestTrancheLedger(records, {
-      trancheDateFrom: 90,
-      trancheDateTo: 110
+      operationDateFrom: 210,
+      operationDateTo: 230
+    })).toEqual([records[1]]);
+    expect(filterGuestTrancheLedger(records, {
+      operationDateFrom: 5,
+      operationDateTo: 15
     })).toEqual([]);
     expect(filterGuestTrancheLedger(records, { status: 'closed' })).toEqual([records[1]]);
     expect(filterGuestTrancheLedger(records, { ticker: 'zzz' })).toEqual([]);
