@@ -1,6 +1,6 @@
 import type { ClosedTradeAllocation, GuestTrancheLedgerRecord } from '../types/portfolio';
 
-export interface ClosedTradeGuestMetrics {
+interface ClosedTradeGuestMetrics {
   quantity: number;
   averagePrice: number | null;
   purchasedAt: number | null;
