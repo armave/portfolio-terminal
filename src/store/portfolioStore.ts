@@ -400,11 +400,21 @@ export class PortfolioStore {
    * are settings rather than portfolio content and intentionally remain in place.
    */
   public resetToBlankState(now = Date.now()): void {
+    // The selected desk is device-local, so clear its preference alongside the portfolio.
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', 'COMBINED');
+    } catch {
+      // Continue resetting portfolio data when browser preference storage is unavailable.
+    }
     this.update((state) => ({
       ...state,
       ...createBlankState(now),
       // The domain factory uses its MarginPosition type; the store boundary keeps PositionRecord.
       positions: {} as Record<string, PositionRecord>,
+      cashCushion: {
+        freeCash: 0,
+        holdings: [] as PortfolioState['cashCushion']['holdings']
+      },
       activeTrancheTypes: {},
       activeTrancheMixes: {},
       activeTrancheGuestAssignments: {},
