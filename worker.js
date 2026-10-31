@@ -384,7 +384,10 @@ export async function ensureFreedomTradeNetSession(env, options = {}) {
         }
         if (!payload || payload.success !== true || payload.logged !== true ||
             typeof payload.SID !== "string" || payload.SID.length < 10 || payload.real !== true) {
-            const error = new Error("TradeNet login failed: " + safeTradeNetLoginFailure(payload));
+            const message = payload?.real === false
+                ? "TradeNet returned a demo or non-production account session. Live market depth is disabled."
+                : "TradeNet login failed: " + safeTradeNetLoginFailure(payload);
+            const error = new Error(message);
             error.status = payload?.real === false ? 403 : 401;
             throw error;
         }
