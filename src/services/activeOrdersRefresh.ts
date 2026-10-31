@@ -5,6 +5,7 @@ export interface ActiveOrdersRefreshDependencies<Response, Order> {
   onSuccess: (orders: Order[]) => void;
   onError: () => void;
   logError?: (error: unknown) => void;
+  isCurrent?: () => boolean;
 }
 
 /**
@@ -14,16 +15,20 @@ export interface ActiveOrdersRefreshDependencies<Response, Order> {
 export async function refreshActiveOrders<Response, Order>(
   dependencies: ActiveOrdersRefreshDependencies<Response, Order>
 ): Promise<void> {
+  const isCurrent = dependencies.isCurrent || (() => true);
   try {
     const secret = await dependencies.restoreGatewaySecret();
+    if (!isCurrent()) return;
     if (!secret.trim()) {
       dependencies.onError();
       return;
     }
 
     const response = await dependencies.fetchActiveOrders();
+    if (!isCurrent()) return;
     dependencies.onSuccess(dependencies.normalizeActiveOrders(response));
   } catch (error) {
+    if (!isCurrent()) return;
     dependencies.logError?.(error);
     dependencies.onError();
   }
