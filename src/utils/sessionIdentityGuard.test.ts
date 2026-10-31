@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSessionIdentityGuard } from './sessionIdentityGuard';
+import { createSessionIdentityGuard, getSessionIdentityRequestKey } from './sessionIdentityGuard';
 
 describe('createSessionIdentityGuard', () => {
   it('accepts work only for the currently authenticated identity', () => {
@@ -49,5 +49,27 @@ describe('createSessionIdentityGuard', () => {
 
     expect(guard.isCurrent(request)).toBe(true);
     expect(guard.capture()).toEqual(request);
+  });
+});
+
+describe('getSessionIdentityRequestKey', () => {
+  it('distinguishes separate sessions for the same account identity', () => {
+    const guard = createSessionIdentityGuard('admin:account-a');
+    const firstSession = guard.capture()!;
+
+    guard.setIdentity(null);
+    guard.setIdentity('admin:account-a');
+    const secondSession = guard.capture()!;
+
+    expect(getSessionIdentityRequestKey(firstSession)).not.toBe(getSessionIdentityRequestKey(secondSession));
+  });
+
+  it('distinguishes requests from different account identities', () => {
+    const guard = createSessionIdentityGuard('admin:account-a');
+    const firstSession = guard.capture()!;
+    guard.setIdentity('admin:account-b');
+    const secondSession = guard.capture()!;
+
+    expect(getSessionIdentityRequestKey(firstSession)).not.toBe(getSessionIdentityRequestKey(secondSession));
   });
 });
