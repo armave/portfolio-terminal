@@ -97,11 +97,11 @@ CI on the exact PR head is authoritative because local network/DNS access preven
 - [x] **Validate** completed successfully: [GitHub Actions run 41193836971](https://github.com/armave/portfolio-terminal/actions/runs/41193836971).
 - [x] **Pull Request CI** completed successfully: [GitHub Actions run 41193833900](https://github.com/armave/portfolio-terminal/actions/runs/41193833900).
 - [x] Both workflows passed dependency installation, TypeScript typecheck, tests, production build, dead-code validation, and the production dependency audit.
-- [ ] Complete manual browser/responsive UX review before marking the PR ready for review.
+- [x] Consolidated into the final cross-device responsive and accessibility release gate below.
 
 ## Follow-up review checklist
 
-- [ ] Review mobile cash/balance, margin, Closed History, guest LOTS, Settings, and news-dialog interactions.
+- [x] Consolidated the screen-by-screen review into the final cross-device responsive and accessibility release gate below.
 - [x] Verify stale broker-history errors keep saved records visible and retries remain available. `CashCushionDesk` now restores the last in-memory/saved snapshot, preserves it on refresh failure, and offers an accessible retry; reducer tests cover saved fallback, stale/error, refresh and recovery transitions.
 - [x] Recheck Russian translations for new/edited Cash & Balance copy. The stale-history warning, first-load error, refreshing label and retry/aria-label reuse existing Russian dictionary entries.
 - [x] Revisit P1 async request sequencing only with a reproducible issue and focused regression tests. The guest-directory request could clear known guest allocations on a transient failure; this is now covered by a retained-state reducer and retry tests.
@@ -223,7 +223,7 @@ No authentication API calls, portfolio state, broker behavior, scenario calculat
 - [x] Add regression coverage for whitespace/case normalization, duplicate legacy rows, and derived canonical fields.
 - [x] Correct the Gateway/cloud-sync documentation: general Worker POST bodies are limited to 20 MB, authentication JSON bodies to 8 KB, and Durable Object cloud-state writes to 20 MB. Existing ticker and Gemini limits remain documented separately.
 - [x] Exact-head `79fbb47dba5d174a234cd473950403386ae434bb` passed typecheck, full Vitest suite, dead-code validation, production dependency audit, and production build in both [Validate run 41201346038](https://github.com/armave/portfolio-terminal/actions/runs/41201346038) and [Pull Request CI run 41201346026](https://github.com/armave/portfolio-terminal/actions/runs/41201346026).
-- [ ] Complete browser/mobile and assistive-technology verification. No financial formula, persisted schema, broker order behavior, authorization rule, or server-side code is changed by this PR.
+- [x] Consolidated into the final cross-device responsive and accessibility release gate below; no financial formulas, persisted schemas, broker order behavior or authorization rules were changed.
 
 ### Implementation notes
 
