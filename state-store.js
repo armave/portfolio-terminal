@@ -20,6 +20,7 @@ function jsonResponse(body, status = 200, revision = null) {
 
 const AUTH_USERS_KEY = "auth:users";
 const AUTH_CLOUD_KEY_KEY = "auth:cloud-encryption-key";
+const FREEDOM_TRADE_NET_SESSION_KEY = "freedom:tradenet-session";
 const AUTH_SESSION_PREFIX = "auth:session:";
 const AUTH_LOGIN_FAILURE_PREFIX = "auth:login-failure:";
 const AUTH_LOGIN_FAILURE_LIMIT = 10;
@@ -613,6 +614,48 @@ export class PortfolioStateDO {
     });
   }
 
+  async handleInternalFreedomSession(request) {
+    const expectedSecret = typeof this.env.GATEWAY_SECRET === "string" ? this.env.GATEWAY_SECRET : "";
+    const suppliedSecret = request.headers.get("X-Internal-Worker-Auth") || "";
+    if (!expectedSecret || !secureEqual(suppliedSecret, expectedSecret)) {
+      return authJson({ error: "Internal Worker authorization required." }, 401);
+    }
+
+    if (request.method === "GET") {
+      const session = await this.ctx.storage.get(FREEDOM_TRADE_NET_SESSION_KEY);
+      if (!session || !Number.isFinite(session.expiresAt) || session.expiresAt <= Date.now()) {
+        if (session) await this.ctx.storage.delete(FREEDOM_TRADE_NET_SESSION_KEY);
+        return authJson({ error: "TradeNet session is not available." }, 404);
+      }
+      return authJson({ session });
+    }
+
+    if (request.method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return authJson({ error: "A valid TradeNet session payload is required." }, 400);
+      }
+      if (body.clear === true) {
+        await this.ctx.storage.delete(FREEDOM_TRADE_NET_SESSION_KEY);
+        return authJson({ success: true });
+      }
+      if (typeof body.sid !== "string" || body.sid.length < 10 || body.sid.length > 4096 ||
+          !Number.isSafeInteger(body.expiresAt) || body.expiresAt <= Date.now() || body.real !== true) {
+        return authJson({ error: "Invalid TradeNet session payload." }, 400);
+      }
+      const session = {
+        sid: body.sid,
+        expiresAt: body.expiresAt,
+        real: true,
+        createdAt: Number.isSafeInteger(body.createdAt) ? body.createdAt : Date.now()
+      };
+      await this.ctx.storage.put(FREEDOM_TRADE_NET_SESSION_KEY, session);
+      return authJson({ success: true, expiresAt: session.expiresAt });
+    }
+
+    return authJson({ error: "Method not allowed." }, 405);
+  }
+
   async fetch(request) {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -623,6 +666,7 @@ export class PortfolioStateDO {
     }
 
     const requestUrl = new URL(request.url);
+    if (requestUrl.pathname === "/internal/freedom-session") return this.handleInternalFreedomSession(request);
     if (requestUrl.pathname.startsWith("/api/auth/")) return this.handleAuth(request);
     if (requestUrl.pathname === "/api/guest-portfolio") return this.handleGuestPortfolio(request);
 
