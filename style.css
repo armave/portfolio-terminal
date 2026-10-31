@@ -2773,3 +2773,18 @@ summary:focus-visible {
     scroll-snap-align: unset;
   }
 }
+
+/* Compact destination captions for phone-sized navigation. */
+.workspace-nav-label--mobile {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .workspace-nav-label--desktop {
+    display: none;
+  }
+
+  .workspace-nav-label--mobile {
+    display: inline;
+  }
+}
