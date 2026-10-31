@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'preact/hooks';
 import type { ActiveBrokerTranche, GuestTrancheLedgerRecord, GuestTrancheLedgerStatus } from '../types/portfolio';
-import { filterGuestTrancheLedger, summarizeGuestTrancheLedger } from '../domain/guestPortfolio';
+import { filterGuestTrancheLedger, groupGuestTrancheLedgerOperations, summarizeGuestTrancheLedger } from '../domain/guestPortfolio';
 import { formatUSD } from '../utils/formatters';
 import { TableScrollRegion } from './TableScrollRegion';
 
@@ -34,6 +34,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
     operationDateFrom: fromDate ? new Date(fromDate + 'T00:00:00').getTime() : undefined,
     operationDateTo: toDate ? new Date(toDate + 'T23:59:59.999').getTime() : undefined
   }), [records, tickerFilter, statusFilter, fromDate, toDate]);
+  const groupedRecords = useMemo(() => groupGuestTrancheLedgerOperations(filteredRecords), [filteredRecords]);
   const summary = useMemo(
     () => summarizeGuestTrancheLedger(filteredRecords, activeTranches),
     [filteredRecords, activeTranches]
@@ -125,32 +126,58 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-800/70 font-mono">
-              {filteredRecords.map((record) => {
-                const active = activeTranches.find((tranche) => tranche.id === record.trancheId);
-                const marketValue = record.status === 'active' ? active?.marketValue : null;
-                // Active rows use the latest guest-scoped snapshot value, not
-                // a stale market value persisted during the prior sync.
+              {groupedRecords.map((group) => {
+                const grouped = group.records;
+                const record = grouped[0];
                 const isClosedTrade = record.trancheId.startsWith('closed-trade:');
-                const value = record.status === 'active' ? marketValue : record.value;
-                const operationAt = isClosedTrade
-                  ? record.operationAt
-                  : record.operationAt ?? record.purchasedAt;
+                const assignedQuantity = grouped.reduce((total, item) => total + Math.max(0, Number(item.assignedQuantity) || 0), 0);
+                const openQuantity = grouped.reduce((total, item) => total + Math.max(0, Number(item.openQuantity) || 0), 0);
+                const hasAllAveragePrices = grouped.every((item) =>
+                  item.averagePrice !== null && item.averagePrice !== undefined && Number.isFinite(Number(item.averagePrice))
+                );
+                const averagePrice = hasAllAveragePrices && assignedQuantity > 0
+                  ? grouped.reduce((total, item) => total + Number(item.averagePrice) * Math.max(0, Number(item.assignedQuantity) || 0), 0) / assignedQuantity
+                  : null;
+                const statuses = new Set(grouped.map((item) => item.status));
+                const status = statuses.size === 1 ? record.status : null;
+                const statusLabel = status === null ? 'Mixed' : STATUS_LABELS[status];
+                const statusClass = status === 'active'
+                  ? 'text-emerald-300'
+                  : status === 'closed'
+                    ? 'text-slate-300'
+                    : status === 'unassigned'
+                      ? 'text-amber-300'
+                      : 'text-slate-400';
+                const values = grouped.map((item) => item.status === 'active'
+                  ? activeTranches.find((tranche) => tranche.id === item.trancheId)?.marketValue ?? null
+                  : item.value ?? null);
+                // Do not combine market value, sale proceeds, or P/L across mixed lifecycle states.
+                const hasComparableValues = status !== null && values.every((item) =>
+                  item !== null && item !== undefined && Number.isFinite(Number(item))
+                );
+                const value = hasComparableValues
+                  ? values.reduce((total, item) => total + Number(item), 0)
+                  : null;
+                const hasAllNetProfits = grouped.every((item) =>
+                  item.netProfit !== null && item.netProfit !== undefined && Number.isFinite(Number(item.netProfit))
+                );
+                const netProfit = hasAllNetProfits
+                  ? grouped.reduce((total, item) => total + Number(item.netProfit), 0)
+                  : null;
                 return (
-                  <tr key={record.assignmentId} class="hover:bg-slate-900/60">
-                    <td class="whitespace-nowrap px-2 py-2 text-slate-400">{formatAssignmentDate(operationAt)}</td>
-                    <td class="px-2 py-2 text-slate-400">{record.trancheId.startsWith('closed-trade:') ? 'Trade' : 'Tranche'}</td>
+                  <tr key={grouped.map((item) => item.assignmentId).join('|')} class="hover:bg-slate-900/60">
+                    <td class="whitespace-nowrap px-2 py-2 text-slate-400">{formatAssignmentDate(group.operationAt)}</td>
+                    <td class="px-2 py-2 text-slate-400">{isClosedTrade ? 'Trade' : 'Tranche'}</td>
                     <td class="px-2 py-2 font-bold text-cyan-300">{record.ticker}</td>
-                    <td class="px-2 py-2 text-right tabular-nums text-slate-200">{record.assignedQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                    <td class="px-2 py-2 text-right tabular-nums text-slate-200">{record.openQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
-                    <td class="px-2 py-2 text-right tabular-nums text-slate-300">{record.averagePrice !== null ? formatUSD(record.averagePrice) : '—'}</td>
-                    <td class="px-2 py-2 text-right tabular-nums text-slate-300">{value !== null && value !== undefined && Number.isFinite(Number(value)) ? formatUSD(Number(value)) : '—'}</td>
-                    <td class={`px-2 py-2 text-right tabular-nums ${record.netProfit == null || !Number.isFinite(Number(record.netProfit)) ? 'text-slate-500' : Number(record.netProfit) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
-                      {record.netProfit != null && Number.isFinite(Number(record.netProfit)) ? formatUSD(Number(record.netProfit)) : '—'}
+                    <td class="px-2 py-2 text-right tabular-nums text-slate-200">{assignedQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                    <td class="px-2 py-2 text-right tabular-nums text-slate-200">{openQuantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                    <td class="px-2 py-2 text-right tabular-nums text-slate-300">{averagePrice !== null ? formatUSD(averagePrice) : '—'}</td>
+                    <td class="px-2 py-2 text-right tabular-nums text-slate-300">{value !== null ? formatUSD(value) : '—'}</td>
+                    <td class={`px-2 py-2 text-right tabular-nums ${netProfit === null ? 'text-slate-500' : netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                      {netProfit !== null ? formatUSD(netProfit) : '—'}
                     </td>
                     <td class="px-2 py-2 text-right">
-                      <span class={record.status === 'active' ? 'text-emerald-300' : record.status === 'closed' ? 'text-slate-300' : 'text-amber-300'}>
-                        {STATUS_LABELS[record.status]}
-                      </span>
+                      <span class={statusClass}>{statusLabel}</span>
                     </td>
                   </tr>
                 );
