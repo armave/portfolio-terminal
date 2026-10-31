@@ -326,6 +326,18 @@ describe('canonical trade lifecycle and persistence', () => {
         'MSFT:1767265200000:buy-2': 'guest-account-id',
         'GOOGL:1767268800000:buy-3': 'guest-account-id'
       },
+      activeTrancheGuestAssignmentDetails: {
+        'MSFT:1767265200000:buy-2': {
+          assignmentId: 'assignment-msft', guestId: 'guest-account-id',
+          assignedAt: 1767265200000, assignedQuantity: 4
+        }
+      },
+      guestTrancheLedger: [{
+        assignmentId: 'assignment-msft', trancheId: 'MSFT:1767265200000:buy-2',
+        ticker: 'MSFT', name: 'Microsoft', assignedQuantity: 4, openQuantity: 2,
+        averagePrice: 300, purchasedAt: 1767265200000, assignedAt: 1767265200000,
+        updatedAt: 1767265200000, endedAt: null, status: 'active'
+      }],
       cashCushion: { freeCash: 0, holdings: [] }
     }));
 
@@ -343,6 +355,14 @@ describe('canonical trade lifecycle and persistence', () => {
       'MSFT:1767265200000:buy-2': 'guest-account-id',
       'GOOGL:1767268800000:buy-3': 'guest-account-id'
     });
+    expect(store.getState().activeTrancheGuestAssignmentDetails).toMatchObject({
+      'MSFT:1767265200000:buy-2': {
+        assignmentId: 'assignment-msft', guestId: 'guest-account-id', assignedQuantity: 4
+      }
+    });
+    expect(store.getState().guestTrancheLedger).toMatchObject([{
+      assignmentId: 'assignment-msft', status: 'active', openQuantity: 2
+    }]);
   });
 
   it('normalizes unsupported active views without relying on render-time mutation', () => {
@@ -366,6 +386,9 @@ describe('canonical trade lifecycle and persistence', () => {
       }
     });
     expect(store.getState().activeView).toBe('AAPL');
+
+    store.importState({ activeView: 'GUEST_HISTORY' });
+    expect(store.getState().activeView).toBe('GUEST_HISTORY');
   });
 
   it('uses the same default broker assumptions as the application settings', () => {

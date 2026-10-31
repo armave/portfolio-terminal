@@ -34,5 +34,7 @@ describe('Margin desk navigation request triggers', () => {
   it('does not start Margin requests for guest or unknown roles', () => {
     expect(isMarginDeskView('COMBINED', false)).toBe(false);
     expect(shouldRefreshQuotesOnNavigation('BALANCE', 'COMBINED', false)).toBe(false);
+    expect(isMarginDeskView('GUEST_HISTORY', true)).toBe(false);
+    expect(shouldRefreshQuotesOnNavigation('BALANCE', 'GUEST_HISTORY', true)).toBe(false);
   });
 });

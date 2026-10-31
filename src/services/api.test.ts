@@ -113,13 +113,13 @@ describe('authenticated read request deduplication', () => {
     });
     resolvers[0](response());
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { updatedAt: 10, tranches: [] }, { updatedAt: 10, tranches: [] }
+      { updatedAt: 10, tranches: [], ledger: [], ledgerUpdatedAt: 0 }, { updatedAt: 10, tranches: [], ledger: [], ledgerUpdatedAt: 0 }
     ]);
 
     const nextRead = getGuestPortfolioSnapshot();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     resolvers[1](response());
-    await expect(nextRead).resolves.toEqual({ updatedAt: 10, tranches: [] });
+    await expect(nextRead).resolves.toEqual({ updatedAt: 10, tranches: [], ledger: [], ledgerUpdatedAt: 0 });
   });
 });
 
@@ -535,6 +535,8 @@ describe('guest portfolio projection API', () => {
         id: 'AAPL:buy-1', ticker: 'AAPL', name: 'Apple', quantity: 2,
         averagePrice: 100, marketPrice: 120, marketValue: 240, purchasedAt: 50
       }] },
+      ledger: [{ assignmentId: 'assignment-aapl', trancheId: 'AAPL:buy-1', ticker: 'AAPL', name: 'Apple', assignedQuantity: 2, openQuantity: 2, averagePrice: 100, purchasedAt: 50, assignedAt: 75, updatedAt: 100, endedAt: null, status: 'active' }],
+      ledgerUpdatedAt: 100,
       revision: 3
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
@@ -543,6 +545,8 @@ describe('guest portfolio projection API', () => {
     const snapshot = await getGuestPortfolioSnapshot();
     expect(snapshot.tranches).toHaveLength(1);
     expect(snapshot.tranches[0]).toMatchObject({ ticker: 'AAPL', quantity: 2 });
+    expect(snapshot.ledger).toMatchObject([{ assignmentId: 'assignment-aapl', status: 'active', openQuantity: 2 }]);
+    expect(snapshot.ledgerUpdatedAt).toBe(100);
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/guest-portfolio');
     expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
       Authorization: 'Bearer test-gateway-secret',
@@ -558,13 +562,29 @@ describe('guest portfolio projection API', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
     const publications = [
-      { guestId: 'guest-1', snapshot: { updatedAt: 100, tranches: [{ id: 'AAPL:1', ticker: 'AAPL', quantity: 2 }] as any } },
-      { guestId: 'guest-2', snapshot: { updatedAt: 100, tranches: [{ id: 'MSFT:1', ticker: 'MSFT', quantity: 3 }] as any } }
+      {
+        guestId: 'guest-1',
+        snapshot: { updatedAt: 100, tranches: [{ id: 'AAPL:1', ticker: 'AAPL', quantity: 2 }] as any, ledger: [], ledgerUpdatedAt: 0 },
+        ledgerUpserts: [{
+          assignmentId: 'assignment-aapl', trancheId: 'AAPL:1', ticker: 'AAPL', name: 'Apple',
+          assignedQuantity: 2, openQuantity: 2, averagePrice: 100, purchasedAt: 50,
+          assignedAt: 75, updatedAt: 100, endedAt: null, status: 'active' as const
+        }],
+        retainedAssignmentIds: ['assignment-aapl']
+      },
+      {
+        guestId: 'guest-2',
+        snapshot: { updatedAt: 100, tranches: [{ id: 'MSFT:1', ticker: 'MSFT', quantity: 3 }] as any, ledger: [], ledgerUpdatedAt: 0 },
+        ledgerUpserts: [],
+        retainedAssignmentIds: []
+      }
     ];
 
     await publishGuestPortfolioSnapshots(publications);
     await publishGuestPortfolioSnapshots(publications.map(item => ({
-      ...item, snapshot: { ...item.snapshot, updatedAt: 200 }
+      ...item,
+      snapshot: { ...item.snapshot, updatedAt: 200 },
+      ledgerUpserts: item.ledgerUpserts?.map(record => ({ ...record, updatedAt: 200 }))
     })));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -572,8 +592,13 @@ describe('guest portfolio projection API', () => {
     expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe('POST');
     expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({
       snapshots: [
-        { guestId: 'guest-1', snapshot: { tranches: [expect.objectContaining({ ticker: 'AAPL' })] } },
-        { guestId: 'guest-2', snapshot: { tranches: [expect.objectContaining({ ticker: 'MSFT' })] } }
+        {
+          guestId: 'guest-1',
+          snapshot: { tranches: [expect.objectContaining({ ticker: 'AAPL' })] },
+          ledgerUpserts: [expect.objectContaining({ assignmentId: 'assignment-aapl', openQuantity: 2 })],
+          retainedAssignmentIds: ['assignment-aapl']
+        },
+        { guestId: 'guest-2', snapshot: { tranches: [expect.objectContaining({ ticker: 'MSFT' })] }, ledgerUpserts: [], retainedAssignmentIds: [] }
       ]
     });
   });
@@ -588,7 +613,9 @@ describe('guest portfolio projection API', () => {
       tranches: [{
         id: 'MSFT:buy-2', ticker: 'MSFT', name: 'Microsoft', quantity: 1.5,
         averagePrice: 300, marketPrice: 320, marketValue: 480, purchasedAt: 60
-      } as any]
+      } as any],
+      ledger: [],
+      ledgerUpdatedAt: 0
     };
     await publishGuestPortfolioSnapshot('guest-1', snapshot);
     await publishGuestPortfolioSnapshot('guest-1', { ...snapshot, updatedAt: 300 });
@@ -596,8 +623,10 @@ describe('guest portfolio projection API', () => {
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/guest-portfolio');
     expect(fetchMock.mock.calls[0][1].method).toBe('POST');
     expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toMatchObject({
-      guestId: 'guest-1',
-      snapshot: { tranches: [expect.objectContaining({ ticker: 'MSFT', quantity: 1.5 })] }
+      snapshots: [{
+        guestId: 'guest-1',
+        snapshot: { tranches: [expect.objectContaining({ ticker: 'MSFT', quantity: 1.5 })] }
+      }]
     });
     await publishGuestPortfolioSnapshot('guest-1', {
       ...snapshot, updatedAt: 400,

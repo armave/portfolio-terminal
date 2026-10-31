@@ -466,7 +466,10 @@ export function createBlankState(now = Date.now()): PortfolioState {
     },
     closedTrades: [],
     quoteSymbols: {},
-    positions: {}
+    positions: {},
+    activeTrancheGuestAssignments: {},
+    activeTrancheGuestAssignmentDetails: {},
+    guestTrancheLedger: []
   };
 }
 

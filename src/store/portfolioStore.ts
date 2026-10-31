@@ -233,9 +233,14 @@ export class PortfolioStore {
       activeTrancheGuestAssignments: saved?.activeTrancheGuestAssignments && typeof saved.activeTrancheGuestAssignments === 'object'
         ? saved.activeTrancheGuestAssignments
         : {},
+      activeTrancheGuestAssignmentDetails: saved?.activeTrancheGuestAssignmentDetails &&
+        typeof saved.activeTrancheGuestAssignmentDetails === 'object'
+        ? saved.activeTrancheGuestAssignmentDetails
+        : {},
       guestPortfolioSnapshot: saved?.guestPortfolioSnapshot && typeof saved.guestPortfolioSnapshot === 'object'
         ? saved.guestPortfolioSnapshot
         : undefined,
+      guestTrancheLedger: Array.isArray(saved?.guestTrancheLedger) ? saved.guestTrancheLedger : [],
       cashCushion: saved?.cashCushion || { freeCash: 0, holdings: [] },
       balance: Number.isFinite(Number(saved?.balance)) ? Number(saved?.balance) : 0,
       realizedMarginCharged: Number.isFinite(Number(saved?.realizedMarginCharged))
@@ -317,6 +322,13 @@ export class PortfolioStore {
     const cashCushion = raw.cashCushion && typeof raw.cashCushion === 'object' && !Array.isArray(raw.cashCushion)
       ? raw.cashCushion
       : { freeCash: 0, holdings: [] };
+    const assignmentDetails = raw.activeTrancheGuestAssignmentDetails &&
+      typeof raw.activeTrancheGuestAssignmentDetails === 'object' && !Array.isArray(raw.activeTrancheGuestAssignmentDetails)
+      ? raw.activeTrancheGuestAssignmentDetails
+      : {};
+    const guestTrancheLedger = Array.isArray(raw.guestTrancheLedger)
+      ? raw.guestTrancheLedger.filter((record) => record && typeof record === 'object' && !Array.isArray(record))
+      : [];
     const rawFreeCash = Number(cashCushion.freeCash ?? raw.cashBalance);
     const freeCash = Number.isFinite(rawFreeCash) ? Math.max(0, rawFreeCash) : 0;
     const cashHoldings = Array.isArray(cashCushion.holdings)
@@ -331,7 +343,7 @@ export class PortfolioStore {
     // overwrite the device's chosen desk with an older cloud activeView.
     const deviceView = this.readDeviceActiveView();
     const requestedView = deviceView || (typeof raw.activeView === 'string' ? raw.activeView : 'COMBINED');
-    const supportedViews = ['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'];
+    const supportedViews = ['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'];
     const activeView = supportedViews.includes(requestedView) || positions[requestedView]
       ? requestedView
       : 'COMBINED';
@@ -341,6 +353,12 @@ export class PortfolioStore {
       activeView,
       positions,
       holdings,
+      activeTrancheGuestAssignments: raw.activeTrancheGuestAssignments &&
+        typeof raw.activeTrancheGuestAssignments === 'object' && !Array.isArray(raw.activeTrancheGuestAssignments)
+        ? raw.activeTrancheGuestAssignments
+        : {},
+      activeTrancheGuestAssignmentDetails: assignmentDetails,
+      guestTrancheLedger,
       cashBalance: freeCash,
       cashCushion: {
         freeCash,

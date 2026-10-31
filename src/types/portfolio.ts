@@ -197,6 +197,34 @@ export interface ActiveBrokerTranche {
   buyCommission?: number;
 }
 
+export type GuestTrancheLedgerStatus = 'active' | 'closed' | 'unassigned';
+
+export interface ActiveTrancheGuestAssignmentDetail {
+  assignmentId: string;
+  guestId: string;
+  assignedAt: number;
+  assignedQuantity: number;
+}
+
+/** Durable history for a cash-backed tranche assignment to one guest account. */
+export interface GuestTrancheLedgerRecord {
+  assignmentId: string;
+  trancheId: string;
+  ticker: string;
+  name: string;
+  assignedQuantity: number;
+  openQuantity: number;
+  averagePrice: number | null;
+  /** Market value is optional because closed tranches have no current valuation. */
+  marketPrice?: number | null;
+  marketValue?: number | null;
+  purchasedAt: number | null;
+  assignedAt: number;
+  updatedAt: number;
+  endedAt: number | null;
+  status: GuestTrancheLedgerStatus;
+}
+
 export interface PortfolioState {
   // Active runtime properties (used by app.ts & renderBoard.ts)
   positions: Record<string, PositionRecord>;
@@ -207,8 +235,12 @@ export interface PortfolioState {
   activeTrancheMixes?: Record<string, ActiveTrancheMix>;
   /** Guest account linked to each active operation's cash-funded share quantity. */
   activeTrancheGuestAssignments?: Record<string, string>;
+  /** Stable per-assignment lifecycle metadata used to reconcile persistent guest history. */
+  activeTrancheGuestAssignmentDetails?: Record<string, ActiveTrancheGuestAssignmentDetail>;
   /** Server-filtered tranche projection returned only to the signed-in guest. */
   guestPortfolioSnapshot?: { updatedAt: number; tranches: ActiveBrokerTranche[] };
+  /** Server-filtered assignment history returned only to the signed-in guest. */
+  guestTrancheLedger?: GuestTrancheLedgerRecord[];
   brokerAccountInfo?: {
     loaded: boolean;
     balances: Array<{ currency: string; amount: number; forecastIn: number; forecastOut: number; t2In: number; t2Out: number }>;

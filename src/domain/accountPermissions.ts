@@ -8,6 +8,7 @@ export interface AccountPermissions {
   canViewMarginDesk: boolean;
   canViewClosedHistory: boolean;
   canViewActiveTranches: boolean;
+  canViewGuestTrancheHistory: boolean;
   canEditBrokerRules: boolean;
 }
 
@@ -22,6 +23,7 @@ export function getAccountPermissions(role: AccountRole | null | undefined): Acc
     canViewMarginDesk: isAdmin,
     canViewClosedHistory: isAdmin,
     canViewActiveTranches: isAdmin,
+    canViewGuestTrancheHistory: role === 'guest',
     canEditBrokerRules: isAdmin
   };
 }
@@ -31,5 +33,6 @@ export function canAccessPortfolioView(
   role: AccountRole | null | undefined,
   view: string
 ): boolean {
+  if (view === 'GUEST_HISTORY') return role === 'guest';
   return role === "admin" || view === "BALANCE" || view === "CASH_CUSHION" || view === "SETTINGS";
 }
