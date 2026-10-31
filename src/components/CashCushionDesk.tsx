@@ -1,4 +1,4 @@
-import { useState, useEffect, useReducer } from 'preact/hooks';
+import { useState, useEffect, useReducer, useRef } from 'preact/hooks';
 import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
@@ -9,6 +9,7 @@ import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { listUsers, type AuthUser } from '../services/api';
 import { loadSavedHistory } from '../services/storage';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
+import { createGuestDirectoryState, guestDirectoryReducer } from '../domain/guestDirectoryState';
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage } from '../services/i18n';
@@ -80,9 +81,41 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     emitBrokerEvent('broker:request-executed-trades');
   };
   const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
-  const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
-  const [guestUsersLoading, setGuestUsersLoading] = useState(showActiveTranches);
-  const [guestUsersError, setGuestUsersError] = useState('');
+  const [guestDirectory, dispatchGuestDirectory] = useReducer(
+    guestDirectoryReducer<AuthUser>,
+    undefined,
+    () => createGuestDirectoryState<AuthUser>(showActiveTranches)
+  );
+  const guestUsers = guestDirectory.users;
+  const guestUsersLoading = guestDirectory.status === 'loading';
+  const guestUsersRequestGeneration = useRef(0);
+  const loadGuestUsers = () => {
+    const requestId = ++guestUsersRequestGeneration.current;
+    dispatchGuestDirectory({ type: 'request' });
+    void listUsers()
+      .then((users) => {
+        if (guestUsersRequestGeneration.current !== requestId) return;
+        dispatchGuestDirectory({
+          type: 'success',
+          users: users.filter((user) => user.role === 'guest')
+        });
+      })
+      .catch((error) => {
+        if (guestUsersRequestGeneration.current !== requestId) return;
+        console.warn(
+          'Unable to refresh guest account list:',
+          error instanceof Error ? error.message : 'Unknown error'
+        );
+        dispatchGuestDirectory({
+          type: 'failure',
+          message: 'Could not load guest accounts.'
+        });
+      });
+  };
+  const retryGuestUsers = () => {
+    if (guestDirectory.status === 'loading' || guestDirectory.status === 'refreshing') return;
+    loadGuestUsers();
+  };
 
   useEffect(() => {
     // Guests use their assigned portfolio snapshot and must not subscribe to
@@ -119,25 +152,11 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
   useEffect(() => {
     if (!showActiveTranches) return;
-    let cancelled = false;
-    setGuestUsersLoading(true);
-    listUsers()
-      .then((users) => {
-        if (!cancelled) {
-          setGuestUsers(users.filter((user) => user.role === 'guest'));
-          setGuestUsersError('');
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setGuestUsers([]);
-          setGuestUsersError(error instanceof Error ? error.message : 'Could not load guest accounts.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setGuestUsersLoading(false);
-      });
-    return () => { cancelled = true; };
+    loadGuestUsers();
+    return () => {
+      // Ignore a late response after the active-tranche desk unmounts.
+      guestUsersRequestGeneration.current += 1;
+    };
   }, [showActiveTranches]);
 
   const activeTrancheSource = guestUserId
@@ -527,6 +546,28 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               </button>
             </div>
           </div>
+          {(guestDirectory.status === 'stale' || guestDirectory.status === 'error' || guestDirectory.status === 'refreshing') && (
+            <div
+              role={guestDirectory.status === 'refreshing' ? 'status' : 'alert'}
+              aria-live="polite"
+              class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span>
+                {guestDirectory.status === 'refreshing'
+                  ? 'Refreshing guest accounts…'
+                  : guestDirectory.users.length > 0
+                    ? 'Guest account refresh failed. Existing assignments are still shown.'
+                    : 'Could not load guest accounts. Retry to restore guest assignments.'}
+              </span>
+              <button
+                type="button"
+                disabled={guestDirectory.status === 'refreshing'}
+                onClick={retryGuestUsers}
+                aria-label="Retry guest account list"
+                class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-wait disabled:opacity-60 sm:self-auto"
+              >{guestDirectory.status === 'refreshing' ? 'Retrying…' : 'Retry'}</button>
+            </div>
+          )}
           <div
             id="activeTranchesPanel"
             class={`expandable-motion ${activeTranchesExpanded ? 'is-expanded' : ''}`}
@@ -675,7 +716,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                 <span class="text-[9px] tabular-nums text-slate-500">
                                   {cashQuantity.toLocaleString('en-US', { maximumFractionDigits: 4 })} cash shares
                                 </span>
-                                {guestUsersError && <span class="max-w-[12rem] text-[9px] text-amber-400">{guestUsersError}</span>}
                                 {!guestUsersLoading && guestUsers.length === 0 && !guestUsersError && (
                                   <span class="text-[9px] text-slate-500">No guest accounts</span>
                                 )}
