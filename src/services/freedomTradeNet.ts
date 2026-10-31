@@ -19,8 +19,10 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
 
     // The API-key v2 endpoint already identifies the command in the URL. POST
     // only the command parameters as JSON (not the legacy { cmd, params } q-envelope),
-    // then sign those exact body bytes concatenated with the Unix timestamp.
-    const params: Record<string, string | number | boolean | string[]> = paramsOverride ?? (command === "getTradesHistory" ? { max: 100, sort: 1 } : {});
+    // then sign those exact body bytes concatenated with the Unix timestamp. For trade
+    // history, sort=0 with no max asks TradeNet for the full history so FIFO opening
+    // executions are not dropped by the API-key endpoint latest-100 default.
+    const params: Record<string, string | number | boolean | string[]> = paramsOverride ?? (command === "getTradesHistory" ? { sort: 0 } : {});
     const body = JSON.stringify(params);
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const key = await crypto.subtle.importKey(
