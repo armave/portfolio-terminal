@@ -3,12 +3,13 @@ import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage } from '../services/i18n';
-import { pullCloudHistory, pushCloudHistory } from '../services/api';
+import { fetchFreedomCashflows, pullCloudHistory, pushCloudHistory } from '../services/api';
 import { loadSavedHistory, saveSavedHistory } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
+import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 
-type ImportedCashflow = { id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw: Record<string, string> };
+type ImportedCashflow = NormalizedFreedomCashflow;
 
 export function shouldShowCashflowImportProgress(savedRows?: ImportedCashflow[]): boolean {
   // Saved rows are recalculated in the background; only an uploaded file owns
@@ -123,6 +124,9 @@ export function ClosedHistoryDesk() {
   const [brokerTradesError, setBrokerTradesError] = useState(false);
   const [cashflowImporting, setCashflowImporting] = useState(false);
   const [cashflowImportMessage, setCashflowImportMessage] = useState('');
+  const [cashflowSyncing, setCashflowSyncing] = useState(false);
+  const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
+  const [lastCashflowSyncAt, setLastCashflowSyncAt] = useState<number | null>(null);
   const [tradesPage, setTradesPage] = useState(1);
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
@@ -164,6 +168,7 @@ export function ClosedHistoryDesk() {
         try { await pushCloudHistory(resolved); }
         catch (error) { console.error('Unable to sync closed history:', error); }
       }
+      if (active) setCashflowHistoryReady(true);
     }).catch(error => {
       console.error('Unable to load closed history from cloud:', error);
       if (active) {
@@ -173,6 +178,7 @@ export function ClosedHistoryDesk() {
           brokerExecutedTrades: current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : saved.brokerExecutedTrades,
           cashflows: current.cashflows?.length ? current.cashflows : saved.cashflows
         });
+        setCashflowHistoryReady(true);
       }
     });
     return () => { active = false; };
@@ -196,7 +202,7 @@ export function ClosedHistoryDesk() {
       if (success) lastRecalculationKey.current = key;
     });
   }, [brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, brokerTrades]);
-  const handleImportCashflows = async (file: File | null, savedRows?: any[]) => {
+  const handleImportCashflows = async (file: File | null, savedRows?: any[], requireCloudSync = false) => {
     const showImportProgress = shouldShowCashflowImportProgress(savedRows);
     if (showImportProgress) {
       setCashflowImporting(true);
@@ -344,9 +350,9 @@ export function ClosedHistoryDesk() {
           if (!synced) throw new Error('Cloud history did not confirm the update.');
         } catch (error) {
           console.error('Failed to sync closed-history cashflows and fees:', error);
-          if (showImportProgress) {
-            setCashflowImportMessage(`History was updated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}. Retry the import before navigating away.`);
-            return;
+          if (showImportProgress || requireCloudSync) {
+            setCashflowImportMessage(`History was updated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}. Retry the refresh before navigating away.`);
+            return false;
           }
         }
       }
@@ -380,6 +386,45 @@ export function ClosedHistoryDesk() {
       if (showImportProgress) setCashflowImporting(false);
     }
   };
+
+  const syncCashflowsFromFreedom = async (automatic = false) => {
+    if (cashflowSyncing) return;
+    setCashflowSyncing(true);
+    if (!automatic) setCashflowImportMessage('');
+    try {
+      const response = await fetchFreedomCashflows();
+      const fetchedRows = normalizeFreedomCashflowRows(response);
+      const existingRows = portfolioStore.getState().cashflows || [];
+      const mergedRows = mergeFreedomCashflowRows(existingRows, fetchedRows);
+
+      if (mergedRows.length > 0) {
+        const saved = await handleImportCashflows(null, mergedRows, true);
+        // Preserve the importer's detailed cloud-sync failure message.
+        if (!saved) return;
+      }
+
+      setLastCashflowSyncAt(Date.now());
+      if (fetchedRows.length === 0 && existingRows.length === 0) {
+        setCashflowImportMessage('Freedom returned no cashflow rows. Existing history was not changed; XLSX import remains available.');
+      } else {
+        const added = Math.max(0, mergedRows.length - existingRows.length);
+        setCashflowImportMessage(`Freedom sync complete: ${fetchedRows.length} received, ${added} new, ${mergedRows.length} total saved. Older history was retained.`);
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown broker API error.';
+      const prefix = automatic ? 'Automatic Freedom cashflow sync failed:' : 'Freedom cashflow refresh failed:';
+      setCashflowImportMessage(`${prefix} ${detail} XLSX import remains available as a fallback.`);
+      if (automatic) console.warn('Automatic Freedom cashflow sync failed:', detail);
+    } finally {
+      setCashflowSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!cashflowHistoryReady) return;
+    void syncCashflowsFromFreedom(true);
+  }, [cashflowHistoryReady]);
+
   useEffect(() => {
     const persistBrokerTrades = (trades: any[]) => {
       const stored = portfolioStore.getState().brokerExecutedTrades || [];
@@ -602,9 +647,13 @@ export function ClosedHistoryDesk() {
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <label class="h-8 rounded border border-amber-600 bg-amber-600 px-3 text-xs font-bold text-black hover:bg-amber-500 cursor-pointer inline-flex items-center justify-center">
+          <button type="button" onClick={() => void syncCashflowsFromFreedom()} disabled={cashflowSyncing || cashflowImporting}
+            class="h-8 rounded border border-cyan-700 bg-cyan-950/70 px-3 text-xs font-bold text-cyan-200 hover:border-cyan-500 hover:bg-cyan-900 disabled:cursor-not-allowed disabled:opacity-50">
+            {cashflowSyncing ? "Syncing…" : "Refresh from Freedom"}
+          </button>
+          <label class="h-8 rounded border border-amber-700 bg-amber-950/70 px-3 text-xs font-bold text-amber-200 hover:border-amber-500 hover:bg-amber-900 cursor-pointer inline-flex items-center justify-center">
             {cashflowImporting ? "Importing…" : "Import Cashflows"}
-            <input type="file" accept=".xlsx" disabled={cashflowImporting} class="sr-only" onChange={(event) => {
+            <input type="file" accept=".xlsx" disabled={cashflowImporting || cashflowSyncing} class="sr-only" onChange={(event) => {
               const input = event.currentTarget as HTMLInputElement;
               const file = input.files?.[0];
               if (file) void handleImportCashflows(file);
@@ -617,6 +666,7 @@ export function ClosedHistoryDesk() {
         </div>
       </div>
 
+      {lastCashflowSyncAt !== null && <p class="text-[10px] text-slate-500">Last synced {formatRelativeTime(new Date(lastCashflowSyncAt))}</p>}
       {cashflowImportMessage && <p role="status" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300 transition-all">{cashflowImportMessage}</p>}
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
