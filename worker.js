@@ -848,7 +848,7 @@ export default {
 
         if (accountRole === "guest") {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest"].includes(pathname);
-            const sharedDataAction = ["state", "history", "freedom-test", "freedom-positions", "freedom-trades", "freedom-orders", "freedom-cashflows", "freedom-session"].includes(action);
+            const sharedDataAction = ["state", "history", "freedom-test", "freedom-positions", "freedom-trades", "freedom-orders", "freedom-cashflows", "freedom-session", "freedom-market-depth"].includes(action);
             if (sharedDataPath || sharedDataAction) {
                 return jsonError("This data is restricted to administrator accounts.", 403, corsHeaders);
             }
