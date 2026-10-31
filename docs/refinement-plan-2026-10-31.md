@@ -114,7 +114,8 @@ A follow-up audit found that the invalid-ticker branch displayed an error withou
 - [x] Advance the guard immediately when a Margin Intelligence event arrives, before validating its ticker.
 - [x] Invalidate pending responses when the owning effect is cleaned up.
 - [x] Add unit tests for out-of-order completion, a newer request rejected before async work, and effect cleanup.
-- [ ] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
+- [x] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
+- [x] Both final-head workflows completed successfully: [Validate run 41195019092](https://github.com/armave/portfolio-terminal/actions/runs/41195019092) and [Pull Request CI run 41195019175](https://github.com/armave/portfolio-terminal/actions/runs/41195019175).
 
 The change affects client-side request sequencing only. It does not change portfolio calculations, broker requests, stored digests, authorization, server code, or localization.
 
