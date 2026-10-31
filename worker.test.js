@@ -282,6 +282,55 @@ describe('stocktwits proxy', () => {
 });
 
 
+describe('Freedom quote endpoint', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('uses the documented getStockQuotesJson command and tickers array', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      quotes: [{
+        c: 'GOOGL.US',
+        ltp: '279.84',
+        pp: '274.00',
+        chg: '5.84',
+        pcp: '2.1314',
+        ltt: 1793450000
+      }]
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(
+      new Request('https://worker.test/?action=freedom-quote&symbol=GOOGL.US', {
+        headers: { 'X-App-Auth': 'test-secret' }
+      }),
+      {
+        GATEWAY_SECRET: 'test-secret',
+        FREEDOM_PUBLIC_KEY: 'public-key',
+        FREEDOM_PRIVATE_KEY: 'private-key'
+      }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      symbol: 'GOOGL.US',
+      data: {
+        quotes: [{ c: 'GOOGL.US', ltp: '279.84', pp: '274.00', chg: '5.84', pcp: '2.1314' }]
+      }
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [upstreamUrl, upstreamInit] = fetchMock.mock.calls[0];
+    expect(String(upstreamUrl)).toBe('https://tradernet.com/api/getStockQuotesJson');
+    expect(upstreamInit.method).toBe('POST');
+    expect(JSON.parse(upstreamInit.body)).toEqual({
+      cmd: 'getStockQuotesJson',
+      params: { tickers: ['GOOGL.US'] }
+    });
+  });
+});
+
 describe('Freedom news fallback', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
