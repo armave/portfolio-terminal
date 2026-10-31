@@ -808,6 +808,18 @@ function translateDynamicText(normalized: string): string | undefined {
     '; прибыль/убыток при снижении цены меняется на ' + tradeoff[2] + '.';
 
 
+  const adminAction = normalized.match(/^Only administrators can (.+)\\.$/i);
+  if (adminAction) {
+    const actions: Record<string, string> = {
+      'reset the portfolio': 'сбрасывать портфель',
+      'reset broker rules': 'сбрасывать правила брокера',
+      'save broker rules': 'сохранять правила брокера',
+      'manage guest assignments': 'управлять назначениями гостям',
+      'change guest assignments': 'изменять назначения гостям'
+    };
+    return 'Только администраторы могут ' + (actions[adminAction[1].toLowerCase()] || adminAction[1]) + '.';
+  }
+
   const prefixes: Array<[string, string, string]> = [
     ['Name for ', 'Name for ', ''],
     ['Role for ', 'Role for ', ''],
