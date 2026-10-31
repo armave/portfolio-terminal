@@ -140,6 +140,38 @@ describe('normalizeFreedomTrades', () => {
     ]);
   });
 
+  it('accepts unknown input and safely rejects malformed history envelopes', () => {
+    expect(normalizeFreedomTrades(null)).toEqual([]);
+    expect(normalizeFreedomTrades('not a broker response')).toEqual([]);
+    expect(normalizeFreedomTrades({ data: { trades: 'not-an-array' } })).toEqual([]);
+    expect(normalizeFreedomTrades({ data: { result: null }, result: { trades: null } })).toEqual([]);
+  });
+
+  it('normalizes a numeric execution timestamp to the declared string output shape', () => {
+    const trades = normalizeFreedomTrades({
+      data: {
+        trades: {
+          trade: [{
+            id: 77,
+            instr_nm: 'AAPL.US',
+            type: '1',
+            q: 2,
+            p: 100,
+            date: 1790000000
+          }]
+        }
+      }
+    });
+    expect(trades[0]).toMatchObject({
+      id: '77',
+      ticker: 'AAPL.US',
+      side: 'BUY',
+      quantity: 2,
+      price: 100,
+      executedAt: '1790000000'
+    });
+  });
+
   it('returns an empty list for unrecognized response shapes', () => {
     expect(normalizeFreedomTrades({ ok: true, data: { result: { ps: {} } } })).toEqual([]);
   });
