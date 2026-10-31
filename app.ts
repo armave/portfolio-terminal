@@ -1744,7 +1744,7 @@ async function startApp(secret: string) {
   await refreshAllLivePrices();
   initialQuoteRefreshPending = false;
   if (currentAccountRole === 'guest') setActiveView('BALANCE');
-  renderBoardAnalystConsensus(getMarketInsightsTicker());
+  renderBoardAnalystConsensus(getMarketInsightsTicker(state));
   startupCloudWritesSuppressed = false;
   if (startupCloudWritePending) {
     startupCloudWritePending = false;
