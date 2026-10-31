@@ -598,7 +598,7 @@ function translateDynamicText(normalized: string): string | undefined {
     ['Cloud pull failed: ', 'Cloud pull failed', ': '],
     ['[Market Data Error]: ', '[Market Data Error]', ': '],
     ['[Sell Error]: ', 'Sell Error', ': '],
-    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': ']
+    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': '],
     ['Market depth · ', 'Market depth', ' · '],
     ['Open market depth for ', 'Open market depth for', ' '],
     ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
