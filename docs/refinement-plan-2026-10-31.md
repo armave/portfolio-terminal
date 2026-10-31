@@ -212,3 +212,62 @@ A modal accessibility audit found inconsistent keyboard focus behavior across th
 - [x] Both workflows passed: [Validate run 41198028237](https://github.com/armave/portfolio-terminal/actions/runs/41198028237) and [Pull Request CI run 41198028274](https://github.com/armave/portfolio-terminal/actions/runs/41198028274).
 
 No authentication API calls, portfolio state, broker behavior, scenario calculations, or server authorization behavior changed. Browser and assistive-technology verification remains outstanding.
+
+## Follow-on implementation — roadmap execution PR (2026-10-31)
+
+**Working branch:** `chore/roadmap-implementation-2026-10-31`  
+**Base:** `main` at `c60ee2ee115f754a86212c656423c0bea2b76eb7`
+
+- [x] Optimize `buildHoldingsProjection`: build one normalized ticker-to-legacy-metadata index instead of rescanning the entire legacy holdings array for each canonical position.
+- [x] Preserve compatibility semantics by retaining the first legacy row matching each normalized ticker.
+- [x] Add regression coverage for whitespace/case normalization, duplicate legacy rows, and derived canonical fields.
+- [x] Correct the Gateway/cloud-sync documentation: general Worker POST bodies are limited to 20 MB, authentication JSON bodies to 8 KB, and Durable Object cloud-state writes to 20 MB. Existing ticker and Gemini limits remain documented separately.
+- [x] Exact-head `79fbb47dba5d174a234cd473950403386ae434bb` passed typecheck, full Vitest suite, dead-code validation, production dependency audit, and production build in both [Validate run 41201346038](https://github.com/armave/portfolio-terminal/actions/runs/41201346038) and [Pull Request CI run 41201346026](https://github.com/armave/portfolio-terminal/actions/runs/41201346026).
+- [ ] Complete browser/mobile and assistive-technology verification. No financial formula, persisted schema, broker order behavior, authorization rule, or server-side code is changed by this PR.
+
+### Implementation notes
+
+The compatibility projection is derived from canonical `PortfolioState.positions`; this change only reduces lookup work from O(P × H) to O(P + H), where P is the number of canonical positions and H is the number of legacy holdings. It does not change position quantities, tranches, targets, quote values, or retained user metadata.
+
+## Follow-on implementation — indexed legacy cloud migration (2026-10-31)
+
+- [x] Replace the per-holding scan of the full local closed-trade history with one latest-close index keyed by normalized ticker.
+- [x] Preserve the legacy date-field precedence (`closedAt`, `exitDate`, `sellDate`, `date`), invalid-date fallback, and strict "rebuy must be later than latest close" rule.
+- [x] Add regression coverage for multiple exits, case/whitespace-normalized tickers, and a legacy rebuy occurring after the latest close.
+- [x] Exact-head `79fbb47dba5d174a234cd473950403386ae434bb` passed typecheck, full tests, dead-code validation, production dependency audit, and production build in both [Validate run 41201346038](https://github.com/armave/portfolio-terminal/actions/runs/41201346038) and [Pull Request CI run 41201346026](https://github.com/armave/portfolio-terminal/actions/runs/41201346026).
+- [ ] Keep financial calculations, saved data formats, and cloud authorization unchanged.
+
+This reduces the closed-history lookup work from O(H × C) to O(H + C), where H is the number of legacy holdings and C is the number of local closed trades. Legacy tranche-date inspection remains proportional to the tranche count. Together with the earlier indexed compatibility projection, both read-only legacy migration lookups now build their indexes once per normalization pass.
+
+## Follow-on implementation — Preact runtime store subscription snapshots (2026-10-31)
+
+- [x] Apply immediate current-snapshot delivery to AI status, breakeven text, cloud status, cloud-sync status, and board-title subscriptions.
+- [x] Keep the existing analyst-consensus snapshot behavior consistent with those stores.
+- [x] Add regression coverage for subscribing after a value has already been published, subsequent updates, and listener cleanup.
+- [x] Exact-head `79fbb47dba5d174a234cd473950403386ae434bb` passed typecheck, full tests, dead-code validation, production dependency audit, and production build in both [Validate run 41201346038](https://github.com/armave/portfolio-terminal/actions/runs/41201346038) and [Pull Request CI run 41201346026](https://github.com/armave/portfolio-terminal/actions/runs/41201346026).
+
+The hooks register subscribers in effects. Immediate snapshot delivery on subscription closes the render-to-effect timing window in which a runtime update could otherwise be missed and leave a component displaying stale presentation state until a later update. This is presentation-state synchronization only; canonical portfolio data and persisted state are unchanged.
+
+
+## Follow-on implementation — TradeNet quote 404 correction (2026-10-31)
+
+- [x] Replace the incorrect `getQuotes` request with the documented `getStockQuotesJson` command and a `tickers` array for one-symbol quote requests.
+- [x] Keep the Worker-side API-key signing flow and fixed read-only command allowlist; no browser-supplied TradeNet commands or trading actions are introduced.
+- [x] Publish the Worker route change and server request typing directly to `main` in commits `598cc0617bf3101885d190158bdbd1c951a89fd8` and `c595607f2962a117ca5ffb5feda5e64dd6a92a47`.
+- [x] Add a Worker integration-contract test on `main` in `4d2a6e42d3d3ce21ac645a78517bd671987a5e5f`, asserting the upstream path and exact request body.
+- [x] Add frontend normalization support and regression coverage for the documented `ltp`, `pp`, `chg`, `pcp`, and `ltt` fields.
+- [x] Merge the published `main` commits into this roadmap branch without dropping prior roadmap changes.
+- [ ] Verify a real authorized TradeNet quote response and the Terminal Quote action in a browser; mocked integration tests cannot prove account-specific entitlements or live endpoint availability.
+- [x] Exact-head CI passed on `e9b30db165b7807c0134bf7d5ae50d62913d5f99`: [Validate run 41202393721](https://github.com/armave/portfolio-terminal/actions/runs/41202393721) and [Pull Request CI run 41202393803](https://github.com/armave/portfolio-terminal/actions/runs/41202393803) both passed install, typecheck, full tests, dead-code validation, production dependency audit, and build.
+
+The screenshot showed the Worker returning HTTP 404 from the Freedom quote path after the Terminal requested `GOOGL.US`; the Yahoo quote path still returned a price. The failure was caused by the TradeNet command/parameter mismatch, not by the Terminal command parser. The correction preserves concurrent Yahoo lookup and the existing Finnhub/Twelve Data fallback, and does not change portfolio accounting, quote ordering, broker orders, persisted state, or authorization.
+
+
+## Follow-on implementation — TradeNet API-key v2 HTTP 400 correction (2026-10-31)
+
+- [x] Change the signed API-key POST body from the legacy `{ cmd, params }` envelope to the method parameters alone; the command remains fixed in `/api/{command}`.
+- [x] Sign the exact serialized parameters body concatenated with the current Unix timestamp, matching the official API-key v2 rules.
+- [x] Update Worker contract tests for `getStockQuotesJson`, `getNotifyOrderJson`, and `getUserCashFlows`; assert the quote request HMAC as well as its URL and parameters.
+- [x] Update the Worker deployment path filter to include `src/services/freedomTradeNet.ts`, the shared adapter imported by `worker.js`.
+- [x] Publish the corrected helper and Worker tests directly to `main`; corrected Worker deployment passed [run 41202950522](https://github.com/armave/portfolio-terminal/actions/runs/41202950522).
+- [ ] Confirm a live authorized quote request in the app after the API-key v2 body correction; mock tests do not verify account entitlement or actual upstream data availability.

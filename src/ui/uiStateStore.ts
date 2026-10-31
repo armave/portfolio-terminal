@@ -10,9 +10,10 @@ export function setAiStatus(status: string): void {
   aiStatusListeners.forEach((listener) => listener(aiStatus));
 }
 
-/** Subscribe to the latest AI status; returns a cleanup callback. */
-function subscribeAiStatus(listener: (status: string) => void): () => void {
+/** Subscribe to AI status and immediately deliver its current snapshot. */
+export function subscribeAiStatus(listener: (status: string) => void): () => void {
   aiStatusListeners.add(listener);
+  listener(aiStatus);
   return () => aiStatusListeners.delete(listener);
 }
 
@@ -32,8 +33,10 @@ export function setBreakevenText(text: string): void {
   breakevenTextListeners.forEach((listener) => listener(breakevenText));
 }
 
-function subscribeBreakevenText(listener: (text: string) => void): () => void {
+/** Subscribe to breakeven text and immediately deliver its current snapshot. */
+export function subscribeBreakevenText(listener: (text: string) => void): () => void {
   breakevenTextListeners.add(listener);
+  listener(breakevenText);
   return () => breakevenTextListeners.delete(listener);
 }
 
@@ -57,8 +60,10 @@ export function setCloudStatusState(status: CloudStatus): void {
   cloudStatusListeners.forEach((listener) => listener(cloudStatus));
 }
 
-function subscribeCloudStatus(listener: (status: CloudStatus) => void): () => void {
+/** Subscribe to cloud status and immediately deliver its current snapshot. */
+export function subscribeCloudStatus(listener: (status: CloudStatus) => void): () => void {
   cloudStatusListeners.add(listener);
+  listener(cloudStatus);
   return () => cloudStatusListeners.delete(listener);
 }
 
@@ -77,8 +82,10 @@ export function setCloudSyncStatus(status: CloudStatus): void {
   cloudSyncStatusListeners.forEach((listener) => listener(cloudSyncStatus));
 }
 
-function subscribeCloudSyncStatus(listener: (status: CloudStatus) => void): () => void {
+/** Subscribe to cloud-sync status and immediately deliver its current snapshot. */
+export function subscribeCloudSyncStatus(listener: (status: CloudStatus) => void): () => void {
   cloudSyncStatusListeners.add(listener);
+  listener(cloudSyncStatus);
   return () => cloudSyncStatusListeners.delete(listener);
 }
 
@@ -134,8 +141,10 @@ export function setBoardTitle(state: BoardTitleState): void {
   boardTitleListeners.forEach((listener) => listener(boardTitle));
 }
 
-function subscribeBoardTitle(listener: (state: BoardTitleState) => void): () => void {
+/** Subscribe to the board title and immediately deliver its current snapshot. */
+export function subscribeBoardTitle(listener: (state: BoardTitleState) => void): () => void {
   boardTitleListeners.add(listener);
+  listener(boardTitle);
   return () => boardTitleListeners.delete(listener);
 }
 
