@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth, signFreedomSocketAuth } from './worker.js';
+import worker, { ensureFreedomTradeNetSession, fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 
 describe('upstream timeout coverage', () => {
@@ -1348,25 +1348,28 @@ describe('sanitizeFreedomMarketDepth', () => {
     expect(() => sanitizeFreedomMarketDepth({ dom: [{ i: 'MSFT.US', ins: [] }] }, 'AAPL.US')).toThrow();
     expect(() => sanitizeFreedomMarketDepth({ dom: [{ i: 'AAPL.US', ins: [] }] }, 'AAPL.US')).toThrow();
   });
-});
-
-
-
-describe('signFreedomSocketAuth', () => {
-  it('matches the TradeNet sorted key=value HMAC-SHA256 signature', async () => {
-    const { createHmac } = await import('node:crypto');
-    const authData = { apiKey: 'public-key', cmd: 'getAuthInfo', nonce: 1700000000000 };
-    const expected = createHmac('sha256', 'private-key')
-      .update('apiKey=public-key&cmd=getAuthInfo&nonce=1700000000000')
-      .digest('hex');
-    await expect(signFreedomSocketAuth(authData, 'private-key')).resolves.toBe(expected);
+  it('accepts the production WebSocket snapshot shape', () => {
+    const result = sanitizeFreedomMarketDepth({
+      i: 'AAPL.US', n: 21, cnt: 2,
+      ins: [
+        { p: 100.5, s: 'B', q: 12, k: 0 },
+        { p: 100.7, s: 'S', q: 9, k: 0 }
+      ]
+    }, 'AAPL.US');
+    expect(result).toMatchObject({
+      symbol: 'AAPL.US', sequence: 21, depth: 2,
+      bids: [{ price: 100.5, quantity: 12, position: 0 }],
+      asks: [{ price: 100.7, quantity: 9, position: 0 }]
+    });
   });
 });
+
+
 
 describe('Freedom market-depth proxy', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('does not open a WebSocket when TradeNet API keys are missing', async () => {
+  it('does not open a WebSocket when TradeNet session storage is missing', async () => {
     const WebSocketMock = vi.fn();
     vi.stubGlobal('WebSocket', WebSocketMock);
     const response = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=AAPL.US', {
@@ -1374,7 +1377,118 @@ describe('Freedom market-depth proxy', () => {
     }), { GATEWAY_SECRET: 'test-secret' });
 
     expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({ error: expect.stringContaining('API keys') });
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('session storage') });
     expect(WebSocketMock).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('TradeNet SID session storage', () => {
+  it('requires Worker-only authorization and persists the SID inside the Durable Object', async () => {
+    const values = new Map();
+    const storage = {
+      get: async key => values.get(key),
+      put: async (key, value) => { values.set(key, value); },
+      delete: async key => values.delete(key)
+    };
+    const store = new PortfolioStateDO({ storage }, { GATEWAY_SECRET: 'worker-internal-secret' });
+    const url = 'https://store.test/internal/freedom-session';
+    const unauthorized = await store.fetch(new Request(url));
+    expect(unauthorized.status).toBe(401);
+
+    const stored = await store.fetch(new Request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Worker-Auth': 'worker-internal-secret'
+      },
+      body: JSON.stringify({
+        sid: 'sensitive-sid-value-123456',
+        expiresAt: Date.now() + 60_000,
+        real: true
+      })
+    }));
+    expect(stored.status).toBe(200);
+    const read = await store.fetch(new Request(url, {
+      headers: { 'X-Internal-Worker-Auth': 'worker-internal-secret' }
+    }));
+    expect((await read.json()).session.sid).toBe('sensitive-sid-value-123456');
+    expect(values.size).toBe(1);
+  });
+
+  it('authenticates once using authByLogin and reuses a valid persisted real-account SID', async () => {
+    let persisted = null;
+    const internalStub = {
+      fetch: vi.fn(async request => {
+        if (request.method === 'GET') {
+          return persisted
+            ? new Response(JSON.stringify({ session: persisted }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+            : new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+        }
+        persisted = await request.json();
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      })
+    };
+    const env = {
+      GATEWAY_SECRET: 'worker-internal-secret',
+      FREEDOM_LOGIN: 'account@example.test',
+      FREEDOM_PASSWORD: 'test-password',
+      PORTFOLIO_STATE_DO: {
+        idFromName: vi.fn().mockReturnValue('portfolio_state'),
+        get: vi.fn().mockReturnValue(internalStub)
+      }
+    };
+    const fetchMock = vi.fn(async (url, init) => {
+      expect(String(url)).toBe('https://tradernet.am/api/');
+      expect(init.method).toBe('POST');
+      expect(init.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
+      const requestBody = new URLSearchParams(init.body);
+      const query = JSON.parse(requestBody.get('q'));
+      expect(query).toEqual({
+        cmd: 'authByLogin',
+        params: {
+          login: 'account@example.test',
+          password: 'test-password',
+          rememberMe: 1,
+          getAccounts: false
+        }
+      });
+      return new Response(JSON.stringify({
+        success: true, logged: true, SID: 'sensitive-sid-value-123456',
+        real: true, userId: 12345
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = await ensureFreedomTradeNetSession(env);
+    const second = await ensureFreedomTradeNetSession(env);
+    expect(first).toMatchObject({ authenticated: true, real: true, refreshed: true });
+    expect(second).toMatchObject({ authenticated: true, real: true, refreshed: false });
+    expect(first).not.toHaveProperty('sid');
+    expect(JSON.stringify(first)).not.toContain('sensitive-sid-value');
+    expect(persisted).toMatchObject({ sid: 'sensitive-sid-value-123456', real: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects demo login results and does not persist a demo SID', async () => {
+    let persisted = null;
+    const internalStub = {
+      fetch: vi.fn(async request => {
+        if (request.method === 'GET') return new Response('{}', { status: 404 });
+        persisted = await request.json();
+        return new Response('{}', { status: 200 });
+      })
+    };
+    const env = {
+      GATEWAY_SECRET: 'worker-internal-secret',
+      FREEDOM_LOGIN: 'account@example.test',
+      FREEDOM_PASSWORD: 'test-password',
+      PORTFOLIO_STATE_DO: { idFromName: () => 'portfolio_state', get: () => internalStub }
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      success: true, logged: true, SID: 'demo-sid-value-123456', real: false
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    await expect(ensureFreedomTradeNetSession(env)).rejects.toThrow('demo or unverified');
+    expect(persisted).toBeNull();
   });
 });
