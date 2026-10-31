@@ -1488,7 +1488,7 @@ describe('TradeNet SID session storage', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
       success: true, logged: true, SID: 'demo-sid-value-123456', real: false
     }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
-    await expect(ensureFreedomTradeNetSession(env)).rejects.toThrow('demo or unverified');
+    await expect(ensureFreedomTradeNetSession(env)).rejects.toThrow('demo or non-production');
     expect(persisted).toBeNull();
   });
 });
