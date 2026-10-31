@@ -3,6 +3,7 @@ import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsens
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
+import { GuestTrancheHistory } from './components/GuestTrancheHistory';
 import { DeskLoading } from './components/DeskLoading';
 import { CashCushionDesk } from './components/CashCushionDesk';
 import { SettingsDesk } from './components/SettingsDesk';
@@ -47,6 +48,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const portfolioSnapshot = usePortfolio();
   const emptyStateVisible = Object.keys(portfolioSnapshot.positions || {}).length === 0 && activeDeskView === 'COMBINED';
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
+  const [hasOpenedGuestHistory, setHasOpenedGuestHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
   const [deskLoadingView, setDeskLoadingView] = useState<string | null>(null);
@@ -383,13 +385,19 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   }, [currentUser?.id, currentUser?.role]);
 
   useEffect(() => {
-    if (currentUser?.role === 'guest' && !['CASH_CUSHION', 'BALANCE', 'SETTINGS'].includes(activeDeskView)) {
+    if (currentUser && activeDeskView === 'GUEST_HISTORY' && !permissions.canViewGuestTrancheHistory) {
+      emitUiEvent('portfolio:set-active-view', { view: currentUser?.role === 'admin' ? 'COMBINED' : 'BALANCE' });
+      return;
+    }
+    if (currentUser?.role === 'guest' &&
+        !['CASH_CUSHION', 'BALANCE', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView)) {
       emitUiEvent('portfolio:set-active-view', { view: 'BALANCE' });
     }
     if (activeDeskView === 'CLOSED_HISTORY' && permissions.canViewClosedHistory) setHasOpenedClosedHistory(true);
+    if (activeDeskView === 'GUEST_HISTORY' && permissions.canViewGuestTrancheHistory) setHasOpenedGuestHistory(true);
     if (activeDeskView === 'CASH_CUSHION' || activeDeskView === 'BALANCE') setHasOpenedCashCushion(true);
     if (activeDeskView === 'SETTINGS') setHasOpenedSettings(true);
-  }, [activeDeskView, currentUser?.role, permissions.canViewClosedHistory]);
+  }, [activeDeskView, currentUser?.role, permissions.canViewClosedHistory, permissions.canViewGuestTrancheHistory]);
 
   // Closed History asks for trade history when mounted; do not also fetch from
   // a global navigation click listener, which caused duplicate broker requests.
@@ -506,9 +514,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} onDeskLoadingChange={handleDeskLoadingChange} /></div>
+          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Workspace navigation"><TickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} onDeskLoadingChange={handleDeskLoadingChange} /></div>
           {permissions.isAdmin && <div
-            class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
+            class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             id="daysToBreakeven"
           >
             {breakevenText}
@@ -516,9 +524,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         </div>
 
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
-        <div id="tradingWorkspaceGrid" class={(!["BALANCE"].includes(activeDeskView) && "trading-workspace-grid ") + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
+        <div id="tradingWorkspaceGrid" class={["BALANCE", "GUEST_HISTORY"].includes(activeDeskView)
+          ? ""
+          : "trading-workspace-grid " + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
-          {permissions.canViewMarginDesk && <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
+          {permissions.canViewMarginDesk && <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
             {deskLoadingView === activeDeskView ? (
               <DeskLoading
                 title="Preparing margin desk"
@@ -592,18 +602,31 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               : <DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}
           </div>
 
+          {/* Guest-only assignment history is a standalone destination, separate from Balance. */}
+          {permissions.canViewGuestTrancheHistory && <div
+            id="guestHistoryContainer"
+            class={`desk-view-transition min-w-0 ${activeDeskView === 'GUEST_HISTORY' ? '' : 'hidden'}`}
+          >
+            {hasOpenedGuestHistory
+              ? <GuestTrancheHistory
+                records={portfolioSnapshot.guestTrancheLedger || []}
+                activeTranches={portfolioSnapshot.guestPortfolioSnapshot?.tranches || []}
+              />
+              : <DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}
+          </div>}
+
           {/* Keep the command console available on both Margin and Cash desks. */}
-          {permissions.canUseTerminal && !["BALANCE"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
+          {permissions.canUseTerminal && !["BALANCE", "GUEST_HISTORY"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
             <section
               id="marketInsightsPanel"
               key={`market-insights-${activeDeskView}`}
-              class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
+              class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
               aria-label="Market insights"
-            >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'].includes(activeDeskView) ? <MarketInsightsPanel /> : null}</section>
+            >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? <MarketInsightsPanel /> : null}</section>
             <div
               id="tradingConsoleCard"
               key={`trading-console-${activeDeskView}`}
-              class={"desk-view-transition trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
+              class={"desk-view-transition trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             ><TradingConsole /></div>
           </div>}
 
