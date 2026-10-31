@@ -25,15 +25,18 @@ import {
   clearYahooDeepStockDataCache
 } from './api';
 import * as storage from './storage';
+import { setMarketRequestSessionForTests } from './marketRequestGate';
 
 // Most API tests exercise successful proxy requests; give them a deterministic
 // credential. Tests for missing credentials explicitly override this value.
 beforeEach(() => {
   clearApiRequestCaches();
+  setMarketRequestSessionForTests('REGULAR');
   storage.setGatewaySecret('test-gateway-secret');
 });
 afterEach(() => {
   clearApiRequestCaches();
+  setMarketRequestSessionForTests(null);
   storage.setGatewaySecret('');
 });
 

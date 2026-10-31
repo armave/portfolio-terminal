@@ -32,12 +32,23 @@ export function createMarketRequestGate(options: MarketRequestGateOptions = {}) 
   };
 }
 
-let defaultMarketRequestGate = createMarketRequestGate();
+let testSessionOverride: ReturnType<typeof getUsEquityMarketSession> | null = null;
+let defaultMarketRequestGate = createMarketRequestGate({
+  getSession: () => testSessionOverride ?? getUsEquityMarketSession()
+});
 
 export function runMarketDataRequest<T>(request: () => Promise<T>): Promise<T> {
   return defaultMarketRequestGate(request);
 }
 
 export function resetMarketRequestGate(): void {
-  defaultMarketRequestGate = createMarketRequestGate();
+  defaultMarketRequestGate = createMarketRequestGate({
+    getSession: () => testSessionOverride ?? getUsEquityMarketSession()
+  });
+}
+
+/** Allows API unit tests to model an open market without depending on CI wall-clock time. */
+export function setMarketRequestSessionForTests(session: ReturnType<typeof getUsEquityMarketSession> | null): void {
+  testSessionOverride = session;
+  resetMarketRequestGate();
 }
