@@ -971,8 +971,8 @@ export default {
                 if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
                     return jsonError("Freedom market-data credentials are not configured in the Worker.", 503, corsHeaders);
                 }
-                const command = action === "freedom-quote" ? "getQuotes" : action === "freedom-news" ? "getNews" : "getHloc";
-                const params = action === "freedom-quote" ? { ticker: symbol } : action === "freedom-news" ? { ticker: symbol, limit: 10 } : { ticker: symbol, interval: "D", limit: 100 };
+                const command = action === "freedom-quote" ? "getStockQuotesJson" : action === "freedom-news" ? "getNews" : "getHloc";
+                const params = action === "freedom-quote" ? { tickers: [symbol] } : action === "freedom-news" ? { ticker: symbol, limit: 10 } : { ticker: symbol, interval: "D", limit: 100 };
                 try {
                     const data = action === "freedom-quote"
                         ? await withProviderCache("freedom_quote", symbol, () => requestTradeNet(env, command, params))
