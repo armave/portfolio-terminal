@@ -3,9 +3,38 @@ import {
   getCashCushionTotal,
   getTotalPortfolioInvested,
   getPortfolioProjectionInputs,
+  getMarketInsightsTicker,
   resolvePositionEntryDate
 } from './portfolioSelectors';
 import type { BoardState } from '../types/portfolio';
+
+
+
+describe('market insights ticker selector', () => {
+  it('resolves the first tracked position when the Margin desk is in combined view', () => {
+    const state = {
+      activeView: 'COMBINED',
+      positions: {
+        AAPL: { ticker: 'AAPL' },
+        MSFT: { ticker: 'MSFT' }
+      }
+    } as unknown as BoardState;
+
+    expect(getMarketInsightsTicker(state)).toBe('AAPL');
+  });
+
+  it('resolves the active ticker when a single Margin position is selected', () => {
+    const state = {
+      activeView: 'MSFT',
+      positions: {
+        AAPL: { ticker: 'AAPL' },
+        MSFT: { ticker: 'MSFT' }
+      }
+    } as unknown as BoardState;
+
+    expect(getMarketInsightsTicker(state)).toBe('MSFT');
+  });
+});
 
 describe('portfolio selectors', () => {
   it('returns zero for missing portfolio state', () => {

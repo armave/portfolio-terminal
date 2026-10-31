@@ -103,8 +103,14 @@ export function setAnalystConsensus(state: AnalystConsensusState): void {
   analystConsensusListeners.forEach((listener) => listener(analystConsensus));
 }
 
-function subscribeAnalystConsensus(listener: (state: AnalystConsensusState) => void): () => void {
+/**
+ * Subscribe to analyst-consensus changes and immediately deliver the current
+ * snapshot. The synchronous delivery closes the render-to-effect race where
+ * startup can publish a target before the Preact hook installs its listener.
+ */
+export function subscribeAnalystConsensus(listener: (state: AnalystConsensusState) => void): () => void {
   analystConsensusListeners.add(listener);
+  listener(analystConsensus);
   return () => analystConsensusListeners.delete(listener);
 }
 
