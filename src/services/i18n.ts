@@ -639,6 +639,21 @@ const RU: Record<string, string> = {
   "Stage target command": "Подготовить команду целевой цены",
   "Execution failed": "Не удалось выполнить команду",
   "[CLI]: Unrecognized command. Type \"help\" for local commands, or prefix with \"ask ...\" for AI advisor.": "[Команда]: Неизвестная команда. Введите \"help\" для локальных команд или добавьте префикс \"ask ...\" для обращения к ИИ-советнику.",
+  "Usage: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200": "Формат: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200",
+  "Select a ticker tab or specify a ticker (e.g., \"sell AAPL today for $180 vs sell 14 days later for $185\").": "Выберите вкладку тикера или укажите тикер (например, \"sell AAPL today for $180 vs sell 14 days later for $185\").",
+  "Usage: buy scenario <shares> <ticker> at <price>.": "Формат: buy scenario <shares> <ticker> at <price>.",
+  "• bought <shares> <ticker> for <price> (e.g. bought 10 AAPL for $185.50)": "• bought <shares> <ticker> for <price> (например, bought 10 AAPL for $185.50)",
+  "• sold <shares|all> <ticker> for <price> (e.g. sold all AAPL for $195)": "• sold <shares|all> <ticker> for <price> (например, sold all AAPL for $195)",
+  "• target <ticker> <price> (e.g. target AAPL 210)": "• target <ticker> <price> (например, target AAPL 210)",
+  "• quote <ticker> [manual_price] (e.g. quote AAPL or quote AAPL 190)": "• quote <ticker> [manual_price] (например, quote AAPL или quote AAPL 190)",
+  "• balance <amount> | debt <amount> (e.g. balance 5000 or debt 1200)": "• balance <amount> | debt <amount> (например, balance 5000 или debt 1200)",
+  "• cash add <shares> <ticker> [price] (e.g. cash add 5 MSFT 420)": "• cash add <shares> <ticker> [price] (например, cash add 5 MSFT 420)",
+  "• cash remove <ticker> (e.g. cash remove MSFT)": "• cash remove <ticker> (например, cash remove MSFT)",
+  "• sell today for <p1> vs sell <N> days later for <p2>": "• sell today for <p1> vs sell <N> days later for <p2> (сравнение цены продажи по датам)",
+  "• sim [ticker] <price> in <days> days (e.g. sim AAPL 205 in 14d)": "• sim [ticker] <price> in <days> days (например, sim AAPL 205 in 14d)",
+  "• compare exits [ticker] today at <p>, tomorrow at <p>, after 4 days at <p>, 1 week later at <p>": "• compare exits [ticker] today at <p>, tomorrow at <p>, after 4 days at <p>, 1 week later at <p> (сравнение сценариев выхода)",
+  "• buy scenario <shares> <ticker> at <price> (read-only add-on purchase simulation)": "• buy scenario <shares> <ticker> at <price> (моделирование дополнительной покупки без изменения портфеля)",
+  "• view <ticker|combined|cash> | refresh | clear": "• view <ticker|combined|cash> | refresh | clear (раздел, котировки, очистка терминала)",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -834,6 +849,13 @@ function translateDynamicText(normalized: string): string | undefined {
   if (backupError) return '[Ошибка импорта резервной копии]: Не удалось импортировать резервную копию (' + backupError[1] + ').';
   const backupToast = normalized.match(/^Backup import failed: (.+)$/i);
   if (backupToast) return 'Не удалось импортировать резервную копию: ' + backupToast[1];
+
+  const simulationResult = normalized.match(/^\[Sim (.+) @ \$(.+) in (\d+)d\]: Gross \$(.+) \| Comms -\$(.+) \| Margin -\$(.+) → Net P&L: ([+-])\$(.+)$/i);
+  if (simulationResult) {
+    return '[Симуляция ' + simulationResult[1] + ' @ $' + simulationResult[2] + ' через ' + simulationResult[3] +
+      ' дн.]: Валовая прибыль: $' + simulationResult[4] + ' | Комиссии: -$' + simulationResult[5] +
+      ' | Маржинальные проценты: -$' + simulationResult[6] + ' → Чистая прибыль/убыток: ' + simulationResult[7] + '$' + simulationResult[8];
+  }
 
   const prefixes: Array<[string, string, string]> = [
     ['Name for ', 'Name for ', ''],
