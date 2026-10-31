@@ -2789,9 +2789,9 @@ summary:focus-visible {
   }
 }
 
-/* Hide the live equity figure in the compact mobile Balance destination. */
+/* Keep the live equity figure guest-only in the compact mobile Balance destination. */
 @media (max-width: 480px) {
-  .workspace-nav-equity-badge {
+  .workspace-nav-equity-badge--admin {
     display: none;
   }
 }
