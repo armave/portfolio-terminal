@@ -178,6 +178,7 @@ The guest LOTS history table used a horizontally scrollable wrapper, but that wr
 - [x] Make the horizontal scroller keyboard-focusable with `tabindex={0}`.
 - [x] Add visible focus styling consistent with the existing indigo section theme.
 - [x] Add Russian localization for the region name and a regression test for the accessible Preact attributes.
-- [ ] Confirm exact-head typecheck, full tests, production build, dead-code validation, and production dependency audit.
+- [x] Confirm exact-head typecheck, full tests, production build, dead-code validation, and production dependency audit on `578527e`.
+- [x] Both workflows passed: [Pull Request CI run 41196224211](https://github.com/armave/portfolio-terminal/actions/runs/41196224211) and [Validate run 41196224268](https://github.com/armave/portfolio-terminal/actions/runs/41196224268).
 
 This is an accessibility/localization-only change. Table contents, filters, assignment records, financial data, and persistence are unchanged.
