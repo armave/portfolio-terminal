@@ -1414,6 +1414,7 @@ describe('Freedom market-depth proxy', () => {
       }])
     });
     socket.emit('message', { data: JSON.stringify(['markets', { m: [] }]) });
+    socket.emit('message', { data: JSON.stringify(['b', { i: 'GOOGL.US', n: 1, cnt: 0, ins: [] }]) });
     socket.emit('message', { data: 'not-json' });
 
     const rejected = expect(pending).rejects.toMatchObject({
@@ -1427,11 +1428,13 @@ describe('Freedom market-depth proxy', () => {
         userDataReceived: true,
         isDemo: false,
         sessionMode: 'prod',
-        messageCount: 3,
+        messageCount: 4,
         parseErrorCount: 1,
-        eventsReceived: ['userData', 'markets'],
-        eventCounts: { userData: 1, markets: 1 },
-        orderBookEventsReceived: 0
+        eventsReceived: ['userData', 'markets', 'b'],
+        eventCounts: { userData: 1, markets: 1, b: 1 },
+        orderBookEventsReceived: 1,
+        orderBookSymbolsReceived: ['GOOGL.US'],
+        unmatchedOrderBooks: 1
       })
     });
     await vi.advanceTimersByTimeAsync(10001);
