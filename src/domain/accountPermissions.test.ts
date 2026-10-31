@@ -11,6 +11,7 @@ describe("getAccountPermissions", () => {
       canViewMarginDesk: true,
       canViewClosedHistory: true,
       canViewActiveTranches: true,
+      canViewGuestTrancheHistory: false,
       canEditBrokerRules: true
     });
   });
@@ -24,20 +25,22 @@ describe("getAccountPermissions", () => {
       canViewMarginDesk: false,
       canViewClosedHistory: false,
       canViewActiveTranches: false,
+      canViewGuestTrancheHistory: true,
       canEditBrokerRules: false
     });
   });
 
-  it("fails closed until an authenticated role is known", () => {
-    expect(getAccountPermissions(null)).toEqual(getAccountPermissions("guest"));
-    expect(getAccountPermissions(undefined)).toEqual(getAccountPermissions("guest"));
+  it("does not grant guest-history access until a guest role is authenticated", () => {
+    expect(getAccountPermissions(null).canViewGuestTrancheHistory).toBe(false);
+    expect(getAccountPermissions(undefined).canViewGuestTrancheHistory).toBe(false);
   });
 });
 
 describe("canAccessPortfolioView", () => {
-  it("allows admins to open every desk", () => {
+  it("allows admins to open admin desks but not the guest-private history route", () => {
     expect(canAccessPortfolioView("admin", "COMBINED")).toBe(true);
     expect(canAccessPortfolioView("admin", "CLOSED_HISTORY")).toBe(true);
+    expect(canAccessPortfolioView("admin", "GUEST_HISTORY")).toBe(false);
   });
 
   it("keeps guest and unknown sessions on the read-only views", () => {
@@ -45,6 +48,7 @@ describe("canAccessPortfolioView", () => {
       expect(canAccessPortfolioView(role, "BALANCE")).toBe(true);
       expect(canAccessPortfolioView(role, "CASH_CUSHION")).toBe(true);
       expect(canAccessPortfolioView(role, "SETTINGS")).toBe(true);
+      expect(canAccessPortfolioView(role, "GUEST_HISTORY")).toBe(role === "guest");
       expect(canAccessPortfolioView(role, "COMBINED")).toBe(false);
       expect(canAccessPortfolioView(role, "CLOSED_HISTORY")).toBe(false);
     }
