@@ -1322,6 +1322,195 @@ describe('Durable Object guest portfolio ownership', () => {
     expect(adminRead.status).toBe(403);
   });
 
+  it('persists an encrypted per-guest tranche ledger and keeps it scoped to that guest', async () => {
+    const { store, values } = await makeScopedStore();
+    const assignment = {
+      assignmentId: 'assignment-aapl-1',
+      trancheId: 'AAPL:buy-1',
+      ticker: 'AAPL',
+      name: 'Apple',
+      assignedQuantity: 3,
+      openQuantity: 3,
+      averagePrice: 100,
+      marketPrice: 120,
+      purchasedAt: 10,
+      assignedAt: 20,
+      updatedAt: 30,
+      endedAt: null,
+      status: 'active'
+    };
+    const write = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({
+        snapshots: [{
+          guestId: 'guest-1',
+          snapshot: {
+            updatedAt: 30,
+            tranches: [{
+              id: 'AAPL:buy-1', ticker: 'AAPL', name: 'Apple', quantity: 3,
+              averagePrice: 100, marketPrice: 120, purchasedAt: 10
+            }]
+          },
+          ledgerUpserts: [assignment],
+          retainedAssignmentIds: ['assignment-aapl-1']
+        }]
+      })
+    }));
+    expect(write.status).toBe(200);
+    const stored = values.get('guest-portfolio:guest-1');
+    expect(stored.encryptedLedger).toMatch(/^aesgcm:v1:/);
+    expect(stored.ledger).toBeUndefined();
+    expect(JSON.stringify(stored)).not.toContain('assignment-aapl-1');
+
+    const guestOne = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-one-token')
+    }));
+    await expect(guestOne.json()).resolves.toMatchObject({
+      ledger: [{
+        assignmentId: 'assignment-aapl-1',
+        trancheId: 'AAPL:buy-1',
+        assignedQuantity: 3,
+        openQuantity: 3,
+        marketValue: 360,
+        status: 'active'
+      }]
+    });
+
+    const guestTwo = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-two-token')
+    }));
+    await expect(guestTwo.json()).resolves.toMatchObject({ ledger: [] });
+  });
+
+  it('updates open shares, marks sold tranches closed, and preserves assignment history', async () => {
+    const { store } = await makeScopedStore();
+    const publish = async (openQuantity, retainedAssignmentIds, ledgerUpserts = []) => store.fetch(
+      new Request('https://store.test/api/guest-portfolio', {
+        method: 'POST',
+        headers: authHeaders('admin-token'),
+        body: JSON.stringify({
+          snapshots: [{
+            guestId: 'guest-1',
+            snapshot: { updatedAt: 40, tranches: [] },
+            ledgerUpserts,
+            retainedAssignmentIds
+          }]
+        })
+      })
+    );
+    const base = {
+      assignmentId: 'assignment-msft-1',
+      trancheId: 'MSFT:buy-1',
+      ticker: 'MSFT',
+      name: 'Microsoft',
+      assignedQuantity: 4,
+      openQuantity: 4,
+      averagePrice: 100,
+      marketPrice: 110,
+      purchasedAt: 5,
+      assignedAt: 10,
+      updatedAt: 20,
+      endedAt: null,
+      status: 'active'
+    };
+    await expect(publish(4, [base.assignmentId], [base])).resolves.toMatchObject({ status: 200 });
+    await expect(publish(1.5, [base.assignmentId], [{
+      ...base, openQuantity: 1.5, marketPrice: 120, updatedAt: 30
+    }])).resolves.toMatchObject({ status: 200 });
+
+    const partial = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-one-token')
+    }));
+    await expect(partial.json()).resolves.toMatchObject({
+      ledger: [{
+        assignedQuantity: 4,
+        openQuantity: 1.5,
+        marketValue: 180,
+        status: 'active'
+      }]
+    });
+
+    await expect(publish(0, [base.assignmentId])).resolves.toMatchObject({ status: 200 });
+    const closed = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-one-token')
+    }));
+    await expect(closed.json()).resolves.toMatchObject({
+      ledger: [{
+        assignmentId: base.assignmentId,
+        assignedQuantity: 4,
+        openQuantity: 0,
+        marketValue: null,
+        status: 'closed',
+        endedAt: 40
+      }]
+    });
+
+    await expect(publish(0, [])).resolves.toMatchObject({ status: 200 });
+    const afterUnassign = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-one-token')
+    }));
+    await expect(afterUnassign.json()).resolves.toMatchObject({
+      ledger: [{ status: 'closed', openQuantity: 0 }]
+    });
+  });
+
+  it('keeps an existing ledger when a legacy client only posts the live snapshot', async () => {
+    const { store } = await makeScopedStore();
+    const record = {
+      assignmentId: 'assignment-tsla-1', trancheId: 'TSLA:buy-1', ticker: 'TSLA', name: 'Tesla',
+      assignedQuantity: 2, openQuantity: 2, averagePrice: 200, marketPrice: 210,
+      purchasedAt: 10, assignedAt: 20, updatedAt: 30, endedAt: null, status: 'active'
+    };
+    await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({
+        guestId: 'guest-1',
+        snapshot: { updatedAt: 30, tranches: [] },
+        ledgerUpserts: [record],
+        retainedAssignmentIds: [record.assignmentId]
+      })
+    }));
+    const legacyWrite = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({
+        guestId: 'guest-1',
+        snapshot: { updatedAt: 40, tranches: [] }
+      })
+    }));
+    expect(legacyWrite.status).toBe(200);
+
+    const guestRead = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-one-token')
+    }));
+    await expect(guestRead.json()).resolves.toMatchObject({
+      ledger: [{ assignmentId: record.assignmentId, status: 'active', openQuantity: 2 }]
+    });
+  });
+
+  it('rejects malformed tranche ledger records before writing', async () => {
+    const { store, values } = await makeScopedStore();
+    const response = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({
+        snapshots: [{
+          guestId: 'guest-1',
+          snapshot: { updatedAt: 20, tranches: [] },
+          ledgerUpserts: [{
+            assignmentId: 'bad', trancheId: 'AAPL:buy-1', ticker: 'AAPL',
+            assignedQuantity: 2, openQuantity: -1, assignedAt: 10, updatedAt: 20, status: 'active'
+          }],
+          retainedAssignmentIds: ['bad']
+        }]
+      })
+    }));
+    expect(response.status).toBe(400);
+    expect(values.has('guest-portfolio:guest-1')).toBe(false);
+  });
+
   it('rejects malformed projections and nonexistent guest targets', async () => {
     const { store } = await makeScopedStore();
     const invalid = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
