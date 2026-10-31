@@ -107,7 +107,12 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
       ) : filteredRecords.length === 0 ? (
         <p class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">No assignments match these filters.</p>
       ) : (
-        <div class="table-scroll-wrapper overflow-x-auto">
+        <div
+          role="region"
+          aria-label="Guest assignment history table"
+          tabindex={0}
+          class="table-scroll-wrapper overflow-x-auto rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-400"
+        >
           <table class="w-full min-w-[760px] border-collapse text-left text-xs">
             <thead>
               <tr class="border-b border-slate-800 text-[9px] uppercase tracking-wide text-slate-500">

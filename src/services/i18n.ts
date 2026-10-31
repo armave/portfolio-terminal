@@ -470,6 +470,7 @@ const RU: Record<string, string> = {
   "[Sell Error]": "Ошибка продажи",
   "[Freedom] Active sell target sync": "Синхронизация целевых цен активных продаж",
   "LOTS": "ЛОТЫ",
+  "Guest assignment history table": "Таблица истории назначений гостю",
   "Your cash-funded purchase allocations, including completed and removed assignments": "Ваши покупки за собственные средства, включая завершённые и снятые с назначения лоты",
   "Active": "Активные",
   "Closed": "Закрытые",

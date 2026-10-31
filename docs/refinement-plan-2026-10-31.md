@@ -169,3 +169,16 @@ The workspace navigation rendered the Settings destination as a gear emoji only.
 - [x] Both final-head workflows passed: [Validate run 41195907301](https://github.com/armave/portfolio-terminal/actions/runs/41195907301) and [Pull Request CI run 41195907313](https://github.com/armave/portfolio-terminal/actions/runs/41195907313).
 
 This is a presentation/accessibility-only change. Navigation state, keyboard behavior, permissions, and portfolio data are unchanged.
+
+## Follow-on implementation — keyboard-accessible guest assignment history
+
+The guest LOTS history table used a horizontally scrollable wrapper, but that wrapper was not keyboard-focusable or named as a region. Closed History already provides a focusable, labelled scroll region for its wide table; guest history should offer the same access pattern.
+
+- [x] Expose the guest assignment table scroller as a labelled region.
+- [x] Make the horizontal scroller keyboard-focusable with `tabindex={0}`.
+- [x] Add visible focus styling consistent with the existing indigo section theme.
+- [x] Add Russian localization for the region name and a regression test for the accessible Preact attributes.
+- [x] Confirm exact-head typecheck, full tests, production build, dead-code validation, and production dependency audit on `578527e`.
+- [x] Both workflows passed: [Pull Request CI run 41196224211](https://github.com/armave/portfolio-terminal/actions/runs/41196224211) and [Validate run 41196224268](https://github.com/armave/portfolio-terminal/actions/runs/41196224268).
+
+This is an accessibility/localization-only change. Table contents, filters, assignment records, financial data, and persistence are unchanged.
