@@ -258,7 +258,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               onClick={retryExecutedTrades}
               aria-label="Retry TradeNet history"
               class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto"
-            >Retrying…</button>
+            >Retry</button>
           )}
         </div>
       )}
