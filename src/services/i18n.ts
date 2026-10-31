@@ -587,7 +587,7 @@ function translateDynamicText(normalized: string): string | undefined {
     ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': ']
   ];
     ['Market depth · ', 'Market depth', ' · '],
-    ['Open market depth for ', 'Open market depth for', ''],
+    ['Open market depth for ', 'Open market depth for', ' '],
     ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
     ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
     ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
