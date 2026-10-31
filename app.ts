@@ -730,7 +730,12 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
       operationAt: number | string | null;
       value: number | null;
       netProfit: number | null;
-      guestMetrics: Record<string, { quantity: number; averagePrice: number | null; purchasedAt: number | null }>;
+      guestMetrics: Record<string, {
+        quantity: number;
+        averagePrice: number | null;
+        purchasedAt: number | null;
+        assignedAt: number | null;
+      }>;
       time: number | null;
     }> = [];
     for (const row of brokerSaleRows) {
@@ -761,6 +766,9 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
               : null;
             existing.purchasedAt = existing.purchasedAt !== null && metric.purchasedAt !== null
               ? Math.min(existing.purchasedAt, metric.purchasedAt) : null;
+            existing.assignedAt = existing.assignedAt !== null && metric.assignedAt !== null
+              ? Math.min(existing.assignedAt, metric.assignedAt)
+              : existing.assignedAt ?? metric.assignedAt;
             existing.quantity = guestQuantity;
           }
         }
