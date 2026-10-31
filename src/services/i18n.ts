@@ -466,6 +466,59 @@ const RU: Record<string, string> = {
   "[Market Data Error]": "Ошибка рыночных данных",
   "[Sell Error]": "Ошибка продажи",
   "[Freedom] Active sell target sync": "Синхронизация целевых цен активных продаж",
+  "LOTS": "ЛОТЫ",
+  "Your cash-funded purchase allocations, including completed and removed assignments": "Ваши покупки за собственные средства, включая завершённые и снятые с назначения лоты",
+  "Active": "Активные",
+  "Closed": "Закрытые",
+  "Open cost basis": "Себестоимость открытых лотов",
+  "Open market value": "Рыночная стоимость открытых лотов",
+  "All tickers": "Все тикеры",
+  "Status": "Статус",
+  "All statuses": "Все статусы",
+  "Assigned from": "Назначено с",
+  "Assigned to": "Назначено по",
+  "Assignment history will appear here after the administrator's next successful portfolio sync. Only assignments created before this history feature and still open can be backfilled.": "История назначений появится здесь после следующей успешной синхронизации портфеля администратором. Можно восстановить только назначения, созданные до появления этой функции и остающиеся открытыми.",
+  "No assignments match these filters.": "Нет назначений, соответствующих выбранным фильтрам.",
+  "Assigned": "Назначено",
+  "Open shares": "Остаток акций",
+  "Avg. cost": "Средняя цена",
+  "Open value": "Стоимость остатка",
+  "Assigned cost basis across filtered records:": "Себестоимость назначенных лотов по выбранным записям:",
+  "· Some open holdings have no current quote": "· Для некоторых открытых активов нет актуальной котировки",
+  "Market value is shown only for open assigned holdings. Realized profit/loss is not inferred from assignment history. Pre-feature open assignments are dated when first recorded.": "Рыночная стоимость показывается только для открытых назначенных активов. Реализованная прибыль/убыток по истории назначений не рассчитывается. Для назначений, существовавших до появления этой функции, указывается дата первой записи.",
+  "Preparing lots": "Подготовка раздела лотов",
+  "Loading your assigned tranche history…": "Загрузка истории назначенных вам лотов…",
+  "Workspace navigation": "Навигация по разделам",
+  "Preparing margin desk": "Подготовка маржинального раздела",
+  "Refreshing live quotes and preparing the latest portfolio view…": "Обновление актуальных котировок и подготовка последнего состояния портфеля…",
+  "Preparing balance": "Подготовка баланса",
+  "Loading holdings and account allocations…": "Загрузка активов и распределения по счетам…",
+  "Preparing trades": "Подготовка сделок",
+  "Restoring saved trades and broker activity…": "Восстановление сохранённых сделок и активности брокера…",
+  "Preparing settings": "Подготовка настроек",
+  "Loading account access and preferences…": "Загрузка доступа к учётной записи и настроек…",
+  "Market price": "Рыночная цена",
+  "Average entry": "Средняя цена входа",
+  "Average value": "Средняя стоимость",
+  "Market value": "Рыночная стоимость",
+  "Allocation": "Распределение",
+  "Summary": "Сводка",
+  "Average cost": "Средняя стоимость",
+  "↻ Refresh": "↻ Обновить",
+  "Read-only order book snapshot · TradeNet": "Снимок стакана заявок TradeNet · только для чтения",
+  "Best bid": "Лучшая цена покупки",
+  "Best ask": "Лучшая цена продажи",
+  "Bids · buyers": "Заявки на покупку · покупатели",
+  "Asks · sellers": "Заявки на продажу · продавцы",
+  "TradeNet returned an unrecognized market-depth response.": "TradeNet вернул ответ стакана заявок в неизвестном формате.",
+  "Open market depth": "Открыть стакан заявок",
+  "Close market depth": "Закрыть стакан заявок",
+  "API keys": "Ключи API",
+  "· Refreshing…": "· Обновление…",
+  "Refresh news": "Обновить новости",
+  "Could not load users.": "Не удалось загрузить список пользователей.",
+  "Could not create user.": "Не удалось создать пользователя.",
+  "Could not delete user.": "Не удалось удалить пользователя.",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -531,6 +584,18 @@ function translateDynamicText(normalized: string): string | undefined {
       ? `Стоимость позиции ${positionValue[1]} (уже на ${positionValue[2]}% ниже порога)`
       : `Стоимость позиции ${positionValue[1]}`;
   }
+
+  const buffer = normalized.match(/^([\d.,]+)% buffer$/i);
+  if (buffer) return 'Запас: ' + buffer[1] + '%';
+
+  const recordRange = normalized.match(/^(\d+) [/] (\d+) records$/i);
+  if (recordRange) {
+    const total = Number(recordRange[2]);
+    return recordRange[1] + ' / ' + recordRange[2] + ' ' + russianPlural(total, 'запись', 'записи', 'записей');
+  }
+
+  const unassigned = normalized.match(/^(· )?(\d+) unassigned$/i);
+  if (unassigned) return (unassigned[1] || '') + 'Без назначения: ' + unassigned[2];
 
   const showTranches = normalized.match(/^Show (\d+) tranches$/i);
   if (showTranches) {
