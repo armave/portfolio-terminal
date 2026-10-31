@@ -15,6 +15,26 @@ describe("normalizeFreedomQuote", () => {
     });
   });
 
+  it("normalizes the documented TradeNet stock-quote response fields", () => {
+    expect(normalizeFreedomQuote({
+      quotes: [{
+        c: "GOOGL.US",
+        ltp: "279.84",
+        pp: "274.00",
+        chg: "5.84",
+        pcp: "2.1314",
+        ltt: 1793450000
+      }]
+    }, "GOOGL")).toMatchObject({
+      symbol: "GOOGL",
+      price: 279.84,
+      previousClose: 274,
+      change: 5.84,
+      changePercent: 2.1314,
+      sourceTimestamp: 1793450000000
+    });
+  });
+
   it("derives change from previous close when the API omits it", () => {
     expect(normalizeFreedomQuote({ lastPrice: 110, previous_close: 100 }, "XYZ")).toMatchObject({
       price: 110,
