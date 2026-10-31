@@ -99,11 +99,20 @@ export function buildHoldingsProjection(
   legacyHoldings: Holding[],
   fallbackDate = todayIso()
 ): Holding[] {
+  // Index compatibility metadata once. The previous per-position find() scanned
+  // the full legacy array for every ticker, which made normalization quadratic.
+  // Keep the first matching row to preserve Array.find() compatibility semantics.
+  const legacyByTicker = new Map<string, Holding>();
+  for (const holding of Array.isArray(legacyHoldings) ? legacyHoldings : []) {
+    const legacyTicker = String(holding?.ticker || '').trim().toUpperCase();
+    if (legacyTicker && !legacyByTicker.has(legacyTicker)) {
+      legacyByTicker.set(legacyTicker, holding);
+    }
+  }
+
   return Object.keys(positions).map((ticker) => {
     const position = positions[ticker];
-    const legacy = (Array.isArray(legacyHoldings) ? legacyHoldings : []).find(
-      (holding) => String(holding?.ticker || '').trim().toUpperCase() === ticker
-    );
+    const legacy = legacyByTicker.get(ticker);
     const tranches: Tranche[] = (position.tranches || []).map((tranche, index) => ({
       id: `${ticker}-${index}`,
       shares: Number(tranche.qty) || 0,
