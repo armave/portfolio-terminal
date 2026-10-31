@@ -10,6 +10,7 @@ import { listUsers, type AuthUser } from '../services/api';
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage } from '../services/i18n';
+import { MarketDepthButton } from './MarketDepthButton';
 
 const BADGE_STYLES: Record<string, string> = {
   bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
@@ -184,6 +185,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       isGroupStart: index === 0
     }))
   );
+  const renderedMarketDepthTickers = new Set<string>();
 
   return (
     <>
@@ -209,7 +211,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
       <div class="space-y-2">
         {guestUserId ? (
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Your active stock cards">
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-2" aria-label="Your active stock cards">
             {guestHoldings.length === 0 ? (
               <div class="col-span-full rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400" role="status">
                 <p class="font-semibold text-slate-200">No stocks are assigned to your account yet.</p>
@@ -244,7 +246,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 <article key={holding.ticker} class="guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-4 shadow-sm">
                   <div class="flex items-start justify-between gap-3">
                     <div>
-                      <h3 class="text-lg font-black tracking-wide text-cyan-300">{holding.ticker}</h3>
+                      <div class="flex items-center gap-2">
+                        <h3 class="text-lg font-black tracking-wide text-cyan-300">{holding.ticker}</h3>
+                      </div>
                     </div>
                     {Number.isFinite(change) && <span class={`rounded-full border px-2 py-1 text-[10px] font-bold ${Number(change) >= 0 ? 'border-emerald-900 bg-emerald-950/40 text-emerald-300' : 'border-rose-900 bg-rose-950/40 text-rose-300'}`}>{Number(change) > 0 ? '+' : ''}{Number(change).toFixed(2)}%</span>}
                   </div>
@@ -328,6 +332,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       : null;
                     const allocation = stocksTotal > 0 ? (val / stocksTotal) * 100 : 0;
                     const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
+                    const showMarketDepthButton = !renderedMarketDepthTickers.has(h.ticker);
+                    renderedMarketDepthTickers.add(h.ticker);
 
                     const hasChange = Number.isFinite(h.quoteDetails?.change);
                     const direction: SentimentDirection = hasChange
@@ -351,6 +357,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                           <td data-label="Ticker" class="py-2 px-3 text-cyan-300 font-bold">
                             <div class="inline-flex items-center gap-1.5">
                               <span>{h.ticker}</span>
+                              {isAdmin && showMarketDepthButton && <MarketDepthButton ticker={h.ticker} compact />}
                               <span
                                 data-sentiment={direction}
                                 title={

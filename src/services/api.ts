@@ -1205,6 +1205,22 @@ export async function fetchFreedomTradeNetActiveOrders(): Promise<any> {
   return proxyFetch('freedom-orders', { active_only: 1 }, { cache: 'no-store' });
 }
 
+/** Fetch one read-only TradeNet order-book snapshot without response caching. */
+export async function fetchFreedomTradeNetMarketDepth(ticker: string): Promise<any> {
+  const symbol = String(ticker || '').trim().toUpperCase();
+  if (!/^[A-Z0-9.^=-]{1,20}$/.test(symbol)) throw new Error('A valid ticker is required to load market depth.');
+  return proxyFetch('freedom-market-depth', { symbol }, { cache: 'no-store' });
+}
+
+/** Ensure the administrator's live TradeNet SID is present in server-side storage. */
+export async function ensureFreedomTradeNetSession(): Promise<any> {
+  return proxyFetch('freedom-session', {}, {
+    method: 'POST',
+    body: JSON.stringify({}),
+    cache: 'no-store'
+  });
+}
+
 export interface FreedomActiveOrder {
   id: string;
   ticker: string;

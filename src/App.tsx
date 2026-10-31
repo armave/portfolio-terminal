@@ -9,13 +9,14 @@ import { TickerTabs } from './components/TickerTab';
 import { SummaryMetricsGrid } from './components/SummaryMetricsGrid';
 import { ProjectionsTable } from './components/ProjectionsTable';
 import { MarketInsightsPanel } from './components/MarketInsightsPanel';
+import { MarketDepthButton } from './components/MarketDepthButton';
 import { TradingConsole } from './components/TradingConsole';
 import { BoardExternalLinks } from './components/BoardExternalLinks';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
 import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
 import { MarginIntelligenceModal, type MarginIntelligenceState, type MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/commandDispatcher';
-import { fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
+import { ensureFreedomTradeNetSession, fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
 import { portfolioStore, usePortfolio, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { resolveActiveView } from './ui/renderBoard';
@@ -344,6 +345,28 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   }, [permissions.canManageBackups]);
 
   useEffect(() => {
+    if (currentUser?.role !== 'admin') return;
+    let cancelled = false;
+    const initializeTradeNetSession = async () => {
+      try {
+        // Restore the signed-in app session before making the admin-only Worker request.
+        const gatewayToken = await restoreGatewaySecret();
+        if (!gatewayToken.trim()) return;
+        await ensureFreedomTradeNetSession();
+      } catch (error) {
+        if (!cancelled) {
+          console.warn(
+            'TradeNet live-data session initialization failed:',
+            error instanceof Error ? error.message : 'Unknown error'
+          );
+        }
+      }
+    };
+    void initializeTradeNetSession();
+    return () => { cancelled = true; };
+  }, [currentUser?.id, currentUser?.role]);
+
+  useEffect(() => {
     const previousUser = previousCurrentUserRef.current;
     previousCurrentUserRef.current = currentUser;
     // A guest may use Settings after signing in, but the sign-in transition itself
@@ -512,6 +535,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               class="board-title-actions flex flex-wrap items-center gap-2"
             >
               <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
+              {permissions.isAdmin && portfolioSnapshot.positions?.[activeDeskView]?.ticker && (
+                <MarketDepthButton ticker={portfolioSnapshot.positions[activeDeskView].ticker} />
+              )}
               <div id="boardAnalystConsensus" class={analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
               <div id="boardExternalLinks" class="flex items-center gap-2"><BoardExternalLinks /></div>
             </div>
