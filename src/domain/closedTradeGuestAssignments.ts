@@ -108,9 +108,16 @@ export function buildClosedTradeGuestLedgerUpserts(
     const isAutomaticallyAttributed = !Object.prototype.hasOwnProperty.call(savedAllocations, allocationKey);
     const allocation = savedAllocations[allocationKey];
     const currentGuestId = String(allocation?.guestId || '').trim();
-    const currentCashQuantity = Number(allocation?.cashQuantity);
+    const sourceQuantity = Number(source.quantity);
+    const rawCashQuantity = Number(allocation?.cashQuantity);
+    const currentCashQuantity = Number.isFinite(sourceQuantity) && sourceQuantity >= 0 &&
+      Number.isFinite(rawCashQuantity)
+      ? Math.min(sourceQuantity, rawCashQuantity)
+      : rawCashQuantity;
     const hasCurrentAssignment = Boolean(currentGuestId) &&
       Number.isFinite(currentCashQuantity) && currentCashQuantity > 0 && currentCashQuantity <= 1e9;
+    const maximumAssignmentQuantity = Number.isFinite(sourceQuantity) && sourceQuantity > 0
+      ? sourceQuantity : 1e9;
 
     const history = new Map<string, { guestId: string; assignedQuantity: number; assignedAt: number }>();
     if (isAutomaticallyAttributed) {
@@ -128,7 +135,9 @@ export function buildClosedTradeGuestLedgerUpserts(
     } else {
       for (const item of Array.isArray(allocation?.guestAssignments) ? allocation.guestAssignments : []) {
         const guestId = String(item?.guestId || '').trim();
-        const quantity = Number(item?.assignedQuantity);
+        const rawQuantity = Number(item?.assignedQuantity);
+        const quantity = Number.isFinite(rawQuantity)
+          ? Math.min(maximumAssignmentQuantity, rawQuantity) : rawQuantity;
         const assignedAt = Number(item?.assignedAt);
         if (!guestId || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9) continue;
         history.set(guestId, {
