@@ -26,6 +26,11 @@ export function ClosedHistoryDesk() {
   const historyHydrated = useRef(false);
   const cashflowSyncStarted = useRef(false);
   const latestBrokerFetch = useRef<any[] | null>(null);
+  const retryBrokerTrades = () => {
+    setBrokerTradesError(false);
+    setBrokerTradesLoading(true);
+    emitBrokerEvent('broker:request-executed-trades');
+  };
   // Load cloud history once. An existing cloud history record is authoritative;
   // local history is used only when no cloud record exists.
   useEffect(() => {
@@ -444,6 +449,18 @@ export function ClosedHistoryDesk() {
       </div>
 
       {cashflowSyncMessage && <p role="alert" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-200 transition-all">{cashflowSyncMessage}</p>}
+      {brokerTradesError && trades.length > 0 && (
+        <div role="alert" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+          <span>TradeNet refresh failed. Showing saved history, which may be out of date.</span>
+          <button
+            type="button"
+            onClick={retryBrokerTrades}
+            disabled={brokerTradesLoading}
+            aria-label="Retry TradeNet history"
+            class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+          >Retry</button>
+        </div>
+      )}
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{hasUnknownProfit ? 'Known net P&L' : 'Realized net P&L'}</div>
@@ -466,17 +483,18 @@ export function ClosedHistoryDesk() {
         </div>
       </div>
 
-      <div class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/60">
-        <table class="w-full text-left text-xs font-mono">
+      <div role="region" aria-label="Closed trade history" tabindex={0} class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500">
+        <table class="w-full min-w-[760px] text-left text-xs font-mono">
+          <caption class="sr-only">Closed trade history with ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
           <thead class="border-b border-slate-800 bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-400">
             <tr>
-              <th class="py-2.5 px-3">Ticker</th>
-              <th class="py-2.5 px-3">Date Closed</th>
-              <th class="py-2.5 px-3 text-right">Shares</th>
-              <th class="py-2.5 px-3 text-right">Duration</th>
-              <th class="py-2.5 px-3 text-right">Fees</th>
-              <th class="py-2.5 px-3 text-right">Commissions</th>
-              <th class="py-2.5 px-3 text-right">Net Profit</th>
+              <th scope="col" class="py-2.5 px-3">Ticker</th>
+              <th scope="col" class="py-2.5 px-3">Date Closed</th>
+              <th scope="col" class="py-2.5 px-3 text-right">Shares</th>
+              <th scope="col" class="py-2.5 px-3 text-right">Duration</th>
+              <th scope="col" class="py-2.5 px-3 text-right">Fees</th>
+              <th scope="col" class="py-2.5 px-3 text-right">Commissions</th>
+              <th scope="col" class="py-2.5 px-3 text-right">Net Profit</th>
             </tr>
           </thead>
           <tbody id="closedTradesTableBody" class="divide-y divide-slate-800/60">
@@ -485,7 +503,18 @@ export function ClosedHistoryDesk() {
                 <span class="inline-flex items-center gap-2"><span class="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-purple-400" aria-hidden="true" />Loading closed trade history…</span>
               </td></tr>
             ) : brokerTradesError && trades.length === 0 ? (
-              <tr><td colSpan={7} class="py-8 text-center text-rose-400">Unable to load TradeNet history. Please retry.</td></tr>
+              <tr><td colSpan={7} class="py-8 text-center text-rose-400">
+                <div class="flex flex-col items-center justify-center gap-2">
+                  <span>Unable to load TradeNet history. Please retry.</span>
+                  <button
+                    type="button"
+                    onClick={retryBrokerTrades}
+                    disabled={brokerTradesLoading}
+                    aria-label="Retry TradeNet history"
+                    class="rounded border border-rose-800/70 px-3 py-1.5 font-semibold text-rose-200 transition hover:bg-rose-950/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  >Retry</button>
+                </div>
+              </td></tr>
             ) : trades.length === 0 ? (
               <tr>
                 <td colSpan={7} class="py-8 text-center text-slate-500 italic">
