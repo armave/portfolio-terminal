@@ -823,6 +823,18 @@ function translateDynamicText(normalized: string): string | undefined {
     return 'Только администраторы могут ' + (actions[adminAction[1].toLowerCase()] || adminAction[1]) + '.';
   }
 
+  const backupExport = normalized.match(/^\[Backup\]: Exported state to (.+)\.$/i);
+  if (backupExport) return '[Резервная копия]: Состояние экспортировано в файл ' + backupExport[1] + '.';
+
+  const backupImport = normalized.match(/^\[Backup Import\]: Imported (.+) into this browser\. Check KV cloud status for sync results\.$/i);
+  if (backupImport) return '[Импорт резервной копии]: Файл ' + backupImport[1] +
+    ' импортирован в этот браузер. Проверьте состояние синхронизации с облаком KV.';
+
+  const backupError = normalized.match(/^\[Backup Error\]: Could not import backup \((.+)\)\.$/i);
+  if (backupError) return '[Ошибка импорта резервной копии]: Не удалось импортировать резервную копию (' + backupError[1] + ').';
+  const backupToast = normalized.match(/^Backup import failed: (.+)$/i);
+  if (backupToast) return 'Не удалось импортировать резервную копию: ' + backupToast[1];
+
   const prefixes: Array<[string, string, string]> = [
     ['Name for ', 'Name for ', ''],
     ['Role for ', 'Role for ', ''],
