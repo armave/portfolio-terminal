@@ -25,6 +25,11 @@ describe('mobile workspace navigation styles', () => {
     expect(navigationComponent).toContain('<span class="workspace-nav-label--desktop">COMBINED PORTFOLIO</span>');
     expect(navigationComponent).toContain('aria-label="Combined portfolio"');
     expect(navigationComponent).toContain('Margin: ${tickers[0]}');
+    expect(mobileNavigationStyles).toMatch(/\\.workspace-nav-equity-badge\\s*\\{\\s*display:\\s*none;/);
+    expect(navigationComponent).toContain('class={`workspace-nav-equity-badge');
+    expect(navigationComponent).toContain('aria-label="Balance"');
+    expect(navigationComponent).toContain('aria-hidden="true"');
+    expect(navigationComponent).not.toContain('aria-label={`Balance');
     expect(navigationComponent).toContain('aria-label="Trades"');
     expect(navigationComponent).toContain('aria-label="Settings"');
   });
