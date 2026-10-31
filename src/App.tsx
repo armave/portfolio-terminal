@@ -514,6 +514,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
       const request = refreshActiveOrders({
         restoreGatewaySecret,
+        isCurrent: () => brokerSessionIdentityRef.current.isCurrent(session),
         fetchActiveOrders: fetchFreedomTradeNetActiveOrders,
         normalizeActiveOrders: normalizeFreedomActiveOrders,
         onSuccess: (orders) => {
