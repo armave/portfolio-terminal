@@ -39,6 +39,29 @@ export function preservePersistedBrokerFeeAllocations<T extends FeeRecord>(
   });
 }
 
+
+/** Merge a refreshed bounded broker page into the retained execution history. */
+export function mergeBrokerExecutionHistory<T extends FeeRecord>(persisted: T[], fetched: T[]): T[] {
+  const byId = new Map<string, T>();
+  for (const trade of persisted) {
+    const id = trade?.id == null ? '' : String(trade.id);
+    if (id) byId.set(id, trade);
+  }
+  for (const trade of fetched) {
+    const id = trade?.id == null ? '' : String(trade.id);
+    if (!id) continue;
+    const previous = byId.get(id);
+    byId.set(id, previous ? { ...previous, ...trade } : trade);
+  }
+  return [...byId.values()].sort((a, b) => {
+    const aTime = Date.parse(String(a.executedAt ?? a.date ?? ''));
+    const bTime = Date.parse(String(b.executedAt ?? b.date ?? ''));
+    if (!Number.isFinite(aTime)) return Number.isFinite(bTime) ? -1 : 0;
+    if (!Number.isFinite(bTime)) return 1;
+    return aTime - bTime || String(a.id).localeCompare(String(b.id));
+  });
+}
+
 export function applyCashflowAllocationsToBrokerExecutions(
   executions: FeeRecord[],
   allocationsBySell: ReadonlyMap<number, Record<string, number>>

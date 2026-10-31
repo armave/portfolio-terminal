@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyCashflowAllocationsToBrokerExecutions,
+  mergeBrokerExecutionHistory,
   applyCashflowAllocationsToClosedTrades,
   deduplicateClosedHistoryRows,
   preservePersistedBrokerFeeAllocations,
@@ -266,5 +267,23 @@ it('treats legacy totalCommissions as commission-only when no aggregate fee fiel
     marginInterest: 3,
     marginFee: 3,
     netProfit: 93
+  });
+});
+
+describe('bounded broker execution history merge', () => {
+  it('retains older executions and replaces refreshed rows by stable trade ID', () => {
+    const older = { id: 'old-1', ticker: 'AAPL', side: 'buy', quantity: 5, executedAt: '2025-01-01T10:00:00Z' };
+    const refreshed = { id: 'recent-1', ticker: 'AAPL', side: 'sell', quantity: 5, executedAt: '2026-01-01T10:00:00Z' };
+    const corrected = { ...refreshed, profit: 12 };
+    const merged = mergeBrokerExecutionHistory([older, refreshed], [corrected]);
+    expect(merged).toHaveLength(2);
+    expect(merged[0]).toEqual(older);
+    expect(merged[1]).toMatchObject({ id: 'recent-1', profit: 12 });
+  });
+
+  it('deduplicates repeated persisted pages while retaining distinct operation IDs', () => {
+    const a = { id: 'trade-a', ticker: 'AAPL', quantity: 1 };
+    const b = { id: 'trade-b', ticker: 'AAPL', quantity: 1 };
+    expect(mergeBrokerExecutionHistory([a, b, a], [a, b])).toEqual([a, b]);
   });
 });

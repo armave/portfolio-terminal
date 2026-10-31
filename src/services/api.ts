@@ -1365,8 +1365,30 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
     }
     return null;
   };
-  return rows.map((row: any, index: number) => ({
-    id: String(row?.id ?? row?.trade_id ?? row?.tradeId ?? row?.order_id ?? index),
+  const fallbackOccurrences = new Map<string, number>();
+  const stableFallbackId = (row: any): string => {
+    const fingerprint = JSON.stringify([
+      row?.order_id ?? row?.orderId ?? '',
+      row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? '',
+      row?.oper ?? row?.operation ?? row?.side ?? row?.buy_sell ?? row?.type ?? '',
+      row?.date ?? row?.time ?? row?.datetime ?? row?.exec_time ?? '',
+      row?.q ?? row?.quantity ?? row?.qty ?? '',
+      row?.p ?? row?.price ?? row?.exec_price ?? '',
+      row?.v ?? row?.summ ?? row?.value ?? '',
+      row?.profit ?? row?.pnl ?? ''
+    ]);
+    let hash = 2166136261;
+    for (let index = 0; index < fingerprint.length; index += 1) {
+      hash ^= fingerprint.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    const key = (hash >>> 0).toString(36);
+    const occurrence = fallbackOccurrences.get(key) || 0;
+    fallbackOccurrences.set(key, occurrence + 1);
+    return `fallback-${key}-${occurrence}`;
+  };
+  return rows.map((row: any) => ({
+    id: String(row?.id ?? row?.trade_id ?? row?.tradeId ?? stableFallbackId(row)),
     ticker: String(row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? ''),
     // Ignore unrecognized operation placeholders and continue to side/type aliases.
     side: normalizedSide(row?.operation, row?.side, row?.buy_sell, row?.type) || 'Unknown',

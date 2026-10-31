@@ -5,7 +5,7 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage } from '../services/i18n';
 import { fetchFreedomCashflows, pullCloudHistory, pushCloudHistory } from '../services/api';
 import { loadSavedHistory, saveSavedHistory } from '../services/storage';
-import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
+import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFees';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from '../domain/brokerExecutionMetrics';
@@ -91,7 +91,12 @@ export function ClosedHistoryDesk() {
     const sourceExecutions = executions.map((trade: any) =>
       Object.fromEntries(Object.entries(trade).filter(([field]) => !calculatedFields.has(field)))
     );
-    const key = JSON.stringify({ cashflows, executions: sourceExecutions });
+    const sourceAppTrades = (state.closedTrades || []).map((trade: any) =>
+      Object.fromEntries(Object.entries(trade).filter(([field]) =>
+        !['marginFee', 'marginInterest', 'feesAndCommissions', 'totalCommissions', 'netProfit', 'netRealizedGain'].includes(field)
+      ))
+    );
+    const key = JSON.stringify({ cashflows, executions: sourceExecutions, appTrades: sourceAppTrades });
     if (key === lastRecalculationKey.current) {
       setCashflowAllocationReady(true);
       return;
@@ -101,7 +106,7 @@ export function ClosedHistoryDesk() {
       if (success) lastRecalculationKey.current = key;
       setCashflowAllocationReady(true);
     });
-  }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, brokerTrades]);
+  }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, state.closedTrades, brokerTrades]);
   const processCashflowRows = async (
     cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
     requireCloudSync = false
@@ -239,10 +244,13 @@ export function ClosedHistoryDesk() {
       // pre-hydration broker response. Restore real saved allocations by ID before
       // writing these rows into the canonical store or triggering cloud sync.
       const savedFeeRows = loadSavedHistory().brokerExecutedTrades;
-      const normalized = preservePersistedBrokerFeeAllocations(
+      const normalizedPage = preservePersistedBrokerFeeAllocations(
         normalizedRaw,
         [...savedFeeRows, ...stored]
       );
+      // TradeNet returns a bounded recent page. Retain older persisted executions
+      // so FIFO matching and margin-fee allocation do not lose their opening lots.
+      const normalized = mergeBrokerExecutionHistory([...savedFeeRows, ...stored], normalizedPage);
       setBrokerTrades(normalized);
       setBrokerTradesLoading(false);
       setBrokerTradesError(false);
