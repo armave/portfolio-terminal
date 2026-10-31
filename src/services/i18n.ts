@@ -773,7 +773,7 @@ function translateDynamicText(normalized: string): string | undefined {
       (exitResultLine[4] ? ' · ЛУЧШИЙ' : '');
   }
   const bestExit = normalized.match(/^BEST: (.+) at (\$[\d,.]+) · ([+-]?\$[\d,.]+) net$/i);
-  if (bestExit) return 'ЛУЧШИЙ: ' + translateText(bestExit[1], 'ru') + ' по цене ' + bestExit[2] + ' · ' + bestExit[3] + ' чистыми';
+  if (bestExit) return 'ЛУЧШИЙ: ' + (/^today$/i.test(bestExit[1]) ? 'сегодня' : translateText(bestExit[1], 'ru')) + ' по цене ' + bestExit[2] + ' · ' + bestExit[3] + ' чистыми';
   const feeNote = normalized.match(/^Fees included: (.+)\.$/i);
   if (feeNote) return 'Учтённые расходы: ' + feeNote[1]
     .replace(/buy commission/gi, 'комиссия за покупку')
