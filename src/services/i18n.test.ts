@@ -16,6 +16,11 @@ describe('app localization', () => {
     expect(translateText('Unknown market symbol', 'ru')).toBe('Unknown market symbol');
   });
 
+  it('localizes the keyboard-scrollable guest assignment table region', () => {
+    expect(translateText('Guest assignment history table', 'ru'))
+      .toBe('Таблица истории назначений гостю');
+  });
+
   it('translates text and accessible labels when Preact nodes are created', () => {
     setAppLanguage('ru');
     const vnode = h('button', { title: 'Settings', 'aria-label': 'Settings' }, 'Settings');
