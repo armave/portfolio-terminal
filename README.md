@@ -144,6 +144,18 @@ Freedom TradeNet account data is the preferred source for the broker-reported US
 
 If Freedom account data is unavailable or the Gateway Secret has not been configured, locally saved portfolio data remains available and the app surfaces a warning. A previously loaded broker snapshot is marked stale after a failed refresh; it must not be presented as a current broker balance. Quote freshness is marked unknown when the broker snapshot does not provide a verifiable market observation timestamp.
 
+### Live market depth and TradeNet session
+
+For production order-book snapshots, configure these Cloudflare Worker secrets:
+
+- `FREEDOM_LOGIN` and `FREEDOM_PASSWORD`: TradeNet account credentials used only by the Worker to establish the live account session.
+- `FREEDOM_PUBLIC_KEY` and `FREEDOM_PRIVATE_KEY`: existing API-key pair used by the signed REST market-data endpoints.
+- `GATEWAY_SECRET`: existing internal Worker-to-Durable-Object authentication secret.
+
+The administrator dashboard requests TradeNet session initialization after sign-in. The Worker stores the returned SID in the existing `PORTFOLIO_STATE_DO` Durable Object, refreshes it ahead of expiry, and never returns the SID to the browser. The live order-book feed uses TradeNet's production WebSocket endpoint and is restricted to real-account sessions. No additional account ID or currency secret is needed for a single linked USD account.
+
+If TradeNet requires an additional SMS or verification challenge during password login, the automatic login attempt will fail safely and will not persist a session; interactive challenge handling is not currently implemented.
+
 ## Market Data & API Keys
 
 Provider keys are optional. Without API keys, the calculator, scenario engine, backup system, and manual tracking remain functional.
