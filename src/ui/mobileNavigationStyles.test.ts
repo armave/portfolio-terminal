@@ -8,10 +8,10 @@ const mobileNavigationStyles = markerIndex >= 0 ? stylesheet.slice(markerIndex) 
 
 describe('mobile workspace navigation styles', () => {
   it('wraps every destination into visible rows on narrow screens', () => {
-    expect(mobileNavigationStyles).toMatch(/@media\\s*\\(max-width:\\s*768px\\)/);
-    expect(mobileNavigationStyles).toMatch(/#tickerTabs\\s*\\{[^}]*flex-wrap:\\s*wrap;/);
-    expect(mobileNavigationStyles).toMatch(/#tickerTabs\\s*\\{[^}]*overflow-x:\\s*visible;/);
-    expect(mobileNavigationStyles).toMatch(/#tickerTabs\\s*\\{[^}]*overflow-y:\\s*visible;/);
-    expect(mobileNavigationStyles).toMatch(/#tickerTabs\\s*\\{[^}]*scroll-snap-type:\\s*none;/);
+    expect(mobileNavigationStyles).toMatch(/@media\s*\(max-width:\s*768px\)/);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*flex-wrap:\s*wrap;/);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*overflow-x:\s*visible;/);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*overflow-y:\s*visible;/);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*scroll-snap-type:\s*none;/);
   });
 });
