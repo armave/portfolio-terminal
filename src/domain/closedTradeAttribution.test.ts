@@ -48,13 +48,13 @@ describe('closed trade tranche attribution', () => {
     }).get(sale);
 
     expect(result).toMatchObject({
-      averagePrice: 106.6666666667,
+      averagePrice: 106.66666666666667,
       purchasedAt: at(9),
       guestAllocations: [{ guestId: 'guest-cost', quantity: 3 }],
       guestMetrics: {
         'guest-cost': {
           quantity: 3,
-          averagePrice: 106.6666666667,
+          averagePrice: 106.66666666666667,
           purchasedAt: at(9)
         }
       }
