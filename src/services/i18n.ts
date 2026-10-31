@@ -502,7 +502,6 @@ const RU: Record<string, string> = {
   "Tranche date": "Дата покупки",
   "Tranche date from": "Дата покупки с",
   "Tranche date to": "Дата покупки по",
-  "Net P&L": "Чистая прибыль/убыток",
   "Open shares": "Остаток акций",
   "Avg. cost": "Средняя цена",
   "Open value": "Стоимость остатка",
