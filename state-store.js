@@ -371,7 +371,7 @@ export class PortfolioStateDO {
     return authJson({ error: "Unsupported authentication endpoint." }, 404);
   }
 
-  async encryptGuestProjection(snapshot) {
+  async encryptGuestPayload(payload) {
     const workspaceKey = await this.ctx.storage.get(AUTH_CLOUD_KEY_KEY);
     if (typeof workspaceKey !== "string" || !workspaceKey) {
       throw new Error("Workspace encryption key is not initialized.");
@@ -382,7 +382,7 @@ export class PortfolioStateDO {
     const ciphertext = await crypto.subtle.encrypt(
       { name: "AES-GCM", iv: nonce, tagLength: 128 },
       key,
-      authEncoder.encode(JSON.stringify(snapshot))
+      authEncoder.encode(JSON.stringify(payload))
     );
     const toBase64 = (bytes) => {
       let binary = "";
@@ -392,7 +392,7 @@ export class PortfolioStateDO {
     return "aesgcm:v1:" + toBase64(nonce) + ":" + toBase64(new Uint8Array(ciphertext));
   }
 
-  async decryptGuestProjection(envelope) {
+  async decryptGuestPayload(envelope) {
     if (typeof envelope !== "string" || !envelope.startsWith("aesgcm:v1:")) {
       throw new Error("Invalid guest portfolio envelope.");
     }
@@ -419,9 +419,19 @@ export class PortfolioStateDO {
       ciphertext
     );
     const parsed = JSON.parse(new TextDecoder().decode(plaintext));
-    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.tranches)) {
-      throw new Error("Invalid guest portfolio snapshot.");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Invalid guest portfolio payload.");
     }
+    return parsed;
+  }
+
+  async encryptGuestProjection(snapshot) {
+    return this.encryptGuestPayload(snapshot);
+  }
+
+  async decryptGuestProjection(envelope) {
+    const parsed = await this.decryptGuestPayload(envelope);
+    if (!Array.isArray(parsed.tranches)) throw new Error("Invalid guest portfolio snapshot.");
     return parsed;
   }
 
@@ -464,6 +474,105 @@ export class PortfolioStateDO {
     return { snapshot: { updatedAt: Number(source.updatedAt), tranches } };
   }
 
+  normalizeGuestTrancheLedgerRecord(source) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      return { error: "Invalid guest tranche ledger record." };
+    }
+    const assignmentId = typeof source.assignmentId === "string" ? source.assignmentId.trim() : "";
+    const trancheId = typeof source.trancheId === "string" ? source.trancheId.trim() : "";
+    const ticker = typeof source.ticker === "string" ? source.ticker.trim().toUpperCase() : "";
+    const name = typeof source.name === "string" ? source.name.trim().slice(0, 120) : ticker;
+    const assignedQuantity = Number(source.assignedQuantity);
+    const openQuantity = Number(source.openQuantity);
+    const assignedAt = Number(source.assignedAt);
+    const updatedAt = Number(source.updatedAt);
+    const status = source.status;
+    if (!assignmentId || assignmentId.length > 240 || !trancheId || trancheId.length > 200 ||
+        !/^[A-Z0-9.^=-]{1,20}$/.test(ticker) ||
+        !Number.isFinite(assignedQuantity) || assignedQuantity <= 0 || assignedQuantity > 1e9 ||
+        !Number.isFinite(openQuantity) || openQuantity < 0 || openQuantity > 1e9 ||
+        !Number.isFinite(assignedAt) || assignedAt <= 0 ||
+        !Number.isFinite(updatedAt) || updatedAt <= 0 ||
+        !["active", "closed", "unassigned"].includes(status) ||
+        (status === "active" && openQuantity <= 0) ||
+        (status !== "active" && openQuantity !== 0)) {
+      return { error: "Guest tranche ledger contains an invalid record." };
+    }
+    const positiveOrNull = (value) => {
+      const parsed = Number(value);
+      return value !== null && value !== undefined && value !== "" && Number.isFinite(parsed) && parsed > 0
+        ? parsed : null;
+    };
+    const purchasedAt = Number(source.purchasedAt);
+    const endedAt = Number(source.endedAt);
+    const averagePrice = positiveOrNull(source.averagePrice);
+    const marketPrice = positiveOrNull(source.marketPrice);
+    return {
+      record: {
+        assignmentId,
+        trancheId,
+        ticker,
+        name: name || ticker,
+        assignedQuantity,
+        openQuantity,
+        averagePrice,
+        marketPrice,
+        marketValue: marketPrice === null || openQuantity <= 0 ? null : marketPrice * openQuantity,
+        purchasedAt: Number.isFinite(purchasedAt) && purchasedAt > 0 ? purchasedAt : null,
+        assignedAt,
+        updatedAt,
+        endedAt: status === "active" ? null : (Number.isFinite(endedAt) && endedAt > 0 ? endedAt : updatedAt),
+        status
+      }
+    };
+  }
+
+  mergeGuestTrancheLedger(existing, upserts, retainedAssignmentIds, updatedAt) {
+    const records = new Map();
+    for (const item of Array.isArray(existing?.records) ? existing.records : []) {
+      if (item && typeof item.assignmentId === "string") records.set(item.assignmentId, item);
+    }
+    for (const item of upserts) {
+      const previous = records.get(item.assignmentId);
+      records.set(item.assignmentId, {
+        ...previous,
+        ...item,
+        // Keep the first assignment timestamp and preserve the largest observed
+        // assigned quantity as buys are grouped into the same broker operation.
+        assignedAt: previous?.assignedAt || item.assignedAt,
+        assignedQuantity: Math.max(Number(previous?.assignedQuantity) || 0, item.assignedQuantity),
+        purchasedAt: previous?.purchasedAt ?? item.purchasedAt,
+        updatedAt: Math.max(Number(previous?.updatedAt) || 0, item.updatedAt),
+        ...(item.status === "active" ? { endedAt: null } : {})
+      });
+    }
+
+    if (retainedAssignmentIds !== null) {
+      const retained = new Set(retainedAssignmentIds);
+      const active = new Set(upserts.filter((item) => item.status === "active").map((item) => item.assignmentId));
+      for (const [assignmentId, item] of records.entries()) {
+        if (item.status !== "active") continue;
+        if (!retained.has(assignmentId)) {
+          records.set(assignmentId, {
+            ...item, status: "unassigned", openQuantity: 0, marketValue: null,
+            endedAt: updatedAt, updatedAt
+          });
+        } else if (!active.has(assignmentId)) {
+          records.set(assignmentId, {
+            ...item, status: "closed", openQuantity: 0, marketValue: null,
+            endedAt: updatedAt, updatedAt
+          });
+        }
+      }
+    }
+
+    return {
+      updatedAt,
+      records: Array.from(records.values())
+        .sort((a, b) => a.assignedAt - b.assignedAt || a.assignmentId.localeCompare(b.assignmentId))
+    };
+  }
+
   async handleGuestPortfolio(request) {
     const session = await this.resolveSession(request);
     if (!session) return authJson({ error: "Authentication required." }, 401);
@@ -473,14 +582,23 @@ export class PortfolioStateDO {
       const record = await this.ctx.storage.get("guest-portfolio:" + session.user.id);
       const revision = Number.isSafeInteger(record?.revision) ? record.revision : 0;
       let snapshot = { updatedAt: 0, tranches: [] };
-      if (record?.encryptedSnapshot) {
-        try {
-          snapshot = await this.decryptGuestProjection(record.encryptedSnapshot);
-        } catch {
-          return authJson({ error: "Guest portfolio snapshot could not be decrypted." }, 500);
+      let ledger = { updatedAt: 0, records: [] };
+      try {
+        if (record?.encryptedSnapshot) snapshot = await this.decryptGuestProjection(record.encryptedSnapshot);
+        if (record?.encryptedLedger) {
+          const decryptedLedger = await this.decryptGuestPayload(record.encryptedLedger);
+          if (!Array.isArray(decryptedLedger.records)) throw new Error("Invalid guest tranche ledger.");
+          ledger = { updatedAt: Number(decryptedLedger.updatedAt) || 0, records: decryptedLedger.records };
         }
+      } catch {
+        return authJson({ error: "Guest portfolio data could not be decrypted." }, 500);
       }
-      return new Response(JSON.stringify({ snapshot, revision }), {
+      return new Response(JSON.stringify({
+        snapshot,
+        ledger: ledger.records,
+        ledgerUpdatedAt: ledger.updatedAt,
+        revision
+      }), {
         status: 200,
         headers: { ...CORS_HEADERS, "Cache-Control": "no-store", ETag: `"${revision}"` }
       });
@@ -492,125 +610,150 @@ export class PortfolioStateDO {
 
     const rawBody = await request.text();
     if (new TextEncoder().encode(rawBody).byteLength > 512 * 1024) {
-      return authJson({ error: "Guest portfolio snapshot exceeds the 512 KB limit." }, 413);
+      return authJson({ error: "Guest portfolio update exceeds the 512 KB limit." }, 413);
     }
     let body;
     try { body = JSON.parse(rawBody); } catch { return authJson({ error: "Invalid guest portfolio JSON." }, 400); }
-    if (Array.isArray(body?.snapshots)) {
-      if (body.snapshots.length === 0 || body.snapshots.length > 100) {
-        return authJson({ error: "A guest portfolio batch must contain between 1 and 100 snapshots." }, 400);
+
+    const items = Array.isArray(body?.snapshots)
+      ? body.snapshots
+      : (body?.guestId && body?.snapshot ? [{ ...body, snapshots: undefined }] : null);
+    if (!Array.isArray(items) || items.length === 0 || items.length > 100) {
+      return authJson({ error: "A guest portfolio batch must contain between 1 and 100 snapshots." }, 400);
+    }
+
+    const existingGuests = new Set(
+      (await this.getAuthUsers()).filter((user) => user.role === "guest").map((user) => user.id)
+    );
+    const seenGuestIds = new Set();
+    const prepared = [];
+    for (const item of items) {
+      const guestId = typeof item?.guestId === "string" ? item.guestId.trim() : "";
+      if (!guestId || seenGuestIds.has(guestId)) {
+        return authJson({ error: "Guest portfolio batch contains a missing or duplicate guest ID." }, 400);
+      }
+      if (!existingGuests.has(guestId)) {
+        return authJson({ error: "Target guest account does not exist." }, 404);
+      }
+      seenGuestIds.add(guestId);
+
+      const normalizedSnapshot = this.normalizeGuestPortfolioSnapshot(item.snapshot);
+      if (normalizedSnapshot.error) return authJson({ error: normalizedSnapshot.error }, 400);
+
+      const hasLedgerUpserts = item.ledgerUpserts !== undefined;
+      const hasRetainedIds = item.retainedAssignmentIds !== undefined;
+      if (hasLedgerUpserts && !Array.isArray(item.ledgerUpserts)) {
+        return authJson({ error: "Guest tranche ledger updates must be an array." }, 400);
+      }
+      if (hasRetainedIds && !Array.isArray(item.retainedAssignmentIds)) {
+        return authJson({ error: "Retained guest assignment IDs must be an array." }, 400);
+      }
+      const rawUpserts = hasLedgerUpserts ? item.ledgerUpserts : [];
+      const rawRetainedIds = hasRetainedIds ? item.retainedAssignmentIds : [];
+      if (rawUpserts.length > 500 || rawRetainedIds.length > 5000) {
+        return authJson({ error: "Guest tranche ledger update exceeds its record limit." }, 413);
       }
 
-      const existingGuests = new Set(
-        (await this.getAuthUsers()).filter((user) => user.role === "guest").map((user) => user.id)
-      );
-      const seenGuestIds = new Set();
-      const prepared = [];
-      for (const item of body.snapshots) {
-        const guestId = typeof item?.guestId === "string" ? item.guestId.trim() : "";
-        if (!guestId || seenGuestIds.has(guestId)) {
-          return authJson({ error: "Guest portfolio batch contains a missing or duplicate guest ID." }, 400);
-        }
-        if (!existingGuests.has(guestId)) {
-          return authJson({ error: "Target guest account does not exist." }, 404);
-        }
-        seenGuestIds.add(guestId);
-
-        const normalized = this.normalizeGuestPortfolioSnapshot(item.snapshot);
+      const ledgerUpserts = [];
+      const seenAssignmentIds = new Set();
+      for (const rawRecord of rawUpserts) {
+        const normalized = this.normalizeGuestTrancheLedgerRecord(rawRecord);
         if (normalized.error) return authJson({ error: normalized.error }, 400);
-        let encryptedSnapshot;
+        const assignmentId = normalized.record.assignmentId;
+        if (seenAssignmentIds.has(assignmentId)) {
+          return authJson({ error: "Guest tranche ledger contains a duplicate assignment ID." }, 400);
+        }
+        seenAssignmentIds.add(assignmentId);
+        ledgerUpserts.push(normalized.record);
+      }
+
+      const retainedAssignmentIds = hasRetainedIds ? [] : null;
+      if (hasRetainedIds) {
+        const seenRetainedIds = new Set();
+        for (const value of rawRetainedIds) {
+          const id = typeof value === "string" ? value.trim() : "";
+          if (!id || id.length > 240 || seenRetainedIds.has(id)) {
+            return authJson({ error: "Retained guest assignment IDs must be unique non-empty strings." }, 400);
+          }
+          seenRetainedIds.add(id);
+          retainedAssignmentIds.push(id);
+        }
+      }
+
+      const key = "guest-portfolio:" + guestId;
+      const previous = await this.ctx.storage.get(key);
+      const previousRevision = Number.isSafeInteger(previous?.revision) ? previous.revision : 0;
+      let encryptedLedger;
+      if (hasLedgerUpserts || hasRetainedIds) {
+        let existingLedger = { updatedAt: 0, records: [] };
+        if (previous?.encryptedLedger) {
+          try {
+            existingLedger = await this.decryptGuestPayload(previous.encryptedLedger);
+            if (!Array.isArray(existingLedger.records)) throw new Error("Invalid guest tranche ledger.");
+          } catch {
+            return authJson({ error: "Existing guest tranche ledger could not be decrypted." }, 500);
+          }
+        }
+        const updatedAt = Number(normalizedSnapshot.snapshot.updatedAt) || Date.now();
+        const mergedLedger = this.mergeGuestTrancheLedger(
+          existingLedger, ledgerUpserts, retainedAssignmentIds, updatedAt
+        );
+        if (mergedLedger.records.length > 5000) {
+          return authJson({ error: "Guest tranche history exceeds the 5,000-record limit." }, 413);
+        }
         try {
-          encryptedSnapshot = await this.encryptGuestProjection(normalized.snapshot);
+          encryptedLedger = await this.encryptGuestPayload(mergedLedger);
         } catch {
-          return authJson({ error: "Guest portfolio snapshot could not be encrypted." }, 500);
+          return authJson({ error: "Guest tranche ledger could not be encrypted." }, 500);
         }
-        prepared.push({ guestId, encryptedSnapshot });
       }
 
-      // Re-check guest roles inside the same transaction as the writes. A user
-      // deleted or changed to admin while snapshots were being encrypted cannot
-      // receive a stale guest projection.
-      const result = await this.ctx.storage.transaction(async (transaction) => {
-        const users = await transaction.get(AUTH_USERS_KEY) || [];
-        const stillGuests = new Set(users.filter((user) => user.role === "guest").map((user) => user.id));
-        if (prepared.some((item) => !stillGuests.has(item.guestId))) {
-          return { error: "A target guest account changed while the batch was being published." };
-        }
-
-        const revisions = {};
-        for (const item of prepared) {
-          const key = "guest-portfolio:" + item.guestId;
-          const current = await transaction.get(key);
-          const revision = (Number.isSafeInteger(current?.revision) ? current.revision : 0) + 1;
-          await transaction.put(key, { encryptedSnapshot: item.encryptedSnapshot, revision });
-          revisions[item.guestId] = revision;
-        }
-        return { revisions };
-      });
-      if (result.error) return authJson({ error: result.error }, 409);
-      return new Response(JSON.stringify({ success: true, revisions: result.revisions }), {
-        status: 200,
-        headers: { ...CORS_HEADERS, "Cache-Control": "no-store" }
-      });
-    }
-
-    const guestId = typeof body?.guestId === "string" ? body.guestId.trim() : "";
-    const source = body?.snapshot;
-    if (!guestId || !source || typeof source !== "object" || Array.isArray(source) ||
-        !Number.isFinite(Number(source.updatedAt)) || !Array.isArray(source.tranches) ||
-        source.tranches.length > 500) {
-      return authJson({ error: "Invalid guest portfolio snapshot." }, 400);
-    }
-
-    const guest = (await this.getAuthUsers()).find((user) => user.id === guestId && user.role === "guest");
-    if (!guest) return authJson({ error: "Target guest account does not exist." }, 404);
-
-    const seenIds = new Set();
-    const tranches = [];
-    for (const item of source.tranches) {
-      const id = typeof item?.id === "string" ? item.id.trim() : "";
-      const ticker = typeof item?.ticker === "string" ? item.ticker.trim().toUpperCase() : "";
-      const name = typeof item?.name === "string" ? item.name.trim().slice(0, 120) : ticker;
-      const quantity = Number(item?.quantity);
-      if (!id || id.length > 200 || seenIds.has(id) || !/^[A-Z0-9.^=-]{1,20}$/.test(ticker) ||
-          !Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9) {
-        return authJson({ error: "Guest portfolio contains an invalid tranche." }, 400);
+      let encryptedSnapshot;
+      try {
+        encryptedSnapshot = await this.encryptGuestProjection(normalizedSnapshot.snapshot);
+      } catch {
+        return authJson({ error: "Guest portfolio snapshot could not be encrypted." }, 500);
       }
-      seenIds.add(id);
-      const positiveOrNull = (value) => {
-        const parsed = Number(value);
-        return value !== null && value !== undefined && value !== "" && Number.isFinite(parsed) && parsed > 0
-          ? parsed : null;
-      };
-      const purchasedAt = Number(item?.purchasedAt);
-      const averagePrice = positiveOrNull(item?.averagePrice);
-      const marketPrice = positiveOrNull(item?.marketPrice);
-      tranches.push({
-        id, ticker, name, quantity,
-        averagePrice,
-        marketPrice,
-        marketValue: marketPrice === null ? null : marketPrice * quantity,
-        purchasedAt: Number.isFinite(purchasedAt) && purchasedAt > 0 ? purchasedAt : null
+      prepared.push({
+        guestId, key, previousRevision, encryptedSnapshot,
+        ...(encryptedLedger ? { encryptedLedger } : {})
       });
     }
 
-    const snapshot = { updatedAt: Number(source.updatedAt), tranches };
-    let encryptedSnapshot;
-    try {
-      encryptedSnapshot = await this.encryptGuestProjection(snapshot);
-    } catch {
-      return authJson({ error: "Guest portfolio snapshot could not be encrypted." }, 500);
-    }
-    const key = "guest-portfolio:" + guestId;
-    const revision = await this.ctx.storage.transaction(async () => {
-      const current = await this.ctx.storage.get(key);
-      const nextRevision = (Number.isSafeInteger(current?.revision) ? current.revision : 0) + 1;
-      await this.ctx.storage.put(key, { encryptedSnapshot, revision: nextRevision });
-      return nextRevision;
+    // Re-check roles and revisions in the same transaction as the writes. A user
+    // who was deleted/changed, or a concurrent publisher, cannot silently win.
+    const result = await this.ctx.storage.transaction(async (transaction) => {
+      const users = await transaction.get(AUTH_USERS_KEY) || [];
+      const stillGuests = new Set(users.filter((user) => user.role === "guest").map((user) => user.id));
+      if (prepared.some((item) => !stillGuests.has(item.guestId))) {
+        return { error: "A target guest account changed while the update was being prepared.", status: 409 };
+      }
+      const currentRecords = [];
+      for (const item of prepared) {
+        const current = await transaction.get(item.key);
+        const revision = Number.isSafeInteger(current?.revision) ? current.revision : 0;
+        if (revision !== item.previousRevision) {
+          return { error: "Guest portfolio changed while the update was being prepared. Refresh and retry.", status: 409 };
+        }
+        currentRecords.push({ item, current, revision });
+      }
+      const revisions = {};
+      for (const { item, current, revision } of currentRecords) {
+        const nextRevision = revision + 1;
+        await transaction.put(item.key, {
+          encryptedSnapshot: item.encryptedSnapshot,
+          ...(item.encryptedLedger ? { encryptedLedger: item.encryptedLedger } :
+            current?.encryptedLedger ? { encryptedLedger: current.encryptedLedger } : {}),
+          revision: nextRevision
+        });
+        revisions[item.guestId] = nextRevision;
+      }
+      return { revisions };
     });
-    return new Response(JSON.stringify({ success: true, revision }), {
+    if (result.error) return authJson({ error: result.error }, result.status || 409);
+    return new Response(JSON.stringify({ success: true, revisions: result.revisions }), {
       status: 200,
-      headers: { ...CORS_HEADERS, "Cache-Control": "no-store", ETag: `"${revision}"` }
+      headers: { ...CORS_HEADERS, "Cache-Control": "no-store" }
     });
   }
 
