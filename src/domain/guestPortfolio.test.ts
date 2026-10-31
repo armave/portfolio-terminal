@@ -202,6 +202,35 @@ describe('guest tranche ledger reports and filtering', () => {
     })).toEqual([legacyRecord]);
   });
 
+  it('filters closed Trade rows only by close date, never assignedAt or buy date', () => {
+    const closedTrade: GuestTrancheLedgerRecord = {
+      ...records[1],
+      assignmentId: 'closed-trade-meta',
+      trancheId: 'closed-trade:meta',
+      ticker: 'META',
+      assignedAt: 1721000000000,
+      purchasedAt: 1720000000000,
+      operationAt: 1723000000000
+    };
+
+    expect(filterGuestTrancheLedger([closedTrade], {
+      operationDateFrom: 1722990000000,
+      operationDateTo: 1723010000000
+    })).toEqual([closedTrade]);
+    expect(filterGuestTrancheLedger([closedTrade], {
+      operationDateFrom: 1720990000000,
+      operationDateTo: 1721010000000
+    })).toEqual([]);
+    expect(filterGuestTrancheLedger([closedTrade], {
+      operationDateFrom: 1719990000000,
+      operationDateTo: 1720010000000
+    })).toEqual([]);
+    expect(filterGuestTrancheLedger([{ ...closedTrade, operationAt: null }], {
+      operationDateFrom: 1719990000000,
+      operationDateTo: 1720010000000
+    })).toEqual([]);
+  });
+
   it('summarizes historical assigned capital and current open value without inventing realized P/L', () => {
     const activeTranches = [tranche({
       id: 'AAPL:buy-1', quantity: 4, averagePrice: 100, marketPrice: 130, marketValue: 520
