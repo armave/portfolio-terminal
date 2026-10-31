@@ -1,6 +1,6 @@
 import { getUsEquityMarketSession } from './marketSession';
 
-export const CLOSED_MARKET_REQUEST_COOLDOWN_MS = 60_000;
+const CLOSED_MARKET_REQUEST_COOLDOWN_MS = 60_000;
 
 export interface MarketRequestGateOptions {
   now?: () => number;
