@@ -211,7 +211,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
       <div class="space-y-2">
         {guestUserId ? (
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Your active stock cards">
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-2" aria-label="Your active stock cards">
             {guestHoldings.length === 0 ? (
               <div class="col-span-full rounded-lg border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400" role="status">
                 <p class="font-semibold text-slate-200">No stocks are assigned to your account yet.</p>
