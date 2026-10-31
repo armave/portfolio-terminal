@@ -1553,6 +1553,52 @@ describe('Durable Object guest portfolio ownership', () => {
     });
   });
 
+  it('replaces the assigned quantity when a closed-trade LOTS row is edited', async () => {
+    const { store } = await makeScopedStore();
+    const publish = (assignedQuantity, updatedAt) => store.fetch(
+      new Request('https://store.test/api/guest-portfolio', {
+        method: 'POST',
+        headers: authHeaders('admin-token'),
+        body: JSON.stringify({
+          snapshots: [{
+            guestId: 'guest-1',
+            snapshot: { updatedAt, tranches: [] },
+            ledgerUpserts: [{
+              assignmentId: 'closed-trade:row-a:guest-a',
+              trancheId: 'closed-trade:row-a',
+              ticker: 'AAPL',
+              name: 'Apple',
+              assignedQuantity,
+              openQuantity: 0,
+              averagePrice: null,
+              marketPrice: null,
+              purchasedAt: null,
+              assignedAt: 10,
+              updatedAt,
+              endedAt: 10,
+              status: 'closed'
+            }],
+            retainedAssignmentIds: []
+          }]
+        })
+      })
+    );
+
+    expect((await publish(4, 20)).status).toBe(200);
+    expect((await publish(2, 30)).status).toBe(200);
+    const guestRead = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-one-token')
+    }));
+    await expect(guestRead.json()).resolves.toMatchObject({
+      ledger: [{
+        assignmentId: 'closed-trade:row-a:guest-a',
+        assignedQuantity: 2,
+        openQuantity: 0,
+        status: 'closed'
+      }]
+    });
+  });
+
   it('marks a still-open tranche unassigned when the guest link is removed', async () => {
     const { store } = await makeScopedStore();
     const record = {
