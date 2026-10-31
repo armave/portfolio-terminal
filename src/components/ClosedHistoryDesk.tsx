@@ -93,14 +93,17 @@ export function ClosedHistoryDesk() {
       if (success) lastRecalculationKey.current = key;
     });
   }, [brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, brokerTrades]);
-  const processCashflowRows = async (cashflowRows: NormalizedFreedomCashflow[], requireCloudSync = false): Promise<boolean> => {
+  const processCashflowRows = async (
+    cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
+    requireCloudSync = false
+  ): Promise<boolean> => {
     try {
       if (!cashflowRows.length) return true;
 
       // Persist broker-normalized cashflow rows as the source of truth so fee
       // allocations can be recalculated after refresh without another API read.
       const feeRows = cashflowRows.filter(item => {
-        const text = [item.type, item.description, ...Object.values(item.raw)].join(' ').toLowerCase();
+        const text = [item.type, item.description, ...Object.values(item.raw ?? {})].join(' ').toLowerCase();
         // Broker payloads may place direction and operation identifiers in
         // separate fields. Inspect all returned fields to detect financing fees.
         const isDailyFinancingFee = /negative\s+cash\s+balance\s+fee|fee\s+for\s+negative\s+cash\s+balance|margin\s+(?:fee|interest)|(?:daily\s+)?(?:margin|financing|overnight|rollover|borrow(?:ing)?)\s+(?:fee|charge|interest)|interest\s+(?:fee|charge)/i.test(text);
@@ -142,7 +145,7 @@ export function ClosedHistoryDesk() {
       };
       const feeDate = (fee: typeof cashflowRows[number]) => {
         const parsed = parseTradeDate(fee.date); if (Number.isFinite(parsed)) return parsed;
-        const match = [fee.description, ...Object.values(fee.raw)].join(' ').match(/balance as at (\d{4}-\d{2}-\d{2})/i);
+        const match = [fee.description, ...Object.values(fee.raw ?? {})].join(' ').match(/balance as at (\d{4}-\d{2}-\d{2})/i);
         return match ? parseTradeDate(match[1]) : NaN;
       };
       const allocationsBySell = new Map<number, Record<string, number>>();
