@@ -362,7 +362,7 @@ const RU: Record<string, string> = {
   "Below trigger estimate": "Ниже расчётного порога",
   "Healthy": "Норма",
   "No margin debt": "Нет маржинального долга",
-  "Elevated": "Повышенный",
+  "Elevated": "Повышенный риск",
   "None": "Нет",
   "No live quotes fetched for margin positions": "Для маржинальных позиций ещё не получены актуальные котировки",
   "Latest portfolio quote": "Последняя котировка портфеля",
