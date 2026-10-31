@@ -466,7 +466,6 @@ export function ClosedHistoryDesk() {
     const parsed = Date.parse(String(raw ?? ''));
     return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
   };
-  const allocationOrder: Record<string, number> = { margin: 0, cash: 1, mix: 2, unclassified: 3 };
   const trades = [...uniqueAppTrades, ...groupedBrokerRows].map((row: any) => {
     const allocation = resolveClosedTradeAllocation(
       row.trade?.shares,
@@ -481,11 +480,7 @@ export function ClosedHistoryDesk() {
       allocationType: allocation.fundingType,
       allocationTypes: [allocation.fundingType]
     };
-  }).sort((a, b) =>
-    (allocationOrder[String(a.allocationType || 'margin')] ?? 0) -
-      (allocationOrder[String(b.allocationType || 'margin')] ?? 0) ||
-    getExitTimestamp(b) - getExitTimestamp(a)
-  );
+  }).sort((a, b) => getExitTimestamp(b) - getExitTimestamp(a));
   const tradesPageSize = 10;
   const tradesPageCount = Math.max(1, Math.ceil(trades.length / tradesPageSize));
   const visibleTrades = trades.slice((tradesPage - 1) * tradesPageSize, tradesPage * tradesPageSize);
@@ -604,16 +599,9 @@ export function ClosedHistoryDesk() {
                 </td>
               </tr>
             ) : (
-              visibleTrades.map((row, visibleIndex) => {
+              visibleTrades.map((row) => {
                 const { trade, index, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions, commissionsComplete } = row;
                 const allocationType = row.allocationType || 'margin';
-                const allocationLabel = allocationType === 'margin' ? 'Margin'
-                  : allocationType === 'cash' ? 'Cash'
-                    : allocationType === 'mix' ? 'Mix' : 'Unclassified';
-                const previousAllocationType = visibleIndex > 0
-                  ? visibleTrades[visibleIndex - 1].allocationType || 'unclassified'
-                  : null;
-                const showAllocationHeader = visibleIndex === 0 || previousAllocationType !== allocationType;
                 const assignedGuests: Array<{ guestId: string; quantity: number }> = row.guestAllocations || [];
                 const allocationKey = String(row.allocationKey || ((source || 'trade') + ':' + String((trade as any).id || index)));
                 const savedAllocation = state.closedTradeAllocations?.[allocationKey];
@@ -691,10 +679,6 @@ export function ClosedHistoryDesk() {
                 const sign = isPositive ? '+' : '-';
 
                 return (
-                  <>
-                    {showAllocationHeader && <tr key={`allocation-${tradesPage}-${allocationType}`} class="border-t border-slate-700 bg-slate-900/80">
-                      <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-purple-300">{allocationLabel}</td>
-                    </tr>}
                     <tr key={(trade as any).id || (source + "-" + index)} class="hover:bg-slate-900/40 text-slate-300">
                     <td class="py-2.5 px-3 font-bold text-white">{(trade as any).ticker?.replace('.US', '') || "—"}</td>
                     <td class="py-2.5 px-3 whitespace-nowrap">
@@ -755,7 +739,6 @@ export function ClosedHistoryDesk() {
                       {netProfit === null ? "—" : sign + "$" + formatUSD(Math.abs(netProfit))}
                     </td>
                     </tr>
-                  </>
                 );
               })
             )}
