@@ -4,7 +4,8 @@ import {
   applyCashflowAllocationsToClosedTrades,
   deduplicateClosedHistoryRows,
   preservePersistedBrokerFeeAllocations,
-  resolveClosedTradeFeeBreakdown
+  resolveClosedTradeFeeBreakdown,
+  resolveClosedTradeNetProfit
 } from './closedHistoryFees';
 
 describe('closed-history cashflow fee recalculation', () => {
