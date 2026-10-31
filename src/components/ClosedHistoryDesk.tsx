@@ -11,6 +11,7 @@ import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFee
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from '../domain/brokerExecutionMetrics';
 import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
+import { TableScrollRegion } from './TableScrollRegion';
 
 export function ClosedHistoryDesk() {
   const state = usePortfolio();
@@ -487,7 +488,7 @@ export function ClosedHistoryDesk() {
         </div>
       </div>
 
-      <div role="region" aria-label="Closed trade history" tabindex={0} class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500">
+      <TableScrollRegion label="Closed trade history" className="border border-slate-800 bg-slate-950/60">
         <table class="w-full min-w-[760px] text-left text-xs font-mono">
           <caption class="sr-only">Closed trade history with ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
           <thead class="border-b border-slate-800 bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-400">
@@ -615,7 +616,7 @@ export function ClosedHistoryDesk() {
             )}
           </tbody>
         </table>
-      </div>
+      </TableScrollRegion>
       {trades.length > 0 && (
         <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 px-1 pt-3 text-xs" aria-label="Closed history pagination">
           <span class="text-slate-500" aria-live="polite">
