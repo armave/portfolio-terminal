@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveActiveView, resolvePositionEntryDate } from './renderBoard';
+import { renderBoard, resolveActiveView, resolvePositionEntryDate } from './renderBoard';
 import type { PositionRecord } from '../types/portfolio';
 
 describe('resolvePositionEntryDate', () => {
@@ -49,6 +49,18 @@ describe('resolveActiveView', () => {
   it('keeps non-position desks selected without requiring a ticker position', () => {
     expect(resolveActiveView({ activeView: 'CASH_CUSHION' })).toBe('CASH_CUSHION');
     expect(resolveActiveView({ activeView: 'CLOSED_HISTORY' })).toBe('CLOSED_HISTORY');
+    expect(resolveActiveView({ activeView: 'GUEST_HISTORY' })).toBe('GUEST_HISTORY');
+  });
+
+  it('treats LOTS as a standalone view without recalculating margin metrics', () => {
+    const onUpdateCombinedBreakeven = () => { throw new Error('Margin metrics should remain idle on LOTS.'); };
+    const visited: string[] = [];
+    renderBoard({ activeView: 'GUEST_HISTORY', positions: {} }, {
+      rules: {} as any,
+      onUpdateCombinedBreakeven,
+      onUpdateLastDeskView: (view) => visited.push(view)
+    });
+    expect(visited).toEqual(['GUEST_HISTORY']);
   });
 
   it('keeps a selected ticker desk while that position exists', () => {
