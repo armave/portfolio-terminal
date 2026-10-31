@@ -19,7 +19,9 @@ describe('closed trade guest ledger projection', () => {
       }
     };
 
-    const result = buildClosedTradeGuestLedgerUpserts(allocations, sourceRows, 500);
+    const result = buildClosedTradeGuestLedgerUpserts(allocations, [
+      { ...sourceRows[0], quantity: 10, averagePrice: 123.45, purchasedAt: 50, netProfit: 80 }
+    ], 500);
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -29,8 +31,9 @@ describe('closed trade guest ledger projection', () => {
         name: 'Apple',
         assignedQuantity: 2.5,
         openQuantity: 0,
-        averagePrice: null,
-        purchasedAt: null,
+        averagePrice: 123.45,
+        netProfit: 20,
+        purchasedAt: 50000,
         assignedAt: 120,
         updatedAt: 500,
         endedAt: 120,
@@ -94,6 +97,35 @@ describe('closed trade guest ledger projection', () => {
     expect(result[0]).toMatchObject({
       guestId: 'guest-a',
       record: { assignedQuantity: 2, assignedAt: 500, status: 'closed' }
+    });
+  });
+
+  it('uses per-guest FIFO cost/date and pro-rates realized net profit', () => {
+    const result = buildClosedTradeGuestLedgerUpserts({
+      'broker:sell-1': {
+        fundingType: 'mix',
+        cashQuantity: 2,
+        marginQuantity: 3,
+        guestId: 'guest-a',
+        assignedAt: 100
+      }
+    }, [{
+      allocationKey: 'broker:sell-1',
+      ticker: 'AAPL',
+      quantity: 5,
+      averagePrice: 110,
+      purchasedAt: 200,
+      netProfit: 50,
+      guestMetrics: {
+        'guest-a': { quantity: 2, averagePrice: 105, purchasedAt: 150 }
+      }
+    }], 500);
+
+    expect(result[0].record).toMatchObject({
+      assignedQuantity: 2,
+      averagePrice: 105,
+      purchasedAt: 150000,
+      netProfit: 20
     });
   });
 
