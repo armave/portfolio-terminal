@@ -1599,6 +1599,50 @@ describe('Durable Object guest portfolio ownership', () => {
     });
   });
 
+  it('persists optional realized net P&L for closed-trade LOTS records', async () => {
+    const { store } = await makeScopedStore();
+    const response = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({
+        snapshots: [{
+          guestId: 'guest-1',
+          snapshot: { updatedAt: 500, tranches: [] },
+          ledgerUpserts: [{
+            assignmentId: 'closed-trade:row-pnl:guest-1',
+            trancheId: 'closed-trade:row-pnl',
+            ticker: 'META',
+            name: 'Meta',
+            assignedQuantity: 3,
+            openQuantity: 0,
+            averagePrice: 450,
+            netProfit: -75.5,
+            marketPrice: null,
+            purchasedAt: 1720000000000,
+            assignedAt: 100,
+            updatedAt: 500,
+            endedAt: 100,
+            status: 'closed'
+          }],
+          retainedAssignmentIds: []
+        }]
+      })
+    }));
+    expect(response.status).toBe(200);
+    const guestRead = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-one-token')
+    }));
+    await expect(guestRead.json()).resolves.toMatchObject({
+      ledger: [{
+        assignmentId: 'closed-trade:row-pnl:guest-1',
+        averagePrice: 450,
+        netProfit: -75.5,
+        purchasedAt: 1720000000000,
+        status: 'closed'
+      }]
+    });
+  });
+
   it('marks a still-open tranche unassigned when the guest link is removed', async () => {
     const { store } = await makeScopedStore();
     const record = {
