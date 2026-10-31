@@ -1,12 +1,12 @@
-export type GuestDirectoryStatus = 'idle' | 'loading' | 'ready' | 'refreshing' | 'stale' | 'error';
+type GuestDirectoryStatus = 'idle' | 'loading' | 'ready' | 'refreshing' | 'stale' | 'error';
 
-export interface GuestDirectoryState<T> {
+interface GuestDirectoryState<T> {
   users: T[];
   status: GuestDirectoryStatus;
   error: string;
 }
 
-export type GuestDirectoryAction<T> =
+type GuestDirectoryAction<T> =
   | { type: 'request' }
   | { type: 'success'; users: readonly T[] }
   | { type: 'failure'; message: string };
