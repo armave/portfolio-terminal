@@ -535,7 +535,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               class="board-title-actions flex flex-wrap items-center gap-2"
             >
               <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
-              {portfolioSnapshot.positions?.[activeDeskView]?.ticker && (
+              {permissions.isAdmin && portfolioSnapshot.positions?.[activeDeskView]?.ticker && (
                 <MarketDepthButton ticker={portfolioSnapshot.positions[activeDeskView].ticker} />
               )}
               <div id="boardAnalystConsensus" class={analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
