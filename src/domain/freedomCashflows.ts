@@ -236,19 +236,34 @@ export function mergeFreedomCashflowRows(
   existing: CashflowMergeInput[],
   incoming: CashflowMergeInput[]
 ): NormalizedFreedomCashflow[] {
-  const merged = existing.map(row => ({ ...row, raw: { ...(row.raw || {}) } }));
+  const merged: NormalizedFreedomCashflow[] = existing.map(row => ({
+    ...row,
+    raw: { ...(row.raw || {}) }
+  }));
   const byId = new Map<string, number>();
-  const byFingerprint = new Map<string, number>();
+  // A fingerprint is only a migration bridge from old XLSX-generated IDs to
+  // broker operation IDs. Never collapse two different broker IDs just because
+  // their visible values happen to be identical.
+  const workbookRowsByFingerprint = new Map<string, number>();
 
   merged.forEach((row, index) => {
     if (!byId.has(row.id)) byId.set(row.id, index);
-    const fingerprint = cashflowFingerprint(row);
-    if (!byFingerprint.has(fingerprint)) byFingerprint.set(fingerprint, index);
+    if (row.id.startsWith("cashflow-")) {
+      const fingerprint = cashflowFingerprint(row);
+      if (!workbookRowsByFingerprint.has(fingerprint)) {
+        workbookRowsByFingerprint.set(fingerprint, index);
+      }
+    }
   });
 
   for (const row of incoming) {
     const fingerprint = cashflowFingerprint(row);
-    const matchedIndex = byId.get(row.id) ?? byFingerprint.get(fingerprint);
+    let matchedIndex = byId.get(row.id);
+    if (matchedIndex === undefined && row.id.startsWith("freedom-")) {
+      matchedIndex = workbookRowsByFingerprint.get(fingerprint);
+      // One imported workbook row can correspond to only one broker operation.
+      if (matchedIndex !== undefined) workbookRowsByFingerprint.delete(fingerprint);
+    }
     if (matchedIndex !== undefined) {
       const previous = merged[matchedIndex];
       const updated: NormalizedFreedomCashflow = {
@@ -262,12 +277,10 @@ export function mergeFreedomCashflowRows(
       merged[matchedIndex] = updated;
       byId.set(updated.id, matchedIndex);
       byId.set(row.id, matchedIndex);
-      byFingerprint.set(cashflowFingerprint(updated), matchedIndex);
     } else {
       const index = merged.length;
       merged.push({ ...row, raw: { ...(row.raw || {}) } });
       byId.set(row.id, index);
-      byFingerprint.set(fingerprint, index);
     }
   }
   return merged;

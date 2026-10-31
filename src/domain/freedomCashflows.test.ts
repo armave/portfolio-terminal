@@ -74,18 +74,26 @@ describe("Freedom cashflow incremental merge", () => {
       id: "freedom-100", date: "2026-10-01T00:00:00Z", type: "Margin Fee", amount: -5,
       currency: "USD", description: "Daily margin fee", raw: { operation_id: "100" }
     };
+    const identicalBrokerOperation: NormalizedFreedomCashflow = {
+      id: "freedom-102", date: "2026-10-01T00:00:00Z", type: "Margin Fee", amount: -5,
+      currency: "USD", description: "Daily margin fee", raw: { operation_id: "102" }
+    };
     const newer: NormalizedFreedomCashflow = {
       id: "freedom-101", date: "2026-10-31", type: "Margin Fee", amount: -1.25,
       currency: "USD", description: "Daily margin fee", raw: { operation_id: "101" }
     };
 
-    const merged = mergeFreedomCashflowRows([older, workbookMatch], [brokerMatch, newer]);
+    const merged = mergeFreedomCashflowRows(
+      [older, workbookMatch],
+      [brokerMatch, identicalBrokerOperation, newer]
+    );
 
-    expect(merged).toHaveLength(3);
+    expect(merged).toHaveLength(4);
     expect(merged[0]).toMatchObject({ id: "cashflow-old", amount: -4.25 });
     expect(merged[1]).toMatchObject({ id: "cashflow-workbook-match", amount: -5 });
     expect(merged[1].raw.operation_id).toBe("100");
-    expect(merged[2]).toMatchObject({ id: "freedom-101", amount: -1.25 });
+    expect(merged[2]).toMatchObject({ id: "freedom-102", amount: -5 });
+    expect(merged[3]).toMatchObject({ id: "freedom-101", amount: -1.25 });
   });
 
   it("keeps prior cashflows when the broker returns an empty recent page", () => {
