@@ -672,7 +672,7 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
         if (!ticker || !Number.isFinite(quantity) || quantity <= 0) return null;
 
         const attribution = brokerAttributions.get(trade);
-        const guestMetrics = attribution?.guestMetrics || {};
+        const rawGuestMetrics = attribution?.guestMetrics || {};
         const metrics = brokerTradeMetrics.get(trade);
         const commissionCurrency = String(trade?.commissionCurrency ?? trade?.currency ?? '').trim().toUpperCase();
         const commissionCurrencyIsUsd = commissionCurrency === '' || commissionCurrency === 'USD';
@@ -700,6 +700,16 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
           : Number.isFinite(directTradeValue) && directTradeValue > 0
             ? directTradeValue
             : sellPrice > 0 ? sellPrice * quantity : null;
+        // Allocate each execution's proceeds and net result to the guest shares
+        // actually matched to that execution before same-ticker sells are grouped.
+        const guestMetrics = Object.fromEntries(Object.entries(rawGuestMetrics).map(([guestId, metric]) => {
+          const shareRatio = quantity > 0 ? Math.min(1, metric.quantity / quantity) : 0;
+          return [guestId, {
+            ...metric,
+            value: saleValue === null ? null : saleValue * shareRatio,
+            netProfit: netProfit === null ? null : netProfit * shareRatio
+          }];
+        }));
         return {
           allocationKey: 'broker:' + String(trade?.id ?? ('tradenet-' + index)),
           ticker,
@@ -735,6 +745,8 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
         averagePrice: number | null;
         purchasedAt: number | null;
         assignedAt: number | null;
+        value: number | null;
+        netProfit: number | null;
       }>;
       time: number | null;
     }> = [];
@@ -769,6 +781,10 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
             existing.assignedAt = existing.assignedAt !== null && metric.assignedAt !== null
               ? Math.min(existing.assignedAt, metric.assignedAt)
               : existing.assignedAt ?? metric.assignedAt;
+            existing.value = existing.value !== null && metric.value !== null
+              ? existing.value + metric.value : null;
+            existing.netProfit = existing.netProfit !== null && metric.netProfit !== null
+              ? Number((existing.netProfit + metric.netProfit).toFixed(2)) : null;
             existing.quantity = guestQuantity;
           }
         }
