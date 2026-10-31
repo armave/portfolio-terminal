@@ -716,7 +716,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                 <span class="text-[9px] tabular-nums text-slate-500">
                                   {cashQuantity.toLocaleString('en-US', { maximumFractionDigits: 4 })} cash shares
                                 </span>
-                                {!guestUsersLoading && guestUsers.length === 0 && !guestUsersError && (
+                                {!guestUsersLoading && guestUsers.length === 0 && !guestDirectory.error && (
                                   <span class="text-[9px] text-slate-500">No guest accounts</span>
                                 )}
                               </div>
