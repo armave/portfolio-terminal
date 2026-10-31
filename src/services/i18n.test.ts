@@ -14,6 +14,9 @@ describe('app localization', () => {
     expect(translateText('User management', 'ru')).toBe('Управление пользователями');
     expect(translateText('Settings', 'ru')).toBe('Настройки');
     expect(translateText('Unknown market symbol', 'ru')).toBe('Unknown market symbol');
+    expect(translateText('Cash-funded stock holdings', 'ru')).toBe('Акции, приобретённые за денежные средства');
+    expect(translateText('Active tranches and guest assignments', 'ru')).toBe('Активные лоты и назначения гостям');
+    expect(translateText('User management table', 'ru')).toBe('Таблица управления пользователями');
   });
 
   it('localizes the keyboard-scrollable guest assignment table region', () => {
