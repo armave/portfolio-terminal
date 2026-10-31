@@ -157,3 +157,14 @@ The broker account, executions, and active-order promises were module-global, wh
 - [x] Both final-head workflows passed: [Validate run 41195574570](https://github.com/armave/portfolio-terminal/actions/runs/41195574570) and [Pull Request CI run 41195574577](https://github.com/armave/portfolio-terminal/actions/runs/41195574577).
 
 No financial calculations, persisted portfolio formats, credentials, or server authorization rules changed. The fix scopes existing read-only broker responses to the active UI session.
+
+## Follow-on implementation — accessible Settings navigation label
+
+The workspace navigation rendered the Settings destination as a gear emoji only. Unlike the quote-refresh button, it had no explicit accessible name or tooltip, leaving its purpose dependent on emoji pronunciation and visual context.
+
+- [x] Add a translated `aria-label` and `title` to the Settings navigation control.
+- [x] Mark the decorative gear emoji as hidden from assistive technology.
+- [x] Add a Russian translation and verify Preact applies it to both accessible attributes.
+- [ ] Confirm exact-head typecheck, full tests, production build, dead-code validation, and production dependency audit.
+
+This is a presentation/accessibility-only change. Navigation state, keyboard behavior, permissions, and portfolio data are unchanged.
