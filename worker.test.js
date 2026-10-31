@@ -1369,7 +1369,7 @@ describe('sanitizeFreedomMarketDepth', () => {
 describe('Freedom market-depth proxy', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('does not open a WebSocket when TradeNet API keys are missing', async () => {
+  it('does not open a WebSocket when TradeNet session storage is missing', async () => {
     const WebSocketMock = vi.fn();
     vi.stubGlobal('WebSocket', WebSocketMock);
     const response = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=AAPL.US', {
@@ -1377,7 +1377,7 @@ describe('Freedom market-depth proxy', () => {
     }), { GATEWAY_SECRET: 'test-secret' });
 
     expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({ error: expect.stringContaining('API keys') });
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('session storage') });
     expect(WebSocketMock).not.toHaveBeenCalled();
   });
 });
