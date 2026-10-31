@@ -17,6 +17,7 @@ export function ClosedHistoryDesk() {
   const [cashflowSyncMessage, setCashflowSyncMessage] = useState('');
   const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
+  const [cashflowAllocationReady, setCashflowAllocationReady] = useState(false);
   const [tradesPage, setTradesPage] = useState(1);
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
@@ -78,7 +79,11 @@ export function ClosedHistoryDesk() {
   // calculated metadata prevents the allocation effect from re-entering.
   useEffect(() => {
     const cashflows = state.cashflows || [];
-    if (!cashflowHistoryReady || brokerTradesLoading || !cashflows.length) return;
+    if (!cashflowHistoryReady || !cashflowSyncReady || brokerTradesLoading) return;
+    if (!cashflows.length) {
+      setCashflowAllocationReady(true);
+      return;
+    }
     const storedExecutions = portfolioStore.getState().brokerExecutedTrades || [];
     const executions = storedExecutions.length ? storedExecutions : brokerTrades;
     // Exclude calculated metadata from the input fingerprint; otherwise a
@@ -88,11 +93,16 @@ export function ClosedHistoryDesk() {
       Object.fromEntries(Object.entries(trade).filter(([field]) => !calculatedFields.has(field)))
     );
     const key = JSON.stringify({ cashflows, executions: sourceExecutions });
-    if (key === lastRecalculationKey.current) return;
+    if (key === lastRecalculationKey.current) {
+      setCashflowAllocationReady(true);
+      return;
+    }
+    setCashflowAllocationReady(false);
     void processCashflowRows(cashflows).then((success) => {
       if (success) lastRecalculationKey.current = key;
+      setCashflowAllocationReady(true);
     });
-  }, [cashflowHistoryReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, brokerTrades]);
+  }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, brokerTrades]);
   const processCashflowRows = async (
     cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
     requireCloudSync = false
@@ -483,7 +493,7 @@ export function ClosedHistoryDesk() {
   const averageHoldingDays = knownDurations.length ? knownDurations.reduce((total, days) => total + days, 0) / knownDurations.length : null;
   const winRate = profitKnownTrades.length ? (winningTrades / profitKnownTrades.length) * 100 : 0;
 
-  if (brokerTradesLoading || !cashflowHistoryReady || !cashflowSyncReady) {
+  if (brokerTradesLoading || !cashflowHistoryReady || !cashflowSyncReady || !cashflowAllocationReady) {
     return <DeskLoading
       title="Preparing trades"
       message="Restoring saved trade history and loading the latest Freedom activity…"
