@@ -94,7 +94,7 @@ describe('app localization', () => {
     expect(translateText('Partial value: holdings without a valid market quote are excluded.', 'ru'))
       .toBe('Частичная стоимость: активы без корректной рыночной котировки не учитываются.');
     expect(translateText('Current market value of your assigned cash-funded stocks.', 'ru'))
-      .toBe('Текущая рыночная стоимость назначенных вам акций, купленных за собственные средства.');
+      .toBe('Текущая рыночная стоимость назначенных вам акций, приобретённых за денежные средства.');
     expect(translateText('Loading your assigned tranche history…', 'ru'))
       .toBe('Загрузка истории назначенных вам лотов…');
     expect(translateText('Workspace navigation','ru')).toBe('Навигация по разделам');
