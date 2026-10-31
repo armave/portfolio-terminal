@@ -1098,12 +1098,17 @@ describe('guest data isolation at the Worker boundary', () => {
     const historyResponse = await worker.fetch(new Request('https://worker.test/api/history', { headers }), env);
     const tradesResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-trades', { headers }), env);
     const positionsResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-positions', { headers }), env);
+    const marketDepthResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=GOOGL', { headers }), env);
 
     expect(stateResponse.status).toBe(403);
     expect(historyResponse.status).toBe(403);
     expect(tradesResponse.status).toBe(403);
     expect(positionsResponse.status).toBe(403);
-    expect(stateStub.fetch).toHaveBeenCalledTimes(4);
+    expect(marketDepthResponse.status).toBe(403);
+    await expect(marketDepthResponse.json()).resolves.toMatchObject({
+      error: 'This data is restricted to administrator accounts.'
+    });
+    expect(stateStub.fetch).toHaveBeenCalledTimes(5);
     expect(stateStub.fetch.mock.calls.every(([request]) => new URL(request.url).pathname === '/api/auth/verify')).toBe(true);
   });
 
