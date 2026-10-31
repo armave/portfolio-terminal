@@ -151,13 +151,15 @@ export function TickerTabs({
           ref={(element) => { tabButtonRefs.current[0] = element; }}
           onKeyDown={handleTabKeyDown}
           onClick={() => selectView('COMBINED')}
+          aria-label="Combined portfolio"
           aria-pressed={isMarginDeskActive}
           class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
             ? 'bg-emerald-600 text-black'
             : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
             }`}
         >
-          MARGIN DESK
+          <span class="workspace-nav-label--desktop">MARGIN DESK</span>
+          <span class="workspace-nav-label--mobile">COMBINED</span>
         </button>
       )}
 
@@ -165,6 +167,7 @@ export function TickerTabs({
         <button
           type="button"
           onClick={() => selectView(tickers[0])}
+          aria-label={`Margin: ${tickers[0]}`}
           aria-pressed={state.activeView === tickers[0]}
           class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0] && isMarginDeskActive
             ? 'bg-emerald-600 text-black'
@@ -175,7 +178,8 @@ export function TickerTabs({
           ref={(element) => { tabButtonRefs.current[0] = element; }}
           onKeyDown={handleTabKeyDown}
         >
-          MARGIN: {tickers[0]}
+          <span class="workspace-nav-label--desktop">MARGIN: {tickers[0]}</span>
+          <span class="workspace-nav-label--mobile">{tickers[0]}</span>
         </button>
       )}
 
@@ -184,6 +188,7 @@ export function TickerTabs({
           <button
             type="button"
             onClick={() => selectView('COMBINED')}
+            aria-label="Combined portfolio"
             aria-pressed={state.activeView === 'COMBINED'}
             class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === 'COMBINED' && isMarginDeskActive
               ? 'bg-emerald-600 text-black'
@@ -194,7 +199,8 @@ export function TickerTabs({
           ref={(element) => { tabButtonRefs.current[0] = element; }}
           onKeyDown={handleTabKeyDown}
           >
-            COMBINED PORTFOLIO
+            <span class="workspace-nav-label--desktop">COMBINED PORTFOLIO</span>
+            <span class="workspace-nav-label--mobile">COMBINED</span>
           </button>
 
           {tickers.map((t, index) => (
@@ -202,6 +208,7 @@ export function TickerTabs({
               key={t}
               type="button"
               onClick={() => selectView(t)}
+              aria-label={`Margin: ${t}`}
               aria-pressed={state.activeView === t}
               class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === t && isMarginDeskActive
                 ? 'bg-emerald-600 text-black'
@@ -221,6 +228,7 @@ export function TickerTabs({
       <button
         type="button"
         onClick={() => selectView('BALANCE')}
+        aria-label={`Balance ${equityBadgeText}`}
         aria-pressed={isCushionActive}
         class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
           ? 'bg-cyan-500 text-black'
@@ -259,6 +267,7 @@ export function TickerTabs({
       {isAdmin && <button
         type="button"
         onClick={() => selectView('CLOSED_HISTORY')}
+        aria-label="Trades"
         aria-pressed={isClosedHistoryActive}
         class={`px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive
           ? 'bg-purple-500 text-black'
