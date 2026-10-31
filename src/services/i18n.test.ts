@@ -91,14 +91,15 @@ describe('app localization', () => {
     expect(translateText('Open cost basis', 'ru')).toBe('Себестоимость открытых лотов');
     expect(translateText('Open market value', 'ru')).toBe('Рыночная стоимость открытых лотов');
     expect(translateText('All statuses', 'ru')).toBe('Все статусы');
-    expect(translateText('Tranche date', 'ru')).toBe('Дата покупки');
-    expect(translateText('Tranche date from', 'ru')).toBe('Дата покупки с');
-    expect(translateText('Tranche date to', 'ru')).toBe('Дата покупки по');
+    expect(translateText('Date', 'ru')).toBe('Дата');
+    expect(translateText('Date from', 'ru')).toBe('Дата с');
+    expect(translateText('Date to', 'ru')).toBe('Дата по');
+    expect(translateText('Value', 'ru')).toBe('Стоимость');
     expect(translateText('Net P&L', 'ru')).toBe('Чистая прибыль/убыток');
     expect(translateText('No assignments match these filters.', 'ru'))
       .toBe('Нет назначений, соответствующих выбранным фильтрам.');
-    expect(translateText("Market value is shown only for open assigned holdings. Net P&L appears only when the closed trade's net result is available.", 'ru'))
-      .toBe('Рыночная стоимость показывается только для открытых назначенных активов. Чистая прибыль/убыток отображается только при наличии итоговых данных закрытой сделки.');
+    expect(translateText("Value shows current market value for open tranches and gross sale proceeds for closed trades. Net P&L appears only when the closed trade's net result is available.", 'ru'))
+      .toBe('В столбце «Стоимость» показана текущая рыночная стоимость открытых лотов и валовая выручка от продажи закрытых сделок. Чистая прибыль/убыток отображается только при наличии итоговых данных закрытой сделки.');
   });
 
   it('localizes dynamic record counts, unassigned rows, and risk buffers', () => {
