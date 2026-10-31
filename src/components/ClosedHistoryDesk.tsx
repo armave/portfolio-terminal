@@ -388,6 +388,8 @@ export function ClosedHistoryDesk() {
       feesTotal: totalFees,
       allocationType,
       allocationTypes: [allocationType],
+      cashQuantity: attribution?.cashQuantity || 0,
+      marginQuantity: attribution?.marginQuantity || 0,
       guestAllocations: attribution?.guestAllocations || [],
       unmatchedQuantity: attribution?.unmatchedQuantity || 0
     };
@@ -421,6 +423,8 @@ export function ClosedHistoryDesk() {
         previous.commissions = (previous.commissions || 0) + (row.commissions || 0);
         previous.commissionsComplete = previous.commissionsComplete && row.commissionsComplete;
         previous.feesTotal = (previous.feesTotal || 0) + (row.feesTotal || 0);
+        previous.cashQuantity = (previous.cashQuantity || 0) + (row.cashQuantity || 0);
+        previous.marginQuantity = (previous.marginQuantity || 0) + (row.marginQuantity || 0);
         const allocationTypes = Array.from(new Set([
           ...(previous.allocationTypes || [previous.allocationType]),
           ...(row.allocationTypes || [row.allocationType])
@@ -468,7 +472,8 @@ export function ClosedHistoryDesk() {
       row.trade?.shares,
       row.allocationType,
       row.guestAllocations || [],
-      state.closedTradeAllocations?.[row.allocationKey]
+      state.closedTradeAllocations?.[row.allocationKey],
+      row.cashQuantity
     );
     return { ...row, ...allocation };
   }).sort((a, b) =>
