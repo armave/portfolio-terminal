@@ -279,6 +279,7 @@ The screenshot showed the Worker returning HTTP 404 from the Freedom quote path 
 - [x] Keep compatibility with the existing `quotes`, `quote`, and other known response envelopes.
 - [x] Add regression tests for top-level `q` and nested `data.q`, using the documented quote fields `ltp`, `pp`, `chg`, and `pcp`.
 - [x] Update the Worker integration fixture to return the documented `q` envelope rather than a synthetic `quotes` envelope.
-- [ ] Validate a live quote from the authorized broker account and rerun exact-head PR CI.
+- [x] Exact-head PR CI passed: [Validate run 41203373484](https://github.com/armave/portfolio-terminal/actions/runs/41203373484) and [Pull Request CI run 41203373440](https://github.com/armave/portfolio-terminal/actions/runs/41203373440).
+- [ ] Validate a live quote from the authorized broker account; mocked tests cannot establish account entitlements or live-feed availability.
 
 The latest screenshot no longer showed an HTTP error. The Worker returned a successful payload, but the frontend parser did not inspect the `q` property, so it treated the response as an unsupported quote. TradeNet's published quote example uses a `q` array containing records with `c`, `ltp`, `pp`, `chg`, and `pcp`; the parser now unwraps that array before normalizing the record.
