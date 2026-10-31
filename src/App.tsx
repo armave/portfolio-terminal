@@ -9,6 +9,7 @@ import { TickerTabs } from './components/TickerTab';
 import { SummaryMetricsGrid } from './components/SummaryMetricsGrid';
 import { ProjectionsTable } from './components/ProjectionsTable';
 import { MarketInsightsPanel } from './components/MarketInsightsPanel';
+import { MarketDepthButton } from './components/MarketDepthButton';
 import { TradingConsole } from './components/TradingConsole';
 import { BoardExternalLinks } from './components/BoardExternalLinks';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
@@ -512,6 +513,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               class="board-title-actions flex flex-wrap items-center gap-2"
             >
               <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
+              {portfolioSnapshot.positions?.[activeDeskView]?.ticker && (
+                <MarketDepthButton ticker={portfolioSnapshot.positions[activeDeskView].ticker} />
+              )}
               <div id="boardAnalystConsensus" class={analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
               <div id="boardExternalLinks" class="flex items-center gap-2"><BoardExternalLinks /></div>
             </div>
