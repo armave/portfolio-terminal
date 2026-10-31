@@ -82,10 +82,6 @@ export function ClosedHistoryDesk() {
   useEffect(() => {
     const cashflows = state.cashflows || [];
     if (!cashflowHistoryReady || !cashflowSyncReady || brokerTradesLoading) return;
-    if (!cashflows.length) {
-      setCashflowAllocationReady(true);
-      return;
-    }
     const storedExecutions = portfolioStore.getState().brokerExecutedTrades || [];
     const executions = storedExecutions.length ? storedExecutions : brokerTrades;
     // Exclude calculated metadata from the input fingerprint; otherwise a
@@ -110,7 +106,8 @@ export function ClosedHistoryDesk() {
     requireCloudSync = false
   ): Promise<boolean> => {
     try {
-      if (!cashflowRows.length) return true;
+      // An empty confirmed snapshot is still a calculation input: it must clear
+      // any stale allocations left by older imports or a previously saved broker row.
 
       // Persist broker-normalized cashflow rows as the source of truth so fee
       // allocations can be recalculated after refresh without another API read.

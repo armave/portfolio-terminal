@@ -73,3 +73,13 @@ describe('Freedom margin fee allocation', () => {
     expect(result.matchedFeeRows).toBe(0);
   });
 });
+
+describe('empty cashflow snapshots', () => {
+  it('produces empty allocations so stale saved fees can be cleared', () => {
+    const result = calculateFreedomMarginFeeAllocations([], [
+      { side: 'sell', commission: 1, profit: 10, marginFeeAllocations: { old: 5 } }
+    ]);
+    expect(result.brokerAllocations.size).toBe(0);
+    expect(result.appAllocations.size).toBe(0);
+  });
+});
