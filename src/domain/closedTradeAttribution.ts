@@ -36,6 +36,7 @@ interface ExecutionLike {
   quantity?: unknown;
   qty?: unknown;
   price?: unknown;
+  tradeValue?: unknown;
   executedAt?: unknown;
   date?: unknown;
   time?: unknown;
@@ -157,13 +158,16 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
     const raw = trade?.raw && typeof trade.raw === 'object' ? trade.raw : {};
     const ticker = normalizeTicker(trade?.ticker || raw.instr_nm || raw.i || raw.ticker || raw.symbol);
     const side = resolveSide(trade);
+    const quantity = resolveQuantity(trade);
+    const directPrice = firstPositiveMagnitude(trade.price, raw.price, raw.executionPrice, raw.exec_price);
+    const tradeValue = firstPositiveMagnitude(trade.tradeValue, raw.tradeValue, raw.trade_value, raw.val);
     return {
       trade,
       rowIndex,
       ticker,
       side: side || 'buy',
-      quantity: resolveQuantity(trade),
-      price: firstPositiveMagnitude(trade.price, raw.price, raw.executionPrice, raw.exec_price) || null,
+      quantity,
+      price: directPrice || (tradeValue > 0 && quantity > 0 ? tradeValue / quantity : null),
       at: resolveTimestamp(trade)
     };
   }).filter((event) => event.ticker && resolveSide(event.trade) !== null && event.quantity > 0)
