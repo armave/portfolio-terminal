@@ -81,6 +81,7 @@ describe('closed trade tranche attribution', () => {
     const afterAssignment = { id: 'sale-after', ticker: 'AMD', side: 'SELL', quantity: 1, executedAt: at(12) };
     const id = trancheId('AMD', at(9), 'buy-1');
     const result = attributeClosedTradeExecutions([buy, beforeAssignment, afterAssignment], {
+      trancheTypes: { [id]: 'cash' },
       guestAssignments: { [id]: 'guest-amd' },
       guestAssignmentDetails: {
         [id]: {
@@ -111,6 +112,18 @@ describe('closed trade tranche attribution', () => {
       marginQuantity: 0,
       guestAllocations: [{ guestId: 'guest-tsla', quantity: 1 }],
       unmatchedQuantity: 1
+    });
+  });
+
+  it('defaults a known buy lot to Margin when no funding type was assigned', () => {
+    const buy = { id: 'default-margin-buy', ticker: 'ORCL', side: 'BUY', quantity: 3, executedAt: at(9) };
+    const sale = { id: 'default-margin-sale', ticker: 'ORCL', side: 'SELL', quantity: 2, executedAt: at(12) };
+    expect(attributeClosedTradeExecutions([buy, sale]).get(sale)).toEqual({
+      fundingType: 'margin',
+      cashQuantity: 0,
+      marginQuantity: 2,
+      guestAllocations: [],
+      unmatchedQuantity: 0
     });
   });
 
