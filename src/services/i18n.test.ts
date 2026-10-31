@@ -52,6 +52,15 @@ describe('app localization', () => {
       .toBe('История закрытых сделок с тикером, датой закрытия, количеством акций, сроком удержания, сборами, комиссиями и чистой прибылью.');
   });
 
+  it('localizes full-reset history confirmation and failure messages', () => {
+    expect(translateText('[System]: Closed trade history cleared from KV cloud.', 'ru'))
+      .toBe('История закрытых сделок очищена в облаке KV.');
+    expect(translateText('The portfolio was reset in memory, but some local data could not be cleared. Check browser storage before reloading.', 'ru'))
+      .toBe('Портфель сброшен в памяти, но не удалось очистить часть локальных данных. Проверьте хранилище браузера перед перезагрузкой.');
+    expect(translateText('The portfolio was reset locally, but cloud closed history could not be cleared. Restore cloud access and retry the reset.', 'ru'))
+      .toBe('Портфель сброшен локально, но не удалось очистить историю сделок в облаке. Восстановите доступ к облаку и повторите сброс.');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
