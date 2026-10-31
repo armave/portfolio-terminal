@@ -208,8 +208,6 @@ const RU: Record<string, string> = {
   'Funding · guest · cash shares': 'Финансирование · гость · денежные акции',
   'Cash shares': 'Акции за денежные средства',
   'Margin shares': 'Маржинальные акции',
-  'Unassigned': 'Не назначено',
-  'No cash allocation': 'Нет денежной доли',
   'Guest unavailable': 'Гость недоступен',
   'No guest accounts': 'Нет гостевых учётных записей',
   'Refreshing guest accounts…': 'Обновление списка гостевых учётных записей…',
