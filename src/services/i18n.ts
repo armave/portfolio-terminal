@@ -689,8 +689,10 @@ function translateDynamicText(normalized: string): string | undefined {
   const noOpenShares = normalized.match(/^No valid open shares found for (.+)\.$/i);
   if (noOpenShares) return 'Не найдено допустимое количество открытых акций для ' + noOpenShares[1] + '.';
 
-  const sold = normalized.match(/^Sold ([\d,.]+) ([A-Z0-9.-]+) @ \$(\d+(?:\.\d{2})?)$/i);
-  if (sold) return 'Продано ' + sold[1] + ' акций ' + sold[2] + ' по цене 
+  const sold = normalized.match(/^Sold ([\\d,.]+) ([A-Z0-9.-]+) @ \\$(\\d+(?:\\.\\d{2})?)$/i);
+  if (sold) return 'Продано ' + sold[1] + ' акций ' + sold[2] + ' по цене $' + sold[3] + '.';
+
+  const settingsLoadError = normalized.match(/^\\[Settings Error\\]: Could not load saved broker assumptions \\((.+)\\)\\. Using defaults\\.$/i);
   if (settingsLoadError) return '[Ошибка настроек]: Не удалось загрузить сохранённые параметры брокера (' + settingsLoadError[1] + '). Используются значения по умолчанию.';
 
   const marketDataFailure = normalized.match(/^\[Market Data Error\]: Could not fetch (.+)\. (.+)\. Retained tracked price: (.+)\. Set manually via: price (.+) <number>\.$/i);
