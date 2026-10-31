@@ -85,17 +85,21 @@ export function applyCashflowAllocationsToClosedTrades(
 
     // Undo the previous cashflow allocation before applying the current one.
     const previousFees = Number(trade.feesAndCommissions ?? trade.totalCommissions ?? trade.commissions ?? 0) || 0;
-    const net = Number(trade.netProfit ?? trade.netRealizedGain ?? trade.grossProfit ?? 0) || 0;
+    const netValue = trade.netProfit ?? trade.netRealizedGain;
+    const hasKnownNet = netValue !== null && netValue !== undefined && Number.isFinite(Number(netValue));
+    const net = hasKnownNet ? Number(netValue) : null;
     const fees = Number((Math.max(0, previousFees - previousMargin) + addedFee).toFixed(2));
-    const netAfterFee = Number((net + previousMargin - addedFee).toFixed(2));
+    const netAfterFee = hasKnownNet ? Number((net! + previousMargin - addedFee).toFixed(2)) : null;
 
     if (
       Number(trade.feesAndCommissions ?? trade.totalCommissions ?? 0) === fees &&
       Number(trade.totalCommissions ?? fees) === fees &&
       Number(trade.marginInterest ?? 0) === addedFee &&
       Number(trade.marginFee ?? 0) === addedFee &&
-      Number(trade.netProfit ?? trade.netRealizedGain ?? 0) === netAfterFee &&
-      Number(trade.netRealizedGain ?? netAfterFee) === netAfterFee
+      (!hasKnownNet || (
+        Number(trade.netProfit ?? trade.netRealizedGain) === netAfterFee &&
+        Number(trade.netRealizedGain ?? netAfterFee) === netAfterFee
+      ))
     ) return trade;
     return {
       ...trade,
@@ -103,8 +107,7 @@ export function applyCashflowAllocationsToClosedTrades(
       totalCommissions: fees,
       marginInterest: addedFee,
       marginFee: addedFee,
-      netProfit: netAfterFee,
-      netRealizedGain: netAfterFee
+      ...(hasKnownNet ? { netProfit: netAfterFee, netRealizedGain: netAfterFee } : {})
     };
   });
 }
