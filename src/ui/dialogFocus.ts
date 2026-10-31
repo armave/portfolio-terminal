@@ -21,7 +21,7 @@ export function getDialogFocusableElements(dialog: Pick<HTMLElement, 'querySelec
 
 export function trapDialogTabKey(
   event: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'preventDefault'>,
-  dialog: Pick<HTMLElement, 'querySelectorAll' | 'contains' | 'focus'>,
+  dialog: HTMLElement,
   activeElement: Element | null
 ): boolean {
   if (event.key !== 'Tab') return false;
