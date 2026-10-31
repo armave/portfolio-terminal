@@ -11,7 +11,8 @@ describe('TableScrollRegion', () => {
     const region = TableScrollRegion({
       label: 'Guest assignment history table',
       children: table,
-      className: 'table-scroll-wrapper focus-visible:outline-indigo-400'
+      className: 'table-scroll-wrapper',
+      focusClassName: 'focus-visible:outline-indigo-400'
     });
 
     expect(region.type).toBe('div');
