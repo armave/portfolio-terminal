@@ -57,7 +57,677 @@ function isUsdCashflow(fee: CashflowInput): boolean {
   const currency = String(fee.currency ?? '').trim().toUpperCase();
   // Missing currency is retained for legacy broker payloads whose account
   // base currency is USD. Never silently convert a known foreign-currency fee.
-  return currency === '' || currency === 'USD';
+  return currency === '' || ['USD', 'US
+}
+
+function allocateCents(totalCents: number, weighted: WeightedAllocation[]): Map<number, number> {
+  const result = new Map<number, number>();
+  const valid = weighted.filter(item => Number.isFinite(item.weight) && item.weight > 0);
+  const totalWeight = valid.reduce((sum, item) => sum + item.weight, 0);
+  if (totalCents <= 0 || totalWeight <= 0 || valid.length === 0) return result;
+
+  const shares = valid.map(item => {
+    const exact = totalCents * item.weight / totalWeight;
+    const floor = Math.floor(exact);
+    return { index: item.index, cents: floor, remainder: exact - floor };
+  });
+  let remaining = totalCents - shares.reduce((sum, item) => sum + item.cents, 0);
+  shares.sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+  for (let i = 0; i < shares.length && remaining > 0; i++, remaining--) shares[i].cents += 1;
+  for (const item of shares) if (item.cents > 0) result.set(item.index, item.cents);
+  return result;
+}
+
+function isFinancingCashflow(fee: CashflowInput): boolean {
+  if (!isFreedomCashflowRow(fee) || !isUsdCashflow(fee)) return false;
+  const text = [fee.type, fee.description, ...Object.values(fee.raw ?? {})].join(' ').toLowerCase();
+  return FINANCING_FEE_PATTERN.test(text) && !TRADE_COMMISSION_PATTERN.test(text);
+}
+
+/** Allocate daily USD financing fees to FIFO-matched closed executions. */
+export function calculateFreedomMarginFeeAllocations(
+  cashflows: CashflowInput[],
+  brokerExecutions: FeeRecord[],
+  appTrades: FeeRecord[] = []
+): FreedomMarginFeeAllocations {
+  const brokerAllocations = new Map<number, Record<string, number>>();
+  const appAllocations = new Map<number, number>();
+  const feeRows = cashflows.filter(isFinancingCashflow);
+  if (feeRows.length === 0) return { brokerAllocations, appAllocations, matchedFeeRows: 0, allocatedAmount: 0 };
+
+  const executions = brokerExecutions.map((trade, index) => ({
+    index,
+    time: Date.parse(String(trade.executedAt ?? trade.date ?? '')),
+    ticker: String(trade.ticker ?? '').trim().toUpperCase().replace(/\.US$/, ''),
+    side: String(trade.side ?? '').trim().toLowerCase(),
+    quantity: Math.abs(Number(trade.quantity ?? trade.shares ?? 0)),
+    price: Math.abs(Number(trade.price ?? trade.executionPrice ?? 0)) ||
+      (Number(trade.tradeValue) > 0 && Number(trade.quantity ?? trade.shares) > 0
+        ? Math.abs(Number(trade.tradeValue) / Number(trade.quantity ?? trade.shares))
+        : 0),
+    currency: String(trade.currency ?? '').trim().toUpperCase()
+  })).filter(row => row.ticker && Number.isFinite(row.time) && row.quantity > 0 &&
+    (row.currency === '' || ['USD', 'US
+    .sort((a, b) => a.time - b.time || a.index - b.index);
+
+  const segments: Array<{ sellIndex: number; buyDay: number; sellDay: number; quantity: number; buyPrice: number }> = [];
+  const queues = new Map<string, Array<{ date: number; quantity: number; price: number }>>();
+  for (const execution of executions) {
+    if (BUY_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      queue.push({ date: execution.time, quantity: execution.quantity, price: execution.price });
+      queues.set(execution.ticker, queue);
+    } else if (SELL_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      let remaining = execution.quantity;
+      while (remaining > 1e-8 && queue.length > 0) {
+        const lot = queue[0];
+        const quantity = Math.min(remaining, lot.quantity);
+        segments.push({
+          sellIndex: execution.index,
+          buyDay: utcDay(lot.date),
+          sellDay: utcDay(execution.time),
+          quantity,
+          buyPrice: lot.price
+        });
+        remaining -= quantity;
+        lot.quantity -= quantity;
+        if (lot.quantity <= 1e-8) queue.shift();
+      }
+    }
+  }
+
+  let matchedFeeRows = 0;
+  let allocatedCents = 0;
+  for (const fee of feeRows) {
+    const date = getFeeDate(fee);
+    const cents = Math.round(Math.abs(Number(fee.amount)) * 100);
+    if (!Number.isFinite(date) || !Number.isFinite(cents) || cents <= 0) continue;
+
+    if (brokerExecutions.length > 0) {
+      const weightsBySell = new Map<number, number>();
+      for (const segment of segments) {
+        if (date < segment.buyDay || date > segment.sellDay || segment.quantity <= 0 || segment.buyPrice <= 0) continue;
+        weightsBySell.set(segment.sellIndex, (weightsBySell.get(segment.sellIndex) || 0) + segment.quantity * segment.buyPrice);
+      }
+      const shares = allocateCents(cents, [...weightsBySell].map(([index, weight]) => ({ index, weight })));
+      if (shares.size === 0) continue;
+      for (const [sellIndex, allocated] of shares) {
+        const byFee = brokerAllocations.get(sellIndex) || {};
+        byFee[fee.id] = Number((((byFee[fee.id] || 0) * 100 + allocated) / 100).toFixed(2));
+        brokerAllocations.set(sellIndex, byFee);
+      }
+    } else {
+      const weights = appTrades.map((trade, index) => {
+        const buy = parseCalendarDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate);
+        const sell = parseCalendarDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.date);
+        const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
+        const price = Math.abs(Number(trade.entryPrice ?? trade.avgBuyPrice ?? trade.buyPrice ?? 0));
+        const currency = String(trade.currency ?? '').trim().toUpperCase();
+        const usdCompatible = currency === '' || ['USD', 'US
+      const allocations = allocateCents(cents, weights.map(({ index, weight }) => ({ index, weight })));
+      if (allocations.size === 0) continue;
+      for (const [index, amount] of allocations) {
+        appAllocations.set(index, Number((((appAllocations.get(index) || 0) * 100 + amount) / 100).toFixed(2)));
+      }
+    }
+    matchedFeeRows++;
+    allocatedCents += cents;
+  }
+
+  return {
+    brokerAllocations,
+    appAllocations,
+    matchedFeeRows,
+    allocatedAmount: Number((allocatedCents / 100).toFixed(2))
+  };
+}
+, 'US DOLLAR', 'US DOLLARS'].includes(currency);
+}
+
+function allocateCents(totalCents: number, weighted: WeightedAllocation[]): Map<number, number> {
+  const result = new Map<number, number>();
+  const valid = weighted.filter(item => Number.isFinite(item.weight) && item.weight > 0);
+  const totalWeight = valid.reduce((sum, item) => sum + item.weight, 0);
+  if (totalCents <= 0 || totalWeight <= 0 || valid.length === 0) return result;
+
+  const shares = valid.map(item => {
+    const exact = totalCents * item.weight / totalWeight;
+    const floor = Math.floor(exact);
+    return { index: item.index, cents: floor, remainder: exact - floor };
+  });
+  let remaining = totalCents - shares.reduce((sum, item) => sum + item.cents, 0);
+  shares.sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+  for (let i = 0; i < shares.length && remaining > 0; i++, remaining--) shares[i].cents += 1;
+  for (const item of shares) if (item.cents > 0) result.set(item.index, item.cents);
+  return result;
+}
+
+function isFinancingCashflow(fee: CashflowInput): boolean {
+  if (!isFreedomCashflowRow(fee) || !isUsdCashflow(fee)) return false;
+  const text = [fee.type, fee.description, ...Object.values(fee.raw ?? {})].join(' ').toLowerCase();
+  return FINANCING_FEE_PATTERN.test(text) && !TRADE_COMMISSION_PATTERN.test(text);
+}
+
+/** Allocate daily USD financing fees to FIFO-matched closed executions. */
+export function calculateFreedomMarginFeeAllocations(
+  cashflows: CashflowInput[],
+  brokerExecutions: FeeRecord[],
+  appTrades: FeeRecord[] = []
+): FreedomMarginFeeAllocations {
+  const brokerAllocations = new Map<number, Record<string, number>>();
+  const appAllocations = new Map<number, number>();
+  const feeRows = cashflows.filter(isFinancingCashflow);
+  if (feeRows.length === 0) return { brokerAllocations, appAllocations, matchedFeeRows: 0, allocatedAmount: 0 };
+
+  const executions = brokerExecutions.map((trade, index) => ({
+    index,
+    time: Date.parse(String(trade.executedAt ?? trade.date ?? '')),
+    ticker: String(trade.ticker ?? '').trim().toUpperCase().replace(/\.US$/, ''),
+    side: String(trade.side ?? '').trim().toLowerCase(),
+    quantity: Math.abs(Number(trade.quantity ?? trade.shares ?? 0)),
+    price: Math.abs(Number(trade.price ?? trade.executionPrice ?? 0)) ||
+      (Number(trade.tradeValue) > 0 && Number(trade.quantity ?? trade.shares) > 0
+        ? Math.abs(Number(trade.tradeValue) / Number(trade.quantity ?? trade.shares))
+        : 0)
+  })).filter(row => row.ticker && Number.isFinite(row.time) && row.quantity > 0)
+    .sort((a, b) => a.time - b.time || a.index - b.index);
+
+  const segments: Array<{ sellIndex: number; buyDay: number; sellDay: number; quantity: number; buyPrice: number }> = [];
+  const queues = new Map<string, Array<{ date: number; quantity: number; price: number }>>();
+  for (const execution of executions) {
+    if (BUY_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      queue.push({ date: execution.time, quantity: execution.quantity, price: execution.price });
+      queues.set(execution.ticker, queue);
+    } else if (SELL_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      let remaining = execution.quantity;
+      while (remaining > 1e-8 && queue.length > 0) {
+        const lot = queue[0];
+        const quantity = Math.min(remaining, lot.quantity);
+        segments.push({
+          sellIndex: execution.index,
+          buyDay: utcDay(lot.date),
+          sellDay: utcDay(execution.time),
+          quantity,
+          buyPrice: lot.price
+        });
+        remaining -= quantity;
+        lot.quantity -= quantity;
+        if (lot.quantity <= 1e-8) queue.shift();
+      }
+    }
+  }
+
+  let matchedFeeRows = 0;
+  let allocatedCents = 0;
+  for (const fee of feeRows) {
+    const date = getFeeDate(fee);
+    const cents = Math.round(Math.abs(Number(fee.amount)) * 100);
+    if (!Number.isFinite(date) || !Number.isFinite(cents) || cents <= 0) continue;
+
+    if (brokerExecutions.length > 0) {
+      const weightsBySell = new Map<number, number>();
+      for (const segment of segments) {
+        if (date < segment.buyDay || date > segment.sellDay || segment.quantity <= 0 || segment.buyPrice <= 0) continue;
+        weightsBySell.set(segment.sellIndex, (weightsBySell.get(segment.sellIndex) || 0) + segment.quantity * segment.buyPrice);
+      }
+      const shares = allocateCents(cents, [...weightsBySell].map(([index, weight]) => ({ index, weight })));
+      if (shares.size === 0) continue;
+      for (const [sellIndex, allocated] of shares) {
+        const byFee = brokerAllocations.get(sellIndex) || {};
+        byFee[fee.id] = Number((((byFee[fee.id] || 0) * 100 + allocated) / 100).toFixed(2));
+        brokerAllocations.set(sellIndex, byFee);
+      }
+    } else {
+      const weights = appTrades.map((trade, index) => {
+        const buy = parseCalendarDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate);
+        const sell = parseCalendarDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.date);
+        const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
+        const price = Math.abs(Number(trade.entryPrice ?? trade.avgBuyPrice ?? trade.buyPrice ?? 0));
+        return { index, buy, sell, weight: shares * price };
+      }).filter(item => Number.isFinite(item.buy) && Number.isFinite(item.sell) &&
+        date >= item.buy && date <= item.sell && item.weight > 0);
+      const allocations = allocateCents(cents, weights.map(({ index, weight }) => ({ index, weight })));
+      if (allocations.size === 0) continue;
+      for (const [index, amount] of allocations) {
+        appAllocations.set(index, Number((((appAllocations.get(index) || 0) * 100 + amount) / 100).toFixed(2)));
+      }
+    }
+    matchedFeeRows++;
+    allocatedCents += cents;
+  }
+
+  return {
+    brokerAllocations,
+    appAllocations,
+    matchedFeeRows,
+    allocatedAmount: Number((allocatedCents / 100).toFixed(2))
+  };
+}
+, 'US DOLLAR', 'US DOLLARS'].includes(row.currency)))
+    .sort((a, b) => a.time - b.time || a.index - b.index);
+
+  const segments: Array<{ sellIndex: number; buyDay: number; sellDay: number; quantity: number; buyPrice: number }> = [];
+  const queues = new Map<string, Array<{ date: number; quantity: number; price: number }>>();
+  for (const execution of executions) {
+    if (BUY_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      queue.push({ date: execution.time, quantity: execution.quantity, price: execution.price });
+      queues.set(execution.ticker, queue);
+    } else if (SELL_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      let remaining = execution.quantity;
+      while (remaining > 1e-8 && queue.length > 0) {
+        const lot = queue[0];
+        const quantity = Math.min(remaining, lot.quantity);
+        segments.push({
+          sellIndex: execution.index,
+          buyDay: utcDay(lot.date),
+          sellDay: utcDay(execution.time),
+          quantity,
+          buyPrice: lot.price
+        });
+        remaining -= quantity;
+        lot.quantity -= quantity;
+        if (lot.quantity <= 1e-8) queue.shift();
+      }
+    }
+  }
+
+  let matchedFeeRows = 0;
+  let allocatedCents = 0;
+  for (const fee of feeRows) {
+    const date = getFeeDate(fee);
+    const cents = Math.round(Math.abs(Number(fee.amount)) * 100);
+    if (!Number.isFinite(date) || !Number.isFinite(cents) || cents <= 0) continue;
+
+    if (brokerExecutions.length > 0) {
+      const weightsBySell = new Map<number, number>();
+      for (const segment of segments) {
+        if (date < segment.buyDay || date > segment.sellDay || segment.quantity <= 0 || segment.buyPrice <= 0) continue;
+        weightsBySell.set(segment.sellIndex, (weightsBySell.get(segment.sellIndex) || 0) + segment.quantity * segment.buyPrice);
+      }
+      const shares = allocateCents(cents, [...weightsBySell].map(([index, weight]) => ({ index, weight })));
+      if (shares.size === 0) continue;
+      for (const [sellIndex, allocated] of shares) {
+        const byFee = brokerAllocations.get(sellIndex) || {};
+        byFee[fee.id] = Number((((byFee[fee.id] || 0) * 100 + allocated) / 100).toFixed(2));
+        brokerAllocations.set(sellIndex, byFee);
+      }
+    } else {
+      const weights = appTrades.map((trade, index) => {
+        const buy = parseCalendarDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate);
+        const sell = parseCalendarDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.date);
+        const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
+        const price = Math.abs(Number(trade.entryPrice ?? trade.avgBuyPrice ?? trade.buyPrice ?? 0));
+        return { index, buy, sell, weight: shares * price };
+      }).filter(item => Number.isFinite(item.buy) && Number.isFinite(item.sell) &&
+        date >= item.buy && date <= item.sell && item.weight > 0);
+      const allocations = allocateCents(cents, weights.map(({ index, weight }) => ({ index, weight })));
+      if (allocations.size === 0) continue;
+      for (const [index, amount] of allocations) {
+        appAllocations.set(index, Number((((appAllocations.get(index) || 0) * 100 + amount) / 100).toFixed(2)));
+      }
+    }
+    matchedFeeRows++;
+    allocatedCents += cents;
+  }
+
+  return {
+    brokerAllocations,
+    appAllocations,
+    matchedFeeRows,
+    allocatedAmount: Number((allocatedCents / 100).toFixed(2))
+  };
+}
+, 'US DOLLAR', 'US DOLLARS'].includes(currency);
+}
+
+function allocateCents(totalCents: number, weighted: WeightedAllocation[]): Map<number, number> {
+  const result = new Map<number, number>();
+  const valid = weighted.filter(item => Number.isFinite(item.weight) && item.weight > 0);
+  const totalWeight = valid.reduce((sum, item) => sum + item.weight, 0);
+  if (totalCents <= 0 || totalWeight <= 0 || valid.length === 0) return result;
+
+  const shares = valid.map(item => {
+    const exact = totalCents * item.weight / totalWeight;
+    const floor = Math.floor(exact);
+    return { index: item.index, cents: floor, remainder: exact - floor };
+  });
+  let remaining = totalCents - shares.reduce((sum, item) => sum + item.cents, 0);
+  shares.sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+  for (let i = 0; i < shares.length && remaining > 0; i++, remaining--) shares[i].cents += 1;
+  for (const item of shares) if (item.cents > 0) result.set(item.index, item.cents);
+  return result;
+}
+
+function isFinancingCashflow(fee: CashflowInput): boolean {
+  if (!isFreedomCashflowRow(fee) || !isUsdCashflow(fee)) return false;
+  const text = [fee.type, fee.description, ...Object.values(fee.raw ?? {})].join(' ').toLowerCase();
+  return FINANCING_FEE_PATTERN.test(text) && !TRADE_COMMISSION_PATTERN.test(text);
+}
+
+/** Allocate daily USD financing fees to FIFO-matched closed executions. */
+export function calculateFreedomMarginFeeAllocations(
+  cashflows: CashflowInput[],
+  brokerExecutions: FeeRecord[],
+  appTrades: FeeRecord[] = []
+): FreedomMarginFeeAllocations {
+  const brokerAllocations = new Map<number, Record<string, number>>();
+  const appAllocations = new Map<number, number>();
+  const feeRows = cashflows.filter(isFinancingCashflow);
+  if (feeRows.length === 0) return { brokerAllocations, appAllocations, matchedFeeRows: 0, allocatedAmount: 0 };
+
+  const executions = brokerExecutions.map((trade, index) => ({
+    index,
+    time: Date.parse(String(trade.executedAt ?? trade.date ?? '')),
+    ticker: String(trade.ticker ?? '').trim().toUpperCase().replace(/\.US$/, ''),
+    side: String(trade.side ?? '').trim().toLowerCase(),
+    quantity: Math.abs(Number(trade.quantity ?? trade.shares ?? 0)),
+    price: Math.abs(Number(trade.price ?? trade.executionPrice ?? 0)) ||
+      (Number(trade.tradeValue) > 0 && Number(trade.quantity ?? trade.shares) > 0
+        ? Math.abs(Number(trade.tradeValue) / Number(trade.quantity ?? trade.shares))
+        : 0)
+  })).filter(row => row.ticker && Number.isFinite(row.time) && row.quantity > 0)
+    .sort((a, b) => a.time - b.time || a.index - b.index);
+
+  const segments: Array<{ sellIndex: number; buyDay: number; sellDay: number; quantity: number; buyPrice: number }> = [];
+  const queues = new Map<string, Array<{ date: number; quantity: number; price: number }>>();
+  for (const execution of executions) {
+    if (BUY_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      queue.push({ date: execution.time, quantity: execution.quantity, price: execution.price });
+      queues.set(execution.ticker, queue);
+    } else if (SELL_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      let remaining = execution.quantity;
+      while (remaining > 1e-8 && queue.length > 0) {
+        const lot = queue[0];
+        const quantity = Math.min(remaining, lot.quantity);
+        segments.push({
+          sellIndex: execution.index,
+          buyDay: utcDay(lot.date),
+          sellDay: utcDay(execution.time),
+          quantity,
+          buyPrice: lot.price
+        });
+        remaining -= quantity;
+        lot.quantity -= quantity;
+        if (lot.quantity <= 1e-8) queue.shift();
+      }
+    }
+  }
+
+  let matchedFeeRows = 0;
+  let allocatedCents = 0;
+  for (const fee of feeRows) {
+    const date = getFeeDate(fee);
+    const cents = Math.round(Math.abs(Number(fee.amount)) * 100);
+    if (!Number.isFinite(date) || !Number.isFinite(cents) || cents <= 0) continue;
+
+    if (brokerExecutions.length > 0) {
+      const weightsBySell = new Map<number, number>();
+      for (const segment of segments) {
+        if (date < segment.buyDay || date > segment.sellDay || segment.quantity <= 0 || segment.buyPrice <= 0) continue;
+        weightsBySell.set(segment.sellIndex, (weightsBySell.get(segment.sellIndex) || 0) + segment.quantity * segment.buyPrice);
+      }
+      const shares = allocateCents(cents, [...weightsBySell].map(([index, weight]) => ({ index, weight })));
+      if (shares.size === 0) continue;
+      for (const [sellIndex, allocated] of shares) {
+        const byFee = brokerAllocations.get(sellIndex) || {};
+        byFee[fee.id] = Number((((byFee[fee.id] || 0) * 100 + allocated) / 100).toFixed(2));
+        brokerAllocations.set(sellIndex, byFee);
+      }
+    } else {
+      const weights = appTrades.map((trade, index) => {
+        const buy = parseCalendarDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate);
+        const sell = parseCalendarDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.date);
+        const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
+        const price = Math.abs(Number(trade.entryPrice ?? trade.avgBuyPrice ?? trade.buyPrice ?? 0));
+        return { index, buy, sell, weight: shares * price };
+      }).filter(item => Number.isFinite(item.buy) && Number.isFinite(item.sell) &&
+        date >= item.buy && date <= item.sell && item.weight > 0);
+      const allocations = allocateCents(cents, weights.map(({ index, weight }) => ({ index, weight })));
+      if (allocations.size === 0) continue;
+      for (const [index, amount] of allocations) {
+        appAllocations.set(index, Number((((appAllocations.get(index) || 0) * 100 + amount) / 100).toFixed(2)));
+      }
+    }
+    matchedFeeRows++;
+    allocatedCents += cents;
+  }
+
+  return {
+    brokerAllocations,
+    appAllocations,
+    matchedFeeRows,
+    allocatedAmount: Number((allocatedCents / 100).toFixed(2))
+  };
+}
+, 'US DOLLAR', 'US DOLLARS'].includes(currency);
+        return { index, buy, sell, weight: shares * price, usdCompatible };
+      }).filter(item => item.usdCompatible && Number.isFinite(item.buy) && Number.isFinite(item.sell) &&
+        date >= item.buy && date <= item.sell && item.weight > 0);
+      const allocations = allocateCents(cents, weights.map(({ index, weight }) => ({ index, weight })));
+      if (allocations.size === 0) continue;
+      for (const [index, amount] of allocations) {
+        appAllocations.set(index, Number((((appAllocations.get(index) || 0) * 100 + amount) / 100).toFixed(2)));
+      }
+    }
+    matchedFeeRows++;
+    allocatedCents += cents;
+  }
+
+  return {
+    brokerAllocations,
+    appAllocations,
+    matchedFeeRows,
+    allocatedAmount: Number((allocatedCents / 100).toFixed(2))
+  };
+}
+, 'US DOLLAR', 'US DOLLARS'].includes(currency);
+}
+
+function allocateCents(totalCents: number, weighted: WeightedAllocation[]): Map<number, number> {
+  const result = new Map<number, number>();
+  const valid = weighted.filter(item => Number.isFinite(item.weight) && item.weight > 0);
+  const totalWeight = valid.reduce((sum, item) => sum + item.weight, 0);
+  if (totalCents <= 0 || totalWeight <= 0 || valid.length === 0) return result;
+
+  const shares = valid.map(item => {
+    const exact = totalCents * item.weight / totalWeight;
+    const floor = Math.floor(exact);
+    return { index: item.index, cents: floor, remainder: exact - floor };
+  });
+  let remaining = totalCents - shares.reduce((sum, item) => sum + item.cents, 0);
+  shares.sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+  for (let i = 0; i < shares.length && remaining > 0; i++, remaining--) shares[i].cents += 1;
+  for (const item of shares) if (item.cents > 0) result.set(item.index, item.cents);
+  return result;
+}
+
+function isFinancingCashflow(fee: CashflowInput): boolean {
+  if (!isFreedomCashflowRow(fee) || !isUsdCashflow(fee)) return false;
+  const text = [fee.type, fee.description, ...Object.values(fee.raw ?? {})].join(' ').toLowerCase();
+  return FINANCING_FEE_PATTERN.test(text) && !TRADE_COMMISSION_PATTERN.test(text);
+}
+
+/** Allocate daily USD financing fees to FIFO-matched closed executions. */
+export function calculateFreedomMarginFeeAllocations(
+  cashflows: CashflowInput[],
+  brokerExecutions: FeeRecord[],
+  appTrades: FeeRecord[] = []
+): FreedomMarginFeeAllocations {
+  const brokerAllocations = new Map<number, Record<string, number>>();
+  const appAllocations = new Map<number, number>();
+  const feeRows = cashflows.filter(isFinancingCashflow);
+  if (feeRows.length === 0) return { brokerAllocations, appAllocations, matchedFeeRows: 0, allocatedAmount: 0 };
+
+  const executions = brokerExecutions.map((trade, index) => ({
+    index,
+    time: Date.parse(String(trade.executedAt ?? trade.date ?? '')),
+    ticker: String(trade.ticker ?? '').trim().toUpperCase().replace(/\.US$/, ''),
+    side: String(trade.side ?? '').trim().toLowerCase(),
+    quantity: Math.abs(Number(trade.quantity ?? trade.shares ?? 0)),
+    price: Math.abs(Number(trade.price ?? trade.executionPrice ?? 0)) ||
+      (Number(trade.tradeValue) > 0 && Number(trade.quantity ?? trade.shares) > 0
+        ? Math.abs(Number(trade.tradeValue) / Number(trade.quantity ?? trade.shares))
+        : 0)
+  })).filter(row => row.ticker && Number.isFinite(row.time) && row.quantity > 0)
+    .sort((a, b) => a.time - b.time || a.index - b.index);
+
+  const segments: Array<{ sellIndex: number; buyDay: number; sellDay: number; quantity: number; buyPrice: number }> = [];
+  const queues = new Map<string, Array<{ date: number; quantity: number; price: number }>>();
+  for (const execution of executions) {
+    if (BUY_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      queue.push({ date: execution.time, quantity: execution.quantity, price: execution.price });
+      queues.set(execution.ticker, queue);
+    } else if (SELL_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      let remaining = execution.quantity;
+      while (remaining > 1e-8 && queue.length > 0) {
+        const lot = queue[0];
+        const quantity = Math.min(remaining, lot.quantity);
+        segments.push({
+          sellIndex: execution.index,
+          buyDay: utcDay(lot.date),
+          sellDay: utcDay(execution.time),
+          quantity,
+          buyPrice: lot.price
+        });
+        remaining -= quantity;
+        lot.quantity -= quantity;
+        if (lot.quantity <= 1e-8) queue.shift();
+      }
+    }
+  }
+
+  let matchedFeeRows = 0;
+  let allocatedCents = 0;
+  for (const fee of feeRows) {
+    const date = getFeeDate(fee);
+    const cents = Math.round(Math.abs(Number(fee.amount)) * 100);
+    if (!Number.isFinite(date) || !Number.isFinite(cents) || cents <= 0) continue;
+
+    if (brokerExecutions.length > 0) {
+      const weightsBySell = new Map<number, number>();
+      for (const segment of segments) {
+        if (date < segment.buyDay || date > segment.sellDay || segment.quantity <= 0 || segment.buyPrice <= 0) continue;
+        weightsBySell.set(segment.sellIndex, (weightsBySell.get(segment.sellIndex) || 0) + segment.quantity * segment.buyPrice);
+      }
+      const shares = allocateCents(cents, [...weightsBySell].map(([index, weight]) => ({ index, weight })));
+      if (shares.size === 0) continue;
+      for (const [sellIndex, allocated] of shares) {
+        const byFee = brokerAllocations.get(sellIndex) || {};
+        byFee[fee.id] = Number((((byFee[fee.id] || 0) * 100 + allocated) / 100).toFixed(2));
+        brokerAllocations.set(sellIndex, byFee);
+      }
+    } else {
+      const weights = appTrades.map((trade, index) => {
+        const buy = parseCalendarDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate);
+        const sell = parseCalendarDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.date);
+        const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
+        const price = Math.abs(Number(trade.entryPrice ?? trade.avgBuyPrice ?? trade.buyPrice ?? 0));
+        return { index, buy, sell, weight: shares * price };
+      }).filter(item => Number.isFinite(item.buy) && Number.isFinite(item.sell) &&
+        date >= item.buy && date <= item.sell && item.weight > 0);
+      const allocations = allocateCents(cents, weights.map(({ index, weight }) => ({ index, weight })));
+      if (allocations.size === 0) continue;
+      for (const [index, amount] of allocations) {
+        appAllocations.set(index, Number((((appAllocations.get(index) || 0) * 100 + amount) / 100).toFixed(2)));
+      }
+    }
+    matchedFeeRows++;
+    allocatedCents += cents;
+  }
+
+  return {
+    brokerAllocations,
+    appAllocations,
+    matchedFeeRows,
+    allocatedAmount: Number((allocatedCents / 100).toFixed(2))
+  };
+}
+, 'US DOLLAR', 'US DOLLARS'].includes(row.currency)))
+    .sort((a, b) => a.time - b.time || a.index - b.index);
+
+  const segments: Array<{ sellIndex: number; buyDay: number; sellDay: number; quantity: number; buyPrice: number }> = [];
+  const queues = new Map<string, Array<{ date: number; quantity: number; price: number }>>();
+  for (const execution of executions) {
+    if (BUY_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      queue.push({ date: execution.time, quantity: execution.quantity, price: execution.price });
+      queues.set(execution.ticker, queue);
+    } else if (SELL_SIDES.has(execution.side)) {
+      const queue = queues.get(execution.ticker) || [];
+      let remaining = execution.quantity;
+      while (remaining > 1e-8 && queue.length > 0) {
+        const lot = queue[0];
+        const quantity = Math.min(remaining, lot.quantity);
+        segments.push({
+          sellIndex: execution.index,
+          buyDay: utcDay(lot.date),
+          sellDay: utcDay(execution.time),
+          quantity,
+          buyPrice: lot.price
+        });
+        remaining -= quantity;
+        lot.quantity -= quantity;
+        if (lot.quantity <= 1e-8) queue.shift();
+      }
+    }
+  }
+
+  let matchedFeeRows = 0;
+  let allocatedCents = 0;
+  for (const fee of feeRows) {
+    const date = getFeeDate(fee);
+    const cents = Math.round(Math.abs(Number(fee.amount)) * 100);
+    if (!Number.isFinite(date) || !Number.isFinite(cents) || cents <= 0) continue;
+
+    if (brokerExecutions.length > 0) {
+      const weightsBySell = new Map<number, number>();
+      for (const segment of segments) {
+        if (date < segment.buyDay || date > segment.sellDay || segment.quantity <= 0 || segment.buyPrice <= 0) continue;
+        weightsBySell.set(segment.sellIndex, (weightsBySell.get(segment.sellIndex) || 0) + segment.quantity * segment.buyPrice);
+      }
+      const shares = allocateCents(cents, [...weightsBySell].map(([index, weight]) => ({ index, weight })));
+      if (shares.size === 0) continue;
+      for (const [sellIndex, allocated] of shares) {
+        const byFee = brokerAllocations.get(sellIndex) || {};
+        byFee[fee.id] = Number((((byFee[fee.id] || 0) * 100 + allocated) / 100).toFixed(2));
+        brokerAllocations.set(sellIndex, byFee);
+      }
+    } else {
+      const weights = appTrades.map((trade, index) => {
+        const buy = parseCalendarDate(trade.buyDate ?? trade.purchaseDate ?? trade.entryDate ?? trade.openDate);
+        const sell = parseCalendarDate(trade.sellDate ?? trade.exitDate ?? trade.closedAt ?? trade.date);
+        const shares = Math.abs(Number(trade.shares ?? trade.quantity ?? 0));
+        const price = Math.abs(Number(trade.entryPrice ?? trade.avgBuyPrice ?? trade.buyPrice ?? 0));
+        return { index, buy, sell, weight: shares * price };
+      }).filter(item => Number.isFinite(item.buy) && Number.isFinite(item.sell) &&
+        date >= item.buy && date <= item.sell && item.weight > 0);
+      const allocations = allocateCents(cents, weights.map(({ index, weight }) => ({ index, weight })));
+      if (allocations.size === 0) continue;
+      for (const [index, amount] of allocations) {
+        appAllocations.set(index, Number((((appAllocations.get(index) || 0) * 100 + amount) / 100).toFixed(2)));
+      }
+    }
+    matchedFeeRows++;
+    allocatedCents += cents;
+  }
+
+  return {
+    brokerAllocations,
+    appAllocations,
+    matchedFeeRows,
+    allocatedAmount: Number((allocatedCents / 100).toFixed(2))
+  };
+}
+, 'US DOLLAR', 'US DOLLARS'].includes(currency);
 }
 
 function allocateCents(totalCents: number, weighted: WeightedAllocation[]): Map<number, number> {

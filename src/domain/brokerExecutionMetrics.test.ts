@@ -33,3 +33,10 @@ describe('broker execution FIFO metrics', () => {
       .toEqual({ holdingDays: 2, buyCommission: null });
   });
 });
+
+it('marks foreign-currency buy commissions incomplete instead of adding them to USD P/L', () => {
+  const buy = { ticker: 'AAPL', side: 'buy', quantity: 1, commission: 2, commissionCurrency: 'EUR', executedAt: '2026-08-01T00:00:00Z' };
+  const sell = { ticker: 'AAPL', side: 'sell', quantity: 1, commission: 1, commissionCurrency: 'USD', executedAt: '2026-08-02T00:00:00Z' };
+  expect(calculateBrokerExecutionMetrics([buy, sell]).get(sell))
+    .toEqual({ holdingDays: 1, buyCommission: null });
+});
