@@ -349,3 +349,15 @@ The previous Cash & Balance error listener cleared `executedTrades` on `broker:e
 - [x] Exact-head CI passed; user confirmed the first-load Balance issue is resolved in the browser.
 
 The screenshots show that the initial Balance mount displayed one unassigned GOOGL holding and zero active tranches, while navigating away and returning showed the correct AR/SU split and seven active tranches. The store hook previously read the current state during render but only subscribed later in `useEffect`; a broker/account hydration update between those phases could be missed. Returning to Balance mounted a new consumer against the already-updated store and therefore appeared to fix itself. The hook now subscribes first and replays the current state, closing that render-to-effect gap for all portfolio consumers. Cash & Balance also reconciles the canonical execution snapshot into its local reducer so it cannot remain on an obsolete first-render copy. No broker data, allocation rules, financial calculations or persisted schemas were changed.
+
+
+## Guest directory refresh resilience
+
+- [x] Keep the last successful guest list while a refresh is running or fails.
+- [x] Distinguish first-load errors from stale data and provide a retry action.
+- [x] Ignore late responses from older requests or an unmounted desk using a request generation guard.
+- [x] Add reducer tests for loading, stale retention, first-load failure and recovery.
+- [x] Add Russian translations for the new retry and warning copy.
+- [ ] Confirm exact-head CI and verify the retry behavior in a browser.
+
+The previous guest directory error handler cleared the guest list on request failure and offered no retry. The new state reducer preserves known users and therefore preserves their existing active-tranche assignments during temporary directory outages. It does not modify saved assignments, tranche quantities, or guest permissions.
