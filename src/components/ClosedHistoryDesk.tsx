@@ -17,6 +17,7 @@ export function ClosedHistoryDesk() {
   const [brokerTrades, setBrokerTrades] = useState<any[]>([]);
   const [brokerTradesLoading, setBrokerTradesLoading] = useState(true);
   const [brokerTradesError, setBrokerTradesError] = useState(false);
+  const [brokerTradesRefreshing, setBrokerTradesRefreshing] = useState(false);
   const [cashflowSyncMessage, setCashflowSyncMessage] = useState('');
   const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
@@ -28,7 +29,7 @@ export function ClosedHistoryDesk() {
   const latestBrokerFetch = useRef<any[] | null>(null);
   const retryBrokerTrades = () => {
     setBrokerTradesError(false);
-    setBrokerTradesLoading(true);
+    setBrokerTradesRefreshing(true);
     emitBrokerEvent('broker:request-executed-trades');
   };
   // Load cloud history once. An existing cloud history record is authoritative;
@@ -270,6 +271,7 @@ export function ClosedHistoryDesk() {
       setBrokerTrades(normalized);
       setBrokerTradesLoading(false);
       setBrokerTradesError(false);
+      setBrokerTradesRefreshing(false);
       // Persist the normalized source rows in canonical state so they survive
       // refresh and can be reapplied after broker history has hydrated.
       const current = portfolioStore.getState().brokerExecutedTrades || [];
@@ -305,6 +307,7 @@ export function ClosedHistoryDesk() {
     });
     const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => {
       setBrokerTradesLoading(false);
+      setBrokerTradesRefreshing(false);
       setBrokerTradesError(true);
     });
     emitBrokerEvent('broker:request-executed-trades');
@@ -449,16 +452,17 @@ export function ClosedHistoryDesk() {
       </div>
 
       {cashflowSyncMessage && <p role="alert" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-200 transition-all">{cashflowSyncMessage}</p>}
+      {brokerTradesRefreshing && <p role="status" aria-live="polite" class="rounded-lg border border-cyan-900/60 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-200">Refreshing TradeNet history…</p>}
       {brokerTradesError && trades.length > 0 && (
         <div role="alert" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
           <span>TradeNet refresh failed. Showing saved history, which may be out of date.</span>
           <button
             type="button"
             onClick={retryBrokerTrades}
-            disabled={brokerTradesLoading}
+            disabled={brokerTradesRefreshing}
             aria-label="Retry TradeNet history"
             class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
-          >Retry</button>
+          >{brokerTradesRefreshing ? 'Retrying…' : 'Retry'}</button>
         </div>
       )}
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
@@ -509,10 +513,10 @@ export function ClosedHistoryDesk() {
                   <button
                     type="button"
                     onClick={retryBrokerTrades}
-                    disabled={brokerTradesLoading}
+                    disabled={brokerTradesRefreshing}
                     aria-label="Retry TradeNet history"
                     class="rounded border border-rose-800/70 px-3 py-1.5 font-semibold text-rose-200 transition hover:bg-rose-950/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
-                  >Retry</button>
+                  >{brokerTradesRefreshing ? 'Retrying…' : 'Retry'}</button>
                 </div>
               </td></tr>
             ) : trades.length === 0 ? (
