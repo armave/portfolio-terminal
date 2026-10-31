@@ -644,31 +644,32 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
     const publications = guests.map((guest) => {
       const ledgerUpserts: GuestTrancheLedgerRecord[] = [
         ...activeTranches.flatMap((tranche) => {
-        if (current.activeTrancheGuestAssignments?.[tranche.id] !== guest.id) return [];
-        const detail = current.activeTrancheGuestAssignmentDetails?.[tranche.id];
-        if (!detail || detail.guestId !== guest.id || !detail.assignmentId) return [];
-        const type = current.activeTrancheTypes?.[tranche.id] ||
-          current.activeTrancheTypes?.[tranche.ticker] || 'cash';
-        const mix = normalizeActiveTrancheMix(
-          tranche.quantity,
-          current.activeTrancheMixes?.[tranche.id] || current.activeTrancheMixes?.[tranche.ticker]
-        );
-        const openQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
-        if (!Number.isFinite(openQuantity) || openQuantity <= 0) return [];
-        return [{
-          assignmentId: detail.assignmentId,
-          trancheId: tranche.id,
-          ticker: tranche.ticker,
-          name: tranche.name,
-          assignedQuantity: Math.max(detail.assignedQuantity, openQuantity),
-          openQuantity,
-          averagePrice: tranche.averagePrice,
-          purchasedAt: tranche.purchasedAt,
-          assignedAt: detail.assignedAt,
-          updatedAt,
-          endedAt: null,
-          status: 'active' as const
-        }]),
+          if (current.activeTrancheGuestAssignments?.[tranche.id] !== guest.id) return [];
+          const detail = current.activeTrancheGuestAssignmentDetails?.[tranche.id];
+          if (!detail || detail.guestId !== guest.id || !detail.assignmentId) return [];
+          const type = current.activeTrancheTypes?.[tranche.id] ||
+            current.activeTrancheTypes?.[tranche.ticker] || 'cash';
+          const mix = normalizeActiveTrancheMix(
+            tranche.quantity,
+            current.activeTrancheMixes?.[tranche.id] || current.activeTrancheMixes?.[tranche.ticker]
+          );
+          const openQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
+          if (!Number.isFinite(openQuantity) || openQuantity <= 0) return [];
+          return [{
+            assignmentId: detail.assignmentId,
+            trancheId: tranche.id,
+            ticker: tranche.ticker,
+            name: tranche.name,
+            assignedQuantity: Math.max(detail.assignedQuantity, openQuantity),
+            openQuantity,
+            averagePrice: tranche.averagePrice,
+            purchasedAt: tranche.purchasedAt,
+            assignedAt: detail.assignedAt,
+            updatedAt,
+            endedAt: null,
+            status: 'active' as const
+          }];
+        }),
         ...closedTradeLedgerUpserts
           .filter((item) => item.guestId === guest.id)
           .map((item) => item.record)
