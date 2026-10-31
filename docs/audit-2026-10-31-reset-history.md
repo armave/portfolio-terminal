@@ -39,7 +39,7 @@ It deliberately retains user configuration rather than treating account settings
 
 Added `clearCloudHistory()`, which shares the existing serialized history-write queue and revision checks. Unlike an ordinary history save, it intentionally permits an encrypted empty snapshot and forces a write, bypassing the ordinary same-payload fingerprint. The write still fetches the current server revision and uses `If-Match`; it does not weaken the Worker or Durable Object validation.
 
-The UI reset clears local state immediately, then confirms the separate cloud-history clear. A local-storage failure or cloud failure is surfaced to the user instead of claiming the complete reset succeeded.
+The UI reset clears local state immediately, then confirms the separate cloud-history clear. A local-storage failure or cloud failure is surfaced to the user instead of claiming the complete reset succeeded. The confirmation now clarifies that this clears the app's saved TradeNet history snapshot; it does not delete broker-held execution records, which may be fetched again on a later broker-history refresh.
 
 ### Regression coverage
 
