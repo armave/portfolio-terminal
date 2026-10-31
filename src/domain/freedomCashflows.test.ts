@@ -33,7 +33,7 @@ describe("Freedom cashflow normalization", () => {
       currency: "USD",
       description: "Negative cash balance fee"
     });
-    expect(rows[0].raw.operation_id).toBe("4812");
+    expect(rows[0].raw?.operation_id).toBe("4812");
   });
 
   it("accepts a confirmed empty cashflow collection", () => {

@@ -5,7 +5,7 @@ export interface NormalizedFreedomCashflow {
   amount: number;
   currency?: string;
   description?: string;
-  raw: Record<string, string>;
+  raw?: Record<string, string>;
 }
 
 const ROW_COLLECTION_KEYS = [
