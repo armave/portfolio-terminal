@@ -56,7 +56,7 @@ describe('Freedom active orders proxy', () => {
     });
     expect(JSON.stringify(body)).not.toContain('do-not-return');
     const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(requestBody).toEqual({ cmd: 'getNotifyOrderJson', params: { active_only: 1 } });
+    expect(requestBody).toEqual({ active_only: 1 });
     expect(String(fetchMock.mock.calls[0][0])).toBe('https://tradernet.com/api/getNotifyOrderJson');
   });
 });
@@ -324,10 +324,11 @@ describe('Freedom quote endpoint', () => {
     const [upstreamUrl, upstreamInit] = fetchMock.mock.calls[0];
     expect(String(upstreamUrl)).toBe('https://tradernet.com/api/getStockQuotesJson');
     expect(upstreamInit.method).toBe('POST');
-    expect(JSON.parse(upstreamInit.body)).toEqual({
-      cmd: 'getStockQuotesJson',
-      params: { tickers: ['GOOGL.US'] }
-    });
+    expect(JSON.parse(upstreamInit.body)).toEqual({ tickers: ['GOOGL.US'] });
+    const timestamp = upstreamInit.headers['X-NtApi-Timestamp'];
+    expect(upstreamInit.headers['X-NtApi-Sig']).toBe(
+      createHmac('sha256', 'private-key').update(upstreamInit.body + timestamp).digest('hex')
+    );
   });
 });
 
@@ -836,10 +837,7 @@ describe('Freedom cashflows Worker action', () => {
     const [upstreamUrl, upstreamInit] = fetchMock.mock.calls[0];
     expect(upstreamUrl).toBe('https://tradernet.com/api/getUserCashFlows');
     expect(upstreamInit.method).toBe('POST');
-    expect(JSON.parse(upstreamInit.body)).toEqual({
-      cmd: 'getUserCashFlows',
-      params: {}
-    });
+    expect(JSON.parse(upstreamInit.body)).toEqual({});
   });
 });
 
