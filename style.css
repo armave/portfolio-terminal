@@ -2788,3 +2788,10 @@ summary:focus-visible {
     display: inline;
   }
 }
+
+/* Hide the live equity figure in the compact mobile Balance destination. */
+@media (max-width: 480px) {
+  .workspace-nav-equity-badge {
+    display: none;
+  }
+}
