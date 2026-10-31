@@ -15,6 +15,8 @@ describe('US equity market session', () => {
     expect(getUsEquityMarketSession(new Date('2026-11-26T16:00:00.000Z'))).toBe('CLOSED');
     expect(getUsEquityMarketSession(new Date('2026-11-27T18:00:00.000Z'))).toBe('POST');
     expect(getUsEquityMarketSession(new Date('2026-11-27T22:30:00.000Z'))).toBe('CLOSED');
+    // July 4, 2027 is Sunday, so the prior trading day (July 2) closes early.
+    expect(getUsEquityMarketSession(new Date('2027-07-02T18:00:00.000Z'))).toBe('POST');
   });
 });
 

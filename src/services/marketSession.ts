@@ -34,9 +34,15 @@ function isEarlyCloseDay(year: number, month: number, day: number): boolean {
     if (date.getTime() === fridayAfter.getTime()) return true;
   }
   if (month === 12 && day === 24) return true;
-  if (month === 7 && (day === 2 || day === 3) && isUsEquityTradingDay(date)) {
+  if (month === 7) {
+    // Early close on the final trading session before Independence Day,
+    // including years when the observed holiday moves the close to July 1 or 2.
     const julyFourth = new Date(year, 6, 4);
-    if (julyFourth.getDay() === 0 || julyFourth.getDay() === 6 || day === 3) return true;
+    const previousTradingDay = new Date(julyFourth);
+    do {
+      previousTradingDay.setDate(previousTradingDay.getDate() - 1);
+    } while (!isUsEquityTradingDay(previousTradingDay));
+    if (date.getTime() === previousTradingDay.getTime()) return true;
   }
   return false;
 }
