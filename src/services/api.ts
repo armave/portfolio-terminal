@@ -1251,7 +1251,7 @@ export async function fetchFreedomTradeNetPositions(): Promise<any> {
   return proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
 }
 
-/** Fetch a bounded, read-only page of executed TradeNet trades. */
+/** Fetch the complete read-only TradeNet execution history required for FIFO matching. */
 export async function fetchFreedomTradeNetTrades(): Promise<any> {
   return proxyFetch('freedom-trades', undefined, { cache: 'no-store' });
 }
