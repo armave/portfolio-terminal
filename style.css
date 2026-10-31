@@ -2750,3 +2750,26 @@ summary:focus-visible {
     transform: none !important;
   }
 }
+
+/* Mobile workspace navigation wraps without hiding destinations. */
+/*
+ * Keep every workspace destination reachable without a horizontal gesture on
+ * phones and compact tablets. The desktop tab strip retains its horizontal
+ * scrolling behavior above this breakpoint.
+ */
+@media (max-width: 768px) {
+  #tickerTabs {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    overflow-y: visible;
+    scroll-snap-type: none;
+  }
+
+  #tickerTabs > * {
+    max-width: 100%;
+    scroll-snap-align: unset;
+  }
+}
