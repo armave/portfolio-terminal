@@ -3,10 +3,11 @@ import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage } from '../services/i18n';
-import { fetchFreedomCashflows, pullCloudHistory, pushCloudHistory } from '../services/api';
+import { fetchFreedomCashflows, listUsers, pullCloudHistory, pushCloudHistory, type AuthUser } from '../services/api';
 import { loadSavedHistory, saveSavedHistory } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
+import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
 import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFees';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from '../domain/brokerExecutionMetrics';
 import { DeskLoading } from './DeskLoading';
@@ -24,6 +25,7 @@ export function ClosedHistoryDesk() {
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
   const [cashflowAllocationReady, setCashflowAllocationReady] = useState(false);
   const [tradesPage, setTradesPage] = useState(1);
+  const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
   const cashflowSyncStarted = useRef(false);
@@ -33,6 +35,15 @@ export function ClosedHistoryDesk() {
     setBrokerTradesRefreshing(true);
     emitBrokerEvent('broker:request-executed-trades');
   };
+  useEffect(() => {
+    let active = true;
+    void listUsers().then((users) => {
+      if (active) setGuestUsers(users.filter((user) => user.role === 'guest'));
+    }).catch((error) => {
+      console.warn('Unable to load guest names for closed-trade attribution:', error);
+    });
+    return () => { active = false; };
+  }, []);
   // Load cloud history once. An existing cloud history record is authoritative;
   // local history is used only when no cloud record exists.
   useEffect(() => {
@@ -325,10 +336,20 @@ export function ClosedHistoryDesk() {
       trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const,
       profit,
       commissionsComplete: feeBreakdown.commissionsKnown,
+      allocationType: 'unclassified' as const,
+      allocationTypes: ['unclassified' as const],
+      guestAllocations: [] as Array<{ guestId: string; quantity: number }>,
       ...feeBreakdown
     };
   });
   const brokerTradeMetrics = calculateBrokerExecutionMetrics(brokerTrades);
+  const trancheAttributions = attributeClosedTradeExecutions(brokerTrades, {
+    trancheTypes: state.activeTrancheTypes,
+    trancheMixes: state.activeTrancheMixes,
+    guestAssignments: state.activeTrancheGuestAssignments,
+    guestAssignmentDetails: state.activeTrancheGuestAssignmentDetails
+  });
+  const guestNameById = new Map(guestUsers.map((user) => [user.id, user.name]));
   const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold', '2'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => {
     const allocatedMarginFee = Object.values((broker.marginFeeAllocations || {}) as Record<string, number>)
       .reduce((sum, amount) => sum + (Number(amount) || 0), 0);
@@ -351,6 +372,8 @@ export function ClosedHistoryDesk() {
       ? null
       : Number((Number(broker.profit) - totalFees).toFixed(2));
     const ticker = normalizeExecutionTicker(broker.ticker);
+    const attribution = trancheAttributions.get(broker);
+    const allocationType = attribution?.fundingType || 'unclassified';
     return {
       trade: { id: broker.id ?? ('tradenet-' + index), ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: metrics?.holdingDays ?? null, feesAndCommissions: totalFees, netProfit: profit, side: broker.side, price: broker.price, source: 'tradenet' as const },
       index: -1,
@@ -359,7 +382,11 @@ export function ClosedHistoryDesk() {
       fees,
       commissions,
       commissionsComplete,
-      feesTotal: totalFees
+      feesTotal: totalFees,
+      allocationType,
+      allocationTypes: [allocationType],
+      guestAllocations: attribution?.guestAllocations || [],
+      unmatchedQuantity: attribution?.unmatchedQuantity || 0
     };
   });
   // Group same-ticker sell executions that occur within one hour into one closed-history row.
@@ -391,9 +418,31 @@ export function ClosedHistoryDesk() {
         previous.commissions = (previous.commissions || 0) + (row.commissions || 0);
         previous.commissionsComplete = previous.commissionsComplete && row.commissionsComplete;
         previous.feesTotal = (previous.feesTotal || 0) + (row.feesTotal || 0);
+        const allocationTypes = Array.from(new Set([
+          ...(previous.allocationTypes || [previous.allocationType]),
+          ...(row.allocationTypes || [row.allocationType])
+        ]));
+        const knownTypes = allocationTypes.filter((type) => type !== 'unclassified');
+        previous.allocationTypes = allocationTypes;
+        previous.allocationType = knownTypes.length > 1 || knownTypes.includes('mix')
+          ? 'mix'
+          : knownTypes[0] || 'unclassified';
+        const guestTotals = new Map<string, number>();
+        [...(previous.guestAllocations || []), ...(row.guestAllocations || [])].forEach((item) => {
+          guestTotals.set(item.guestId, (guestTotals.get(item.guestId) || 0) + item.quantity);
+        });
+        previous.guestAllocations = Array.from(guestTotals.entries())
+          .map(([guestId, quantity]) => ({ guestId, quantity }))
+          .sort((a, b) => a.guestId.localeCompare(b.guestId));
+        previous.unmatchedQuantity = (previous.unmatchedQuantity || 0) + (row.unmatchedQuantity || 0);
         (previous.trade as any).price = totalQty > 0 ? (Number((previous.trade as any).price ?? 0) * oldQty + Number((row.trade as any).price ?? 0) * newQty) / totalQty : (row.trade as any).price;
       } else {
-        groups.push({ ...row, trade: { ...(row.trade as any) } });
+        groups.push({
+          ...row,
+          trade: { ...(row.trade as any) },
+          allocationTypes: [...(row.allocationTypes || [row.allocationType])],
+          guestAllocations: [...(row.guestAllocations || [])]
+        });
       }
     }
     return groups;
@@ -410,7 +459,12 @@ export function ClosedHistoryDesk() {
     const parsed = Date.parse(String(raw ?? ''));
     return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
   };
-  const trades = [...uniqueAppTrades, ...groupedBrokerRows].sort((a, b) => getExitTimestamp(b) - getExitTimestamp(a));
+  const allocationOrder: Record<string, number> = { margin: 0, cash: 1, mix: 2, unclassified: 3 };
+  const trades = [...uniqueAppTrades, ...groupedBrokerRows].sort((a, b) =>
+    (allocationOrder[String(a.allocationType || 'unclassified')] ?? 3) -
+      (allocationOrder[String(b.allocationType || 'unclassified')] ?? 3) ||
+    getExitTimestamp(b) - getExitTimestamp(a)
+  );
   const tradesPageSize = 10;
   const tradesPageCount = Math.max(1, Math.ceil(trades.length / tradesPageSize));
   const visibleTrades = trades.slice((tradesPage - 1) * tradesPageSize, tradesPage * tradesPageSize);
@@ -491,13 +545,14 @@ export function ClosedHistoryDesk() {
 
       <TableScrollRegion label="Closed trade history" className="border border-slate-800 bg-slate-950/60">
         <table class="w-full min-w-[760px] text-left text-xs font-mono">
-          <caption class="sr-only">Closed trade history with ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
+          <caption class="sr-only">Closed trade history with funding type, guest assignment, ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
           <thead class="border-b border-slate-800 bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-400">
             <tr>
               <th scope="col" class="py-2.5 px-3">Ticker</th>
               <th scope="col" class="py-2.5 px-3">Date Closed</th>
               <th scope="col" class="py-2.5 px-3 text-right">Shares</th>
               <th scope="col" class="py-2.5 px-3 text-right">Duration</th>
+              <th scope="col" class="py-2.5 px-3">Assigned guest · shares</th>
               <th scope="col" class="py-2.5 px-3 text-right">Fees</th>
               <th scope="col" class="py-2.5 px-3 text-right">Commissions</th>
               <th scope="col" class="py-2.5 px-3 text-right">Net Profit</th>
