@@ -241,7 +241,7 @@ export function TickerTabs({
       >
         <span>🛡️ BALANCE</span>
         <span title={equityBadgeTitle} aria-hidden="true"
-          class={`workspace-nav-equity-badge text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
+          class={`workspace-nav-equity-badge ${isAdmin ? 'workspace-nav-equity-badge--admin' : ''} text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
             }`}
         >
           {equityBadgeText}
