@@ -8,6 +8,7 @@ import { loadSavedHistory, saveSavedHistory } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFees';
+import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from '../domain/brokerExecutionMetrics';
 import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 
@@ -290,76 +291,51 @@ export function ClosedHistoryDesk() {
   }, []);
   const appTrades = (state.closedTrades || []).map((trade, index) => {
     const feeBreakdown = resolveClosedTradeFeeBreakdown(trade as any);
+    const netValue = (trade as any).netProfit ?? (trade as any).netRealizedGain;
+    const parsedNet = netValue === null || netValue === undefined || netValue === '' ? NaN : Number(netValue);
+    const grossValue = (trade as any).grossProfit;
+    const parsedGross = grossValue === null || grossValue === undefined || grossValue === '' ? NaN : Number(grossValue);
+    const profit = Number.isFinite(parsedNet)
+      ? parsedNet
+      : Number.isFinite(parsedGross) && feeBreakdown.commissionsKnown
+        ? Number((parsedGross - feeBreakdown.feesTotal).toFixed(2))
+        : null;
     return {
       trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const,
-      profit: Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0),
+      profit,
+      commissionsComplete: feeBreakdown.commissionsKnown,
       ...feeBreakdown
     };
   });
-  // Match buy lots FIFO to sell executions so both entry and exit commissions
-  // are reflected in the closed-history row. Fees are allocated per share for partial closes.
-  const brokerTradeMetrics = (() => {
-    const sorted = [...brokerTrades].filter((t: any) => t.ticker && t.executedAt)
-      .sort((a: any, b: any) => Date.parse(a.executedAt) - Date.parse(b.executedAt));
-    const queues = new Map<string, { date: number; quantity: number; commissionPerShare: number | null }[]>();
-    const metricsByObject = new Map<any, { holdingDays: number | null; buyCommission: number }>();
-    for (const trade of sorted) {
-      const ticker = String(trade.ticker).trim().toUpperCase();
-      const side = String(trade.side ?? '').toLowerCase();
-      const qty = Math.abs(Number(trade.quantity ?? 0));
-      const time = Date.parse(trade.executedAt);
-      if (!Number.isFinite(time) || !Number.isFinite(qty) || qty <= 0) continue;
-      const isBuy = ['buy', 'b', 'purchase', 'bought', '1'].includes(side);
-      const isSell = ['sell', 's', 'sale', 'sold', '2'].includes(side);
-      const commission = trade.commission == null ? null : Math.abs(Number(trade.commission));
-      if (isBuy) {
-        const queue = queues.get(ticker) ?? [];
-        queue.push({ date: time, quantity: qty, commissionPerShare: commission !== null && Number.isFinite(commission) ? commission / qty : null });
-        queues.set(ticker, queue);
-      } else if (isSell) {
-        const queue = queues.get(ticker) ?? [];
-        let remaining = qty;
-        let weightedDays = 0;
-        let matched = 0;
-        let buyCommission = 0;
-        let commissionKnown = true;
-        while (remaining > 1e-8 && queue.length) {
-          const lot = queue[0];
-          const used = Math.min(remaining, lot.quantity);
-          weightedDays += Math.max(0, time - lot.date) / 86400000 * used;
-          matched += used;
-          if (lot.commissionPerShare === null) commissionKnown = false;
-          else buyCommission += lot.commissionPerShare * used;
-          remaining -= used;
-          lot.quantity -= used;
-          if (lot.quantity <= 1e-8) queue.shift();
-        }
-        metricsByObject.set(trade, { holdingDays: matched > 0 ? weightedDays / matched : null, buyCommission: commissionKnown && matched > 0 ? buyCommission : 0 });
-      }
-    }
-    return metricsByObject;
-  })();
+  const brokerTradeMetrics = calculateBrokerExecutionMetrics(brokerTrades);
   const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold', '2'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => {
     const allocatedMarginFee = Object.values((broker.marginFeeAllocations || {}) as Record<string, number>)
       .reduce((sum, amount) => sum + (Number(amount) || 0), 0);
-    // Prefer the explicit allocation total when present, so the table reflects the
-    // uploaded cashflows even if an older cached marginFee field is missing/stale.
     const marginFee = Number((broker.marginFeeAllocations && typeof broker.marginFeeAllocations === 'object')
       ? allocatedMarginFee
       : broker.marginFee ?? 0) || 0;
-    const tradeFees = (broker.commission == null ? 0 : Math.abs(Number(broker.commission))) + (brokerTradeMetrics.get(broker)?.buyCommission ?? 0);
-    const commissions = Number(tradeFees.toFixed(2));
+    const metrics = brokerTradeMetrics.get(broker);
+    const rawSellCommission = broker.commission === null || broker.commission === undefined || broker.commission === ''
+      ? NaN
+      : Math.abs(Number(broker.commission));
+    const sellCommission = Number.isFinite(rawSellCommission) ? rawSellCommission : null;
+    const buyCommission = metrics?.buyCommission ?? null;
+    const commissionsComplete = sellCommission !== null && buyCommission !== null;
+    const commissions = Number(((sellCommission ?? 0) + (buyCommission ?? 0)).toFixed(2));
     const fees = Number(Math.abs(marginFee).toFixed(2));
     const totalFees = Number((commissions + fees).toFixed(2));
+    const profit = broker.profit == null || !commissionsComplete
+      ? null
+      : Number((Number(broker.profit) - totalFees).toFixed(2));
+    const ticker = normalizeExecutionTicker(broker.ticker);
     return {
-      trade: { id: broker.id ?? ('tradenet-' + index), ticker: broker.ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: brokerTradeMetrics.get(broker)?.holdingDays, feesAndCommissions: totalFees, netProfit: broker.profit == null ? null : Number(broker.profit) - totalFees, side: broker.side, price: broker.price, source: 'tradenet' as const },
+      trade: { id: broker.id ?? ('tradenet-' + index), ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: metrics?.holdingDays ?? null, feesAndCommissions: totalFees, netProfit: profit, side: broker.side, price: broker.price, source: 'tradenet' as const },
       index: -1,
       source: 'tradenet' as const,
-      // Calculate from raw realized profit and the complete fee total, rather than
-      // relying on cached netProfit values that may predate cashflow allocation.
-      profit: broker.profit == null ? null : Number(broker.profit) - totalFees,
+      profit,
       fees,
       commissions,
+      commissionsComplete,
       feesTotal: totalFees
     };
   });
@@ -390,6 +366,7 @@ export function ClosedHistoryDesk() {
         previous.profit = oldProfit == null || newProfit == null ? null : oldProfit + newProfit;
         previous.fees = (previous.fees || 0) + (row.fees || 0);
         previous.commissions = (previous.commissions || 0) + (row.commissions || 0);
+        previous.commissionsComplete = previous.commissionsComplete && row.commissionsComplete;
         previous.feesTotal = (previous.feesTotal || 0) + (row.feesTotal || 0);
         (previous.trade as any).price = totalQty > 0 ? (Number((previous.trade as any).price ?? 0) * oldQty + Number((row.trade as any).price ?? 0) * newQty) / totalQty : (row.trade as any).price;
       } else {
@@ -401,7 +378,16 @@ export function ClosedHistoryDesk() {
   // Broker executions are the canonical display source when the same sale
   // also exists as an app-owned closed trade.
   const uniqueAppTrades = deduplicateClosedHistoryRows(appTrades, groupedBrokerRows);
-  const trades = [...uniqueAppTrades, ...groupedBrokerRows].sort((a, b) => String((b.trade as any).exitDate ?? (b.trade as any).sellDate ?? '').localeCompare(String((a.trade as any).exitDate ?? (a.trade as any).sellDate ?? '')));
+  const getExitTimestamp = (row: any): number => {
+    const raw = row.trade?.exitDate ?? row.trade?.sellDate ?? row.trade?.closedAt ?? row.trade?.date;
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      if (raw > 1e12) return raw;
+      if (raw > 20000 && raw < 100000) return Date.UTC(1899, 11, 30) + raw * 86400000;
+    }
+    const parsed = Date.parse(String(raw ?? ''));
+    return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+  };
+  const trades = [...uniqueAppTrades, ...groupedBrokerRows].sort((a, b) => getExitTimestamp(b) - getExitTimestamp(a));
   const tradesPageSize = 10;
   const tradesPageCount = Math.max(1, Math.ceil(trades.length / tradesPageSize));
   const visibleTrades = trades.slice((tradesPage - 1) * tradesPageSize, tradesPage * tradesPageSize);
@@ -410,6 +396,7 @@ export function ClosedHistoryDesk() {
   }, [tradesPage, tradesPageCount]);
   const realizedNet = trades.reduce((total, row) => total + (row.profit ?? 0), 0);
   const totalFees = trades.reduce((total, row) => total + (Number.isFinite(row.feesTotal) ? row.feesTotal : ((row.fees || 0) + (row.commissions || 0))), 0);
+  const hasIncompleteCommissions = trades.some((row: any) => row.commissionsComplete === false);
   const profitKnownTrades = trades.filter((row) => row.profit !== null);
   const winningTrades = profitKnownTrades.filter((row) => (row.profit ?? 0) > 0).length;
   const knownDurations = trades.map((row) => Number((row.trade as any).holdingDays ?? (row.trade as any).daysHeld)).filter((days) => Number.isFinite(days) && days >= 0);
@@ -457,7 +444,7 @@ export function ClosedHistoryDesk() {
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees &amp; commissions</div>
-          <div class="mt-1 font-mono text-sm font-bold text-slate-200">${formatUSD(totalFees)}</div>
+          <div class="mt-1 font-mono text-sm font-bold text-slate-200">{hasIncompleteCommissions ? '≥' : ''}${formatUSD(totalFees)}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Avg. holding time</div>
@@ -492,7 +479,7 @@ export function ClosedHistoryDesk() {
                 </td>
               </tr>
             ) : (
-              visibleTrades.map(({ trade, index, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions }) => {
+              visibleTrades.map(({ trade, index, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions, commissionsComplete }) => {
                 // 1. Resolve Exit Date
                 const rawDate =
                   (trade as any).exitDate ||
@@ -567,7 +554,7 @@ export function ClosedHistoryDesk() {
                       ${formatUSD(fees)}
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
-                      ${formatUSD(Number(rowCommissions ?? 0))}
+                      {commissionsComplete === false ? '≥' : ''}${formatUSD(Number(rowCommissions ?? 0))}
                     </td>
                     <td
                       class={`py-2.5 px-3 text-right font-bold whitespace-nowrap font-mono ${isPositive ? 'text-emerald-400' : 'text-rose-400'

@@ -117,6 +117,7 @@ export interface ClosedTradeFeeBreakdown {
   fees: number;
   commissions: number;
   feesTotal: number;
+  commissionsKnown: boolean;
 }
 
 /** Resolve commission-only and aggregate fee fields without counting margin twice. */
@@ -124,15 +125,27 @@ export function resolveClosedTradeFeeBreakdown(trade: FeeRecord): ClosedTradeFee
   const marginFee = Math.abs(Number(trade.marginFee) || Number(trade.marginInterest) || 0);
   const explicitCommission = trade.commissions ?? trade.commission;
   const aggregateFees = trade.feesAndCommissions;
-  const commissions = explicitCommission !== null && explicitCommission !== undefined
-    ? Math.abs(Number(explicitCommission) || 0)
-    : aggregateFees !== null && aggregateFees !== undefined
-      ? Math.max(0, Math.abs(Number(aggregateFees) || 0) - marginFee)
-      : Math.abs(Number(trade.totalCommissions) || 0);
+  const totalCommissions = trade.totalCommissions;
+  const explicitValue = explicitCommission === null || explicitCommission === undefined || explicitCommission === ''
+    ? NaN
+    : Number(explicitCommission);
+  const aggregateValue = aggregateFees === null || aggregateFees === undefined || aggregateFees === ''
+    ? NaN
+    : Number(aggregateFees);
+  const totalValue = totalCommissions === null || totalCommissions === undefined || totalCommissions === ''
+    ? NaN
+    : Number(totalCommissions);
+  const commissionsKnown = Number.isFinite(explicitValue) || Number.isFinite(aggregateValue) || Number.isFinite(totalValue);
+  const commissions = Number.isFinite(explicitValue)
+    ? Math.abs(explicitValue)
+    : Number.isFinite(aggregateValue)
+      ? Math.max(0, Math.abs(aggregateValue) - marginFee)
+      : Number.isFinite(totalValue) ? Math.abs(totalValue) : 0;
   return {
     fees: Number(marginFee.toFixed(2)),
     commissions: Number(commissions.toFixed(2)),
-    feesTotal: Number((marginFee + commissions).toFixed(2))
+    feesTotal: Number((marginFee + commissions).toFixed(2)),
+    commissionsKnown
   };
 }
 

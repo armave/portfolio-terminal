@@ -194,7 +194,7 @@ describe('closed-trade fee display breakdown', () => {
       totalCommissions: 7,
       marginFee: 5,
       marginInterest: 5
-    })).toEqual({ fees: 5, commissions: 2, feesTotal: 7 });
+    })).toEqual({ fees: 5, commissions: 2, feesTotal: 7, commissionsKnown: true });
   });
 
   it('prefers explicit commission fields and uses non-zero legacy margin fallback', () => {
@@ -203,13 +203,18 @@ describe('closed-trade fee display breakdown', () => {
       feesAndCommissions: 6.25,
       marginFee: 5,
       marginInterest: 0
-    })).toEqual({ fees: 5, commissions: 1.25, feesTotal: 6.25 });
+    })).toEqual({ fees: 5, commissions: 1.25, feesTotal: 6.25, commissionsKnown: true });
   });
 
   it('treats legacy totalCommissions as commission when no aggregate field exists', () => {
     expect(resolveClosedTradeFeeBreakdown({
       totalCommissions: 1.5,
       marginInterest: 2
-    })).toEqual({ fees: 2, commissions: 1.5, feesTotal: 3.5 });
+    })).toEqual({ fees: 2, commissions: 1.5, feesTotal: 3.5, commissionsKnown: true });
   });
+});
+
+it('marks commission totals unknown when no commission source field exists', () => {
+  expect(resolveClosedTradeFeeBreakdown({ marginFee: 2 }))
+    .toEqual({ fees: 2, commissions: 0, feesTotal: 2, commissionsKnown: false });
 });
