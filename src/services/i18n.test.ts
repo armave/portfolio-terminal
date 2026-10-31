@@ -127,6 +127,13 @@ describe('app localization', () => {
     expect(translateText('Scenario report', 'ru')).toBe('Отчёт по сценарию');
   });
 
+  it('localizes active-order refresh warnings', () => {
+    expect(translateText('Freedom active orders are unavailable — existing position targets are unchanged.', 'ru'))
+      .toBe('Активные заявки Freedom недоступны — целевые цены позиций оставлены без изменений.');
+    expect(translateText('[Freedom Warning] Active-order refresh failed; existing position targets were left unchanged.', 'ru'))
+      .toBe('[Предупреждение Freedom] Не удалось обновить активные заявки; целевые цены позиций оставлены без изменений.');
+  });
+
   it('localizes remaining broker and portfolio error messages', () => {
     expect(translateText('Unknown cashflow processing error.', 'ru')).toBe('Неизвестная ошибка обработки денежных потоков.');
     expect(translateText('Automatic Freedom cashflow sync failed: Network error', 'ru'))
