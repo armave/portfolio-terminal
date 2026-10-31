@@ -155,7 +155,8 @@ export function filterGuestTrancheLedger(
     .filter((record) => {
       if (ticker && !String(record.ticker || '').toUpperCase().includes(ticker)) return false;
       if (status !== 'all' && record.status !== status) return false;
-      const operationDateValue = record.operationAt ?? record.purchasedAt;
+      const isClosedTrade = record.trancheId.startsWith('closed-trade:');
+      const operationDateValue = isClosedTrade ? record.operationAt : record.operationAt ?? record.purchasedAt;
       const operationDate = operationDateValue === null || operationDateValue === undefined
         ? Number.NaN : Number(operationDateValue);
       if (Number.isFinite(filters.operationDateFrom) &&
@@ -165,9 +166,14 @@ export function filterGuestTrancheLedger(
       return true;
     })
     .slice()
-    .sort((a, b) => ((b.operationAt ?? b.purchasedAt) ?? Number.NEGATIVE_INFINITY) -
-      ((a.operationAt ?? a.purchasedAt) ?? Number.NEGATIVE_INFINITY) ||
-      b.assignedAt - a.assignedAt || a.ticker.localeCompare(b.ticker));
+    .sort((a, b) => {
+      const aDate = a.trancheId.startsWith('closed-trade:')
+        ? a.operationAt : a.operationAt ?? a.purchasedAt;
+      const bDate = b.trancheId.startsWith('closed-trade:')
+        ? b.operationAt : b.operationAt ?? b.purchasedAt;
+      return (bDate ?? Number.NEGATIVE_INFINITY) - (aDate ?? Number.NEGATIVE_INFINITY) ||
+        b.assignedAt - a.assignedAt || a.ticker.localeCompare(b.ticker);
+    });
 }
 
 /** Summarize historical assignment capital and today's open position value.
