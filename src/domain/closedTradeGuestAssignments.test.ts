@@ -135,6 +135,27 @@ describe('closed trade guest ledger projection', () => {
     });
   });
 
+  it('normalizes numeric-string operation timestamps from broker history', () => {
+    const result = buildClosedTradeGuestLedgerUpserts({
+      'broker:sell-1': {
+        fundingType: 'cash',
+        cashQuantity: 1,
+        marginQuantity: 0,
+        guestId: 'guest-a',
+        assignedAt: 100
+      }
+    }, [{
+      allocationKey: 'broker:sell-1',
+      ticker: 'AAPL',
+      quantity: 1,
+      operationAt: '1721000000',
+      value: 150
+    }], 500);
+
+    expect(result[0].record.operationAt).toBe(1721000000000);
+    expect(result[0].record.value).toBe(150);
+  });
+
   it('uses stable assignment identifiers across repeated publications', () => {
     const allocations: Record<string, ClosedTradeAllocation> = {
       'broker:sell-1': {
