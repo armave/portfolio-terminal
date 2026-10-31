@@ -3,6 +3,7 @@ import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsens
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
+import { DeskLoading } from './components/DeskLoading';
 import { CashCushionDesk } from './components/CashCushionDesk';
 import { SettingsDesk } from './components/SettingsDesk';
 import { TickerTabs } from './components/TickerTab';
@@ -48,6 +49,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
+  const [deskLoadingView, setDeskLoadingView] = useState<string | null>(null);
+  const handleDeskLoadingChange = useCallback((view: string, isLoading: boolean) => {
+    setDeskLoadingView((current) => isLoading ? view : current === view ? null : current);
+  }, []);
 
 
 
@@ -501,7 +506,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
+          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} onDeskLoadingChange={handleDeskLoadingChange} /></div>
           {permissions.isAdmin && <div
             class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             id="daysToBreakeven"
@@ -514,6 +519,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         <div id="tradingWorkspaceGrid" class={(!["BALANCE"].includes(activeDeskView) && "trading-workspace-grid ") + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
           {permissions.canViewMarginDesk && <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
+            {deskLoadingView === activeDeskView ? (
+              <DeskLoading
+                title="Preparing margin desk"
+                message="Refreshing live quotes and preparing the latest portfolio view…"
+                accent="cyan"
+              />
+            ) : <>
             <div
               id="emptyStatePanel"
               class={"border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4 " + (emptyStateVisible ? "" : "hidden")}
@@ -570,6 +582,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 ><ProjectionsTable /></tbody>
               </table>
             </div>
+            </>}
           </div>}
 
           {/* Cash Cushion Management Panel */}
