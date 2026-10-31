@@ -1304,11 +1304,25 @@ export class PortfolioStore {
 
 export const portfolioStore = new PortfolioStore();
 
+/**
+ * Subscribe and immediately replay the current portfolio snapshot.
+ * Registering before reading closes the render-to-effect race: a state update
+ * between the initial render and effect installation cannot be missed.
+ */
+export function subscribeToPortfolioState(
+  listener: (state: PortfolioState) => void,
+  store: Pick<PortfolioStore, 'getState' | 'subscribe'> = portfolioStore
+): () => void {
+  const unsubscribe = store.subscribe(listener);
+  listener(store.getState());
+  return unsubscribe;
+}
+
 export function usePortfolio(): PortfolioState {
   const [state, setState] = useState<PortfolioState>(() => portfolioStore.getState());
 
   useEffect(() => {
-    return portfolioStore.subscribe((newState) => {
+    return subscribeToPortfolioState((newState) => {
       setState({ ...newState });
     });
   }, []);
