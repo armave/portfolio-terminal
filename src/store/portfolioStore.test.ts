@@ -3,9 +3,40 @@ import {
   buildHoldingsProjection,
   migrateLegacyHoldingsToPositions,
   migrateLegacyCloudHoldingsToPositions,
-  PortfolioStore
+  PortfolioStore,
+  subscribeToPortfolioState
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
+
+describe('portfolio store snapshot subscriptions', () => {
+  it('delivers the latest snapshot immediately and continues streaming updates', () => {
+    const store = new PortfolioStore();
+    store.setState({
+      brokerExecutedTrades: [{ id: 'startup-trade', ticker: 'GOOGL', side: 'BUY' }] as any
+    });
+    const listener = vi.fn();
+    const unsubscribe = subscribeToPortfolioState(listener, store);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenLastCalledWith(store.getState());
+    expect(listener.mock.calls[0][0].brokerExecutedTrades).toEqual([
+      expect.objectContaining({ id: 'startup-trade' })
+    ]);
+
+    store.setState({
+      brokerExecutedTrades: [
+        { id: 'startup-trade', ticker: 'GOOGL', side: 'BUY' },
+        { id: 'startup-sell', ticker: 'GOOGL', side: 'SELL' }
+      ] as any
+    });
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener.mock.calls[1][0].brokerExecutedTrades).toHaveLength(2);
+
+    unsubscribe();
+    store.setState({ balance: 123 });
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe('canonical portfolio-state migration', () => {
   it('migrates legacy holdings into positions with weighted cost basis and stable dates', () => {
