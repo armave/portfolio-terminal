@@ -151,6 +151,46 @@ describe('closed trade guest ledger projection', () => {
     });
   });
 
+  it('preserves per-guest proceeds and P&L when grouped sells had different execution prices', () => {
+    const result = buildClosedTradeGuestLedgerUpserts({}, [{
+      allocationKey: 'broker:grouped-sale',
+      ticker: 'AAPL',
+      quantity: 4,
+      value: 1000,
+      netProfit: 200,
+      operationAt: 300,
+      guestMetrics: {
+        'guest-first': {
+          quantity: 2,
+          averagePrice: 100,
+          purchasedAt: 100,
+          assignedAt: 120,
+          value: 300,
+          netProfit: 40
+        },
+        'guest-second': {
+          quantity: 2,
+          averagePrice: 120,
+          purchasedAt: 150,
+          assignedAt: 160,
+          value: 700,
+          netProfit: 160
+        }
+      }
+    }], 500);
+
+    expect(result.find((item) => item.guestId === 'guest-first')?.record).toMatchObject({
+      assignedQuantity: 2,
+      value: 300,
+      netProfit: 40
+    });
+    expect(result.find((item) => item.guestId === 'guest-second')?.record).toMatchObject({
+      assignedQuantity: 2,
+      value: 700,
+      netProfit: 160
+    });
+  });
+
   it('lets an explicit closed-row guest override FIFO-inferred guest allocations', () => {
     const result = buildClosedTradeGuestLedgerUpserts({
       'broker:sell-1': {
