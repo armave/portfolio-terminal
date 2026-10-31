@@ -2,6 +2,7 @@
 import { bootstrapAdmin, getAuthStatus, loginAccount } from "../services/api";
 import { useState, useEffect, useRef } from "preact/hooks";
 import { getGatewaySecret } from "../services/storage";
+import { useDialogFocus } from "../ui/dialogFocus";
 
 export interface AuthModalProps {
   isOpen: boolean;
@@ -16,7 +17,9 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
   const [bootstrapSecret, setBootstrapSecret] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
+  useDialogFocus(dialogRef, { active: isOpen, initialFocusRef: nameRef });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -64,7 +67,7 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
   };
 
   return (
-    <div class="auth-card border-card" role="dialog" aria-modal="true" aria-labelledby="authModalTitle" aria-busy={submitting}>
+    <div ref={dialogRef} class="auth-card border-card" role="dialog" aria-modal="true" aria-labelledby="authModalTitle" aria-busy={submitting} tabIndex={-1}>
       <div class="space-y-1">
         <h2 id="authModalTitle" class="text-sm font-bold text-emerald-400 tracking-wider uppercase">
           {setupRequired ? "Create administrator account" : "Portfolio Terminal sign in"}
