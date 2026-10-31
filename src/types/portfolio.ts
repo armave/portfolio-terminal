@@ -182,12 +182,21 @@ export interface ActiveTrancheMix {
   margin: number;
 }
 
+/** A guest who has been linked to a closed trade, retained for assignment history. */
+export interface ClosedTradeGuestAssignmentHistory {
+  guestId: string;
+  assignedQuantity: number;
+  assignedAt: number;
+}
+
 /** Persisted administrator-editable funding and guest metadata for a closed-history row. */
 export interface ClosedTradeAllocation {
   fundingType: ActiveTrancheType;
   cashQuantity: number;
   marginQuantity: number;
   guestId?: string;
+  assignedAt?: number;
+  guestAssignments?: ClosedTradeGuestAssignmentHistory[];
 }
 
 export interface ActiveBrokerTranche {
