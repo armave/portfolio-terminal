@@ -200,12 +200,11 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
       const fundingType = validTrancheType(types[groupId])
         ? types[groupId]
         : inherited?.fundingType || (validTrancheType(types[group.ticker]) ? types[group.ticker] : 'cash');
-      const mix = mixes[groupId] || inherited?.fundingType === 'mix' && inherited
-        ? (mixes[groupId] || {
-          cash: inherited.cashRatio,
-          margin: 1 - inherited.cashRatio
-        })
-        : mixes[group.ticker];
+      const mix = mixes[groupId]
+        ? mixes[groupId]
+        : inherited?.fundingType === 'mix'
+          ? { cash: inherited.cashRatio, margin: 1 - inherited.cashRatio }
+          : mixes[group.ticker];
       const normalizedMix = normalizeActiveTrancheMix(totalOpenQuantity, mix);
       const cashRatio = fundingType === 'margin'
         ? 0
@@ -219,25 +218,19 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
       const currentDetail = guestId && currentGuestId
         ? assignmentDetails[groupId]
         : undefined;
-      const detail = currentDetail?.guestId === guestId
-        ? currentDetail
-        : inheritedGuestId === guestId && inherited?.guestId
-          ? {
-            assignmentId: inherited.assignmentKey,
-            guestId,
-            assignedAt: inherited.assignedAt || 0,
-            assignedQuantity: inherited.assignedQuantity || 0
-          }
-          : undefined;
+      const detail = currentDetail?.guestId === guestId ? currentDetail : undefined;
+      const inheritedAssignment = inheritedGuestId === guestId ? inherited : undefined;
       const metadata: AssignmentMetadata = {
         fundingType,
         cashRatio,
         guestId: guestId || null,
-        assignedAt: detail && Number.isFinite(Number(detail.assignedAt)) ? Number(detail.assignedAt) : null,
+        assignedAt: detail && Number.isFinite(Number(detail.assignedAt))
+          ? Number(detail.assignedAt)
+          : inheritedAssignment?.assignedAt ?? null,
         assignedQuantity: detail && Number.isFinite(Number(detail.assignedQuantity))
           ? Math.max(0, Number(detail.assignedQuantity))
-          : null,
-        assignmentKey: detail?.assignmentId || inherited?.assignmentKey || groupId
+          : inheritedAssignment?.assignedQuantity ?? null,
+        assignmentKey: detail?.assignmentId || inheritedAssignment?.assignmentKey || groupId
       };
       group.lots.forEach((lot) => { lot.metadata = metadata; });
     }
