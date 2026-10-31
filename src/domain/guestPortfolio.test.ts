@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { ActiveBrokerTranche } from '../types/portfolio';
-import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings } from './guestPortfolio';
+import type { ActiveBrokerTranche, GuestTrancheLedgerRecord } from '../types/portfolio';
+import {
+  calculateGuestPersonalEquity,
+  filterGuestTrancheLedger,
+  getGuestAssignedCashHoldings,
+  summarizeGuestTrancheLedger
+} from './guestPortfolio';
 
 const tranche = (overrides: Partial<ActiveBrokerTranche>): ActiveBrokerTranche => ({
   id: 'AAPL:buy-1',
@@ -132,6 +137,55 @@ describe('guest holding valuation', () => {
       costBasis: 600,
       unrealizedPnl: 100,
       unrealizedPnlPercent: 100 / 600 * 100
+    });
+  });
+});
+
+
+describe('guest tranche ledger reports and filtering', () => {
+  const records: GuestTrancheLedgerRecord[] = [
+    {
+      assignmentId: 'assignment-aapl', trancheId: 'AAPL:buy-1', ticker: 'AAPL', name: 'Apple',
+      assignedQuantity: 10, openQuantity: 4, averagePrice: 100, purchasedAt: 10,
+      assignedAt: 100, updatedAt: 300, endedAt: null, status: 'active'
+    },
+    {
+      assignmentId: 'assignment-msft', trancheId: 'MSFT:buy-2', ticker: 'MSFT', name: 'Microsoft',
+      assignedQuantity: 2, openQuantity: 0, averagePrice: 50, purchasedAt: 20,
+      assignedAt: 200, updatedAt: 250, endedAt: 250, status: 'closed'
+    },
+    {
+      assignmentId: 'assignment-goog', trancheId: 'GOOG:buy-3', ticker: 'GOOG', name: 'Alphabet',
+      assignedQuantity: 1, openQuantity: 0, averagePrice: 10, purchasedAt: 30,
+      assignedAt: 300, updatedAt: 350, endedAt: 350, status: 'unassigned'
+    }
+  ];
+
+  it('filters guest assignments by ticker, lifecycle state and assignment date', () => {
+    expect(filterGuestTrancheLedger(records, {
+      ticker: 'aap',
+      status: 'active',
+      assignedFrom: 90,
+      assignedTo: 110
+    })).toEqual([records[0]]);
+    expect(filterGuestTrancheLedger(records, { status: 'closed' })).toEqual([records[1]]);
+    expect(filterGuestTrancheLedger(records, { ticker: 'zzz' })).toEqual([]);
+  });
+
+  it('summarizes historical assigned capital and current open value without inventing realized P/L', () => {
+    const activeTranches = [tranche({
+      id: 'AAPL:buy-1', quantity: 4, averagePrice: 100, marketPrice: 130, marketValue: 520
+    })];
+    expect(summarizeGuestTrancheLedger(records, activeTranches)).toEqual({
+      totalAssignments: 3,
+      activeAssignments: 1,
+      closedAssignments: 1,
+      unassignedAssignments: 1,
+      totalAssignedCostBasis: 1110,
+      openCostBasis: 400,
+      currentMarketValue: 520,
+      pricedOpenTranches: 1,
+      unpricedOpenTranches: 0
     });
   });
 });
