@@ -599,7 +599,6 @@ function translateDynamicText(normalized: string): string | undefined {
     ['[Market Data Error]: ', '[Market Data Error]', ': '],
     ['[Sell Error]: ', 'Sell Error', ': '],
     ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': ']
-  ];
     ['Market depth · ', 'Market depth', ' · '],
     ['Open market depth for ', 'Open market depth for', ' '],
     ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
@@ -608,6 +607,7 @@ function translateDynamicText(normalized: string): string | undefined {
     ['TradeNet live-data session initialization failed: ', 'TradeNet live-data session initialization failed', ': '],
     ['Unable to load TradeNet executed trades: ', 'Unable to load TradeNet executed trades', ': '],
     ['Unable to load active TradeNet orders: ', 'Unable to load active TradeNet orders', ': '],
+  ];
   for (const [prefix, dictionaryKey, separator] of prefixes) {
     if (normalized.startsWith(prefix)) {
       return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
