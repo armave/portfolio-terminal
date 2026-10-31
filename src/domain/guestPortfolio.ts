@@ -176,6 +176,65 @@ export function filterGuestTrancheLedger(
     });
 }
 
+/** A display row containing one or more closely timed operations of the same ticker and side. */
+export interface GuestTrancheLedgerOperationGroup {
+  records: GuestTrancheLedgerRecord[];
+  /** Timestamp of the first (newest) operation in this group. */
+  operationAt: number | null;
+}
+
+const GUEST_TRANCHE_OPERATION_GROUP_WINDOW_MS = 10 * 60 * 1000;
+
+function getGuestTrancheLedgerOperationAt(record: GuestTrancheLedgerRecord): number | null {
+  const isClosedTrade = record.trancheId.startsWith('closed-trade:');
+  const value = isClosedTrade ? record.operationAt : record.operationAt ?? record.purchasedAt;
+  if (value === null || value === undefined) return null;
+  const timestamp = Number(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+/**
+ * Group the date-sorted ledger rows for display. Tranche (buy-side) and Trade
+ * (sell-side) operations are kept separate. Consecutive same-ticker operations
+ * join while each is no more than ten minutes after the previous operation.
+ * Rows without a usable operation timestamp remain separate.
+ */
+export function groupGuestTrancheLedgerOperations(
+  records: GuestTrancheLedgerRecord[]
+): GuestTrancheLedgerOperationGroup[] {
+  const groups: GuestTrancheLedgerOperationGroup[] = [];
+  const groupsByOperation = new Map<string, Array<{
+    group: GuestTrancheLedgerOperationGroup;
+    lastOperationAt: number;
+  }>>();
+
+  for (const record of records || []) {
+    const ticker = String(record.ticker || '').trim().toUpperCase();
+    const isClosedTrade = record.trancheId.startsWith('closed-trade:');
+    const operationAt = getGuestTrancheLedgerOperationAt(record);
+    if (!ticker || operationAt === null) {
+      groups.push({ records: [record], operationAt });
+      continue;
+    }
+
+    const key = ticker + ':' + (isClosedTrade ? 'trade' : 'tranche');
+    const operationGroups = groupsByOperation.get(key) || [];
+    const previous = operationGroups[operationGroups.length - 1];
+    if (previous && Math.abs(previous.lastOperationAt - operationAt) <= GUEST_TRANCHE_OPERATION_GROUP_WINDOW_MS) {
+      previous.group.records.push(record);
+      previous.lastOperationAt = operationAt;
+      continue;
+    }
+
+    const group = { records: [record], operationAt };
+    groups.push(group);
+    operationGroups.push({ group, lastOperationAt: operationAt });
+    groupsByOperation.set(key, operationGroups);
+  }
+
+  return groups;
+}
+
 /** Summarize historical assignment capital and today's open position value.
  * Realized net P&L is carried on closed-trade ledger records when the source is complete. */
 export function summarizeGuestTrancheLedger(
