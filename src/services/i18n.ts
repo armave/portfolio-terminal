@@ -366,8 +366,6 @@ const RU: Record<string, string> = {
   "maintenance": "поддерживающая маржа",
   "equity": "собственный капитал",
   "Account equity health": "Состояние собственного капитала счёта",
-  "Direction": "Направление",
-  "Operation №": "Операция №",
   "records": "записей",
   "Unknown": "Неизвестно",
   "days": "дн.",

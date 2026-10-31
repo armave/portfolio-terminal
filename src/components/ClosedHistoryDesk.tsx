@@ -101,9 +101,8 @@ export function ClosedHistoryDesk() {
       // allocations can be recalculated after refresh without another API read.
       const feeRows = cashflowRows.filter(item => {
         const text = [item.type, item.description, ...Object.values(item.raw)].join(' ').toLowerCase();
-        // Exports commonly label the direction in a separate "Direction" column,
-        // while the "Operation №" column is only an ID. Inspect every cell so
-        // daily negative-cash fees are not missed due to column selection.
+        // Broker payloads may place direction and operation identifiers in
+        // separate fields. Inspect all returned fields to detect financing fees.
         const isDailyFinancingFee = /negative\s+cash\s+balance\s+fee|fee\s+for\s+negative\s+cash\s+balance|margin\s+(?:fee|interest)|(?:daily\s+)?(?:margin|financing|overnight|rollover|borrow(?:ing)?)\s+(?:fee|charge|interest)|interest\s+(?:fee|charge)/i.test(text);
         const isTradeCommission = /trading\s+fee|commission\s+for\s+trade/i.test(text);
         return isDailyFinancingFee && !isTradeCommission;
@@ -147,7 +146,6 @@ export function ClosedHistoryDesk() {
         return match ? parseTradeDate(match[1]) : NaN;
       };
       const allocationsBySell = new Map<number, Record<string, number>>();
-      let matchedFeeRows = 0;
       for (const fee of feeRows) {
         const date = feeDate(fee), amount = Math.abs(fee.amount); if (!Number.isFinite(date) || amount <= 0) continue;
         const open = segments.filter(segment => {
@@ -162,16 +160,13 @@ export function ClosedHistoryDesk() {
           byFee[fee.id] = (byFee[fee.id] || 0) + amount * segment.quantity * segment.buyPrice / totalWeight;
           allocationsBySell.set(segment.sellIndex, byFee);
         }
-        matchedFeeRows++;
       }
       const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(brokerExecutions, allocationsBySell);
-      let updatedTradeCount = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
       // Use one authoritative trade source per recalculation. When broker
       // executions exist they drive FIFO matching and fee allocation; applying
       // the same daily cashflow rows independently to app trades would allocate
       // each fee twice across two representations of the portfolio.
       const appAllocations = new Map<number, number>();
-      let appMatchedFeeRows = 0;
       if (!brokerExecutions.length) {
         for (const fee of feeRows) {
           const date = feeDate(fee), amount = Math.abs(fee.amount);
@@ -186,17 +181,16 @@ export function ClosedHistoryDesk() {
           const totalWeight = open.reduce((sum, t) => sum + t.weight, 0);
           if (!open.length || totalWeight <= 0) continue;
           for (const position of open) appAllocations.set(position.index, (appAllocations.get(position.index) || 0) + amount * position.weight / totalWeight);
-          appMatchedFeeRows++;
         }
       }
       const updatedTrades = applyCashflowAllocationsToClosedTrades(appTrades, appAllocations);
       const changedBrokerRows = updatedExecutions.filter((trade, index) => trade !== brokerExecutions[index]).length;
       const changedAppRows = updatedTrades.filter((trade, index) => trade !== appTrades[index]).length;
-      updatedTradeCount = changedBrokerRows + changedAppRows;
+      const updatedTradeCount = changedBrokerRows + changedAppRows;
       const currentCashflows = portfolioStore.getState().cashflows || [];
       const cashflowsChanged = JSON.stringify(currentCashflows) !== JSON.stringify(cashflowRows);
-      // Persist the uploaded source rows even when no fee date overlaps a closed
-      // trade yet. A later broker refresh can then retry allocation from the store.
+      // Persist the current broker cashflow snapshot even when no fee date
+      // overlaps a closed trade yet. Later recalculation can retry from storage.
       const nextState: Record<string, unknown> = {};
       if (cashflowsChanged) nextState.cashflows = cashflowRows;
       // Compare the complete recalculated records before writing. This prevents
@@ -237,9 +231,7 @@ export function ClosedHistoryDesk() {
           }
         }
       }
-      if (!updatedTradeCount && (matchedFeeRows > 0 || appMatchedFeeRows > 0)) return true;
-      if (!updatedTradeCount) return true;
-      if (brokerExecutions.length) setBrokerTrades(updatedExecutions);
+      if (updatedTradeCount > 0 && brokerExecutions.length) setBrokerTrades(updatedExecutions);
       return true;
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unknown cashflow processing error.';
