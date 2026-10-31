@@ -109,6 +109,25 @@ describe('canonical portfolio-state migration', () => {
     }]);
   });
 
+  it('normalizes legacy ticker metadata and preserves the first matching row', () => {
+    const positions: Record<string, PositionRecord> = {
+      AAPL: { ticker: 'AAPL', shares: 2, currentPrice: 190, pt: 210, commBuy: 0, tranches: [] },
+      MSFT: { ticker: 'MSFT', shares: 3, currentPrice: 420, pt: 450, commBuy: 0, tranches: [] }
+    };
+    const legacy: Holding[] = [
+      { ticker: ' aapl ', isMargin: false, notes: 'First AAPL row', tranches: [] },
+      { ticker: 'AAPL', isMargin: true, notes: 'Duplicate AAPL row', tranches: [] },
+      { ticker: 'msft', isMargin: false, notes: 'MSFT metadata', tranches: [] }
+    ];
+
+    const projection = buildHoldingsProjection(positions, legacy, '2026-10-16');
+
+    expect(projection.map(({ ticker, notes, isMargin }) => ({ ticker, notes, isMargin }))).toEqual([
+      { ticker: 'AAPL', notes: 'First AAPL row', isMargin: true },
+      { ticker: 'MSFT', notes: 'MSFT metadata', isMargin: true }
+    ]);
+  });
+
   it('does not create compatibility holdings for an empty canonical positions map', () => {
     expect(buildHoldingsProjection({}, [], '2026-10-16')).toEqual([]);
   });
@@ -178,6 +197,43 @@ describe('legacy cloud snapshot migration safety', () => {
     );
 
     expect(result.positions?.AAPL).toBeUndefined();
+  });
+
+  it('compares legacy rebuy dates against the latest normalized local close per ticker', () => {
+    const reopenedAfterOlderExit = {
+      ...legacyHolding,
+      tranches: [{
+        id: 'legacy-rebuy-too-early',
+        shares: 2,
+        entryPrice: 115,
+        purchaseDate: '2026-10-11'
+      }]
+    };
+    const reopenedAfterLatestExit = {
+      ...legacyHolding,
+      ticker: ' msft ',
+      tranches: [{
+        id: 'legacy-rebuy-after-latest-exit',
+        shares: 3,
+        entryPrice: 415,
+        purchaseDate: '2026-10-14'
+      }]
+    };
+    const result = migrateLegacyCloudHoldingsToPositions(
+      { holdings: [reopenedAfterOlderExit, reopenedAfterLatestExit] },
+      {
+        positions: {},
+        closedTrades: [
+          { ticker: 'AAPL', shares: 5, exitDate: '2026-10-10', netProfit: 100 },
+          { ticker: ' aapl ', shares: 2, closedAt: '2026-10-12T12:00:00Z', netProfit: 20 },
+          { ticker: 'MSFT', shares: 1, sellDate: '2026-10-13', netProfit: 10 }
+        ]
+      },
+      '2026-10-16'
+    );
+
+    expect(result.positions?.AAPL).toBeUndefined();
+    expect(result.positions?.MSFT?.shares).toBe(3);
   });
 
   it('does not run legacy migration when the cloud explicitly contains canonical positions', () => {

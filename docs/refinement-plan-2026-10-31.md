@@ -212,3 +212,38 @@ A modal accessibility audit found inconsistent keyboard focus behavior across th
 - [x] Both workflows passed: [Validate run 41198028237](https://github.com/armave/portfolio-terminal/actions/runs/41198028237) and [Pull Request CI run 41198028274](https://github.com/armave/portfolio-terminal/actions/runs/41198028274).
 
 No authentication API calls, portfolio state, broker behavior, scenario calculations, or server authorization behavior changed. Browser and assistive-technology verification remains outstanding.
+
+## Follow-on implementation — roadmap execution PR (2026-10-31)
+
+**Working branch:** `chore/roadmap-implementation-2026-10-31`  
+**Base:** `main` at `c60ee2ee115f754a86212c656423c0bea2b76eb7`
+
+- [x] Optimize `buildHoldingsProjection`: build one normalized ticker-to-legacy-metadata index instead of rescanning the entire legacy holdings array for each canonical position.
+- [x] Preserve compatibility semantics by retaining the first legacy row matching each normalized ticker.
+- [x] Add regression coverage for whitespace/case normalization, duplicate legacy rows, and derived canonical fields.
+- [x] Correct the Gateway/cloud-sync documentation: general Worker POST bodies are limited to 20 MB, authentication JSON bodies to 8 KB, and Durable Object cloud-state writes to 20 MB. Existing ticker and Gemini limits remain documented separately.
+- [x] Exact-head `79fbb47dba5d174a234cd473950403386ae434bb` passed typecheck, full Vitest suite, dead-code validation, production dependency audit, and production build in both [Validate run 41201346038](https://github.com/armave/portfolio-terminal/actions/runs/41201346038) and [Pull Request CI run 41201346026](https://github.com/armave/portfolio-terminal/actions/runs/41201346026).
+- [ ] Complete browser/mobile and assistive-technology verification. No financial formula, persisted schema, broker order behavior, authorization rule, or server-side code is changed by this PR.
+
+### Implementation notes
+
+The compatibility projection is derived from canonical `PortfolioState.positions`; this change only reduces lookup work from O(P × H) to O(P + H), where P is the number of canonical positions and H is the number of legacy holdings. It does not change position quantities, tranches, targets, quote values, or retained user metadata.
+
+## Follow-on implementation — indexed legacy cloud migration (2026-10-31)
+
+- [x] Replace the per-holding scan of the full local closed-trade history with one latest-close index keyed by normalized ticker.
+- [x] Preserve the legacy date-field precedence (`closedAt`, `exitDate`, `sellDate`, `date`), invalid-date fallback, and strict "rebuy must be later than latest close" rule.
+- [x] Add regression coverage for multiple exits, case/whitespace-normalized tickers, and a legacy rebuy occurring after the latest close.
+- [x] Exact-head `79fbb47dba5d174a234cd473950403386ae434bb` passed typecheck, full tests, dead-code validation, production dependency audit, and production build in both [Validate run 41201346038](https://github.com/armave/portfolio-terminal/actions/runs/41201346038) and [Pull Request CI run 41201346026](https://github.com/armave/portfolio-terminal/actions/runs/41201346026).
+- [ ] Keep financial calculations, saved data formats, and cloud authorization unchanged.
+
+This reduces the closed-history lookup work from O(H × C) to O(H + C), where H is the number of legacy holdings and C is the number of local closed trades. Legacy tranche-date inspection remains proportional to the tranche count. Together with the earlier indexed compatibility projection, both read-only legacy migration lookups now build their indexes once per normalization pass.
+
+## Follow-on implementation — Preact runtime store subscription snapshots (2026-10-31)
+
+- [x] Apply immediate current-snapshot delivery to AI status, breakeven text, cloud status, cloud-sync status, and board-title subscriptions.
+- [x] Keep the existing analyst-consensus snapshot behavior consistent with those stores.
+- [x] Add regression coverage for subscribing after a value has already been published, subsequent updates, and listener cleanup.
+- [x] Exact-head `79fbb47dba5d174a234cd473950403386ae434bb` passed typecheck, full tests, dead-code validation, production dependency audit, and production build in both [Validate run 41201346038](https://github.com/armave/portfolio-terminal/actions/runs/41201346038) and [Pull Request CI run 41201346026](https://github.com/armave/portfolio-terminal/actions/runs/41201346026).
+
+The hooks register subscribers in effects. Immediate snapshot delivery on subscription closes the render-to-effect timing window in which a runtime update could otherwise be missed and leave a component displaying stale presentation state until a later update. This is presentation-state synchronization only; canonical portfolio data and persisted state are unchanged.
