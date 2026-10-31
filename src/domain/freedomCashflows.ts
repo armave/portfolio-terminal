@@ -139,7 +139,9 @@ function dateIdentity(value: string): string {
   return text.toLowerCase();
 }
 
-function cashflowFingerprint(row: NormalizedFreedomCashflow): string {
+type CashflowFingerprintInput = Pick<NormalizedFreedomCashflow, "date" | "type" | "amount" | "currency" | "description">;
+
+function cashflowFingerprint(row: CashflowFingerprintInput): string {
   return [
     dateIdentity(row.date),
     row.type.trim().toLowerCase().replace(/\s+/g, " "),
