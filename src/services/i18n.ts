@@ -556,6 +556,8 @@ const RU: Record<string, string> = {
   "ROLLOVER": "ПЕРЕНОС",
   "TV Chart": "График TradingView",
   "TV Ideas": "Идеи TradingView",
+  "Check that FREEDOM_PUBLIC_KEY and FREEDOM_PRIVATE_KEY are configured as Cloudflare Worker secrets. Never expose the private key in browser code.": "Проверьте, что FREEDOM_PUBLIC_KEY и FREEDOM_PRIVATE_KEY заданы как секреты Cloudflare Worker. Никогда не раскрывайте закрытый ключ в клиентском коде.",
+  "TBD": "Пока неизвестно",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -709,8 +711,9 @@ function translateDynamicText(normalized: string): string | undefined {
   const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
   if (riskPrefix) {
     return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
+      .replace(/\bnegative equity\b/g, RU['negative equity'])
       .replace(/\bequity\b/g, 'собственного капитала')
-      .replace(/\bmaintenance\b/g, 'поддерживающая маржа');
+      .replace(/\bmaintenance\b/g, 'по нормативу поддерживающей маржи');
   }
 
   if (normalized.startsWith('e.g. quote ')) {
