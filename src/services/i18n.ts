@@ -508,7 +508,7 @@ const RU: Record<string, string> = {
   "Open value": "Стоимость остатка",
   "Assigned cost basis across filtered records:": "Себестоимость назначенных лотов по выбранным записям:",
   "· Some open holdings have no current quote": "· Для некоторых открытых активов нет актуальной котировки",
-  "Market value is shown only for open assigned holdings. Net P&amp;L appears only when the closed trade's net result is available.": "Рыночная стоимость показывается только для открытых назначенных активов. Чистая прибыль/убыток отображается только при наличии итоговых данных закрытой сделки.",
+  "Market value is shown only for open assigned holdings. Net P&L appears only when the closed trade's net result is available.": "Рыночная стоимость показывается только для открытых назначенных активов. Чистая прибыль/убыток отображается только при наличии итоговых данных закрытой сделки.",
   "Preparing lots": "Подготовка раздела лотов",
   "Loading your assigned tranche history…": "Загрузка истории назначенных вам лотов…",
   "Workspace navigation": "Навигация по разделам",
