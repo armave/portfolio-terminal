@@ -26,6 +26,7 @@ import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
   fetchYahooDeepStockData,
+  clearCloudHistory,
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
@@ -47,6 +48,7 @@ import {
   persistGatewaySecret,
   loadSavedState,
   loadSavedHistory,
+  saveSavedHistory,
   saveApiKeys,
   saveBrokerRules,
   saveGatewaySecret,
@@ -620,14 +622,40 @@ async function syncCloudState(mode = 'push') {
   });
 }
 
-function resetToBlankState() {
-  if (confirm("Reset the entire terminal to a blank slate? This will clear all holdings, balances, and history locally and on KV cloud.")) {
-    portfolioStore.importState(createBlankState() as any);
-    state = portfolioStore.getState();
-    saveState(state, pushStateToGist);
-    pushStateToGist(true);
-    renderBoard();
-    logTerminal("[System]: Portfolio reset to a clean blank slate.");
+async function resetToBlankState(): Promise<void> {
+  if (!confirm("Reset the entire terminal to a blank slate? This will clear all holdings, balances, and history locally and on KV cloud.")) {
+    return;
+  }
+
+  portfolioStore.resetToBlankState();
+  state = portfolioStore.getState();
+  const localHistorySaved = saveSavedHistory({ brokerExecutedTrades: [], cashflows: [] });
+  const localStateSaved = saveState(state, pushStateToGist);
+  pushStateToGist(true);
+  renderBoard();
+  logTerminal("[System]: Portfolio reset to a clean blank slate.");
+
+  if (!localHistorySaved || !localStateSaved) {
+    showToast(
+      "The portfolio was reset in memory, but some local data could not be cleared. Check browser storage before reloading.",
+      "error"
+    );
+  }
+
+  try {
+    const historyCleared = await clearCloudHistory();
+    if (!historyCleared) {
+      throw new Error("The cloud history reset was not confirmed. Verify cloud access and retry.");
+    }
+    logTerminal("[System]: Closed trade history cleared from KV cloud.");
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Unknown cloud history error.";
+    console.error("Unable to clear closed history from KV cloud:", error);
+    showToast(
+      "The portfolio was reset locally, but cloud closed history could not be cleared. Restore cloud access and retry the reset.",
+      "error"
+    );
+    logTerminal(`[KV Cloud Error]: Closed history reset failed: ${detail}`);
   }
 }
 
