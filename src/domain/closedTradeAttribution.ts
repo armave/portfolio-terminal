@@ -276,7 +276,7 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
     }
 
     const uniqueFundingTypes = new Set(fundingTypes);
-    const fundingType: ClosedTradeFundingType = uniqueFundingTypes.size === 0
+    const fundingType: ClosedTradeFundingType = remainingToSell > EPSILON || uniqueFundingTypes.size === 0
       ? 'unclassified'
       : uniqueFundingTypes.size > 1 || uniqueFundingTypes.has('mix')
         ? 'mix'
