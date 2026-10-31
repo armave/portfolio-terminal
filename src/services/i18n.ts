@@ -624,6 +624,1819 @@ function russianPlural(value: number, one: string, few: string, many: string): s
 }
 
 function translateDynamicText(normalized: string): string | undefined {
+  const replaceCommandHelp = normalized.match(/^Please replace \[(.+)\] with a value before running this command\.$/i);
+  if (replaceCommandHelp) return 'Замените [' + replaceCommandHelp[1] + '] на значение перед выполнением команды.';
+
+  const switchedView = normalized.match(/^Switched view to (.+)\.$/i);
+  if (switchedView) {
+    const viewNames: Record<string, string> = {
+      COMBINED: 'Общий портфель',
+      CASH_CUSHION: 'Баланс',
+      BALANCE: 'Баланс',
+      SETTINGS: 'Настройки',
+      CLOSED_HISTORY: 'История закрытых сделок',
+      GUEST_HISTORY: 'Лоты'
+    };
+    return 'Выполнено переключение на раздел ' + (viewNames[switchedView[1]] || switchedView[1]) + '.';
+  }
+
+  const invalidCalendarDate = normalized.match(/^Invalid calendar date "(.+)"\. Use YYYY-MM-DD or "Mar 25"\.$/i);
+  if (invalidCalendarDate) return 'Некорректная календарная дата "' + invalidCalendarDate[1] + '". Используйте ГГГГ-ММ-ДД или "Mar 25".';
+  const invalidDate = normalized.match(/^Invalid date "(.+)"\. Use YYYY-MM-DD or "Mar 25"\.$/i);
+  if (invalidDate) return 'Некорректная дата "' + invalidDate[1] + '". Используйте ГГГГ-ММ-ДД или "Mar 25".';
+  const unrecognizedDate = normalized.match(/^Unrecognized date "(.+)"\. Try "on YYYY-MM-DD", "on Mar 25", "yesterday", or "3 days ago"\.$/i);
+  if (unrecognizedDate) return 'Не удалось распознать дату "' + unrecognizedDate[1] + '". Используйте "on YYYY-MM-DD", "on Mar 25", "yesterday" или "3 days ago".';
+  const unrecognizedExitDate = normalized.match(/^Unrecognized exit date:\s*(.+)$/i);
+  if (unrecognizedExitDate) return 'Не удалось распознать дату выхода: ' + unrecognizedExitDate[1];
+
+  const noOpenPosition = normalized.match(/^No open position found for (.+)\.$/i);
+  if (noOpenPosition) return 'Не найдена открытая позиция ' + noOpenPosition[1] + '.';
+  const noOpenScenarioPosition = normalized.match(/^No open position found for (.+)\. Buy scenarios require an existing position\.$/i);
+  if (noOpenScenarioPosition) return 'Не найдена открытая позиция ' + noOpenScenarioPosition[1] + '. Для сценария покупки нужна существующая позиция.';
+  const noOpenShares = normalized.match(/^No valid open shares found for (.+)\.$/i);
+  if (noOpenShares) return 'Не найдено допустимое количество открытых акций для ' + noOpenShares[1] + '.';
+
+  const sold = normalized.match(/^Sold ([\d,.]+) ([A-Z0-9.-]+) @ \$(\d+(?:\.\d{2})?)$/i);
+  if (sold) return 'Продано ' + sold[1] + ' акций ' + sold[2] + ' по цене   const prefixes: Array<[string, string, string]> = [
+    ['Name for ', 'Name for ', ''],
+    ['Role for ', 'Role for ', ''],
+    ['Language for ', 'Language for ', ''],
+    ['New password for ', 'New password for ', ''],
+    ['Updated ', 'Updated', ' '],
+    ['Synced: ', 'Synced', ': '],
+    ['Synced ', 'Synced', ' '],
+    ['MARGIN: ', 'MARGIN', ': '],
+    ['Combined Breakeven: ', 'Combined Breakeven', ': '],
+    ['Exit Comparison · ', 'Exit Comparison', ' · '],
+    ['Buy More Projection · ', 'Buy More Projection', ' · '],
+    ['Read news: ', 'Read news', ': '],
+    ['Stocktwits unavailable: ', 'Stocktwits unavailable', ': '],
+    ['Quote status: ', 'Quote status', ': '],
+    ['Assigned stock value: ', 'Assigned stock value', ': '],
+    ['Immediately pull latest quote for ', 'Immediately pull latest quote for', ' '],
+    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' '],
+    ['[AI Action Error]: ', '[AI Action Error]', ': '],
+    ['[KV Cloud Error]: ', '[KV Cloud Error]', ': '],
+    ['Cloud pull failed: ', 'Cloud pull failed', ': '],
+    ['[Market Data Error]: ', '[Market Data Error]', ': '],
+    ['[Sell Error]: ', 'Sell Error', ': '],
+    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': '],
+    ['Market depth · ', 'Market depth', ' · '],
+    ['Open market depth for ', 'Open market depth for', ' '],
+    ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
+    ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
+    ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
+    ['TradeNet live-data session initialization failed: ', 'TradeNet live-data session initialization failed', ': '],
+    ['Unable to load TradeNet executed trades: ', 'Unable to load TradeNet executed trades', ': '],
+    ['Unable to load active TradeNet orders: ', 'Unable to load active TradeNet orders', ': '],
+    ['[Guest Portfolio Sync Error]: ', '[Guest Portfolio Sync Error]', ': '],
+    ['[KV Cloud Sync Error]: ', '[KV Cloud Sync Error]', ': '],
+    ['[Settings Error]: ', '[Settings Error]', ': '],
+    ['[Warning]: ', '[Warning]', ': '],
+    ['[Error]: ', '[Error]', ': '],
+    ['[Backup]: ', '[Backup]', ': '],
+    ['[Backup Import]: ', '[Backup Import]', ': '],
+    ['[Backup Error]: ', '[Backup Error]', ': '],
+    ['[CLI Error]: ', '[CLI Error]', ': '],
+    ['[CLI]: ', '[CLI]', ': '],
+    ['[AI Advisor]: ', '[AI Advisor]', ': '],
+    ['[System]: ', '[System]', ': '],
+  ];
+  for (const [prefix, dictionaryKey, separator] of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
+    }
+  }
+
+  const latestPortfolioQuote = normalized.match(/^Latest portfolio quote · (.+)$/i);
+  if (latestPortfolioQuote) {
+    return RU['Latest portfolio quote'] + ' · ' + translateText(latestPortfolioQuote[1], 'ru');
+  }
+
+  const acrossAssets = normalized.match(/^(.+) \| Across (\d+) Assets$/i);
+  if (acrossAssets) {
+    const count = Number(acrossAssets[2]);
+    return acrossAssets[1] + ' | По ' + count + (count === 1 ? ' активу' : ' активам');
+  }
+
+  const trancheSummary = normalized.split(' | ').map((part) => {
+    const match = part.match(/^(.+?): ([\d,.]+)sh @ PT (.+)$/i);
+    return match ? match[1] + ': ' + match[2] + ' акц. @ ЦУ ' + match[3] : part;
+  });
+  if (trancheSummary.some((part, index) => part !== normalized.split(' | ')[index])) {
+    return trancheSummary.join(' | ');
+  }
+
+  const externalLinkLabel = normalized.match(/^Open (.+) on (.+) in a new tab$/i);
+  if (externalLinkLabel) {
+    const provider = RU[externalLinkLabel[2]] || externalLinkLabel[2];
+    return 'Открыть ' + externalLinkLabel[1] + ' через ' + provider + ' в новой вкладке';
+  }
+
+  const missingMarginPosition = normalized.match(/^No active margin position was found for (.+)\. Select an active margin ticker and try again\.$/i);
+  if (missingMarginPosition) {
+    return 'Не найдена активная маржинальная позиция ' + missingMarginPosition[1] +
+      '. Выберите активный маржинальный тикер и повторите попытку.';
+  }
+
+  const positionReviewTitle = normalized.match(/^(.+) · Position Review$/i);
+  if (positionReviewTitle) return positionReviewTitle[1] + ' · Анализ маржинальной позиции';
+
+  const reportTitles: Array<[string, string]> = [
+    ['HYPOTHETICAL BUY:', 'ПОКУПКА В СЦЕНАРИИ:'],
+    ['MULTI-DATE EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ:'],
+    ['EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА:'],
+    ['STAGED EXIT:', 'ПОЭТАПНЫЙ ВЫХОД:']
+  ];
+  for (const [prefix, translatedPrefix] of reportTitles) {
+    if (normalized.toUpperCase().startsWith(prefix)) {
+      return translatedPrefix + normalized.slice(prefix.length);
+    }
+  }
+
+  const rows = normalized.match(/^Rows (.+) of (\d+)$/i);
+  if (rows) return `Строки ${rows[1]} из ${rows[2]}`;
+  const page = normalized.match(/^Page (\d+) of (\d+)$/i);
+  if (page) return `Страница ${page[1]} из ${page[2]}`;
+  const milestone = normalized.match(/^(EOW|NTD) · \+(\d+)d$/i);
+  if (milestone) {
+    const label = milestone[1].toUpperCase() === 'EOW' ? 'До конца недели' : 'Следующий торговый день';
+    return `${label} · +${milestone[2]} дн.`;
+  }
+  const positionValue = normalized.match(/^Position value ([\d,]+(?:\.[\d]+)?)(?: \(already\s*([\d.,]+)% below trigger\))?$/i);
+  if (positionValue) {
+    return positionValue[2]
+      ? `Стоимость позиции ${positionValue[1]} (уже на ${positionValue[2]}% ниже порога)`
+      : `Стоимость позиции ${positionValue[1]}`;
+  }
+
+  const buffer = normalized.match(/^([\d.,]+)% buffer$/i);
+  if (buffer) return 'Запас: ' + buffer[1] + '%';
+
+  const recordRange = normalized.match(/^(\d+) [/] (\d+) records$/i);
+  if (recordRange) {
+    const total = Number(recordRange[2]);
+    return recordRange[1] + ' / ' + recordRange[2] + ' ' + russianPlural(total, 'запись', 'записи', 'записей');
+  }
+
+  const unassigned = normalized.match(/^(· )?(\d+) unassigned$/i);
+  if (unassigned) return (unassigned[1] || '') + 'Без назначения: ' + unassigned[2];
+
+  const showTranches = normalized.match(/^Show (\d+) tranches$/i);
+  if (showTranches) {
+    return `Показать ${showTranches[1]} ${russianPlural(Number(showTranches[1]), 'лот', 'лота', 'лотов')}`;
+  }
+
+  const count = normalized.match(/^(\d+) (tranches|records|holdings|days|hrs|shares)$/i);
+  if (count) {
+    const amount = Number(count[1]);
+    const noun = count[2].toLowerCase();
+    if (noun === 'tranches') return `${amount} ${russianPlural(amount, 'лот', 'лота', 'лотов')}`;
+    if (noun === 'records') return `${amount} ${russianPlural(amount, 'запись', 'записи', 'записей')}`;
+    if (noun === 'holdings') return `${amount} ${russianPlural(amount, 'позиция', 'позиции', 'позиций')}`;
+    if (noun === 'days') return `${amount} дн.`;
+    if (noun === 'hrs') return `${amount} ч`;
+    return `${amount} акций`;
+  }
+
+  const riskPrefixes = ['Healthy', 'No margin debt', 'Elevated', 'Stop-out level', 'Margin-call level'];
+  const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
+  if (riskPrefix) {
+    return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
+      .replace(/\bnegative equity\b/g, RU['negative equity'])
+      .replace(/\bequity\b/g, 'собственного капитала')
+      .replace(/\bmaintenance\b/g, 'по нормативу поддерживающей маржи');
+  }
+
+  if (normalized.startsWith('e.g. quote ')) {
+    return 'например: quote ' + normalized.slice('e.g. quote '.length);
+  }
+  return undefined;
+}
+
+export function translateText(value: string, language: AppLanguage = currentLanguage): string {
+  if (language === 'en') return value;
+  if (value.includes('\n')) return value.split('\n').map((line) => translateText(line, language)).join('\n');
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/\s+/g, ' ');
+  if (!normalized) return value;
+  const translated = RU[normalized] ?? translateDynamicText(normalized);
+  if (!translated) return value;
+  const start = value.indexOf(trimmed);
+  const end = start + trimmed.length;
+  return value.slice(0, start) + translated + value.slice(end);
+}
+
+function translateVNodeValue(value: unknown): unknown {
+  if (typeof value === 'string') return translateText(value);
+  if (Array.isArray(value)) return value.map(translateVNodeValue);
+  if (value && typeof value === 'object' && 'props' in value) {
+    const props = (value as VNode).props as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(props, 'children')) {
+      props.children = translateVNodeValue(props.children);
+    }
+    for (const attribute of TEXT_ATTRIBUTES) {
+      const attributeValue = props[attribute];
+      if (typeof attributeValue === 'string') {
+        props[attribute] = translateText(attributeValue);
+      }
+    }
+  }
+  return value;
+}
+
+const previousVNodeHook = options.vnode;
+options.vnode = (vnode) => {
+  previousVNodeHook?.(vnode);
+  translateVNodeValue(vnode);
+};
+
+function updateDocumentLanguage(language: AppLanguage): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = language;
+  document.title = language === 'ru' ? RU_DOCUMENT_TITLE : EN_DOCUMENT_TITLE;
+}
+
+export function setAppLanguage(language: AppLanguage | null | undefined): void {
+  const nextLanguage: AppLanguage = language === 'ru' ? 'ru' : 'en';
+  updateDocumentLanguage(nextLanguage);
+  if (currentLanguage === nextLanguage) return;
+  currentLanguage = nextLanguage;
+  for (const listener of languageListeners) listener(nextLanguage);
+}
+
+export function subscribeAppLanguage(listener: (language: AppLanguage) => void): () => void {
+  languageListeners.add(listener);
+  return () => languageListeners.delete(listener);
+}
+ + sold[3] + '.';
+  const manuallyMarked = normalized.match(/^([A-Z0-9.-]+) manually marked at \$(\d+(?:\.\d{2})?)$/i);
+  if (manuallyMarked) return manuallyMarked[1] + ' вручную оценён по цене   const prefixes: Array<[string, string, string]> = [
+    ['Name for ', 'Name for ', ''],
+    ['Role for ', 'Role for ', ''],
+    ['Language for ', 'Language for ', ''],
+    ['New password for ', 'New password for ', ''],
+    ['Updated ', 'Updated', ' '],
+    ['Synced: ', 'Synced', ': '],
+    ['Synced ', 'Synced', ' '],
+    ['MARGIN: ', 'MARGIN', ': '],
+    ['Combined Breakeven: ', 'Combined Breakeven', ': '],
+    ['Exit Comparison · ', 'Exit Comparison', ' · '],
+    ['Buy More Projection · ', 'Buy More Projection', ' · '],
+    ['Read news: ', 'Read news', ': '],
+    ['Stocktwits unavailable: ', 'Stocktwits unavailable', ': '],
+    ['Quote status: ', 'Quote status', ': '],
+    ['Assigned stock value: ', 'Assigned stock value', ': '],
+    ['Immediately pull latest quote for ', 'Immediately pull latest quote for', ' '],
+    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' '],
+    ['[AI Action Error]: ', '[AI Action Error]', ': '],
+    ['[KV Cloud Error]: ', '[KV Cloud Error]', ': '],
+    ['Cloud pull failed: ', 'Cloud pull failed', ': '],
+    ['[Market Data Error]: ', '[Market Data Error]', ': '],
+    ['[Sell Error]: ', 'Sell Error', ': '],
+    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': '],
+    ['Market depth · ', 'Market depth', ' · '],
+    ['Open market depth for ', 'Open market depth for', ' '],
+    ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
+    ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
+    ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
+    ['TradeNet live-data session initialization failed: ', 'TradeNet live-data session initialization failed', ': '],
+    ['Unable to load TradeNet executed trades: ', 'Unable to load TradeNet executed trades', ': '],
+    ['Unable to load active TradeNet orders: ', 'Unable to load active TradeNet orders', ': '],
+    ['[Guest Portfolio Sync Error]: ', '[Guest Portfolio Sync Error]', ': '],
+    ['[KV Cloud Sync Error]: ', '[KV Cloud Sync Error]', ': '],
+    ['[Settings Error]: ', '[Settings Error]', ': '],
+    ['[Warning]: ', '[Warning]', ': '],
+    ['[Error]: ', '[Error]', ': '],
+    ['[Backup]: ', '[Backup]', ': '],
+    ['[Backup Import]: ', '[Backup Import]', ': '],
+    ['[Backup Error]: ', '[Backup Error]', ': '],
+    ['[CLI Error]: ', '[CLI Error]', ': '],
+    ['[CLI]: ', '[CLI]', ': '],
+    ['[AI Advisor]: ', '[AI Advisor]', ': '],
+    ['[System]: ', '[System]', ': '],
+  ];
+  for (const [prefix, dictionaryKey, separator] of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
+    }
+  }
+
+  const latestPortfolioQuote = normalized.match(/^Latest portfolio quote · (.+)$/i);
+  if (latestPortfolioQuote) {
+    return RU['Latest portfolio quote'] + ' · ' + translateText(latestPortfolioQuote[1], 'ru');
+  }
+
+  const acrossAssets = normalized.match(/^(.+) \| Across (\d+) Assets$/i);
+  if (acrossAssets) {
+    const count = Number(acrossAssets[2]);
+    return acrossAssets[1] + ' | По ' + count + (count === 1 ? ' активу' : ' активам');
+  }
+
+  const trancheSummary = normalized.split(' | ').map((part) => {
+    const match = part.match(/^(.+?): ([\d,.]+)sh @ PT (.+)$/i);
+    return match ? match[1] + ': ' + match[2] + ' акц. @ ЦУ ' + match[3] : part;
+  });
+  if (trancheSummary.some((part, index) => part !== normalized.split(' | ')[index])) {
+    return trancheSummary.join(' | ');
+  }
+
+  const externalLinkLabel = normalized.match(/^Open (.+) on (.+) in a new tab$/i);
+  if (externalLinkLabel) {
+    const provider = RU[externalLinkLabel[2]] || externalLinkLabel[2];
+    return 'Открыть ' + externalLinkLabel[1] + ' через ' + provider + ' в новой вкладке';
+  }
+
+  const missingMarginPosition = normalized.match(/^No active margin position was found for (.+)\. Select an active margin ticker and try again\.$/i);
+  if (missingMarginPosition) {
+    return 'Не найдена активная маржинальная позиция ' + missingMarginPosition[1] +
+      '. Выберите активный маржинальный тикер и повторите попытку.';
+  }
+
+  const positionReviewTitle = normalized.match(/^(.+) · Position Review$/i);
+  if (positionReviewTitle) return positionReviewTitle[1] + ' · Анализ маржинальной позиции';
+
+  const reportTitles: Array<[string, string]> = [
+    ['HYPOTHETICAL BUY:', 'ПОКУПКА В СЦЕНАРИИ:'],
+    ['MULTI-DATE EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ:'],
+    ['EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА:'],
+    ['STAGED EXIT:', 'ПОЭТАПНЫЙ ВЫХОД:']
+  ];
+  for (const [prefix, translatedPrefix] of reportTitles) {
+    if (normalized.toUpperCase().startsWith(prefix)) {
+      return translatedPrefix + normalized.slice(prefix.length);
+    }
+  }
+
+  const rows = normalized.match(/^Rows (.+) of (\d+)$/i);
+  if (rows) return `Строки ${rows[1]} из ${rows[2]}`;
+  const page = normalized.match(/^Page (\d+) of (\d+)$/i);
+  if (page) return `Страница ${page[1]} из ${page[2]}`;
+  const milestone = normalized.match(/^(EOW|NTD) · \+(\d+)d$/i);
+  if (milestone) {
+    const label = milestone[1].toUpperCase() === 'EOW' ? 'До конца недели' : 'Следующий торговый день';
+    return `${label} · +${milestone[2]} дн.`;
+  }
+  const positionValue = normalized.match(/^Position value ([\d,]+(?:\.[\d]+)?)(?: \(already\s*([\d.,]+)% below trigger\))?$/i);
+  if (positionValue) {
+    return positionValue[2]
+      ? `Стоимость позиции ${positionValue[1]} (уже на ${positionValue[2]}% ниже порога)`
+      : `Стоимость позиции ${positionValue[1]}`;
+  }
+
+  const buffer = normalized.match(/^([\d.,]+)% buffer$/i);
+  if (buffer) return 'Запас: ' + buffer[1] + '%';
+
+  const recordRange = normalized.match(/^(\d+) [/] (\d+) records$/i);
+  if (recordRange) {
+    const total = Number(recordRange[2]);
+    return recordRange[1] + ' / ' + recordRange[2] + ' ' + russianPlural(total, 'запись', 'записи', 'записей');
+  }
+
+  const unassigned = normalized.match(/^(· )?(\d+) unassigned$/i);
+  if (unassigned) return (unassigned[1] || '') + 'Без назначения: ' + unassigned[2];
+
+  const showTranches = normalized.match(/^Show (\d+) tranches$/i);
+  if (showTranches) {
+    return `Показать ${showTranches[1]} ${russianPlural(Number(showTranches[1]), 'лот', 'лота', 'лотов')}`;
+  }
+
+  const count = normalized.match(/^(\d+) (tranches|records|holdings|days|hrs|shares)$/i);
+  if (count) {
+    const amount = Number(count[1]);
+    const noun = count[2].toLowerCase();
+    if (noun === 'tranches') return `${amount} ${russianPlural(amount, 'лот', 'лота', 'лотов')}`;
+    if (noun === 'records') return `${amount} ${russianPlural(amount, 'запись', 'записи', 'записей')}`;
+    if (noun === 'holdings') return `${amount} ${russianPlural(amount, 'позиция', 'позиции', 'позиций')}`;
+    if (noun === 'days') return `${amount} дн.`;
+    if (noun === 'hrs') return `${amount} ч`;
+    return `${amount} акций`;
+  }
+
+  const riskPrefixes = ['Healthy', 'No margin debt', 'Elevated', 'Stop-out level', 'Margin-call level'];
+  const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
+  if (riskPrefix) {
+    return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
+      .replace(/\bnegative equity\b/g, RU['negative equity'])
+      .replace(/\bequity\b/g, 'собственного капитала')
+      .replace(/\bmaintenance\b/g, 'по нормативу поддерживающей маржи');
+  }
+
+  if (normalized.startsWith('e.g. quote ')) {
+    return 'например: quote ' + normalized.slice('e.g. quote '.length);
+  }
+  return undefined;
+}
+
+export function translateText(value: string, language: AppLanguage = currentLanguage): string {
+  if (language === 'en') return value;
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/\s+/g, ' ');
+  if (!normalized) return value;
+  const translated = RU[normalized] ?? translateDynamicText(normalized);
+  if (!translated) return value;
+  const start = value.indexOf(trimmed);
+  const end = start + trimmed.length;
+  return value.slice(0, start) + translated + value.slice(end);
+}
+
+function translateVNodeValue(value: unknown): unknown {
+  if (typeof value === 'string') return translateText(value);
+  if (Array.isArray(value)) return value.map(translateVNodeValue);
+  if (value && typeof value === 'object' && 'props' in value) {
+    const props = (value as VNode).props as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(props, 'children')) {
+      props.children = translateVNodeValue(props.children);
+    }
+    for (const attribute of TEXT_ATTRIBUTES) {
+      const attributeValue = props[attribute];
+      if (typeof attributeValue === 'string') {
+        props[attribute] = translateText(attributeValue);
+      }
+    }
+  }
+  return value;
+}
+
+const previousVNodeHook = options.vnode;
+options.vnode = (vnode) => {
+  previousVNodeHook?.(vnode);
+  translateVNodeValue(vnode);
+};
+
+function updateDocumentLanguage(language: AppLanguage): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = language;
+  document.title = language === 'ru' ? RU_DOCUMENT_TITLE : EN_DOCUMENT_TITLE;
+}
+
+export function setAppLanguage(language: AppLanguage | null | undefined): void {
+  const nextLanguage: AppLanguage = language === 'ru' ? 'ru' : 'en';
+  updateDocumentLanguage(nextLanguage);
+  if (currentLanguage === nextLanguage) return;
+  currentLanguage = nextLanguage;
+  for (const listener of languageListeners) listener(nextLanguage);
+}
+
+export function subscribeAppLanguage(listener: (language: AppLanguage) => void): () => void {
+  languageListeners.add(listener);
+  return () => languageListeners.delete(listener);
+}
+ + manuallyMarked[2] + '.';
+  const fetchingQuote = normalized.match(/^Fetching live quote for ([A-Z0-9.-]+)\.\.\.$/i);
+  if (fetchingQuote) return 'Получение актуальной котировки ' + fetchingQuote[1] + '…';
+
+  const cashAdded = normalized.match(/^Added ([\d,.]+) ([A-Z0-9.-]+) to cash holdings(?: @ \$(\d+(?:\.\d{2})?))?\.$/i);
+  if (cashAdded) return 'В денежные активы добавлено ' + cashAdded[1] + ' акций ' + cashAdded[2] +
+    (cashAdded[3] ? ' по цене   const prefixes: Array<[string, string, string]> = [
+    ['Name for ', 'Name for ', ''],
+    ['Role for ', 'Role for ', ''],
+    ['Language for ', 'Language for ', ''],
+    ['New password for ', 'New password for ', ''],
+    ['Updated ', 'Updated', ' '],
+    ['Synced: ', 'Synced', ': '],
+    ['Synced ', 'Synced', ' '],
+    ['MARGIN: ', 'MARGIN', ': '],
+    ['Combined Breakeven: ', 'Combined Breakeven', ': '],
+    ['Exit Comparison · ', 'Exit Comparison', ' · '],
+    ['Buy More Projection · ', 'Buy More Projection', ' · '],
+    ['Read news: ', 'Read news', ': '],
+    ['Stocktwits unavailable: ', 'Stocktwits unavailable', ': '],
+    ['Quote status: ', 'Quote status', ': '],
+    ['Assigned stock value: ', 'Assigned stock value', ': '],
+    ['Immediately pull latest quote for ', 'Immediately pull latest quote for', ' '],
+    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' '],
+    ['[AI Action Error]: ', '[AI Action Error]', ': '],
+    ['[KV Cloud Error]: ', '[KV Cloud Error]', ': '],
+    ['Cloud pull failed: ', 'Cloud pull failed', ': '],
+    ['[Market Data Error]: ', '[Market Data Error]', ': '],
+    ['[Sell Error]: ', 'Sell Error', ': '],
+    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': '],
+    ['Market depth · ', 'Market depth', ' · '],
+    ['Open market depth for ', 'Open market depth for', ' '],
+    ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
+    ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
+    ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
+    ['TradeNet live-data session initialization failed: ', 'TradeNet live-data session initialization failed', ': '],
+    ['Unable to load TradeNet executed trades: ', 'Unable to load TradeNet executed trades', ': '],
+    ['Unable to load active TradeNet orders: ', 'Unable to load active TradeNet orders', ': '],
+    ['[Guest Portfolio Sync Error]: ', '[Guest Portfolio Sync Error]', ': '],
+    ['[KV Cloud Sync Error]: ', '[KV Cloud Sync Error]', ': '],
+    ['[Settings Error]: ', '[Settings Error]', ': '],
+    ['[Warning]: ', '[Warning]', ': '],
+    ['[Error]: ', '[Error]', ': '],
+    ['[Backup]: ', '[Backup]', ': '],
+    ['[Backup Import]: ', '[Backup Import]', ': '],
+    ['[Backup Error]: ', '[Backup Error]', ': '],
+    ['[CLI Error]: ', '[CLI Error]', ': '],
+    ['[CLI]: ', '[CLI]', ': '],
+    ['[AI Advisor]: ', '[AI Advisor]', ': '],
+    ['[System]: ', '[System]', ': '],
+  ];
+  for (const [prefix, dictionaryKey, separator] of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
+    }
+  }
+
+  const latestPortfolioQuote = normalized.match(/^Latest portfolio quote · (.+)$/i);
+  if (latestPortfolioQuote) {
+    return RU['Latest portfolio quote'] + ' · ' + translateText(latestPortfolioQuote[1], 'ru');
+  }
+
+  const acrossAssets = normalized.match(/^(.+) \| Across (\d+) Assets$/i);
+  if (acrossAssets) {
+    const count = Number(acrossAssets[2]);
+    return acrossAssets[1] + ' | По ' + count + (count === 1 ? ' активу' : ' активам');
+  }
+
+  const trancheSummary = normalized.split(' | ').map((part) => {
+    const match = part.match(/^(.+?): ([\d,.]+)sh @ PT (.+)$/i);
+    return match ? match[1] + ': ' + match[2] + ' акц. @ ЦУ ' + match[3] : part;
+  });
+  if (trancheSummary.some((part, index) => part !== normalized.split(' | ')[index])) {
+    return trancheSummary.join(' | ');
+  }
+
+  const externalLinkLabel = normalized.match(/^Open (.+) on (.+) in a new tab$/i);
+  if (externalLinkLabel) {
+    const provider = RU[externalLinkLabel[2]] || externalLinkLabel[2];
+    return 'Открыть ' + externalLinkLabel[1] + ' через ' + provider + ' в новой вкладке';
+  }
+
+  const missingMarginPosition = normalized.match(/^No active margin position was found for (.+)\. Select an active margin ticker and try again\.$/i);
+  if (missingMarginPosition) {
+    return 'Не найдена активная маржинальная позиция ' + missingMarginPosition[1] +
+      '. Выберите активный маржинальный тикер и повторите попытку.';
+  }
+
+  const positionReviewTitle = normalized.match(/^(.+) · Position Review$/i);
+  if (positionReviewTitle) return positionReviewTitle[1] + ' · Анализ маржинальной позиции';
+
+  const reportTitles: Array<[string, string]> = [
+    ['HYPOTHETICAL BUY:', 'ПОКУПКА В СЦЕНАРИИ:'],
+    ['MULTI-DATE EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ:'],
+    ['EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА:'],
+    ['STAGED EXIT:', 'ПОЭТАПНЫЙ ВЫХОД:']
+  ];
+  for (const [prefix, translatedPrefix] of reportTitles) {
+    if (normalized.toUpperCase().startsWith(prefix)) {
+      return translatedPrefix + normalized.slice(prefix.length);
+    }
+  }
+
+  const rows = normalized.match(/^Rows (.+) of (\d+)$/i);
+  if (rows) return `Строки ${rows[1]} из ${rows[2]}`;
+  const page = normalized.match(/^Page (\d+) of (\d+)$/i);
+  if (page) return `Страница ${page[1]} из ${page[2]}`;
+  const milestone = normalized.match(/^(EOW|NTD) · \+(\d+)d$/i);
+  if (milestone) {
+    const label = milestone[1].toUpperCase() === 'EOW' ? 'До конца недели' : 'Следующий торговый день';
+    return `${label} · +${milestone[2]} дн.`;
+  }
+  const positionValue = normalized.match(/^Position value ([\d,]+(?:\.[\d]+)?)(?: \(already\s*([\d.,]+)% below trigger\))?$/i);
+  if (positionValue) {
+    return positionValue[2]
+      ? `Стоимость позиции ${positionValue[1]} (уже на ${positionValue[2]}% ниже порога)`
+      : `Стоимость позиции ${positionValue[1]}`;
+  }
+
+  const buffer = normalized.match(/^([\d.,]+)% buffer$/i);
+  if (buffer) return 'Запас: ' + buffer[1] + '%';
+
+  const recordRange = normalized.match(/^(\d+) [/] (\d+) records$/i);
+  if (recordRange) {
+    const total = Number(recordRange[2]);
+    return recordRange[1] + ' / ' + recordRange[2] + ' ' + russianPlural(total, 'запись', 'записи', 'записей');
+  }
+
+  const unassigned = normalized.match(/^(· )?(\d+) unassigned$/i);
+  if (unassigned) return (unassigned[1] || '') + 'Без назначения: ' + unassigned[2];
+
+  const showTranches = normalized.match(/^Show (\d+) tranches$/i);
+  if (showTranches) {
+    return `Показать ${showTranches[1]} ${russianPlural(Number(showTranches[1]), 'лот', 'лота', 'лотов')}`;
+  }
+
+  const count = normalized.match(/^(\d+) (tranches|records|holdings|days|hrs|shares)$/i);
+  if (count) {
+    const amount = Number(count[1]);
+    const noun = count[2].toLowerCase();
+    if (noun === 'tranches') return `${amount} ${russianPlural(amount, 'лот', 'лота', 'лотов')}`;
+    if (noun === 'records') return `${amount} ${russianPlural(amount, 'запись', 'записи', 'записей')}`;
+    if (noun === 'holdings') return `${amount} ${russianPlural(amount, 'позиция', 'позиции', 'позиций')}`;
+    if (noun === 'days') return `${amount} дн.`;
+    if (noun === 'hrs') return `${amount} ч`;
+    return `${amount} акций`;
+  }
+
+  const riskPrefixes = ['Healthy', 'No margin debt', 'Elevated', 'Stop-out level', 'Margin-call level'];
+  const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
+  if (riskPrefix) {
+    return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
+      .replace(/\bnegative equity\b/g, RU['negative equity'])
+      .replace(/\bequity\b/g, 'собственного капитала')
+      .replace(/\bmaintenance\b/g, 'по нормативу поддерживающей маржи');
+  }
+
+  if (normalized.startsWith('e.g. quote ')) {
+    return 'например: quote ' + normalized.slice('e.g. quote '.length);
+  }
+  return undefined;
+}
+
+export function translateText(value: string, language: AppLanguage = currentLanguage): string {
+  if (language === 'en') return value;
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/\s+/g, ' ');
+  if (!normalized) return value;
+  const translated = RU[normalized] ?? translateDynamicText(normalized);
+  if (!translated) return value;
+  const start = value.indexOf(trimmed);
+  const end = start + trimmed.length;
+  return value.slice(0, start) + translated + value.slice(end);
+}
+
+function translateVNodeValue(value: unknown): unknown {
+  if (typeof value === 'string') return translateText(value);
+  if (Array.isArray(value)) return value.map(translateVNodeValue);
+  if (value && typeof value === 'object' && 'props' in value) {
+    const props = (value as VNode).props as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(props, 'children')) {
+      props.children = translateVNodeValue(props.children);
+    }
+    for (const attribute of TEXT_ATTRIBUTES) {
+      const attributeValue = props[attribute];
+      if (typeof attributeValue === 'string') {
+        props[attribute] = translateText(attributeValue);
+      }
+    }
+  }
+  return value;
+}
+
+const previousVNodeHook = options.vnode;
+options.vnode = (vnode) => {
+  previousVNodeHook?.(vnode);
+  translateVNodeValue(vnode);
+};
+
+function updateDocumentLanguage(language: AppLanguage): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = language;
+  document.title = language === 'ru' ? RU_DOCUMENT_TITLE : EN_DOCUMENT_TITLE;
+}
+
+export function setAppLanguage(language: AppLanguage | null | undefined): void {
+  const nextLanguage: AppLanguage = language === 'ru' ? 'ru' : 'en';
+  updateDocumentLanguage(nextLanguage);
+  if (currentLanguage === nextLanguage) return;
+  currentLanguage = nextLanguage;
+  for (const listener of languageListeners) listener(nextLanguage);
+}
+
+export function subscribeAppLanguage(listener: (language: AppLanguage) => void): () => void {
+  languageListeners.add(listener);
+  return () => languageListeners.delete(listener);
+}
+ + cashAdded[3] : '') + '.';
+  const cashRemoved = normalized.match(/^Removed ([A-Z0-9.-]+) from cash holdings\.$/i);
+  if (cashRemoved) return 'Акции ' + cashRemoved[1] + ' удалены из денежных активов.';
+
+  const freeCashSet = normalized.match(/^Free cash set to \$(.+?) \| Margin Debt unchanged: \$(.+)$/i);
+  if (freeCashSet) return 'Свободные денежные средства установлены:   const prefixes: Array<[string, string, string]> = [
+    ['Name for ', 'Name for ', ''],
+    ['Role for ', 'Role for ', ''],
+    ['Language for ', 'Language for ', ''],
+    ['New password for ', 'New password for ', ''],
+    ['Updated ', 'Updated', ' '],
+    ['Synced: ', 'Synced', ': '],
+    ['Synced ', 'Synced', ' '],
+    ['MARGIN: ', 'MARGIN', ': '],
+    ['Combined Breakeven: ', 'Combined Breakeven', ': '],
+    ['Exit Comparison · ', 'Exit Comparison', ' · '],
+    ['Buy More Projection · ', 'Buy More Projection', ' · '],
+    ['Read news: ', 'Read news', ': '],
+    ['Stocktwits unavailable: ', 'Stocktwits unavailable', ': '],
+    ['Quote status: ', 'Quote status', ': '],
+    ['Assigned stock value: ', 'Assigned stock value', ': '],
+    ['Immediately pull latest quote for ', 'Immediately pull latest quote for', ' '],
+    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' '],
+    ['[AI Action Error]: ', '[AI Action Error]', ': '],
+    ['[KV Cloud Error]: ', '[KV Cloud Error]', ': '],
+    ['Cloud pull failed: ', 'Cloud pull failed', ': '],
+    ['[Market Data Error]: ', '[Market Data Error]', ': '],
+    ['[Sell Error]: ', 'Sell Error', ': '],
+    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': '],
+    ['Market depth · ', 'Market depth', ' · '],
+    ['Open market depth for ', 'Open market depth for', ' '],
+    ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
+    ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
+    ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
+    ['TradeNet live-data session initialization failed: ', 'TradeNet live-data session initialization failed', ': '],
+    ['Unable to load TradeNet executed trades: ', 'Unable to load TradeNet executed trades', ': '],
+    ['Unable to load active TradeNet orders: ', 'Unable to load active TradeNet orders', ': '],
+    ['[Guest Portfolio Sync Error]: ', '[Guest Portfolio Sync Error]', ': '],
+    ['[KV Cloud Sync Error]: ', '[KV Cloud Sync Error]', ': '],
+    ['[Settings Error]: ', '[Settings Error]', ': '],
+    ['[Warning]: ', '[Warning]', ': '],
+    ['[Error]: ', '[Error]', ': '],
+    ['[Backup]: ', '[Backup]', ': '],
+    ['[Backup Import]: ', '[Backup Import]', ': '],
+    ['[Backup Error]: ', '[Backup Error]', ': '],
+    ['[CLI Error]: ', '[CLI Error]', ': '],
+    ['[CLI]: ', '[CLI]', ': '],
+    ['[AI Advisor]: ', '[AI Advisor]', ': '],
+    ['[System]: ', '[System]', ': '],
+  ];
+  for (const [prefix, dictionaryKey, separator] of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
+    }
+  }
+
+  const latestPortfolioQuote = normalized.match(/^Latest portfolio quote · (.+)$/i);
+  if (latestPortfolioQuote) {
+    return RU['Latest portfolio quote'] + ' · ' + translateText(latestPortfolioQuote[1], 'ru');
+  }
+
+  const acrossAssets = normalized.match(/^(.+) \| Across (\d+) Assets$/i);
+  if (acrossAssets) {
+    const count = Number(acrossAssets[2]);
+    return acrossAssets[1] + ' | По ' + count + (count === 1 ? ' активу' : ' активам');
+  }
+
+  const trancheSummary = normalized.split(' | ').map((part) => {
+    const match = part.match(/^(.+?): ([\d,.]+)sh @ PT (.+)$/i);
+    return match ? match[1] + ': ' + match[2] + ' акц. @ ЦУ ' + match[3] : part;
+  });
+  if (trancheSummary.some((part, index) => part !== normalized.split(' | ')[index])) {
+    return trancheSummary.join(' | ');
+  }
+
+  const externalLinkLabel = normalized.match(/^Open (.+) on (.+) in a new tab$/i);
+  if (externalLinkLabel) {
+    const provider = RU[externalLinkLabel[2]] || externalLinkLabel[2];
+    return 'Открыть ' + externalLinkLabel[1] + ' через ' + provider + ' в новой вкладке';
+  }
+
+  const missingMarginPosition = normalized.match(/^No active margin position was found for (.+)\. Select an active margin ticker and try again\.$/i);
+  if (missingMarginPosition) {
+    return 'Не найдена активная маржинальная позиция ' + missingMarginPosition[1] +
+      '. Выберите активный маржинальный тикер и повторите попытку.';
+  }
+
+  const positionReviewTitle = normalized.match(/^(.+) · Position Review$/i);
+  if (positionReviewTitle) return positionReviewTitle[1] + ' · Анализ маржинальной позиции';
+
+  const reportTitles: Array<[string, string]> = [
+    ['HYPOTHETICAL BUY:', 'ПОКУПКА В СЦЕНАРИИ:'],
+    ['MULTI-DATE EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ:'],
+    ['EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА:'],
+    ['STAGED EXIT:', 'ПОЭТАПНЫЙ ВЫХОД:']
+  ];
+  for (const [prefix, translatedPrefix] of reportTitles) {
+    if (normalized.toUpperCase().startsWith(prefix)) {
+      return translatedPrefix + normalized.slice(prefix.length);
+    }
+  }
+
+  const rows = normalized.match(/^Rows (.+) of (\d+)$/i);
+  if (rows) return `Строки ${rows[1]} из ${rows[2]}`;
+  const page = normalized.match(/^Page (\d+) of (\d+)$/i);
+  if (page) return `Страница ${page[1]} из ${page[2]}`;
+  const milestone = normalized.match(/^(EOW|NTD) · \+(\d+)d$/i);
+  if (milestone) {
+    const label = milestone[1].toUpperCase() === 'EOW' ? 'До конца недели' : 'Следующий торговый день';
+    return `${label} · +${milestone[2]} дн.`;
+  }
+  const positionValue = normalized.match(/^Position value ([\d,]+(?:\.[\d]+)?)(?: \(already\s*([\d.,]+)% below trigger\))?$/i);
+  if (positionValue) {
+    return positionValue[2]
+      ? `Стоимость позиции ${positionValue[1]} (уже на ${positionValue[2]}% ниже порога)`
+      : `Стоимость позиции ${positionValue[1]}`;
+  }
+
+  const buffer = normalized.match(/^([\d.,]+)% buffer$/i);
+  if (buffer) return 'Запас: ' + buffer[1] + '%';
+
+  const recordRange = normalized.match(/^(\d+) [/] (\d+) records$/i);
+  if (recordRange) {
+    const total = Number(recordRange[2]);
+    return recordRange[1] + ' / ' + recordRange[2] + ' ' + russianPlural(total, 'запись', 'записи', 'записей');
+  }
+
+  const unassigned = normalized.match(/^(· )?(\d+) unassigned$/i);
+  if (unassigned) return (unassigned[1] || '') + 'Без назначения: ' + unassigned[2];
+
+  const showTranches = normalized.match(/^Show (\d+) tranches$/i);
+  if (showTranches) {
+    return `Показать ${showTranches[1]} ${russianPlural(Number(showTranches[1]), 'лот', 'лота', 'лотов')}`;
+  }
+
+  const count = normalized.match(/^(\d+) (tranches|records|holdings|days|hrs|shares)$/i);
+  if (count) {
+    const amount = Number(count[1]);
+    const noun = count[2].toLowerCase();
+    if (noun === 'tranches') return `${amount} ${russianPlural(amount, 'лот', 'лота', 'лотов')}`;
+    if (noun === 'records') return `${amount} ${russianPlural(amount, 'запись', 'записи', 'записей')}`;
+    if (noun === 'holdings') return `${amount} ${russianPlural(amount, 'позиция', 'позиции', 'позиций')}`;
+    if (noun === 'days') return `${amount} дн.`;
+    if (noun === 'hrs') return `${amount} ч`;
+    return `${amount} акций`;
+  }
+
+  const riskPrefixes = ['Healthy', 'No margin debt', 'Elevated', 'Stop-out level', 'Margin-call level'];
+  const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
+  if (riskPrefix) {
+    return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
+      .replace(/\bnegative equity\b/g, RU['negative equity'])
+      .replace(/\bequity\b/g, 'собственного капитала')
+      .replace(/\bmaintenance\b/g, 'по нормативу поддерживающей маржи');
+  }
+
+  if (normalized.startsWith('e.g. quote ')) {
+    return 'например: quote ' + normalized.slice('e.g. quote '.length);
+  }
+  return undefined;
+}
+
+export function translateText(value: string, language: AppLanguage = currentLanguage): string {
+  if (language === 'en') return value;
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/\s+/g, ' ');
+  if (!normalized) return value;
+  const translated = RU[normalized] ?? translateDynamicText(normalized);
+  if (!translated) return value;
+  const start = value.indexOf(trimmed);
+  const end = start + trimmed.length;
+  return value.slice(0, start) + translated + value.slice(end);
+}
+
+function translateVNodeValue(value: unknown): unknown {
+  if (typeof value === 'string') return translateText(value);
+  if (Array.isArray(value)) return value.map(translateVNodeValue);
+  if (value && typeof value === 'object' && 'props' in value) {
+    const props = (value as VNode).props as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(props, 'children')) {
+      props.children = translateVNodeValue(props.children);
+    }
+    for (const attribute of TEXT_ATTRIBUTES) {
+      const attributeValue = props[attribute];
+      if (typeof attributeValue === 'string') {
+        props[attribute] = translateText(attributeValue);
+      }
+    }
+  }
+  return value;
+}
+
+const previousVNodeHook = options.vnode;
+options.vnode = (vnode) => {
+  previousVNodeHook?.(vnode);
+  translateVNodeValue(vnode);
+};
+
+function updateDocumentLanguage(language: AppLanguage): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = language;
+  document.title = language === 'ru' ? RU_DOCUMENT_TITLE : EN_DOCUMENT_TITLE;
+}
+
+export function setAppLanguage(language: AppLanguage | null | undefined): void {
+  const nextLanguage: AppLanguage = language === 'ru' ? 'ru' : 'en';
+  updateDocumentLanguage(nextLanguage);
+  if (currentLanguage === nextLanguage) return;
+  currentLanguage = nextLanguage;
+  for (const listener of languageListeners) listener(nextLanguage);
+}
+
+export function subscribeAppLanguage(listener: (language: AppLanguage) => void): () => void {
+  languageListeners.add(listener);
+  return () => languageListeners.delete(listener);
+}
+ + freeCashSet[1] + ' | Маржинальный долг без изменений:   const prefixes: Array<[string, string, string]> = [
+    ['Name for ', 'Name for ', ''],
+    ['Role for ', 'Role for ', ''],
+    ['Language for ', 'Language for ', ''],
+    ['New password for ', 'New password for ', ''],
+    ['Updated ', 'Updated', ' '],
+    ['Synced: ', 'Synced', ': '],
+    ['Synced ', 'Synced', ' '],
+    ['MARGIN: ', 'MARGIN', ': '],
+    ['Combined Breakeven: ', 'Combined Breakeven', ': '],
+    ['Exit Comparison · ', 'Exit Comparison', ' · '],
+    ['Buy More Projection · ', 'Buy More Projection', ' · '],
+    ['Read news: ', 'Read news', ': '],
+    ['Stocktwits unavailable: ', 'Stocktwits unavailable', ': '],
+    ['Quote status: ', 'Quote status', ': '],
+    ['Assigned stock value: ', 'Assigned stock value', ': '],
+    ['Immediately pull latest quote for ', 'Immediately pull latest quote for', ' '],
+    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' '],
+    ['[AI Action Error]: ', '[AI Action Error]', ': '],
+    ['[KV Cloud Error]: ', '[KV Cloud Error]', ': '],
+    ['Cloud pull failed: ', 'Cloud pull failed', ': '],
+    ['[Market Data Error]: ', '[Market Data Error]', ': '],
+    ['[Sell Error]: ', 'Sell Error', ': '],
+    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': '],
+    ['Market depth · ', 'Market depth', ' · '],
+    ['Open market depth for ', 'Open market depth for', ' '],
+    ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
+    ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
+    ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
+    ['TradeNet live-data session initialization failed: ', 'TradeNet live-data session initialization failed', ': '],
+    ['Unable to load TradeNet executed trades: ', 'Unable to load TradeNet executed trades', ': '],
+    ['Unable to load active TradeNet orders: ', 'Unable to load active TradeNet orders', ': '],
+    ['[Guest Portfolio Sync Error]: ', '[Guest Portfolio Sync Error]', ': '],
+    ['[KV Cloud Sync Error]: ', '[KV Cloud Sync Error]', ': '],
+    ['[Settings Error]: ', '[Settings Error]', ': '],
+    ['[Warning]: ', '[Warning]', ': '],
+    ['[Error]: ', '[Error]', ': '],
+    ['[Backup]: ', '[Backup]', ': '],
+    ['[Backup Import]: ', '[Backup Import]', ': '],
+    ['[Backup Error]: ', '[Backup Error]', ': '],
+    ['[CLI Error]: ', '[CLI Error]', ': '],
+    ['[CLI]: ', '[CLI]', ': '],
+    ['[AI Advisor]: ', '[AI Advisor]', ': '],
+    ['[System]: ', '[System]', ': '],
+  ];
+  for (const [prefix, dictionaryKey, separator] of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
+    }
+  }
+
+  const latestPortfolioQuote = normalized.match(/^Latest portfolio quote · (.+)$/i);
+  if (latestPortfolioQuote) {
+    return RU['Latest portfolio quote'] + ' · ' + translateText(latestPortfolioQuote[1], 'ru');
+  }
+
+  const acrossAssets = normalized.match(/^(.+) \| Across (\d+) Assets$/i);
+  if (acrossAssets) {
+    const count = Number(acrossAssets[2]);
+    return acrossAssets[1] + ' | По ' + count + (count === 1 ? ' активу' : ' активам');
+  }
+
+  const trancheSummary = normalized.split(' | ').map((part) => {
+    const match = part.match(/^(.+?): ([\d,.]+)sh @ PT (.+)$/i);
+    return match ? match[1] + ': ' + match[2] + ' акц. @ ЦУ ' + match[3] : part;
+  });
+  if (trancheSummary.some((part, index) => part !== normalized.split(' | ')[index])) {
+    return trancheSummary.join(' | ');
+  }
+
+  const externalLinkLabel = normalized.match(/^Open (.+) on (.+) in a new tab$/i);
+  if (externalLinkLabel) {
+    const provider = RU[externalLinkLabel[2]] || externalLinkLabel[2];
+    return 'Открыть ' + externalLinkLabel[1] + ' через ' + provider + ' в новой вкладке';
+  }
+
+  const missingMarginPosition = normalized.match(/^No active margin position was found for (.+)\. Select an active margin ticker and try again\.$/i);
+  if (missingMarginPosition) {
+    return 'Не найдена активная маржинальная позиция ' + missingMarginPosition[1] +
+      '. Выберите активный маржинальный тикер и повторите попытку.';
+  }
+
+  const positionReviewTitle = normalized.match(/^(.+) · Position Review$/i);
+  if (positionReviewTitle) return positionReviewTitle[1] + ' · Анализ маржинальной позиции';
+
+  const reportTitles: Array<[string, string]> = [
+    ['HYPOTHETICAL BUY:', 'ПОКУПКА В СЦЕНАРИИ:'],
+    ['MULTI-DATE EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ:'],
+    ['EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА:'],
+    ['STAGED EXIT:', 'ПОЭТАПНЫЙ ВЫХОД:']
+  ];
+  for (const [prefix, translatedPrefix] of reportTitles) {
+    if (normalized.toUpperCase().startsWith(prefix)) {
+      return translatedPrefix + normalized.slice(prefix.length);
+    }
+  }
+
+  const rows = normalized.match(/^Rows (.+) of (\d+)$/i);
+  if (rows) return `Строки ${rows[1]} из ${rows[2]}`;
+  const page = normalized.match(/^Page (\d+) of (\d+)$/i);
+  if (page) return `Страница ${page[1]} из ${page[2]}`;
+  const milestone = normalized.match(/^(EOW|NTD) · \+(\d+)d$/i);
+  if (milestone) {
+    const label = milestone[1].toUpperCase() === 'EOW' ? 'До конца недели' : 'Следующий торговый день';
+    return `${label} · +${milestone[2]} дн.`;
+  }
+  const positionValue = normalized.match(/^Position value ([\d,]+(?:\.[\d]+)?)(?: \(already\s*([\d.,]+)% below trigger\))?$/i);
+  if (positionValue) {
+    return positionValue[2]
+      ? `Стоимость позиции ${positionValue[1]} (уже на ${positionValue[2]}% ниже порога)`
+      : `Стоимость позиции ${positionValue[1]}`;
+  }
+
+  const buffer = normalized.match(/^([\d.,]+)% buffer$/i);
+  if (buffer) return 'Запас: ' + buffer[1] + '%';
+
+  const recordRange = normalized.match(/^(\d+) [/] (\d+) records$/i);
+  if (recordRange) {
+    const total = Number(recordRange[2]);
+    return recordRange[1] + ' / ' + recordRange[2] + ' ' + russianPlural(total, 'запись', 'записи', 'записей');
+  }
+
+  const unassigned = normalized.match(/^(· )?(\d+) unassigned$/i);
+  if (unassigned) return (unassigned[1] || '') + 'Без назначения: ' + unassigned[2];
+
+  const showTranches = normalized.match(/^Show (\d+) tranches$/i);
+  if (showTranches) {
+    return `Показать ${showTranches[1]} ${russianPlural(Number(showTranches[1]), 'лот', 'лота', 'лотов')}`;
+  }
+
+  const count = normalized.match(/^(\d+) (tranches|records|holdings|days|hrs|shares)$/i);
+  if (count) {
+    const amount = Number(count[1]);
+    const noun = count[2].toLowerCase();
+    if (noun === 'tranches') return `${amount} ${russianPlural(amount, 'лот', 'лота', 'лотов')}`;
+    if (noun === 'records') return `${amount} ${russianPlural(amount, 'запись', 'записи', 'записей')}`;
+    if (noun === 'holdings') return `${amount} ${russianPlural(amount, 'позиция', 'позиции', 'позиций')}`;
+    if (noun === 'days') return `${amount} дн.`;
+    if (noun === 'hrs') return `${amount} ч`;
+    return `${amount} акций`;
+  }
+
+  const riskPrefixes = ['Healthy', 'No margin debt', 'Elevated', 'Stop-out level', 'Margin-call level'];
+  const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
+  if (riskPrefix) {
+    return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
+      .replace(/\bnegative equity\b/g, RU['negative equity'])
+      .replace(/\bequity\b/g, 'собственного капитала')
+      .replace(/\bmaintenance\b/g, 'по нормативу поддерживающей маржи');
+  }
+
+  if (normalized.startsWith('e.g. quote ')) {
+    return 'например: quote ' + normalized.slice('e.g. quote '.length);
+  }
+  return undefined;
+}
+
+export function translateText(value: string, language: AppLanguage = currentLanguage): string {
+  if (language === 'en') return value;
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/\s+/g, ' ');
+  if (!normalized) return value;
+  const translated = RU[normalized] ?? translateDynamicText(normalized);
+  if (!translated) return value;
+  const start = value.indexOf(trimmed);
+  const end = start + trimmed.length;
+  return value.slice(0, start) + translated + value.slice(end);
+}
+
+function translateVNodeValue(value: unknown): unknown {
+  if (typeof value === 'string') return translateText(value);
+  if (Array.isArray(value)) return value.map(translateVNodeValue);
+  if (value && typeof value === 'object' && 'props' in value) {
+    const props = (value as VNode).props as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(props, 'children')) {
+      props.children = translateVNodeValue(props.children);
+    }
+    for (const attribute of TEXT_ATTRIBUTES) {
+      const attributeValue = props[attribute];
+      if (typeof attributeValue === 'string') {
+        props[attribute] = translateText(attributeValue);
+      }
+    }
+  }
+  return value;
+}
+
+const previousVNodeHook = options.vnode;
+options.vnode = (vnode) => {
+  previousVNodeHook?.(vnode);
+  translateVNodeValue(vnode);
+};
+
+function updateDocumentLanguage(language: AppLanguage): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = language;
+  document.title = language === 'ru' ? RU_DOCUMENT_TITLE : EN_DOCUMENT_TITLE;
+}
+
+export function setAppLanguage(language: AppLanguage | null | undefined): void {
+  const nextLanguage: AppLanguage = language === 'ru' ? 'ru' : 'en';
+  updateDocumentLanguage(nextLanguage);
+  if (currentLanguage === nextLanguage) return;
+  currentLanguage = nextLanguage;
+  for (const listener of languageListeners) listener(nextLanguage);
+}
+
+export function subscribeAppLanguage(listener: (language: AppLanguage) => void): () => void {
+  languageListeners.add(listener);
+  return () => languageListeners.delete(listener);
+}
+ + freeCashSet[2];
+  const freeCashWithDebt = normalized.match(/^Free cash set to \$(.+?) \| Margin Debt: \$(.+)$/i);
+  if (freeCashWithDebt) return 'Свободные денежные средства:   const prefixes: Array<[string, string, string]> = [
+    ['Name for ', 'Name for ', ''],
+    ['Role for ', 'Role for ', ''],
+    ['Language for ', 'Language for ', ''],
+    ['New password for ', 'New password for ', ''],
+    ['Updated ', 'Updated', ' '],
+    ['Synced: ', 'Synced', ': '],
+    ['Synced ', 'Synced', ' '],
+    ['MARGIN: ', 'MARGIN', ': '],
+    ['Combined Breakeven: ', 'Combined Breakeven', ': '],
+    ['Exit Comparison · ', 'Exit Comparison', ' · '],
+    ['Buy More Projection · ', 'Buy More Projection', ' · '],
+    ['Read news: ', 'Read news', ': '],
+    ['Stocktwits unavailable: ', 'Stocktwits unavailable', ': '],
+    ['Quote status: ', 'Quote status', ': '],
+    ['Assigned stock value: ', 'Assigned stock value', ': '],
+    ['Immediately pull latest quote for ', 'Immediately pull latest quote for', ' '],
+    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' '],
+    ['[AI Action Error]: ', '[AI Action Error]', ': '],
+    ['[KV Cloud Error]: ', '[KV Cloud Error]', ': '],
+    ['Cloud pull failed: ', 'Cloud pull failed', ': '],
+    ['[Market Data Error]: ', '[Market Data Error]', ': '],
+    ['[Sell Error]: ', 'Sell Error', ': '],
+    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': '],
+    ['Market depth · ', 'Market depth', ' · '],
+    ['Open market depth for ', 'Open market depth for', ' '],
+    ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
+    ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
+    ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
+    ['TradeNet live-data session initialization failed: ', 'TradeNet live-data session initialization failed', ': '],
+    ['Unable to load TradeNet executed trades: ', 'Unable to load TradeNet executed trades', ': '],
+    ['Unable to load active TradeNet orders: ', 'Unable to load active TradeNet orders', ': '],
+    ['[Guest Portfolio Sync Error]: ', '[Guest Portfolio Sync Error]', ': '],
+    ['[KV Cloud Sync Error]: ', '[KV Cloud Sync Error]', ': '],
+    ['[Settings Error]: ', '[Settings Error]', ': '],
+    ['[Warning]: ', '[Warning]', ': '],
+    ['[Error]: ', '[Error]', ': '],
+    ['[Backup]: ', '[Backup]', ': '],
+    ['[Backup Import]: ', '[Backup Import]', ': '],
+    ['[Backup Error]: ', '[Backup Error]', ': '],
+    ['[CLI Error]: ', '[CLI Error]', ': '],
+    ['[CLI]: ', '[CLI]', ': '],
+    ['[AI Advisor]: ', '[AI Advisor]', ': '],
+    ['[System]: ', '[System]', ': '],
+  ];
+  for (const [prefix, dictionaryKey, separator] of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
+    }
+  }
+
+  const latestPortfolioQuote = normalized.match(/^Latest portfolio quote · (.+)$/i);
+  if (latestPortfolioQuote) {
+    return RU['Latest portfolio quote'] + ' · ' + translateText(latestPortfolioQuote[1], 'ru');
+  }
+
+  const acrossAssets = normalized.match(/^(.+) \| Across (\d+) Assets$/i);
+  if (acrossAssets) {
+    const count = Number(acrossAssets[2]);
+    return acrossAssets[1] + ' | По ' + count + (count === 1 ? ' активу' : ' активам');
+  }
+
+  const trancheSummary = normalized.split(' | ').map((part) => {
+    const match = part.match(/^(.+?): ([\d,.]+)sh @ PT (.+)$/i);
+    return match ? match[1] + ': ' + match[2] + ' акц. @ ЦУ ' + match[3] : part;
+  });
+  if (trancheSummary.some((part, index) => part !== normalized.split(' | ')[index])) {
+    return trancheSummary.join(' | ');
+  }
+
+  const externalLinkLabel = normalized.match(/^Open (.+) on (.+) in a new tab$/i);
+  if (externalLinkLabel) {
+    const provider = RU[externalLinkLabel[2]] || externalLinkLabel[2];
+    return 'Открыть ' + externalLinkLabel[1] + ' через ' + provider + ' в новой вкладке';
+  }
+
+  const missingMarginPosition = normalized.match(/^No active margin position was found for (.+)\. Select an active margin ticker and try again\.$/i);
+  if (missingMarginPosition) {
+    return 'Не найдена активная маржинальная позиция ' + missingMarginPosition[1] +
+      '. Выберите активный маржинальный тикер и повторите попытку.';
+  }
+
+  const positionReviewTitle = normalized.match(/^(.+) · Position Review$/i);
+  if (positionReviewTitle) return positionReviewTitle[1] + ' · Анализ маржинальной позиции';
+
+  const reportTitles: Array<[string, string]> = [
+    ['HYPOTHETICAL BUY:', 'ПОКУПКА В СЦЕНАРИИ:'],
+    ['MULTI-DATE EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ:'],
+    ['EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА:'],
+    ['STAGED EXIT:', 'ПОЭТАПНЫЙ ВЫХОД:']
+  ];
+  for (const [prefix, translatedPrefix] of reportTitles) {
+    if (normalized.toUpperCase().startsWith(prefix)) {
+      return translatedPrefix + normalized.slice(prefix.length);
+    }
+  }
+
+  const rows = normalized.match(/^Rows (.+) of (\d+)$/i);
+  if (rows) return `Строки ${rows[1]} из ${rows[2]}`;
+  const page = normalized.match(/^Page (\d+) of (\d+)$/i);
+  if (page) return `Страница ${page[1]} из ${page[2]}`;
+  const milestone = normalized.match(/^(EOW|NTD) · \+(\d+)d$/i);
+  if (milestone) {
+    const label = milestone[1].toUpperCase() === 'EOW' ? 'До конца недели' : 'Следующий торговый день';
+    return `${label} · +${milestone[2]} дн.`;
+  }
+  const positionValue = normalized.match(/^Position value ([\d,]+(?:\.[\d]+)?)(?: \(already\s*([\d.,]+)% below trigger\))?$/i);
+  if (positionValue) {
+    return positionValue[2]
+      ? `Стоимость позиции ${positionValue[1]} (уже на ${positionValue[2]}% ниже порога)`
+      : `Стоимость позиции ${positionValue[1]}`;
+  }
+
+  const buffer = normalized.match(/^([\d.,]+)% buffer$/i);
+  if (buffer) return 'Запас: ' + buffer[1] + '%';
+
+  const recordRange = normalized.match(/^(\d+) [/] (\d+) records$/i);
+  if (recordRange) {
+    const total = Number(recordRange[2]);
+    return recordRange[1] + ' / ' + recordRange[2] + ' ' + russianPlural(total, 'запись', 'записи', 'записей');
+  }
+
+  const unassigned = normalized.match(/^(· )?(\d+) unassigned$/i);
+  if (unassigned) return (unassigned[1] || '') + 'Без назначения: ' + unassigned[2];
+
+  const showTranches = normalized.match(/^Show (\d+) tranches$/i);
+  if (showTranches) {
+    return `Показать ${showTranches[1]} ${russianPlural(Number(showTranches[1]), 'лот', 'лота', 'лотов')}`;
+  }
+
+  const count = normalized.match(/^(\d+) (tranches|records|holdings|days|hrs|shares)$/i);
+  if (count) {
+    const amount = Number(count[1]);
+    const noun = count[2].toLowerCase();
+    if (noun === 'tranches') return `${amount} ${russianPlural(amount, 'лот', 'лота', 'лотов')}`;
+    if (noun === 'records') return `${amount} ${russianPlural(amount, 'запись', 'записи', 'записей')}`;
+    if (noun === 'holdings') return `${amount} ${russianPlural(amount, 'позиция', 'позиции', 'позиций')}`;
+    if (noun === 'days') return `${amount} дн.`;
+    if (noun === 'hrs') return `${amount} ч`;
+    return `${amount} акций`;
+  }
+
+  const riskPrefixes = ['Healthy', 'No margin debt', 'Elevated', 'Stop-out level', 'Margin-call level'];
+  const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
+  if (riskPrefix) {
+    return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
+      .replace(/\bnegative equity\b/g, RU['negative equity'])
+      .replace(/\bequity\b/g, 'собственного капитала')
+      .replace(/\bmaintenance\b/g, 'по нормативу поддерживающей маржи');
+  }
+
+  if (normalized.startsWith('e.g. quote ')) {
+    return 'например: quote ' + normalized.slice('e.g. quote '.length);
+  }
+  return undefined;
+}
+
+export function translateText(value: string, language: AppLanguage = currentLanguage): string {
+  if (language === 'en') return value;
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/\s+/g, ' ');
+  if (!normalized) return value;
+  const translated = RU[normalized] ?? translateDynamicText(normalized);
+  if (!translated) return value;
+  const start = value.indexOf(trimmed);
+  const end = start + trimmed.length;
+  return value.slice(0, start) + translated + value.slice(end);
+}
+
+function translateVNodeValue(value: unknown): unknown {
+  if (typeof value === 'string') return translateText(value);
+  if (Array.isArray(value)) return value.map(translateVNodeValue);
+  if (value && typeof value === 'object' && 'props' in value) {
+    const props = (value as VNode).props as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(props, 'children')) {
+      props.children = translateVNodeValue(props.children);
+    }
+    for (const attribute of TEXT_ATTRIBUTES) {
+      const attributeValue = props[attribute];
+      if (typeof attributeValue === 'string') {
+        props[attribute] = translateText(attributeValue);
+      }
+    }
+  }
+  return value;
+}
+
+const previousVNodeHook = options.vnode;
+options.vnode = (vnode) => {
+  previousVNodeHook?.(vnode);
+  translateVNodeValue(vnode);
+};
+
+function updateDocumentLanguage(language: AppLanguage): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = language;
+  document.title = language === 'ru' ? RU_DOCUMENT_TITLE : EN_DOCUMENT_TITLE;
+}
+
+export function setAppLanguage(language: AppLanguage | null | undefined): void {
+  const nextLanguage: AppLanguage = language === 'ru' ? 'ru' : 'en';
+  updateDocumentLanguage(nextLanguage);
+  if (currentLanguage === nextLanguage) return;
+  currentLanguage = nextLanguage;
+  for (const listener of languageListeners) listener(nextLanguage);
+}
+
+export function subscribeAppLanguage(listener: (language: AppLanguage) => void): () => void {
+  languageListeners.add(listener);
+  return () => languageListeners.delete(listener);
+}
+ + freeCashWithDebt[1] + ' | Маржинальный долг:   const prefixes: Array<[string, string, string]> = [
+    ['Name for ', 'Name for ', ''],
+    ['Role for ', 'Role for ', ''],
+    ['Language for ', 'Language for ', ''],
+    ['New password for ', 'New password for ', ''],
+    ['Updated ', 'Updated', ' '],
+    ['Synced: ', 'Synced', ': '],
+    ['Synced ', 'Synced', ' '],
+    ['MARGIN: ', 'MARGIN', ': '],
+    ['Combined Breakeven: ', 'Combined Breakeven', ': '],
+    ['Exit Comparison · ', 'Exit Comparison', ' · '],
+    ['Buy More Projection · ', 'Buy More Projection', ' · '],
+    ['Read news: ', 'Read news', ': '],
+    ['Stocktwits unavailable: ', 'Stocktwits unavailable', ': '],
+    ['Quote status: ', 'Quote status', ': '],
+    ['Assigned stock value: ', 'Assigned stock value', ': '],
+    ['Immediately pull latest quote for ', 'Immediately pull latest quote for', ' '],
+    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' '],
+    ['[AI Action Error]: ', '[AI Action Error]', ': '],
+    ['[KV Cloud Error]: ', '[KV Cloud Error]', ': '],
+    ['Cloud pull failed: ', 'Cloud pull failed', ': '],
+    ['[Market Data Error]: ', '[Market Data Error]', ': '],
+    ['[Sell Error]: ', 'Sell Error', ': '],
+    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': '],
+    ['Market depth · ', 'Market depth', ' · '],
+    ['Open market depth for ', 'Open market depth for', ' '],
+    ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
+    ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
+    ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
+    ['TradeNet live-data session initialization failed: ', 'TradeNet live-data session initialization failed', ': '],
+    ['Unable to load TradeNet executed trades: ', 'Unable to load TradeNet executed trades', ': '],
+    ['Unable to load active TradeNet orders: ', 'Unable to load active TradeNet orders', ': '],
+    ['[Guest Portfolio Sync Error]: ', '[Guest Portfolio Sync Error]', ': '],
+    ['[KV Cloud Sync Error]: ', '[KV Cloud Sync Error]', ': '],
+    ['[Settings Error]: ', '[Settings Error]', ': '],
+    ['[Warning]: ', '[Warning]', ': '],
+    ['[Error]: ', '[Error]', ': '],
+    ['[Backup]: ', '[Backup]', ': '],
+    ['[Backup Import]: ', '[Backup Import]', ': '],
+    ['[Backup Error]: ', '[Backup Error]', ': '],
+    ['[CLI Error]: ', '[CLI Error]', ': '],
+    ['[CLI]: ', '[CLI]', ': '],
+    ['[AI Advisor]: ', '[AI Advisor]', ': '],
+    ['[System]: ', '[System]', ': '],
+  ];
+  for (const [prefix, dictionaryKey, separator] of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
+    }
+  }
+
+  const latestPortfolioQuote = normalized.match(/^Latest portfolio quote · (.+)$/i);
+  if (latestPortfolioQuote) {
+    return RU['Latest portfolio quote'] + ' · ' + translateText(latestPortfolioQuote[1], 'ru');
+  }
+
+  const acrossAssets = normalized.match(/^(.+) \| Across (\d+) Assets$/i);
+  if (acrossAssets) {
+    const count = Number(acrossAssets[2]);
+    return acrossAssets[1] + ' | По ' + count + (count === 1 ? ' активу' : ' активам');
+  }
+
+  const trancheSummary = normalized.split(' | ').map((part) => {
+    const match = part.match(/^(.+?): ([\d,.]+)sh @ PT (.+)$/i);
+    return match ? match[1] + ': ' + match[2] + ' акц. @ ЦУ ' + match[3] : part;
+  });
+  if (trancheSummary.some((part, index) => part !== normalized.split(' | ')[index])) {
+    return trancheSummary.join(' | ');
+  }
+
+  const externalLinkLabel = normalized.match(/^Open (.+) on (.+) in a new tab$/i);
+  if (externalLinkLabel) {
+    const provider = RU[externalLinkLabel[2]] || externalLinkLabel[2];
+    return 'Открыть ' + externalLinkLabel[1] + ' через ' + provider + ' в новой вкладке';
+  }
+
+  const missingMarginPosition = normalized.match(/^No active margin position was found for (.+)\. Select an active margin ticker and try again\.$/i);
+  if (missingMarginPosition) {
+    return 'Не найдена активная маржинальная позиция ' + missingMarginPosition[1] +
+      '. Выберите активный маржинальный тикер и повторите попытку.';
+  }
+
+  const positionReviewTitle = normalized.match(/^(.+) · Position Review$/i);
+  if (positionReviewTitle) return positionReviewTitle[1] + ' · Анализ маржинальной позиции';
+
+  const reportTitles: Array<[string, string]> = [
+    ['HYPOTHETICAL BUY:', 'ПОКУПКА В СЦЕНАРИИ:'],
+    ['MULTI-DATE EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ:'],
+    ['EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА:'],
+    ['STAGED EXIT:', 'ПОЭТАПНЫЙ ВЫХОД:']
+  ];
+  for (const [prefix, translatedPrefix] of reportTitles) {
+    if (normalized.toUpperCase().startsWith(prefix)) {
+      return translatedPrefix + normalized.slice(prefix.length);
+    }
+  }
+
+  const rows = normalized.match(/^Rows (.+) of (\d+)$/i);
+  if (rows) return `Строки ${rows[1]} из ${rows[2]}`;
+  const page = normalized.match(/^Page (\d+) of (\d+)$/i);
+  if (page) return `Страница ${page[1]} из ${page[2]}`;
+  const milestone = normalized.match(/^(EOW|NTD) · \+(\d+)d$/i);
+  if (milestone) {
+    const label = milestone[1].toUpperCase() === 'EOW' ? 'До конца недели' : 'Следующий торговый день';
+    return `${label} · +${milestone[2]} дн.`;
+  }
+  const positionValue = normalized.match(/^Position value ([\d,]+(?:\.[\d]+)?)(?: \(already\s*([\d.,]+)% below trigger\))?$/i);
+  if (positionValue) {
+    return positionValue[2]
+      ? `Стоимость позиции ${positionValue[1]} (уже на ${positionValue[2]}% ниже порога)`
+      : `Стоимость позиции ${positionValue[1]}`;
+  }
+
+  const buffer = normalized.match(/^([\d.,]+)% buffer$/i);
+  if (buffer) return 'Запас: ' + buffer[1] + '%';
+
+  const recordRange = normalized.match(/^(\d+) [/] (\d+) records$/i);
+  if (recordRange) {
+    const total = Number(recordRange[2]);
+    return recordRange[1] + ' / ' + recordRange[2] + ' ' + russianPlural(total, 'запись', 'записи', 'записей');
+  }
+
+  const unassigned = normalized.match(/^(· )?(\d+) unassigned$/i);
+  if (unassigned) return (unassigned[1] || '') + 'Без назначения: ' + unassigned[2];
+
+  const showTranches = normalized.match(/^Show (\d+) tranches$/i);
+  if (showTranches) {
+    return `Показать ${showTranches[1]} ${russianPlural(Number(showTranches[1]), 'лот', 'лота', 'лотов')}`;
+  }
+
+  const count = normalized.match(/^(\d+) (tranches|records|holdings|days|hrs|shares)$/i);
+  if (count) {
+    const amount = Number(count[1]);
+    const noun = count[2].toLowerCase();
+    if (noun === 'tranches') return `${amount} ${russianPlural(amount, 'лот', 'лота', 'лотов')}`;
+    if (noun === 'records') return `${amount} ${russianPlural(amount, 'запись', 'записи', 'записей')}`;
+    if (noun === 'holdings') return `${amount} ${russianPlural(amount, 'позиция', 'позиции', 'позиций')}`;
+    if (noun === 'days') return `${amount} дн.`;
+    if (noun === 'hrs') return `${amount} ч`;
+    return `${amount} акций`;
+  }
+
+  const riskPrefixes = ['Healthy', 'No margin debt', 'Elevated', 'Stop-out level', 'Margin-call level'];
+  const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
+  if (riskPrefix) {
+    return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
+      .replace(/\bnegative equity\b/g, RU['negative equity'])
+      .replace(/\bequity\b/g, 'собственного капитала')
+      .replace(/\bmaintenance\b/g, 'по нормативу поддерживающей маржи');
+  }
+
+  if (normalized.startsWith('e.g. quote ')) {
+    return 'например: quote ' + normalized.slice('e.g. quote '.length);
+  }
+  return undefined;
+}
+
+export function translateText(value: string, language: AppLanguage = currentLanguage): string {
+  if (language === 'en') return value;
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/\s+/g, ' ');
+  if (!normalized) return value;
+  const translated = RU[normalized] ?? translateDynamicText(normalized);
+  if (!translated) return value;
+  const start = value.indexOf(trimmed);
+  const end = start + trimmed.length;
+  return value.slice(0, start) + translated + value.slice(end);
+}
+
+function translateVNodeValue(value: unknown): unknown {
+  if (typeof value === 'string') return translateText(value);
+  if (Array.isArray(value)) return value.map(translateVNodeValue);
+  if (value && typeof value === 'object' && 'props' in value) {
+    const props = (value as VNode).props as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(props, 'children')) {
+      props.children = translateVNodeValue(props.children);
+    }
+    for (const attribute of TEXT_ATTRIBUTES) {
+      const attributeValue = props[attribute];
+      if (typeof attributeValue === 'string') {
+        props[attribute] = translateText(attributeValue);
+      }
+    }
+  }
+  return value;
+}
+
+const previousVNodeHook = options.vnode;
+options.vnode = (vnode) => {
+  previousVNodeHook?.(vnode);
+  translateVNodeValue(vnode);
+};
+
+function updateDocumentLanguage(language: AppLanguage): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = language;
+  document.title = language === 'ru' ? RU_DOCUMENT_TITLE : EN_DOCUMENT_TITLE;
+}
+
+export function setAppLanguage(language: AppLanguage | null | undefined): void {
+  const nextLanguage: AppLanguage = language === 'ru' ? 'ru' : 'en';
+  updateDocumentLanguage(nextLanguage);
+  if (currentLanguage === nextLanguage) return;
+  currentLanguage = nextLanguage;
+  for (const listener of languageListeners) listener(nextLanguage);
+}
+
+export function subscribeAppLanguage(listener: (language: AppLanguage) => void): () => void {
+  languageListeners.add(listener);
+  return () => languageListeners.delete(listener);
+}
+ + freeCashWithDebt[2];
+  const marginDebtSynced = normalized.match(/^Margin debt synced to -(.+)$/i);
+  if (marginDebtSynced) return 'Маржинальный долг синхронизирован: -' + marginDebtSynced[1];
+
+  const bought = normalized.match(/^Bought ([\d,.]+) ([A-Z0-9.-]+) @ ([\d,.]+)(.*)$/i);
+  if (bought) {
+    const suffix = bought[4]
+      .replace(/\(Date: ([^)]+)\)/i, '(дата: $1)')
+      .replace(/\|\s*Target PT:/i, '| целевая цена:');
+    return 'Куплено ' + bought[1] + ' акций ' + bought[2] + ' по цене ' + bought[3] + suffix;
+  }
+  const targetUpdated = normalized.match(/^([A-Z0-9.-]+) price target updated → \$(.+)$/i);
+  if (targetUpdated) return 'Целевая цена ' + targetUpdated[1] + ' обновлена →   const prefixes: Array<[string, string, string]> = [
+    ['Name for ', 'Name for ', ''],
+    ['Role for ', 'Role for ', ''],
+    ['Language for ', 'Language for ', ''],
+    ['New password for ', 'New password for ', ''],
+    ['Updated ', 'Updated', ' '],
+    ['Synced: ', 'Synced', ': '],
+    ['Synced ', 'Synced', ' '],
+    ['MARGIN: ', 'MARGIN', ': '],
+    ['Combined Breakeven: ', 'Combined Breakeven', ': '],
+    ['Exit Comparison · ', 'Exit Comparison', ' · '],
+    ['Buy More Projection · ', 'Buy More Projection', ' · '],
+    ['Read news: ', 'Read news', ': '],
+    ['Stocktwits unavailable: ', 'Stocktwits unavailable', ': '],
+    ['Quote status: ', 'Quote status', ': '],
+    ['Assigned stock value: ', 'Assigned stock value', ': '],
+    ['Immediately pull latest quote for ', 'Immediately pull latest quote for', ' '],
+    ['Review recent news and margin-position risks for ', 'Review recent news and margin-position risks for', ' '],
+    ['[AI Action Error]: ', '[AI Action Error]', ': '],
+    ['[KV Cloud Error]: ', '[KV Cloud Error]', ': '],
+    ['Cloud pull failed: ', 'Cloud pull failed', ': '],
+    ['[Market Data Error]: ', '[Market Data Error]', ': '],
+    ['[Sell Error]: ', 'Sell Error', ': '],
+    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': '],
+    ['Market depth · ', 'Market depth', ' · '],
+    ['Open market depth for ', 'Open market depth for', ' '],
+    ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
+    ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
+    ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
+    ['TradeNet live-data session initialization failed: ', 'TradeNet live-data session initialization failed', ': '],
+    ['Unable to load TradeNet executed trades: ', 'Unable to load TradeNet executed trades', ': '],
+    ['Unable to load active TradeNet orders: ', 'Unable to load active TradeNet orders', ': '],
+    ['[Guest Portfolio Sync Error]: ', '[Guest Portfolio Sync Error]', ': '],
+    ['[KV Cloud Sync Error]: ', '[KV Cloud Sync Error]', ': '],
+    ['[Settings Error]: ', '[Settings Error]', ': '],
+    ['[Warning]: ', '[Warning]', ': '],
+    ['[Error]: ', '[Error]', ': '],
+    ['[Backup]: ', '[Backup]', ': '],
+    ['[Backup Import]: ', '[Backup Import]', ': '],
+    ['[Backup Error]: ', '[Backup Error]', ': '],
+    ['[CLI Error]: ', '[CLI Error]', ': '],
+    ['[CLI]: ', '[CLI]', ': '],
+    ['[AI Advisor]: ', '[AI Advisor]', ': '],
+    ['[System]: ', '[System]', ': '],
+  ];
+  for (const [prefix, dictionaryKey, separator] of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
+    }
+  }
+
+  const latestPortfolioQuote = normalized.match(/^Latest portfolio quote · (.+)$/i);
+  if (latestPortfolioQuote) {
+    return RU['Latest portfolio quote'] + ' · ' + translateText(latestPortfolioQuote[1], 'ru');
+  }
+
+  const acrossAssets = normalized.match(/^(.+) \| Across (\d+) Assets$/i);
+  if (acrossAssets) {
+    const count = Number(acrossAssets[2]);
+    return acrossAssets[1] + ' | По ' + count + (count === 1 ? ' активу' : ' активам');
+  }
+
+  const trancheSummary = normalized.split(' | ').map((part) => {
+    const match = part.match(/^(.+?): ([\d,.]+)sh @ PT (.+)$/i);
+    return match ? match[1] + ': ' + match[2] + ' акц. @ ЦУ ' + match[3] : part;
+  });
+  if (trancheSummary.some((part, index) => part !== normalized.split(' | ')[index])) {
+    return trancheSummary.join(' | ');
+  }
+
+  const externalLinkLabel = normalized.match(/^Open (.+) on (.+) in a new tab$/i);
+  if (externalLinkLabel) {
+    const provider = RU[externalLinkLabel[2]] || externalLinkLabel[2];
+    return 'Открыть ' + externalLinkLabel[1] + ' через ' + provider + ' в новой вкладке';
+  }
+
+  const missingMarginPosition = normalized.match(/^No active margin position was found for (.+)\. Select an active margin ticker and try again\.$/i);
+  if (missingMarginPosition) {
+    return 'Не найдена активная маржинальная позиция ' + missingMarginPosition[1] +
+      '. Выберите активный маржинальный тикер и повторите попытку.';
+  }
+
+  const positionReviewTitle = normalized.match(/^(.+) · Position Review$/i);
+  if (positionReviewTitle) return positionReviewTitle[1] + ' · Анализ маржинальной позиции';
+
+  const reportTitles: Array<[string, string]> = [
+    ['HYPOTHETICAL BUY:', 'ПОКУПКА В СЦЕНАРИИ:'],
+    ['MULTI-DATE EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ:'],
+    ['EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА:'],
+    ['STAGED EXIT:', 'ПОЭТАПНЫЙ ВЫХОД:']
+  ];
+  for (const [prefix, translatedPrefix] of reportTitles) {
+    if (normalized.toUpperCase().startsWith(prefix)) {
+      return translatedPrefix + normalized.slice(prefix.length);
+    }
+  }
+
+  const rows = normalized.match(/^Rows (.+) of (\d+)$/i);
+  if (rows) return `Строки ${rows[1]} из ${rows[2]}`;
+  const page = normalized.match(/^Page (\d+) of (\d+)$/i);
+  if (page) return `Страница ${page[1]} из ${page[2]}`;
+  const milestone = normalized.match(/^(EOW|NTD) · \+(\d+)d$/i);
+  if (milestone) {
+    const label = milestone[1].toUpperCase() === 'EOW' ? 'До конца недели' : 'Следующий торговый день';
+    return `${label} · +${milestone[2]} дн.`;
+  }
+  const positionValue = normalized.match(/^Position value ([\d,]+(?:\.[\d]+)?)(?: \(already\s*([\d.,]+)% below trigger\))?$/i);
+  if (positionValue) {
+    return positionValue[2]
+      ? `Стоимость позиции ${positionValue[1]} (уже на ${positionValue[2]}% ниже порога)`
+      : `Стоимость позиции ${positionValue[1]}`;
+  }
+
+  const buffer = normalized.match(/^([\d.,]+)% buffer$/i);
+  if (buffer) return 'Запас: ' + buffer[1] + '%';
+
+  const recordRange = normalized.match(/^(\d+) [/] (\d+) records$/i);
+  if (recordRange) {
+    const total = Number(recordRange[2]);
+    return recordRange[1] + ' / ' + recordRange[2] + ' ' + russianPlural(total, 'запись', 'записи', 'записей');
+  }
+
+  const unassigned = normalized.match(/^(· )?(\d+) unassigned$/i);
+  if (unassigned) return (unassigned[1] || '') + 'Без назначения: ' + unassigned[2];
+
+  const showTranches = normalized.match(/^Show (\d+) tranches$/i);
+  if (showTranches) {
+    return `Показать ${showTranches[1]} ${russianPlural(Number(showTranches[1]), 'лот', 'лота', 'лотов')}`;
+  }
+
+  const count = normalized.match(/^(\d+) (tranches|records|holdings|days|hrs|shares)$/i);
+  if (count) {
+    const amount = Number(count[1]);
+    const noun = count[2].toLowerCase();
+    if (noun === 'tranches') return `${amount} ${russianPlural(amount, 'лот', 'лота', 'лотов')}`;
+    if (noun === 'records') return `${amount} ${russianPlural(amount, 'запись', 'записи', 'записей')}`;
+    if (noun === 'holdings') return `${amount} ${russianPlural(amount, 'позиция', 'позиции', 'позиций')}`;
+    if (noun === 'days') return `${amount} дн.`;
+    if (noun === 'hrs') return `${amount} ч`;
+    return `${amount} акций`;
+  }
+
+  const riskPrefixes = ['Healthy', 'No margin debt', 'Elevated', 'Stop-out level', 'Margin-call level'];
+  const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
+  if (riskPrefix) {
+    return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
+      .replace(/\bnegative equity\b/g, RU['negative equity'])
+      .replace(/\bequity\b/g, 'собственного капитала')
+      .replace(/\bmaintenance\b/g, 'по нормативу поддерживающей маржи');
+  }
+
+  if (normalized.startsWith('e.g. quote ')) {
+    return 'например: quote ' + normalized.slice('e.g. quote '.length);
+  }
+  return undefined;
+}
+
+export function translateText(value: string, language: AppLanguage = currentLanguage): string {
+  if (language === 'en') return value;
+  const trimmed = value.trim();
+  const normalized = trimmed.replace(/\s+/g, ' ');
+  if (!normalized) return value;
+  const translated = RU[normalized] ?? translateDynamicText(normalized);
+  if (!translated) return value;
+  const start = value.indexOf(trimmed);
+  const end = start + trimmed.length;
+  return value.slice(0, start) + translated + value.slice(end);
+}
+
+function translateVNodeValue(value: unknown): unknown {
+  if (typeof value === 'string') return translateText(value);
+  if (Array.isArray(value)) return value.map(translateVNodeValue);
+  if (value && typeof value === 'object' && 'props' in value) {
+    const props = (value as VNode).props as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(props, 'children')) {
+      props.children = translateVNodeValue(props.children);
+    }
+    for (const attribute of TEXT_ATTRIBUTES) {
+      const attributeValue = props[attribute];
+      if (typeof attributeValue === 'string') {
+        props[attribute] = translateText(attributeValue);
+      }
+    }
+  }
+  return value;
+}
+
+const previousVNodeHook = options.vnode;
+options.vnode = (vnode) => {
+  previousVNodeHook?.(vnode);
+  translateVNodeValue(vnode);
+};
+
+function updateDocumentLanguage(language: AppLanguage): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = language;
+  document.title = language === 'ru' ? RU_DOCUMENT_TITLE : EN_DOCUMENT_TITLE;
+}
+
+export function setAppLanguage(language: AppLanguage | null | undefined): void {
+  const nextLanguage: AppLanguage = language === 'ru' ? 'ru' : 'en';
+  updateDocumentLanguage(nextLanguage);
+  if (currentLanguage === nextLanguage) return;
+  currentLanguage = nextLanguage;
+  for (const listener of languageListeners) listener(nextLanguage);
+}
+
+export function subscribeAppLanguage(listener: (language: AppLanguage) => void): () => void {
+  languageListeners.add(listener);
+  return () => languageListeners.delete(listener);
+}
+ + targetUpdated[2];
+
+  const unrecognizedCommand = normalized.match(/^Command "(.+)" not matched by local CLI\.$/i);
+  if (unrecognizedCommand) return 'Локальный терминал не распознал команду "' + unrecognizedCommand[1] + '".';
+  const selectTicker = normalized.match(/^Select a ticker tab or specify a ticker \(e\.g\., "sell AAPL today for \$180 vs sell 14 days later for \$185"\)\.$/i);
+  if (selectTicker) return 'Выберите вкладку тикера или укажите тикер (например, "sell AAPL today for $180 vs sell 14 days later for $185").';
+
+  const adminAction = normalized.match(/^Only administrators can (.+)\.$/i);
+  if (adminAction) {
+    const actions: Record<string, string> = {
+      'reset the portfolio': 'сбрасывать портфель',
+      'reset broker rules': 'сбрасывать правила брокера',
+      'save broker rules': 'сохранять правила брокера',
+      'manage guest assignments': 'управлять назначениями гостям',
+      'change guest assignments': 'изменять назначения гостям'
+    };
+    return 'Только администраторы могут ' + (actions[adminAction[1].toLowerCase()] || adminAction[1]) + '.';
+  }
+
+  const freedomPurchase = normalized.match(/^\[Freedom\] (.+) purchase operation classified as (.+)\.$/i);
+  if (freedomPurchase) {
+    const type = freedomPurchase[2].toLowerCase() === 'cash' ? 'денежная' :
+      freedomPurchase[2].toLowerCase() === 'margin' ? 'маржинальная' : freedomPurchase[2];
+    return '[Freedom] Операция покупки ' + freedomPurchase[1] + ' классифицирована как ' + type + '.';
+  }
+  const freedomTarget = normalized.match(/^\[Freedom\] Updated (.+) target from active limit sell: (.+)\.$/i);
+  if (freedomTarget) return '[Freedom] Целевая цена ' + freedomTarget[1] + ' обновлена по активной лимитной заявке на продажу: ' + freedomTarget[2] + '.';
+
+  const brokerRollover = normalized.match(/^\[Broker (\d{2}:\d{2}) Armenia rollover\]: Processed (\d+) cycle\(s\)\. Accrued interest: \+(.+)\. Margin Debt: -(.+)\.$/i);
+  if (brokerRollover) return '[Брокер · перенос по времени Армении ' + brokerRollover[1] + ']: обработано циклов: ' +
+    brokerRollover[2] + '. Начисленные проценты: +' + brokerRollover[3] + '. Маржинальный долг: -' + brokerRollover[4] + '.';
+
+  const sourcePrice = normalized.match(/^\[(.+)\]: (.+) updated to (.+?)( \(quote only\))?\.$/i);
+  if (sourcePrice) return '[' + sourcePrice[1] + ']: ' + sourcePrice[2] + ' — цена обновлена: ' + sourcePrice[3] +
+    (sourcePrice[4] ? ' (только котировка)' : '') + '.';
+
+  const liveQuotes = normalized.match(/^\[System\]: Live market quotes refreshed for (\d+) assets\.$/i);
+  if (liveQuotes) return '[Система]: Обновлены актуальные рыночные котировки для ' + liveQuotes[1] + ' активов.';
+  const backupExport = normalized.match(/^\[Backup\]: Exported state to (.+)\.$/i);
+  if (backupExport) return '[Резервная копия]: Состояние экспортировано в файл ' + backupExport[1] + '.';
+  const backupImport = normalized.match(/^\[Backup Import\]: Imported (.+) into this browser\. Check KV cloud status for sync results\.$/i);
+  if (backupImport) return '[Импорт резервной копии]: Файл ' + backupImport[1] +
+    ' импортирован в этот браузер. Проверьте состояние синхронизации с облаком KV.';
+  const backupError = normalized.match(/^\[Backup Error\]: Could not import backup \((.+)\)\.$/i);
+  if (backupError) return '[Ошибка импорта резервной копии]: Не удалось импортировать резервную копию (' + backupError[1] + ').';
+  const backupToast = normalized.match(/^Backup import failed: (.+)$/i);
+  if (backupToast) return 'Не удалось импортировать резервную копию: ' + backupToast[1];
+
+  const batchFetchError = normalized.match(/^\[Error\]: Batch fetch failed - (.+)$/i);
+  if (batchFetchError) return '[Ошибка]: Не удалось выполнить пакетную загрузку котировок: ' + batchFetchError[1];
+  const closePositionError = normalized.match(/^\[Error\]: Position (.+) not found to close\.$/i);
+  if (closePositionError) return '[Ошибка]: Не найдена позиция ' + closePositionError[1] + ' для закрытия.';
+  const salePriceError = normalized.match(/^\[Sell Error\]: Enter a valid sale price greater than zero for (.+)\.$/i);
+  if (salePriceError) return '[Ошибка продажи]: Укажите цену продажи выше нуля для ' + salePriceError[1] + '.';
+  const cashSaleError = normalized.match(/^\[Sell Error\]: Could not sell cash holding (.+)\.$/i);
+  if (cashSaleError) return '[Ошибка продажи]: Не удалось продать денежную позицию ' + cashSaleError[1] + '.';
+  const marginSaleError = normalized.match(/^\[Sell Error\]: Could not sell margin position (.+)\.$/i);
+  if (marginSaleError) return '[Ошибка продажи]: Не удалось продать маржинальную позицию ' + marginSaleError[1] + '.';
+  const cliUnrecognized = normalized.match(/^\[CLI\]: Unrecognized command\. Type "help" for local commands, or prefix with "ask \.\.\." for AI advisor\.$/i);
+  if (cliUnrecognized) return '[Команда]: Неизвестная команда. Введите "help" для локальных команд или добавьте префикс "ask ..." для обращения к ИИ-советнику.';
+
+  const marketDepthHint = normalized.match(/^Check that FREEDOM_PUBLIC_KEY and FREEDOM_PRIVATE_KEY are configured/i);
+  if (marketDepthHint) return RU['Check that FREEDOM_PUBLIC_KEY and FREEDOM_PRIVATE_KEY are configured as Cloudflare Worker secrets. Never expose the private key in browser code.'];
+
   const prefixes: Array<[string, string, string]> = [
     ['Name for ', 'Name for ', ''],
     ['Role for ', 'Role for ', ''],
