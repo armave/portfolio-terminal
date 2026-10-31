@@ -617,7 +617,7 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
     // Closed Trades rows can be assigned directly after the broker sale. Mirror
     // those cash-funded quantities into the same guest-only durable LOTS ledger.
     const appTradeSources = (current.closedTrades || []).map((trade: any, index: number) => {
-      const ticker = String(trade?.ticker || '').trim().toUpperCase().replace(/\\.US$/i, '');
+      const ticker = String(trade?.ticker || '').trim().toUpperCase().replace(/\.US$/i, '');
       const fallback = String(trade?.closedAt ?? trade?.exitDate ?? trade?.date ?? index);
       return {
         allocationKey: 'app:' + String(trade?.id || `${ticker || 'trade'}:${fallback}`),
@@ -628,7 +628,7 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
     const brokerSellSources = (current.brokerExecutedTrades || [])
       .filter((trade: any) => ['sell', 's', 'sale', 'sold', '2'].includes(String(trade?.side ?? '').toLowerCase()))
       .map((trade: any, index: number) => {
-        const ticker = String(trade?.ticker || '').trim().toUpperCase().replace(/\\.US$/i, '');
+        const ticker = String(trade?.ticker || '').trim().toUpperCase().replace(/\.US$/i, '');
         return {
           allocationKey: 'broker:' + String(trade?.id ?? ('tradenet-' + index)),
           ticker,
