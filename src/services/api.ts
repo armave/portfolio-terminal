@@ -1,5 +1,5 @@
 import CryptoJS from 'crypto-js';
-import { runMarketDataRequest } from './marketRequestGate';
+import { resetMarketRequestGate, runMarketDataRequest } from './marketRequestGate';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, PortfolioState } from '../types/portfolio';
@@ -1514,6 +1514,8 @@ export function clearApiRequestCaches(): void {
   usersCacheGeneration += 1;
   cloudStatePushFingerprints.clear();
   clearGuestPortfolioPublicationCache();
+  clearFreedomCashflowCache();
+  resetMarketRequestGate();
   validatedCloudResponse = null;
 }
 

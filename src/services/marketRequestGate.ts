@@ -32,4 +32,12 @@ export function createMarketRequestGate(options: MarketRequestGateOptions = {}) 
   };
 }
 
-export const runMarketDataRequest = createMarketRequestGate();
+let defaultMarketRequestGate = createMarketRequestGate();
+
+export function runMarketDataRequest<T>(request: () => Promise<T>): Promise<T> {
+  return defaultMarketRequestGate(request);
+}
+
+export function resetMarketRequestGate(): void {
+  defaultMarketRequestGate = createMarketRequestGate();
+}

@@ -33,8 +33,9 @@ describe('Freedom margin fee allocation', () => {
       { id: 'sell-2', ticker: 'AAPL', side: 'sell', quantity: 5, price: 190, executedAt: '2026-02-04T10:00:00Z' }
     ];
     const result = calculateFreedomMarginFeeAllocations([fee('fifo', '2026-02-02', -10.01)], executions);
-    expect(result.brokerAllocations.get(2)).toEqual({ 'freedom-fifo': 10.01 });
-    expect(result.brokerAllocations.has(3)).toBe(false);
+    expect(result.brokerAllocations.get(2)).toEqual({ 'freedom-fifo': 6.67 });
+    expect(result.brokerAllocations.get(3)).toEqual({ 'freedom-fifo': 3.34 });
+    expect(result.allocatedAmount).toBe(10.01);
   });
 
   it('does not allocate known non-USD cashflows or trade commissions to USD trade P/L', () => {
