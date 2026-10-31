@@ -33,7 +33,15 @@ function parseTrancheTimestamp(value: number | string | null | undefined): numbe
     }
     return value > 0 ? (value < 1e11 ? value * 1000 : value) : null;
   }
-  const parsed = Date.parse(String(value));
+  const text = String(value).trim();
+  if (/^\d+(\.\d+)?$/.test(text)) {
+    const numeric = Number(text);
+    if (numeric > 20000 && numeric < 100000) {
+      return Date.UTC(1899, 11, 30) + numeric * 86400000;
+    }
+    if (numeric > 0) return numeric < 1e11 ? numeric * 1000 : numeric;
+  }
+  const parsed = Date.parse(text);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
