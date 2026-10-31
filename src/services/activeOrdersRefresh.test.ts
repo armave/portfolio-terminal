@@ -76,6 +76,32 @@ describe('refreshActiveOrders', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it('does not call the broker when the session changes during credential restoration', async () => {
+    let releaseSecret!: (secret: string) => void;
+    let current = true;
+    const restoreGatewaySecret = vi.fn(() => new Promise<string>((resolve) => { releaseSecret = resolve; }));
+    const fetchActiveOrders = vi.fn(async () => ({ orders: [] }));
+    const onSuccess = vi.fn();
+    const onError = vi.fn();
+
+    const pending = refreshActiveOrders({
+      restoreGatewaySecret,
+      fetchActiveOrders,
+      normalizeActiveOrders: (response) => response.orders,
+      onSuccess,
+      onError,
+      isCurrent: () => current
+    });
+
+    current = false;
+    releaseSecret('old-session-secret');
+    await pending;
+
+    expect(fetchActiveOrders).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it('reports a credential restoration failure', async () => {
     const error = new Error('Secret storage unavailable');
     const onError = vi.fn();

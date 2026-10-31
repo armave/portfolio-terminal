@@ -143,3 +143,17 @@ The broker event bus already defined `broker:active-orders-error`, and the reque
 - [ ] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
 
 No order is submitted or modified. The refresh path remains read-only; this change makes its failure state visible without clearing valid last-known targets.
+
+## Follow-on implementation — account-scoped broker refreshes
+
+The broker account, executions, and active-order promises were module-global, while the refresh effects were keyed only by role or mount. An administrator identity change could therefore reuse the prior account's in-flight promise; late account, trade, or order responses could also publish after the authenticated identity had changed. Re-login to the same identity could revive the same map key if request ownership were based on identity alone.
+
+- [x] Add an identity-generation guard that invalidates work synchronously when `auth:user-changed` fires.
+- [x] Key account, execution, and active-order in-flight requests by identity plus generation, so the new session can refresh independently.
+- [x] Rebind account/execution listeners and refresh account, trade, and active-order snapshots on administrator identity changes, not only role changes.
+- [x] Ignore stale successes and failures after identity changes; stop active-order requests after credential restoration if their session was superseded.
+- [x] Test sign-out, role change, account switch, repeated identity notifications, and re-login generation/key uniqueness.
+- [x] Confirm exact-head typecheck, tests, production build, dead-code validation, and production dependency audit on `2d9487c`.
+- [x] Both final-head workflows passed: [Validate run 41195574570](https://github.com/armave/portfolio-terminal/actions/runs/41195574570) and [Pull Request CI run 41195574577](https://github.com/armave/portfolio-terminal/actions/runs/41195574577).
+
+No financial calculations, persisted portfolio formats, credentials, or server authorization rules changed. The fix scopes existing read-only broker responses to the active UI session.
