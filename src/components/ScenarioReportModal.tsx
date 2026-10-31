@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useRef, useState } from 'preact/hooks';
 import type { ComponentChild } from 'preact';
+import { useDialogFocus } from '../ui/dialogFocus';
 
 interface ScenarioReportModalProps {
   report: string;
@@ -74,44 +75,7 @@ export function ScenarioReportModal({ report, onClose }: ScenarioReportModalProp
     window.setTimeout(onClose, 200);
   }, [onClose]);
 
-  useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        requestClose();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const dialog = dialogRef.current;
-      const focusable = Array.from(dialog?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      ) ?? []);
-      if (!focusable.length) {
-        event.preventDefault();
-        dialog?.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    closeButtonRef.current?.focus();
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
-  }, [requestClose]);
+  useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
 
   const header = report.split('\n', 1)[0].toUpperCase();
   const title = report.split('\n', 1)[0].replace(/^\[|\]$/g, '') || 'Scenario report';

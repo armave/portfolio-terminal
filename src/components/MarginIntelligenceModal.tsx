@@ -1,7 +1,8 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage, translateText } from '../services/i18n';
+import { useDialogFocus } from '../ui/dialogFocus';
 
 export interface MarginIntelligenceArticle {
   ticker: string;
@@ -122,27 +123,17 @@ function renderAnalysisMarkdown(markdown: string) {
 
 export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginIntelligenceModalProps) {
   const [now, setNow] = useState(Date.now());
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: onClose });
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    document.body.style.overflow = 'hidden';
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [onClose]);
-
   return (
     <div class="margin-intelligence-overlay fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/80 p-2 backdrop-blur-sm sm:p-4" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section class="margin-intelligence-dialog flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-cyan-900/60 bg-slate-950 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="marginIntelligenceTitle">
+      <section ref={dialogRef} class="margin-intelligence-dialog flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-cyan-900/60 bg-slate-950 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="marginIntelligenceTitle" tabIndex={-1}>
         <header class="flex items-start justify-between gap-3 border-b border-slate-800 px-4 py-3">
           <div class="min-w-0">
             <div class="text-[10px] font-mono font-bold uppercase tracking-widest text-cyan-400">Gemini · Margin Intelligence</div>
@@ -152,7 +143,7 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <button type="button" onClick={onRefresh} disabled={data.loading} class="rounded border border-cyan-800 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-950/50 disabled:cursor-not-allowed disabled:opacity-50">{data.loading ? 'Refreshing…' : '↻ Refresh'}</button>
-            <button type="button" onClick={onClose} class="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800">Close</button>
+            <button ref={closeButtonRef} type="button" onClick={onClose} class="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800">Close</button>
           </div>
         </header>
         <div class="min-h-0 overflow-y-auto p-4">

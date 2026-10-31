@@ -194,6 +194,21 @@ The UI audit found three additional wide tables whose scroll containers were not
 - [x] Add English/Russian accessible names and translation regression coverage.
 - [x] Preserve the cash/tranche/guest/settings `table-scroll-wrapper` CSS hooks, including mobile layout behavior; keep Closed History's existing wrapper styling distinct.
 - [x] Keep the collapsible active-tranches region out of the tab order while closed, with focused regression coverage.
-- [ ] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
+- [x] Exact-head `d0cc136` passed typecheck, full tests, production build, dead-code validation, and production dependency audit.
+- [x] Both workflows passed: [Validate run 41197123973](https://github.com/armave/portfolio-terminal/actions/runs/41197123973) and [Pull Request CI run 41197123995](https://github.com/armave/portfolio-terminal/actions/runs/41197123995).
 
 This is a presentation/accessibility/localization-only change. Table data, order and assignment actions, portfolio calculations, broker requests, permissions, and persistence remain unchanged. Browser/mobile visual verification remains outstanding.
+
+## Follow-on implementation — shared modal focus management
+
+A modal accessibility audit found inconsistent keyboard focus behavior across the four modal flows. Scenario Comparison and Scenario Report each maintained their own focus trap and restoration code; Authentication focused its name input but allowed Tab focus to escape and did not restore focus; Margin Intelligence handled Escape and scroll locking but did not establish initial focus, trap Tab navigation, or restore focus. Independent implementations also used slightly different focusable-element selectors.
+
+- [x] Add a shared focus-management hook for initial focus, Tab/Shift+Tab containment, Escape callbacks, body-scroll locking, and focus restoration.
+- [x] Exclude disabled, hidden, inert, `aria-hidden`, negative-tabindex, and visually unrendered controls from modal tab order.
+- [x] Apply the shared behavior to Authentication, Margin Intelligence, Scenario Comparison, and Scenario Report.
+- [x] Preserve the authentication modal's mandatory sign-in behavior (Escape does not dismiss it) and preserve the scenario modal exit transitions.
+- [x] Add unit coverage for forward/reverse wrapping, outside-focus recovery, no-focusable-control fallback, hidden controls, and non-Tab keys.
+- [x] Exact-head `6cecf2f` passed typecheck, full tests, production build, dead-code validation, and production dependency audit.
+- [x] Both workflows passed: [Validate run 41198028237](https://github.com/armave/portfolio-terminal/actions/runs/41198028237) and [Pull Request CI run 41198028274](https://github.com/armave/portfolio-terminal/actions/runs/41198028274).
+
+No authentication API calls, portfolio state, broker behavior, scenario calculations, or server authorization behavior changed. Browser and assistive-technology verification remains outstanding.
