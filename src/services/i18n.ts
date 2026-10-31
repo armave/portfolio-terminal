@@ -362,7 +362,7 @@ const RU: Record<string, string> = {
   "Below trigger estimate": "Ниже расчётного порога",
   "Healthy": "Норма",
   "No margin debt": "Нет маржинального долга",
-  "Elevated": "Повышенный",
+  "Elevated": "Повышенный риск",
   "None": "Нет",
   "No live quotes fetched for margin positions": "Для маржинальных позиций ещё не получены актуальные котировки",
   "Latest portfolio quote": "Последняя котировка портфеля",
@@ -556,6 +556,104 @@ const RU: Record<string, string> = {
   "ROLLOVER": "ПЕРЕНОС",
   "TV Chart": "График TradingView",
   "TV Ideas": "Идеи TradingView",
+  "Check that FREEDOM_PUBLIC_KEY and FREEDOM_PRIVATE_KEY are configured as Cloudflare Worker secrets. Never expose the private key in browser code.": "Проверьте, что FREEDOM_PUBLIC_KEY и FREEDOM_PRIVATE_KEY заданы как секреты Cloudflare Worker. Никогда не раскрывайте закрытый ключ в клиентском коде.",
+  "TBD": "Пока неизвестно",
+  "No quotes updated during batch fetch.": "Не удалось обновить ни одной котировки в пакетном запросе.",
+  "Buy requires a valid ticker, positive share count, and positive price.": "Для покупки укажите корректный тикер, положительное количество акций и положительную цену.",
+  "Gemini returned an invalid ticker. No changes were made.": "Gemini вернул некорректный тикер. Изменения не внесены.",
+  "Gemini returned an invalid buy quantity or price. No changes were made.": "Gemini вернул некорректное количество акций или цену покупки. Изменения не внесены.",
+  "Gemini returned an invalid sale quantity or price. No changes were made.": "Gemini вернул некорректное количество акций или цену продажи. Изменения не внесены.",
+  "Gemini returned an invalid price. No changes were made.": "Gemini вернул некорректную цену. Изменения не внесены.",
+  "Gemini returned invalid cash holding details. No changes were made.": "Gemini вернул некорректные данные денежной позиции. Изменения не внесены.",
+  "Gemini returned an invalid margin balance. No changes were made.": "Gemini вернул некорректный маржинальный баланс. Изменения не внесены.",
+  "Gemini returned an invalid account balance. No changes were made.": "Gemini вернул некорректный баланс счёта. Изменения не внесены.",
+  "Terminal cleared.": "Терминал очищен.",
+  "Refreshing all live quotes...": "Обновление всех актуальных котировок…",
+  "Use the same ticker for every exit scenario.": "Во всех сценариях выхода используйте один и тот же тикер.",
+  "Exit date must be within the next 10 years.": "Дата выхода должна находиться в пределах следующих 10 лет.",
+  "Every exit price must be a positive number.": "Цена выхода должна быть положительным числом.",
+  "Provide at least two exit scenarios to compare.": "Для сравнения укажите как минимум два сценария выхода.",
+  "Usage: sold <shares|all> <ticker> for <price>": "Формат: sold <shares|all> <ticker> for <price>",
+  "Invalid simulation price.": "Некорректная цена для моделирования.",
+  "Enter a valid finite amount.": "Введите корректную конечную сумму.",
+  "Free cash cannot be negative. Use \"debt <amount>\" to set margin debt.": "Свободные денежные средства не могут быть отрицательными. Используйте \"debt <amount>\", чтобы задать маржинальный долг.",
+  "Usage: add cash stock <shares> <ticker> [price]": "Формат: add cash stock <shares> <ticker> [price]",
+  "Usage: bought <shares> <ticker> for <price> [, pt <target>] [on <date>]": "Формат: bought <shares> <ticker> for <price> [, pt <target>] [on <date>]",
+  "Usage: target <ticker> <price> (for an open margin position)": "Формат: target <ticker> <price> (для открытой маржинальной позиции)",
+  "Only administrators can": "Только администраторы могут",
+  "[Guest Portfolio Sync Error]": "Ошибка синхронизации гостевого портфеля",
+  "[KV Cloud Sync Error]": "Ошибка синхронизации облака KV",
+  "[Settings Error]": "Ошибка настроек",
+  "[Warning]": "Предупреждение",
+  "[Error]": "Ошибка",
+  "[Backup]": "Резервная копия",
+  "[Backup Import]": "Импорт резервной копии",
+  "[Backup Error]": "Ошибка импорта резервной копии",
+  "[Executed Buy]": "Покупка выполнена",
+  "[Cash Holding Closed]": "Денежная позиция закрыта",
+  "[Cash Holding Partial Sell]": "Частичная продажа денежной позиции",
+  "[Position Closed]": "Позиция закрыта",
+  "[Partial Sell]": "Частичная продажа",
+  "[Target Updated]": "Целевая цена обновлена",
+  "[Price Unchanged]": "Цена не изменена",
+  "[Price Updated]": "Цена обновлена",
+  "[Margin Synced]": "Маржинальный баланс синхронизирован",
+  "[Balance]": "Баланс",
+  "[CLI Error]": "Ошибка команды",
+  "[CLI]": "Команда",
+  "[AI Advisor]": "Совет ИИ",
+  "[System]": "Система",
+  "[Broker]": "Брокер",
+  "[Freedom]": "Freedom",
+  "[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.": "Ошибка синхронизации гостевого портфеля: Не удалось обновить назначенные активы и историю.",
+  "[Warning]: No quotes updated during batch fetch.": "[Предупреждение]: Не удалось обновить ни одной котировки в пакетном запросе.",
+  "Available Frontend Commands (Zero AI/API Latency):": "Доступные локальные команды терминала (без задержки ИИ/API):",
+  "Total fee friction includes buy commission, sell commission, and estimated margin interest. Future prices are assumptions. The action stages a target-price command in the terminal; it does not submit a broker order.": "Общие расходы включают комиссию за покупку, комиссию за продажу и расчётные проценты по марже. Будущие цены являются допущениями. Действие подготавливает команду целевой цены в терминале, но не отправляет брокерский ордер.",
+  "Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the target price (or current quote if no target is set). Fees include buy/sell commissions and accrued margin interest. No portfolio mutation or order placement occurs.": "Тот же график прогнозирования и те же столбцы, что в основной таблице, пересчитанные для гипотетической позиции после покупки по целевой цене (или по текущей котировке, если цель не задана). Расходы включают комиссии за покупку и продажу, а также начисленные проценты по марже. Портфель не изменяется, ордера не отправляются.",
+  "Estimate only · no portfolio changes.": "Только оценка · портфель не изменяется.",
+  "Today": "Сегодня",
+  "Tomorrow": "Завтра",
+  "NOW Net": "Чистый результат сейчас",
+  "AFTER Net": "Чистый результат после покупки",
+  "NOW F&C": "Комиссии и расходы сейчас",
+  "AFTER F&C": "Комиссии и расходы после покупки",
+  "NOW M Fee": "Маржинальные проценты сейчас",
+  "AFTER M Fee": "Маржинальные проценты после покупки",
+  "NOW Balance": "Баланс сейчас",
+  "AFTER Balance": "Баланс после покупки",
+  "Gross Proceeds": "Валовая выручка",
+  "Total Fee Friction": "Общие комиссии и расходы",
+  "Resulting Account Balance": "Итоговый баланс счёта",
+  "Cost Basis": "Себестоимость",
+  "Cash needed:": "Необходимая сумма:",
+  "Average entry:": "Средняя цена входа:",
+  "Net P&L at quote:": "Чистая прибыль/убыток по текущей котировке:",
+  "Net P&L at target:": "Чистая прибыль/убыток по целевой цене:",
+  "Net P&L at -10%:": "Чистая прибыль/убыток при снижении на 10%:",
+  "Final margin balance:": "Итоговый маржинальный баланс:",
+  "Extra margin cost:": "Дополнительные расходы по марже:",
+  "Trade-off:": "Компромисс:",
+  "Switch to 7d": "Переключить на 7 дней",
+  "Lock 14d Best": "Зафиксировать лучший вариант на 14 дней",
+  "Invert Comparison": "Обратить порядок сравнения",
+  "Stage target command": "Подготовить команду целевой цены",
+  "Execution failed": "Не удалось выполнить команду",
+  "[CLI]: Unrecognized command. Type \"help\" for local commands, or prefix with \"ask ...\" for AI advisor.": "[Команда]: Неизвестная команда. Введите \"help\" для локальных команд или добавьте префикс \"ask ...\" для обращения к ИИ-советнику.",
+  "Usage: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200": "Формат: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200",
+  "Select a ticker tab or specify a ticker (e.g., \"sell AAPL today for $180 vs sell 14 days later for $185\").": "Выберите вкладку тикера или укажите тикер (например, \"sell AAPL today for $180 vs sell 14 days later for $185\").",
+  "Usage: buy scenario <shares> <ticker> at <price>.": "Формат: buy scenario <shares> <ticker> at <price>.",
+  "• bought <shares> <ticker> for <price> (e.g. bought 10 AAPL for $185.50)": "• bought <shares> <ticker> for <price> (например, bought 10 AAPL for $185.50)",
+  "• sold <shares|all> <ticker> for <price> (e.g. sold all AAPL for $195)": "• sold <shares|all> <ticker> for <price> (например, sold all AAPL for $195)",
+  "• target <ticker> <price> (e.g. target AAPL 210)": "• target <ticker> <price> (например, target AAPL 210)",
+  "• quote <ticker> [manual_price] (e.g. quote AAPL or quote AAPL 190)": "• quote <ticker> [manual_price] (например, quote AAPL или quote AAPL 190)",
+  "• balance <amount> | debt <amount> (e.g. balance 5000 or debt 1200)": "• balance <amount> | debt <amount> (например, balance 5000 или debt 1200)",
+  "• cash add <shares> <ticker> [price] (e.g. cash add 5 MSFT 420)": "• cash add <shares> <ticker> [price] (например, cash add 5 MSFT 420)",
+  "• cash remove <ticker> (e.g. cash remove MSFT)": "• cash remove <ticker> (например, cash remove MSFT)",
+  "• sell today for <p1> vs sell <N> days later for <p2>": "• sell today for <p1> vs sell <N> days later for <p2> (сравнение цены продажи по датам)",
+  "• sim [ticker] <price> in <days> days (e.g. sim AAPL 205 in 14d)": "• sim [ticker] <price> in <days> days (например, sim AAPL 205 in 14d)",
+  "• compare exits [ticker] today at <p>, tomorrow at <p>, after 4 days at <p>, 1 week later at <p>": "• compare exits [ticker] today at <p>, tomorrow at <p>, after 4 days at <p>, 1 week later at <p> (сравнение сценариев выхода)",
+  "• buy scenario <shares> <ticker> at <price> (read-only add-on purchase simulation)": "• buy scenario <shares> <ticker> at <price> (моделирование дополнительной покупки без изменения портфеля)",
+  "• view <ticker|combined|cash> | refresh | clear": "• view <ticker|combined|cash> | refresh | clear (раздел, котировки, очистка терминала)",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -575,6 +673,190 @@ function russianPlural(value: number, one: string, few: string, many: string): s
 }
 
 function translateDynamicText(normalized: string): string | undefined {
+  const replaceCommandHelp = normalized.match(/^Please replace \[(.+)\] with a value before running this command\.$/i);
+  if (replaceCommandHelp) return 'Замените [' + replaceCommandHelp[1] + '] на значение перед выполнением команды.';
+
+  const switchedView = normalized.match(/^Switched view to (.+)\.$/i);
+  if (switchedView) {
+    const viewNames: Record<string, string> = {
+      COMBINED: 'Общий портфель',
+      CASH_CUSHION: 'Баланс',
+      BALANCE: 'Баланс',
+      SETTINGS: 'Настройки',
+      CLOSED_HISTORY: 'История закрытых сделок',
+      GUEST_HISTORY: 'Лоты'
+    };
+    return 'Выполнено переключение на раздел ' + (viewNames[switchedView[1]] || switchedView[1]) + '.';
+  }
+
+  const invalidCalendarDate = normalized.match(/^Invalid calendar date "(.+)"\. Use YYYY-MM-DD or "Mar 25"\.$/i);
+  if (invalidCalendarDate) return 'Некорректная календарная дата "' + invalidCalendarDate[1] + '". Используйте ГГГГ-ММ-ДД или "Mar 25".';
+  const invalidDate = normalized.match(/^Invalid date "(.+)"\. Use YYYY-MM-DD or "Mar 25"\.$/i);
+  if (invalidDate) return 'Некорректная дата "' + invalidDate[1] + '". Используйте ГГГГ-ММ-ДД или "Mar 25".';
+  const unrecognizedDate = normalized.match(/^Unrecognized date "(.+)"\. Try "on YYYY-MM-DD", "on Mar 25", "yesterday", or "3 days ago"\.$/i);
+  if (unrecognizedDate) return 'Не удалось распознать дату "' + unrecognizedDate[1] + '". Используйте "on YYYY-MM-DD", "on Mar 25", "yesterday" или "3 days ago".';
+  const unrecognizedExitDate = normalized.match(/^Unrecognized exit date:\s*(.+)$/i);
+  if (unrecognizedExitDate) return 'Не удалось распознать дату выхода: ' + unrecognizedExitDate[1];
+
+  const noOpenPosition = normalized.match(/^No open position found for (.+)\.$/i);
+  if (noOpenPosition) return 'Не найдена открытая позиция ' + noOpenPosition[1] + '.';
+  const noOpenScenarioPosition = normalized.match(/^No open position found for (.+)\. Buy scenarios require an existing position\.$/i);
+  if (noOpenScenarioPosition) return 'Не найдена открытая позиция ' + noOpenScenarioPosition[1] + '. Для сценария покупки нужна существующая позиция.';
+  const noOpenShares = normalized.match(/^No valid open shares found for (.+)\.$/i);
+  if (noOpenShares) return 'Не найдено допустимое количество открытых акций для ' + noOpenShares[1] + '.';
+
+  const sold = normalized.match(/^Sold ([\d,.]+) ([A-Z0-9.-]+) @ \$(\d+(?:\.\d{2})?)$/i);
+  if (sold) return 'Продано ' + sold[1] + ' акций ' + sold[2] + ' по цене $' + sold[3] + '.';
+
+  const settingsLoadError = normalized.match(/^\[Settings Error\]: Could not load saved broker assumptions \((.+)\)\. Using defaults\.$/i);
+  if (settingsLoadError) return '[Ошибка настроек]: Не удалось загрузить сохранённые параметры брокера (' + settingsLoadError[1] + '). Используются значения по умолчанию.';
+
+  const marketDataFailure = normalized.match(/^\[Market Data Error\]: Could not fetch (.+)\. (.+)\. Retained tracked price: (.+)\. Set manually via: price (.+) <number>\.$/i);
+  if (marketDataFailure) return '[Ошибка рыночных данных]: Не удалось получить котировку ' + marketDataFailure[1] +
+    '. ' + marketDataFailure[2] + '. Сохранена отслеживаемая цена: ' + marketDataFailure[3] +
+    '. Установить вручную: price ' + marketDataFailure[4] + ' <number>.';
+
+  const unsupportedAiAction = normalized.match(/^\[AI Action Error\]: Unsupported action "(.+)"\. No changes were made\.$/i);
+  if (unsupportedAiAction) return '[Ошибка действия ИИ]: Неподдерживаемое действие "' + unsupportedAiAction[1] + '". Изменения не внесены.';
+
+  const executedBuy = normalized.match(/^\[Executed Buy\]: Added (.+?) (.+?) @ (.+?)\. Outlay: (.+?) \(Comm: (.+?)\)\. Funded: (.+?) cash \| \+(.+?) margin debt\. Free Cash remaining: (.+?)\. Total Margin Debt: -(.+?) \(was -(.+?)\)\.$/i);
+  if (executedBuy) return '[Покупка выполнена]: Добавлено ' + executedBuy[1] + ' ' + executedBuy[2] +
+    ' @ ' + executedBuy[3] + '. Сумма: ' + executedBuy[4] + ' (комиссия: ' + executedBuy[5] +
+    '). Оплачено денежными средствами: ' + executedBuy[6] + ' | +маржинальный долг: ' + executedBuy[7] +
+    '. Остаток свободных средств: ' + executedBuy[8] + '. Общий маржинальный долг: -' + executedBuy[9] + ' (до операции: -' + executedBuy[10] + ').';
+
+  const cashClosed = normalized.match(/^\[Cash Holding Closed\]: Sold ([\d,.]+) ([A-Z0-9.-]+) @ (.+?)\. Net credited: \+(.+?) \(Debt paid: (.+?), Free Cash added: (.+?)\)\.$/i);
+  if (cashClosed) return '[Денежная позиция закрыта]: Продано ' + cashClosed[1] + ' акций ' + cashClosed[2] +
+    ' @ ' + cashClosed[3] + '. Зачислено чистыми: +' + cashClosed[4] +
+    ' (погашение долга: ' + cashClosed[5] + ', добавлено свободных средств: ' + cashClosed[6] + ').';
+
+  const cashPartial = normalized.match(/^\[Cash Holding Partial Sell\]: Sold ([\d,.]+) ([A-Z0-9.-]+) @ (.+?)\. Remaining: (.+?) shares\. Net credited: \+(.+?) \(Debt paid: (.+?), Free Cash added: (.+?)\)\.$/i);
+  if (cashPartial) return '[Частичная продажа денежной позиции]: Продано ' + cashPartial[1] + ' акций ' + cashPartial[2] +
+    ' @ ' + cashPartial[3] + '. Остаток: ' + cashPartial[4] + ' акций. Зачислено чистыми: +' + cashPartial[5] +
+    ' (погашение долга: ' + cashPartial[6] + ', добавлено свободных средств: ' + cashPartial[7] + ').';
+
+  const positionClosed = normalized.match(/^\[Position Closed\]: Sold ([\d,.]+) ([A-Z0-9.-]+) @ (.+?)\. Net credited: \+(.+?) \(Debt paid: (.+?), Free Cash added: (.+?)\)\. Remaining Debt: -(.+?)\. Free Cash: (.+?)\.$/i);
+  if (positionClosed) return '[Позиция закрыта]: Продано ' + positionClosed[1] + ' акций ' + positionClosed[2] +
+    ' @ ' + positionClosed[3] + '. Зачислено чистыми: +' + positionClosed[4] +
+    ' (погашение долга: ' + positionClosed[5] + ', добавлено свободных средств: ' + positionClosed[6] +
+    '). Остаток долга: -' + positionClosed[7] + '. Свободные средства: ' + positionClosed[8] + '.';
+
+  const partialSell = normalized.match(/^\[Partial Sell\]: Sold ([\d,.]+) ([A-Z0-9.-]+) @ (.+?)\. Net credited: \+(.+?) \(Debt paid: (.+?), Free Cash added: (.+?)\)\. Remaining: (.+?) shares\.$/i);
+  if (partialSell) return '[Частичная продажа]: Продано ' + partialSell[1] + ' акций ' + partialSell[2] +
+    ' @ ' + partialSell[3] + '. Зачислено чистыми: +' + partialSell[4] +
+    ' (погашение долга: ' + partialSell[5] + ', добавлено свободных средств: ' + partialSell[6] +
+    '). Остаток: ' + partialSell[7] + ' акций.';
+
+  const targetUpdate = normalized.match(/^\[Target Updated\]: (.+) PT updated to (.+)\.$/i);
+  if (targetUpdate) return '[Целевая цена обновлена]: Целевая цена ' + targetUpdate[1] + ' установлена на ' + targetUpdate[2] + '.';
+  const priceUnchanged = normalized.match(/^\[Price Unchanged\]: No valid price amount supplied\. Enter: price (.+) <number>\.$/i);
+  if (priceUnchanged) return '[Цена не изменена]: Не указана корректная цена. Введите: price ' + priceUnchanged[1] + ' <number>.';
+  const priceUpdated = normalized.match(/^\[Price Updated\]: (.+) market price set to (.+)\.$/i);
+  if (priceUpdated) return '[Цена обновлена]: Рыночная цена ' + priceUpdated[1] + ' установлена на ' + priceUpdated[2] + '.';
+  const marginSynced = normalized.match(/^\[Margin Synced\]: Total margin balance explicitly set to -(.+)\.$/i);
+  if (marginSynced) return '[Маржинальный баланс синхронизирован]: Общий маржинальный баланс установлен на -' + marginSynced[1] + '.';
+
+  const cashAdded = normalized.match(/^Added ([\d,.]+) ([A-Z0-9.-]+) to cash holdings(?: @ \$(.+))?\.$/i);
+  if (cashAdded) return 'В денежные активы добавлено ' + cashAdded[1] + ' акций ' + cashAdded[2] +
+    (cashAdded[3] ? ' по цене $' + cashAdded[3] : '') + '.';
+  const cashRemoved = normalized.match(/^Removed ([A-Z0-9.-]+) from cash holdings\.$/i);
+  if (cashRemoved) return 'Акции ' + cashRemoved[1] + ' удалены из денежных активов.';
+
+  const balanceUpdated = normalized.match(/^\[Balance\]: Current balance\/debt updated\. Balance: (.+) \| Margin debt: -(.+)\.$/i);
+  if (balanceUpdated) return '[Баланс]: Баланс и долг обновлены. Баланс: ' + balanceUpdated[1] + ' | Маржинальный долг: -' + balanceUpdated[2] + '.';
+  const balanceAdded = normalized.match(/^\[Balance\]: Added (.+) (.+) to balance holdings\. Syncing online quote\.\.\.$/i);
+  if (balanceAdded) return '[Баланс]: В активы баланса добавлено ' + balanceAdded[1] + ' ' + balanceAdded[2] + '. Синхронизация онлайн-котировки…';
+  const balanceRemoved = normalized.match(/^\[Balance\]: Removed (.+) from balance holdings\.$/i);
+  if (balanceRemoved) return '[Баланс]: ' + balanceRemoved[1] + ' удалён из активов баланса.';
+
+  const hypotheticalSubtitle = normalized.match(/^Hypothetical projection after buying \+(.+) shares at (.+) · no order placed$/i);
+  if (hypotheticalSubtitle) return 'Гипотетический прогноз после покупки +' + hypotheticalSubtitle[1] + ' акций по цене ' + hypotheticalSubtitle[2] + ' · ордер не отправляется.';
+
+  const exitPreset = normalized.match(/^(.+) vs (.+)$/i);
+  if (exitPreset && (/^today$/i.test(exitPreset[1]) || /\d+\s+days?/i.test(exitPreset[1]))) {
+    const day = (value: string) => /^today$/i.test(value) ? 'сегодня' : translateText(value, 'ru');
+    return day(exitPreset[1]) + ' и ' + day(exitPreset[2]);
+  }
+
+  const exitReportHeader = normalized.match(/^\[(EXIT COMPARISON|MULTI-DATE EXIT COMPARISON|STAGED EXIT):\s*(.+)\]$/i);
+  if (exitReportHeader) {
+    const labels: Record<string, string> = {
+      'EXIT COMPARISON': 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА',
+      'MULTI-DATE EXIT COMPARISON': 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ',
+      'STAGED EXIT': 'ПОЭТАПНЫЙ ВЫХОД'
+    };
+    return '[' + labels[exitReportHeader[1].toUpperCase()] + ': ' + exitReportHeader[2] + ']';
+  }
+  const buyReportHeader = normalized.match(/^\[BUY MORE:\s*(.+)\]$/i);
+  if (buyReportHeader) return '[ДОПОЛНИТЕЛЬНАЯ ПОКУПКА: ' + buyReportHeader[1] + ']';
+
+  const exitResultLine = normalized.match(/^(.+?) · (\$[\d,.]+) → ([+-]?\$[\d,.]+) net P&L( · BEST)?$/i);
+  if (exitResultLine) {
+    const day = /^today$/i.test(exitResultLine[1]) ? 'Сегодня' : translateText(exitResultLine[1], 'ru');
+    return day + ' · ' + exitResultLine[2] + ' → ' + exitResultLine[3] + ' чистая прибыль/убыток' +
+      (exitResultLine[4] ? ' · ЛУЧШИЙ' : '');
+  }
+  const bestExit = normalized.match(/^BEST: (.+) at (\$[\d,.]+) · ([+-]?\$[\d,.]+) net$/i);
+  if (bestExit) return 'ЛУЧШИЙ: ' + (/^today$/i.test(bestExit[1]) ? 'сегодня' : translateText(bestExit[1], 'ru')) + ' по цене ' + bestExit[2] + ' · ' + bestExit[3] + ' чистыми';
+  const feeNote = normalized.match(/^Fees included: (.+)\.$/i);
+  if (feeNote) return 'Учтённые расходы: ' + feeNote[1]
+    .replace(/buy commission/gi, 'комиссия за покупку')
+    .replace(/sell commission/gi, 'комиссия за продажу')
+    .replace(/estimated margin interest/gi, 'расчётные проценты по марже') + '.';
+
+  const buyScenarioLine = normalized.match(/^Cash needed: (.+) incl\. fee$/i);
+  if (buyScenarioLine) return 'Необходимая сумма: ' + buyScenarioLine[1] + ' включая комиссию';
+  const averageEntry = normalized.match(/^Average entry: (.+) → (.+)$/i);
+  if (averageEntry) return 'Средняя цена входа: ' + averageEntry[1] + ' → ' + averageEntry[2];
+  const netPnlAt = normalized.match(/^Net P&L at (quote|target|-10%): (.+) → (.+)$/i);
+  if (netPnlAt) {
+    const label = netPnlAt[1].toLowerCase() === 'quote' ? 'текущей котировке' :
+      netPnlAt[1].toLowerCase() === 'target' ? 'целевой цене' : 'снижении на 10%';
+    return 'Чистая прибыль/убыток при ' + label + ': ' + netPnlAt[2] + ' → ' + netPnlAt[3];
+  }
+  const finalMarginBalance = normalized.match(/^Final margin balance: (.+) → (.+)$/i);
+  if (finalMarginBalance) return 'Итоговый маржинальный баланс: ' + finalMarginBalance[1] + ' → ' + finalMarginBalance[2];
+  const extraMarginCost = normalized.match(/^Extra margin cost: (.+)\/day$/i);
+  if (extraMarginCost) return 'Дополнительные расходы по марже: ' + extraMarginCost[1] + '/день';
+  const tradeoff = normalized.match(/^Trade-off: quote P&L changes by (.+); downside P&L changes by (.+)\.$/i);
+  if (tradeoff) return 'Компромисс: прибыль/убыток по текущей котировке меняется на ' + tradeoff[1] +
+    '; прибыль/убыток при снижении цены меняется на ' + tradeoff[2] + '.';
+
+
+  const liveQuotesRefreshed = normalized.match(/^\[System\]: Live market quotes refreshed for (\d+) assets\.$/i);
+  if (liveQuotesRefreshed) return '[Система]: Обновлены актуальные рыночные котировки для ' + liveQuotesRefreshed[1] + ' активов.';
+
+  const adminAction = normalized.match(/^Only administrators can (.+)\.$/i);
+  if (adminAction) {
+    const actions: Record<string, string> = {
+      'reset the portfolio': 'сбрасывать портфель',
+      'reset broker rules': 'сбрасывать правила брокера',
+      'save broker rules': 'сохранять правила брокера',
+      'manage guest assignments': 'управлять назначениями гостям',
+      'change guest assignments': 'изменять назначения гостям'
+    };
+    return 'Только администраторы могут ' + (actions[adminAction[1].toLowerCase()] || adminAction[1]) + '.';
+  }
+
+  const backupExport = normalized.match(/^\[Backup\]: Exported state to (.+)\.$/i);
+  if (backupExport) return '[Резервная копия]: Состояние экспортировано в файл ' + backupExport[1] + '.';
+
+  const backupImport = normalized.match(/^\[Backup Import\]: Imported (.+) into this browser\. Check KV cloud status for sync results\.$/i);
+  if (backupImport) return '[Импорт резервной копии]: Файл ' + backupImport[1] +
+    ' импортирован в этот браузер. Проверьте состояние синхронизации с облаком KV.';
+
+  const backupError = normalized.match(/^\[Backup Error\]: Could not import backup \((.+)\)\.$/i);
+  if (backupError) return '[Ошибка импорта резервной копии]: Не удалось импортировать резервную копию (' + backupError[1] + ').';
+  const backupToast = normalized.match(/^Backup import failed: (.+)$/i);
+  if (backupToast) return 'Не удалось импортировать резервную копию: ' + backupToast[1];
+
+  const simulationResult = normalized.match(/^\[Sim (.+) @ \$(.+) in (\d+)d\]: Gross \$(.+) \| Comms -\$(.+) \| Margin -\$(.+) → Net P&L: ([+-])\$(.+)$/i);
+  if (simulationResult) {
+    return '[Симуляция ' + simulationResult[1] + ' @ $' + simulationResult[2] + ' через ' + simulationResult[3] +
+      ' дн.]: Валовая прибыль: $' + simulationResult[4] + ' | Комиссии: -$' + simulationResult[5] +
+      ' | Маржинальные проценты: -$' + simulationResult[6] + ' → Чистая прибыль/убыток: ' + simulationResult[7] + '$' + simulationResult[8];
+  }
+
   const prefixes: Array<[string, string, string]> = [
     ['Name for ', 'Name for ', ''],
     ['Role for ', 'Role for ', ''],
@@ -607,6 +889,18 @@ function translateDynamicText(normalized: string): string | undefined {
     ['TradeNet live-data session initialization failed: ', 'TradeNet live-data session initialization failed', ': '],
     ['Unable to load TradeNet executed trades: ', 'Unable to load TradeNet executed trades', ': '],
     ['Unable to load active TradeNet orders: ', 'Unable to load active TradeNet orders', ': '],
+    ['[Guest Portfolio Sync Error]: ', '[Guest Portfolio Sync Error]', ': '],
+    ['[KV Cloud Sync Error]: ', '[KV Cloud Sync Error]', ': '],
+    ['[Settings Error]: ', '[Settings Error]', ': '],
+    ['[Warning]: ', '[Warning]', ': '],
+    ['[Error]: ', '[Error]', ': '],
+    ['[Backup]: ', '[Backup]', ': '],
+    ['[Backup Import]: ', '[Backup Import]', ': '],
+    ['[Backup Error]: ', '[Backup Error]', ': '],
+    ['[CLI Error]: ', '[CLI Error]', ': '],
+    ['[CLI]: ', '[CLI]', ': '],
+    ['[AI Advisor]: ', '[AI Advisor]', ': '],
+    ['[System]: ', '[System]', ': '],
   ];
   for (const [prefix, dictionaryKey, separator] of prefixes) {
     if (normalized.startsWith(prefix)) {
@@ -709,8 +1003,9 @@ function translateDynamicText(normalized: string): string | undefined {
   const riskPrefix = riskPrefixes.find((prefix) => normalized === prefix || normalized.startsWith(prefix + ' ·'));
   if (riskPrefix) {
     return (RU[riskPrefix] || riskPrefix) + normalized.slice(riskPrefix.length)
+      .replace(/\bnegative equity\b/g, RU['negative equity'])
       .replace(/\bequity\b/g, 'собственного капитала')
-      .replace(/\bmaintenance\b/g, 'поддерживающая маржа');
+      .replace(/\bmaintenance\b/g, 'по нормативу поддерживающей маржи');
   }
 
   if (normalized.startsWith('e.g. quote ')) {
@@ -721,6 +1016,7 @@ function translateDynamicText(normalized: string): string | undefined {
 
 export function translateText(value: string, language: AppLanguage = currentLanguage): string {
   if (language === 'en') return value;
+  if (value.includes('\n')) return value.split('\n').map((line) => translateText(line, language)).join('\n');
   const trimmed = value.trim();
   const normalized = trimmed.replace(/\s+/g, ' ');
   if (!normalized) return value;

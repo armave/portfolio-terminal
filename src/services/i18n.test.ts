@@ -156,6 +156,102 @@ describe('app localization', () => {
       .toBe('AAPL: 10 акц. @ ЦУ $200 | MSFT: 5 акц. @ ЦУ $450');
   });
 
+  it('localizes remaining market-data hints and computed margin-risk summaries', () => {
+    expect(translateText('Check that FREEDOM_PUBLIC_KEY and FREEDOM_PRIVATE_KEY are configured as Cloudflare Worker secrets. Never expose the private key in browser code.', 'ru'))
+      .toBe('Проверьте, что FREEDOM_PUBLIC_KEY и FREEDOM_PRIVATE_KEY заданы как секреты Cloudflare Worker. Никогда не раскрывайте закрытый ключ в клиентском коде.');
+    expect(translateText('TBD', 'ru')).toBe('Пока неизвестно');
+    expect(translateText('No margin debt', 'ru')).toBe('Нет маржинального долга');
+    expect(translateText('negative equity', 'ru')).toBe('отрицательный собственный капитал');
+    expect(translateText('Healthy · 75.0% equity (25.0% maintenance)', 'ru'))
+      .toBe('Норма · 75.0% собственного капитала (25.0% по нормативу поддерживающей маржи)');
+    expect(translateText('Elevated · 32.0% equity (25.0% maintenance)', 'ru'))
+      .toBe('Повышенный риск · 32.0% собственного капитала (25.0% по нормативу поддерживающей маржи)');
+  });
+
+  it('localizes terminal and CLI feedback while preserving command values', () => {
+    expect(translateText('Please replace [shares] with a value before running this command.', 'ru'))
+      .toBe('Замените [shares] на значение перед выполнением команды.');
+    expect(translateText('Switched view to CASH_CUSHION.', 'ru'))
+      .toBe('Выполнено переключение на раздел Баланс.');
+    expect(translateText('Sold 2 AAPL @ $190.00', 'ru'))
+      .toBe('Продано 2 акций AAPL по цене $190.00.');
+    expect(translateText('Added 5 MSFT to cash holdings @ $420.00.', 'ru'))
+      .toBe('В денежные активы добавлено 5 акций MSFT по цене $420.00.');
+    expect(translateText('Only administrators can reset the portfolio.', 'ru'))
+      .toBe('Только администраторы могут сбрасывать портфель.');
+    expect(translateText('[System]: Live market quotes refreshed for 4 assets.', 'ru'))
+      .toBe('[Система]: Обновлены актуальные рыночные котировки для 4 активов.');
+    expect(translateText('[Backup]: Exported state to portfolio.json.', 'ru'))
+      .toBe('[Резервная копия]: Состояние экспортировано в файл portfolio.json.');
+    expect(translateText('[Backup Import]: Imported backup.json into this browser. Check KV cloud status for sync results.', 'ru'))
+      .toBe('[Импорт резервной копии]: Файл backup.json импортирован в этот браузер. Проверьте состояние синхронизации с облаком KV.');
+    expect(translateText('[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.', 'ru'))
+      .toBe('Ошибка синхронизации гостевого портфеля: Не удалось обновить назначенные активы и историю.');
+  });
+
+  it('localizes multiline terminal outputs line by line', () => {
+    expect(translateText('Terminal cleared.\nRefreshing all live quotes...', 'ru'))
+      .toBe('Терминал очищен.\nОбновление всех актуальных котировок…');
+  });
+
+  it('localizes detailed portfolio execution and synchronization logs', () => {
+    expect(translateText('[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.', 'ru'))
+      .toBe('Ошибка синхронизации гостевого портфеля: Не удалось обновить назначенные активы и историю.');
+    expect(translateText('[Warning]: No quotes updated during batch fetch.', 'ru'))
+      .toBe('[Предупреждение]: Не удалось обновить ни одной котировки в пакетном запросе.');
+    expect(translateText('[Settings Error]: Could not load saved broker assumptions (network). Using defaults.', 'ru'))
+      .toBe('[Ошибка настроек]: Не удалось загрузить сохранённые параметры брокера (network). Используются значения по умолчанию.');
+    expect(translateText('[Executed Buy]: Added 10 AAPL @ $180.00. Outlay: $1,802.00 (Comm: $2.00). Funded: $1,000.00 cash | +$802.00 margin debt. Free Cash remaining: $0.00. Total Margin Debt: -$1,000.00 (was -$198.00).', 'ru'))
+      .toBe('[Покупка выполнена]: Добавлено 10 AAPL @ $180.00. Сумма: $1,802.00 (комиссия: $2.00). Оплачено денежными средствами: $1,000.00 | +маржинальный долг: $802.00. Остаток свободных средств: $0.00. Общий маржинальный долг: -$1,000.00 (до операции: -$198.00).');
+    expect(translateText('[Cash Holding Closed]: Sold 5 MSFT @ $420.00. Net credited: +$2,098.00 (Debt paid: $1,000.00, Free Cash added: $1,098.00).', 'ru'))
+      .toBe('[Денежная позиция закрыта]: Продано 5 акций MSFT @ $420.00. Зачислено чистыми: +$2,098.00 (погашение долга: $1,000.00, добавлено свободных средств: $1,098.00).');
+    expect(translateText('[Balance]: Removed AAPL from balance holdings.', 'ru'))
+      .toBe('[Баланс]: AAPL удалён из активов баланса.');
+  });
+
+  it('localizes broker errors and scenario-independent price updates', () => {
+    expect(translateText('[Market Data Error]: Could not fetch AAPL. Timeout. Retained tracked price: $180.00. Set manually via: price AAPL <number>.', 'ru'))
+      .toBe('[Ошибка рыночных данных]: Не удалось получить котировку AAPL. Timeout. Сохранена отслеживаемая цена: $180.00. Установить вручную: price AAPL <number>.');
+    expect(translateText('[Target Updated]: AAPL PT updated to $210.00.', 'ru'))
+      .toBe('[Целевая цена обновлена]: Целевая цена AAPL установлена на $210.00.');
+    expect(translateText('[Price Updated]: MSFT market price set to $420.00.', 'ru'))
+      .toBe('[Цена обновлена]: Рыночная цена MSFT установлена на $420.00.');
+    expect(translateText('[Margin Synced]: Total margin balance explicitly set to -$1,500.00.', 'ru'))
+      .toBe('[Маржинальный баланс синхронизирован]: Общий маржинальный баланс установлен на -$1,500.00.');
+    expect(translateText('[CLI]: Unrecognized command. Type "help" for local commands, or prefix with "ask ..." for AI advisor.', 'ru'))
+      .toBe('[Команда]: Неизвестная команда. Введите "help" для локальных команд или добавьте префикс "ask ..." для обращения к ИИ-советнику.');
+  });
+
+  it('localizes multiline scenario reports and their dynamic labels', () => {
+    expect(translateText('[EXIT COMPARISON: AAPL]', 'ru'))
+      .toBe('[СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА: AAPL]');
+    expect(translateText('[BUY MORE: MSFT]', 'ru')).toBe('[ДОПОЛНИТЕЛЬНАЯ ПОКУПКА: MSFT]');
+    expect(translateText('Today · $190.00 → +$100.00 net P&L · BEST', 'ru'))
+      .toBe('Сегодня · $190.00 → +$100.00 чистая прибыль/убыток · ЛУЧШИЙ');
+    expect(translateText('BEST: today at $190.00 · +$100.00 net', 'ru'))
+      .toBe('ЛУЧШИЙ: сегодня по цене $190.00 · +$100.00 чистыми');
+    expect(translateText('Fees included: buy commission, sell commission, estimated margin interest.', 'ru'))
+      .toBe('Учтённые расходы: комиссия за покупку, комиссия за продажу, расчётные проценты по марже.');
+    expect(translateText('Today vs 14 Days', 'ru')).toBe('сегодня и 14 дн.');
+    expect(translateText('Hypothetical projection after buying +5 shares at $180.00 · no order placed', 'ru'))
+      .toBe('Гипотетический прогноз после покупки +5 акций по цене $180.00 · ордер не отправляется.');
+    expect(translateText('NOW Net', 'ru')).toBe('Чистый результат сейчас');
+    expect(translateText('Total Fee Friction', 'ru')).toBe('Общие комиссии и расходы');
+    expect(translateText('Estimate only · no portfolio changes.', 'ru'))
+      .toBe('Только оценка · портфель не изменяется.');
+  });
+
+  it('localizes command help examples and simulation output', () => {
+    expect(translateText('Usage: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200', 'ru'))
+      .toBe('Формат: compare exits [TICKER] today at 190, tomorrow at 191, after 4 days at 193, in 2 weeks at 195, 1 month later at 200');
+    expect(translateText('Select a ticker tab or specify a ticker (e.g., "sell AAPL today for $180 vs sell 14 days later for $185").', 'ru'))
+      .toBe('Выберите вкладку тикера или укажите тикер (например, "sell AAPL today for $180 vs sell 14 days later for $185").');
+    expect(translateText('• bought <shares> <ticker> for <price> (e.g. bought 10 AAPL for $185.50)', 'ru'))
+      .toBe('• bought <shares> <ticker> for <price> (например, bought 10 AAPL for $185.50)');
+    expect(translateText('[Sim AAPL @ $205.00 in 14d]: Gross $200.00 | Comms -$4.00 | Margin -$3.00 → Net P&L: +$193.00', 'ru'))
+      .toBe('[Симуляция AAPL @ $205.00 через 14 дн.]: Валовая прибыль: $200.00 | Комиссии: -$4.00 | Маржинальные проценты: -$3.00 → Чистая прибыль/убыток: +$193.00');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
