@@ -390,6 +390,7 @@ export function ClosedHistoryDesk() {
   const totalFees = trades.reduce((total, row) => total + (Number.isFinite(row.feesTotal) ? row.feesTotal : ((row.fees || 0) + (row.commissions || 0))), 0);
   const hasIncompleteCommissions = trades.some((row: any) => row.commissionsComplete === false);
   const profitKnownTrades = trades.filter((row) => row.profit !== null);
+  const hasUnknownProfit = profitKnownTrades.length < trades.length;
   const winningTrades = profitKnownTrades.filter((row) => (row.profit ?? 0) > 0).length;
   const knownDurations = trades.map((row) => Number((row.trade as any).holdingDays ?? (row.trade as any).daysHeld)).filter((days) => Number.isFinite(days) && days >= 0);
   const averageHoldingDays = knownDurations.length ? knownDurations.reduce((total, days) => total + days, 0) / knownDurations.length : null;
@@ -424,7 +425,7 @@ export function ClosedHistoryDesk() {
       {cashflowSyncMessage && <p role="alert" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-200 transition-all">{cashflowSyncMessage}</p>}
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Realized net P&amp;L</div>
+          <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{hasUnknownProfit ? 'Known net P&amp;L' : 'Realized net P&amp;L'}</div>
           <div class={`mt-1 font-mono text-sm font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
             {realizedNet >= 0 ? '+' : '−'}${formatUSD(Math.abs(realizedNet))}
           </div>

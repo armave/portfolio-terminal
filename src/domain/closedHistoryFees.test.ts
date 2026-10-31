@@ -248,3 +248,22 @@ describe('closed-trade net profit resolution', () => {
     )).toBeNull();
   });
 });
+
+
+it('treats legacy totalCommissions as commission-only when no aggregate fee field exists', () => {
+  const trade = {
+    totalCommissions: 4,
+    marginInterest: 2,
+    marginFee: 2,
+    netProfit: 94,
+    netRealizedGain: 94
+  };
+  const result = applyCashflowAllocationsToClosedTrades([trade], new Map([[0, 3]]))[0];
+  expect(result).toMatchObject({
+    feesAndCommissions: 7,
+    totalCommissions: 7,
+    marginInterest: 3,
+    marginFee: 3,
+    netProfit: 93
+  });
+});

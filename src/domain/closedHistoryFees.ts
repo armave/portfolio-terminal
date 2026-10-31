@@ -84,11 +84,16 @@ export function applyCashflowAllocationsToClosedTrades(
     if (addedFee <= 0 && previousMargin <= 0) return trade;
 
     // Undo the previous cashflow allocation before applying the current one.
-    const previousFees = Number(trade.feesAndCommissions ?? trade.totalCommissions ?? trade.commissions ?? 0) || 0;
+    // feesAndCommissions is the aggregate field written by this allocator;
+    // legacy totalCommissions/commissions fields without that aggregate remain commission-only.
+    const aggregateFees = trade.feesAndCommissions;
+    const previousCommissionBase = aggregateFees !== null && aggregateFees !== undefined
+      ? Math.max(0, (Number(aggregateFees) || 0) - previousMargin)
+      : Number(trade.totalCommissions ?? trade.commissions ?? trade.commission ?? 0) || 0;
     const netValue = trade.netProfit ?? trade.netRealizedGain;
     const hasKnownNet = netValue !== null && netValue !== undefined && Number.isFinite(Number(netValue));
     const net = hasKnownNet ? Number(netValue) : null;
-    const fees = Number((Math.max(0, previousFees - previousMargin) + addedFee).toFixed(2));
+    const fees = Number((previousCommissionBase + addedFee).toFixed(2));
     const netAfterFee = hasKnownNet ? Number((net! + previousMargin - addedFee).toFixed(2)) : null;
 
     if (
