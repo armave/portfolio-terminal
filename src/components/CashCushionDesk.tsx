@@ -313,7 +313,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             })}
           </div>
         ) : (
-          <TableScrollRegion label="Cash-funded stock holdings">
+          <TableScrollRegion label="Cash-funded stock holdings" className="table-scroll-wrapper">
             <table class="cash-holdings-table w-full min-w-[960px] table-fixed text-left text-xs border-collapse">
               <caption class="sr-only">Cash-funded stock holdings</caption>
               <thead>
@@ -481,7 +481,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             aria-hidden={!activeTranchesExpanded}
           >
             <div class="expandable-motion__inner">
-              <TableScrollRegion label="Active tranches and guest assignments">
+              <TableScrollRegion label="Active tranches and guest assignments" className="table-scroll-wrapper">
                 <table id="activeTranchesTable" class="active-tranches-table w-full min-w-[900px] text-left text-xs border-collapse">
                   <caption class="sr-only">Active tranches and guest assignments</caption>
                   <thead class="active-tranches-head">
