@@ -28,11 +28,12 @@ export function TickerTabs({
     } catch {
       // Continue navigation when storage is unavailable.
     }
-    emitUiEvent('portfolio:set-active-view', { view });
     // Refresh the portfolio once when returning to the Margin desk. Switching
     // between its ticker tabs does not require another all-symbol quote batch.
-    if (shouldRefreshQuotesOnNavigation(state.activeView, view, isAdmin)) {
-      onDeskLoadingChange?.(view, true);
+    const refreshQuotes = shouldRefreshQuotesOnNavigation(state.activeView, view, isAdmin);
+    if (refreshQuotes) onDeskLoadingChange?.(view, true);
+    emitUiEvent('portfolio:set-active-view', { view });
+    if (refreshQuotes) {
       void handleRefreshQuotes().finally(() => onDeskLoadingChange?.(view, false));
     }
   };
