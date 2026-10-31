@@ -1414,6 +1414,7 @@ describe('Freedom market-depth proxy', () => {
       }])
     });
     socket.emit('message', { data: JSON.stringify(['markets', { m: [] }]) });
+    socket.emit('message', { data: JSON.stringify(['q', { c: 'GOOGL', l: 100 }]) });
     socket.emit('message', { data: JSON.stringify(['b', { i: 'GOOGL.US', n: 1, cnt: 0, ins: [] }]) });
     socket.emit('message', { data: 'not-json' });
 
@@ -1428,10 +1429,13 @@ describe('Freedom market-depth proxy', () => {
         userDataReceived: true,
         isDemo: false,
         sessionMode: 'prod',
-        messageCount: 4,
+        messageCount: 5,
         parseErrorCount: 1,
-        eventsReceived: ['userData', 'markets', 'b'],
-        eventCounts: { userData: 1, markets: 1, b: 1 },
+        eventsReceived: ['userData', 'markets', 'q', 'b'],
+        eventCounts: { userData: 1, markets: 1, q: 1, b: 1 },
+        quoteSubscriptionSent: true,
+        quoteEventsReceived: 1,
+        quoteSymbolsReceived: ['GOOGL'],
         orderBookEventsReceived: 1,
         orderBookSymbolsReceived: ['GOOGL.US'],
         unmatchedOrderBooks: 1
