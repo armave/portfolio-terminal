@@ -182,6 +182,14 @@ export interface ActiveTrancheMix {
   margin: number;
 }
 
+/** Persisted administrator-editable funding and guest metadata for a closed-history row. */
+export interface ClosedTradeAllocation {
+  fundingType: ActiveTrancheType;
+  cashQuantity: number;
+  marginQuantity: number;
+  guestId?: string;
+}
+
 export interface ActiveBrokerTranche {
   /** Stable identity for the open purchase operation or a 5-minute grouped batch. */
   id: string;
@@ -237,6 +245,8 @@ export interface PortfolioState {
   activeTrancheGuestAssignments?: Record<string, string>;
   /** Stable per-assignment lifecycle metadata used to reconcile persistent guest history. */
   activeTrancheGuestAssignmentDetails?: Record<string, ActiveTrancheGuestAssignmentDetail>;
+  /** Manual funding / guest overrides keyed by a stable closed-history row identity. */
+  closedTradeAllocations?: Record<string, ClosedTradeAllocation>;
   /** Server-filtered tranche projection returned only to the signed-in guest. */
   guestPortfolioSnapshot?: { updatedAt: number; tranches: ActiveBrokerTranche[] };
   /** Server-filtered assignment history returned only to the signed-in guest. */

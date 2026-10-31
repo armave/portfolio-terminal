@@ -300,6 +300,54 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
   renderBoard();
 });
 
+addBrokerEventListener('broker:set-closed-trade-allocation', async (detail) => {
+  if (!(await requireAdmin('edit closed-trade classifications'))) return;
+  const rowId = String(detail?.rowId || '').trim();
+  const requested = detail?.allocation;
+  const fundingType = requested?.fundingType;
+  if (!rowId || rowId.length > 600 ||
+      (fundingType !== 'cash' && fundingType !== 'margin' && fundingType !== 'mix')) return;
+
+  const cashInput = Number(requested?.cashQuantity);
+  const marginInput = Number(requested?.marginQuantity);
+  if (!Number.isFinite(cashInput) || !Number.isFinite(marginInput) || cashInput < 0 || marginInput < 0) {
+    showToast('Enter valid cash and margin share quantities.', 'error');
+    return;
+  }
+  const cashQuantity = fundingType === 'cash' ? cashInput
+    : fundingType === 'margin' ? 0 : cashInput;
+  const marginQuantity = fundingType === 'cash' ? 0 : marginInput;
+  const guestId = cashQuantity > 0 ? String(requested?.guestId || '').trim() : '';
+
+  if (guestId) {
+    let users;
+    try {
+      users = await listUsers();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not verify guest account.', 'error');
+      return;
+    }
+    if (!users.some((user) => user.id === guestId && user.role === 'guest')) {
+      showToast('Select an existing guest account.', 'error');
+      return;
+    }
+  }
+
+  const current = portfolioStore.getState();
+  const closedTradeAllocations = { ...(current.closedTradeAllocations || {}) };
+  closedTradeAllocations[rowId] = {
+    fundingType,
+    cashQuantity,
+    marginQuantity,
+    ...(guestId ? { guestId } : {})
+  };
+  portfolioStore.setState({ closedTradeAllocations });
+  state = portfolioStore.getState();
+  saveState(state);
+  pushStateToGist();
+  renderBoard();
+});
+
 addBrokerEventListener('broker:assign-active-tranche-guest', async (detail) => {
   if (!(await requireAdmin('assign cash tranches to guests'))) return;
   const trancheId = String(detail?.trancheId || '').trim();

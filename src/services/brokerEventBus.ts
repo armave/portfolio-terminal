@@ -15,6 +15,16 @@ interface ActiveTrancheGuestAssignmentRequest {
   guestId?: string;
 }
 
+interface ClosedTradeAllocationRequest {
+  rowId?: string;
+  allocation?: {
+    fundingType?: 'cash' | 'margin' | 'mix';
+    cashQuantity?: number;
+    marginQuantity?: number;
+    guestId?: string;
+  };
+}
+
 export interface BrokerEventPayloads {
   'broker:account-info': FreedomPortfolioSnapshot;
   'broker:account-info-error': undefined;
@@ -28,6 +38,7 @@ export interface BrokerEventPayloads {
   'broker:request-active-orders': undefined;
   'broker:set-active-tranche-type': ActiveTrancheTypeRequest;
   'broker:assign-active-tranche-guest': ActiveTrancheGuestAssignmentRequest;
+  'broker:set-closed-trade-allocation': ClosedTradeAllocationRequest;
 }
 
 export type BrokerEventName = keyof BrokerEventPayloads;

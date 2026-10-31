@@ -8,6 +8,7 @@ import { loadSavedHistory, saveSavedHistory } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
+import { resolveClosedTradeAllocation } from '../domain/closedTradeAllocation';
 import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFees';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from '../domain/brokerExecutionMetrics';
 import { DeskLoading } from './DeskLoading';
@@ -334,6 +335,7 @@ export function ClosedHistoryDesk() {
     const profit = resolveClosedTradeNetProfit(trade as any, feeBreakdown);
     return {
       trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const,
+      allocationKey: 'app:' + String((trade as any).id || `${String((trade as any).ticker || 'trade')}:${String((trade as any).closedAt ?? (trade as any).exitDate ?? (trade as any).date ?? index)}`),
       profit,
       commissionsComplete: feeBreakdown.commissionsKnown,
       allocationType: 'unclassified' as const,
@@ -378,6 +380,7 @@ export function ClosedHistoryDesk() {
       trade: { id: broker.id ?? ('tradenet-' + index), ticker, shares: broker.quantity, exitDate: broker.executedAt, sellDate: broker.executedAt, holdingDays: metrics?.holdingDays ?? null, feesAndCommissions: totalFees, netProfit: profit, side: broker.side, price: broker.price, source: 'tradenet' as const },
       index: -1,
       source: 'tradenet' as const,
+      allocationKey: 'broker:' + String(broker.id ?? ('tradenet-' + index)),
       profit,
       fees,
       commissions,
@@ -385,6 +388,8 @@ export function ClosedHistoryDesk() {
       feesTotal: totalFees,
       allocationType,
       allocationTypes: [allocationType],
+      cashQuantity: attribution?.cashQuantity || 0,
+      marginQuantity: attribution?.marginQuantity || 0,
       guestAllocations: attribution?.guestAllocations || [],
       unmatchedQuantity: attribution?.unmatchedQuantity || 0
     };
@@ -418,6 +423,8 @@ export function ClosedHistoryDesk() {
         previous.commissions = (previous.commissions || 0) + (row.commissions || 0);
         previous.commissionsComplete = previous.commissionsComplete && row.commissionsComplete;
         previous.feesTotal = (previous.feesTotal || 0) + (row.feesTotal || 0);
+        previous.cashQuantity = (previous.cashQuantity || 0) + (row.cashQuantity || 0);
+        previous.marginQuantity = (previous.marginQuantity || 0) + (row.marginQuantity || 0);
         const allocationTypes = Array.from(new Set([
           ...(previous.allocationTypes || [previous.allocationType]),
           ...(row.allocationTypes || [row.allocationType])
@@ -460,9 +467,23 @@ export function ClosedHistoryDesk() {
     return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
   };
   const allocationOrder: Record<string, number> = { margin: 0, cash: 1, mix: 2, unclassified: 3 };
-  const trades = [...uniqueAppTrades, ...groupedBrokerRows].sort((a, b) =>
-    (allocationOrder[String(a.allocationType || 'unclassified')] ?? 3) -
-      (allocationOrder[String(b.allocationType || 'unclassified')] ?? 3) ||
+  const trades = [...uniqueAppTrades, ...groupedBrokerRows].map((row: any) => {
+    const allocation = resolveClosedTradeAllocation(
+      row.trade?.shares,
+      row.allocationType,
+      row.guestAllocations || [],
+      state.closedTradeAllocations?.[row.allocationKey],
+      row.cashQuantity
+    );
+    return {
+      ...row,
+      ...allocation,
+      allocationType: allocation.fundingType,
+      allocationTypes: [allocation.fundingType]
+    };
+  }).sort((a, b) =>
+    (allocationOrder[String(a.allocationType || 'margin')] ?? 0) -
+      (allocationOrder[String(b.allocationType || 'margin')] ?? 0) ||
     getExitTimestamp(b) - getExitTimestamp(a)
   );
   const tradesPageSize = 10;
@@ -552,7 +573,7 @@ export function ClosedHistoryDesk() {
               <th scope="col" class="py-2.5 px-3">Date Closed</th>
               <th scope="col" class="py-2.5 px-3 text-right">Shares</th>
               <th scope="col" class="py-2.5 px-3 text-right">Duration</th>
-              <th scope="col" class="py-2.5 px-3">Assigned guest · shares</th>
+              <th scope="col" class="py-2.5 px-3">Funding · guest · cash shares</th>
               <th scope="col" class="py-2.5 px-3 text-right">Fees</th>
               <th scope="col" class="py-2.5 px-3 text-right">Commissions</th>
               <th scope="col" class="py-2.5 px-3 text-right">Net Profit</th>
@@ -585,7 +606,7 @@ export function ClosedHistoryDesk() {
             ) : (
               visibleTrades.map((row, visibleIndex) => {
                 const { trade, index, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions, commissionsComplete } = row;
-                const allocationType = row.allocationType || 'unclassified';
+                const allocationType = row.allocationType || 'margin';
                 const allocationLabel = allocationType === 'margin' ? 'Margin'
                   : allocationType === 'cash' ? 'Cash'
                     : allocationType === 'mix' ? 'Mix' : 'Unclassified';
@@ -593,7 +614,29 @@ export function ClosedHistoryDesk() {
                   ? visibleTrades[visibleIndex - 1].allocationType || 'unclassified'
                   : null;
                 const showAllocationHeader = visibleIndex === 0 || previousAllocationType !== allocationType;
-                const assignedGuests = row.guestAllocations || [];
+                const assignedGuests: Array<{ guestId: string; quantity: number }> = row.guestAllocations || [];
+                const allocationKey = String(row.allocationKey || ((source || 'trade') + ':' + String((trade as any).id || index)));
+                const savedAllocation = state.closedTradeAllocations?.[allocationKey];
+                const rowQuantity = Math.max(0, Number((trade as any).shares) || 0);
+                const selectedGuestId = savedAllocation
+                  ? String(savedAllocation.guestId || '')
+                  : assignedGuests.length === 1 ? assignedGuests[0].guestId : '';
+                const persistAllocation = (fundingType: 'cash' | 'margin' | 'mix', cashValue: number, guestId = selectedGuestId) => {
+                  const cashQuantity = fundingType === 'cash' ? rowQuantity
+                    : fundingType === 'margin' ? 0
+                      : Math.min(rowQuantity, Math.max(0, Number(cashValue) || 0));
+                  emitBrokerEvent('broker:set-closed-trade-allocation', {
+                    rowId: allocationKey,
+                    allocation: {
+                      fundingType,
+                      cashQuantity,
+                      marginQuantity: Math.max(0, rowQuantity - cashQuantity),
+                      guestId: fundingType === 'margin' ? '' : guestId
+                    }
+                  });
+                };
+                const updateMixCash = (value: string) => persistAllocation('mix', Math.min(rowQuantity, Math.max(0, Number(value) || 0)));
+                const updateMixMargin = (value: string) => persistAllocation('mix', rowQuantity - Math.min(rowQuantity, Math.max(0, Number(value) || 0)));
                 // 1. Resolve Exit Date
                 const rawDate =
                   (trade as any).exitDate ||
@@ -668,13 +711,36 @@ export function ClosedHistoryDesk() {
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-400">
                       {durationDays === null ? '—' : durationDays < 1 ? Math.round(durationDays * 24) + ' hrs' : durationDays.toFixed(1) + ' days'}
                     </td>
-                    <td data-label="Assigned guest · shares" class="py-2.5 px-3 whitespace-nowrap text-slate-300">
-                      {assignedGuests.length ? assignedGuests.map((assignment) => (
-                        <span key={assignment.guestId} class="block text-[10px]">
-                          <span class="font-semibold text-cyan-300" title={assignment.guestId}>{guestNameById.get(assignment.guestId) || assignment.guestId.slice(0, 8)}</span>
-                          <span class="ml-1 font-mono tabular-nums text-slate-400">{Number(assignment.quantity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 4 })}</span>
-                        </span>
-                      )) : <span class="text-slate-600">—</span>}
+                    <td data-label="Funding · guest · cash shares" class="py-2 px-3 whitespace-nowrap text-slate-300">
+                      <div class="flex flex-col items-center gap-1.5">
+                        <div class="inline-flex rounded-md border border-slate-700 p-0.5" role="group" aria-label={String((trade as any).ticker || 'Trade') + ' funding type'}>
+                          <button type="button" aria-pressed={allocationType === 'cash'} onClick={() => persistAllocation('cash', rowQuantity)} class={allocationType === 'cash' ? 'rounded bg-cyan-950 px-2 py-1 text-[10px] font-bold text-cyan-300' : 'rounded px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-300'}>Cash</button>
+                          <button type="button" aria-pressed={allocationType === 'margin'} onClick={() => persistAllocation('margin', 0, '')} class={allocationType === 'margin' ? 'rounded bg-amber-950 px-2 py-1 text-[10px] font-bold text-amber-300' : 'rounded px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-300'}>Margin</button>
+                          <button type="button" aria-pressed={allocationType === 'mix'} onClick={() => persistAllocation('mix', allocationType === 'cash' ? rowQuantity : row.cashQuantity)} class={allocationType === 'mix' ? 'rounded bg-violet-950 px-2 py-1 text-[10px] font-bold text-violet-300' : 'rounded px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-300'}>Mix</button>
+                        </div>
+                        {allocationType === 'mix' && (
+                          <div class="flex items-center justify-center gap-2 rounded border border-slate-800 bg-slate-950/70 p-1.5 font-sans">
+                            <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-cyan-300">Cash shares
+                              <input aria-label={String((trade as any).ticker || 'Trade') + ' cash shares'} type="number" min="0" max={rowQuantity} step="any" value={row.cashQuantity} onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)} class="w-16 rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100" />
+                            </label>
+                            <label class="inline-flex items-center gap-1 text-[9px] font-semibold text-amber-300">Margin shares
+                              <input aria-label={String((trade as any).ticker || 'Trade') + ' margin shares'} type="number" min="0" max={rowQuantity} step="any" value={row.marginQuantity} onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)} class="w-16 rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100" />
+                            </label>
+                          </div>
+                        )}
+                        {row.cashQuantity > 0 ? (
+                          <select aria-label={'Guest for ' + String((trade as any).ticker || 'trade') + ' cash shares'} value={selectedGuestId} onChange={(event) => persistAllocation(allocationType, row.cashQuantity, (event.currentTarget as HTMLSelectElement).value)} class="max-w-[11rem] rounded border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] text-slate-200">
+                            <option value="">Unassigned</option>
+                            {selectedGuestId && !guestUsers.some((user) => user.id === selectedGuestId) && <option value={selectedGuestId}>Guest unavailable</option>}
+                            {guestUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+                          </select>
+                        ) : <span class="text-[9px] text-slate-600">No cash allocation</span>}
+                        {assignedGuests.length > 0 && !savedAllocation && assignedGuests.map((assignment) => (
+                          <span key={assignment.guestId} class="text-[9px] text-cyan-300">
+                            {guestNameById.get(assignment.guestId) || assignment.guestId.slice(0, 8)} · {Number(assignment.quantity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 4 })}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
                       ${formatUSD(fees)}

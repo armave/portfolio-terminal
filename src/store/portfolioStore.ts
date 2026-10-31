@@ -255,6 +255,9 @@ export class PortfolioStore {
         typeof saved.activeTrancheGuestAssignmentDetails === 'object'
         ? saved.activeTrancheGuestAssignmentDetails
         : {},
+      closedTradeAllocations: saved?.closedTradeAllocations && typeof saved.closedTradeAllocations === 'object' && !Array.isArray(saved.closedTradeAllocations)
+        ? saved.closedTradeAllocations
+        : {},
       guestPortfolioSnapshot: saved?.guestPortfolioSnapshot && typeof saved.guestPortfolioSnapshot === 'object'
         ? saved.guestPortfolioSnapshot
         : undefined,
@@ -454,6 +457,8 @@ export class PortfolioStore {
       activeTrancheTypes: {},
       activeTrancheMixes: {},
       activeTrancheGuestAssignments: {},
+      activeTrancheGuestAssignmentDetails: {},
+      closedTradeAllocations: {},
       guestPortfolioSnapshot: undefined,
       brokerAccountInfo: undefined,
       portfolioEquity: undefined,
