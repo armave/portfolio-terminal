@@ -617,10 +617,11 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
     // Closed Trades rows can be assigned directly after the broker sale. Mirror
     // those cash-funded quantities into the same guest-only durable LOTS ledger.
     const appTradeSources = (current.closedTrades || []).map((trade: any, index: number) => {
-      const ticker = String(trade?.ticker || '').trim().toUpperCase().replace(/\.US$/i, '');
+      const rawTicker = String(trade?.ticker || '').trim();
+      const ticker = rawTicker.toUpperCase().replace(/\.US$/i, '');
       const fallback = String(trade?.closedAt ?? trade?.exitDate ?? trade?.date ?? index);
       return {
-        allocationKey: 'app:' + String(trade?.id || `${ticker || 'trade'}:${fallback}`),
+        allocationKey: 'app:' + String(trade?.id || `${rawTicker || 'trade'}:${fallback}`),
         ticker,
         name: String(trade?.name || ticker)
       };
