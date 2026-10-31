@@ -292,6 +292,18 @@ The latest screenshot no longer showed an HTTP error. The Worker returned a succ
 - [x] Keep input values as `unknown` until the existing normalization/parsing steps validate them.
 - [x] Make the calculation generic over the original execution object type so result-map keys remain the same object references.
 - [x] Add coverage for numeric-string/legacy aliases and for malformed quantities/dates.
-- [ ] Confirm exact-head typecheck, all tests, production build, dead-code validation, and production dependency audit.
+- [x] Both exact-head workflows passed on `353e12d86069ee473d75a8b110c953e6e7ce7e1b`: [Validate run 41203926396](https://github.com/armave/portfolio-terminal/actions/runs/41203926396) and [Pull Request CI run 41203926480](https://github.com/armave/portfolio-terminal/actions/runs/41203926480) both passed typecheck, all tests, production build, dead-code validation, and production dependency audit.
 
 This is a boundary-typing and test-coverage change only. The FIFO matching order, tolerance, commission-cent allocation, holding-period calculation, and incomplete-history behavior remain unchanged.
+
+
+## Follow-on implementation — typed TradeNet execution response normalization (2026-10-31)
+
+- [x] Change `normalizeFreedomTrades` to accept `unknown` instead of `any`.
+- [x] Narrow the supported response envelopes, trade collections, and individual rows before reading broker fields.
+- [x] Preserve stable fallback IDs and existing TradeNet aliases for ticker, side, quantity, price, commission, and fees.
+- [x] Normalize numeric execution timestamps to the declared string output type and keep `raw` constrained to a record.
+- [x] Add regression coverage for null/primitive/malformed envelopes and numeric timestamps.
+- [ ] Confirm exact-head CI for this raw response-boundary follow-up.
+
+This extends the P2 typed-boundary work to the untrusted API edge. It does not change the normalized `FreedomExecutedTrade` field set, saved history schema, FIFO allocation, commissions, P/L, or account authorization.
