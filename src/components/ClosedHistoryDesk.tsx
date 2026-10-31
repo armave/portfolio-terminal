@@ -25,6 +25,7 @@ export function ClosedHistoryDesk() {
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
   const cashflowSyncStarted = useRef(false);
+  const latestBrokerFetch = useRef<any[] | null>(null);
   // Load cloud history once. An existing cloud history record is authoritative;
   // local history is used only when no cloud record exists.
   useEffect(() => {
@@ -47,8 +48,12 @@ export function ClosedHistoryDesk() {
       // Cloud history is the durable baseline, but the just-fetched broker page
       // is fresher. Merge it instead of allowing a slow cloud pull to erase new
       // executions that arrived while this component was mounting.
+      const cloudBaseline = mergeBrokerExecutionHistory(
+        localExecutions,
+        cloud.brokerExecutedTrades || []
+      );
       const cloudExecutions = preservePersistedBrokerFeeAllocations(
-        mergeBrokerExecutionHistory(cloud.brokerExecutedTrades || [], localExecutions),
+        mergeBrokerExecutionHistory(cloudBaseline, latestBrokerFetch.current || []),
         [...saved.brokerExecutedTrades, ...localExecutions]
       );
       const resolved = history ? {
@@ -248,6 +253,7 @@ export function ClosedHistoryDesk() {
         normalizedRaw,
         [...savedFeeRows, ...stored]
       );
+      latestBrokerFetch.current = normalizedPage;
       // TradeNet returns a bounded recent page. Retain older persisted executions
       // so FIFO matching and margin-fee allocation do not lose their opening lots.
       const normalized = mergeBrokerExecutionHistory([...savedFeeRows, ...stored], normalizedPage);
