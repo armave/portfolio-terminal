@@ -266,8 +266,9 @@ export function ClosedHistoryDesk() {
         [...savedFeeRows, ...stored]
       );
       latestBrokerFetch.current = normalizedPage;
-      // TradeNet returns a bounded recent page. Retain older persisted executions
-      // so FIFO matching and margin-fee allocation do not lose their opening lots.
+      // TradeNet now requests the complete execution history, including older
+      // opening buys needed for FIFO duration and buy-commission matching. Retain
+      // already-persisted rows as a compatibility safeguard during reconciliation.
       const normalized = mergeBrokerExecutionHistory([...savedFeeRows, ...stored], normalizedPage);
       setBrokerTrades(normalized);
       setBrokerTradesLoading(false);
