@@ -168,6 +168,32 @@ describe('app localization', () => {
       .toBe('Повышенный риск · 32.0% собственного капитала (25.0% по нормативу поддерживающей маржи)');
   });
 
+  it('localizes terminal and CLI feedback while preserving command values', () => {
+    expect(translateText('Please replace [shares] with a value before running this command.', 'ru'))
+      .toBe('Замените [shares] на значение перед выполнением команды.');
+    expect(translateText('Switched view to CASH_CUSHION.', 'ru'))
+      .toBe('Выполнено переключение на раздел Баланс.');
+    expect(translateText('Sold 2 AAPL @ $190.00', 'ru'))
+      .toBe('Продано 2 акций AAPL по цене $190.00.');
+    expect(translateText('Added 5 MSFT to cash holdings @ $420.00.', 'ru'))
+      .toBe('В денежные активы добавлено 5 акций MSFT по цене $420.00.');
+    expect(translateText('Only administrators can reset the portfolio.', 'ru'))
+      .toBe('Только администраторы могут сбрасывать портфель.');
+    expect(translateText('[System]: Live market quotes refreshed for 4 assets.', 'ru'))
+      .toBe('[Система]: Обновлены актуальные рыночные котировки для 4 активов.');
+    expect(translateText('[Backup]: Exported state to portfolio.json.', 'ru'))
+      .toBe('[Резервная копия]: Состояние экспортировано в файл portfolio.json.');
+    expect(translateText('[Backup Import]: Imported backup.json into this browser. Check KV cloud status for sync results.', 'ru'))
+      .toBe('[Импорт резервной копии]: Файл backup.json импортирован в этот браузер. Проверьте состояние синхронизации с облаком KV.');
+    expect(translateText('[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.', 'ru'))
+      .toBe('Ошибка синхронизации гостевого портфеля: Назначенные активы и история не обновились.');
+  });
+
+  it('localizes multiline terminal outputs line by line', () => {
+    expect(translateText('Terminal cleared.\\nRefreshing all live quotes...', 'ru'))
+      .toBe('Терминал очищен.\\nОбновление всех актуальных котировок…');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
