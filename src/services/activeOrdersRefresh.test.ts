@@ -28,7 +28,7 @@ describe('refreshActiveOrders', () => {
 
     await refreshActiveOrders({
       restoreGatewaySecret: async () => 'configured-secret',
-      fetchActiveOrders: async () => { throw error; },
+      fetchActiveOrders: async (): Promise<{ orders: unknown[] }> => { throw error; },
       normalizeActiveOrders: (response) => response.orders,
       onSuccess,
       onError,
