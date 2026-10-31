@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "worker.js"
+      - "src/services/freedomTradeNet.ts"
       - "state-store.js"
       - "wrangler.jsonc"
       - ".github/workflows/deploy-worker.yml"
