@@ -3,6 +3,7 @@ import type { ActiveBrokerTranche, GuestTrancheLedgerRecord } from '../types/por
 import {
   calculateGuestPersonalEquity,
   filterGuestTrancheLedger,
+  groupGuestTrancheLedgerOperations,
   getGuestAssignedCashHoldings,
   summarizeGuestTrancheLedger
 } from './guestPortfolio';
@@ -229,6 +230,40 @@ describe('guest tranche ledger reports and filtering', () => {
       operationDateFrom: 1719990000000,
       operationDateTo: 1720010000000
     })).toEqual([]);
+  });
+
+  it('groups same-ticker operations of the same type when consecutive dates are within ten minutes', () => {
+    const operationAt = 1723000000000;
+    const grouped = groupGuestTrancheLedgerOperations([
+      { ...records[0], assignmentId: 'buy-1', ticker: 'AAPL', operationAt },
+      { ...records[0], assignmentId: 'buy-2', ticker: 'aapl', operationAt: operationAt - 10 * 60 * 1000 },
+      { ...records[0], assignmentId: 'buy-3', ticker: 'AAPL', operationAt: operationAt - 20 * 60 * 1000 },
+      { ...records[0], assignmentId: 'buy-4', ticker: 'AAPL', operationAt: operationAt - 30 * 60 * 1000 - 1 },
+      { ...records[0], assignmentId: 'other-ticker', ticker: 'MSFT', operationAt },
+      {
+        ...records[0],
+        assignmentId: 'trade',
+        ticker: 'AAPL',
+        trancheId: 'closed-trade:sell-1',
+        operationAt
+      },
+      {
+        ...records[0],
+        assignmentId: 'missing-date',
+        ticker: 'AAPL',
+        operationAt: null,
+        purchasedAt: null
+      }
+    ]);
+
+    expect(grouped.map((group) => group.records.map((record) => record.assignmentId))).toEqual([
+      ['buy-1', 'buy-2', 'buy-3'],
+      ['buy-4'],
+      ['other-ticker'],
+      ['trade'],
+      ['missing-date']
+    ]);
+    expect(grouped[0].operationAt).toBe(operationAt);
   });
 
   it('summarizes historical assigned capital and current open value without inventing realized P/L', () => {
