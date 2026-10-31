@@ -7,6 +7,10 @@ const GROUP_BUYS_WITHIN_MS = 5 * 60 * 1000;
 interface ClosedTradeGuestAllocation {
   guestId: string;
   quantity: number;
+}
+
+export interface ClosedTradeGuestMetrics {
+  quantity: number;
   averagePrice: number | null;
   purchasedAt: number | null;
 }
