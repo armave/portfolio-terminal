@@ -638,6 +638,7 @@ const RU: Record<string, string> = {
   "Invert Comparison": "Обратить порядок сравнения",
   "Stage target command": "Подготовить команду целевой цены",
   "Execution failed": "Не удалось выполнить команду",
+  "[CLI]: Unrecognized command. Type \"help\" for local commands, or prefix with \"ask ...\" for AI advisor.": "[Команда]: Неизвестная команда. Введите \"help\" для локальных команд или добавьте префикс \"ask ...\" для обращения к ИИ-советнику.",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -739,6 +740,12 @@ function translateDynamicText(normalized: string): string | undefined {
   if (priceUpdated) return '[Цена обновлена]: Рыночная цена ' + priceUpdated[1] + ' установлена на ' + priceUpdated[2] + '.';
   const marginSynced = normalized.match(/^\[Margin Synced\]: Total margin balance explicitly set to -(.+)\.$/i);
   if (marginSynced) return '[Маржинальный баланс синхронизирован]: Общий маржинальный баланс установлен на -' + marginSynced[1] + '.';
+
+  const cashAdded = normalized.match(/^Added ([\d,.]+) ([A-Z0-9.-]+) to cash holdings(?: @ \$(.+))?\.$/i);
+  if (cashAdded) return 'В денежные активы добавлено ' + cashAdded[1] + ' акций ' + cashAdded[2] +
+    (cashAdded[3] ? ' по цене $' + cashAdded[3] : '') + '.';
+  const cashRemoved = normalized.match(/^Removed ([A-Z0-9.-]+) from cash holdings\.$/i);
+  if (cashRemoved) return 'Акции ' + cashRemoved[1] + ' удалены из денежных активов.';
 
   const balanceUpdated = normalized.match(/^\[Balance\]: Current balance\/debt updated\. Balance: (.+) \| Margin debt: -(.+)\.$/i);
   if (balanceUpdated) return '[Баланс]: Баланс и долг обновлены. Баланс: ' + balanceUpdated[1] + ' | Маржинальный долг: -' + balanceUpdated[2] + '.';
