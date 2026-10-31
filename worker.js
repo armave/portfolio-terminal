@@ -341,6 +341,7 @@ function safeTradeNetLoginFailure(payload) {
 }
 
 /** Authenticate with the Worker-only login/password secrets and retain the SID in the Durable Object. */
+// This endpoint is invoked by authenticated administrator startup; the SID itself stays server-side.
 export async function ensureFreedomTradeNetSession(env, options = {}) {
     const forceRefresh = options?.forceRefresh === true;
     if (!env.FREEDOM_LOGIN || !env.FREEDOM_PASSWORD) {
