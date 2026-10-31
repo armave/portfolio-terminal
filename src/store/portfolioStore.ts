@@ -17,7 +17,7 @@ import {
   saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
-import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche } from '../domain/portfolio';
+import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, createBlankState } from '../domain/portfolio';
 
 const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
   broker: 'Freedom Broker Armenia (Tradernet)',
@@ -391,6 +391,32 @@ export class PortfolioStore {
     this.update((state) => ({
       ...state,
       ...newState
+    }));
+  }
+
+  /**
+   * Clear portfolio and broker-history data while preserving device/account configuration.
+   * Broker rules, provider keys, the signed-in Gateway Secret, and refresh preferences
+   * are settings rather than portfolio content and intentionally remain in place.
+   */
+  public resetToBlankState(now = Date.now()): void {
+    this.update((state) => ({
+      ...state,
+      ...createBlankState(now),
+      activeTrancheTypes: {},
+      activeTrancheMixes: {},
+      activeTrancheGuestAssignments: {},
+      guestPortfolioSnapshot: undefined,
+      brokerAccountInfo: undefined,
+      portfolioEquity: undefined,
+      portfolioEquityUpdatedAt: undefined,
+      brokerExecutedTrades: [],
+      cashflows: [],
+      closedHistory: [],
+      tranches: [],
+      cashStocks: [],
+      selectedTicker: null,
+      pendingMutation: null
     }));
   }
 
