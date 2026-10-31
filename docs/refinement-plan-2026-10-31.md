@@ -304,6 +304,6 @@ This is a boundary-typing and test-coverage change only. The FIFO matching order
 - [x] Preserve stable fallback IDs and existing TradeNet aliases for ticker, side, quantity, price, commission, and fees.
 - [x] Normalize numeric execution timestamps to the declared string output type and keep `raw` constrained to a record.
 - [x] Add regression coverage for null/primitive/malformed envelopes and numeric timestamps.
-- [ ] Confirm exact-head CI for this raw response-boundary follow-up.
+- [x] Exact-head validation and PR CI passed on `8ddb729785a4d4e5b49b11161e2792c51af24e7b`: [Validate run 41204009743](https://github.com/armave/portfolio-terminal/actions/runs/41204009743) and [Pull Request CI run 41204009739](https://github.com/armave/portfolio-terminal/actions/runs/41204009739).
 
 This extends the P2 typed-boundary work to the untrusted API edge. It does not change the normalized `FreedomExecutedTrade` field set, saved history schema, FIFO allocation, commissions, P/L, or account authorization.
