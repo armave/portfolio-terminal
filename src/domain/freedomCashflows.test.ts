@@ -34,6 +34,9 @@ describe("Freedom cashflow normalization", () => {
       currency: "USD",
       description: "Negative cash balance fee"
     });
+    expect(rows[0].raw.operation_id).toBe("4812");
+  });
+
   it("assigns a Freedom source ID when a broker row has no operation ID", () => {
     const rows = normalizeFreedomCashflowRows({
       cashflows: [{
