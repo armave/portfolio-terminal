@@ -155,7 +155,8 @@ export function filterGuestTrancheLedger(
     .filter((record) => {
       if (ticker && !String(record.ticker || '').toUpperCase().includes(ticker)) return false;
       if (status !== 'all' && record.status !== status) return false;
-      const trancheDate = Number(record.purchasedAt);
+      const trancheDate = record.purchasedAt === null || record.purchasedAt === undefined
+        ? Number.NaN : Number(record.purchasedAt);
       if (Number.isFinite(filters.trancheDateFrom) &&
           (!Number.isFinite(trancheDate) || trancheDate < Number(filters.trancheDateFrom))) return false;
       if (Number.isFinite(filters.trancheDateTo) &&
@@ -168,8 +169,7 @@ export function filterGuestTrancheLedger(
 }
 
 /** Summarize historical assignment capital and today's open position value.
- * This intentionally does not estimate realized P/L: sold execution prices are
- * not attached to individual cash-assigned tranches by the current broker parser. */
+ * Realized net P&L is carried on closed-trade ledger records when the source is complete. */
 export function summarizeGuestTrancheLedger(
   records: GuestTrancheLedgerRecord[],
   activeTranches: ActiveBrokerTranche[] = []
