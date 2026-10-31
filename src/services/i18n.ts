@@ -607,6 +607,37 @@ const RU: Record<string, string> = {
   "[Freedom]": "Freedom",
   "[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.": "Ошибка синхронизации гостевого портфеля: Не удалось обновить назначенные активы и историю.",
   "[Warning]: No quotes updated during batch fetch.": "[Предупреждение]: Не удалось обновить ни одной котировки в пакетном запросе.",
+  "Available Frontend Commands (Zero AI/API Latency):": "Доступные локальные команды терминала (без задержки ИИ/API):",
+  "Total fee friction includes buy commission, sell commission, and estimated margin interest. Future prices are assumptions. The action stages a target-price command in the terminal; it does not submit a broker order.": "Общие расходы включают комиссию за покупку, комиссию за продажу и расчётные проценты по марже. Будущие цены являются допущениями. Действие подготавливает команду целевой цены в терминале, но не отправляет брокерский ордер.",
+  "Same projection schedule and columns as the main table, recalculated for the hypothetical post-purchase position at the target price (or current quote if no target is set). Fees include buy/sell commissions and accrued margin interest. No portfolio mutation or order placement occurs.": "Тот же график прогнозирования и те же столбцы, что в основной таблице, пересчитанные для гипотетической позиции после покупки по целевой цене (или по текущей котировке, если цель не задана). Расходы включают комиссии за покупку и продажу, а также начисленные проценты по марже. Портфель не изменяется, ордера не отправляются.",
+  "Estimate only · no portfolio changes.": "Только оценка · портфель не изменяется.",
+  "Today": "Сегодня",
+  "Tomorrow": "Завтра",
+  "NOW Net": "Чистый результат сейчас",
+  "AFTER Net": "Чистый результат после покупки",
+  "NOW F&C": "Комиссии и расходы сейчас",
+  "AFTER F&C": "Комиссии и расходы после покупки",
+  "NOW M Fee": "Маржинальные проценты сейчас",
+  "AFTER M Fee": "Маржинальные проценты после покупки",
+  "NOW Balance": "Баланс сейчас",
+  "AFTER Balance": "Баланс после покупки",
+  "Gross Proceeds": "Валовая выручка",
+  "Total Fee Friction": "Общие комиссии и расходы",
+  "Resulting Account Balance": "Итоговый баланс счёта",
+  "Cost Basis": "Себестоимость",
+  "Cash needed:": "Необходимая сумма:",
+  "Average entry:": "Средняя цена входа:",
+  "Net P&L at quote:": "Чистая прибыль/убыток по текущей котировке:",
+  "Net P&L at target:": "Чистая прибыль/убыток по целевой цене:",
+  "Net P&L at -10%:": "Чистая прибыль/убыток при снижении на 10%:",
+  "Final margin balance:": "Итоговый маржинальный баланс:",
+  "Extra margin cost:": "Дополнительные расходы по марже:",
+  "Trade-off:": "Компромисс:",
+  "Switch to 7d": "Переключить на 7 дней",
+  "Lock 14d Best": "Зафиксировать лучший вариант на 14 дней",
+  "Invert Comparison": "Обратить порядок сравнения",
+  "Stage target command": "Подготовить команду целевой цены",
+  "Execution failed": "Не удалось выполнить команду",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -713,6 +744,59 @@ function translateDynamicText(normalized: string): string | undefined {
   if (balanceAdded) return '[Баланс]: В активы баланса добавлено ' + balanceAdded[1] + ' ' + balanceAdded[2] + '. Синхронизация онлайн-котировки…';
   const balanceRemoved = normalized.match(/^\[Balance\]: Removed (.+) from balance holdings\.$/i);
   if (balanceRemoved) return '[Баланс]: ' + balanceRemoved[1] + ' удалён из активов баланса.';
+
+  const hypotheticalSubtitle = normalized.match(/^Hypothetical projection after buying \+(.+) shares at (.+) · no order placed$/i);
+  if (hypotheticalSubtitle) return 'Гипотетический прогноз после покупки +' + hypotheticalSubtitle[1] + ' акций по цене ' + hypotheticalSubtitle[2] + ' · ордер не отправляется.';
+
+  const exitPreset = normalized.match(/^(.+) vs (.+)$/i);
+  if (exitPreset && (/^today$/i.test(exitPreset[1]) || /\d+\s+days?/i.test(exitPreset[1]))) {
+    const day = (value: string) => /^today$/i.test(value) ? 'сегодня' : translateText(value, 'ru');
+    return day(exitPreset[1]) + ' и ' + day(exitPreset[2]);
+  }
+
+  const exitReportHeader = normalized.match(/^\[(EXIT COMPARISON|MULTI-DATE EXIT COMPARISON|STAGED EXIT):\s*(.+)\]$/i);
+  if (exitReportHeader) {
+    const labels: Record<string, string> = {
+      'EXIT COMPARISON': 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА',
+      'MULTI-DATE EXIT COMPARISON': 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ',
+      'STAGED EXIT': 'ПОЭТАПНЫЙ ВЫХОД'
+    };
+    return '[' + labels[exitReportHeader[1].toUpperCase()] + ': ' + exitReportHeader[2] + ']';
+  }
+  const buyReportHeader = normalized.match(/^\[BUY MORE:\s*(.+)\]$/i);
+  if (buyReportHeader) return '[ДОПОЛНИТЕЛЬНАЯ ПОКУПКА: ' + buyReportHeader[1] + ']';
+
+  const exitResultLine = normalized.match(/^(.+?) · (\$[\d,.]+) → ([+-]?\$[\d,.]+) net P&L( · BEST)?$/i);
+  if (exitResultLine) {
+    const day = /^today$/i.test(exitResultLine[1]) ? 'Сегодня' : translateText(exitResultLine[1], 'ru');
+    return day + ' · ' + exitResultLine[2] + ' → ' + exitResultLine[3] + ' чистая прибыль/убыток' +
+      (exitResultLine[4] ? ' · ЛУЧШИЙ' : '');
+  }
+  const bestExit = normalized.match(/^BEST: (.+) at (\$[\d,.]+) · ([+-]?\$[\d,.]+) net$/i);
+  if (bestExit) return 'ЛУЧШИЙ: ' + translateText(bestExit[1], 'ru') + ' по цене ' + bestExit[2] + ' · ' + bestExit[3] + ' чистыми';
+  const feeNote = normalized.match(/^Fees included: (.+)\.$/i);
+  if (feeNote) return 'Учтённые расходы: ' + feeNote[1]
+    .replace(/buy commission/gi, 'комиссия за покупку')
+    .replace(/sell commission/gi, 'комиссия за продажу')
+    .replace(/estimated margin interest/gi, 'расчётные проценты по марже') + '.';
+
+  const buyScenarioLine = normalized.match(/^Cash needed: (.+) incl\. fee$/i);
+  if (buyScenarioLine) return 'Необходимая сумма: ' + buyScenarioLine[1] + ' включая комиссию';
+  const averageEntry = normalized.match(/^Average entry: (.+) → (.+)$/i);
+  if (averageEntry) return 'Средняя цена входа: ' + averageEntry[1] + ' → ' + averageEntry[2];
+  const netPnlAt = normalized.match(/^Net P&L at (quote|target|-10%): (.+) → (.+)$/i);
+  if (netPnlAt) {
+    const label = netPnlAt[1].toLowerCase() === 'quote' ? 'текущей котировке' :
+      netPnlAt[1].toLowerCase() === 'target' ? 'целевой цене' : 'снижении на 10%';
+    return 'Чистая прибыль/убыток при ' + label + ': ' + netPnlAt[2] + ' → ' + netPnlAt[3];
+  }
+  const finalMarginBalance = normalized.match(/^Final margin balance: (.+) → (.+)$/i);
+  if (finalMarginBalance) return 'Итоговый маржинальный баланс: ' + finalMarginBalance[1] + ' → ' + finalMarginBalance[2];
+  const extraMarginCost = normalized.match(/^Extra margin cost: (.+)\/day$/i);
+  if (extraMarginCost) return 'Дополнительные расходы по марже: ' + extraMarginCost[1] + '/день';
+  const tradeoff = normalized.match(/^Trade-off: quote P&L changes by (.+); downside P&L changes by (.+)\.$/i);
+  if (tradeoff) return 'Компромисс: прибыль/убыток по текущей котировке меняется на ' + tradeoff[1] +
+    '; прибыль/убыток при снижении цены меняется на ' + tradeoff[2] + '.';
 
   const prefixes: Array<[string, string, string]> = [
     ['Name for ', 'Name for ', ''],
