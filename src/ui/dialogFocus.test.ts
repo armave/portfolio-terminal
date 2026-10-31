@@ -1,17 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import { getDialogFocusableElements, trapDialogTabKey } from './dialogFocus';
 
-function makeFocusable(name: string, hidden = false): HTMLElement {
-  return {
-    name,
-    tabIndex: 0,
-    focus: () => { focused.push(name); },
-    getClientRects: () => hidden ? [] : [{}] as unknown as DOMRectList,
-    closest: () => hidden ? ({} as Element) : null
-  } as unknown as HTMLElement;
+interface FocusableOptions {
+  rendered?: boolean;
+  hiddenAncestor?: boolean;
+  tabIndex?: number;
 }
 
 let focused: string[] = [];
+
+function makeFocusable(name: string, options: FocusableOptions = {}): HTMLElement {
+  const { rendered = true, hiddenAncestor = false, tabIndex = 0 } = options;
+  return {
+    name,
+    tabIndex,
+    focus: () => { focused.push(name); },
+    getClientRects: () => rendered ? [{}] as unknown as DOMRectList : [],
+    closest: () => hiddenAncestor ? ({} as Element) : null
+  } as unknown as HTMLElement;
+}
 
 function makeDialog(items: HTMLElement[]) {
   return {
@@ -34,15 +41,33 @@ function makeEvent(shiftKey = false) {
 }
 
 describe('dialog focus management', () => {
-  it('excludes hidden, inert, aria-hidden, and negative-tabindex elements', () => {
+  it('excludes hidden, inert, aria-hidden, visually unrendered, and negative-tabindex elements', () => {
     const visible = makeFocusable('visible');
-    const hidden = makeFocusable('hidden', true);
-    const negative = { ...makeFocusable('negative'), tabIndex: -1 } as HTMLElement;
+    const hiddenAncestor = makeFocusable('hidden-ancestor', { hiddenAncestor: true });
+    const unrendered = makeFocusable('unrendered', { rendered: false });
+    const negative = makeFocusable('negative', { tabIndex: -1 });
     const dialog = {
-      querySelectorAll: () => [visible, hidden, negative]
+      querySelectorAll: () => [visible, hiddenAncestor, unrendered, negative]
     } as unknown as HTMLElement;
 
     expect(getDialogFocusableElements(dialog)).toEqual([visible]);
+  });
+
+  it('uses a selector that excludes disabled and hidden input controls', () => {
+    const visible = makeFocusable('visible');
+    let selector = '';
+    const dialog = {
+      querySelectorAll: (value: string) => {
+        selector = value;
+        return [visible];
+      }
+    } as unknown as HTMLElement;
+
+    expect(getDialogFocusableElements(dialog)).toEqual([visible]);
+    expect(selector).toContain('button:not(:disabled)');
+    expect(selector).toContain('input:not(:disabled):not([type="hidden"])');
+    expect(selector).toContain('select:not(:disabled)');
+    expect(selector).toContain('textarea:not(:disabled)');
   });
 
   it('wraps forward Tab from the last focusable element to the first', () => {
