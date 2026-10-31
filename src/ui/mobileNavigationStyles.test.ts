@@ -24,6 +24,8 @@ describe('mobile workspace navigation styles', () => {
     expect(navigationComponent).toContain('<span class="workspace-nav-label--mobile">{tickers[0]}</span>');
     expect(navigationComponent).toContain('<span class="workspace-nav-label--desktop">COMBINED PORTFOLIO</span>');
     expect(navigationComponent).toContain('aria-label="Combined portfolio"');
-    expect(navigationComponent).toContain('aria-label={\`Margin: \${tickers[0]}\`}');
+    expect(navigationComponent).toContain('Margin: ${tickers[0]}');
+    expect(navigationComponent).toContain('aria-label="Trades"');
+    expect(navigationComponent).toContain('aria-label="Settings"');
   });
 });
