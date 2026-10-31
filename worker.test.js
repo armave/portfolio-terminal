@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
+import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth, signFreedomSocketAuth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 
 describe('upstream timeout coverage', () => {
@@ -1350,18 +1350,31 @@ describe('sanitizeFreedomMarketDepth', () => {
   });
 });
 
+
+
+describe('signFreedomSocketAuth', () => {
+  it('matches the TradeNet sorted key=value HMAC-SHA256 signature', async () => {
+    const { createHmac } = await import('node:crypto');
+    const authData = { apiKey: 'public-key', cmd: 'getAuthInfo', nonce: 1700000000000 };
+    const expected = createHmac('sha256', 'private-key')
+      .update('apiKey=public-key&cmd=getAuthInfo&nonce=1700000000000')
+      .digest('hex');
+    await expect(signFreedomSocketAuth(authData, 'private-key')).resolves.toBe(expected);
+  });
+});
+
 describe('Freedom market-depth proxy', () => {
   afterEach(() => vi.unstubAllGlobals());
-  it('does not connect to demo market data when the live SID secret is missing', async () => {
+
+  it('does not open a WebSocket when TradeNet API keys are missing', async () => {
     const WebSocketMock = vi.fn();
     vi.stubGlobal('WebSocket', WebSocketMock);
     const response = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=AAPL.US', {
       headers: { 'X-App-Auth': 'test-secret' }
-    }), {
-      GATEWAY_SECRET: 'test-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key'
-    });
+    }), { GATEWAY_SECRET: 'test-secret' });
+
     expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({ error: expect.stringContaining('FREEDOM_MARKET_DATA_SID') });
+    expect(await response.json()).toMatchObject({ error: expect.stringContaining('API keys') });
     expect(WebSocketMock).not.toHaveBeenCalled();
   });
 });
