@@ -30,10 +30,16 @@ import { addBrokerEventListener, emitBrokerEvent } from './services/brokerEventB
 import { refreshActiveOrders } from './services/activeOrdersRefresh';
 import { createLatestRequestGuard } from './utils/requestGeneration';
 import { getMatchingMarginIntelligenceState } from './features/ai/marginIntelligenceState';
+import { createSessionIdentityGuard, type SessionIdentityToken } from './utils/sessionIdentityGuard';
 
-let tradesRequest: Promise<void> | null = null;
-let accountRequest: Promise<void> | null = null;
-let activeOrdersRequest: Promise<void> | null = null;
+// In-flight broker reads are isolated by authenticated session generation.
+const tradesRequests = new Map<string, Promise<void>>();
+const accountRequests = new Map<string, Promise<void>>();
+const activeOrdersRequests = new Map<string, Promise<void>>();
+
+function sessionRequestKey(session: SessionIdentityToken): string {
+  return `${session.identity}\u0000${session.generation}`;
+}
 
 interface AppProps {
   onSaveGatewaySecret: (secret: string) => Promise<boolean>;
@@ -47,6 +53,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const backupImportInputRef = useRef<HTMLInputElement>(null);
   const mainWorkspaceRef = useRef<HTMLElement>(null);
   const previousCurrentUserRef = useRef<AuthUser | null>(null);
+  const brokerSessionIdentityRef = useRef(createSessionIdentityGuard(null));
+  brokerSessionIdentityRef.current.setIdentity(currentUser ? `${currentUser.role}:${currentUser.id}` : null);
   const activeDeskView = usePortfolioSelector(resolveActiveView);
   const portfolioSnapshot = usePortfolio();
   const emptyStateVisible = Object.keys(portfolioSnapshot.positions || {}).length === 0 && activeDeskView === 'COMBINED';
@@ -338,8 +346,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       if (permissions.canManageBackups) backupImportInputRef.current?.click();
     };
     const handleAuthUserChanged = (event: UiEvent<{ user: AuthUser | null }>) => {
-      setCurrentUser(event.detail.user);
-      setAppLanguage(event.detail.user?.language ?? 'en');
+      const user = event.detail.user;
+      // Invalidate broker work synchronously, before Preact schedules the state update.
+      brokerSessionIdentityRef.current.setIdentity(user ? `${user.role}:${user.id}` : null);
+      setCurrentUser(user);
+      setAppLanguage(user?.language ?? 'en');
     };
     const unsubscribeLanguage = subscribeAppLanguage(() => {
       setLanguageRevision((revision) => revision + 1);
@@ -415,102 +426,149 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     if (activeDeskView === 'SETTINGS') setHasOpenedSettings(true);
   }, [activeDeskView, currentUser?.role, permissions.canViewClosedHistory, permissions.canViewGuestTrancheHistory]);
 
-  // Closed History asks for trade history when mounted; do not also fetch from
-  // a global navigation click listener, which caused duplicate broker requests.
+  // Broker execution history is account-wide administrator data. A session change
+  // rebinds the listener and starts a fresh request for that account identity.
   useEffect(() => {
-    // Broker execution history is account-wide administrator data. Guests receive
-    // only the assigned-tranche projection from /api/guest-portfolio.
     if (currentUser?.role !== 'admin') return;
+    const session = brokerSessionIdentityRef.current.capture();
+    if (!session) return;
     const removeRequestListener = addBrokerEventListener('broker:request-executed-trades', () => {
-      void loadExecutedTrades();
+      void loadExecutedTrades(session);
     });
     const removeAwaitableRequestListener = addBrokerEventListener('broker:request-executed-trades-and-wait', (request) => {
-      void loadExecutedTrades().finally(request.resolve);
+      void loadExecutedTrades(session).finally(request.resolve);
     });
-    void loadExecutedTrades();
+    void loadExecutedTrades(session);
     return () => {
       removeRequestListener();
       removeAwaitableRequestListener();
     };
-  }, [currentUser?.role]);
+  }, [currentUser?.id, currentUser?.role]);
 
-  const loadFreedomAccount = async () => {
-    if (accountRequest) return accountRequest;
-    accountRequest = (async () => {
+  const loadFreedomAccount = async (session: SessionIdentityToken): Promise<void> => {
+    if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+    const requestKey = sessionRequestKey(session);
+    const existing = accountRequests.get(requestKey);
+    if (existing) return existing;
+
+    const request = (async () => {
       const secret = await restoreGatewaySecret();
       if (!secret.trim()) throw new Error('Gateway Secret is not available.');
+      if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
       const response = await fetchFreedomTradeNetPositions();
+      if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
       const snapshot = normalizeFreedomPortfolio(response);
+      if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
       emitBrokerEvent('broker:account-info', snapshot);
     })();
-    try { await accountRequest; } finally { accountRequest = null; }
+    accountRequests.set(requestKey, request);
+    try {
+      await request;
+    } finally {
+      if (accountRequests.get(requestKey) === request) accountRequests.delete(requestKey);
+    }
   };
 
-  const loadExecutedTrades = async () => {
-    if (tradesRequest) return tradesRequest;
-    tradesRequest = (async () => {
+  const loadExecutedTrades = async (session: SessionIdentityToken): Promise<void> => {
+    if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+    const requestKey = sessionRequestKey(session);
+    const existing = tradesRequests.get(requestKey);
+    if (existing) return existing;
+
+    const request = (async () => {
       try {
         // The saved Gateway Secret is encrypted and restored asynchronously from IndexedDB.
         // Never issue the startup request until restoration has completed.
         const secret = await restoreGatewaySecret();
+        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
         if (!secret.trim()) {
           emitBrokerEvent('broker:executed-trades-error');
           return;
         }
         const response = await fetchFreedomTradeNetTrades();
+        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
         const normalizedTrades = normalizeFreedomTrades(response);
+        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
         // Keep broker executions separate from app-owned ClosedTrade records.
         // ClosedHistoryDesk subscribes to this event and renders the broker data.
         emitBrokerEvent('broker:executed-trades', normalizedTrades);
-        // Account snapshots are emitted only after a successful account API request.
-        // A trade-history refresh must not make an older account snapshot look current.
       } catch (error) {
+        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
         console.error('Unable to load TradeNet executed trades:', error);
         emitBrokerEvent('broker:executed-trades-error');
       }
     })();
+    tradesRequests.set(requestKey, request);
     try {
-      await tradesRequest;
+      await request;
     } finally {
-      tradesRequest = null;
+      if (tradesRequests.get(requestKey) === request) tradesRequests.delete(requestKey);
     }
   };
 
   useEffect(() => {
-    const loadActiveOrders = async () => {
-      if (activeOrdersRequest) return activeOrdersRequest;
-      activeOrdersRequest = refreshActiveOrders({
+    if (currentUser?.role !== 'admin') return;
+    const session = brokerSessionIdentityRef.current.capture();
+    if (!session) return;
+    const loadActiveOrders = async (): Promise<void> => {
+      if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+      const requestKey = sessionRequestKey(session);
+      const existing = activeOrdersRequests.get(requestKey);
+      if (existing) return existing;
+
+      const request = refreshActiveOrders({
         restoreGatewaySecret,
         fetchActiveOrders: fetchFreedomTradeNetActiveOrders,
         normalizeActiveOrders: normalizeFreedomActiveOrders,
-        onSuccess: (orders) => emitBrokerEvent('broker:active-orders', orders),
-        onError: () => emitBrokerEvent('broker:active-orders-error'),
-        logError: (error) => console.error('Unable to load active TradeNet orders:', error)
+        onSuccess: (orders) => {
+          if (brokerSessionIdentityRef.current.isCurrent(session)) {
+            emitBrokerEvent('broker:active-orders', orders);
+          }
+        },
+        onError: () => {
+          if (brokerSessionIdentityRef.current.isCurrent(session)) {
+            emitBrokerEvent('broker:active-orders-error');
+          }
+        },
+        logError: (error) => {
+          if (brokerSessionIdentityRef.current.isCurrent(session)) {
+            console.error('Unable to load active TradeNet orders:', error);
+          }
+        }
       });
-      try { await activeOrdersRequest; } finally { activeOrdersRequest = null; }
+      activeOrdersRequests.set(requestKey, request);
+      try {
+        await request;
+      } finally {
+        if (activeOrdersRequests.get(requestKey) === request) activeOrdersRequests.delete(requestKey);
+      }
     };
     const removeRequestListener = addBrokerEventListener('broker:request-active-orders', () => {
       void loadActiveOrders();
     });
-    // The Margin desk requests active orders when it becomes visible.
+    // Refresh for each authenticated administrator identity, not just at mount.
+    void loadActiveOrders();
     return removeRequestListener;
-  }, []);
+  }, [currentUser?.id, currentUser?.role]);
 
   // Broker-wide balances and positions are administrator data. Guests refresh
   // assigned symbols and assignment state through the scoped quote/cloud flows.
   useEffect(() => {
     if (currentUser?.role !== 'admin') return;
+    const session = brokerSessionIdentityRef.current.capture();
+    if (!session) return;
     const refreshAccountInfo = () => {
-      void loadFreedomAccount().catch(() => {
-        // Keep the saved portfolio intact, but notify the app shell so stale
-        // broker data is never mistaken for a successful current snapshot.
+      void loadFreedomAccount(session).catch(() => {
+        // Ignore completion from a prior identity; it must not mark the next
+        // account's broker snapshot stale or display an unrelated error.
+        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
         emitBrokerEvent('broker:account-info-error');
       });
     };
     const removeRequestListener = addBrokerEventListener('broker:request-account-info', refreshAccountInfo);
     refreshAccountInfo();
     return removeRequestListener;
-  }, [currentUser?.role]);
+  }, [currentUser?.id, currentUser?.role]);
 
 
 
