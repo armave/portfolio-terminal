@@ -433,28 +433,31 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const loadExecutedTrades = async () => {
     if (tradesRequest) return tradesRequest;
     tradesRequest = (async () => {
-    try {
-      // The saved Gateway Secret is encrypted and restored asynchronously from IndexedDB.
-      // Never issue the startup request until restoration has completed.
-      const secret = await restoreGatewaySecret();
-      if (!secret.trim()) {
+      try {
+        // The saved Gateway Secret is encrypted and restored asynchronously from IndexedDB.
+        // Never issue the startup request until restoration has completed.
+        const secret = await restoreGatewaySecret();
+        if (!secret.trim()) {
+          emitBrokerEvent('broker:executed-trades-error');
+          return;
+        }
+        const response = await fetchFreedomTradeNetTrades();
+        const normalizedTrades = normalizeFreedomTrades(response);
+        // Keep broker executions separate from app-owned ClosedTrade records.
+        // ClosedHistoryDesk subscribes to this event and renders the broker data.
+        emitBrokerEvent('broker:executed-trades', normalizedTrades);
+        // Account snapshots are emitted only after a successful account API request.
+        // A trade-history refresh must not make an older account snapshot look current.
+      } catch (error) {
+        console.error('Unable to load TradeNet executed trades:', error);
         emitBrokerEvent('broker:executed-trades-error');
-        return;
       }
-      const response = await fetchFreedomTradeNetTrades();
-      const normalizedTrades = normalizeFreedomTrades(response);
-      // Keep broker executions separate from app-owned ClosedTrade records.
-      // ClosedHistoryDesk subscribes to this event and renders the broker data.
-      emitBrokerEvent('broker:executed-trades', normalizedTrades);
-      // Account snapshots are emitted only after a successful account API request.
-      // A trade-history refresh must not make an older account snapshot look current.
-    } catch (error) {
-      console.error('Unable to load TradeNet executed trades:', error);
-      emitBrokerEvent('broker:executed-trades-error');
-    } finally {
-    }
     })();
-    try { await tradesRequest; } finally { tradesRequest = null; }
+    try {
+      await tradesRequest;
+    } finally {
+      tradesRequest = null;
+    }
   };
 
   useEffect(() => {
