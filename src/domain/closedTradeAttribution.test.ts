@@ -89,6 +89,25 @@ describe('closed trade tranche attribution', () => {
     expect(result.get(afterAssignment)?.guestAllocations).toEqual([{ guestId: 'guest-amd', quantity: 1 }]);
   });
 
+  it('does not label a partially unmatched sell with only the matched lot category', () => {
+    const buy = { id: 'buy-partial', ticker: 'TSLA', side: 'BUY', quantity: 1, executedAt: at(9) };
+    const sale = { id: 'sale-partial', ticker: 'TSLA', side: 'SELL', quantity: 2, executedAt: at(12) };
+    const id = trancheId('TSLA', at(9), 'buy-partial');
+    expect(attributeClosedTradeExecutions([buy, sale], {
+      trancheTypes: { [id]: 'cash' },
+      guestAssignments: { [id]: 'guest-tsla' },
+      guestAssignmentDetails: {
+        [id]: {
+          assignmentId: 'assignment-tsla', guestId: 'guest-tsla', assignedAt: at(10), assignedQuantity: 1
+        }
+      }
+    }).get(sale)).toEqual({
+      fundingType: 'unclassified',
+      guestAllocations: [{ guestId: 'guest-tsla', quantity: 1 }],
+      unmatchedQuantity: 1
+    });
+  });
+
   it('marks unmatched sells as unclassified instead of inventing tranche ownership', () => {
     const sale = { id: 'orphan-sale', ticker: 'TSLA', side: 'SELL', quantity: 2, executedAt: at(12) };
     expect(attributeClosedTradeExecutions([sale]).get(sale)).toEqual({
