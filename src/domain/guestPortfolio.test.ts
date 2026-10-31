@@ -3,6 +3,7 @@ import type { ActiveBrokerTranche, GuestTrancheLedgerRecord } from '../types/por
 import {
   calculateGuestPersonalEquity,
   filterGuestTrancheLedger,
+  groupGuestTrancheLedgerOperations,
   getGuestAssignedCashHoldings,
   summarizeGuestTrancheLedger
 } from './guestPortfolio';
@@ -229,6 +230,41 @@ describe('guest tranche ledger reports and filtering', () => {
       operationDateFrom: 1719990000000,
       operationDateTo: 1720010000000
     })).toEqual([]);
+  });
+
+  it('groups same-ticker operations on the same displayed local calendar date regardless of intraday gap', () => {
+    const firstOperationAt = new Date(2026, 8, 24, 0, 6, 45).getTime();
+    const secondOperationAt = new Date(2026, 8, 24, 17, 43, 23).getTime();
+    const nextDayOperationAt = new Date(2026, 8, 25, 0, 1, 0).getTime();
+    const grouped = groupGuestTrancheLedgerOperations([
+      { ...records[0], assignmentId: 'buy-1', ticker: 'GOOGL', operationAt: secondOperationAt },
+      { ...records[0], assignmentId: 'buy-2', ticker: 'googl', operationAt: firstOperationAt },
+      { ...records[0], assignmentId: 'buy-next-day', ticker: 'GOOGL', operationAt: nextDayOperationAt },
+      { ...records[0], assignmentId: 'other-ticker', ticker: 'MSFT', operationAt: secondOperationAt },
+      {
+        ...records[0],
+        assignmentId: 'trade',
+        ticker: 'GOOGL',
+        trancheId: 'closed-trade:sell-1',
+        operationAt: secondOperationAt
+      },
+      {
+        ...records[0],
+        assignmentId: 'missing-date',
+        ticker: 'GOOGL',
+        operationAt: null,
+        purchasedAt: null
+      }
+    ]);
+
+    expect(grouped.map((group) => group.records.map((record) => record.assignmentId))).toEqual([
+      ['buy-1', 'buy-2'],
+      ['buy-next-day'],
+      ['other-ticker'],
+      ['trade'],
+      ['missing-date']
+    ]);
+    expect(grouped[0].operationAt).toBe(secondOperationAt);
   });
 
   it('summarizes historical assigned capital and current open value without inventing realized P/L', () => {

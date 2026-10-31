@@ -176,8 +176,62 @@ export function filterGuestTrancheLedger(
     });
 }
 
-/** Summarize historical assignment capital and today's open position value.
- * Realized net P&L is carried on closed-trade ledger records when the source is complete. */
+/** A display row containing one or more closely timed operations of the same ticker and side. */
+export interface GuestTrancheLedgerOperationGroup {
+  records: GuestTrancheLedgerRecord[];
+  /** Timestamp of the first (newest) operation in this group. */
+  operationAt: number | null;
+}
+
+function getGuestTrancheLedgerOperationAt(record: GuestTrancheLedgerRecord): number | null {
+  const isClosedTrade = record.trancheId.startsWith('closed-trade:');
+  const value = isClosedTrade ? record.operationAt : record.operationAt ?? record.purchasedAt;
+  if (value === null || value === undefined) return null;
+  const timestamp = Number(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+/**
+ * Group LOTS rows by ticker, operation side, and the calendar date shown in
+ * the user's local timezone. The display is date-only, so intraday time gaps
+ * do not split operations that appear on the same date.
+ */
+export function groupGuestTrancheLedgerOperations(
+  records: GuestTrancheLedgerRecord[]
+): GuestTrancheLedgerOperationGroup[] {
+  const groups: GuestTrancheLedgerOperationGroup[] = [];
+  const groupsByOperation = new Map<string, GuestTrancheLedgerOperationGroup>();
+
+  for (const record of records || []) {
+    const ticker = String(record.ticker || '').trim().toUpperCase();
+    const isClosedTrade = record.trancheId.startsWith('closed-trade:');
+    const operationAt = getGuestTrancheLedgerOperationAt(record);
+    if (!ticker || operationAt === null) {
+      groups.push({ records: [record], operationAt });
+      continue;
+    }
+
+    const date = new Date(operationAt);
+    const localOperationDate = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')
+    ].join('-');
+    const key = ticker + ':' + (isClosedTrade ? 'trade' : 'tranche') + ':' + localOperationDate;
+    const existing = groupsByOperation.get(key);
+    if (existing) {
+      existing.records.push(record);
+      continue;
+    }
+
+    const group = { records: [record], operationAt };
+    groups.push(group);
+    groupsByOperation.set(key, group);
+  }
+
+  return groups;
+}
+
 export function summarizeGuestTrancheLedger(
   records: GuestTrancheLedgerRecord[],
   activeTranches: ActiveBrokerTranche[] = []
