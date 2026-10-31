@@ -73,6 +73,38 @@ function renderStocktwitsBody(body: string) {
   );
 }
 
+const NEWS_DIALOG_FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export function handleNewsDialogKeyDown(
+  event: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'preventDefault'>,
+  focusableElements: Array<{ focus: () => void }>,
+  activeElement: unknown,
+  closeDialog: () => void
+): void {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeDialog();
+    return;
+  }
+
+  if (event.key !== 'Tab') return;
+  if (focusableElements.length === 0) {
+    event.preventDefault();
+    return;
+  }
+
+  const activeIndex = focusableElements.findIndex((element) => element === activeElement);
+  const lastIndex = focusableElements.length - 1;
+
+  if (event.shiftKey && (activeIndex === 0 || activeIndex === -1)) {
+    event.preventDefault();
+    focusableElements[lastIndex].focus();
+  } else if (!event.shiftKey && (activeIndex === lastIndex || activeIndex === -1)) {
+    event.preventDefault();
+    focusableElements[0].focus();
+  }
+}
+
 export function MarketInsightsPanel() {
   const portfolio = usePortfolio();
   const ticker = getMarketInsightsTicker(portfolio);
@@ -85,14 +117,29 @@ export function MarketInsightsPanel() {
   const [newsError, setNewsError] = useState<string | null>(null);
   const [newsUpdatedAt, setNewsUpdatedAt] = useState<number | null>(null);
   const [newsRefreshRequest, setNewsRefreshRequest] = useState(0);
+  const newsDialogRef = useRef<HTMLElement | null>(null);
+  const newsTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!selectedNews) return;
+
+    const previousFocus = newsTriggerRef.current;
+    const dialog = newsDialogRef.current;
+    dialog?.querySelector<HTMLButtonElement>('[data-news-dialog-close]')?.focus();
+
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSelectedNews(null);
+      const focusableElements = dialog
+        ? Array.from(dialog.querySelectorAll<HTMLElement>(NEWS_DIALOG_FOCUSABLE_SELECTOR))
+          .filter((element) => element.tabIndex >= 0 && !element.hasAttribute('disabled'))
+        : [];
+      handleNewsDialogKeyDown(event, focusableElements, document.activeElement, () => setSelectedNews(null));
     };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
   }, [selectedNews]);
   const [stockData, setStockData] = useState<any>(null);
   const [stocktwitsData, setStocktwitsData] = useState<StocktwitsStream | null>(null);
@@ -284,7 +331,10 @@ export function MarketInsightsPanel() {
               <button
                 key={n.id || n.url || idx}
                 type="button"
-                onClick={() => setSelectedNews(n)}
+                onClick={(event) => {
+                  newsTriggerRef.current = event.currentTarget;
+                  setSelectedNews(n);
+                }}
                 aria-label={`Read news: ${n.headline || 'Untitled article'}`}
                 class="news-feed-item block w-full text-left bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
               >
@@ -622,6 +672,8 @@ export function MarketInsightsPanel() {
           onClick={() => setSelectedNews(null)}
         >
           <section
+            ref={newsDialogRef}
+            tabIndex={-1}
             class="news-article-dialog news-dialog-enter w-full max-w-3xl overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-2xl"
             role="dialog"
             aria-modal="true"
@@ -637,7 +689,7 @@ export function MarketInsightsPanel() {
                   {selectedNews.headline || 'Untitled article'}
                 </h2>
               </div>
-              <button type="button" class="shrink-0 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white" onClick={() => setSelectedNews(null)} aria-label="Close news article">✕</button>
+              <button type="button" class="shrink-0 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white" onClick={() => setSelectedNews(null)} aria-label="Close news article" data-news-dialog-close>✕</button>
             </header>
             <div class="max-h-[min(72dvh,42rem)] space-y-4 overflow-y-auto p-4 sm:p-5">
               <div class="whitespace-pre-wrap break-words leading-relaxed text-slate-300">

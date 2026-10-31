@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getStocktwitsCashtags, getVisibleStocktwitsMessages, hasStocktwitsCommentary, isBearishStocktwitsMessage, isStandaloneStocktwitsMessage } from './MarketInsightsPanel';
+import { getStocktwitsCashtags, getVisibleStocktwitsMessages, handleNewsDialogKeyDown, hasStocktwitsCommentary, isBearishStocktwitsMessage, isStandaloneStocktwitsMessage } from './MarketInsightsPanel';
 
 describe('getStocktwitsCashtags', () => {
   it('returns unique ticker cashtags in uppercase', () => {
@@ -105,5 +105,97 @@ describe('getVisibleStocktwitsMessages', () => {
       { id: 3, body: 'Bullish $AAPL $MSFT' },
       { id: 4, body: 'Bearish $AAPL', sentiment: { basic: 'Bearish' } }
     ])).toHaveLength(2);
+  });
+});
+
+
+describe('handleNewsDialogKeyDown', () => {
+  it('closes the dialog and prevents Escape from reaching the page', () => {
+    let prevented = false;
+    let closed = false;
+
+    handleNewsDialogKeyDown({
+      key: 'Escape',
+      shiftKey: false,
+      preventDefault: () => { prevented = true; }
+    }, [], null, () => { closed = true; });
+
+    expect(prevented).toBe(true);
+    expect(closed).toBe(true);
+  });
+
+  it('wraps Shift+Tab from the first control to the last control', () => {
+    const focused: string[] = [];
+    const first = { focus: () => focused.push('first') };
+    const last = { focus: () => focused.push('last') };
+    let prevented = false;
+
+    handleNewsDialogKeyDown({
+      key: 'Tab',
+      shiftKey: true,
+      preventDefault: () => { prevented = true; }
+    }, [first, last], first, () => undefined);
+
+    expect(prevented).toBe(true);
+    expect(focused).toEqual(['last']);
+  });
+
+  it('wraps Tab from the last control to the first control', () => {
+    const focused: string[] = [];
+    const first = { focus: () => focused.push('first') };
+    const last = { focus: () => focused.push('last') };
+    let prevented = false;
+
+    handleNewsDialogKeyDown({
+      key: 'Tab',
+      shiftKey: false,
+      preventDefault: () => { prevented = true; }
+    }, [first, last], last, () => undefined);
+
+    expect(prevented).toBe(true);
+    expect(focused).toEqual(['first']);
+  });
+
+  it('moves focus back inside when the active element is outside the dialog', () => {
+    const focused: string[] = [];
+    const first = { focus: () => focused.push('first') };
+    const last = { focus: () => focused.push('last') };
+
+    handleNewsDialogKeyDown({
+      key: 'Tab',
+      shiftKey: false,
+      preventDefault: () => undefined
+    }, [first, last], null, () => undefined);
+
+    expect(focused).toEqual(['first']);
+  });
+
+  it('leaves normal Tab movement alone between controls', () => {
+    const focused: string[] = [];
+    const first = { focus: () => focused.push('first') };
+    const middle = { focus: () => focused.push('middle') };
+    const last = { focus: () => focused.push('last') };
+    let prevented = false;
+
+    handleNewsDialogKeyDown({
+      key: 'Tab',
+      shiftKey: false,
+      preventDefault: () => { prevented = true; }
+    }, [first, middle, last], middle, () => undefined);
+
+    expect(prevented).toBe(false);
+    expect(focused).toEqual([]);
+  });
+
+  it('prevents focus from escaping when the dialog has no focusable controls', () => {
+    let prevented = false;
+
+    handleNewsDialogKeyDown({
+      key: 'Tab',
+      shiftKey: false,
+      preventDefault: () => { prevented = true; }
+    }, [], null, () => undefined);
+
+    expect(prevented).toBe(true);
   });
 });
