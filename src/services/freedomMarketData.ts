@@ -20,7 +20,7 @@ function firstObject(value: unknown): Record<string, unknown> | null {
   }
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
-  for (const key of ["quotes", "quote", "data", "result", "items", "securities"]) {
+  for (const key of ["q", "quotes", "quote", "data", "result", "items", "securities"]) {
     if (record[key] && typeof record[key] === "object") {
       const nested = firstObject(record[key]);
       if (nested) return nested;
