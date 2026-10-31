@@ -212,3 +212,19 @@ A modal accessibility audit found inconsistent keyboard focus behavior across th
 - [x] Both workflows passed: [Validate run 41198028237](https://github.com/armave/portfolio-terminal/actions/runs/41198028237) and [Pull Request CI run 41198028274](https://github.com/armave/portfolio-terminal/actions/runs/41198028274).
 
 No authentication API calls, portfolio state, broker behavior, scenario calculations, or server authorization behavior changed. Browser and assistive-technology verification remains outstanding.
+
+## Follow-on implementation — roadmap execution PR (2026-10-31)
+
+**Working branch:** `chore/roadmap-implementation-2026-10-31`  
+**Base:** `main` at `c60ee2ee115f754a86212c656423c0bea2b76eb7`
+
+- [x] Optimize `buildHoldingsProjection`: build one normalized ticker-to-legacy-metadata index instead of rescanning the entire legacy holdings array for each canonical position.
+- [x] Preserve compatibility semantics by retaining the first legacy row matching each normalized ticker.
+- [x] Add regression coverage for whitespace/case normalization, duplicate legacy rows, and derived canonical fields.
+- [x] Correct the Gateway/cloud-sync documentation: general Worker POST bodies are limited to 20 MB, authentication JSON bodies to 8 KB, and Durable Object cloud-state writes to 20 MB. Existing ticker and Gemini limits remain documented separately.
+- [ ] Run typecheck, full Vitest suite, dead-code validation, production dependency audit, and production build on the exact PR head.
+- [ ] Complete browser/mobile and assistive-technology verification. No financial formula, persisted schema, broker order behavior, authorization rule, or server-side code is changed by this PR.
+
+### Implementation notes
+
+The compatibility projection is derived from canonical `PortfolioState.positions`; this change only reduces lookup work from O(P × H) to O(P + H), where P is the number of canonical positions and H is the number of legacy holdings. It does not change position quantities, tranches, targets, quote values, or retained user metadata.
