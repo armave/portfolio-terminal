@@ -149,19 +149,28 @@ export function migrateLegacyCloudHoldingsToPositions(
   const localClosedTrades = Array.isArray(localState.closedTrades) ? localState.closedTrades : [];
   const legacyHoldings = Array.isArray(cloudState.holdings) ? cloudState.holdings : [];
 
+  // Index the latest local exit once instead of scanning the full trade history
+  // for every legacy holding. Keep the same date-field precedence and zero fallback
+  // as the former per-holding filter/map/reduce sequence.
+  const latestCloseByTicker = new Map<string, number>();
+  for (const trade of localClosedTrades) {
+    const ticker = String(trade?.ticker || '').trim().toUpperCase();
+    if (!ticker) continue;
+
+    const value = trade.closedAt ?? trade.exitDate ?? trade.sellDate ?? trade.date;
+    const timestamp = typeof value === 'number' ? value : Date.parse(String(value || ''));
+    const normalizedTimestamp = Number.isFinite(timestamp) ? timestamp : 0;
+    const previousTimestamp = latestCloseByTicker.get(ticker) ?? 0;
+    if (normalizedTimestamp > previousTimestamp) {
+      latestCloseByTicker.set(ticker, normalizedTimestamp);
+    }
+  }
+
   const safeHoldings = legacyHoldings.filter((holding) => {
     const ticker = String(holding?.ticker || '').trim().toUpperCase();
     if (!ticker || localPositions[ticker]) return false;
 
-    const latestClose = localClosedTrades
-      .filter((trade) => String(trade?.ticker || '').trim().toUpperCase() === ticker)
-      .map((trade) => {
-        const value = trade.closedAt ?? trade.exitDate ?? trade.sellDate ?? trade.date;
-        const timestamp = typeof value === 'number' ? value : Date.parse(String(value || ''));
-        return Number.isFinite(timestamp) ? timestamp : 0;
-      })
-      .reduce((latest, timestamp) => Math.max(latest, timestamp), 0);
-
+    const latestClose = latestCloseByTicker.get(ticker) ?? 0;
     if (!latestClose) return true;
 
     const latestLegacyPurchase = (Array.isArray(holding.tranches) ? holding.tranches : [])
