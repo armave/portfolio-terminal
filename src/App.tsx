@@ -109,7 +109,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       }
 
       const isPortfolio = !requestedTicker;
-      const scope = isPortfolio ? 'portfolio' : 'position';
+      const scope: 'portfolio' | 'position' = isPortfolio ? 'portfolio' : 'position';
       const requestIdentity = { scope, ...(requestedTicker ? { ticker: requestedTicker } : {}) };
       const title = isPortfolio ? 'Portfolio-wide Margin Review' : requestedTicker + ' · Position Review';
       const digestKey = isPortfolio ? 'portfolio' : 'position:' + requestedTicker;
