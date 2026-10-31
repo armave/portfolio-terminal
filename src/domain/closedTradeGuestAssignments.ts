@@ -123,7 +123,9 @@ export function buildClosedTradeGuestLedgerUpserts(
     if (isAutomaticallyAttributed) {
       for (const [guestIdValue, metric] of Object.entries(source.guestMetrics || {})) {
         const guestId = String(guestIdValue || '').trim();
-        const quantity = Number(metric?.quantity);
+        const rawQuantity = Number(metric?.quantity);
+        const quantity = Number.isFinite(rawQuantity)
+          ? Math.min(maximumAssignmentQuantity, rawQuantity) : rawQuantity;
         const assignedAt = Number(metric?.assignedAt);
         if (!guestId || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9) continue;
         history.set(guestId, {
@@ -161,7 +163,6 @@ export function buildClosedTradeGuestLedgerUpserts(
     }
 
     const rowKey = stableKey(allocationKey);
-    const sourceQuantity = Number(source.quantity);
     for (const assignment of history.values()) {
       const isCurrent = isAutomaticallyAttributed ||
         (hasCurrentAssignment && assignment.guestId === currentGuestId);
