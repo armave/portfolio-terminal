@@ -333,6 +333,56 @@ describe('Freedom quote endpoint', () => {
   });
 });
 
+describe('Freedom trades Worker action', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('requests the complete TradeNet history without the latest-100 cap', async () => {
+    const fullHistory = {
+      trades: {
+        max_trade_id: [{ '@text': '900003' }],
+        trade: [
+          { id: '100001', instr_nm: 'META.US', type: '1', q: '14', p: '310', date: '2026-09-01T10:00:00' },
+          { id: '900002', instr_nm: 'META.US', type: '2', q: '3', p: '620', date: '2026-10-29T10:00:00', profit: '930' }
+        ]
+      }
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(fullHistory), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-trades', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_PUBLIC_KEY: 'public-key',
+      FREEDOM_PRIVATE_KEY: 'private-key'
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      data: {
+        trades: {
+          trade: [
+            expect.objectContaining({ id: '100001' }),
+            expect.objectContaining({ id: '900002' })
+          ]
+        }
+      }
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [upstreamUrl, upstreamInit] = fetchMock.mock.calls[0];
+    expect(String(upstreamUrl)).toBe('https://tradernet.com/api/getTradesHistory');
+    expect(upstreamInit.method).toBe('POST');
+    expect(JSON.parse(upstreamInit.body)).toEqual({ sort: 0 });
+  });
+});
+
 describe('Freedom news fallback', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
