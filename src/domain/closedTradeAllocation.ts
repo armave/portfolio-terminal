@@ -29,18 +29,21 @@ export function resolveClosedTradeAllocation(
   quantityValue: unknown,
   inferredType: ActiveTrancheType | 'unclassified' | null | undefined,
   inferredGuests: readonly ClosedTradeGuestAllocation[] = [],
-  saved?: Partial<ClosedTradeAllocation> | null
+  saved?: Partial<ClosedTradeAllocation> | null,
+  inferredCashQuantity?: number
 ): ResolvedClosedTradeAllocation {
   const quantity = finiteNonNegative(quantityValue);
+  const inferredCash = inferredCashQuantity === undefined
+    ? inferredGuests.reduce((sum, item) => sum + finiteNonNegative(item.quantity), 0)
+    : finiteNonNegative(inferredCashQuantity);
   const fundingType = isFundingType(saved?.fundingType)
     ? saved.fundingType
-    : isFundingType(inferredType) ? inferredType : 'margin';
+    : isFundingType(inferredType) ? inferredType : inferredCash > 0 ? 'mix' : 'margin';
 
   let cashQuantity = 0;
   if (fundingType === 'cash') {
     cashQuantity = quantity;
   } else if (fundingType === 'mix') {
-    const inferredCash = inferredGuests.reduce((sum, item) => sum + finiteNonNegative(item.quantity), 0);
     const requestedCash = saved && saved.cashQuantity !== undefined
       ? finiteNonNegative(saved.cashQuantity)
       : inferredCash;
