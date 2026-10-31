@@ -128,8 +128,8 @@ export function calculateGuestPersonalEquity(holdings: GuestCashHolding[]): numb
 export interface GuestTrancheLedgerFilters {
   ticker?: string;
   status?: 'all' | 'active' | 'closed' | 'unassigned';
-  trancheDateFrom?: number;
-  trancheDateTo?: number;
+  operationDateFrom?: number;
+  operationDateTo?: number;
 }
 
 export interface GuestTrancheLedgerSummary {
@@ -155,16 +155,18 @@ export function filterGuestTrancheLedger(
     .filter((record) => {
       if (ticker && !String(record.ticker || '').toUpperCase().includes(ticker)) return false;
       if (status !== 'all' && record.status !== status) return false;
-      const trancheDate = record.purchasedAt === null || record.purchasedAt === undefined
-        ? Number.NaN : Number(record.purchasedAt);
-      if (Number.isFinite(filters.trancheDateFrom) &&
-          (!Number.isFinite(trancheDate) || trancheDate < Number(filters.trancheDateFrom))) return false;
-      if (Number.isFinite(filters.trancheDateTo) &&
-          (!Number.isFinite(trancheDate) || trancheDate > Number(filters.trancheDateTo))) return false;
+      const operationDateValue = record.operationAt ?? record.purchasedAt;
+      const operationDate = operationDateValue === null || operationDateValue === undefined
+        ? Number.NaN : Number(operationDateValue);
+      if (Number.isFinite(filters.operationDateFrom) &&
+          (!Number.isFinite(operationDate) || operationDate < Number(filters.operationDateFrom))) return false;
+      if (Number.isFinite(filters.operationDateTo) &&
+          (!Number.isFinite(operationDate) || operationDate > Number(filters.operationDateTo))) return false;
       return true;
     })
     .slice()
-    .sort((a, b) => (b.purchasedAt ?? Number.NEGATIVE_INFINITY) - (a.purchasedAt ?? Number.NEGATIVE_INFINITY) ||
+    .sort((a, b) => ((b.operationAt ?? b.purchasedAt) ?? Number.NEGATIVE_INFINITY) -
+      ((a.operationAt ?? a.purchasedAt) ?? Number.NEGATIVE_INFINITY) ||
       b.assignedAt - a.assignedAt || a.ticker.localeCompare(b.ticker));
 }
 
