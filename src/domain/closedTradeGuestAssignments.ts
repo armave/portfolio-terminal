@@ -19,7 +19,9 @@ export interface ClosedTradeOperationDateSource {
 export function resolveClosedTradeOperationDate(
   trade: ClosedTradeOperationDateSource
 ): number | string | null {
-  const value = trade.exitDate ?? trade.sellDate ?? trade.closedAt ?? trade.date;
+  // Match the display's truthy precedence so an empty exitDate does not
+  // hide a valid sellDate or closedAt value.
+  const value = trade.exitDate || trade.sellDate || trade.closedAt || trade.date;
   return typeof value === 'number' || typeof value === 'string' ? value : null;
 }
 
