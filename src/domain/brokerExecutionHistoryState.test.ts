@@ -32,6 +32,13 @@ describe('broker execution history view state', () => {
     expect(failed).toEqual({ trades: previous, status: 'stale' });
   });
 
+  it('does not show a loading state when the current view must not request account history', () => {
+    expect(createBrokerExecutionHistoryState([], [], false)).toEqual({
+      trades: [],
+      status: 'ready'
+    });
+  });
+
   it('shows an error state when the first broker request fails without a saved snapshot', () => {
     const initial = createBrokerExecutionHistoryState([], [], true);
     expect(initial.status).toBe('loading');
