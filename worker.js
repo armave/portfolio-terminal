@@ -441,6 +441,10 @@ export function fetchFreedomMarketDepthWithSid(symbol, session) {
             orderBookEventsReceived: 0,
             orderBookSymbolsReceived: [],
             unmatchedOrderBooks: 0,
+            quoteSubscriptionSent: false,
+            quoteEventsReceived: 0,
+            quoteSymbolsReceived: [],
+            unmatchedQuotes: 0,
             serverErrorCategory: null,
             socketErrorObserved: false,
             closeCode: null,
@@ -521,6 +525,10 @@ export function fetchFreedomMarketDepthWithSid(symbol, session) {
                 try {
                     socket.send(JSON.stringify(["orderBook", [requestedSymbol]]));
                     diagnostics.subscriptionSent = true;
+                    // Quotes are a read-only control probe: they help distinguish an
+                    // unsupported ticker from an order-book-specific feed/permission issue.
+                    socket.send(JSON.stringify(["quotes", [requestedSymbol]]));
+                    diagnostics.quoteSubscriptionSent = true;
                     diagnostics.phase = "awaiting_order_book";
                 } catch {
                     diagnostics.phase = "subscription_send_failed";
@@ -569,6 +577,18 @@ export function fetchFreedomMarketDepthWithSid(symbol, session) {
                         : "TradeNet rejected the market-depth subscription.");
                     error.status = needsReauth ? 401 : 502;
                     finish(error);
+                    return;
+                }
+
+                if (event === "q") {
+                    diagnostics.quoteEventsReceived += 1;
+                    const quoteSymbol = String(payload?.c || payload?.i || payload?.symbol || "").trim().toUpperCase();
+                    if (quoteSymbol && diagnostics.quoteSymbolsReceived.length < 5 &&
+                        !diagnostics.quoteSymbolsReceived.includes(quoteSymbol) &&
+                        /^[A-Z0-9.^=-]{1,20}$/.test(quoteSymbol)) {
+                        diagnostics.quoteSymbolsReceived.push(quoteSymbol);
+                    }
+                    if (quoteSymbol && quoteSymbol !== requestedSymbol) diagnostics.unmatchedQuotes += 1;
                     return;
                 }
 
