@@ -1212,6 +1212,15 @@ export async function fetchFreedomTradeNetMarketDepth(ticker: string): Promise<a
   return proxyFetch('freedom-market-depth', { symbol }, { cache: 'no-store' });
 }
 
+/** Ensure the administrator's live TradeNet SID is present in server-side storage. */
+export async function ensureFreedomTradeNetSession(): Promise<any> {
+  return proxyFetch('freedom-session', {}, {
+    method: 'POST',
+    body: JSON.stringify({}),
+    cache: 'no-store'
+  });
+}
+
 export interface FreedomActiveOrder {
   id: string;
   ticker: string;
