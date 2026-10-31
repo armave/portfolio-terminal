@@ -258,6 +258,6 @@ The hooks register subscribers in effects. Immediate snapshot delivery on subscr
 - [x] Add frontend normalization support and regression coverage for the documented `ltp`, `pp`, `chg`, `pcp`, and `ltt` fields.
 - [x] Merge the published `main` commits into this roadmap branch without dropping prior roadmap changes.
 - [ ] Verify a real authorized TradeNet quote response and the Terminal Quote action in a browser; mocked integration tests cannot prove account-specific entitlements or live endpoint availability.
-- [ ] Exact-head CI for the completed roadmap branch.
+- [x] Exact-head CI passed on `e9b30db165b7807c0134bf7d5ae50d62913d5f99`: [Validate run 41202393721](https://github.com/armave/portfolio-terminal/actions/runs/41202393721) and [Pull Request CI run 41202393803](https://github.com/armave/portfolio-terminal/actions/runs/41202393803) both passed install, typecheck, full tests, dead-code validation, production dependency audit, and build.
 
 The screenshot showed the Worker returning HTTP 404 from the Freedom quote path after the Terminal requested `GOOGL.US`; the Yahoo quote path still returned a price. The failure was caused by the TradeNet command/parameter mismatch, not by the Terminal command parser. The correction preserves concurrent Yahoo lookup and the existing Finnhub/Twelve Data fallback, and does not change portfolio accounting, quote ordering, broker orders, persisted state, or authorization.
