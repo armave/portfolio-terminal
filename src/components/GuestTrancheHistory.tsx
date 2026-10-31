@@ -129,7 +129,10 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
                 const active = activeTranches.find((tranche) => tranche.id === record.trancheId);
                 const marketValue = record.status === 'active' ? active?.marketValue : null;
                 const value = record.value ?? marketValue;
-                const operationAt = record.operationAt ?? record.purchasedAt;
+                const isClosedTrade = record.trancheId.startsWith('closed-trade:');
+                const operationAt = isClosedTrade
+                  ? record.operationAt
+                  : record.operationAt ?? record.purchasedAt;
                 return (
                   <tr key={record.assignmentId} class="hover:bg-slate-900/60">
                     <td class="whitespace-nowrap px-2 py-2 text-slate-400">{formatAssignmentDate(operationAt)}</td>
