@@ -3,7 +3,8 @@ import {
   applyCashflowAllocationsToBrokerExecutions,
   applyCashflowAllocationsToClosedTrades,
   deduplicateClosedHistoryRows,
-  preservePersistedBrokerFeeAllocations
+  preservePersistedBrokerFeeAllocations,
+  resolveClosedTradeFeeBreakdown
 } from './closedHistoryFees';
 
 describe('closed-history cashflow fee recalculation', () => {
@@ -141,6 +142,20 @@ describe('closed-history idempotency and source deduplication', () => {
     expect(result[0]).toBe(sell);
   });
 
+  it('does not fabricate net P/L when an app trade has no known realized profit', () => {
+    const trade = { feesAndCommissions: 4, marginFee: 2, netProfit: null, netRealizedGain: null };
+    const result = applyCashflowAllocationsToClosedTrades([trade], new Map([[0, 3]]))[0];
+    expect(result).toMatchObject({ feesAndCommissions: 5, totalCommissions: 5, marginFee: 3, marginInterest: 3 });
+    expect(result.netProfit).toBeNull();
+    expect(result.netRealizedGain).toBeNull();
+  });
+
+  it('uses the non-zero margin fee when legacy margin fields disagree', () => {
+    const trade = { feesAndCommissions: 7, totalCommissions: 7, marginInterest: 0, marginFee: 5, netProfit: 93, netRealizedGain: 93 };
+    const result = applyCashflowAllocationsToClosedTrades([trade], new Map([[0, 2]]))[0];
+    expect(result).toMatchObject({ feesAndCommissions: 4, totalCommissions: 4, marginFee: 2, marginInterest: 2, netProfit: 96 });
+  });
+
   it('preserves object identity when app trade allocation is already applied', () => {
     const trade = {
       feesAndCommissions: 5,
@@ -168,5 +183,33 @@ describe('closed-history idempotency and source deduplication', () => {
     });
     expect(deduplicateClosedHistoryRows([make('app-1', 'app'), make('app-2', 'app')], [make('broker-1', 'tradenet')]))
       .toEqual([make('app-2', 'app')]);
+  });
+});
+
+
+describe('closed-trade fee display breakdown', () => {
+  it('does not count an aggregate margin-inclusive fee total as commission again', () => {
+    expect(resolveClosedTradeFeeBreakdown({
+      feesAndCommissions: 7,
+      totalCommissions: 7,
+      marginFee: 5,
+      marginInterest: 5
+    })).toEqual({ marginFee: 5, commissions: 2, feesTotal: 7 });
+  });
+
+  it('prefers explicit commission fields and uses non-zero legacy margin fallback', () => {
+    expect(resolveClosedTradeFeeBreakdown({
+      commissions: 1.25,
+      feesAndCommissions: 6.25,
+      marginFee: 5,
+      marginInterest: 0
+    })).toEqual({ marginFee: 5, commissions: 1.25, feesTotal: 6.25 });
+  });
+
+  it('treats legacy totalCommissions as commission when no aggregate field exists', () => {
+    expect(resolveClosedTradeFeeBreakdown({
+      totalCommissions: 1.5,
+      marginInterest: 2
+    })).toEqual({ marginFee: 2, commissions: 1.5, feesTotal: 3.5 });
   });
 });

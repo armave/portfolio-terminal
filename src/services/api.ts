@@ -1,4 +1,5 @@
 import CryptoJS from 'crypto-js';
+import { runMarketDataRequest } from './marketRequestGate';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, PortfolioState } from '../types/portfolio';
@@ -207,6 +208,21 @@ export interface ProxyFetchOptions extends RequestInit {
 
 const proxyReadRequests = new Map<string, Promise<any>>();
 const COALESCED_READ_ACTIONS = new Set(['', 'quote', 'provider-quote', 'news', 'stocktwits', 'freedom-quote']);
+const MARKET_DATA_ACTIONS = new Set([
+  '', 'quote', 'provider-quote', 'news', 'stocktwits',
+  'freedom-quote', 'freedom-news', 'freedom-history', 'freedom-market-depth'
+]);
+
+function dispatchProxyFetch(
+  action: string,
+  queryParams: Record<string, string | number | boolean | undefined | null>,
+  fetchOptions: ProxyFetchOptions
+): Promise<any> {
+  const isMarketData = MARKET_DATA_ACTIONS.has(action) &&
+    (action !== '' || Boolean(queryParams.symbol));
+  const request = () => performProxyFetch(action, queryParams, fetchOptions);
+  return isMarketData ? runMarketDataRequest(request) : request();
+}
 
 /**
  * Share identical in-flight market-data reads across features. This is deliberately
@@ -222,7 +238,7 @@ export function proxyFetch(
   const canCoalesce = fetchOptions.cache !== 'no-store' && COALESCED_READ_ACTIONS.has(action) &&
     (method === 'GET' || (action === '' && method === 'POST')) &&
     !fetchOptions.body && !fetchOptions.state;
-  if (!canCoalesce) return performProxyFetch(action, queryParams, fetchOptions);
+  if (!canCoalesce) return dispatchProxyFetch(action, queryParams, fetchOptions);
 
   const secret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
   const normalizedParams = Object.entries(queryParams)
@@ -235,7 +251,7 @@ export function proxyFetch(
     return existing;
   }
 
-  const request = performProxyFetch(action, queryParams, fetchOptions);
+  const request = dispatchProxyFetch(action, queryParams, fetchOptions);
   proxyReadRequests.set(key, request);
   void request.finally(() => {
     if (proxyReadRequests.get(key) === request) proxyReadRequests.delete(key);
@@ -1259,15 +1275,42 @@ export function normalizeFreedomActiveOrders(response: any): FreedomActiveOrder[
   }));
 }
 
-/** Fetch the raw read-only Freedom Broker cashflows response for temporary integration testing. */
+/** Cache the full broker cashflow snapshot briefly to avoid repeat reads on quick Trades navigation. */
+const FREEDOM_CASHFLOW_CACHE_TTL_MS = 5 * 60 * 1000;
+let freedomCashflowCache: { secret: string; expiresAt: number; data: any } | null = null;
+let freedomCashflowRequest: { secret: string; promise: Promise<any> } | null = null;
 
 export async function fetchFreedomCashflows(): Promise<any> {
-  try {
-    return await proxyFetch('freedom-cashflows', {}, { cache: 'no-store' });
-  } catch (error) {
-    if (error instanceof Error) throw error;
-    throw new Error('Failed to fetch Freedom Broker cashflows due to a network error.');
+  const secret = getActiveGatewaySecret().trim();
+  if (freedomCashflowCache && freedomCashflowCache.secret === secret && freedomCashflowCache.expiresAt > Date.now()) {
+    recordApiMetric('cache_hit', { cache: 'freedom_cashflows' });
+    return freedomCashflowCache.data;
   }
+  if (freedomCashflowRequest?.secret === secret) {
+    recordApiMetric('inflight_dedup', { operation: 'freedom_cashflows' });
+    return freedomCashflowRequest.promise;
+  }
+
+  const request = proxyFetch('freedom-cashflows', {}, { cache: 'no-store' })
+    .then((data) => {
+      freedomCashflowCache = { secret, expiresAt: Date.now() + FREEDOM_CASHFLOW_CACHE_TTL_MS, data };
+      return data;
+    })
+    .catch((error) => {
+      if (error instanceof Error) throw error;
+      throw new Error('Failed to fetch Freedom Broker cashflows due to a network error.');
+    })
+    .finally(() => {
+      if (freedomCashflowRequest?.promise === request) freedomCashflowRequest = null;
+    });
+  freedomCashflowRequest = { secret, promise: request };
+  return request;
+}
+
+/** Clear the in-memory snapshot between isolated tests or account changes. */
+export function clearFreedomCashflowCache(): void {
+  freedomCashflowCache = null;
+  freedomCashflowRequest = null;
 }
 
 export interface FreedomExecutedTrade {
