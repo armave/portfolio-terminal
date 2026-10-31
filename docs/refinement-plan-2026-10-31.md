@@ -337,3 +337,15 @@ Source: [TradeNet — Retrieving trades history](https://tradernet.com/tradernet
 - [ ] Verify the stale warning and retry behavior in a real browser/device; browser-based responsive and assistive-technology review remains outstanding.
 
 The previous Cash & Balance error listener cleared `executedTrades` on `broker:executed-trades-error`, which could make active tranches disappear despite a usable saved snapshot. The new reducer keeps the latest available records and changes only the status. The UI distinguishes loading, refreshing, stale-with-data and error-without-data. This is presentation/state handling only; it does not modify broker execution records, portfolio calculations, saved schemas or guest authorization.
+
+
+
+## Follow-on implementation — first-load Balance hydration race (2026-10-31)
+
+- [x] Fix `usePortfolio()` subscription semantics by registering the store listener and then immediately replaying the latest portfolio snapshot.
+- [x] Preserve subsequent live store updates and clean up the listener on unmount.
+- [x] Reconcile the latest portfolio store's `brokerExecutedTrades` into Cash & Balance's local execution-history reducer after its subscription is installed.
+- [x] Cover immediate snapshot delivery, subsequent updates and unsubscribe behavior in `portfolioStore.test.ts`.
+- [ ] Confirm exact-head CI and reproduce first-load behavior in a browser after deployment.
+
+The screenshots show that the initial Balance mount displayed one unassigned GOOGL holding and zero active tranches, while navigating away and returning showed the correct AR/SU split and seven active tranches. The store hook previously read the current state during render but only subscribed later in `useEffect`; a broker/account hydration update between those phases could be missed. Returning to Balance mounted a new consumer against the already-updated store and therefore appeared to fix itself. The hook now subscribes first and replays the current state, closing that render-to-effect gap for all portfolio consumers. Cash & Balance also reconciles the canonical execution snapshot into its local reducer so it cannot remain on an obsolete first-render copy. No broker data, allocation rules, financial calculations or persisted schemas were changed.
