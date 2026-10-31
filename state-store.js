@@ -465,7 +465,6 @@ export class PortfolioStateDO {
       tranches.push({
         id, ticker, name, quantity,
         averagePrice,
-        netProfit,
         marketPrice,
         marketValue: marketPrice === null ? null : marketPrice * quantity,
         purchasedAt: Number.isFinite(purchasedAt) && purchasedAt > 0 ? purchasedAt : null
@@ -522,6 +521,7 @@ export class PortfolioStateDO {
         assignedQuantity,
         openQuantity,
         averagePrice,
+        netProfit,
         marketPrice,
         marketValue: marketPrice === null || openQuantity <= 0 ? null : marketPrice * openQuantity,
         purchasedAt: Number.isFinite(purchasedAt) && purchasedAt > 0 ? purchasedAt : null,
