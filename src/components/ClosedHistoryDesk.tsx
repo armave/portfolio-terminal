@@ -544,7 +544,7 @@ export function ClosedHistoryDesk() {
       </div>
 
       <TableScrollRegion label="Closed trade history" className="border border-slate-800 bg-slate-950/60">
-        <table class="w-full min-w-[760px] text-left text-xs font-mono">
+        <table class="w-full min-w-[900px] text-left text-xs font-mono">
           <caption class="sr-only">Closed trade history with funding type, guest assignment, ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
           <thead class="border-b border-slate-800 bg-slate-900/80 text-[10px] uppercase tracking-wider text-slate-400">
             <tr>
@@ -560,11 +560,11 @@ export function ClosedHistoryDesk() {
           </thead>
           <tbody id="closedTradesTableBody" class="divide-y divide-slate-800/60">
             {brokerTradesLoading && brokerTrades.length === 0 ? (
-              <tr><td colSpan={7} class="py-8 text-center text-slate-400">
+              <tr><td colSpan={8} class="py-8 text-center text-slate-400">
                 <span class="inline-flex items-center gap-2"><span class="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-purple-400" aria-hidden="true" />Loading closed trade history…</span>
               </td></tr>
             ) : brokerTradesError && trades.length === 0 ? (
-              <tr><td colSpan={7} class="py-8 text-center text-rose-400">
+              <tr><td colSpan={8} class="py-8 text-center text-rose-400">
                 <div class="flex flex-col items-center justify-center gap-2">
                   <span>Unable to load TradeNet history. Please retry.</span>
                   <button
@@ -578,12 +578,22 @@ export function ClosedHistoryDesk() {
               </td></tr>
             ) : trades.length === 0 ? (
               <tr>
-                <td colSpan={7} class="py-8 text-center text-slate-500 italic">
+                <td colSpan={8} class="py-8 text-center text-slate-500 italic">
                   No closed trades recorded yet.
                 </td>
               </tr>
             ) : (
-              visibleTrades.map(({ trade, index, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions, commissionsComplete }) => {
+              visibleTrades.map((row, visibleIndex) => {
+                const { trade, index, source, profit: rowProfit, fees: rowFees, commissions: rowCommissions, commissionsComplete } = row;
+                const allocationType = row.allocationType || 'unclassified';
+                const allocationLabel = allocationType === 'margin' ? 'Margin'
+                  : allocationType === 'cash' ? 'Cash'
+                    : allocationType === 'mix' ? 'Mix' : 'Unclassified';
+                const previousAllocationType = visibleIndex > 0
+                  ? visibleTrades[visibleIndex - 1].allocationType || 'unclassified'
+                  : null;
+                const showAllocationHeader = visibleIndex === 0 || previousAllocationType !== allocationType;
+                const assignedGuests = row.guestAllocations || [];
                 // 1. Resolve Exit Date
                 const rawDate =
                   (trade as any).exitDate ||
@@ -638,7 +648,11 @@ export function ClosedHistoryDesk() {
                 const sign = isPositive ? '+' : '-';
 
                 return (
-                  <tr key={(trade as any).id || (source + "-" + index)} class="hover:bg-slate-900/40 text-slate-300">
+                  <>
+                    {showAllocationHeader && <tr key={`allocation-${tradesPage}-${allocationType}`} class="border-t border-slate-700 bg-slate-900/80">
+                      <td colSpan={8} class="px-3 py-2 text-[10px] font-black uppercase tracking-wider text-purple-300">{allocationLabel}</td>
+                    </tr>}
+                    <tr key={(trade as any).id || (source + "-" + index)} class="hover:bg-slate-900/40 text-slate-300">
                     <td class="py-2.5 px-3 font-bold text-white">{(trade as any).ticker?.replace('.US', '') || "—"}</td>
                     <td class="py-2.5 px-3 whitespace-nowrap">
                       <span>{dateText}</span>
@@ -654,6 +668,14 @@ export function ClosedHistoryDesk() {
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-400">
                       {durationDays === null ? '—' : durationDays < 1 ? Math.round(durationDays * 24) + ' hrs' : durationDays.toFixed(1) + ' days'}
                     </td>
+                    <td data-label="Assigned guest · shares" class="py-2.5 px-3 whitespace-nowrap text-slate-300">
+                      {assignedGuests.length ? assignedGuests.map((assignment) => (
+                        <span key={assignment.guestId} class="block text-[10px]">
+                          <span class="font-semibold text-cyan-300" title={assignment.guestId}>{guestNameById.get(assignment.guestId) || assignment.guestId.slice(0, 8)}</span>
+                          <span class="ml-1 font-mono tabular-nums text-slate-400">{Number(assignment.quantity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 4 })}</span>
+                        </span>
+                      )) : <span class="text-slate-600">—</span>}
+                    </td>
                     <td class="py-2.5 px-3 text-right whitespace-nowrap text-slate-300 font-mono">
                       ${formatUSD(fees)}
                     </td>
@@ -666,7 +688,8 @@ export function ClosedHistoryDesk() {
                     >
                       {netProfit === null ? "—" : sign + "$" + formatUSD(Math.abs(netProfit))}
                     </td>
-                  </tr>
+                    </tr>
+                  </>
                 );
               })
             )}
