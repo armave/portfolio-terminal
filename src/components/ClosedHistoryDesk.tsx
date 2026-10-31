@@ -75,7 +75,10 @@ export function ClosedHistoryDesk() {
         const current = portfolioStore.getState();
         const saved = loadSavedHistory();
         portfolioStore.setState({
-          brokerExecutedTrades: current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : saved.brokerExecutedTrades,
+          brokerExecutedTrades: mergeBrokerExecutionHistory(
+            saved.brokerExecutedTrades,
+            current.brokerExecutedTrades || []
+          ),
           cashflows: current.cashflows?.length ? current.cashflows : saved.cashflows
         });
         setCashflowHistoryReady(true);
