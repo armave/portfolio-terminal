@@ -250,6 +250,11 @@ describe('closed trade guest ledger projection', () => {
     expect(resolveClosedTradeOperationDate({
       closedAt: '2026-10-29T12:00:00.000Z'
     })).toBe('2026-10-29T12:00:00.000Z');
+    expect(resolveClosedTradeOperationDate({
+      exitDate: '',
+      sellDate: '2026-08-18',
+      closedAt: '2026-10-29T12:00:00.000Z'
+    })).toBe('2026-08-18');
   });
 
   it('does not substitute the original buy date when a Trade close date is missing', () => {
