@@ -586,7 +586,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           </div>}
 
           {/* Cash Cushion Management Panel */}
-          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} />}</div>
+          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>
+            {hasOpenedCashCushion
+              ? <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} />
+              : <DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}
+          </div>
 
           {/* Keep the command console available on both Margin and Cash desks. */}
           {permissions.canUseTerminal && !["BALANCE"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
@@ -611,10 +615,18 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         id="closedHistoryContainer"
        
         class={"desk-view-transition rounded-lg " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
-      >{permissions.canViewClosedHistory && hasOpenedClosedHistory && <ClosedHistoryDesk />}</div>
+      >
+        {permissions.canViewClosedHistory && (hasOpenedClosedHistory
+          ? <ClosedHistoryDesk />
+          : <DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />)}
+      </div>
 
       {/* Settings */}
-      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && <SettingsDesk currentUser={currentUser} />}</div>
+      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">
+        {hasOpenedSettings
+          ? <SettingsDesk currentUser={currentUser} />
+          : <DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}
+      </div>
 
       {/* Authentication is part of the application tree, not a second Preact root. */}
       <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>
