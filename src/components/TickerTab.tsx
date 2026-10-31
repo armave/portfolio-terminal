@@ -7,9 +7,18 @@ import { emitUiEvent } from '../ui/uiEventBus';
 import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage } from '../services/i18n';
 
-export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; userId?: string } = {}) {
+export function TickerTabs({
+  isAdmin = false,
+  userId,
+  onDeskLoadingChange
+}: {
+  isAdmin?: boolean;
+  userId?: string;
+  onDeskLoadingChange?: (view: string, isLoading: boolean) => void;
+} = {}) {
   const state = usePortfolio();
   const [isRefreshingQuotes, setIsRefreshingQuotes] = useState(false);
+  const quoteRefreshPromise = useRef<Promise<void> | null>(null);
   const selectView = (view: string) => {
     if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS') return;
     // Persist at the actual navigation click site as well as through the store,
@@ -19,11 +28,13 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
     } catch {
       // Continue navigation when storage is unavailable.
     }
-    emitUiEvent('portfolio:set-active-view', { view });
     // Refresh the portfolio once when returning to the Margin desk. Switching
     // between its ticker tabs does not require another all-symbol quote batch.
-    if (shouldRefreshQuotesOnNavigation(state.activeView, view, isAdmin)) {
-      void handleRefreshQuotes();
+    const refreshQuotes = shouldRefreshQuotesOnNavigation(state.activeView, view, isAdmin);
+    if (refreshQuotes) onDeskLoadingChange?.(view, true);
+    emitUiEvent('portfolio:set-active-view', { view });
+    if (refreshQuotes) {
+      void handleRefreshQuotes().finally(() => onDeskLoadingChange?.(view, false));
     }
   };
 
@@ -95,15 +106,18 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
     selectView(navigationViews[nextIndex]);
   };
 
-  const handleRefreshQuotes = async () => {
-    if (isRefreshingQuotes) return;
+  const handleRefreshQuotes = async (): Promise<void> => {
+    if (quoteRefreshPromise.current) return quoteRefreshPromise.current;
 
     setIsRefreshingQuotes(true);
+    const request = new Promise<void>((resolve) => {
+      emitUiEvent('portfolio:refresh-live-prices', { resolve });
+    });
+    quoteRefreshPromise.current = request;
     try {
-      await new Promise<void>((resolve) => {
-        emitUiEvent('portfolio:refresh-live-prices', { resolve });
-      });
+      await request;
     } finally {
+      if (quoteRefreshPromise.current === request) quoteRefreshPromise.current = null;
       setIsRefreshingQuotes(false);
     }
   };
@@ -235,7 +249,7 @@ export function TickerTabs({ isAdmin = false, userId }: { isAdmin?: boolean; use
           ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
           onKeyDown={handleTabKeyDown}
       >
-        CLOSED HISTORY
+        TRADES
       </button>}
 
       <button

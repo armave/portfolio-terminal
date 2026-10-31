@@ -3,6 +3,7 @@ import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsens
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { AuthModal } from './components/AuthModal';
 import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
+import { DeskLoading } from './components/DeskLoading';
 import { CashCushionDesk } from './components/CashCushionDesk';
 import { SettingsDesk } from './components/SettingsDesk';
 import { TickerTabs } from './components/TickerTab';
@@ -48,6 +49,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
+  const [deskLoadingView, setDeskLoadingView] = useState<string | null>(null);
+  const handleDeskLoadingChange = useCallback((view: string, isLoading: boolean) => {
+    setDeskLoadingView((current) => isLoading ? view : current === view ? null : current);
+  }, []);
 
 
 
@@ -501,7 +506,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
+          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Portfolio assets"><TickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} onDeskLoadingChange={handleDeskLoadingChange} /></div>
           {permissions.isAdmin && <div
             class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             id="daysToBreakeven"
@@ -514,6 +519,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         <div id="tradingWorkspaceGrid" class={(!["BALANCE"].includes(activeDeskView) && "trading-workspace-grid ") + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
           {permissions.canViewMarginDesk && <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
+            {deskLoadingView === activeDeskView ? (
+              <DeskLoading
+                title="Preparing margin desk"
+                message="Refreshing live quotes and preparing the latest portfolio view…"
+                accent="cyan"
+              />
+            ) : <>
             <div
               id="emptyStatePanel"
               class={"border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4 " + (emptyStateVisible ? "" : "hidden")}
@@ -570,10 +582,15 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 ><ProjectionsTable /></tbody>
               </table>
             </div>
+            </>}
           </div>}
 
           {/* Cash Cushion Management Panel */}
-          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>{hasOpenedCashCushion && <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} />}</div>
+          <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>
+            {hasOpenedCashCushion
+              ? <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} />
+              : <DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}
+          </div>
 
           {/* Keep the command console available on both Margin and Cash desks. */}
           {permissions.canUseTerminal && !["BALANCE"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
@@ -593,15 +610,23 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         </div>
       </main>
 
-      {/* Closed Trade History */}
+      {/* Trades */}
       <div
         id="closedHistoryContainer"
        
         class={"desk-view-transition rounded-lg " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
-      >{permissions.canViewClosedHistory && hasOpenedClosedHistory && <ClosedHistoryDesk />}</div>
+      >
+        {permissions.canViewClosedHistory && (hasOpenedClosedHistory
+          ? <ClosedHistoryDesk />
+          : <DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />)}
+      </div>
 
       {/* Settings */}
-      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">{hasOpenedSettings && <SettingsDesk currentUser={currentUser} />}</div>
+      <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">
+        {hasOpenedSettings
+          ? <SettingsDesk currentUser={currentUser} />
+          : <DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}
+      </div>
 
       {/* Authentication is part of the application tree, not a second Preact root. */}
       <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>

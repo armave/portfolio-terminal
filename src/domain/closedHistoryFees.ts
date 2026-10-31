@@ -1,5 +1,15 @@
 type FeeRecord = Record<string, any>;
 
+function firstFiniteNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+
 const SELL_SIDES = new Set(['sell', 's', 'sale', 'sold', '2']);
 
 /**
@@ -39,6 +49,29 @@ export function preservePersistedBrokerFeeAllocations<T extends FeeRecord>(
   });
 }
 
+
+/** Merge a refreshed bounded broker page into the retained execution history. */
+export function mergeBrokerExecutionHistory<T extends FeeRecord>(persisted: T[], fetched: T[]): T[] {
+  const byId = new Map<string, T>();
+  for (const trade of persisted) {
+    const id = trade?.id == null ? '' : String(trade.id);
+    if (id) byId.set(id, trade);
+  }
+  for (const trade of fetched) {
+    const id = trade?.id == null ? '' : String(trade.id);
+    if (!id) continue;
+    const previous = byId.get(id);
+    byId.set(id, previous ? { ...previous, ...trade } : trade);
+  }
+  return [...byId.values()].sort((a, b) => {
+    const aTime = Date.parse(String(a.executedAt ?? a.date ?? ''));
+    const bTime = Date.parse(String(b.executedAt ?? b.date ?? ''));
+    if (!Number.isFinite(aTime)) return Number.isFinite(bTime) ? -1 : 0;
+    if (!Number.isFinite(bTime)) return 1;
+    return aTime - bTime || String(a.id).localeCompare(String(b.id));
+  });
+}
+
 export function applyCashflowAllocationsToBrokerExecutions(
   executions: FeeRecord[],
   allocationsBySell: ReadonlyMap<number, Record<string, number>>
@@ -46,7 +79,7 @@ export function applyCashflowAllocationsToBrokerExecutions(
   return executions.map((trade, index) => {
     if (!SELL_SIDES.has(String(trade.side ?? '').toLowerCase())) return trade;
 
-    // Rebuild from the currently imported cashflows. Keeping the old allocation
+    // Rebuild from the current broker cashflows. Keeping the old allocation
     // object here would retain fees from cashflow rows that were replaced/removed.
     const marginFeeAllocations = Object.fromEntries(
       Object.entries(allocationsBySell.get(index) ?? {})
@@ -80,22 +113,31 @@ export function applyCashflowAllocationsToClosedTrades(
 ): FeeRecord[] {
   return trades.map((trade, index) => {
     const addedFee = Number((allocationsByTrade.get(index) || 0).toFixed(2));
-    const previousMargin = Math.abs(Number(trade.marginInterest ?? trade.marginFee ?? 0)) || 0;
+    const previousMargin = Math.abs(Number(trade.marginInterest) || Number(trade.marginFee) || 0);
     if (addedFee <= 0 && previousMargin <= 0) return trade;
 
     // Undo the previous cashflow allocation before applying the current one.
-    const previousFees = Number(trade.feesAndCommissions ?? trade.totalCommissions ?? trade.commissions ?? 0) || 0;
-    const net = Number(trade.netProfit ?? trade.netRealizedGain ?? trade.grossProfit ?? 0) || 0;
-    const fees = Number((Math.max(0, previousFees - previousMargin) + addedFee).toFixed(2));
-    const netAfterFee = Number((net + previousMargin - addedFee).toFixed(2));
+    // feesAndCommissions is the aggregate field written by this allocator;
+    // legacy totalCommissions/commissions fields without that aggregate remain commission-only.
+    const aggregateFees = firstFiniteNumber(trade.feesAndCommissions);
+    const legacyCommissionBase = firstFiniteNumber(trade.totalCommissions, trade.commissions, trade.commission) ?? 0;
+    const previousCommissionBase = aggregateFees !== null
+      ? Math.max(0, aggregateFees - previousMargin)
+      : legacyCommissionBase;
+    const net = firstFiniteNumber(trade.netProfit, trade.netRealizedGain);
+    const hasKnownNet = net !== null;
+    const fees = Number((previousCommissionBase + addedFee).toFixed(2));
+    const netAfterFee = hasKnownNet ? Number((net + previousMargin - addedFee).toFixed(2)) : null;
 
     if (
       Number(trade.feesAndCommissions ?? trade.totalCommissions ?? 0) === fees &&
       Number(trade.totalCommissions ?? fees) === fees &&
       Number(trade.marginInterest ?? 0) === addedFee &&
       Number(trade.marginFee ?? 0) === addedFee &&
-      Number(trade.netProfit ?? trade.netRealizedGain ?? 0) === netAfterFee &&
-      Number(trade.netRealizedGain ?? netAfterFee) === netAfterFee
+      (!hasKnownNet || (
+        Number(trade.netProfit ?? trade.netRealizedGain) === netAfterFee &&
+        Number(trade.netRealizedGain ?? netAfterFee) === netAfterFee
+      ))
     ) return trade;
     return {
       ...trade,
@@ -103,10 +145,50 @@ export function applyCashflowAllocationsToClosedTrades(
       totalCommissions: fees,
       marginInterest: addedFee,
       marginFee: addedFee,
-      netProfit: netAfterFee,
-      netRealizedGain: netAfterFee
+      ...(hasKnownNet ? { netProfit: netAfterFee, netRealizedGain: netAfterFee } : {})
     };
   });
+}
+
+
+export interface ClosedTradeFeeBreakdown {
+  fees: number;
+  commissions: number;
+  feesTotal: number;
+  commissionsKnown: boolean;
+}
+
+/** Resolve commission-only and aggregate fee fields without counting margin twice. */
+export function resolveClosedTradeFeeBreakdown(trade: FeeRecord): ClosedTradeFeeBreakdown {
+  const marginFee = Math.abs(Number(trade.marginFee) || Number(trade.marginInterest) || 0);
+  const explicitValue = firstFiniteNumber(trade.commissions, trade.commission);
+  const aggregateValue = firstFiniteNumber(trade.feesAndCommissions);
+  const totalValue = firstFiniteNumber(trade.totalCommissions);
+  const commissionsKnown = explicitValue !== null || aggregateValue !== null || totalValue !== null;
+  const commissions = explicitValue !== null
+    ? Math.abs(explicitValue)
+    : aggregateValue !== null
+      ? Math.max(0, Math.abs(aggregateValue) - marginFee)
+      : totalValue !== null ? Math.abs(totalValue) : 0;
+  return {
+    fees: Number(marginFee.toFixed(2)),
+    commissions: Number(commissions.toFixed(2)),
+    feesTotal: Number((marginFee + commissions).toFixed(2)),
+    commissionsKnown
+  };
+}
+
+
+/** Resolve net P/L without presenting gross P/L as net when fee inputs are incomplete. */
+export function resolveClosedTradeNetProfit(
+  trade: FeeRecord,
+  feeBreakdown: ClosedTradeFeeBreakdown
+): number | null {
+  const netValue = firstFiniteNumber(trade.netProfit, trade.netRealizedGain);
+  if (netValue !== null) return netValue;
+  const grossValue = firstFiniteNumber(trade.grossProfit);
+  if (grossValue === null || !feeBreakdown.commissionsKnown) return null;
+  return Number((grossValue - feeBreakdown.feesTotal).toFixed(2));
 }
 
 type ClosedHistoryRow = { trade: Record<string, any> };

@@ -604,7 +604,7 @@ export function MarketInsightsPanel() {
                       <span class="font-semibold text-slate-300">@{message.user?.username || message.user?.name || 'user'}</span>
                       {Number.isFinite(createdAt) && <span>{formatRelativeTime(createdAt)}</span>}
                       {sentiment && <span class={`rounded border px-1.5 py-0.5 font-bold uppercase ${sentimentClass}`}>{sentiment}</span>}
-                      {typeof message.likes?.total === 'number' && <span>♥ {message.likes.total}</span>}
+                      {typeof message.likes?.total === 'number' && <span class="text-rose-400">♥ {message.likes.total}</span>}
                     </div>
                     <p class="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-slate-200">{renderStocktwitsBody(decodeHtmlEntities(typeof message.body === 'string' ? message.body : ''))}</p>
                   </article>

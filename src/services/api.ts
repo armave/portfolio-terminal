@@ -1,4 +1,5 @@
 import CryptoJS from 'crypto-js';
+import { resetMarketRequestGate, runMarketDataRequest } from './marketRequestGate';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, PortfolioState } from '../types/portfolio';
@@ -207,6 +208,37 @@ export interface ProxyFetchOptions extends RequestInit {
 
 const proxyReadRequests = new Map<string, Promise<any>>();
 const COALESCED_READ_ACTIONS = new Set(['', 'quote', 'provider-quote', 'news', 'stocktwits', 'freedom-quote']);
+const MARKET_DATA_ACTIONS = new Set([
+  '', 'quote', 'provider-quote', 'news', 'stocktwits',
+  'freedom-quote', 'freedom-news', 'freedom-history', 'freedom-market-depth'
+]);
+
+function createMarketRequestIdentity(
+  action: string,
+  queryParams: Record<string, string | number | boolean | undefined | null>,
+  fetchOptions: ProxyFetchOptions
+): string {
+  const normalizedParams = Object.entries(queryParams)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .sort(([a], [b]) => a.localeCompare(b));
+  const method = (fetchOptions.method || 'GET').toUpperCase();
+  const secret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
+  const body = typeof fetchOptions.body === 'string' ? fetchOptions.body : '';
+  return JSON.stringify([action, method, normalizedParams, body, secret]);
+}
+
+function dispatchProxyFetch(
+  action: string,
+  queryParams: Record<string, string | number | boolean | undefined | null>,
+  fetchOptions: ProxyFetchOptions
+): Promise<any> {
+  const isMarketData = MARKET_DATA_ACTIONS.has(action) &&
+    (action !== '' || Boolean(queryParams.symbol));
+  const request = () => performProxyFetch(action, queryParams, fetchOptions);
+  return isMarketData
+    ? runMarketDataRequest(createMarketRequestIdentity(action, queryParams, fetchOptions), request)
+    : request();
+}
 
 /**
  * Share identical in-flight market-data reads across features. This is deliberately
@@ -222,7 +254,7 @@ export function proxyFetch(
   const canCoalesce = fetchOptions.cache !== 'no-store' && COALESCED_READ_ACTIONS.has(action) &&
     (method === 'GET' || (action === '' && method === 'POST')) &&
     !fetchOptions.body && !fetchOptions.state;
-  if (!canCoalesce) return performProxyFetch(action, queryParams, fetchOptions);
+  if (!canCoalesce) return dispatchProxyFetch(action, queryParams, fetchOptions);
 
   const secret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
   const normalizedParams = Object.entries(queryParams)
@@ -235,7 +267,7 @@ export function proxyFetch(
     return existing;
   }
 
-  const request = performProxyFetch(action, queryParams, fetchOptions);
+  const request = dispatchProxyFetch(action, queryParams, fetchOptions);
   proxyReadRequests.set(key, request);
   void request.finally(() => {
     if (proxyReadRequests.get(key) === request) proxyReadRequests.delete(key);
@@ -1259,15 +1291,42 @@ export function normalizeFreedomActiveOrders(response: any): FreedomActiveOrder[
   }));
 }
 
-/** Fetch the raw read-only Freedom Broker cashflows response for temporary integration testing. */
+/** Cache the full broker cashflow snapshot briefly to avoid repeat reads on quick Trades navigation. */
+const FREEDOM_CASHFLOW_CACHE_TTL_MS = 5 * 60 * 1000;
+let freedomCashflowCache: { secret: string; expiresAt: number; data: any } | null = null;
+let freedomCashflowRequest: { secret: string; promise: Promise<any> } | null = null;
 
 export async function fetchFreedomCashflows(): Promise<any> {
-  try {
-    return await proxyFetch('freedom-cashflows', {}, { cache: 'no-store' });
-  } catch (error) {
-    if (error instanceof Error) throw error;
-    throw new Error('Failed to fetch Freedom Broker cashflows due to a network error.');
+  const secret = getActiveGatewaySecret().trim();
+  if (freedomCashflowCache && freedomCashflowCache.secret === secret && freedomCashflowCache.expiresAt > Date.now()) {
+    recordApiMetric('cache_hit', { cache: 'freedom_cashflows' });
+    return freedomCashflowCache.data;
   }
+  if (freedomCashflowRequest?.secret === secret) {
+    recordApiMetric('inflight_dedup', { operation: 'freedom_cashflows' });
+    return freedomCashflowRequest.promise;
+  }
+
+  const request = proxyFetch('freedom-cashflows', {}, { cache: 'no-store' })
+    .then((data) => {
+      freedomCashflowCache = { secret, expiresAt: Date.now() + FREEDOM_CASHFLOW_CACHE_TTL_MS, data };
+      return data;
+    })
+    .catch((error) => {
+      if (error instanceof Error) throw error;
+      throw new Error('Failed to fetch Freedom Broker cashflows due to a network error.');
+    })
+    .finally(() => {
+      if (freedomCashflowRequest?.promise === request) freedomCashflowRequest = null;
+    });
+  freedomCashflowRequest = { secret, promise: request };
+  return request;
+}
+
+/** Clear the in-memory snapshot between isolated tests or account changes. */
+export function clearFreedomCashflowCache(): void {
+  freedomCashflowCache = null;
+  freedomCashflowRequest = null;
 }
 
 export interface FreedomExecutedTrade {
@@ -1322,8 +1381,30 @@ export function normalizeFreedomTrades(response: any): FreedomExecutedTrade[] {
     }
     return null;
   };
-  return rows.map((row: any, index: number) => ({
-    id: String(row?.id ?? row?.trade_id ?? row?.tradeId ?? row?.order_id ?? index),
+  const fallbackOccurrences = new Map<string, number>();
+  const stableFallbackId = (row: any): string => {
+    const fingerprint = JSON.stringify([
+      row?.order_id ?? row?.orderId ?? '',
+      row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? '',
+      row?.oper ?? row?.operation ?? row?.side ?? row?.buy_sell ?? row?.type ?? '',
+      row?.date ?? row?.time ?? row?.datetime ?? row?.exec_time ?? '',
+      row?.q ?? row?.quantity ?? row?.qty ?? '',
+      row?.p ?? row?.price ?? row?.exec_price ?? '',
+      row?.v ?? row?.summ ?? row?.value ?? '',
+      row?.profit ?? row?.pnl ?? ''
+    ]);
+    let hash = 2166136261;
+    for (let index = 0; index < fingerprint.length; index += 1) {
+      hash ^= fingerprint.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    const key = (hash >>> 0).toString(36);
+    const occurrence = fallbackOccurrences.get(key) || 0;
+    fallbackOccurrences.set(key, occurrence + 1);
+    return `fallback-${key}-${occurrence}`;
+  };
+  return rows.map((row: any) => ({
+    id: String(row?.id ?? row?.trade_id ?? row?.tradeId ?? stableFallbackId(row)),
     ticker: String(row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? ''),
     // Ignore unrecognized operation placeholders and continue to side/type aliases.
     side: normalizedSide(row?.operation, row?.side, row?.buy_sell, row?.type) || 'Unknown',
@@ -1471,6 +1552,8 @@ export function clearApiRequestCaches(): void {
   usersCacheGeneration += 1;
   cloudStatePushFingerprints.clear();
   clearGuestPortfolioPublicationCache();
+  clearFreedomCashflowCache();
+  resetMarketRequestGate();
   validatedCloudResponse = null;
 }
 

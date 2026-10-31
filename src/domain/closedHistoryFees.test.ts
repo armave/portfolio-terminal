@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyCashflowAllocationsToBrokerExecutions,
+  mergeBrokerExecutionHistory,
   applyCashflowAllocationsToClosedTrades,
   deduplicateClosedHistoryRows,
-  preservePersistedBrokerFeeAllocations
+  preservePersistedBrokerFeeAllocations,
+  resolveClosedTradeFeeBreakdown,
+  resolveClosedTradeNetProfit
 } from './closedHistoryFees';
 
 describe('closed-history cashflow fee recalculation', () => {
-  it('replaces old broker fee allocations with the currently imported cashflows', () => {
+  it('replaces old broker fee allocations with the current broker cashflows', () => {
     const executions = [{
       id: 'sell-1',
       side: 'sell',
@@ -141,6 +144,20 @@ describe('closed-history idempotency and source deduplication', () => {
     expect(result[0]).toBe(sell);
   });
 
+  it('does not fabricate net P/L when an app trade has no known realized profit', () => {
+    const trade = { feesAndCommissions: 4, marginFee: 2, netProfit: null, netRealizedGain: null };
+    const result = applyCashflowAllocationsToClosedTrades([trade], new Map([[0, 3]]))[0];
+    expect(result).toMatchObject({ feesAndCommissions: 5, totalCommissions: 5, marginFee: 3, marginInterest: 3 });
+    expect(result.netProfit).toBeNull();
+    expect(result.netRealizedGain).toBeNull();
+  });
+
+  it('uses the non-zero margin fee when legacy margin fields disagree', () => {
+    const trade = { feesAndCommissions: 7, totalCommissions: 7, marginInterest: 0, marginFee: 5, netProfit: 93, netRealizedGain: 93 };
+    const result = applyCashflowAllocationsToClosedTrades([trade], new Map([[0, 2]]))[0];
+    expect(result).toMatchObject({ feesAndCommissions: 4, totalCommissions: 4, marginFee: 2, marginInterest: 2, netProfit: 96 });
+  });
+
   it('preserves object identity when app trade allocation is already applied', () => {
     const trade = {
       feesAndCommissions: 5,
@@ -169,4 +186,117 @@ describe('closed-history idempotency and source deduplication', () => {
     expect(deduplicateClosedHistoryRows([make('app-1', 'app'), make('app-2', 'app')], [make('broker-1', 'tradenet')]))
       .toEqual([make('app-2', 'app')]);
   });
+});
+
+
+describe('closed-trade fee display breakdown', () => {
+  it('does not count an aggregate margin-inclusive fee total as commission again', () => {
+    expect(resolveClosedTradeFeeBreakdown({
+      feesAndCommissions: 7,
+      totalCommissions: 7,
+      marginFee: 5,
+      marginInterest: 5
+    })).toEqual({ fees: 5, commissions: 2, feesTotal: 7, commissionsKnown: true });
+  });
+
+  it('prefers explicit commission fields and uses non-zero legacy margin fallback', () => {
+    expect(resolveClosedTradeFeeBreakdown({
+      commissions: 1.25,
+      feesAndCommissions: 6.25,
+      marginFee: 5,
+      marginInterest: 0
+    })).toEqual({ fees: 5, commissions: 1.25, feesTotal: 6.25, commissionsKnown: true });
+  });
+
+  it('treats legacy totalCommissions as commission when no aggregate field exists', () => {
+    expect(resolveClosedTradeFeeBreakdown({
+      totalCommissions: 1.5,
+      marginInterest: 2
+    })).toEqual({ fees: 2, commissions: 1.5, feesTotal: 3.5, commissionsKnown: true });
+  });
+});
+
+it('marks commission totals unknown when no commission source field exists', () => {
+  expect(resolveClosedTradeFeeBreakdown({ marginFee: 2 }))
+    .toEqual({ fees: 2, commissions: 0, feesTotal: 2, commissionsKnown: false });
+});
+
+describe('closed-trade net profit resolution', () => {
+  it('uses explicit net P/L when available', () => {
+    expect(resolveClosedTradeNetProfit(
+      { netProfit: 8, grossProfit: 20 },
+      { fees: 5, commissions: 2, feesTotal: 7, commissionsKnown: true }
+    )).toBe(8);
+  });
+
+  it('subtracts all known commissions and margin fees from gross P/L', () => {
+    expect(resolveClosedTradeNetProfit(
+      { grossProfit: 20 },
+      { fees: 5, commissions: 2, feesTotal: 7, commissionsKnown: true }
+    )).toBe(13);
+  });
+
+  it('does not report gross P/L as net when commission data is unavailable', () => {
+    expect(resolveClosedTradeNetProfit(
+      { grossProfit: 20 },
+      { fees: 5, commissions: 0, feesTotal: 5, commissionsKnown: false }
+    )).toBeNull();
+  });
+
+  it('preserves unknown profit when no net or gross source value exists', () => {
+    expect(resolveClosedTradeNetProfit(
+      {},
+      { fees: 0, commissions: 0, feesTotal: 0, commissionsKnown: false }
+    )).toBeNull();
+  });
+});
+
+
+it('treats legacy totalCommissions as commission-only when no aggregate fee field exists', () => {
+  const trade = {
+    totalCommissions: 4,
+    marginInterest: 2,
+    marginFee: 2,
+    netProfit: 94,
+    netRealizedGain: 94
+  };
+  const result = applyCashflowAllocationsToClosedTrades([trade], new Map([[0, 3]]))[0];
+  expect(result).toMatchObject({
+    feesAndCommissions: 7,
+    totalCommissions: 7,
+    marginInterest: 3,
+    marginFee: 3,
+    netProfit: 93
+  });
+});
+
+describe('bounded broker execution history merge', () => {
+  it('retains older executions and replaces refreshed rows by stable trade ID', () => {
+    const older = { id: 'old-1', ticker: 'AAPL', side: 'buy', quantity: 5, executedAt: '2025-01-01T10:00:00Z' };
+    const refreshed = { id: 'recent-1', ticker: 'AAPL', side: 'sell', quantity: 5, executedAt: '2026-01-01T10:00:00Z' };
+    const corrected = { ...refreshed, profit: 12 };
+    const merged = mergeBrokerExecutionHistory([older, refreshed], [corrected]);
+    expect(merged).toHaveLength(2);
+    expect(merged[0]).toEqual(older);
+    expect(merged[1]).toMatchObject({ id: 'recent-1', profit: 12 });
+  });
+
+  it('deduplicates repeated persisted pages while retaining distinct operation IDs', () => {
+    const a = { id: 'trade-a', ticker: 'AAPL', quantity: 1 };
+    const b = { id: 'trade-b', ticker: 'AAPL', quantity: 1 };
+    expect(mergeBrokerExecutionHistory([a, b, a], [a, b])).toEqual([a, b]);
+  });
+});
+
+it('falls through empty preferred fields to the next valid commission and net P/L aliases', () => {
+  const breakdown = resolveClosedTradeFeeBreakdown({
+    commissions: '',
+    commission: 1.25,
+    marginFee: 2
+  });
+  expect(breakdown).toEqual({ fees: 2, commissions: 1.25, feesTotal: 3.25, commissionsKnown: true });
+  expect(resolveClosedTradeNetProfit(
+    { netProfit: '', netRealizedGain: 8 },
+    breakdown
+  )).toBe(8);
 });

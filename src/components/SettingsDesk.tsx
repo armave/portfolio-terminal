@@ -6,6 +6,7 @@ import { usePortfolio } from '../store/portfolioStore';
 import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
+import { DeskLoading } from './DeskLoading';
 
 
 export interface BrokerRulesFormValues {
@@ -47,6 +48,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const permissions = getAccountPermissions(account?.role);
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [usersError, setUsersError] = useState("");
+  const [initialUsersLoading, setInitialUsersLoading] = useState(currentUser?.role === 'admin');
   const [newName, setNewName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"guest" | "admin">("guest");
@@ -77,8 +79,12 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   };
   useEffect(() => {
     setAccount(currentUser);
-    void refreshUsers();
   }, [currentUser]);
+
+  useEffect(() => {
+    setInitialUsersLoading(currentUser?.role === 'admin');
+    void refreshUsers().finally(() => setInitialUsersLoading(false));
+  }, [currentUser?.id, currentUser?.role]);
 
   const handleCreateUser = async (event: Event) => {
     event.preventDefault();
@@ -199,6 +205,14 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     setRefreshInterval(val);
     emitUiEvent('settings:change-refresh-interval', { intervalMs: val });
   };
+
+  if (initialUsersLoading) {
+    return <DeskLoading
+      title="Preparing settings"
+      message="Loading account access, preferences and workspace settings…"
+      accent="blue"
+    />;
+  }
 
   return (
     <>

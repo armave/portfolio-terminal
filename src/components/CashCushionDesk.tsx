@@ -11,6 +11,7 @@ import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheG
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage } from '../services/i18n';
 import { MarketDepthButton } from './MarketDepthButton';
+import { DeskLoading } from './DeskLoading';
 
 const BADGE_STYLES: Record<string, string> = {
   bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
@@ -62,6 +63,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   const [executedTrades, setExecutedTrades] = useState<FreedomExecutedTradeLike[]>(() =>
     Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades as FreedomExecutedTradeLike[] : []
   );
+  const [executedTradesLoading, setExecutedTradesLoading] = useState(() =>
+    (showActiveTranches || isAdmin) && !(Array.isArray(state.brokerExecutedTrades) && state.brokerExecutedTrades.length > 0)
+  );
   const [expandedMixTranches, setExpandedMixTranches] = useState<Set<string>>(() => new Set());
   const [guestUsers, setGuestUsers] = useState<AuthUser[]>([]);
   const [guestUsersLoading, setGuestUsersLoading] = useState(showActiveTranches);
@@ -70,8 +74,12 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   useEffect(() => {
     const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
       setExecutedTrades(trades as unknown as FreedomExecutedTradeLike[]);
+      setExecutedTradesLoading(false);
     });
-    const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => setExecutedTrades([]));
+    const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => {
+      setExecutedTrades([]);
+      setExecutedTradesLoading(false);
+    });
     // Guests never request account-wide broker execution history.
     if (showActiveTranches || isAdmin) emitBrokerEvent('broker:request-executed-trades');
     return () => {
@@ -186,6 +194,14 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     }))
   );
   const renderedMarketDepthTickers = new Set<string>();
+
+  if (executedTradesLoading || guestUsersLoading) {
+    return <DeskLoading
+      title="Preparing balance"
+      message="Loading holdings, trade activity and account allocations…"
+      accent="cyan"
+    />;
+  }
 
   return (
     <>

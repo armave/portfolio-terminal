@@ -14,6 +14,8 @@ import {
   publishGuestPortfolioSnapshot,
   publishGuestPortfolioSnapshots,
   clearApiRequestCaches,
+  clearFreedomCashflowCache,
+  fetchFreedomCashflows,
   fetchFallbackQuote,
   normalizeYahooBatchResults,
   validateGatewaySecret,
@@ -25,15 +27,18 @@ import {
   clearYahooDeepStockDataCache
 } from './api';
 import * as storage from './storage';
+import { setMarketRequestSessionForTests } from './marketRequestGate';
 
 // Most API tests exercise successful proxy requests; give them a deterministic
 // credential. Tests for missing credentials explicitly override this value.
 beforeEach(() => {
   clearApiRequestCaches();
+  setMarketRequestSessionForTests('REGULAR');
   storage.setGatewaySecret('test-gateway-secret');
 });
 afterEach(() => {
   clearApiRequestCaches();
+  setMarketRequestSessionForTests(null);
   storage.setGatewaySecret('');
 });
 
@@ -1336,5 +1341,86 @@ describe('closed-history migration/read race', () => {
     await expect(concurrentRead).resolves.toEqual(migrated);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(['GET', 'POST']);
+  });
+});
+
+describe('Freedom cashflow request cache', () => {
+  it('shares in-flight reads, caches the snapshot briefly, and scopes it to the active credential', async () => {
+    clearFreedomCashflowCache();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { cashflows: [] } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const [first, second] = await Promise.all([fetchFreedomCashflows(), fetchFreedomCashflows()]);
+    expect(first).toEqual(second);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await fetchFreedomCashflows();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    storage.setGatewaySecret('another-test-gateway-secret');
+    await fetchFreedomCashflows();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('closed-session market request cache integration', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('reuses one successful deep-data request per symbol without blocking other symbols', async () => {
+    setMarketRequestSessionForTests('CLOSED');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const symbol = url.searchParams.get('symbol');
+      return new Response(JSON.stringify({
+        symbol,
+        analystTargets: { median: symbol === 'AAPL' ? 200 : 450 }
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchYahooDeepStockData('AAPL', true)).resolves.toMatchObject({
+      symbol: 'AAPL', analystTargets: { median: 200 }
+    });
+    await expect(fetchYahooDeepStockData('AAPL', true)).resolves.toMatchObject({
+      symbol: 'AAPL', analystTargets: { median: 200 }
+    });
+    await expect(fetchYahooDeepStockData('MSFT', true)).resolves.toMatchObject({
+      symbol: 'MSFT', analystTargets: { median: 450 }
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retain provider error payloads, allowing a later retry', async () => {
+    setMarketRequestSessionForTests('CLOSED');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ symbol: 'AAPL', error: 'Yahoo unavailable' }), {
+        status: 200, headers: { 'Content-Type': 'application/json' }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ symbol: 'AAPL', analystTargets: { median: 215 } }), {
+        status: 200, headers: { 'Content-Type': 'application/json' }
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchYahooDeepStockData('AAPL', true)).resolves.toMatchObject({ error: 'Yahoo unavailable' });
+    await expect(fetchYahooDeepStockData('AAPL', true)).resolves.toMatchObject({ analystTargets: { median: 215 } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not throttle or session-cache broker account positions', async () => {
+    setMarketRequestSessionForTests('CLOSED');
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ positions: [] }), {
+      status: 200, headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await proxyFetch('freedom-positions', {}, { cache: 'no-store' });
+    await proxyFetch('freedom-positions', {}, { cache: 'no-store' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

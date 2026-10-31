@@ -144,3 +144,15 @@ describe('normalizeFreedomTrades', () => {
     expect(normalizeFreedomTrades({ ok: true, data: { result: { ps: {} } } })).toEqual([]);
   });
 });
+
+it('assigns stable unique fallback execution IDs without collapsing fills from one order', () => {
+  const payload = { data: { trades: { trade: [
+    { order_id: 'same-order', instr_nm: 'AAPL.US', type: '2', q: '1', p: '100', date: '2026-06-01T10:00:00Z' },
+    { order_id: 'same-order', instr_nm: 'AAPL.US', type: '2', q: '2', p: '100', date: '2026-06-01T10:01:00Z' }
+  ] } } };
+  const first = normalizeFreedomTrades(payload);
+  const second = normalizeFreedomTrades(payload);
+  expect(first.map(row => row.id)).toEqual(second.map(row => row.id));
+  expect(new Set(first.map(row => row.id)).size).toBe(2);
+  expect(first.every(row => row.id.startsWith('fallback-'))).toBe(true);
+});
