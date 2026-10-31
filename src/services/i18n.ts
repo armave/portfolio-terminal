@@ -12,6 +12,7 @@ const RU: Record<string, string> = {
   '🛡️ BALANCE': '🛡️ БАЛАНС',
   'CLOSED HISTORY': 'ИСТОРИЯ ЗАКРЫТЫХ СДЕЛОК',
   '⚙️ SETTINGS': '⚙️ НАСТРОЙКИ',
+  'Settings': 'Настройки',
   'PORTFOLIO TERMINAL': 'ПОРТФЕЛЬНЫЙ ТЕРМИНАЛ',
   'Margin Portfolio Terminal — Tradernet Armenia Edition': RU_DOCUMENT_TITLE,
   'TERMINAL SETTINGS & SYNC': 'НАСТРОЙКИ ТЕРМИНАЛА И СИНХРОНИЗАЦИЯ',

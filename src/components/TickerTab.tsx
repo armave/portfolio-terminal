@@ -286,8 +286,10 @@ export function TickerTabs({
           data-nav-index={settingsNavIndex}
           ref={(element) => { tabButtonRefs.current[settingsNavIndex] = element; }}
           onKeyDown={handleTabKeyDown}
+        aria-label="Settings"
+        title="Settings"
       >
-        <span>⚙️</span>
+        <span aria-hidden="true">⚙️</span>
       </button>
     </>
   );

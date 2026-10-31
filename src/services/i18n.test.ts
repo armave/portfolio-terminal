@@ -12,15 +12,16 @@ describe('app localization', () => {
 
   it('translates known UI copy into Russian and leaves unknown text unchanged', () => {
     expect(translateText('User management', 'ru')).toBe('Управление пользователями');
+    expect(translateText('Settings', 'ru')).toBe('Настройки');
     expect(translateText('Unknown market symbol', 'ru')).toBe('Unknown market symbol');
   });
 
   it('translates text and accessible labels when Preact nodes are created', () => {
     setAppLanguage('ru');
-    const vnode = h('button', { title: 'Sign out', 'aria-label': 'Sign out' }, 'Sign out');
-    expect(vnode.props.children).toBe('Выйти');
-    expect(vnode.props.title).toBe('Выйти');
-    expect(vnode.props['aria-label']).toBe('Выйти');
+    const vnode = h('button', { title: 'Settings', 'aria-label': 'Settings' }, 'Settings');
+    expect(vnode.props.children).toBe('Настройки');
+    expect(vnode.props.title).toBe('Настройки');
+    expect(vnode.props['aria-label']).toBe('Настройки');
   });
 
   it('translates dynamic accessibility labels, update text, and quantity counters', () => {
