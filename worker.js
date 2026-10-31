@@ -416,19 +416,96 @@ export async function ensureFreedomTradeNetSession(env, options = {}) {
     }
 }
 
-function fetchFreedomMarketDepthWithSid(symbol, session) {
+export function fetchFreedomMarketDepthWithSid(symbol, session) {
     return new Promise((resolve, reject) => {
         let settled = false;
         let socket;
+        let timeout;
+        const startedAt = Date.now();
+        const requestedSymbol = String(symbol || "").trim().toUpperCase();
+        const diagnostics = {
+            endpoint: "wss.tradernet.com",
+            requestedSymbol,
+            phase: "connecting",
+            connectionOpened: false,
+            subscriptionSent: false,
+            subscriptionConfirmed: false,
+            userDataReceived: false,
+            isDemo: null,
+            sessionMode: null,
+            messageCount: 0,
+            parseErrorCount: 0,
+            eventsReceived: [],
+            eventCounts: {},
+            eventNamesTruncated: false,
+            orderBookEventsReceived: 0,
+            orderBookSymbolsReceived: [],
+            unmatchedOrderBooks: 0,
+            serverErrorCategory: null,
+            socketErrorObserved: false,
+            closeCode: null,
+            closeReasonPresent: false
+        };
+
+        const snapshotDiagnostics = () => ({
+            ...diagnostics,
+            eventsReceived: [...diagnostics.eventsReceived],
+            eventCounts: { ...diagnostics.eventCounts },
+            orderBookSymbolsReceived: [...diagnostics.orderBookSymbolsReceived],
+            elapsedMs: Date.now() - startedAt
+        });
+
+        const recordEvent = eventName => {
+            const safeName = typeof eventName === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(eventName)
+                ? eventName : "other";
+            diagnostics.eventCounts[safeName] = (diagnostics.eventCounts[safeName] || 0) + 1;
+            if (diagnostics.eventsReceived.length < 20) {
+                diagnostics.eventsReceived.push(safeName);
+            } else {
+                diagnostics.eventNamesTruncated = true;
+            }
+        };
+
         const finish = (error, result) => {
             if (settled) return;
             settled = true;
             clearTimeout(timeout);
+            if (error) {
+                const failure = error instanceof Error ? error : new Error("TradeNet market depth is unavailable.");
+                const details = snapshotDiagnostics();
+                failure.diagnostics = details;
+                console.warn(JSON.stringify({
+                    type: "tradenet_market_depth",
+                    outcome: "failed",
+                    status: Number(failure.status) || 502,
+                    diagnostics: details
+                }));
+                try { socket?.close(1000, "Market-depth request finished"); } catch { /* ignore close races */ }
+                reject(failure);
+                return;
+            }
+
+            diagnostics.phase = "snapshot_received";
+            diagnostics.subscriptionConfirmed = true;
+            const details = snapshotDiagnostics();
+            console.info(JSON.stringify({
+                type: "tradenet_market_depth",
+                outcome: "snapshot_received",
+                diagnostics: details
+            }));
             try { socket?.close(1000, "Market-depth snapshot received"); } catch { /* ignore close races */ }
-            if (error) reject(error); else resolve(result);
+            resolve({ data: result, diagnostics: details });
         };
-        const timeout = setTimeout(() => {
-            const error = new Error("TradeNet market-depth connection timed out before returning an order book.");
+
+        timeout = setTimeout(() => {
+            diagnostics.phase = diagnostics.socketErrorObserved
+                ? "websocket_error_timeout"
+                : !diagnostics.connectionOpened
+                    ? "connection_timeout"
+                    : !diagnostics.subscriptionSent
+                        ? "subscription_send_timeout"
+                        : "snapshot_timeout";
+            const error = new Error("TradeNet market-depth request timed out before returning an order book.");
             error.status = 504;
             finish(error);
         }, 10000);
@@ -438,33 +515,55 @@ function fetchFreedomMarketDepthWithSid(symbol, session) {
             url.searchParams.set("SID", session.sid);
             socket = new WebSocket(url.toString());
             socket.addEventListener("open", () => {
-                // The official Tradernet WebSocket client subscribes with this event
-                // and receives the initial full order book on event "b".
-                socket.send(JSON.stringify(["orderBook", [symbol]]));
+                if (settled) return;
+                diagnostics.connectionOpened = true;
+                diagnostics.phase = "sending_subscription";
+                try {
+                    socket.send(JSON.stringify(["orderBook", [requestedSymbol]]));
+                    diagnostics.subscriptionSent = true;
+                    diagnostics.phase = "awaiting_order_book";
+                } catch {
+                    diagnostics.phase = "subscription_send_failed";
+                    const error = new Error("TradeNet market-depth subscription could not be sent.");
+                    error.status = 502;
+                    finish(error);
+                }
             });
             socket.addEventListener("message", message => {
                 if (settled) return;
+                diagnostics.messageCount += 1;
                 let packet;
                 try {
                     packet = JSON.parse(String(message.data || ""));
                 } catch {
+                    diagnostics.parseErrorCount += 1;
                     return;
                 }
                 if (!Array.isArray(packet) || typeof packet[0] !== "string") return;
                 const [event, payload] = packet;
+                recordEvent(event);
+
                 if (event === "userData") {
+                    diagnostics.userDataReceived = true;
+                    diagnostics.isDemo = typeof payload?.isDemo === "boolean" ? payload.isDemo : null;
                     const mode = String(payload?.mode || "").trim().toLowerCase();
+                    diagnostics.sessionMode = ["prod", "demo", "test", "paper", "beta"].includes(mode)
+                        ? mode : "unknown";
                     if (payload?.isDemo === true || payload?.real === false ||
                         ["demo", "test", "paper", "beta"].includes(mode)) {
+                        diagnostics.phase = "demo_session_rejected";
                         const error = new Error("TradeNet returned a demo session. Live market depth is disabled.");
                         error.status = 403;
                         finish(error);
                     }
                     return;
                 }
+
                 if (event === "error") {
-                    const errorText = typeof payload === "string" ? payload : "";
+                    const errorText = typeof payload === "string" ? payload : JSON.stringify(payload ?? {});
                     const needsReauth = /sid|session|auth|login|unauthori[sz]ed|expired/i.test(errorText);
+                    diagnostics.serverErrorCategory = needsReauth ? "auth_or_session_rejected" : "upstream_error";
+                    diagnostics.phase = "server_error";
                     const error = new Error(needsReauth
                         ? "TradeNet rejected the stored session. It will be renewed and retried."
                         : "TradeNet rejected the market-depth subscription.");
@@ -472,30 +571,44 @@ function fetchFreedomMarketDepthWithSid(symbol, session) {
                     finish(error);
                     return;
                 }
+
                 if (event !== "b") return;
-                const ticker = String(payload?.i || "").trim().toUpperCase();
-                if (ticker !== symbol.toUpperCase()) return;
+                diagnostics.orderBookEventsReceived += 1;
+                const ticker = String(payload?.i || payload?.data?.i || "").trim().toUpperCase();
+                if (ticker && diagnostics.orderBookSymbolsReceived.length < 5 &&
+                    !diagnostics.orderBookSymbolsReceived.includes(ticker) &&
+                    /^[A-Z0-9.^=-]{1,20}$/.test(ticker)) {
+                    diagnostics.orderBookSymbolsReceived.push(ticker);
+                }
+                if (ticker !== requestedSymbol) {
+                    diagnostics.unmatchedOrderBooks += 1;
+                    return;
+                }
                 try {
-                    finish(null, sanitizeFreedomMarketDepth(payload, symbol));
+                    finish(null, sanitizeFreedomMarketDepth(payload, requestedSymbol));
                 } catch (error) {
+                    diagnostics.phase = "invalid_order_book";
                     const failure = new Error(error instanceof Error ? error.message : "Invalid TradeNet order-book snapshot.");
                     failure.status = 502;
                     finish(failure);
                 }
             });
             socket.addEventListener("error", () => {
-                const error = new Error("Could not connect to the TradeNet production market-depth feed.");
-                error.status = 502;
-                finish(error);
+                // Wait for the close event when possible so its code is included in diagnostics.
+                diagnostics.socketErrorObserved = true;
+                if (diagnostics.phase === "awaiting_order_book") diagnostics.phase = "websocket_error";
             });
             socket.addEventListener("close", event => {
-                if (!settled) {
-                    const error = new Error("TradeNet closed the market-depth connection before a snapshot arrived.");
-                    error.status = event?.code === 1008 ? 401 : 502;
-                    finish(error);
-                }
+                if (settled) return;
+                diagnostics.phase = "connection_closed";
+                diagnostics.closeCode = Number.isFinite(Number(event?.code)) ? Number(event.code) : null;
+                diagnostics.closeReasonPresent = Boolean(event?.reason);
+                const error = new Error("TradeNet closed the market-depth connection before a snapshot arrived.");
+                error.status = event?.code === 1008 ? 401 : 502;
+                finish(error);
             });
         } catch {
+            diagnostics.phase = "connection_initialization_failed";
             const error = new Error("Could not initialize the TradeNet production market-depth connection.");
             error.status = 502;
             finish(error);
@@ -924,10 +1037,21 @@ export default {
                 if (request.method !== "GET") return jsonError("Freedom market depth only supports GET.", 405, corsHeaders);
                 if (!symbol || symbol.includes(",")) return jsonError("A single valid symbol is required for Freedom market depth.", 400, corsHeaders);
                 try {
-                    const data = await fetchFreedomMarketDepth(env, symbol);
-                    return new Response(JSON.stringify({ ok: true, provider: "Freedom TradeNet", symbol, data }), { headers: corsHeaders });
+                    const result = await fetchFreedomMarketDepth(env, symbol);
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Freedom TradeNet",
+                        symbol,
+                        data: result.data,
+                        diagnostics: result.diagnostics
+                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
-                    return jsonError(error instanceof Error ? error.message : "TradeNet market depth is unavailable.", Number(error?.status) || 502, corsHeaders);
+                    const body = { error: error instanceof Error ? error.message : "TradeNet market depth is unavailable." };
+                    if (error?.diagnostics) body.diagnostics = error.diagnostics;
+                    return new Response(JSON.stringify(body), {
+                        status: Number(error?.status) || 502,
+                        headers: { ...corsHeaders, "Cache-Control": "no-store" }
+                    });
                 }
             }
 
