@@ -63,13 +63,14 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
 export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, guestUserId }: { showActiveTranches?: boolean; isAdmin?: boolean; guestUserId?: string } = {}) {
   const state = usePortfolio();
   const refreshIntervalMs = useQuoteRefreshInterval(guestUserId ? 15_000 : 60_000, guestUserId ? 'guest' : 'admin');
+  const shouldReadBrokerHistory = !guestUserId && (showActiveTranches || isAdmin);
   const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
     brokerExecutionHistoryReducer<FreedomExecutedTradeLike>,
     undefined,
     () => createBrokerExecutionHistoryState(
-      state.brokerExecutedTrades as FreedomExecutedTradeLike[] | undefined,
-      loadSavedHistory().brokerExecutedTrades as FreedomExecutedTradeLike[],
-      showActiveTranches || isAdmin
+      guestUserId ? [] : state.brokerExecutedTrades as FreedomExecutedTradeLike[] | undefined,
+      shouldReadBrokerHistory ? loadSavedHistory().brokerExecutedTrades as FreedomExecutedTradeLike[] : [],
+      shouldReadBrokerHistory
     )
   );
   const executedTrades = brokerExecutionHistory.trades;
@@ -84,6 +85,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   const [guestUsersError, setGuestUsersError] = useState('');
 
   useEffect(() => {
+    // Guests use their assigned portfolio snapshot and must not subscribe to
+    // account-wide broker execution events or restore the administrator's history.
+    if (!shouldReadBrokerHistory) return;
     const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
       dispatchBrokerExecutionHistory({ type: 'success', trades: trades as unknown as FreedomExecutedTradeLike[] });
     });
@@ -91,11 +95,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       // Preserve the last good in-memory or saved snapshot; only mark it stale.
       dispatchBrokerExecutionHistory({ type: 'failure' });
     });
-    // Guests never request account-wide broker execution history.
-    if (showActiveTranches || isAdmin) {
-      dispatchBrokerExecutionHistory({ type: 'refresh' });
-      emitBrokerEvent('broker:request-executed-trades');
-    }
+    dispatchBrokerExecutionHistory({ type: 'refresh' });
+    emitBrokerEvent('broker:request-executed-trades');
     return () => {
       removeTradesListener();
       removeErrorListener();
