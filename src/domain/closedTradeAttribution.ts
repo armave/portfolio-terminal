@@ -9,7 +9,7 @@ interface ClosedTradeGuestAllocation {
   quantity: number;
 }
 
-export interface ClosedTradeGuestMetrics {
+interface ClosedTradeGuestMetrics {
   quantity: number;
   averagePrice: number | null;
   purchasedAt: number | null;
