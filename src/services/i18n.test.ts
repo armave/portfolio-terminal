@@ -222,6 +222,25 @@ describe('app localization', () => {
       .toBe('[Команда]: Неизвестная команда. Введите "help" для локальных команд или добавьте префикс "ask ..." для обращения к ИИ-советнику.');
   });
 
+  it('localizes multiline scenario reports and their dynamic labels', () => {
+    expect(translateText('[EXIT COMPARISON: AAPL]', 'ru'))
+      .toBe('[СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА: AAPL]');
+    expect(translateText('[BUY MORE: MSFT]', 'ru')).toBe('[ДОПОЛНИТЕЛЬНАЯ ПОКУПКА: MSFT]');
+    expect(translateText('Today · $190.00 → +$100.00 net P&L · BEST', 'ru'))
+      .toBe('Сегодня · $190.00 → +$100.00 чистая прибыль/убыток · ЛУЧШИЙ');
+    expect(translateText('BEST: today at $190.00 · +$100.00 net', 'ru'))
+      .toBe('ЛУЧШИЙ: сегодня по цене $190.00 · +$100.00 чистыми');
+    expect(translateText('Fees included: buy commission, sell commission, estimated margin interest.', 'ru'))
+      .toBe('Учтённые расходы: комиссия за покупку, комиссия за продажу, расчётные проценты по марже.');
+    expect(translateText('Today vs 14 Days', 'ru')).toBe('сегодня и 14 дн.');
+    expect(translateText('Hypothetical projection after buying +5 shares at $180.00 · no order placed', 'ru'))
+      .toBe('Гипотетический прогноз после покупки +5 акций по цене $180.00 · ордер не отправляется.');
+    expect(translateText('NOW Net', 'ru')).toBe('Чистый результат сейчас');
+    expect(translateText('Total Fee Friction', 'ru')).toBe('Общие комиссии и расходы');
+    expect(translateText('Estimate only · no portfolio changes.', 'ru'))
+      .toBe('Только оценка · портфель не изменяется.');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
