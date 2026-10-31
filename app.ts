@@ -75,6 +75,8 @@ import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, GuestTrancheLedgerRecord } from './src/types/portfolio';
 import { buildClosedTradeGuestLedgerUpserts } from './src/domain/closedTradeGuestAssignments';
+import { attributeClosedTradeExecutions } from './src/domain/closedTradeAttribution';
+import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from './src/domain/brokerExecutionMetrics';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -620,22 +622,134 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
       const rawTicker = String(trade?.ticker || '').trim();
       const ticker = rawTicker.toUpperCase().replace(/\.US$/i, '');
       const fallback = String(trade?.closedAt ?? trade?.exitDate ?? trade?.date ?? index);
+      const averagePriceValue = Number(trade?.avgBuyPrice ?? trade?.entryPrice);
+      const grossProfit = trade?.grossProfit == null ? NaN : Number(trade.grossProfit);
+      const commissions = Number(trade?.commissions ?? trade?.feesAndCommissions ?? trade?.totalCommissions);
+      const marginInterest = Number(trade?.marginInterest);
+      const storedNetProfit = trade?.netProfit ?? trade?.netRealizedGain;
+      const derivedNetProfit = Number.isFinite(grossProfit) && Number.isFinite(commissions)
+        ? grossProfit - commissions - (Number.isFinite(marginInterest) ? marginInterest : 0)
+        : NaN;
+      const netProfit = storedNetProfit != null && Number.isFinite(Number(storedNetProfit))
+        ? Number(storedNetProfit) : Number.isFinite(derivedNetProfit) ? derivedNetProfit : null;
       return {
         allocationKey: 'app:' + String(trade?.id || `${rawTicker || 'trade'}:${fallback}`),
         ticker,
-        name: String(trade?.name || ticker)
+        name: String(trade?.name || ticker),
+        quantity: Math.abs(Number(trade?.shares) || 0),
+        averagePrice: Number.isFinite(averagePriceValue) && averagePriceValue > 0 ? averagePriceValue : null,
+        purchasedAt: trade?.buyDate ?? trade?.purchaseDate ?? null,
+        netProfit
       };
     });
-    const brokerSellSources = (current.brokerExecutedTrades || [])
-      .filter((trade: any) => ['sell', 's', 'sale', 'sold', '2'].includes(String(trade?.side ?? '').toLowerCase()))
+
+    const brokerExecutions = current.brokerExecutedTrades || [];
+    const brokerAttributions = attributeClosedTradeExecutions(brokerExecutions, {
+      trancheTypes: current.activeTrancheTypes,
+      trancheMixes: current.activeTrancheMixes,
+      guestAssignments: current.activeTrancheGuestAssignments,
+      guestAssignmentDetails: current.activeTrancheGuestAssignmentDetails
+    });
+    const brokerTradeMetrics = calculateBrokerExecutionMetrics(brokerExecutions);
+    const brokerSaleRows = brokerExecutions
       .map((trade: any, index: number) => {
-        const ticker = String(trade?.ticker || '').trim().toUpperCase().replace(/\.US$/i, '');
+        if (!['sell', 's', 'sale', 'sold', '2'].includes(String(trade?.side ?? '').toLowerCase())) return null;
+        const ticker = normalizeExecutionTicker(trade?.ticker);
+        const quantity = Math.abs(Number(trade?.quantity ?? trade?.shares ?? 0));
+        if (!ticker || !Number.isFinite(quantity) || quantity <= 0) return null;
+
+        const attribution = brokerAttributions.get(trade);
+        const guestMetrics = Object.fromEntries((attribution?.guestAllocations || []).map((item) => [
+          item.guestId,
+          {
+            quantity: item.quantity,
+            averagePrice: item.averagePrice,
+            purchasedAt: item.purchasedAt
+          }
+        ]));
+        const metrics = brokerTradeMetrics.get(trade);
+        const commissionCurrency = String(trade?.commissionCurrency ?? trade?.currency ?? '').trim().toUpperCase();
+        const commissionCurrencyIsUsd = commissionCurrency === '' || commissionCurrency === 'USD';
+        const rawSellCommission = !commissionCurrencyIsUsd ||
+          trade?.commission === null || trade?.commission === undefined || trade?.commission === ''
+          ? NaN : Math.abs(Number(trade.commission));
+        const sellCommission = Number.isFinite(rawSellCommission) ? rawSellCommission : null;
+        const buyCommission = metrics?.buyCommission ?? null;
+        const commissionsComplete = sellCommission !== null && buyCommission !== null;
+        const commissions = Number(((sellCommission ?? 0) + (buyCommission ?? 0)).toFixed(2));
+        const allocatedMarginFee = Object.values((trade?.marginFeeAllocations || {}) as Record<string, number>)
+          .reduce((sum, amount) => sum + (Number(amount) || 0), 0);
+        const marginFee = Number((trade?.marginFeeAllocations && typeof trade.marginFeeAllocations === 'object')
+          ? allocatedMarginFee : trade?.marginFee ?? 0) || 0;
+        const fees = Number(Math.abs(marginFee).toFixed(2));
+        const totalFees = Number((commissions + fees).toFixed(2));
+        const netProfit = trade?.profit == null || !commissionsComplete
+          ? null : Number((Number(trade.profit) - totalFees).toFixed(2));
+        const rawTime = Date.parse(String(trade?.executedAt ?? trade?.date ?? ''));
         return {
           allocationKey: 'broker:' + String(trade?.id ?? ('tradenet-' + index)),
           ticker,
-          name: String(trade?.name || ticker)
+          name: String(trade?.name || ticker),
+          quantity,
+          averagePrice: attribution?.averagePrice ?? null,
+          purchasedAt: attribution?.purchasedAt ?? null,
+          netProfit,
+          guestMetrics,
+          time: Number.isFinite(rawTime) ? rawTime : null
         };
-      });
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null)
+      .sort((a, b) => (a.time ?? 0) - (b.time ?? 0));
+
+    // Closed History groups adjacent same-ticker sells within one hour. Mirror
+    // that row identity and aggregate values so the LOTS ledger matches the
+    // exact displayed and editable trade row.
+    const brokerSellSources: Array<{
+      allocationKey: string;
+      ticker: string;
+      name: string;
+      quantity: number;
+      averagePrice: number | null;
+      purchasedAt: number | null;
+      netProfit: number | null;
+      guestMetrics: Record<string, { quantity: number; averagePrice: number | null; purchasedAt: number | null }>;
+      time: number | null;
+    }> = [];
+    for (const row of brokerSaleRows) {
+      const previous = brokerSellSources[brokerSellSources.length - 1];
+      if (previous && row.ticker === previous.ticker &&
+          row.time !== null && previous.time !== null &&
+          row.time - previous.time <= 60 * 60 * 1000) {
+        const previousQuantity = previous.quantity;
+        const totalQuantity = previousQuantity + row.quantity;
+        previous.averagePrice = previous.averagePrice !== null && row.averagePrice !== null && totalQuantity > 0
+          ? (previous.averagePrice * previousQuantity + row.averagePrice * row.quantity) / totalQuantity
+          : null;
+        previous.purchasedAt = previous.purchasedAt !== null && row.purchasedAt !== null
+          ? Math.min(previous.purchasedAt, row.purchasedAt) : null;
+        previous.netProfit = previous.netProfit !== null && row.netProfit !== null
+          ? Number((previous.netProfit + row.netProfit).toFixed(2)) : null;
+        for (const [guestId, metric] of Object.entries(row.guestMetrics)) {
+          const existing = previous.guestMetrics[guestId];
+          if (!existing) {
+            previous.guestMetrics[guestId] = metric;
+          } else {
+            const guestQuantity = existing.quantity + metric.quantity;
+            existing.averagePrice = existing.averagePrice !== null && metric.averagePrice !== null && guestQuantity > 0
+              ? (existing.averagePrice * existing.quantity + metric.averagePrice * metric.quantity) / guestQuantity
+              : null;
+            existing.purchasedAt = existing.purchasedAt !== null && metric.purchasedAt !== null
+              ? Math.min(existing.purchasedAt, metric.purchasedAt) : null;
+            existing.quantity = guestQuantity;
+          }
+        }
+        previous.quantity = totalQuantity;
+        previous.time = row.time;
+      } else {
+        brokerSellSources.push({ ...row, guestMetrics: { ...row.guestMetrics } });
+      }
+    }
+
     const closedTradeLedgerUpserts = buildClosedTradeGuestLedgerUpserts(
       current.closedTradeAllocations || {},
       [...appTradeSources, ...brokerSellSources],
