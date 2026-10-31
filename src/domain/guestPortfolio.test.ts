@@ -180,6 +180,28 @@ describe('guest tranche ledger reports and filtering', () => {
     expect(filterGuestTrancheLedger(records, { ticker: 'zzz' })).toEqual([]);
   });
 
+  it('sorts by operation date and falls back to purchase date for older ledger records', () => {
+    expect(filterGuestTrancheLedger(records)).toEqual([records[2], records[1], records[0]]);
+    const legacyRecord: GuestTrancheLedgerRecord = {
+      assignmentId: 'legacy-aapl',
+      trancheId: 'AAPL:legacy',
+      ticker: 'AAPL',
+      name: 'Apple',
+      assignedQuantity: 1,
+      openQuantity: 1,
+      averagePrice: 100,
+      purchasedAt: 60,
+      assignedAt: 500,
+      updatedAt: 600,
+      endedAt: null,
+      status: 'active'
+    };
+    expect(filterGuestTrancheLedger([legacyRecord], {
+      operationDateFrom: 50,
+      operationDateTo: 70
+    })).toEqual([legacyRecord]);
+  });
+
   it('summarizes historical assigned capital and current open value without inventing realized P/L', () => {
     const activeTranches = [tranche({
       id: 'AAPL:buy-1', quantity: 4, averagePrice: 100, marketPrice: 130, marketValue: 520
