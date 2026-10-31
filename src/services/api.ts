@@ -949,29 +949,53 @@ function rememberCloudHistorySnapshot(secret: string, snapshot: CloudHistorySnap
   if (!current || snapshot.revision >= current.revision) cloudHistorySnapshotCache.set(secret, snapshot);
 }
 
+function enqueueCloudHistoryWrite(
+  history: { brokerExecutedTrades?: any[]; cashflows?: any[] },
+  secret: string,
+  knownRevision: number | undefined,
+  force: boolean
+): Promise<boolean> {
+  const operation = cloudHistoryPushQueue.then(() =>
+    performPushCloudHistory(history, secret, knownRevision, force)
+  );
+  cloudHistoryPushQueue = operation.then(() => undefined, () => undefined);
+  return operation;
+}
+
 export function pushCloudHistory(
   history: { brokerExecutedTrades?: any[]; cashflows?: any[] },
   secret = getActiveGatewaySecret(),
   knownRevision?: number
 ): Promise<boolean> {
-  const operation = cloudHistoryPushQueue.then(() => performPushCloudHistory(history, secret, knownRevision));
-  cloudHistoryPushQueue = operation.then(() => undefined, () => undefined);
-  return operation;
+  return enqueueCloudHistoryWrite(history, secret, knownRevision, false);
+}
+
+/**
+ * Persist an authoritative empty history record for a full portfolio reset.
+ * The forced write bypasses the ordinary no-change fingerprint so a previous
+ * empty snapshot cannot hide cloud history added by another device later.
+ */
+export function clearCloudHistory(secret = getActiveGatewaySecret()): Promise<boolean> {
+  return enqueueCloudHistoryWrite({
+    brokerExecutedTrades: [],
+    cashflows: []
+  }, secret, undefined, true);
 }
 
 async function performPushCloudHistory(
   history: { brokerExecutedTrades?: any[]; cashflows?: any[] },
   secret: string,
-  knownRevision?: number
+  knownRevision: number | undefined,
+  force: boolean
 ): Promise<boolean> {
   const brokerExecutedTrades = Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [];
   const cashflows = Array.isArray(history.cashflows) ? history.cashflows : [];
-  if (!secret || (!brokerExecutedTrades.length && !cashflows.length)) return false;
+  if (!secret || (!force && !brokerExecutedTrades.length && !cashflows.length)) return false;
   const plaintext = JSON.stringify({ brokerExecutedTrades, cashflows });
   const fingerprint = JSON.stringify([secret, plaintext]);
   // Compare serialized content, not object identity: stores often rebuild arrays
   // during render/recalculation even when no history record has actually changed.
-  if (fingerprint === lastSyncedHistoryFingerprint) return false;
+  if (!force && fingerprint === lastSyncedHistoryFingerprint) return false;
 
   let revision = knownRevision;
   if (!Number.isSafeInteger(revision) || (revision as number) < 0) {

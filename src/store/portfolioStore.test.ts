@@ -1050,4 +1050,65 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(reloadedStore.getState().holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
     expect(reloadedStore.getState().closedTrades).toHaveLength(2);
   });
+  it('resets portfolio-owned and broker-history state while retaining account settings', () => {
+    stored.set('portfolio_active_view', 'AAPL');
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    const originalRules = { ...store.getState().brokerAssumptions, annualRate: 0.12 };
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL', shares: 2, currentPrice: 110, pt: 125, commBuy: 1,
+          tranches: [{ qty: 2, price: 100, date: '2026-10-01' }]
+        }
+      },
+      balance: -250,
+      cashCushion: { freeCash: 500, holdings: [{ ticker: 'MSFT', shares: 2, price: 20, currentPrice: 20 }] },
+      closedTrades: [{ ticker: 'AAPL', shares: 1, netProfit: 10 }],
+      brokerExecutedTrades: [{ id: 'trade-1' }],
+      cashflows: [{ id: 'fee-1', date: '2026-10-01', type: 'interest', amount: -1 }],
+      activeTrancheTypes: { AAPL: 'margin' } as any,
+      activeTrancheMixes: { AAPL: { cashShares: 1, marginShares: 1 } } as any,
+      activeTrancheGuestAssignments: { AAPL: 'guest-1' },
+      guestPortfolioSnapshot: { updatedAt: 1, tranches: [] },
+      brokerAccountInfo: { loaded: true, balances: [], positions: [], status: 'current', receivedAt: 1 },
+      portfolioEquity: 250,
+      portfolioEquityUpdatedAt: 1,
+      cashStocks: [{ ticker: 'NVDA', shares: 1, price: 100 }] as any,
+      tranches: [{ qty: 1, price: 100, date: '2026-10-01' }],
+      closedHistory: [{ ticker: 'AAPL', shares: 1, netProfit: 10 }],
+      selectedTicker: 'AAPL',
+      apiKeys: { finnhub: 'keep-provider-setting' } as any,
+      brokerAssumptions: originalRules,
+      gatewaySecret: 'keep-active-session-secret'
+    });
+    expect(store.getState().activeView).toBe('AAPL');
+
+    store.resetToBlankState(Date.parse('2026-10-31T00:00:00.000Z'));
+
+    const state = store.getState();
+    expect(state.activeView).toBe('COMBINED');
+    expect(stored.get('portfolio_active_view')).toBe('COMBINED');
+    expect(state.positions).toEqual({});
+    expect(state.holdings).toEqual([]);
+    expect(state.cashCushion).toEqual({ freeCash: 0, holdings: [] });
+    expect(state.balance).toBe(0);
+    expect(state.closedTrades).toEqual([]);
+    expect(state.brokerExecutedTrades).toEqual([]);
+    expect(state.cashflows).toEqual([]);
+    expect(state.closedHistory).toEqual([]);
+    expect(state.activeTrancheTypes).toEqual({});
+    expect(state.activeTrancheMixes).toEqual({});
+    expect(state.activeTrancheGuestAssignments).toEqual({});
+    expect(state.guestPortfolioSnapshot).toBeUndefined();
+    expect(state.brokerAccountInfo).toBeUndefined();
+    expect(state.portfolioEquity).toBeUndefined();
+    expect(state.portfolioEquityUpdatedAt).toBeUndefined();
+    expect(state.cashStocks).toEqual([]);
+    expect(state.tranches).toEqual([]);
+    expect(state.selectedTicker).toBeNull();
+    expect(state.apiKeys).toEqual({ finnhub: 'keep-provider-setting' });
+    expect(state.brokerAssumptions.annualRate).toBe(0.12);
+    expect(state.gatewaySecret).toBe('keep-active-session-secret');
+  });
 });

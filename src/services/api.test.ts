@@ -4,6 +4,7 @@ import {
   pullCloudState,
   pushCloudState,
   pushCloudHistory,
+  clearCloudHistory,
   pullCloudHistory,
   syncCloudState,
   proxyFetch,
@@ -1159,6 +1160,64 @@ describe('closed-history cloud write serialization', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it('force-clears cloud history, including after another device repopulates a previously empty record', async () => {
+    const secret = 'full-reset-history-secret';
+    let revision = 4;
+    let storedPayload = await encryptV2Fixture({
+      brokerExecutedTrades: [{ id: 'old-trade' }],
+      cashflows: [{ id: 'old-fee' }]
+    }, secret);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        const expectedRevision = Number(String((init.headers as Record<string, string>)['If-Match']).replaceAll('"', ''));
+        if (expectedRevision !== revision) {
+          return new Response(JSON.stringify({ conflict: true, currentRevision: revision }), {
+            status: 409,
+            headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+          });
+        }
+        storedPayload = JSON.parse(String(init.body)).encryptedPayload;
+        revision += 1;
+        return new Response(JSON.stringify({ success: true, revision }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+        });
+      }
+      return new Response(JSON.stringify({ encryptedPayload: storedPayload }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    // First reset establishes a locally remembered empty fingerprint.
+    await expect(clearCloudHistory(secret)).resolves.toBe(true);
+    await expect(pullCloudHistory(secret)).resolves.toEqual({
+      brokerExecutedTrades: [],
+      cashflows: []
+    });
+
+    // Simulate another device adding executions after the first reset.
+    storedPayload = await encryptV2Fixture({
+      brokerExecutedTrades: [{ id: 'new-device-trade' }],
+      cashflows: [{ id: 'new-device-fee' }]
+    }, secret);
+    revision += 1;
+
+    // A later reset must bypass the old empty fingerprint and use the latest revision.
+    await expect(clearCloudHistory(secret)).resolves.toBe(true);
+    await expect(pullCloudHistory(secret)).resolves.toEqual({
+      brokerExecutedTrades: [],
+      cashflows: []
+    });
+
+    const historyCalls = fetchMock.mock.calls.filter((call) => String(call[0]).includes('/api/history'));
+    expect(historyCalls.map((call) => (call[1] as RequestInit).method)).toEqual([
+      'GET', 'POST', 'GET', 'GET', 'POST', 'GET'
+    ]);
+    expect((historyCalls[4][1] as RequestInit).headers).toMatchObject({ 'If-Match': `"${revision - 1}"` });
   });
 
   it('serializes concurrent history pushes so each reads the revision after the previous write', async () => {

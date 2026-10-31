@@ -17,7 +17,7 @@ import {
   saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
-import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche } from '../domain/portfolio';
+import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, createBlankState } from '../domain/portfolio';
 
 const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
   broker: 'Freedom Broker Armenia (Tradernet)',
@@ -391,6 +391,44 @@ export class PortfolioStore {
     this.update((state) => ({
       ...state,
       ...newState
+    }));
+  }
+
+  /**
+   * Clear portfolio and broker-history data while preserving device/account configuration.
+   * Broker rules, provider keys, the signed-in Gateway Secret, and refresh preferences
+   * are settings rather than portfolio content and intentionally remain in place.
+   */
+  public resetToBlankState(now = Date.now()): void {
+    // The selected desk is device-local, so clear its preference alongside the portfolio.
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', 'COMBINED');
+    } catch {
+      // Continue resetting portfolio data when browser preference storage is unavailable.
+    }
+    this.update((state) => ({
+      ...state,
+      ...createBlankState(now),
+      // The domain factory uses its MarginPosition type; the store boundary keeps PositionRecord.
+      positions: {} as Record<string, PositionRecord>,
+      cashCushion: {
+        freeCash: 0,
+        holdings: [] as PortfolioState['cashCushion']['holdings']
+      },
+      activeTrancheTypes: {},
+      activeTrancheMixes: {},
+      activeTrancheGuestAssignments: {},
+      guestPortfolioSnapshot: undefined,
+      brokerAccountInfo: undefined,
+      portfolioEquity: undefined,
+      portfolioEquityUpdatedAt: undefined,
+      brokerExecutedTrades: [],
+      cashflows: [],
+      closedHistory: [],
+      tranches: [],
+      cashStocks: [],
+      selectedTicker: null,
+      pendingMutation: null
     }));
   }
 
