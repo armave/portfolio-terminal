@@ -808,6 +808,9 @@ function translateDynamicText(normalized: string): string | undefined {
     '; прибыль/убыток при снижении цены меняется на ' + tradeoff[2] + '.';
 
 
+  const liveQuotesRefreshed = normalized.match(/^\\[System\\]: Live market quotes refreshed for (\\d+) assets\\.$/i);
+  if (liveQuotesRefreshed) return '[Система]: Обновлены актуальные рыночные котировки для ' + liveQuotesRefreshed[1] + ' активов.';
+
   const adminAction = normalized.match(/^Only administrators can (.+)\.$/i);
   if (adminAction) {
     const actions: Record<string, string> = {
