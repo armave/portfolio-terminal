@@ -183,7 +183,7 @@ export interface ActiveTrancheMix {
 }
 
 /** A guest who has been linked to a closed trade, retained for assignment history. */
-export interface ClosedTradeGuestAssignmentHistory {
+interface ClosedTradeGuestAssignmentHistory {
   guestId: string;
   assignedQuantity: number;
   assignedAt: number;
