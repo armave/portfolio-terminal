@@ -287,3 +287,16 @@ describe('bounded broker execution history merge', () => {
     expect(mergeBrokerExecutionHistory([a, b, a], [a, b])).toEqual([a, b]);
   });
 });
+
+it('falls through empty preferred fields to the next valid commission and net P/L aliases', () => {
+  const breakdown = resolveClosedTradeFeeBreakdown({
+    commissions: '',
+    commission: 1.25,
+    marginFee: 2
+  });
+  expect(breakdown).toEqual({ fees: 2, commissions: 1.25, feesTotal: 3.25, commissionsKnown: true });
+  expect(resolveClosedTradeNetProfit(
+    { netProfit: '', netRealizedGain: 8 },
+    breakdown
+  )).toBe(8);
+});
