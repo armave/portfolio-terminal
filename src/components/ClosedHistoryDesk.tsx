@@ -614,7 +614,7 @@ export function ClosedHistoryDesk() {
                   ? visibleTrades[visibleIndex - 1].allocationType || 'unclassified'
                   : null;
                 const showAllocationHeader = visibleIndex === 0 || previousAllocationType !== allocationType;
-                const assignedGuests = row.guestAllocations || [];
+                const assignedGuests: Array<{ guestId: string; quantity: number }> = row.guestAllocations || [];
                 const allocationKey = String(row.allocationKey || ((source || 'trade') + ':' + String((trade as any).id || index)));
                 const savedAllocation = state.closedTradeAllocations?.[allocationKey];
                 const rowQuantity = Math.max(0, Number((trade as any).shares) || 0);
