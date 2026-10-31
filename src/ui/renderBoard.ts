@@ -17,7 +17,7 @@ export type {
   BoardState
 };
 
-const NON_POSITION_VIEWS = new Set(['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
+const NON_POSITION_VIEWS = new Set(['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS']);
 
 export function resolveActiveView(state: BoardState): string {
   let currentView = state.activeView;
@@ -101,11 +101,12 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   const isCushionActive = currentView === 'CASH_CUSHION' || currentView === 'BALANCE';
   const isClosedHistoryActive = currentView === 'CLOSED_HISTORY';
+  const isGuestHistoryActive = currentView === 'GUEST_HISTORY';
   const isSettingsActive = currentView === 'SETTINGS';
 
   // Hidden desks do not need their derived metrics or insights panel refreshed.
   // They will be updated when the user returns to a position/combined desk.
-  if (!isCushionActive && !isClosedHistoryActive && !isSettingsActive) {
+  if (!isCushionActive && !isClosedHistoryActive && !isGuestHistoryActive && !isSettingsActive) {
     onUpdateCombinedBreakeven();
   }
 
@@ -118,6 +119,11 @@ export function renderBoard(state: BoardState, options: RenderBoardOptions): voi
 
   if (isClosedHistoryActive) {
     onUpdateLastDeskView('CLOSED_HISTORY');
+    return;
+  }
+
+  if (isGuestHistoryActive) {
+    onUpdateLastDeskView('GUEST_HISTORY');
     return;
   }
 
