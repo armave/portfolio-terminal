@@ -138,6 +138,24 @@ describe('app localization', () => {
     expect(translateText('Untitled news item', 'ru')).toBe('Новость без заголовка');
   });
 
+  it('localizes terminal badges, external links, and portfolio valuation summaries', () => {
+    expect(translateText('ERROR', 'ru')).toBe('ОШИБКА');
+    expect(translateText('INFO', 'ru')).toBe('ИНФО');
+    expect(translateText('SIM', 'ru')).toBe('СИМУЛЯЦИЯ');
+    expect(translateText('COMPARISON', 'ru')).toBe('СРАВНЕНИЕ');
+    expect(translateText('BROKER', 'ru')).toBe('БРОКЕР');
+    expect(translateText('BALANCE', 'ru')).toBe('БАЛАНС');
+    expect(translateText('TV Chart', 'ru')).toBe('График TradingView');
+    expect(translateText('TV Ideas', 'ru')).toBe('Идеи TradingView');
+    expect(translateText('Open AAPL on TV Chart in a new tab', 'ru'))
+      .toBe('Открыть AAPL через График TradingView в новой вкладке');
+    expect(translateText('Latest portfolio quote · Updated 1m ago', 'ru'))
+      .toBe('Последняя котировка портфеля · Обновлено 1m ago');
+    expect(translateText('$12,000 | Across 2 Assets', 'ru')).toBe('$12,000 | По 2 активам');
+    expect(translateText('AAPL: 10sh @ PT $200 | MSFT: 5sh @ PT $450', 'ru'))
+      .toBe('AAPL: 10 акц. @ ЦУ $200 | MSFT: 5 акц. @ ЦУ $450');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
