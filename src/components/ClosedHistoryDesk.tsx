@@ -475,7 +475,12 @@ export function ClosedHistoryDesk() {
       state.closedTradeAllocations?.[row.allocationKey],
       row.cashQuantity
     );
-    return { ...row, ...allocation };
+    return {
+      ...row,
+      ...allocation,
+      allocationType: allocation.fundingType,
+      allocationTypes: [allocation.fundingType]
+    };
   }).sort((a, b) =>
     (allocationOrder[String(a.allocationType || 'margin')] ?? 0) -
       (allocationOrder[String(b.allocationType || 'margin')] ?? 0) ||
