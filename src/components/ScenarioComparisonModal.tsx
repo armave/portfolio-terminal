@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ScenarioModalData } from '../features/terminal/commandDispatcher';
 import { emitUiEvent } from '../ui/uiEventBus';
+import { useDialogFocus } from '../ui/dialogFocus';
 
 interface ScenarioComparisonModalProps {
   data: ScenarioModalData;
@@ -32,31 +33,13 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
   const isExit = data.kind === 'exit-comparison';
   const isBuyMore = data.kind === 'buy-more';
 
+  useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
+
   useEffect(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { event.preventDefault(); requestClose(); return; }
-      if (event.key !== 'Tab') return;
-      const dialog = dialogRef.current;
-      const items = Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])') ?? []);
-      if (!items.length) { event.preventDefault(); dialog?.focus(); return; }
-      const first = items[0], last = items[items.length - 1];
-      if (event.shiftKey && (document.activeElement === first || !dialog?.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && (document.activeElement === last || !dialog?.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
-    };
     const onResize = () => setIsMobile(window.matchMedia('(max-width: 767px)').matches);
-    document.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', onResize, { passive: true });
-    closeButtonRef.current?.focus();
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('resize', onResize);
-      document.body.style.overflow = previousOverflow;
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
-  }, [onClose]);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const shownColumns = isBuyMore ? data.columns.map((_, index) => index) : activeColumns;
   const netRow = data.rows.find(row => row.label === 'Net P&L');
