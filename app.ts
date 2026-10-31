@@ -659,14 +659,7 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
         if (!ticker || !Number.isFinite(quantity) || quantity <= 0) return null;
 
         const attribution = brokerAttributions.get(trade);
-        const guestMetrics = Object.fromEntries((attribution?.guestAllocations || []).map((item) => [
-          item.guestId,
-          {
-            quantity: item.quantity,
-            averagePrice: item.averagePrice,
-            purchasedAt: item.purchasedAt
-          }
-        ]));
+        const guestMetrics = attribution?.guestMetrics || {};
         const metrics = brokerTradeMetrics.get(trade);
         const commissionCurrency = String(trade?.commissionCurrency ?? trade?.currency ?? '').trim().toUpperCase();
         const commissionCurrencyIsUsd = commissionCurrency === '' || commissionCurrency === 'USD';
