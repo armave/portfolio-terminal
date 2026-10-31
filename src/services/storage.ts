@@ -396,9 +396,9 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
 
 /** Load large closed-history collections only when the history section needs them. */
 /** Persist closed-history source rows and calculated fee metadata independently of portfolio state. */
-export function saveSavedHistory(history: { brokerExecutedTrades?: any[]; cashflows?: any[] }): void {
+export function saveSavedHistory(history: { brokerExecutedTrades?: any[]; cashflows?: any[] }): boolean {
   const storage = getBrowserStorage();
-  if (!storage) return;
+  if (!storage) return false;
   const snapshot = {
     brokerExecutedTrades: Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [],
     cashflows: Array.isArray(history.cashflows) ? history.cashflows : []
@@ -406,8 +406,10 @@ export function saveSavedHistory(history: { brokerExecutedTrades?: any[]; cashfl
   try {
     storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(snapshot));
     lastPersistedHistory = snapshot;
+    return true;
   } catch (err) {
     console.error('Failed to save closed history:', err);
+    return false;
   }
 }
 
