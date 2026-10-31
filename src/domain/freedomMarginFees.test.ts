@@ -84,3 +84,15 @@ describe('empty cashflow snapshots', () => {
     expect(result.appAllocations.size).toBe(0);
   });
 });
+
+it('does not mix known foreign-currency executions into USD financing-fee weights', () => {
+  const executions = [
+    { ticker: 'AAPL', side: 'buy', quantity: 1, price: 100, currency: 'USD', executedAt: '2026-07-01T10:00:00Z' },
+    { ticker: 'BMW', side: 'buy', quantity: 1, price: 100, currency: 'EUR', executedAt: '2026-07-01T10:00:00Z' },
+    { ticker: 'AAPL', side: 'sell', quantity: 1, price: 110, currency: 'USD', executedAt: '2026-07-03T10:00:00Z' },
+    { ticker: 'BMW', side: 'sell', quantity: 1, price: 110, currency: 'EUR', executedAt: '2026-07-03T10:00:00Z' }
+  ];
+  const result = calculateFreedomMarginFeeAllocations([fee('usd-only', '2026-07-02', -1)], executions);
+  expect(result.brokerAllocations.get(2)).toEqual({ 'freedom-usd-only': 1 });
+  expect(result.brokerAllocations.has(3)).toBe(false);
+});
