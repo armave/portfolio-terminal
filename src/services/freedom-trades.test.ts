@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { calculateBrokerExecutionMetrics } from '../domain/brokerExecutionMetrics';
 import { normalizeFreedomTrades } from './api';
 import { classifyFreedomPortfolio } from '../domain/freedomPortfolio';
 
@@ -85,6 +86,48 @@ describe('normalizeFreedomTrades', () => {
       commissionCurrency: 'USD'
     });
     expect(trades[1]).toMatchObject({ ticker: 'SHEL.US', side: 'SELL', profit: 2.26 });
+  });
+
+  it('matches older opening buys to recent sells when the full history is returned', () => {
+    const trades = normalizeFreedomTrades({
+      data: {
+        trades: {
+          trade: [
+            {
+              id: 'older-meta-buy',
+              instr_nm: 'META.US',
+              type: '1',
+              q: '14',
+              p: '310',
+              date: '2026-09-01T10:00:00',
+              commission: '112.77',
+              curr_c: 'USD'
+            },
+            {
+              id: 'recent-meta-sell',
+              instr_nm: 'META.US',
+              type: '2',
+              q: '3',
+              p: '620',
+              date: '2026-10-29T10:00:00',
+              profit: '930',
+              commission: '52.32',
+              curr_c: 'USD'
+            }
+          ]
+        }
+      }
+    });
+    const sell = trades.find((trade) => trade.id === 'recent-meta-sell');
+    expect(sell).toBeDefined();
+    const metrics = calculateBrokerExecutionMetrics(trades);
+
+    expect(metrics.get(sell!)).toEqual({
+      holdingDays: 58,
+      buyCommission: 24.16
+    });
+    expect(Number((Number(sell!.profit) - Number(sell!.commission) - metrics.get(sell!)!.buyCommission!).toFixed(2)))
+      .toBe(853.52);
   });
 
   it('falls through zero quantity/price placeholders and unrecognized operation aliases', () => {
