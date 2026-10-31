@@ -102,8 +102,8 @@ CI on the exact PR head is authoritative because local network/DNS access preven
 ## Follow-up review checklist
 
 - [ ] Review mobile cash/balance, margin, Closed History, guest LOTS, Settings, and news-dialog interactions.
-- [ ] Verify stale broker-history errors keep saved records visible and retries remain available.
-- [ ] Recheck Russian translations for any new or edited user-facing copy.
+- [x] Verify stale broker-history errors keep saved records visible and retries remain available. `CashCushionDesk` now restores the last in-memory/saved snapshot, preserves it on refresh failure, and offers an accessible retry; reducer tests cover saved fallback, stale/error, refresh and recovery transitions.
+- [x] Recheck Russian translations for new/edited Cash & Balance copy. The stale-history warning, first-load error, refreshing label and retry/aria-label reuse existing Russian dictionary entries.
 - [ ] Revisit P1 async request sequencing only with a reproducible issue and focused regression tests.
 
 ## Follow-on implementation — Margin Intelligence stale responses
@@ -127,7 +127,7 @@ A second issue in the same request lifecycle could show a previous ticker's anal
 - [x] Preserve matching cached content when a refresh fails so the modal can show the error alongside the last successful analysis.
 - [x] Clear prior content when changing ticker or switching between position and portfolio review.
 - [x] Add unit tests for ticker matching, scope matching, and portfolio-level state.
-- [ ] Confirm all required CI checks on the final PR head.
+- [x] Exact-head Validate and Pull Request CI passed on `632406b46273581f56059c70651a5111a458bdf4`: Validate run 41205417977 and Pull Request CI run 41205417990 both passed typecheck, tests, production build, dead-code validation and production dependency audit.
 
 The modal already supports displaying an error and existing analysis/source cards together; the fix restores that intended stale-data fallback without presenting content from a different request.
 
@@ -235,7 +235,7 @@ The compatibility projection is derived from canonical `PortfolioState.positions
 - [x] Preserve the legacy date-field precedence (`closedAt`, `exitDate`, `sellDate`, `date`), invalid-date fallback, and strict "rebuy must be later than latest close" rule.
 - [x] Add regression coverage for multiple exits, case/whitespace-normalized tickers, and a legacy rebuy occurring after the latest close.
 - [x] Exact-head `79fbb47dba5d174a234cd473950403386ae434bb` passed typecheck, full tests, dead-code validation, production dependency audit, and production build in both [Validate run 41201346038](https://github.com/armave/portfolio-terminal/actions/runs/41201346038) and [Pull Request CI run 41201346026](https://github.com/armave/portfolio-terminal/actions/runs/41201346026).
-- [ ] Keep financial calculations, saved data formats, and cloud authorization unchanged.
+- [x] Keep financial calculations, saved data formats, and cloud authorization unchanged; the complete-history change only changes the read-only history request and the Cash & Balance follow-up only changes in-memory view state.
 
 This reduces the closed-history lookup work from O(H × C) to O(H + C), where H is the number of legacy holdings and C is the number of local closed trades. Legacy tranche-date inspection remains proportional to the tranche count. Together with the earlier indexed compatibility projection, both read-only legacy migration lookups now build their indexes once per normalization pass.
 
@@ -315,9 +315,25 @@ This extends the P2 typed-boundary work to the untrusted API edge. It does not c
 - [x] Change the read-only Worker request to `getTradesHistory` with `sort: 0` and no `max`, matching TradeNet's documented full-history mode.
 - [x] Add a Worker integration test asserting the request body contains `{ sort: 0 }` and no `max`, and that older opening buys are returned with recent sells.
 - [x] Update Trades/history comments and the market-data integration notes to record the full-history requirement for FIFO duration and buy-commission matching.
-- [ ] Verify the broker returns the complete history for the configured account and review the recalculated Trades summary after deployment.
-- [ ] Confirm exact-head PR CI and Validate after the client documentation updates.
+- [x] User confirmed the complete-history Trades recalculation issue was resolved after deployment (2026-10-31).
+- [x] Exact-head Validate and Pull Request CI passed on the full-history follow-up before later Cash & Balance work; latest exact-head checks are recorded in the Cash & Balance stale-history section below.
 
 The screenshot showed sell rows with known selling fees but missing holding duration/net P&L. `ClosedHistoryDesk` computes buy commission and holding duration by FIFO-matching sells against opening buys. The Worker had been requesting only the latest 100 executions, which can exclude older opening lots. TradeNet's `getTradesHistory` documentation states that `sort=0` with `max` omitted returns the full history count; this request now removes the artificial latest-100 cap. Financial formulas and persisted schemas are unchanged.
 
 Source: [TradeNet — Retrieving trades history](https://tradernet.com/tradernet-api/get-trades-history?site_lang=en).
+
+
+
+## Follow-on implementation — Cash & Balance stale broker-history UX (2026-10-31)
+
+- [x] Restore account-authorized broker executions from the current portfolio snapshot first, then the separately persisted closed-history snapshot when in-memory history is empty.
+- [x] Preserve the last good execution rows when a broker refresh fails; transition the view to a stale state instead of clearing the execution list.
+- [x] Expose a localized stale-data warning with a keyboard-focusable Retry control; retain the current rows while retrying and clear the warning only after a successful response.
+- [x] Show an actionable first-load error and Retry control when no usable snapshot exists.
+- [x] Keep guest views isolated from account-wide history: do not restore administrator saved history or subscribe to account-wide broker execution events when a guest user ID is present.
+- [x] Add reducer tests for saved-history fallback, current-snapshot precedence, stale retention, empty first-load failure, retry recovery and non-requesting guest state.
+- [x] Reuse existing Russian translations for all warning, loading, retry and accessible-label strings; no untranslated user-facing copy was introduced.
+- [x] Exact-head CI passed on `632406b46273581f56059c70651a5111a458bdf4`: [Validate run 41205417977](https://github.com/armave/portfolio-terminal/actions/runs/41205417977) and [Pull Request CI run 41205417990](https://github.com/armave/portfolio-terminal/actions/runs/41205417990).
+- [ ] Verify the stale warning and retry behavior in a real browser/device; browser-based responsive and assistive-technology review remains outstanding.
+
+The previous Cash & Balance error listener cleared `executedTrades` on `broker:executed-trades-error`, which could make active tranches disappear despite a usable saved snapshot. The new reducer keeps the latest available records and changes only the status. The UI distinguishes loading, refreshing, stale-with-data and error-without-data. This is presentation/state handling only; it does not modify broker execution records, portfolio calculations, saved schemas or guest authorization.
