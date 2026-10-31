@@ -38,17 +38,17 @@ export function ClosedHistoryDesk() {
       // Current memory may have just hydrated raw broker executions before this
       // cloud-history read completed. Enrich it from persisted calculated rows by
       // execution ID before deciding which copy is safe to restore.
-      const localExecutions = preservePersistedBrokerFeeAllocations(
-        currentExecutions,
-        saved.brokerExecutedTrades
+      const localExecutions = mergeBrokerExecutionHistory(
+        saved.brokerExecutedTrades,
+        preservePersistedBrokerFeeAllocations(currentExecutions, saved.brokerExecutedTrades)
       );
       const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
       historyHydrated.current = true;
-      // Once the dedicated cloud history record exists, it is authoritative.
-      // Prefer local snapshots only when the cloud record is absent; otherwise
-      // stale local copies cause an immediate second POST after migration/load.
+      // Cloud history is the durable baseline, but the just-fetched broker page
+      // is fresher. Merge it instead of allowing a slow cloud pull to erase new
+      // executions that arrived while this component was mounting.
       const cloudExecutions = preservePersistedBrokerFeeAllocations(
-        cloud.brokerExecutedTrades || [],
+        mergeBrokerExecutionHistory(cloud.brokerExecutedTrades || [], localExecutions),
         [...saved.brokerExecutedTrades, ...localExecutions]
       );
       const resolved = history ? {
