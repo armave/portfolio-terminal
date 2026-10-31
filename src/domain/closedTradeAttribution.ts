@@ -4,12 +4,12 @@ import { normalizeActiveTrancheMix } from './freedomPortfolio';
 const EPSILON = 1e-8;
 const GROUP_BUYS_WITHIN_MS = 5 * 60 * 1000;
 
-export interface ClosedTradeGuestAllocation {
+interface ClosedTradeGuestAllocation {
   guestId: string;
   quantity: number;
 }
 
-export type ClosedTradeFundingType = ActiveTrancheType | 'unclassified';
+type ClosedTradeFundingType = ActiveTrancheType | 'unclassified';
 
 export interface ClosedTradeAttribution {
   fundingType: ClosedTradeFundingType;
