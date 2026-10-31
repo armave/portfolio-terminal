@@ -186,7 +186,7 @@ describe('app localization', () => {
     expect(translateText('[Backup Import]: Imported backup.json into this browser. Check KV cloud status for sync results.', 'ru'))
       .toBe('[Импорт резервной копии]: Файл backup.json импортирован в этот браузер. Проверьте состояние синхронизации с облаком KV.');
     expect(translateText('[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.', 'ru'))
-      .toBe('Ошибка синхронизации гостевого портфеля: Назначенные активы и история не обновились.');
+      .toBe('Ошибка синхронизации гостевого портфеля: Не удалось обновить назначенные активы и историю.');
   });
 
   it('localizes multiline terminal outputs line by line', () => {
