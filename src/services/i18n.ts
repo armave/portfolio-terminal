@@ -602,7 +602,6 @@ function translateDynamicText(normalized: string): string | undefined {
   ];
     ['Market depth · ', 'Market depth', ' · '],
     ['Open market depth for ', 'Open market depth for', ' '],
-    ['Latest portfolio quote · ', 'Latest portfolio quote', ' · '],
     ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
     ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
     ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
@@ -613,6 +612,11 @@ function translateDynamicText(normalized: string): string | undefined {
     if (normalized.startsWith(prefix)) {
       return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
     }
+  }
+
+  const latestPortfolioQuote = normalized.match(/^Latest portfolio quote · (.+)$/i);
+  if (latestPortfolioQuote) {
+    return RU['Latest portfolio quote'] + ' · ' + translateText(latestPortfolioQuote[1], 'ru');
   }
 
   const acrossAssets = normalized.match(/^(.+) \| Across (\d+) Assets$/i);
