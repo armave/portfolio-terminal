@@ -1,54 +1,88 @@
-import { getUsEquityMarketSession } from './marketSession';
-
-const CLOSED_MARKET_REQUEST_COOLDOWN_MS = 60_000;
+import { getUsEquityMarketSession, getUsEquityMarketSessionKey } from './marketSession';
 
 export interface MarketRequestGateOptions {
-  now?: () => number;
   getSession?: () => ReturnType<typeof getUsEquityMarketSession>;
-  cooldownMs?: number;
+  getSessionKey?: () => string;
 }
 
-/** One market-data HTTP request per cooldown window while US equities are fully closed. */
-export function createMarketRequestGate(options: MarketRequestGateOptions = {}) {
-  const now = options.now || Date.now;
-  const getSession = options.getSession || (() => getUsEquityMarketSession());
-  const cooldownMs = options.cooldownMs ?? CLOSED_MARKET_REQUEST_COOLDOWN_MS;
-  let lastClosedRequestAt = Number.NEGATIVE_INFINITY;
-  let closedRequestInFlight = false;
+function isSuccessfulMarketDataResult(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value !== 'object' || Array.isArray(value)) return true;
+  const result = value as Record<string, unknown>;
+  return result.ok !== false && result.success !== false && !result.error && !result.errMsg;
+}
 
-  return async function run<T>(request: () => Promise<T>): Promise<T> {
+/**
+ * During fully closed hours, cache successful responses per exact request and
+ * closed-session identity. Different requests are independent; errors can retry.
+ */
+export function createMarketRequestGate(options: MarketRequestGateOptions = {}) {
+  const getSession = options.getSession || (() => getUsEquityMarketSession());
+  const getSessionKey = options.getSessionKey || (() => getUsEquityMarketSessionKey());
+  let activeClosedSessionKey: string | null = null;
+  const successfulResponses = new Map<string, unknown>();
+  const inFlightRequests = new Map<string, Promise<unknown>>();
+
+  return async function run<T>(requestKey: string, request: () => Promise<T>): Promise<T> {
     if (getSession() !== 'CLOSED') return request();
-    const startedAt = now();
-    if (closedRequestInFlight || startedAt - lastClosedRequestAt < cooldownMs) {
-      throw new Error('Market data request deferred: the US market is closed and the app-wide request limit has been reached.');
+
+    const sessionKey = getSessionKey();
+    if (sessionKey !== activeClosedSessionKey) {
+      activeClosedSessionKey = sessionKey;
+      successfulResponses.clear();
     }
-    lastClosedRequestAt = startedAt;
-    closedRequestInFlight = true;
-    try {
-      return await request();
-    } finally {
-      closedRequestInFlight = false;
+
+    if (successfulResponses.has(requestKey)) {
+      return successfulResponses.get(requestKey) as T;
     }
+
+    const inFlightKey = `${sessionKey}\u0000${requestKey}`;
+    const existing = inFlightRequests.get(inFlightKey);
+    if (existing) return existing as Promise<T>;
+
+    const pending = request().then((value) => {
+      if (
+        isSuccessfulMarketDataResult(value) &&
+        getSession() === 'CLOSED' &&
+        getSessionKey() === sessionKey &&
+        activeClosedSessionKey === sessionKey
+      ) {
+        successfulResponses.set(requestKey, value);
+      }
+      return value;
+    }).finally(() => {
+      if (inFlightRequests.get(inFlightKey) === pending) inFlightRequests.delete(inFlightKey);
+    });
+
+    inFlightRequests.set(inFlightKey, pending);
+    return pending;
   };
 }
 
 let testSessionOverride: ReturnType<typeof getUsEquityMarketSession> | null = null;
-let defaultMarketRequestGate = createMarketRequestGate({
-  getSession: () => testSessionOverride ?? getUsEquityMarketSession()
-});
+let testSessionGeneration = 0;
 
-export function runMarketDataRequest<T>(request: () => Promise<T>): Promise<T> {
-  return defaultMarketRequestGate(request);
-}
-
-export function resetMarketRequestGate(): void {
-  defaultMarketRequestGate = createMarketRequestGate({
-    getSession: () => testSessionOverride ?? getUsEquityMarketSession()
+function createDefaultGate() {
+  return createMarketRequestGate({
+    getSession: () => testSessionOverride ?? getUsEquityMarketSession(),
+    getSessionKey: () => testSessionOverride
+      ? `test-${testSessionGeneration}:${testSessionOverride}`
+      : getUsEquityMarketSessionKey()
   });
 }
 
-/** Allows API unit tests to model an open market without depending on CI wall-clock time. */
+let defaultMarketRequestGate = createDefaultGate();
+
+export function runMarketDataRequest<T>(requestKey: string, request: () => Promise<T>): Promise<T> {
+  return defaultMarketRequestGate(requestKey, request);
+}
+
+export function resetMarketRequestGate(): void {
+  defaultMarketRequestGate = createDefaultGate();
+}
+
 export function setMarketRequestSessionForTests(session: ReturnType<typeof getUsEquityMarketSession> | null): void {
   testSessionOverride = session;
+  testSessionGeneration += 1;
   resetMarketRequestGate();
 }

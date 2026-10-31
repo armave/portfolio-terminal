@@ -61,3 +61,30 @@ export function getUsEquityMarketSession(date = new Date()): UsEquityMarketSessi
   if (minutes >= regularClose && minutes < postClose) return 'POST';
   return 'CLOSED';
 }
+
+
+function marketDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+/** Stable identity for a market session, including one continuous closed interval. */
+export function getUsEquityMarketSessionKey(date = new Date()): string {
+  const parts = newYorkParts(date);
+  const localDate = new Date(parts.year, parts.month - 1, parts.day);
+  const session = getUsEquityMarketSession(date);
+  if (session !== 'CLOSED') return `${marketDateKey(localDate)}:${session}`;
+
+  const minutes = parts.hour * 60 + parts.minute;
+  let nextSessionDate = new Date(localDate);
+  // Before 04:00 ET on a trading day, today's premarket is the next session.
+  // Otherwise, associate closed hours with the next actual trading date.
+  if (!(isUsEquityTradingDay(localDate) && minutes < 4 * 60)) {
+    nextSessionDate.setDate(nextSessionDate.getDate() + 1);
+    let attempts = 0;
+    while (!isUsEquityTradingDay(nextSessionDate) && attempts < 14) {
+      nextSessionDate.setDate(nextSessionDate.getDate() + 1);
+      attempts += 1;
+    }
+  }
+  return `${marketDateKey(nextSessionDate)}:CLOSED`;
+}

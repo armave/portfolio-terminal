@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { getUsEquityMarketSession } from './marketSession';
+import { describe, expect, it, vi } from 'vitest';
+import { getUsEquityMarketSession, getUsEquityMarketSessionKey } from './marketSession';
 import { createMarketRequestGate } from './marketRequestGate';
 
 describe('US equity market session', () => {
@@ -11,38 +11,89 @@ describe('US equity market session', () => {
     expect(getUsEquityMarketSession(new Date('2026-10-30T00:00:00.000Z'))).toBe('CLOSED');
   });
 
-  it('recognizes full market holidays and the postmarket after the Thanksgiving early close', () => {
+  it('recognizes full holidays and recognized early closes', () => {
     expect(getUsEquityMarketSession(new Date('2026-11-26T16:00:00.000Z'))).toBe('CLOSED');
     expect(getUsEquityMarketSession(new Date('2026-11-27T18:00:00.000Z'))).toBe('POST');
     expect(getUsEquityMarketSession(new Date('2026-11-27T22:30:00.000Z'))).toBe('CLOSED');
-    // July 4, 2027 is Sunday, so the prior trading day (July 2) closes early.
     expect(getUsEquityMarketSession(new Date('2027-07-02T18:00:00.000Z'))).toBe('POST');
+  });
+
+  it('uses one closed-session identity from Friday night through the next premarket', () => {
+    expect(getUsEquityMarketSessionKey(new Date('2026-10-31T02:00:00.000Z'))).toBe('2026-11-02:CLOSED');
+    expect(getUsEquityMarketSessionKey(new Date('2026-10-31T15:00:00.000Z'))).toBe('2026-11-02:CLOSED');
+    expect(getUsEquityMarketSessionKey(new Date('2026-11-02T07:00:00.000Z'))).toBe('2026-11-02:CLOSED');
+    expect(getUsEquityMarketSessionKey(new Date('2026-11-02T09:00:00.000Z'))).toBe('2026-11-02:PRE');
   });
 });
 
-describe('app-wide closed-market request budget', () => {
-  it('allows one request per cooldown while fully closed and blocks concurrent/additional requests', async () => {
-    let clock = 1_000_000;
-    const gate = createMarketRequestGate({ now: () => clock, getSession: () => 'CLOSED', cooldownMs: 60_000 });
-    let release!: () => void;
-    const pending = gate(() => new Promise<void>(resolve => { release = resolve; }));
-    await expect(gate(async () => 'second')).rejects.toThrow(/request limit/i);
-    release();
-    await pending;
-    await expect(gate(async () => 'third')).rejects.toThrow(/request limit/i);
-    clock += 60_000;
-    await expect(gate(async () => 'fourth')).resolves.toBe('fourth');
+describe('successful market request deduplication while closed', () => {
+  const closed = { getSession: () => 'CLOSED' as const, getSessionKey: () => '2026-10-31:CLOSED' };
+
+  it('reuses only exact successful requests and allows different symbols/endpoints', async () => {
+    const gate = createMarketRequestGate(closed);
+    const aapl = vi.fn(async () => ({ analystTarget: 200 }));
+    const msft = vi.fn(async () => ({ price: 450 }));
+    await expect(gate('deep-data:AAPL', aapl)).resolves.toEqual({ analystTarget: 200 });
+    await expect(gate('deep-data:AAPL', aapl)).resolves.toEqual({ analystTarget: 200 });
+    await expect(gate('quote:MSFT', msft)).resolves.toEqual({ price: 450 });
+    expect(aapl).toHaveBeenCalledTimes(1);
+    expect(msft).toHaveBeenCalledTimes(1);
   });
 
-  it('does not throttle premarket, regular or postmarket requests', async () => {
-    let session: 'CLOSED' | 'PRE' = 'CLOSED';
-    const gate = createMarketRequestGate({ getSession: () => session, now: () => 100, cooldownMs: 60_000 });
-    await gate(async () => undefined);
-    session = 'PRE';
-    await expect(gate(async () => 'pre')).resolves.toBe('pre');
-    session = 'CLOSED';
-    await expect(gate(async () => 'closed-blocked')).rejects.toThrow();
-    session = 'PRE';
-    await expect(gate(async () => 'pre-again')).resolves.toBe('pre-again');
+  it('coalesces concurrent identical requests and retains their successful result', async () => {
+    const gate = createMarketRequestGate(closed);
+    let release!: (value: { analystTarget: number }) => void;
+    const request = vi.fn(() => new Promise<{ analystTarget: number }>(resolve => { release = resolve; }));
+    const first = gate('deep-data:AAPL', request);
+    const second = gate('deep-data:AAPL', request);
+    release({ analystTarget: 205 });
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { analystTarget: 205 }, { analystTarget: 205 }
+    ]);
+    await expect(gate('deep-data:AAPL', request)).resolves.toEqual({ analystTarget: 205 });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache request failures or provider error payloads', async () => {
+    const gate = createMarketRequestGate(closed);
+    const rejected = vi.fn()
+      .mockRejectedValueOnce(new Error('temporary network failure'))
+      .mockResolvedValueOnce({ analystTarget: 210 });
+    await expect(gate('deep-data:AAPL', rejected)).rejects.toThrow('temporary network failure');
+    await expect(gate('deep-data:AAPL', rejected)).resolves.toEqual({ analystTarget: 210 });
+    await expect(gate('deep-data:AAPL', rejected)).resolves.toEqual({ analystTarget: 210 });
+    expect(rejected).toHaveBeenCalledTimes(2);
+
+    const providerError = vi.fn(async () => ({ symbol: 'BAD', error: 'Yahoo unavailable' }));
+    await gate('deep-data:BAD', providerError);
+    await gate('deep-data:BAD', providerError);
+    expect(providerError).toHaveBeenCalledTimes(2);
+  });
+
+  it('expires successful results when the closed session changes', async () => {
+    let sessionKey = '2026-10-31:CLOSED';
+    const gate = createMarketRequestGate({
+      getSession: () => 'CLOSED',
+      getSessionKey: () => sessionKey
+    });
+    const request = vi.fn(async () => ({ analystTarget: 220 }));
+    await gate('deep-data:AAPL', request);
+    await gate('deep-data:AAPL', request);
+    sessionKey = '2026-11-02:CLOSED';
+    await gate('deep-data:AAPL', request);
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('never restricts premarket, regular or postmarket requests', async () => {
+    let session: 'PRE' | 'REGULAR' | 'POST' = 'PRE';
+    const gate = createMarketRequestGate({ getSession: () => session });
+    const request = vi.fn(async () => ({ price: 100 }));
+    await gate('quote:AAPL', request);
+    await gate('quote:AAPL', request);
+    session = 'REGULAR';
+    await gate('quote:AAPL', request);
+    session = 'POST';
+    await gate('quote:AAPL', request);
+    expect(request).toHaveBeenCalledTimes(4);
   });
 });

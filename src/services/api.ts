@@ -210,8 +210,22 @@ const proxyReadRequests = new Map<string, Promise<any>>();
 const COALESCED_READ_ACTIONS = new Set(['', 'quote', 'provider-quote', 'news', 'stocktwits', 'freedom-quote']);
 const MARKET_DATA_ACTIONS = new Set([
   '', 'quote', 'provider-quote', 'news', 'stocktwits',
-  'freedom-quote', 'freedom-news', 'freedom-history', 'freedom-market-depth', 'freedom-positions'
+  'freedom-quote', 'freedom-news', 'freedom-history', 'freedom-market-depth'
 ]);
+
+function createMarketRequestIdentity(
+  action: string,
+  queryParams: Record<string, string | number | boolean | undefined | null>,
+  fetchOptions: ProxyFetchOptions
+): string {
+  const normalizedParams = Object.entries(queryParams)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .sort(([a], [b]) => a.localeCompare(b));
+  const method = (fetchOptions.method || 'GET').toUpperCase();
+  const secret = (fetchOptions.secret || getActiveGatewaySecret()).trim();
+  const body = typeof fetchOptions.body === 'string' ? fetchOptions.body : '';
+  return JSON.stringify([action, method, normalizedParams, body, secret]);
+}
 
 function dispatchProxyFetch(
   action: string,
@@ -221,7 +235,9 @@ function dispatchProxyFetch(
   const isMarketData = MARKET_DATA_ACTIONS.has(action) &&
     (action !== '' || Boolean(queryParams.symbol));
   const request = () => performProxyFetch(action, queryParams, fetchOptions);
-  return isMarketData ? runMarketDataRequest(request) : request();
+  return isMarketData
+    ? runMarketDataRequest(createMarketRequestIdentity(action, queryParams, fetchOptions), request)
+    : request();
 }
 
 /**
