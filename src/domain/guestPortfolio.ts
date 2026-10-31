@@ -1,4 +1,4 @@
-import type { ActiveBrokerTranche, ActiveTrancheMix, ActiveTrancheType, QuoteDetails } from '../types/portfolio';
+import type { ActiveBrokerTranche, ActiveTrancheMix, ActiveTrancheType, GuestTrancheLedgerRecord, QuoteDetails } from '../types/portfolio';
 import { getAssignableActiveTrancheCashQuantity } from './activeTrancheGuestAssignment';
 import { normalizeActiveTrancheMix } from './freedomPortfolio';
 
@@ -124,6 +124,89 @@ export function calculateGuestPersonalEquity(holdings: GuestCashHolding[]): numb
   }, 0);
 }
 
+
+export interface GuestTrancheLedgerFilters {
+  ticker?: string;
+  status?: 'all' | 'active' | 'closed' | 'unassigned';
+  assignedFrom?: number;
+  assignedTo?: number;
+}
+
+export interface GuestTrancheLedgerSummary {
+  totalAssignments: number;
+  activeAssignments: number;
+  closedAssignments: number;
+  unassignedAssignments: number;
+  totalAssignedCostBasis: number;
+  openCostBasis: number;
+  currentMarketValue: number;
+  pricedOpenTranches: number;
+  unpricedOpenTranches: number;
+}
+
+/** Filter a guest's private assignment ledger for dashboard tables and reports. */
+export function filterGuestTrancheLedger(
+  records: GuestTrancheLedgerRecord[],
+  filters: GuestTrancheLedgerFilters = {}
+): GuestTrancheLedgerRecord[] {
+  const ticker = String(filters.ticker || '').trim().toUpperCase();
+  const status = filters.status || 'all';
+  return (records || [])
+    .filter((record) => {
+      if (ticker && !String(record.ticker || '').toUpperCase().includes(ticker)) return false;
+      if (status !== 'all' && record.status !== status) return false;
+      if (Number.isFinite(filters.assignedFrom) && record.assignedAt < Number(filters.assignedFrom)) return false;
+      if (Number.isFinite(filters.assignedTo) && record.assignedAt > Number(filters.assignedTo)) return false;
+      return true;
+    })
+    .slice()
+    .sort((a, b) => b.assignedAt - a.assignedAt || a.ticker.localeCompare(b.ticker));
+}
+
+/** Summarize historical assignment capital and today's open position value.
+ * This intentionally does not estimate realized P/L: sold execution prices are
+ * not attached to individual cash-assigned tranches by the current broker parser. */
+export function summarizeGuestTrancheLedger(
+  records: GuestTrancheLedgerRecord[],
+  activeTranches: ActiveBrokerTranche[] = []
+): GuestTrancheLedgerSummary {
+  const activeById = new Map(activeTranches.map((tranche) => [tranche.id, tranche]));
+  const summary: GuestTrancheLedgerSummary = {
+    totalAssignments: 0,
+    activeAssignments: 0,
+    closedAssignments: 0,
+    unassignedAssignments: 0,
+    totalAssignedCostBasis: 0,
+    openCostBasis: 0,
+    currentMarketValue: 0,
+    pricedOpenTranches: 0,
+    unpricedOpenTranches: 0
+  };
+  for (const record of records || []) {
+    summary.totalAssignments += 1;
+    if (record.status === 'active') summary.activeAssignments += 1;
+    else if (record.status === 'closed') summary.closedAssignments += 1;
+    else if (record.status === 'unassigned') summary.unassignedAssignments += 1;
+
+    const averagePrice = positiveNumber(record.averagePrice);
+    const assignedQuantity = Math.max(0, Number(record.assignedQuantity) || 0);
+    const openQuantity = Math.max(0, Number(record.openQuantity) || 0);
+    if (averagePrice !== null) {
+      summary.totalAssignedCostBasis += assignedQuantity * averagePrice;
+      if (record.status === 'active') summary.openCostBasis += openQuantity * averagePrice;
+    }
+    if (record.status !== 'active') continue;
+
+    const marketValue = activeById.get(record.trancheId)?.marketValue;
+    if (marketValue !== null && marketValue !== undefined && Number.isFinite(Number(marketValue))) {
+      summary.currentMarketValue += Math.max(0, Number(marketValue));
+      summary.pricedOpenTranches += 1;
+    } else {
+      summary.unpricedOpenTranches += 1;
+    }
+  }
+  return summary;
+}
 
 export interface GuestHoldingValuation {
   shares: number;
