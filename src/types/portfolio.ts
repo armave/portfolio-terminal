@@ -232,6 +232,8 @@ export interface GuestTrancheLedgerRecord {
   assignedQuantity: number;
   openQuantity: number;
   averagePrice: number | null;
+  /** Realized net profit allocated to this guest's closed-trade shares, when known. */
+  netProfit?: number | null;
   /** Market value is optional because closed tranches have no current valuation. */
   marketPrice?: number | null;
   marketValue?: number | null;
