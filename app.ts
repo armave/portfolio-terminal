@@ -74,7 +74,7 @@ import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
 import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, GuestTrancheLedgerRecord } from './src/types/portfolio';
-import { buildClosedTradeGuestLedgerUpserts } from './src/domain/closedTradeGuestAssignments';
+import { buildClosedTradeGuestLedgerUpserts, resolveClosedTradeOperationDate } from './src/domain/closedTradeGuestAssignments';
 import { attributeClosedTradeExecutions } from './src/domain/closedTradeAttribution';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from './src/domain/brokerExecutionMetrics';
 
@@ -648,9 +648,9 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
         quantity: shares,
         averagePrice: Number.isFinite(averagePriceValue) && averagePriceValue > 0 ? averagePriceValue : null,
         purchasedAt: trade?.buyDate ?? trade?.purchaseDate ?? null,
-        // LOTS dates are lifecycle-specific: the close timestamp for a Trade,
-        // never its original buy date; Tranche rows use purchasedAt below.
-        operationAt: trade?.closedAt ?? trade?.exitDate ?? trade?.sellDate ?? trade?.date ?? null,
+        // Keep the exact precedence used by ClosedHistoryDesk: exitDate,
+        // sellDate, closedAt, then date. Never use the guest assignment time.
+        operationAt: resolveClosedTradeOperationDate(trade),
         value: saleValue,
         netProfit
       };
