@@ -13,6 +13,7 @@ interface ClosedTradeGuestMetrics {
   quantity: number;
   averagePrice: number | null;
   purchasedAt: number | null;
+  assignedAt: number | null;
 }
 
 type ClosedTradeFundingType = ActiveTrancheType | 'unclassified';
@@ -221,9 +222,16 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
       const groupId = group.ticker + ':' + (firstLot.purchasedAt ?? 'undated') + ':' + firstLot.id;
       const inherited = group.lots.find((lot) => lot.metadata)?.metadata;
       const totalOpenQuantity = group.lots.reduce((sum, lot) => sum + lot.quantity, 0);
-      const fundingType = validTrancheType(types[groupId])
+      const currentGuestId = String(assignments[groupId] || '').trim();
+      const inheritedGuestId = inherited?.guestId || null;
+      const explicitFundingType = validTrancheType(types[groupId])
         ? types[groupId]
-        : inherited?.fundingType || (validTrancheType(types[group.ticker]) ? types[group.ticker] : 'margin');
+        : validTrancheType(types[group.ticker]) ? types[group.ticker] : null;
+      // Active tranche assignments default to Cash. A closed trade with no
+      // explicit classification still defaults to Margin unless it carries
+      // an active guest assignment whose ownership is cash-funded.
+      const fundingType = explicitFundingType ||
+        (currentGuestId ? 'cash' : inherited?.fundingType || (inheritedGuestId ? 'cash' : 'margin'));
       const mix = mixes[groupId]
         ? mixes[groupId]
         : inherited?.fundingType === 'mix'
@@ -236,8 +244,6 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
           ? 1
           : totalOpenQuantity > 0 ? normalizedMix.cash / totalOpenQuantity : 0;
 
-      const currentGuestId = String(assignments[groupId] || '').trim();
-      const inheritedGuestId = inherited?.guestId || null;
       const guestId = currentGuestId || inheritedGuestId;
       const currentDetail = guestId && currentGuestId
         ? assignmentDetails[groupId]
@@ -320,9 +326,14 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
             costBasis: 0,
             costKnown: true,
             purchasedAt: null,
-            purchaseDateKnown: true
+            purchaseDateKnown: true,
+            assignedAt: metadata?.assignedAt ?? null
           };
           guestMetrics.quantity += guestQuantity;
+          if (metadata?.assignedAt !== null && metadata?.assignedAt !== undefined) {
+            guestMetrics.assignedAt = guestMetrics.assignedAt === null
+              ? metadata.assignedAt : Math.min(guestMetrics.assignedAt, metadata.assignedAt);
+          }
           if (lot.price !== null && Number.isFinite(lot.price) && lot.price > 0) {
             guestMetrics.costBasis += guestQuantity * lot.price;
           } else {
@@ -367,7 +378,8 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
           quantity: metrics.quantity,
           averagePrice: metrics.costKnown && metrics.quantity > EPSILON
             ? metrics.costBasis / metrics.quantity : null,
-          purchasedAt: metrics.purchaseDateKnown ? metrics.purchasedAt : null
+          purchasedAt: metrics.purchaseDateKnown ? metrics.purchasedAt : null,
+          assignedAt: metrics.assignedAt
         }])),
       unmatchedQuantity: Math.max(0, remainingToSell)
     });
