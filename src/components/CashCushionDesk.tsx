@@ -481,7 +481,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             aria-hidden={!activeTranchesExpanded}
           >
             <div class="expandable-motion__inner">
-              <TableScrollRegion label="Active tranches and guest assignments" className="table-scroll-wrapper">
+              <TableScrollRegion label="Active tranches and guest assignments" className="table-scroll-wrapper" tabIndex={activeTranchesExpanded ? 0 : -1}>
                 <table id="activeTranchesTable" class="active-tranches-table w-full min-w-[900px] text-left text-xs border-collapse">
                   <caption class="sr-only">Active tranches and guest assignments</caption>
                   <thead class="active-tranches-head">
