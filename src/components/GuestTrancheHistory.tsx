@@ -156,7 +156,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
                   item !== null && item !== undefined && Number.isFinite(Number(item))
                 );
                 const value = hasComparableValues
-                  ? values.reduce((total, item) => total + Number(item), 0)
+                  ? values.reduce<number>((total, item) => total + Number(item), 0)
                   : null;
                 const hasAllNetProfits = grouped.every((item) =>
                   item.netProfit !== null && item.netProfit !== undefined && Number.isFinite(Number(item.netProfit))
