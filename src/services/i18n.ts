@@ -808,7 +808,7 @@ function translateDynamicText(normalized: string): string | undefined {
     '; прибыль/убыток при снижении цены меняется на ' + tradeoff[2] + '.';
 
 
-  const adminAction = normalized.match(/^Only administrators can (.+)\\.$/i);
+  const adminAction = normalized.match(/^Only administrators can (.+)\.$/i);
   if (adminAction) {
     const actions: Record<string, string> = {
       'reset the portfolio': 'сбрасывать портфель',
