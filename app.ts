@@ -623,7 +623,7 @@ async function syncCloudState(mode = 'push') {
 }
 
 async function resetToBlankState(): Promise<void> {
-  if (!confirm("Reset the entire terminal to a blank slate? This will clear all holdings, balances, and history locally and on KV cloud.")) {
+  if (!confirm(translateText("Reset the terminal to a blank slate? This clears saved portfolio and history data locally and in KV cloud. It does not delete TradeNet records held by the broker; those read-only records may reappear when broker history is refreshed."))) {
     return;
   }
 
