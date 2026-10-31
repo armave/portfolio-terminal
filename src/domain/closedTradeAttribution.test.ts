@@ -29,7 +29,7 @@ describe('closed trade tranche attribution', () => {
       averagePrice: null,
       purchasedAt: at(10),
       guestAllocations: [{ guestId: 'guest-a', quantity: 2 }],
-      guestMetrics: { 'guest-a': { quantity: 2, averagePrice: null, purchasedAt: at(10) } },
+      guestMetrics: { 'guest-a': { quantity: 2, averagePrice: null, purchasedAt: at(10), assignedAt: at(10, 30) } },
       unmatchedQuantity: 0
     });
   });
@@ -114,7 +114,7 @@ describe('closed trade tranche attribution', () => {
       averagePrice: null,
       purchasedAt: at(9),
       guestAllocations: [{ guestId: 'guest-mix', quantity: 2 }],
-      guestMetrics: { 'guest-mix': { quantity: 2, averagePrice: null, purchasedAt: at(9) } },
+      guestMetrics: { 'guest-mix': { quantity: 2, averagePrice: null, purchasedAt: at(9), assignedAt: at(10) } },
       unmatchedQuantity: 0
     });
   });
@@ -177,7 +177,7 @@ describe('closed trade tranche attribution', () => {
       averagePrice: null,
       purchasedAt: at(9),
       guestAllocations: [{ guestId: 'guest-tsla', quantity: 1 }],
-      guestMetrics: { 'guest-tsla': { quantity: 1, averagePrice: null, purchasedAt: at(9) } },
+      guestMetrics: { 'guest-tsla': { quantity: 1, averagePrice: null, purchasedAt: at(9), assignedAt: at(10) } },
       unmatchedQuantity: 1
     });
   });
