@@ -1618,6 +1618,8 @@ describe('Durable Object guest portfolio ownership', () => {
             averagePrice: 450,
             netProfit: -75.5,
             marketPrice: null,
+            operationAt: 1721000000000,
+            value: 1350,
             purchasedAt: 1720000000000,
             assignedAt: 100,
             updatedAt: 500,
@@ -1637,6 +1639,8 @@ describe('Durable Object guest portfolio ownership', () => {
         assignmentId: 'closed-trade:row-pnl:guest-1',
         averagePrice: 450,
         netProfit: -75.5,
+        operationAt: 1721000000000,
+        value: 1350,
         purchasedAt: 1720000000000,
         status: 'closed'
       }]
