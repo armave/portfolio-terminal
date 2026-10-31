@@ -403,6 +403,8 @@ export class PortfolioStore {
     this.update((state) => ({
       ...state,
       ...createBlankState(now),
+      // The domain factory uses its MarginPosition type; the store boundary keeps PositionRecord.
+      positions: {} as Record<string, PositionRecord>,
       activeTrancheTypes: {},
       activeTrancheMixes: {},
       activeTrancheGuestAssignments: {},
