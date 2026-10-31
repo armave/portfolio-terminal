@@ -247,3 +247,17 @@ This reduces the closed-history lookup work from O(H × C) to O(H + C), where H 
 - [x] Exact-head `79fbb47dba5d174a234cd473950403386ae434bb` passed typecheck, full tests, dead-code validation, production dependency audit, and production build in both [Validate run 41201346038](https://github.com/armave/portfolio-terminal/actions/runs/41201346038) and [Pull Request CI run 41201346026](https://github.com/armave/portfolio-terminal/actions/runs/41201346026).
 
 The hooks register subscribers in effects. Immediate snapshot delivery on subscription closes the render-to-effect timing window in which a runtime update could otherwise be missed and leave a component displaying stale presentation state until a later update. This is presentation-state synchronization only; canonical portfolio data and persisted state are unchanged.
+
+
+## Follow-on implementation — TradeNet quote 404 correction (2026-10-31)
+
+- [x] Replace the incorrect `getQuotes` request with the documented `getStockQuotesJson` command and a `tickers` array for one-symbol quote requests.
+- [x] Keep the Worker-side API-key signing flow and fixed read-only command allowlist; no browser-supplied TradeNet commands or trading actions are introduced.
+- [x] Publish the Worker route change and server request typing directly to `main` in commits `598cc0617bf3101885d190158bdbd1c951a89fd8` and `c595607f2962a117ca5ffb5feda5e64dd6a92a47`.
+- [x] Add a Worker integration-contract test on `main` in `4d2a6e42d3d3ce21ac645a78517bd671987a5e5f`, asserting the upstream path and exact request body.
+- [x] Add frontend normalization support and regression coverage for the documented `ltp`, `pp`, `chg`, `pcp`, and `ltt` fields.
+- [x] Merge the published `main` commits into this roadmap branch without dropping prior roadmap changes.
+- [ ] Verify a real authorized TradeNet quote response and the Terminal Quote action in a browser; mocked integration tests cannot prove account-specific entitlements or live endpoint availability.
+- [ ] Exact-head CI for the completed roadmap branch.
+
+The screenshot showed the Worker returning HTTP 404 from the Freedom quote path after the Terminal requested `GOOGL.US`; the Yahoo quote path still returned a price. The failure was caused by the TradeNet command/parameter mismatch, not by the Terminal command parser. The correction preserves concurrent Yahoo lookup and the existing Finnhub/Twelve Data fallback, and does not change portfolio accounting, quote ordering, broker orders, persisted state, or authorization.
