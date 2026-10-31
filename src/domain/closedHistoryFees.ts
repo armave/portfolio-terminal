@@ -149,6 +149,21 @@ export function resolveClosedTradeFeeBreakdown(trade: FeeRecord): ClosedTradeFee
   };
 }
 
+
+/** Resolve net P/L without presenting gross P/L as net when fee inputs are incomplete. */
+export function resolveClosedTradeNetProfit(
+  trade: FeeRecord,
+  feeBreakdown: ClosedTradeFeeBreakdown
+): number | null {
+  const netValue = trade.netProfit ?? trade.netRealizedGain;
+  const parsedNet = netValue === null || netValue === undefined || netValue === '' ? NaN : Number(netValue);
+  if (Number.isFinite(parsedNet)) return parsedNet;
+  const grossValue = trade.grossProfit;
+  const parsedGross = grossValue === null || grossValue === undefined || grossValue === '' ? NaN : Number(grossValue);
+  if (!Number.isFinite(parsedGross) || !feeBreakdown.commissionsKnown) return null;
+  return Number((parsedGross - feeBreakdown.feesTotal).toFixed(2));
+}
+
 type ClosedHistoryRow = { trade: Record<string, any> };
 
 /** Prefer broker rows for app/broker records that describe the same closed sale. */

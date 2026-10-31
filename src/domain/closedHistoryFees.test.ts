@@ -218,3 +218,33 @@ it('marks commission totals unknown when no commission source field exists', () 
   expect(resolveClosedTradeFeeBreakdown({ marginFee: 2 }))
     .toEqual({ fees: 2, commissions: 0, feesTotal: 2, commissionsKnown: false });
 });
+
+describe('closed-trade net profit resolution', () => {
+  it('uses explicit net P/L when available', () => {
+    expect(resolveClosedTradeNetProfit(
+      { netProfit: 8, grossProfit: 20 },
+      { fees: 5, commissions: 2, feesTotal: 7, commissionsKnown: true }
+    )).toBe(8);
+  });
+
+  it('subtracts all known commissions and margin fees from gross P/L', () => {
+    expect(resolveClosedTradeNetProfit(
+      { grossProfit: 20 },
+      { fees: 5, commissions: 2, feesTotal: 7, commissionsKnown: true }
+    )).toBe(13);
+  });
+
+  it('does not report gross P/L as net when commission data is unavailable', () => {
+    expect(resolveClosedTradeNetProfit(
+      { grossProfit: 20 },
+      { fees: 5, commissions: 0, feesTotal: 5, commissionsKnown: false }
+    )).toBeNull();
+  });
+
+  it('preserves unknown profit when no net or gross source value exists', () => {
+    expect(resolveClosedTradeNetProfit(
+      {},
+      { fees: 0, commissions: 0, feesTotal: 0, commissionsKnown: false }
+    )).toBeNull();
+  });
+});

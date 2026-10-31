@@ -5,7 +5,7 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage } from '../services/i18n';
 import { fetchFreedomCashflows, pullCloudHistory, pushCloudHistory } from '../services/api';
 import { loadSavedHistory, saveSavedHistory } from '../services/storage';
-import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown } from '../domain/closedHistoryFees';
+import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFees';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from '../domain/brokerExecutionMetrics';
@@ -291,15 +291,7 @@ export function ClosedHistoryDesk() {
   }, []);
   const appTrades = (state.closedTrades || []).map((trade, index) => {
     const feeBreakdown = resolveClosedTradeFeeBreakdown(trade as any);
-    const netValue = (trade as any).netProfit ?? (trade as any).netRealizedGain;
-    const parsedNet = netValue === null || netValue === undefined || netValue === '' ? NaN : Number(netValue);
-    const grossValue = (trade as any).grossProfit;
-    const parsedGross = grossValue === null || grossValue === undefined || grossValue === '' ? NaN : Number(grossValue);
-    const profit = Number.isFinite(parsedNet)
-      ? parsedNet
-      : Number.isFinite(parsedGross) && feeBreakdown.commissionsKnown
-        ? Number((parsedGross - feeBreakdown.feesTotal).toFixed(2))
-        : null;
+    const profit = resolveClosedTradeNetProfit(trade as any, feeBreakdown);
     return {
       trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const,
       profit,
