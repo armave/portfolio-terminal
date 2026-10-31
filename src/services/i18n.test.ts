@@ -68,6 +68,40 @@ describe('app localization', () => {
       .toBe('Портфель сброшен локально, но не удалось очистить историю сделок в облаке. Восстановите доступ к облаку и повторите сброс.');
   });
 
+  it('localizes the guest LOTS workspace and assignment history', () => {
+    expect(translateText('LOTS', 'ru')).toBe('ЛОТЫ');
+    expect(translateText('Your cash-funded purchase allocations, including completed and removed assignments', 'ru'))
+      .toBe('Ваши покупки за собственные средства, включая завершённые и снятые с назначения лоты');
+    expect(translateText('Open cost basis', 'ru')).toBe('Себестоимость открытых лотов');
+    expect(translateText('Open market value', 'ru')).toBe('Рыночная стоимость открытых лотов');
+    expect(translateText('All statuses', 'ru')).toBe('Все статусы');
+    expect(translateText('Assigned from', 'ru')).toBe('Назначено с');
+    expect(translateText('Assigned to', 'ru')).toBe('Назначено по');
+    expect(translateText('No assignments match these filters.', 'ru'))
+      .toBe('Нет назначений, соответствующих выбранным фильтрам.');
+    expect(translateText('Market value is shown only for open assigned holdings. Realized profit/loss is not inferred from assignment history. Pre-feature open assignments are dated when first recorded.', 'ru'))
+      .toContain('Рыночная стоимость показывается только для открытых назначенных активов.');
+  });
+
+  it('localizes dynamic record counts, unassigned rows, and risk buffers', () => {
+    expect(translateText('2 / 8 records', 'ru')).toBe('2 / 8 записей');
+    expect(translateText('1 / 1 records', 'ru')).toBe('1 / 1 запись');
+    expect(translateText('· 5 unassigned', 'ru')).toBe('· Без назначения: 5');
+    expect(translateText('42.5% buffer', 'ru')).toBe('Запас: 42.5%');
+  });
+
+  it('localizes guest workspace tooltips and loading states', () => {
+    expect(translateText('Partial value: holdings without a valid market quote are excluded.', 'ru'))
+      .toBe('Частичная оценка: активы без действующей рыночной котировки не учитываются.');
+    expect(translateText('Current market value of your assigned cash-funded stocks.', 'ru'))
+      .toBe('Текущая рыночная стоимость назначенных вам акций, купленных за собственные средства.');
+    expect(translateText('Loading your assigned tranche history…', 'ru'))
+      .toBe('Загрузка истории назначенных вам лотов…');
+    expect(translateText('Workspace navigation','ru')).toBe('Навигация по разделам');
+    expect(translateText('Read-only order book snapshot · TradeNet','ru'))
+      .toBe('Снимок стакана заявок TradeNet · только для чтения');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
