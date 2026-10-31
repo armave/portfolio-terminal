@@ -128,8 +128,8 @@ export function calculateGuestPersonalEquity(holdings: GuestCashHolding[]): numb
 export interface GuestTrancheLedgerFilters {
   ticker?: string;
   status?: 'all' | 'active' | 'closed' | 'unassigned';
-  assignedFrom?: number;
-  assignedTo?: number;
+  trancheDateFrom?: number;
+  trancheDateTo?: number;
 }
 
 export interface GuestTrancheLedgerSummary {
@@ -155,12 +155,16 @@ export function filterGuestTrancheLedger(
     .filter((record) => {
       if (ticker && !String(record.ticker || '').toUpperCase().includes(ticker)) return false;
       if (status !== 'all' && record.status !== status) return false;
-      if (Number.isFinite(filters.assignedFrom) && record.assignedAt < Number(filters.assignedFrom)) return false;
-      if (Number.isFinite(filters.assignedTo) && record.assignedAt > Number(filters.assignedTo)) return false;
+      const trancheDate = Number(record.purchasedAt);
+      if (Number.isFinite(filters.trancheDateFrom) &&
+          (!Number.isFinite(trancheDate) || trancheDate < Number(filters.trancheDateFrom))) return false;
+      if (Number.isFinite(filters.trancheDateTo) &&
+          (!Number.isFinite(trancheDate) || trancheDate > Number(filters.trancheDateTo))) return false;
       return true;
     })
     .slice()
-    .sort((a, b) => b.assignedAt - a.assignedAt || a.ticker.localeCompare(b.ticker));
+    .sort((a, b) => (b.purchasedAt ?? Number.NEGATIVE_INFINITY) - (a.purchasedAt ?? Number.NEGATIVE_INFINITY) ||
+      b.assignedAt - a.assignedAt || a.ticker.localeCompare(b.ticker));
 }
 
 /** Summarize historical assignment capital and today's open position value.
