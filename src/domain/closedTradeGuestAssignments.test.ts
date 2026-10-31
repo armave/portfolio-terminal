@@ -102,6 +102,86 @@ describe('closed trade guest ledger projection', () => {
     });
   });
 
+  it('publishes inferred active-tranche guest ownership to LOTS without a manual closed-row override', () => {
+    const result = buildClosedTradeGuestLedgerUpserts({}, [{
+      allocationKey: 'broker:auto-sale',
+      ticker: 'META',
+      quantity: 5,
+      operationAt: 300,
+      value: 1500,
+      netProfit: 250,
+      guestMetrics: {
+        'guest-auto-a': {
+          quantity: 2,
+          averagePrice: 100,
+          purchasedAt: 100,
+          assignedAt: 120
+        },
+        'guest-auto-b': {
+          quantity: 1,
+          averagePrice: 110,
+          purchasedAt: 150,
+          assignedAt: 160
+        }
+      }
+    }], 500);
+
+    expect(result).toHaveLength(2);
+    expect(result.find((item) => item.guestId === 'guest-auto-a')?.record).toMatchObject({
+      assignedQuantity: 2,
+      averagePrice: 100,
+      purchasedAt: 100000,
+      operationAt: 300000,
+      value: 600,
+      netProfit: 100,
+      assignedAt: 120,
+      endedAt: 120,
+      status: 'closed'
+    });
+    expect(result.find((item) => item.guestId === 'guest-auto-b')?.record).toMatchObject({
+      assignedQuantity: 1,
+      averagePrice: 110,
+      purchasedAt: 150000,
+      operationAt: 300000,
+      value: 300,
+      netProfit: 50,
+      assignedAt: 160,
+      endedAt: 160,
+      status: 'closed'
+    });
+  });
+
+  it('lets an explicit closed-row guest override FIFO-inferred guest allocations', () => {
+    const result = buildClosedTradeGuestLedgerUpserts({
+      'broker:sell-1': {
+        fundingType: 'cash',
+        cashQuantity: 2,
+        marginQuantity: 3,
+        guestId: 'guest-manual',
+        assignedAt: 220
+      }
+    }, [{
+      allocationKey: 'broker:sell-1',
+      ticker: 'AAPL',
+      quantity: 5,
+      operationAt: 300,
+      value: 500,
+      netProfit: 50,
+      guestMetrics: {
+        'guest-inferred': { quantity: 3, averagePrice: 100, purchasedAt: 100, assignedAt: 120 }
+      }
+    }], 500);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].guestId).toBe('guest-manual');
+    expect(result[0].record).toMatchObject({
+      assignedQuantity: 2,
+      value: 200,
+      netProfit: 20,
+      status: 'closed'
+    });
+  });
+
   it('uses per-guest FIFO cost/date and pro-rates realized net profit', () => {
     const result = buildClosedTradeGuestLedgerUpserts({
       'broker:sell-1': {
