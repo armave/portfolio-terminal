@@ -92,9 +92,15 @@ npm run build
 
 CI on the exact PR head is authoritative because local network/DNS access prevented cloning the repository. Browser review remains necessary for responsive layouts and end-to-end loading/error/retry states; no browser run is claimed in this environment.
 
+## Validation checkpoint — exact PR head `76c958985dd47cca8d3d088db42b7c1a2a9530cc`
+
+- [x] **Validate** completed successfully: [GitHub Actions run 41193836971](https://github.com/armave/portfolio-terminal/actions/runs/41193836971).
+- [x] **Pull Request CI** completed successfully: [GitHub Actions run 41193833900](https://github.com/armave/portfolio-terminal/actions/runs/41193833900).
+- [x] Both workflows passed dependency installation, TypeScript typecheck, tests, production build, dead-code validation, and the production dependency audit.
+- [ ] Complete manual browser/responsive UX review before marking the PR ready for review.
+
 ## Follow-up review checklist
 
-- [ ] Confirm exact-head PR workflows pass.
 - [ ] Review mobile cash/balance, margin, Closed History, guest LOTS, Settings, and news-dialog interactions.
 - [ ] Verify stale broker-history errors keep saved records visible and retries remain available.
 - [ ] Recheck Russian translations for any new or edited user-facing copy.
