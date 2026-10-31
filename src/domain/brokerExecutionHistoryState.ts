@@ -1,4 +1,4 @@
-export type BrokerExecutionHistoryStatus = 'loading' | 'ready' | 'refreshing' | 'stale' | 'error';
+type BrokerExecutionHistoryStatus = 'loading' | 'ready' | 'refreshing' | 'stale' | 'error';
 
 export interface BrokerExecutionHistoryState<T> {
   trades: T[];
