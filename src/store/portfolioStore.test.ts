@@ -1054,7 +1054,6 @@ describe('canonical trade lifecycle and persistence', () => {
     stored.set('portfolio_active_view', 'AAPL');
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
-    expect(store.getState().activeView).toBe('AAPL');
     const originalRules = { ...store.getState().brokerAssumptions, annualRate: 0.12 };
     store.importState({
       positions: {
@@ -1083,6 +1082,7 @@ describe('canonical trade lifecycle and persistence', () => {
       brokerAssumptions: originalRules,
       gatewaySecret: 'keep-active-session-secret'
     });
+    expect(store.getState().activeView).toBe('AAPL');
 
     store.resetToBlankState(Date.parse('2026-10-31T00:00:00.000Z'));
 
