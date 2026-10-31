@@ -228,7 +228,7 @@ export function TickerTabs({
       <button
         type="button"
         onClick={() => selectView('BALANCE')}
-        aria-label={`Balance ${equityBadgeText}`}
+        aria-label="Balance"
         aria-pressed={isCushionActive}
         class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
           ? 'bg-cyan-500 text-black'
@@ -240,8 +240,8 @@ export function TickerTabs({
           onKeyDown={handleTabKeyDown}
       >
         <span>🛡️ BALANCE</span>
-        <span title={equityBadgeTitle} aria-label={`Assigned stock value: ${equityBadgeText}`}
-          class={`text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
+        <span title={equityBadgeTitle} aria-hidden="true"
+          class={`workspace-nav-equity-badge text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
             }`}
         >
           {equityBadgeText}
