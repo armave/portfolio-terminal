@@ -34,3 +34,8 @@ export function createSessionIdentityGuard(initialIdentity: string | null = null
     }
   };
 }
+
+/** Stable in-flight key that changes even when an identity signs out and back in. */
+export function getSessionIdentityRequestKey(token: SessionIdentityToken): string {
+  return `${token.identity}\u0000${token.generation}`;
+}
