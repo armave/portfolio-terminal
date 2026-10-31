@@ -27,6 +27,8 @@ import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/n
 import { restoreGatewaySecret } from './services/storage';
 import { setAppLanguage, subscribeAppLanguage } from './services/i18n';
 import { addBrokerEventListener, emitBrokerEvent } from './services/brokerEventBus';
+import { createLatestRequestGuard } from './utils/requestGeneration';
+import { getMatchingMarginIntelligenceState } from './features/ai/marginIntelligenceState';
 
 let tradesRequest: Promise<void> | null = null;
 let accountRequest: Promise<void> | null = null;
@@ -78,9 +80,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       setMarginIntelligence(null);
       return;
     }
-    let requestGeneration = 0;
+    const requestGuard = createLatestRequestGuard();
     const handleMarginIntelligence = async (event: UiEvent<{ ticker?: string; refresh?: boolean }>) => {
       if (!permissions.canViewMarginDesk) return;
+      // Every request supersedes older work, including a ticker that fails validation.
+      const requestId = requestGuard.begin();
       const detail = event.detail;
       const requestedTicker = String(detail?.ticker || '').trim().toUpperCase();
       const snapshot = portfolioStore.getState();
@@ -104,23 +108,28 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         return;
       }
 
-      const requestId = ++requestGeneration;
       const isPortfolio = !requestedTicker;
+      const scope: 'portfolio' | 'position' = isPortfolio ? 'portfolio' : 'position';
+      const requestIdentity = { scope, ...(requestedTicker ? { ticker: requestedTicker } : {}) };
       const title = isPortfolio ? 'Portfolio-wide Margin Review' : requestedTicker + ' · Position Review';
       const digestKey = isPortfolio ? 'portfolio' : 'position:' + requestedTicker;
-      setMarginIntelligence((current) => ({
-        title,
-        scope: isPortfolio ? 'portfolio' : 'position',
-        ...(requestedTicker ? { ticker: requestedTicker } : {}),
-        loading: true,
-        analysis: current?.analysis || '',
-        articles: current?.articles || [],
-        ...(current?.syncedAt ? { syncedAt: current.syncedAt } : {})
-      }));
+      setMarginIntelligence((current) => {
+        const previous = getMatchingMarginIntelligenceState(current, requestIdentity);
+        return {
+          title,
+          scope,
+          ...(requestedTicker ? { ticker: requestedTicker } : {}),
+          loading: true,
+          analysis: previous?.analysis || '',
+          articles: previous?.articles || [],
+          ...(previous?.syncedAt ? { syncedAt: previous.syncedAt } : {}),
+          ...(previous?.digestRevision !== undefined ? { digestRevision: previous.digestRevision } : {})
+        };
+      });
 
       try {
         const cached = await loadSyncedMarginDigest(digestKey);
-        if (requestId !== requestGeneration) return;
+        if (!requestGuard.isCurrent(requestId)) return;
         if (cached && !detail?.refresh) {
           setMarginIntelligence({
             title: cached.digest.title || title,
@@ -268,7 +277,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           ?.map((part: { text?: string }) => String(part.text || ''))
           .filter(Boolean).join('\n\n');
         if (!analysis) throw new Error(response?.error?.message || response?.error || 'Gemini returned an empty analysis.');
-        if (requestId !== requestGeneration) return;
+        if (!requestGuard.isCurrent(requestId)) return;
         const syncedAt = new Date().toISOString();
         const digest = {
           key: digestKey,
@@ -280,7 +289,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           syncedAt
         };
         const nextRevision = await saveSyncedMarginDigest(digest, cached?.revision ?? 0);
-        if (requestId !== requestGeneration) return;
+        if (!requestGuard.isCurrent(requestId)) return;
         setMarginIntelligence({
           title,
           scope: isPortfolio ? 'portfolio' : 'position',
@@ -292,21 +301,27 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           digestRevision: nextRevision
         });
       } catch (error) {
-        if (requestId !== requestGeneration) return;
-        setMarginIntelligence({
-          title,
-          scope: isPortfolio ? 'portfolio' : 'position',
-          ...(requestedTicker ? { ticker: requestedTicker } : {}),
-          loading: false,
-          analysis: '',
-          articles: [],
-          error: error instanceof Error ? error.message : 'Could not load or save the synced Gemini margin review.'
+        if (!requestGuard.isCurrent(requestId)) return;
+        const message = error instanceof Error ? error.message : 'Could not load or save the synced Gemini margin review.';
+        setMarginIntelligence((current) => {
+          const previous = getMatchingMarginIntelligenceState(current, requestIdentity);
+          return {
+            title,
+            scope,
+            ...(requestedTicker ? { ticker: requestedTicker } : {}),
+            loading: false,
+            analysis: previous?.analysis || '',
+            articles: previous?.articles || [],
+            ...(previous?.syncedAt ? { syncedAt: previous.syncedAt } : {}),
+            ...(previous?.digestRevision !== undefined ? { digestRevision: previous.digestRevision } : {}),
+            error: message
+          };
         });
       }
     };
     addUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
     return () => {
-      requestGeneration += 1;
+      requestGuard.invalidate();
       removeUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
     };
   }, [permissions.canViewMarginDesk]);

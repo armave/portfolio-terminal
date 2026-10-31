@@ -105,3 +105,27 @@ CI on the exact PR head is authoritative because local network/DNS access preven
 - [ ] Verify stale broker-history errors keep saved records visible and retries remain available.
 - [ ] Recheck Russian translations for any new or edited user-facing copy.
 - [ ] Revisit P1 async request sequencing only with a reproducible issue and focused regression tests.
+
+## Follow-on implementation — Margin Intelligence stale responses
+
+A follow-up audit found that the invalid-ticker branch displayed an error without advancing the request generation. An earlier in-flight analysis could therefore finish later and replace the newer error state.
+
+- [x] Add a small latest-request guard with explicit begin, current-request, and invalidation operations.
+- [x] Advance the guard immediately when a Margin Intelligence event arrives, before validating its ticker.
+- [x] Invalidate pending responses when the owning effect is cleaned up.
+- [x] Add unit tests for out-of-order completion, a newer request rejected before async work, and effect cleanup.
+- [ ] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
+
+The change affects client-side request sequencing only. It does not change portfolio calculations, broker requests, stored digests, authorization, server code, or localization.
+
+## Follow-on implementation — Margin Intelligence stale-data UX
+
+A second issue in the same request lifecycle could show a previous ticker's analysis under a newly selected ticker, and a failed refresh cleared an already loaded digest from modal state.
+
+- [x] Keep prior analysis, articles, sync time, and digest revision only when the request scope and ticker match.
+- [x] Preserve matching cached content when a refresh fails so the modal can show the error alongside the last successful analysis.
+- [x] Clear prior content when changing ticker or switching between position and portfolio review.
+- [x] Add unit tests for ticker matching, scope matching, and portfolio-level state.
+- [ ] Confirm all required CI checks on the final PR head.
+
+The modal already supports displaying an error and existing analysis/source cards together; the fix restores that intended stale-data fallback without presenting content from a different request.
