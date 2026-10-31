@@ -244,6 +244,119 @@ export function sanitizeFreedomActiveOrders(response) {
     return { orders: { order } };
 }
 
+export function sanitizeFreedomMarketDepth(response, requestedSymbol) {
+    const dom = Array.isArray(response?.dom) ? response.dom : Array.isArray(response?.data?.dom) ? response.data.dom : [];
+    const ticker = String(requestedSymbol || "").trim().toUpperCase();
+    const book = dom.find(row => String(row?.i || "").trim().toUpperCase() === ticker);
+    if (!book) throw new Error("TradeNet did not return an order book for this symbol.");
+    const rows = Array.isArray(book.ins) ? book.ins : [];
+    const toNumber = value => { const number = Number(value); return Number.isFinite(number) ? number : null; };
+    const levels = rows.map(row => ({
+        position: toNumber(row?.k), price: toNumber(row?.p), quantity: toNumber(row?.q), side: String(row?.s || "").toUpperCase()
+    })).filter(row => row.price !== null && row.price > 0 && row.quantity !== null && row.quantity > 0 &&
+        (row.side === "B" || row.side === "S"));
+    const bids = levels.filter(row => row.side === "B")
+        .sort((a, b) => b.price - a.price || (a.position ?? 0) - (b.position ?? 0))
+        .map(({ price, quantity, position }) => ({ price, quantity, position }));
+    const asks = levels.filter(row => row.side === "S")
+        .sort((a, b) => a.price - b.price || (a.position ?? 0) - (b.position ?? 0))
+        .map(({ price, quantity, position }) => ({ price, quantity, position }));
+    if (bids.length === 0 && asks.length === 0) throw new Error("TradeNet returned an empty order-book snapshot for this symbol.");
+    const minPriceStep = toNumber(book.min_step);
+    return {
+        symbol: ticker, bids, asks,
+        depth: Math.max(0, Number(book.cnt) || bids.length + asks.length),
+        minPriceStep: minPriceStep !== null && minPriceStep > 0 ? minPriceStep : null,
+        sequence: toNumber(book.n), updatedAt: Date.now()
+    };
+}
+
+/** Request one full order-book snapshot; SID is never sent to the browser. */
+async function fetchFreedomMarketDepth(env, symbol) {
+    const sid = String(env.FREEDOM_MARKET_DATA_SID || "").trim();
+    if (!sid) {
+        const error = new Error("Live market depth requires the FREEDOM_MARKET_DATA_SID Worker secret. API keys alone do not authorize the live WebSocket feed.");
+        error.status = 503;
+        throw error;
+    }
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let authorizedProductionSession = false;
+        let socket;
+        const finish = (error, result) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            try { socket?.close(1000, "Market-depth snapshot received"); } catch { /* ignore close races */ }
+            if (error) reject(error); else resolve(result);
+        };
+        const timeout = setTimeout(() => {
+            const error = new Error("TradeNet market-depth WebSocket timed out before returning a verified live snapshot.");
+            error.status = 504;
+            finish(error);
+        }, 10000);
+        try {
+            const url = new URL("wss://wss.tradernet.com/");
+            url.searchParams.set("SID", sid);
+            socket = new WebSocket(url.toString());
+            socket.addEventListener("open", () => {
+                // Read-only subscription; no trading commands are sent.
+                socket.send(JSON.stringify(["notifyOrderBook", [symbol]]));
+            });
+            socket.addEventListener("message", message => {
+                if (settled) return;
+                let frame;
+                try { frame = JSON.parse(String(message.data)); } catch { return; }
+                if (!Array.isArray(frame) || typeof frame[0] !== "string") return;
+                const [event, payload] = frame;
+                if (event === "userData") {
+                    if (payload?.isDemo === true || String(payload?.mode || "").toLowerCase() === "demo") {
+                        const error = new Error("TradeNet authenticated this WebSocket as a demo session. Demo order-book data is intentionally not shown.");
+                        error.status = 403;
+                        finish(error);
+                        return;
+                    }
+                    authorizedProductionSession = payload?.isDemo === false || String(payload?.mode || "").toLowerCase() === "prod";
+                    return;
+                }
+                if (event === "error") {
+                    const error = new Error("TradeNet rejected the market-depth subscription.");
+                    error.status = 502;
+                    finish(error);
+                    return;
+                }
+                if (event === "b" && authorizedProductionSession) {
+                    const hasTicker = Array.isArray(payload?.dom) && payload.dom.some(row =>
+                        String(row?.i || "").trim().toUpperCase() === symbol.toUpperCase());
+                    if (!hasTicker) return;
+                    try { finish(null, sanitizeFreedomMarketDepth(payload, symbol)); }
+                    catch (error) {
+                        const failure = new Error(error instanceof Error ? error.message : "Invalid TradeNet order-book snapshot.");
+                        failure.status = 502;
+                        finish(failure);
+                    }
+                }
+            });
+            socket.addEventListener("error", () => {
+                const error = new Error("Could not connect to the TradeNet market-depth WebSocket.");
+                error.status = 502;
+                finish(error);
+            });
+            socket.addEventListener("close", () => {
+                if (!settled) {
+                    const error = new Error("TradeNet closed the market-depth connection before a live snapshot arrived.");
+                    error.status = 502;
+                    finish(error);
+                }
+            });
+        } catch {
+            const error = new Error("Could not initialize the TradeNet market-depth WebSocket.");
+            error.status = 502;
+            finish(error);
+        }
+    });
+}
+
 export function sanitizeFreedomPositions(response) {
     // The upstream API response can be wrapped differently depending on the
     // TradeNet gateway/version. Accept only known position-envelope variants.
@@ -439,10 +552,10 @@ export default {
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-market-depth", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-market-depth", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -615,6 +728,18 @@ export default {
                     provider: "Freedom TradeNet",
                     data
                 }), { headers: corsHeaders });
+            }
+
+            // Read-only market depth. The SID remains in Worker secrets; demo sessions are rejected.
+            if (action === "freedom-market-depth") {
+                if (request.method !== "GET") return jsonError("Freedom market depth only supports GET.", 405, corsHeaders);
+                if (!symbol || symbol.includes(",")) return jsonError("A single valid symbol is required for Freedom market depth.", 400, corsHeaders);
+                try {
+                    const data = await fetchFreedomMarketDepth(env, symbol);
+                    return new Response(JSON.stringify({ ok: true, provider: "Freedom TradeNet", symbol, data }), { headers: corsHeaders });
+                } catch (error) {
+                    return jsonError(error instanceof Error ? error.message : "TradeNet market depth is unavailable.", Number(error?.status) || 502, corsHeaders);
+                }
             }
 
             // --- ACTION 0: Durable Object cloud portfolio state ---
