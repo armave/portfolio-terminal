@@ -58,7 +58,9 @@ export function ClosedHistoryDesk() {
       );
       const resolved = history ? {
         brokerExecutedTrades: cloudExecutions,
-        cashflows: cloud.cashflows || []
+        // Keep locally saved legacy rows when the cloud record exists but predates them.
+        // Broker rows update matching IDs; unmatched historical rows are retained.
+        cashflows: mergeFreedomCashflowRows(localCashflows, cloud.cashflows || [])
       } : {
         brokerExecutedTrades: localExecutions,
         cashflows: localCashflows
