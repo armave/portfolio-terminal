@@ -24,6 +24,8 @@ describe('closed trade tranche attribution', () => {
 
     expect(result).toEqual({
       fundingType: 'mix',
+      cashQuantity: 2,
+      marginQuantity: 1,
       guestAllocations: [{ guestId: 'guest-a', quantity: 2 }],
       unmatchedQuantity: 0
     });
@@ -46,6 +48,8 @@ describe('closed trade tranche attribution', () => {
 
     expect(result).toEqual({
       fundingType: 'mix',
+      cashQuantity: 2,
+      marginQuantity: 3,
       guestAllocations: [{ guestId: 'guest-mix', quantity: 2 }],
       unmatchedQuantity: 0
     });
@@ -103,6 +107,8 @@ describe('closed trade tranche attribution', () => {
       }
     }).get(sale)).toEqual({
       fundingType: 'unclassified',
+      cashQuantity: 1,
+      marginQuantity: 0,
       guestAllocations: [{ guestId: 'guest-tsla', quantity: 1 }],
       unmatchedQuantity: 1
     });
@@ -112,6 +118,8 @@ describe('closed trade tranche attribution', () => {
     const sale = { id: 'orphan-sale', ticker: 'TSLA', side: 'SELL', quantity: 2, executedAt: at(12) };
     expect(attributeClosedTradeExecutions([sale]).get(sale)).toEqual({
       fundingType: 'unclassified',
+      cashQuantity: 0,
+      marginQuantity: 0,
       guestAllocations: [],
       unmatchedQuantity: 2
     });
