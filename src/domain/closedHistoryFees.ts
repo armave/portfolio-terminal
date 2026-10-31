@@ -114,7 +114,7 @@ export function applyCashflowAllocationsToClosedTrades(
 
 
 export interface ClosedTradeFeeBreakdown {
-  marginFee: number;
+  fees: number;
   commissions: number;
   feesTotal: number;
 }
@@ -130,7 +130,7 @@ export function resolveClosedTradeFeeBreakdown(trade: FeeRecord): ClosedTradeFee
       ? Math.max(0, Math.abs(Number(aggregateFees) || 0) - marginFee)
       : Math.abs(Number(trade.totalCommissions) || 0);
   return {
-    marginFee: Number(marginFee.toFixed(2)),
+    fees: Number(marginFee.toFixed(2)),
     commissions: Number(commissions.toFixed(2)),
     feesTotal: Number((marginFee + commissions).toFixed(2))
   };
