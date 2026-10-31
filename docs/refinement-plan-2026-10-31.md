@@ -271,3 +271,14 @@ The screenshot showed the Worker returning HTTP 404 from the Freedom quote path 
 - [x] Update the Worker deployment path filter to include `src/services/freedomTradeNet.ts`, the shared adapter imported by `worker.js`.
 - [x] Publish the corrected helper and Worker tests directly to `main`; corrected Worker deployment passed [run 41202950522](https://github.com/armave/portfolio-terminal/actions/runs/41202950522).
 - [ ] Confirm a live authorized quote request in the app after the API-key v2 body correction; mock tests do not verify account entitlement or actual upstream data availability.
+
+
+## Follow-on implementation — TradeNet quote response envelope (2026-10-31)
+
+- [x] Add support for the documented TradeNet `q` array of quote records, including `data.q` wrappers.
+- [x] Keep compatibility with the existing `quotes`, `quote`, and other known response envelopes.
+- [x] Add regression tests for top-level `q` and nested `data.q`, using the documented quote fields `ltp`, `pp`, `chg`, and `pcp`.
+- [x] Update the Worker integration fixture to return the documented `q` envelope rather than a synthetic `quotes` envelope.
+- [ ] Validate a live quote from the authorized broker account and rerun exact-head PR CI.
+
+The latest screenshot no longer showed an HTTP error. The Worker returned a successful payload, but the frontend parser did not inspect the `q` property, so it treated the response as an unsupported quote. TradeNet's published quote example uses a `q` array containing records with `c`, `ltp`, `pp`, `chg`, and `pcp`; the parser now unwraps that array before normalizing the record.
