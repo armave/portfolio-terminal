@@ -5,7 +5,7 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage } from '../services/i18n';
 import { fetchFreedomCashflows, pullCloudHistory, pushCloudHistory } from '../services/api';
 import { loadSavedHistory, saveSavedHistory } from '../services/storage';
-import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
+import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFees';
 import { DeskLoading } from './DeskLoading';
@@ -292,13 +292,11 @@ export function ClosedHistoryDesk() {
     };
   }, []);
   const appTrades = (state.closedTrades || []).map((trade, index) => {
-    // Never use feesAndCommissions as a commission fallback: that aggregate may already include margin fees, which are displayed separately below.
-    const commissions = Number((trade as any).commissions ?? (trade as any).totalCommissions ?? (trade as any).commission ?? 0);
-    const fees = Number((trade as any).marginFee ?? (trade as any).marginInterest ?? 0);
+    const feeBreakdown = resolveClosedTradeFeeBreakdown(trade as any);
     return {
       trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const,
       profit: Number((trade as any).netProfit ?? (trade as any).netRealizedGain ?? (trade as any).grossProfit ?? 0),
-      fees, commissions, feesTotal: fees + commissions
+      ...feeBreakdown
     };
   });
   // Match buy lots FIFO to sell executions so both entry and exit commissions

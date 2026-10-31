@@ -112,6 +112,30 @@ export function applyCashflowAllocationsToClosedTrades(
   });
 }
 
+
+export interface ClosedTradeFeeBreakdown {
+  marginFee: number;
+  commissions: number;
+  feesTotal: number;
+}
+
+/** Resolve commission-only and aggregate fee fields without counting margin twice. */
+export function resolveClosedTradeFeeBreakdown(trade: FeeRecord): ClosedTradeFeeBreakdown {
+  const marginFee = Math.abs(Number(trade.marginFee) || Number(trade.marginInterest) || 0);
+  const explicitCommission = trade.commissions ?? trade.commission;
+  const aggregateFees = trade.feesAndCommissions;
+  const commissions = explicitCommission !== null && explicitCommission !== undefined
+    ? Math.abs(Number(explicitCommission) || 0)
+    : aggregateFees !== null && aggregateFees !== undefined
+      ? Math.max(0, Math.abs(Number(aggregateFees) || 0) - marginFee)
+      : Math.abs(Number(trade.totalCommissions) || 0);
+  return {
+    marginFee: Number(marginFee.toFixed(2)),
+    commissions: Number(commissions.toFixed(2)),
+    feesTotal: Number((marginFee + commissions).toFixed(2))
+  };
+}
+
 type ClosedHistoryRow = { trade: Record<string, any> };
 
 /** Prefer broker rows for app/broker records that describe the same closed sale. */

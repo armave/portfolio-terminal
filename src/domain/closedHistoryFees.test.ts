@@ -3,7 +3,8 @@ import {
   applyCashflowAllocationsToBrokerExecutions,
   applyCashflowAllocationsToClosedTrades,
   deduplicateClosedHistoryRows,
-  preservePersistedBrokerFeeAllocations
+  preservePersistedBrokerFeeAllocations,
+  resolveClosedTradeFeeBreakdown
 } from './closedHistoryFees';
 
 describe('closed-history cashflow fee recalculation', () => {
@@ -182,5 +183,33 @@ describe('closed-history idempotency and source deduplication', () => {
     });
     expect(deduplicateClosedHistoryRows([make('app-1', 'app'), make('app-2', 'app')], [make('broker-1', 'tradenet')]))
       .toEqual([make('app-2', 'app')]);
+  });
+});
+
+
+describe('closed-trade fee display breakdown', () => {
+  it('does not count an aggregate margin-inclusive fee total as commission again', () => {
+    expect(resolveClosedTradeFeeBreakdown({
+      feesAndCommissions: 7,
+      totalCommissions: 7,
+      marginFee: 5,
+      marginInterest: 5
+    })).toEqual({ marginFee: 5, commissions: 2, feesTotal: 7 });
+  });
+
+  it('prefers explicit commission fields and uses non-zero legacy margin fallback', () => {
+    expect(resolveClosedTradeFeeBreakdown({
+      commissions: 1.25,
+      feesAndCommissions: 6.25,
+      marginFee: 5,
+      marginInterest: 0
+    })).toEqual({ marginFee: 5, commissions: 1.25, feesTotal: 6.25 });
+  });
+
+  it('treats legacy totalCommissions as commission when no aggregate field exists', () => {
+    expect(resolveClosedTradeFeeBreakdown({
+      totalCommissions: 1.5,
+      marginInterest: 2
+    })).toEqual({ marginFee: 2, commissions: 1.5, feesTotal: 3.5 });
   });
 });
