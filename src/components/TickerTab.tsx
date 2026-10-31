@@ -20,7 +20,7 @@ export function TickerTabs({
   const [isRefreshingQuotes, setIsRefreshingQuotes] = useState(false);
   const quoteRefreshPromise = useRef<Promise<void> | null>(null);
   const selectView = (view: string) => {
-    if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS') return;
+    if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS' && !(userId && view === 'GUEST_HISTORY')) return;
     // Persist at the actual navigation click site as well as through the store,
     // so a view change is durable even if a later render/hydration races it.
     try {
@@ -41,6 +41,7 @@ export function TickerTabs({
   const isCushionActive =
     state.activeView === 'CASH_CUSHION' || state.activeView === 'BALANCE';
   const isClosedHistoryActive = state.activeView === 'CLOSED_HISTORY';
+  const isGuestHistoryActive = state.activeView === 'GUEST_HISTORY';
   const isSettingsActive = state.activeView === 'SETTINGS';
   const isMarginDeskActive = isMarginDeskView(state.activeView, isAdmin);
 
@@ -56,10 +57,13 @@ export function TickerTabs({
     : tickers.length === 1
       ? [tickers[0]]
       : ['COMBINED', ...tickers];
+  const canViewGuestHistory = !isAdmin && Boolean(userId);
   const navigationViews = isAdmin
     ? [...marginDeskViews, 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']
-    : ['BALANCE', 'SETTINGS'];
+    : canViewGuestHistory ? ['BALANCE', 'GUEST_HISTORY', 'SETTINGS'] : ['BALANCE', 'SETTINGS'];
   const balanceNavIndex = isAdmin ? marginDeskViews.length : 0;
+  const guestHistoryNavIndex = balanceNavIndex + 1;
+  const settingsNavIndex = balanceNavIndex + (isAdmin || canViewGuestHistory ? 2 : 1);
   const tabButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const portfolioValuation = calculatePortfolioValuation({
@@ -236,6 +240,22 @@ export function TickerTabs({
         </span>
       </button>
 
+      {canViewGuestHistory && <button
+        type="button"
+        onClick={() => selectView('GUEST_HISTORY')}
+        aria-pressed={isGuestHistoryActive}
+        class={`px-3 py-1 rounded text-xs font-bold transition ${isGuestHistoryActive
+          ? 'bg-indigo-500 text-white'
+          : 'bg-slate-900 border border-indigo-800/60 text-indigo-300 hover:bg-slate-800'
+          }`}
+        data-nav-tab="true"
+        data-nav-index={guestHistoryNavIndex}
+        ref={(element) => { tabButtonRefs.current[guestHistoryNavIndex] = element; }}
+        onKeyDown={handleTabKeyDown}
+      >
+        LOTS
+      </button>}
+
       {isAdmin && <button
         type="button"
         onClick={() => selectView('CLOSED_HISTORY')}
@@ -263,8 +283,8 @@ export function TickerTabs({
             : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition'
         }
           data-nav-tab="true"
-          data-nav-index={balanceNavIndex + (isAdmin ? 2 : 1)}
-          ref={(element) => { tabButtonRefs.current[balanceNavIndex + (isAdmin ? 2 : 1)] = element; }}
+          data-nav-index={settingsNavIndex}
+          ref={(element) => { tabButtonRefs.current[settingsNavIndex] = element; }}
           onKeyDown={handleTabKeyDown}
       >
         <span>⚙️</span>
