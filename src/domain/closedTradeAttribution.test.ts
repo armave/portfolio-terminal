@@ -26,8 +26,35 @@ describe('closed trade tranche attribution', () => {
       fundingType: 'mix',
       cashQuantity: 2,
       marginQuantity: 1,
-      guestAllocations: [{ guestId: 'guest-a', quantity: 2 }],
+      averagePrice: null,
+      purchasedAt: at(10),
+      guestAllocations: [{ guestId: 'guest-a', quantity: 2, averagePrice: null, purchasedAt: at(10) }],
       unmatchedQuantity: 0
+    });
+  });
+
+  it('returns FIFO-weighted buy cost and tranche date for the sale and assigned guest', () => {
+    const firstBuy = { id: 'buy-a', ticker: 'AAPL', side: 'BUY', quantity: 2, price: 100, executedAt: at(9) };
+    const secondBuy = { id: 'buy-b', ticker: 'AAPL', side: 'BUY', quantity: 2, price: 120, executedAt: at(9, 4) };
+    const sale = { id: 'sale-cost', ticker: 'AAPL', side: 'SELL', quantity: 3, price: 140, executedAt: at(12) };
+    const id = trancheId('AAPL', at(9), 'buy-a');
+    const result = attributeClosedTradeExecutions([firstBuy, secondBuy, sale], {
+      trancheTypes: { [id]: 'cash' },
+      guestAssignments: { [id]: 'guest-cost' },
+      guestAssignmentDetails: {
+        [id]: { assignmentId: 'assignment-cost', guestId: 'guest-cost', assignedAt: at(10), assignedQuantity: 4 }
+      }
+    }).get(sale);
+
+    expect(result).toMatchObject({
+      averagePrice: 106.6666666667,
+      purchasedAt: at(9),
+      guestAllocations: [{
+        guestId: 'guest-cost',
+        quantity: 3,
+        averagePrice: 106.6666666667,
+        purchasedAt: at(9)
+      }]
     });
   });
 
@@ -50,7 +77,9 @@ describe('closed trade tranche attribution', () => {
       fundingType: 'mix',
       cashQuantity: 2,
       marginQuantity: 3,
-      guestAllocations: [{ guestId: 'guest-mix', quantity: 2 }],
+      averagePrice: null,
+      purchasedAt: at(9),
+      guestAllocations: [{ guestId: 'guest-mix', quantity: 2, averagePrice: null, purchasedAt: at(9) }],
       unmatchedQuantity: 0
     });
   });
@@ -110,7 +139,9 @@ describe('closed trade tranche attribution', () => {
       fundingType: 'unclassified',
       cashQuantity: 1,
       marginQuantity: 0,
-      guestAllocations: [{ guestId: 'guest-tsla', quantity: 1 }],
+      averagePrice: null,
+      purchasedAt: at(9),
+      guestAllocations: [{ guestId: 'guest-tsla', quantity: 1, averagePrice: null, purchasedAt: at(9) }],
       unmatchedQuantity: 1
     });
   });
@@ -122,6 +153,8 @@ describe('closed trade tranche attribution', () => {
       fundingType: 'margin',
       cashQuantity: 0,
       marginQuantity: 2,
+      averagePrice: null,
+      purchasedAt: at(9),
       guestAllocations: [],
       unmatchedQuantity: 0
     });
@@ -133,6 +166,8 @@ describe('closed trade tranche attribution', () => {
       fundingType: 'unclassified',
       cashQuantity: 0,
       marginQuantity: 0,
+      averagePrice: null,
+      purchasedAt: null,
       guestAllocations: [],
       unmatchedQuantity: 2
     });
