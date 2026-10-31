@@ -140,7 +140,8 @@ The broker event bus already defined `broker:active-orders-error`, and the reque
 - [x] Show a localized warning and terminal log while leaving the last applied position targets untouched.
 - [x] Suppress repeated warning toasts during consecutive failed polls; a successful refresh resets the warning latch.
 - [x] Add unit coverage for missing credentials, storage/API rejection, successful empty responses, normalized success, and English/Russian warning copy.
-- [ ] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
+- [x] Exact-head `c5e63b9` passed typecheck, full tests, production build, dead-code validation, and production dependency audit.
+- [x] Both workflows passed: [Validate run 41197047442](https://github.com/armave/portfolio-terminal/actions/runs/41197047442) and [Pull Request CI run 41197047437](https://github.com/armave/portfolio-terminal/actions/runs/41197047437).
 
 No order is submitted or modified. The refresh path remains read-only; this change makes its failure state visible without clearing valid last-known targets.
 
