@@ -1044,6 +1044,7 @@ export default {
                 if (request.method !== "GET") {
                     return jsonError("Freedom cashflows only supports GET.", 405, corsHeaders);
                 }
+                // Tradernet SDK documents this cashflow command under Portfolio::cashflows.
                 const data = await requestTradeNet(env, "getUserCashFlows");
                 return new Response(JSON.stringify({
                     ok: true,

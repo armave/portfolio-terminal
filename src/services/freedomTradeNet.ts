@@ -13,7 +13,7 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
     if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
         throw new Error("Freedom API secrets are missing from this Worker environment.");
     }
-    if (!["getPositionJson", "getTradesHistory", "getQuotes", "getNews", "getHloc", "getCashflows", "getNotifyOrderJson"].includes(command)) {
+    if (!["getPositionJson", "getTradesHistory", "getQuotes", "getNews", "getHloc", "getUserCashFlows", "getNotifyOrderJson"].includes(command)) {
         throw new Error("Unsupported read-only TradeNet command.");
     }
 
