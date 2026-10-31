@@ -153,6 +153,7 @@ The broker account, executions, and active-order promises were module-global, wh
 - [x] Rebind account/execution listeners and refresh account, trade, and active-order snapshots on administrator identity changes, not only role changes.
 - [x] Ignore stale successes and failures after identity changes; stop active-order requests after credential restoration if their session was superseded.
 - [x] Test sign-out, role change, account switch, repeated identity notifications, and re-login generation/key uniqueness.
-- [ ] Confirm exact-head typecheck, tests, production build, dead-code validation, and production dependency audit.
+- [x] Confirm exact-head typecheck, tests, production build, dead-code validation, and production dependency audit on `2d9487c`.
+- [x] Both final-head workflows passed: [Validate run 41195574570](https://github.com/armave/portfolio-terminal/actions/runs/41195574570) and [Pull Request CI run 41195574577](https://github.com/armave/portfolio-terminal/actions/runs/41195574577).
 
 No financial calculations, persisted portfolio formats, credentials, or server authorization rules changed. The fix scopes existing read-only broker responses to the active UI session.
