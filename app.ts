@@ -622,7 +622,14 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
       const rawTicker = String(trade?.ticker || '').trim();
       const ticker = rawTicker.toUpperCase().replace(/\.US$/i, '');
       const fallback = String(trade?.closedAt ?? trade?.exitDate ?? trade?.date ?? index);
+      const shares = Math.abs(Number(trade?.shares) || 0);
       const averagePriceValue = Number(trade?.avgBuyPrice ?? trade?.entryPrice);
+      const sellPriceValue = Number(trade?.sellPrice ?? trade?.exitPrice);
+      const directSaleValue = Number(trade?.sellValue ?? trade?.exitValue ?? trade?.proceeds);
+      const saleValue = Number.isFinite(directSaleValue) && directSaleValue >= 0
+        ? directSaleValue
+        : Number.isFinite(sellPriceValue) && sellPriceValue > 0 && shares > 0
+          ? sellPriceValue * shares : null;
       const grossProfit = trade?.grossProfit == null ? NaN : Number(trade.grossProfit);
       const commissions = Number(trade?.commissions ?? trade?.feesAndCommissions ?? trade?.totalCommissions);
       const marginInterest = Number(trade?.marginInterest);
@@ -636,9 +643,11 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
         allocationKey: 'app:' + String(trade?.id || `${rawTicker || 'trade'}:${fallback}`),
         ticker,
         name: String(trade?.name || ticker),
-        quantity: Math.abs(Number(trade?.shares) || 0),
+        quantity: shares,
         averagePrice: Number.isFinite(averagePriceValue) && averagePriceValue > 0 ? averagePriceValue : null,
         purchasedAt: trade?.buyDate ?? trade?.purchaseDate ?? null,
+        operationAt: trade?.sellDate ?? trade?.exitDate ?? trade?.closedAt ?? trade?.date ?? null,
+        value: saleValue,
         netProfit
       };
     });
@@ -679,6 +688,14 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
         const netProfit = trade?.profit == null || !commissionsComplete
           ? null : Number((Number(trade.profit) - totalFees).toFixed(2));
         const rawTime = Date.parse(String(trade?.executedAt ?? trade?.date ?? ''));
+        const tradeCurrency = String(trade?.currency ?? '').trim().toUpperCase();
+        const currencyIsUsd = tradeCurrency === '' || tradeCurrency === 'USD';
+        const directTradeValue = Number(trade?.tradeValue);
+        const sellPrice = Math.abs(Number(trade?.price ?? trade?.executionPrice ?? 0));
+        const saleValue = !currencyIsUsd ? null
+          : Number.isFinite(directTradeValue) && directTradeValue > 0
+            ? directTradeValue
+            : sellPrice > 0 ? sellPrice * quantity : null;
         return {
           allocationKey: 'broker:' + String(trade?.id ?? ('tradenet-' + index)),
           ticker,
@@ -686,6 +703,8 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
           quantity,
           averagePrice: attribution?.averagePrice ?? null,
           purchasedAt: attribution?.purchasedAt ?? null,
+          operationAt: Number.isFinite(rawTime) ? rawTime : trade?.executedAt ?? trade?.date ?? null,
+          value: saleValue,
           netProfit,
           guestMetrics,
           time: Number.isFinite(rawTime) ? rawTime : null
@@ -704,6 +723,8 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
       quantity: number;
       averagePrice: number | null;
       purchasedAt: number | null;
+      operationAt: number | string | null;
+      value: number | null;
       netProfit: number | null;
       guestMetrics: Record<string, { quantity: number; averagePrice: number | null; purchasedAt: number | null }>;
       time: number | null;
@@ -722,6 +743,9 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
           ? Math.min(previous.purchasedAt, row.purchasedAt) : null;
         previous.netProfit = previous.netProfit !== null && row.netProfit !== null
           ? Number((previous.netProfit + row.netProfit).toFixed(2)) : null;
+        previous.value = previous.value !== null && row.value !== null
+          ? previous.value + row.value : null;
+        previous.operationAt = row.operationAt;
         for (const [guestId, metric] of Object.entries(row.guestMetrics)) {
           const existing = previous.guestMetrics[guestId];
           if (!existing) {
@@ -772,6 +796,8 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
             openQuantity,
             averagePrice: tranche.averagePrice,
             purchasedAt: tranche.purchasedAt,
+            operationAt: tranche.purchasedAt,
+            value: tranche.marketPrice === null ? null : tranche.marketPrice * openQuantity,
             assignedAt: detail.assignedAt,
             updatedAt,
             endedAt: null,
