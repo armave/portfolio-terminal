@@ -2,7 +2,7 @@ import CryptoJS from 'crypto-js';
 import { resetMarketRequestGate, runMarketDataRequest } from './marketRequestGate';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
-import { ActiveBrokerTranche, PortfolioState } from '../types/portfolio';
+import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '../types/portfolio';
 import type { AppLanguage } from './i18n';
 
 export interface SyncedMarginDigest {
@@ -1725,63 +1725,82 @@ export async function logoutAccount(): Promise<void> {
 export interface GuestPortfolioSnapshot {
   updatedAt: number;
   tranches: ActiveBrokerTranche[];
+  ledger: GuestTrancheLedgerRecord[];
+  ledgerUpdatedAt: number;
 }
 
-const EMPTY_GUEST_PORTFOLIO: GuestPortfolioSnapshot = { updatedAt: 0, tranches: [] };
+export type GuestPortfolioProjection = Pick<GuestPortfolioSnapshot, 'updatedAt' | 'tranches'>;
 
-/** Read only the guest projection bound by the server to the current session. */
+function normalizeGuestLedgerRecords(value: unknown): GuestTrancheLedgerRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((record): record is GuestTrancheLedgerRecord => Boolean(
+    record && typeof record === "object" &&
+    typeof (record as GuestTrancheLedgerRecord).assignmentId === "string" &&
+    typeof (record as GuestTrancheLedgerRecord).trancheId === "string" &&
+    typeof (record as GuestTrancheLedgerRecord).ticker === "string" &&
+    ["active", "closed", "unassigned"].includes((record as GuestTrancheLedgerRecord).status) &&
+    Number.isFinite(Number((record as GuestTrancheLedgerRecord).assignedQuantity)) &&
+    Number.isFinite(Number((record as GuestTrancheLedgerRecord).openQuantity))
+  ));
+}
+
+function guestPublicationFingerprint(publication: GuestPortfolioPublication): string {
+  const ledgerUpserts = (publication.ledgerUpserts || []).map(({ updatedAt: _updatedAt, ...record }) => record);
+  return JSON.stringify({
+    tranches: publication.snapshot.tranches,
+    ledgerUpserts,
+    retainedAssignmentIds: publication.retainedAssignmentIds
+      ? [...publication.retainedAssignmentIds].sort()
+      : null
+  });
+}
+
+/** Read the current projection and durable assignment history scoped by the server to this guest. */
 export async function getGuestPortfolioSnapshot(): Promise<GuestPortfolioSnapshot> {
   const token = getActiveGatewaySecret();
   if (!token) throw new Error("Not signed in.");
-  const response = await authRequest<{ snapshot?: GuestPortfolioSnapshot }>("/api/guest-portfolio", { token });
+  const response = await authRequest<{
+    snapshot?: { updatedAt?: number; tranches?: ActiveBrokerTranche[] };
+    ledger?: unknown;
+    ledgerUpdatedAt?: number;
+  }>("/api/guest-portfolio", { token });
   const snapshot = response?.snapshot;
-  if (!snapshot || !Array.isArray(snapshot.tranches)) return EMPTY_GUEST_PORTFOLIO;
   return {
-    updatedAt: Number(snapshot.updatedAt) || 0,
-    tranches: snapshot.tranches.filter((tranche) =>
+    updatedAt: Number(snapshot?.updatedAt) || 0,
+    tranches: Array.isArray(snapshot?.tranches) ? snapshot.tranches.filter((tranche) =>
       tranche && typeof tranche.id === "string" && typeof tranche.ticker === "string" &&
       Number.isFinite(Number(tranche.quantity)) && Number(tranche.quantity) > 0
-    )
+    ) : [],
+    ledger: normalizeGuestLedgerRecords(response?.ledger),
+    ledgerUpdatedAt: Number(response?.ledgerUpdatedAt) || 0
   };
 }
 
 /** Administrator-only publication of one already-filtered guest projection. */
 export function publishGuestPortfolioSnapshot(
   guestId: string,
-  snapshot: GuestPortfolioSnapshot
+  snapshot: GuestPortfolioProjection,
+  ledgerUpserts?: GuestTrancheLedgerRecord[],
+  retainedAssignmentIds?: string[]
 ): Promise<void> {
-  const token = getActiveGatewaySecret();
-  if (!token) return Promise.reject(new Error("Not signed in."));
-  const cacheKey = JSON.stringify([token, guestId]);
-  // updatedAt is metadata; only a change in assigned holdings requires a write.
-  const fingerprint = JSON.stringify(snapshot.tranches);
-  if (guestPortfolioPublicationFingerprints.get(cacheKey) === fingerprint) return Promise.resolve();
-
-  const requestKey = JSON.stringify([cacheKey, fingerprint]);
-  const existing = guestPortfolioPublicationRequests.get(requestKey);
-  if (existing) return existing;
-
-  const request = authRequest<{ success: boolean }>("/api/guest-portfolio", {
-    method: "POST",
-    token,
-    body: { guestId, snapshot: { updatedAt: snapshot.updatedAt, tranches: snapshot.tranches } }
-  }).then(() => {
-    guestPortfolioPublicationFingerprints.set(cacheKey, fingerprint);
-  }).finally(() => {
-    if (guestPortfolioPublicationRequests.get(requestKey) === request) {
-      guestPortfolioPublicationRequests.delete(requestKey);
-    }
-  });
-  guestPortfolioPublicationRequests.set(requestKey, request);
-  return request;
+  return publishGuestPortfolioSnapshots([{
+    guestId,
+    snapshot,
+    ...(ledgerUpserts ? { ledgerUpserts } : {}),
+    ...(retainedAssignmentIds ? { retainedAssignmentIds } : {})
+  }]);
 }
 
 export interface GuestPortfolioPublication {
   guestId: string;
-  snapshot: GuestPortfolioSnapshot;
+  snapshot: GuestPortfolioProjection;
+  /** Rows to append or refresh in the durable, guest-scoped assignment ledger. */
+  ledgerUpserts?: GuestTrancheLedgerRecord[];
+  /** Complete set of assignments that remain linked to this guest. */
+  retainedAssignmentIds?: string[];
 }
 
-/** Publish all changed guest projections in one authenticated administrator request. */
+/** Publish all changed guest projections and optional durable ledger updates atomically. */
 export function publishGuestPortfolioSnapshots(
   publications: GuestPortfolioPublication[]
 ): Promise<void> {
@@ -1790,20 +1809,29 @@ export function publishGuestPortfolioSnapshots(
   if (!Array.isArray(publications) || publications.length === 0) return Promise.resolve();
 
   const seenGuestIds = new Set<string>();
-  const changed = publications.filter(({ guestId, snapshot }) => {
-    const id = String(guestId || "").trim();
+  const changed = publications.filter((publication) => {
+    const id = String(publication?.guestId || "").trim();
     if (!id || seenGuestIds.has(id)) throw new Error("Guest portfolio batch contains a duplicate or missing guest ID.");
     seenGuestIds.add(id);
-    if (!snapshot || !Array.isArray(snapshot.tranches)) throw new Error("Invalid guest portfolio snapshot.");
+    if (!publication.snapshot || !Array.isArray(publication.snapshot.tranches)) {
+      throw new Error("Invalid guest portfolio snapshot.");
+    }
+    if (publication.ledgerUpserts !== undefined && !Array.isArray(publication.ledgerUpserts)) {
+      throw new Error("Invalid guest tranche ledger updates.");
+    }
+    if (publication.retainedAssignmentIds !== undefined && !Array.isArray(publication.retainedAssignmentIds)) {
+      throw new Error("Invalid retained guest assignment IDs.");
+    }
+    const normalized = { ...publication, guestId: id };
     const cacheKey = JSON.stringify([token, id]);
-    return guestPortfolioPublicationFingerprints.get(cacheKey) !== JSON.stringify(snapshot.tranches);
-  }).map(({ guestId, snapshot }) => ({ guestId: guestId.trim(), snapshot }));
+    return guestPortfolioPublicationFingerprints.get(cacheKey) !== guestPublicationFingerprint(normalized);
+  }).map((publication) => ({ ...publication, guestId: publication.guestId.trim() }));
 
   if (changed.length === 0) return Promise.resolve();
   const requestKey = JSON.stringify([
     "batch",
     token,
-    changed.map(({ guestId, snapshot }) => [guestId, JSON.stringify(snapshot.tranches)])
+    changed.map((publication) => [publication.guestId, guestPublicationFingerprint(publication)])
   ]);
   const existing = guestPortfolioPublicationRequests.get(requestKey);
   if (existing) return existing;
@@ -1812,16 +1840,18 @@ export function publishGuestPortfolioSnapshots(
     method: "POST",
     token,
     body: {
-      snapshots: changed.map(({ guestId, snapshot }) => ({
+      snapshots: changed.map(({ guestId, snapshot, ledgerUpserts, retainedAssignmentIds }) => ({
         guestId,
-        snapshot: { updatedAt: snapshot.updatedAt, tranches: snapshot.tranches }
+        snapshot: { updatedAt: snapshot.updatedAt, tranches: snapshot.tranches },
+        ...(ledgerUpserts !== undefined ? { ledgerUpserts } : {}),
+        ...(retainedAssignmentIds !== undefined ? { retainedAssignmentIds } : {})
       }))
     }
   }).then(() => {
-    for (const { guestId, snapshot } of changed) {
+    for (const publication of changed) {
       guestPortfolioPublicationFingerprints.set(
-        JSON.stringify([token, guestId]),
-        JSON.stringify(snapshot.tranches)
+        JSON.stringify([token, publication.guestId]),
+        guestPublicationFingerprint(publication)
       );
     }
   }).finally(() => {
@@ -1832,5 +1862,3 @@ export function publishGuestPortfolioSnapshots(
   guestPortfolioPublicationRequests.set(requestKey, request);
   return request;
 }
-
-
