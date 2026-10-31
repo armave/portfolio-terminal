@@ -102,6 +102,42 @@ describe('app localization', () => {
       .toBe('Снимок стакана заявок TradeNet · только для чтения');
   });
 
+  it('localizes remaining authentication, guest balance, and trade-history copy', () => {
+    expect(translateText('Authentication failed.', 'ru')).toBe('Не удалось пройти аутентификацию.');
+    expect(translateText('Could not load guest accounts.', 'ru')).toBe('Не удалось загрузить список гостевых учётных записей.');
+    expect(translateText('Loading holdings, trade activity and account allocations…', 'ru'))
+      .toBe('Загрузка активов, истории сделок и распределения по счетам…');
+    expect(translateText('No stocks are assigned to your account yet.', 'ru')).toBe('Вам пока не назначены акции.');
+    expect(translateText('Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.', 'ru'))
+      .toBe('Рыночная котировка недоступна. Рыночная стоимость и нереализованная прибыль/убыток появятся после получения корректной котировки.');
+    expect(translateText('Restoring saved trade history and loading the latest Freedom activity…', 'ru'))
+      .toBe('Восстановление сохранённой истории сделок и загрузка последних операций Freedom…');
+    expect(translateText('Known net P&L', 'ru')).toBe('Чистая прибыль/убыток по известным сделкам');
+  });
+
+  it('localizes dynamic market-depth, position-review, and scenario-report labels', () => {
+    expect(translateText('Market depth · AAPL', 'ru')).toBe('Стакан заявок · AAPL');
+    expect(translateText('Open market depth for AAPL', 'ru')).toBe('Открыть стакан заявок для AAPL');
+    expect(translateText('AAPL · Position Review', 'ru')).toBe('AAPL · Анализ маржинальной позиции');
+    expect(translateText('No active margin position was found for NVDA. Select an active margin ticker and try again.', 'ru'))
+      .toBe('Не найдена активная маржинальная позиция NVDA. Выберите активный маржинальный тикер и повторите попытку.');
+    expect(translateText('HYPOTHETICAL BUY: NVDA', 'ru')).toBe('ПОКУПКА В СЦЕНАРИИ: NVDA');
+    expect(translateText('MULTI-DATE EXIT COMPARISON: TSLA', 'ru'))
+      .toBe('СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ: TSLA');
+    expect(translateText('Scenario report', 'ru')).toBe('Отчёт по сценарию');
+  });
+
+  it('localizes remaining broker and portfolio error messages', () => {
+    expect(translateText('Unknown cashflow processing error.', 'ru')).toBe('Неизвестная ошибка обработки денежных потоков.');
+    expect(translateText('Automatic Freedom cashflow sync failed: Network error', 'ru'))
+      .toBe('Не удалось автоматически синхронизировать денежные потоки Freedom: Network error');
+    expect(translateText('Unable to load active TradeNet orders: Timeout', 'ru'))
+      .toBe('Не удалось загрузить активные заявки TradeNet: Timeout');
+    expect(translateText('Something went wrong.', 'ru')).toBe('Что-то пошло не так.');
+    expect(translateText('Portfolio-wide Margin Review', 'ru')).toBe('Обзор маржинального портфеля');
+    expect(translateText('Untitled news item', 'ru')).toBe('Новость без заголовка');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
