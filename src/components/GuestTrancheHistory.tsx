@@ -2,6 +2,7 @@ import { useMemo, useState } from 'preact/hooks';
 import type { ActiveBrokerTranche, GuestTrancheLedgerRecord, GuestTrancheLedgerStatus } from '../types/portfolio';
 import { filterGuestTrancheLedger, summarizeGuestTrancheLedger } from '../domain/guestPortfolio';
 import { formatUSD } from '../utils/formatters';
+import { TableScrollRegion } from './TableScrollRegion';
 
 interface GuestTrancheHistoryProps {
   records: GuestTrancheLedgerRecord[];
@@ -107,13 +108,9 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
       ) : filteredRecords.length === 0 ? (
         <p class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">No assignments match these filters.</p>
       ) : (
-        <div
-          role="region"
-          aria-label="Guest assignment history table"
-          tabindex={0}
-          class="table-scroll-wrapper overflow-x-auto rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-400"
-        >
+        <TableScrollRegion label="Guest assignment history table" className="focus-visible:outline-indigo-400">
           <table class="w-full min-w-[760px] border-collapse text-left text-xs">
+            <caption class="sr-only">Guest assignment history table</caption>
             <thead>
               <tr class="border-b border-slate-800 text-[9px] uppercase tracking-wide text-slate-500">
                 <th class="px-2 py-2">Assigned</th>
@@ -156,7 +153,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
               </tr>
             </tfoot>
           </table>
-        </div>
+        </TableScrollRegion>
       )}
       <p class="text-[9px] text-slate-600">Market value is shown only for open assigned holdings. Realized profit/loss is not inferred from assignment history. Pre-feature open assignments are dated when first recorded.</p>
     </section>
