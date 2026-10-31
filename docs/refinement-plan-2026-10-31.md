@@ -228,3 +228,13 @@ No authentication API calls, portfolio state, broker behavior, scenario calculat
 ### Implementation notes
 
 The compatibility projection is derived from canonical `PortfolioState.positions`; this change only reduces lookup work from O(P × H) to O(P + H), where P is the number of canonical positions and H is the number of legacy holdings. It does not change position quantities, tranches, targets, quote values, or retained user metadata.
+
+## Follow-on implementation — indexed legacy cloud migration (2026-10-31)
+
+- [x] Replace the per-holding scan of the full local closed-trade history with one latest-close index keyed by normalized ticker.
+- [x] Preserve the legacy date-field precedence (`closedAt`, `exitDate`, `sellDate`, `date`), invalid-date fallback, and strict "rebuy must be later than latest close" rule.
+- [x] Add regression coverage for multiple exits, case/whitespace-normalized tickers, and a legacy rebuy occurring after the latest close.
+- [ ] Re-run exact-head typecheck, full tests, dead-code validation, production dependency audit, and production build.
+- [ ] Keep financial calculations, saved data formats, and cloud authorization unchanged.
+
+This reduces the closed-history lookup work from O(H × C) to O(H + C), where H is the number of legacy holdings and C is the number of local closed trades. Legacy tranche-date inspection remains proportional to the tranche count. Together with the earlier indexed compatibility projection, both read-only legacy migration lookups now build their indexes once per normalization pass.
