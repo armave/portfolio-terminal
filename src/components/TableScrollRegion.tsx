@@ -13,7 +13,7 @@ export function TableScrollRegion({ label, children, className = '' }: TableScro
       role="region"
       aria-label={label}
       tabIndex={0}
-      class={`table-scroll-wrapper overflow-x-auto rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500 ${className}`.trim()}
+      class={`overflow-x-auto rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500 ${className}`.trim()}
     >
       {children}
     </div>
