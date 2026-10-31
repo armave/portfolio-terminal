@@ -542,6 +542,20 @@ const RU: Record<string, string> = {
   "Unable to load TradeNet executed trades": "Не удалось загрузить исполненные сделки TradeNet",
   "Unable to load active TradeNet orders": "Не удалось загрузить активные заявки TradeNet",
   "Something went wrong.": "Что-то пошло не так.",
+  "ERROR": "ОШИБКА",
+  "ERR": "ОШИБКА",
+  "INFO": "ИНФО",
+  "SIM": "СИМУЛЯЦИЯ",
+  "COMPARISON": "СРАВНЕНИЕ",
+  "MARKET": "РЫНОК",
+  "QUOTE": "КОТИРОВКА",
+  "CLI": "ТЕРМИНАЛ",
+  "BALANCE": "БАЛАНС",
+  "CASH": "ДЕНЬГИ",
+  "BROKER": "БРОКЕР",
+  "ROLLOVER": "ПЕРЕНОС",
+  "TV Chart": "График TradingView",
+  "TV Ideas": "Идеи TradingView",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -588,6 +602,7 @@ function translateDynamicText(normalized: string): string | undefined {
   ];
     ['Market depth · ', 'Market depth', ' · '],
     ['Open market depth for ', 'Open market depth for', ' '],
+    ['Latest portfolio quote · ', 'Latest portfolio quote', ' · '],
     ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
     ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
     ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
@@ -598,6 +613,26 @@ function translateDynamicText(normalized: string): string | undefined {
     if (normalized.startsWith(prefix)) {
       return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
     }
+  }
+
+  const acrossAssets = normalized.match(/^(.+) \| Across (\d+) Assets$/i);
+  if (acrossAssets) {
+    const count = Number(acrossAssets[2]);
+    return acrossAssets[1] + ' | По ' + count + (count === 1 ? ' активу' : ' активам');
+  }
+
+  const trancheSummary = normalized.split(' | ').map((part) => {
+    const match = part.match(/^(.+?): ([\d,.]+)sh @ PT (.+)$/i);
+    return match ? match[1] + ': ' + match[2] + ' акц. @ ЦУ ' + match[3] : part;
+  });
+  if (trancheSummary.some((part, index) => part !== normalized.split(' | ')[index])) {
+    return trancheSummary.join(' | ');
+  }
+
+  const externalLinkLabel = normalized.match(/^Open (.+) on (.+) in a new tab$/i);
+  if (externalLinkLabel) {
+    const provider = RU[externalLinkLabel[2]] || externalLinkLabel[2];
+    return 'Открыть ' + externalLinkLabel[1] + ' через ' + provider + ' в новой вкладке';
   }
 
   const missingMarginPosition = normalized.match(/^No active margin position was found for (.+)\. Select an active margin ticker and try again\.$/i);
