@@ -7,6 +7,8 @@ const GROUP_BUYS_WITHIN_MS = 5 * 60 * 1000;
 interface ClosedTradeGuestAllocation {
   guestId: string;
   quantity: number;
+  averagePrice: number | null;
+  purchasedAt: number | null;
 }
 
 type ClosedTradeFundingType = ActiveTrancheType | 'unclassified';
@@ -18,6 +20,9 @@ export interface ClosedTradeAttribution {
   /** Matched shares funded by margin. Unmatched shares remain outside this amount. */
   marginQuantity: number;
   guestAllocations: ClosedTradeGuestAllocation[];
+  /** FIFO-weighted acquisition price and earliest source purchase date for this sale. */
+  averagePrice: number | null;
+  purchasedAt: number | null;
   /** Shares whose opening purchase could not be matched to the available history. */
   unmatchedQuantity: number;
 }
@@ -30,6 +35,7 @@ interface ExecutionLike {
   type?: unknown;
   quantity?: unknown;
   qty?: unknown;
+  price?: unknown;
   executedAt?: unknown;
   date?: unknown;
   time?: unknown;
@@ -50,6 +56,7 @@ interface BuyLot<T extends ExecutionLike> {
   id: string;
   ticker: string;
   quantity: number;
+  price: number | null;
   purchasedAt: number | null;
   rowIndex: number;
   metadata?: AssignmentMetadata;
@@ -61,6 +68,7 @@ interface NormalizedEvent<T extends ExecutionLike> {
   ticker: string;
   side: 'buy' | 'sell';
   quantity: number;
+  price: number | null;
   at: number | null;
 }
 
@@ -155,6 +163,7 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
       ticker,
       side: side || 'buy',
       quantity: resolveQuantity(trade),
+      price: firstPositiveMagnitude(trade.price, raw.price, raw.executionPrice, raw.exec_price) || null,
       at: resolveTimestamp(trade)
     };
   }).filter((event) => event.ticker && resolveSide(event.trade) !== null && event.quantity > 0)
@@ -171,6 +180,7 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
         id: String(event.trade.id ?? event.rowIndex),
         ticker: event.ticker,
         quantity: event.quantity,
+        price: event.price,
         purchasedAt: event.at,
         rowIndex: event.rowIndex
       });
@@ -240,10 +250,21 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
     }
 
     let remainingToSell = event.quantity;
-    const guestAllocations = new Map<string, number>();
+    const guestAllocationMetrics = new Map<string, {
+      quantity: number;
+      costBasis: number;
+      costKnown: boolean;
+      purchasedAt: number | null;
+      purchaseDateKnown: boolean;
+    }>();
     const fundingTypes = new Set<ActiveTrancheType>();
     let cashQuantitySold = 0;
     let marginQuantitySold = 0;
+    let matchedQuantity = 0;
+    let matchedCostBasis = 0;
+    let matchedCostKnown = true;
+    let earliestPurchasedAt: number | null = null;
+    let matchedPurchaseDatesKnown = true;
     const eligibleLots = lots.filter((lot) =>
       lot.ticker === event.ticker &&
       lot.quantity > EPSILON &&
@@ -261,6 +282,18 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
       const cashRatio = metadata?.cashRatio ?? (fundingType === 'cash' ? 1 : 0);
       cashQuantitySold += sold * cashRatio;
       marginQuantitySold += sold * (1 - cashRatio);
+      matchedQuantity += sold;
+      if (lot.price !== null && Number.isFinite(lot.price) && lot.price > 0) {
+        matchedCostBasis += sold * lot.price;
+      } else {
+        matchedCostKnown = false;
+      }
+      if (lot.purchasedAt !== null) {
+        earliestPurchasedAt = earliestPurchasedAt === null
+          ? lot.purchasedAt : Math.min(earliestPurchasedAt, lot.purchasedAt);
+      } else {
+        matchedPurchaseDatesKnown = false;
+      }
 
       const assignmentIsActive = Boolean(metadata?.guestId) &&
         (metadata?.assignedAt === null || event.at === null || event.at >= metadata!.assignedAt);
@@ -272,10 +305,26 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
           : Math.max(0, metadata.assignedQuantity - alreadySold);
         const guestQuantity = Math.min(remainingAssigned, sold * metadata.cashRatio);
         if (guestQuantity > EPSILON) {
-          guestAllocations.set(
-            metadata.guestId,
-            (guestAllocations.get(metadata.guestId) || 0) + guestQuantity
-          );
+          const guestMetrics = guestAllocationMetrics.get(metadata.guestId) || {
+            quantity: 0,
+            costBasis: 0,
+            costKnown: true,
+            purchasedAt: null,
+            purchaseDateKnown: true
+          };
+          guestMetrics.quantity += guestQuantity;
+          if (lot.price !== null && Number.isFinite(lot.price) && lot.price > 0) {
+            guestMetrics.costBasis += guestQuantity * lot.price;
+          } else {
+            guestMetrics.costKnown = false;
+          }
+          if (lot.purchasedAt !== null) {
+            guestMetrics.purchasedAt = guestMetrics.purchasedAt === null
+              ? lot.purchasedAt : Math.min(guestMetrics.purchasedAt, lot.purchasedAt);
+          } else {
+            guestMetrics.purchaseDateKnown = false;
+          }
+          guestAllocationMetrics.set(metadata.guestId, guestMetrics);
           guestQuantitySold.set(assignmentKey, alreadySold + guestQuantity);
         }
       }
@@ -294,9 +343,19 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
       fundingType,
       cashQuantity: cashQuantitySold,
       marginQuantity: marginQuantitySold,
-      guestAllocations: Array.from(guestAllocations.entries())
-        .filter(([, quantity]) => quantity > EPSILON)
-        .map(([guestId, quantity]) => ({ guestId, quantity }))
+      averagePrice: matchedQuantity > EPSILON && matchedCostKnown
+        ? matchedCostBasis / matchedQuantity : null,
+      purchasedAt: matchedQuantity > EPSILON && matchedPurchaseDatesKnown
+        ? earliestPurchasedAt : null,
+      guestAllocations: Array.from(guestAllocationMetrics.entries())
+        .filter(([, metrics]) => metrics.quantity > EPSILON)
+        .map(([guestId, metrics]) => ({
+          guestId,
+          quantity: metrics.quantity,
+          averagePrice: metrics.costKnown && metrics.quantity > EPSILON
+            ? metrics.costBasis / metrics.quantity : null,
+          purchasedAt: metrics.purchaseDateKnown ? metrics.purchasedAt : null
+        }))
         .sort((a, b) => a.guestId.localeCompare(b.guestId)),
       unmatchedQuantity: Math.max(0, remainingToSell)
     });
