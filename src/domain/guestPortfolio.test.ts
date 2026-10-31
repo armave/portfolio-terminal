@@ -161,13 +161,17 @@ describe('guest tranche ledger reports and filtering', () => {
     }
   ];
 
-  it('filters guest assignments by ticker, lifecycle state and assignment date', () => {
+  it('filters guest LOTS by ticker, lifecycle state and underlying tranche date', () => {
     expect(filterGuestTrancheLedger(records, {
       ticker: 'aap',
       status: 'active',
-      assignedFrom: 90,
-      assignedTo: 110
+      trancheDateFrom: 5,
+      trancheDateTo: 15
     })).toEqual([records[0]]);
+    expect(filterGuestTrancheLedger(records, {
+      trancheDateFrom: 90,
+      trancheDateTo: 110
+    })).toEqual([]);
     expect(filterGuestTrancheLedger(records, { status: 'closed' })).toEqual([records[1]]);
     expect(filterGuestTrancheLedger(records, { ticker: 'zzz' })).toEqual([]);
   });
