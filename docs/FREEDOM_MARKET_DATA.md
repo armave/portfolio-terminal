@@ -10,7 +10,6 @@ Configure these in the Worker environment (never in Vite/browser variables):
 
 - `FREEDOM_PUBLIC_KEY`
 - `FREEDOM_PRIVATE_KEY`
-- `FREEDOM_MARKET_DATA_SID` (optional; required for live market depth and must remain a Worker secret)
 
 The Worker still requires the existing `GATEWAY_SECRET` for all app requests. After adding secrets, use the existing read-only `freedom-test` action to confirm TradeNet authentication.
 
@@ -34,6 +33,6 @@ The target-price, analyst-consensus, detailed fundamentals, and earnings-estimat
 
 ## Market depth
 
-The modal is available from a selected margin-position page and Balance holdings. The Worker keeps the TradeNet SID server-side and rejects demo sessions; it never forwards demo depth as live data. Configure `FREEDOM_MARKET_DATA_SID` as a Cloudflare Worker secret to enable the live feed. TradeNet's WebSocket documentation states that live account data requires an SID; unauthenticated WebSocket connections receive demo market-depth data.
+The modal is available from a selected margin-position page and Balance holdings. The Worker authenticates the TradeNet Socket.IO session with the existing `FREEDOM_PUBLIC_KEY` and `FREEDOM_PRIVATE_KEY` using the API-key `getAuthInfo` challenge described in TradeNet's official SDK example. The private key and signature stay server-side. Demo or unverified account modes are rejected before order-book data is returned.
 
-The app requests a fresh snapshot when the modal opens or the user presses Refresh. It displays the first full order-book frame, with bids and asks sorted best-price first. No order placement, cancellation, or other trading command is exposed.
+The app requests a fresh snapshot when the modal opens or the user presses Refresh. It displays the first full order-book frame, with bids and asks sorted best-price first. No order placement, cancellation, or other trading command is exposed. This is a snapshot, not a permanently connected streaming widget.
