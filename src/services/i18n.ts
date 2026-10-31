@@ -519,6 +519,43 @@ const RU: Record<string, string> = {
   "Could not load users.": "Не удалось загрузить список пользователей.",
   "Could not create user.": "Не удалось создать пользователя.",
   "Could not delete user.": "Не удалось удалить пользователя.",
+  "Authentication failed.": "Не удалось пройти аутентификацию.",
+  "Could not load guest accounts.": "Не удалось загрузить список гостевых учётных записей.",
+  "Loading holdings, trade activity and account allocations…": "Загрузка активов, истории сделок и распределения по счетам…",
+  "Unknown cashflow processing error.": "Неизвестная ошибка обработки денежных потоков.",
+  "Unable to process saved closed-history cashflows": "Не удалось обработать сохранённые денежные потоки истории закрытых сделок",
+  "Unknown broker API error.": "Неизвестная ошибка API брокера.",
+  "Automatic Freedom cashflow sync failed": "Не удалось автоматически синхронизировать денежные потоки Freedom",
+  "Freedom cashflow processing failed": "Не удалось обработать денежные потоки Freedom",
+  "Restoring saved trade history and loading the latest Freedom activity…": "Восстановление сохранённой истории сделок и загрузка последних операций Freedom…",
+  "Known net P&L": "Чистая прибыль/убыток по известным сделкам",
+  "Open market depth for": "Открыть стакан заявок для",
+  "Scenario report": "Отчёт по сценарию",
+  "Current position vs. proposed purchase · profit, downside, exposure and fees": "Текущая позиция и предлагаемая покупка · прибыль, риск снижения, экспозиция и комиссии",
+  "Sell now vs. future exits · estimated net results after costs": "Продажа сейчас или позже · расчётная чистая прибыль после расходов",
+  "Before vs. after · estimated values": "До и после · расчётные значения",
+  "Portfolio-wide Margin Review": "Обзор маржинального портфеля",
+  "Untitled news item": "Новость без заголовка",
+  "Gemini returned an empty analysis.": "Gemini вернул пустой анализ.",
+  "Could not load or save the synced Gemini margin review.": "Не удалось загрузить или сохранить синхронизированный анализ маржинального портфеля Gemini.",
+  "TradeNet live-data session initialization failed": "Не удалось инициализировать сессию получения данных TradeNet в реальном времени",
+  "Unable to load TradeNet executed trades": "Не удалось загрузить исполненные сделки TradeNet",
+  "Unable to load active TradeNet orders": "Не удалось загрузить активные заявки TradeNet",
+  "Something went wrong.": "Что-то пошло не так.",
+  "ERROR": "ОШИБКА",
+  "ERR": "ОШИБКА",
+  "INFO": "ИНФО",
+  "SIM": "СИМУЛЯЦИЯ",
+  "COMPARISON": "СРАВНЕНИЕ",
+  "MARKET": "РЫНОК",
+  "QUOTE": "КОТИРОВКА",
+  "CLI": "ТЕРМИНАЛ",
+  "BALANCE": "БАЛАНС",
+  "CASH": "ДЕНЬГИ",
+  "BROKER": "БРОКЕР",
+  "ROLLOVER": "ПЕРЕНОС",
+  "TV Chart": "График TradingView",
+  "TV Ideas": "Идеи TradingView",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -561,11 +598,65 @@ function translateDynamicText(normalized: string): string | undefined {
     ['Cloud pull failed: ', 'Cloud pull failed', ': '],
     ['[Market Data Error]: ', '[Market Data Error]', ': '],
     ['[Sell Error]: ', 'Sell Error', ': '],
-    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': ']
+    ['[Freedom] Active sell target sync: ', '[Freedom] Active sell target sync', ': '],
+    ['Market depth · ', 'Market depth', ' · '],
+    ['Open market depth for ', 'Open market depth for', ' '],
+    ['Unable to process saved closed-history cashflows: ', 'Unable to process saved closed-history cashflows', ': '],
+    ['Automatic Freedom cashflow sync failed: ', 'Automatic Freedom cashflow sync failed', ': '],
+    ['Freedom cashflow processing failed: ', 'Freedom cashflow processing failed', ': '],
+    ['TradeNet live-data session initialization failed: ', 'TradeNet live-data session initialization failed', ': '],
+    ['Unable to load TradeNet executed trades: ', 'Unable to load TradeNet executed trades', ': '],
+    ['Unable to load active TradeNet orders: ', 'Unable to load active TradeNet orders', ': '],
   ];
   for (const [prefix, dictionaryKey, separator] of prefixes) {
     if (normalized.startsWith(prefix)) {
       return (RU[dictionaryKey] || dictionaryKey) + separator + normalized.slice(prefix.length);
+    }
+  }
+
+  const latestPortfolioQuote = normalized.match(/^Latest portfolio quote · (.+)$/i);
+  if (latestPortfolioQuote) {
+    return RU['Latest portfolio quote'] + ' · ' + translateText(latestPortfolioQuote[1], 'ru');
+  }
+
+  const acrossAssets = normalized.match(/^(.+) \| Across (\d+) Assets$/i);
+  if (acrossAssets) {
+    const count = Number(acrossAssets[2]);
+    return acrossAssets[1] + ' | По ' + count + (count === 1 ? ' активу' : ' активам');
+  }
+
+  const trancheSummary = normalized.split(' | ').map((part) => {
+    const match = part.match(/^(.+?): ([\d,.]+)sh @ PT (.+)$/i);
+    return match ? match[1] + ': ' + match[2] + ' акц. @ ЦУ ' + match[3] : part;
+  });
+  if (trancheSummary.some((part, index) => part !== normalized.split(' | ')[index])) {
+    return trancheSummary.join(' | ');
+  }
+
+  const externalLinkLabel = normalized.match(/^Open (.+) on (.+) in a new tab$/i);
+  if (externalLinkLabel) {
+    const provider = RU[externalLinkLabel[2]] || externalLinkLabel[2];
+    return 'Открыть ' + externalLinkLabel[1] + ' через ' + provider + ' в новой вкладке';
+  }
+
+  const missingMarginPosition = normalized.match(/^No active margin position was found for (.+)\. Select an active margin ticker and try again\.$/i);
+  if (missingMarginPosition) {
+    return 'Не найдена активная маржинальная позиция ' + missingMarginPosition[1] +
+      '. Выберите активный маржинальный тикер и повторите попытку.';
+  }
+
+  const positionReviewTitle = normalized.match(/^(.+) · Position Review$/i);
+  if (positionReviewTitle) return positionReviewTitle[1] + ' · Анализ маржинальной позиции';
+
+  const reportTitles: Array<[string, string]> = [
+    ['HYPOTHETICAL BUY:', 'ПОКУПКА В СЦЕНАРИИ:'],
+    ['MULTI-DATE EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА ПО ДАТАМ:'],
+    ['EXIT COMPARISON:', 'СРАВНЕНИЕ ВАРИАНТОВ ВЫХОДА:'],
+    ['STAGED EXIT:', 'ПОЭТАПНЫЙ ВЫХОД:']
+  ];
+  for (const [prefix, translatedPrefix] of reportTitles) {
+    if (normalized.toUpperCase().startsWith(prefix)) {
+      return translatedPrefix + normalized.slice(prefix.length);
     }
   }
 
