@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { ensureFreedomTradeNetSession, fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
+import worker, { ensureFreedomTradeNetSession, fetchFreedomMarketDepthWithSid, fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 
 describe('upstream timeout coverage', () => {
@@ -1367,7 +1367,123 @@ describe('sanitizeFreedomMarketDepth', () => {
 
 
 describe('Freedom market-depth proxy', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function createMockWebSocket() {
+    return class MockWebSocket extends EventTarget {
+      static instances = [];
+      constructor(url) {
+        super();
+        this.url = url;
+        this.sent = [];
+        this.closed = false;
+        MockWebSocket.instances.push(this);
+      }
+      send(data) {
+        this.sent.push(data);
+      }
+      close() {
+        this.closed = true;
+      }
+      emit(type, properties = {}) {
+        const event = new Event(type);
+        for (const [key, value] of Object.entries(properties)) {
+          Object.defineProperty(event, key, { configurable: true, value });
+        }
+        this.dispatchEvent(event);
+      }
+    };
+  }
+
+  it('reports connection, session, event and timeout diagnostics without exposing the SID', async () => {
+    vi.useFakeTimers();
+    const MockWebSocket = createMockWebSocket();
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    const log = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const pending = fetchFreedomMarketDepthWithSid('GOOGL', { sid: 'sensitive-sid-value-123456' });
+    const socket = MockWebSocket.instances[0];
+
+    socket.emit('open');
+    socket.emit('message', {
+      data: JSON.stringify(['userData', {
+        isDemo: false, mode: 'prod', authLogin: 'private-login@example.test'
+      }])
+    });
+    socket.emit('message', { data: JSON.stringify(['markets', { m: [] }]) });
+    socket.emit('message', { data: 'not-json' });
+
+    const rejected = expect(pending).rejects.toMatchObject({
+      status: 504,
+      diagnostics: expect.objectContaining({
+        requestedSymbol: 'GOOGL',
+        phase: 'snapshot_timeout',
+        connectionOpened: true,
+        subscriptionSent: true,
+        subscriptionConfirmed: false,
+        userDataReceived: true,
+        isDemo: false,
+        sessionMode: 'prod',
+        messageCount: 3,
+        parseErrorCount: 1,
+        eventsReceived: ['userData', 'markets'],
+        eventCounts: { userData: 1, markets: 1 },
+        orderBookEventsReceived: 0
+      })
+    });
+    await vi.advanceTimersByTimeAsync(10001);
+    await rejected;
+
+    expect(JSON.parse(socket.sent[0])).toEqual(['orderBook', ['GOOGL']]);
+    const logged = log.mock.calls.map(([value]) => String(value)).join('\n');
+    expect(logged).not.toContain('sensitive-sid-value');
+    expect(logged).not.toContain('private-login@example.test');
+  });
+
+  it('returns a matching production order-book snapshot and diagnostics', async () => {
+    const MockWebSocket = createMockWebSocket();
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const pending = fetchFreedomMarketDepthWithSid('GOOGL.US', { sid: 'sensitive-sid-value-123456' });
+    const socket = MockWebSocket.instances[0];
+
+    socket.emit('open');
+    socket.emit('message', {
+      data: JSON.stringify(['userData', { isDemo: false, mode: 'prod' }])
+    });
+    socket.emit('message', {
+      data: JSON.stringify(['b', {
+        i: 'GOOGL.US', n: 7, cnt: 2,
+        ins: [
+          { p: 200, s: 'B', q: 10, k: 0 },
+          { p: 200.1, s: 'S', q: 8, k: 0 }
+        ]
+      }])
+    });
+
+    const result = await pending;
+    expect(result.data).toMatchObject({
+      symbol: 'GOOGL.US',
+      sequence: 7,
+      bids: [{ price: 200, quantity: 10 }],
+      asks: [{ price: 200.1, quantity: 8 }]
+    });
+    expect(result.diagnostics).toMatchObject({
+      phase: 'snapshot_received',
+      connectionOpened: true,
+      subscriptionSent: true,
+      subscriptionConfirmed: true,
+      userDataReceived: true,
+      isDemo: false,
+      sessionMode: 'prod',
+      eventsReceived: ['userData', 'b'],
+      orderBookEventsReceived: 1,
+      orderBookSymbolsReceived: ['GOOGL.US']
+    });
+  });
 
   it('does not open a WebSocket when TradeNet session storage is missing', async () => {
     const WebSocketMock = vi.fn();
