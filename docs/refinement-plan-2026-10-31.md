@@ -182,3 +182,16 @@ The guest LOTS history table used a horizontally scrollable wrapper, but that wr
 - [x] Both workflows passed: [Pull Request CI run 41196224211](https://github.com/armave/portfolio-terminal/actions/runs/41196224211) and [Validate run 41196224268](https://github.com/armave/portfolio-terminal/actions/runs/41196224268).
 
 This is an accessibility/localization-only change. Table contents, filters, assignment records, financial data, and persistence are unchanged.
+
+## Follow-on implementation — standardized accessible table scroll regions
+
+The UI audit found three additional wide tables whose scroll containers were not keyboard-focusable or named: cash-funded stock holdings, active tranches with guest assignments, and the admin user-management table. Guest assignment history and Closed History had already received one-off wrappers. These patterns are now consolidated so the five data-table regions share keyboard access and visible focus without erasing their existing responsive CSS behavior.
+
+- [x] Add a reusable `TableScrollRegion` with a programmatic region name, `tabIndex={0}`, horizontal scrolling, and a visible focus outline.
+- [x] Migrate cash holdings, active tranches, guest assignment history, Closed History, and admin user management to the shared component.
+- [x] Add visually hidden table captions to cash holdings, active tranches, guest assignment history, and user management; retain the existing detailed Closed History caption.
+- [x] Add English/Russian accessible names and translation regression coverage.
+- [x] Preserve the cash/tranche/guest/settings `table-scroll-wrapper` CSS hooks, including mobile layout behavior; keep Closed History's existing wrapper styling distinct.
+- [ ] Confirm typecheck, full tests, production build, dead-code validation, and production dependency audit on the exact PR head.
+
+This is a presentation/accessibility/localization-only change. Table data, order and assignment actions, portfolio calculations, broker requests, permissions, and persistence remain unchanged. Browser/mobile visual verification remains outstanding.
