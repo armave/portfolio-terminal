@@ -334,7 +334,7 @@ Source: [TradeNet — Retrieving trades history](https://tradernet.com/tradernet
 - [x] Add reducer tests for saved-history fallback, current-snapshot precedence, stale retention, empty first-load failure, retry recovery and non-requesting guest state.
 - [x] Reuse existing Russian translations for all warning, loading, retry and accessible-label strings; no untranslated user-facing copy was introduced.
 - [x] Exact-head CI passed on `632406b46273581f56059c70651a5111a458bdf4`: [Validate run 41205417977](https://github.com/armave/portfolio-terminal/actions/runs/41205417977) and [Pull Request CI run 41205417990](https://github.com/armave/portfolio-terminal/actions/runs/41205417990).
-- [ ] Verify the stale warning and retry behavior in a real browser/device; browser-based responsive and assistive-technology review remains outstanding.
+- [x] User verified the Cash & Balance stale-history warning/retry and guest-directory retry behavior in the browser (2026-10-31).
 
 The previous Cash & Balance error listener cleared `executedTrades` on `broker:executed-trades-error`, which could make active tranches disappear despite a usable saved snapshot. The new reducer keeps the latest available records and changes only the status. The UI distinguishes loading, refreshing, stale-with-data and error-without-data. This is presentation/state handling only; it does not modify broker execution records, portfolio calculations, saved schemas or guest authorization.
 
@@ -361,3 +361,15 @@ The screenshots show that the initial Balance mount displayed one unassigned GOO
 - [x] Exact-head Validate and Pull Request CI passed on `fc6d8bd58e24532e61379c20524302217490e964`: [Validate run 41206865670](https://github.com/armave/portfolio-terminal/actions/runs/41206865670) and [Pull Request CI run 41206850371](https://github.com/armave/portfolio-terminal/actions/runs/41206850371). Browser verification of stale-directory retry remains open.
 
 The previous guest directory error handler cleared the guest list on request failure and offered no retry. The new state reducer preserves known users and therefore preserves their existing active-tranche assignments during temporary directory outages. It does not modify saved assignments, tranche quantities, or guest permissions.
+
+
+## Manual validation update — broker/guest retry flows (2026-10-31)
+
+- [x] User confirmed the Cash & Balance stale-history warning and retry behavior in a real browser.
+- [x] User confirmed the guest-directory retry behavior in a real browser.
+- [x] First-load Balance hydration behavior confirmed resolved by the user.
+- [x] Trades calculation recovery confirmed resolved by the user.
+- [x] Live TradeNet Quote confirmed working by the user.
+- [ ] Complete broader cross-device responsive and assistive-technology QA for Cash/Balance, Margin, Closed History, Guest LOTS, Settings and News, including keyboard navigation, visible focus, dialog focus handling and small-screen table interactions.
+
+Only the broader UX/accessibility sign-off remains as a manual release gate; the automated code-quality checks are green on the current PR head.
