@@ -313,7 +313,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             <select value={newLanguage} onChange={(event) => setNewLanguage((event.target as HTMLSelectElement).value as AppLanguage)} aria-label="New user language" class="rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white"><option value="en">English</option><option value="ru">Russian</option></select>
             <button type="submit" disabled={savingUser} class="rounded bg-cyan-800 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-700 disabled:opacity-50">Add user</button>
           </form>
-          <TableScrollRegion label="User management table"><table class="w-full min-w-[790px] text-left text-xs">
+          <TableScrollRegion label="User management table" className="table-scroll-wrapper"><table class="w-full min-w-[790px] text-left text-xs">
             <caption class="sr-only">User management table</caption>
             <thead class="text-[10px] uppercase tracking-wider text-slate-500"><tr><th class="p-2">Name</th><th class="p-2">Role</th><th class="p-2">Language</th><th class="p-2">New password</th><th class="p-2">Actions</th></tr></thead>
             <tbody>{users.map((user) => <tr key={user.id} class="border-t border-slate-800">
