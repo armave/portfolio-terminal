@@ -14,6 +14,8 @@ import {
   publishGuestPortfolioSnapshot,
   publishGuestPortfolioSnapshots,
   clearApiRequestCaches,
+  clearFreedomCashflowCache,
+  fetchFreedomCashflows,
   fetchFallbackQuote,
   normalizeYahooBatchResults,
   validateGatewaySecret,
@@ -1339,5 +1341,26 @@ describe('closed-history migration/read race', () => {
     await expect(concurrentRead).resolves.toEqual(migrated);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(['GET', 'POST']);
+  });
+});
+
+describe('Freedom cashflow request cache', () => {
+  it('shares in-flight reads, caches the snapshot briefly, and scopes it to the active credential', async () => {
+    clearFreedomCashflowCache();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { cashflows: [] } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const [first, second] = await Promise.all([fetchFreedomCashflows(), fetchFreedomCashflows()]);
+    expect(first).toEqual(second);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await fetchFreedomCashflows();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    storage.setGatewaySecret('another-test-gateway-secret');
+    await fetchFreedomCashflows();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
