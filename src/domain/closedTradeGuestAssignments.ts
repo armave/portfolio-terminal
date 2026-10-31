@@ -32,7 +32,7 @@ function stableKey(value: string): string {
 export function buildClosedTradeGuestLedgerUpserts(
   allocations: Record<string, ClosedTradeAllocation> = {},
   sourceRows: readonly ClosedTradeLedgerSourceRow[] = [],
-  updatedAt: number
+  updatedAt: number = Date.now()
 ): ClosedTradeGuestLedgerUpsert[] {
   const sourceByKey = new Map(sourceRows.map((row) => [row.allocationKey, row]));
   const result: ClosedTradeGuestLedgerUpsert[] = [];
@@ -40,7 +40,7 @@ export function buildClosedTradeGuestLedgerUpserts(
   for (const [allocationKey, allocation] of Object.entries(allocations || {})) {
     const source = sourceByKey.get(allocationKey);
     if (!source) continue;
-    const ticker = String(source.ticker || '').trim().toUpperCase().replace(/\\.US$/i, '');
+    const ticker = String(source.ticker || '').trim().toUpperCase().replace(/\.US$/i, '');
     if (!/^[A-Z0-9.^=-]{1,20}$/.test(ticker)) continue;
 
     const currentGuestId = String(allocation?.guestId || '').trim();
