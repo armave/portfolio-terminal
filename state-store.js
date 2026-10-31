@@ -504,13 +504,17 @@ export class PortfolioStateDO {
         ? parsed : null;
     };
     const purchasedAt = Number(source.purchasedAt);
+    const operationAt = Number(source.operationAt);
     const endedAt = Number(source.endedAt);
     const averagePrice = positiveOrNull(source.averagePrice);
     const marketPrice = positiveOrNull(source.marketPrice);
     const netProfit = source.netProfit === null || source.netProfit === undefined
       ? null : Number(source.netProfit);
-    if (netProfit !== null && !Number.isFinite(netProfit)) {
-      return { error: "Guest tranche ledger contains an invalid net profit value." };
+    const value = source.value === null || source.value === undefined
+      ? null : Number(source.value);
+    if ((netProfit !== null && !Number.isFinite(netProfit)) ||
+        (value !== null && (!Number.isFinite(value) || value < 0))) {
+      return { error: "Guest tranche ledger contains an invalid financial value." };
     }
     return {
       record: {
@@ -524,6 +528,8 @@ export class PortfolioStateDO {
         netProfit,
         marketPrice,
         marketValue: marketPrice === null || openQuantity <= 0 ? null : marketPrice * openQuantity,
+        operationAt: Number.isFinite(operationAt) && operationAt > 0 ? operationAt : null,
+        value,
         purchasedAt: Number.isFinite(purchasedAt) && purchasedAt > 0 ? purchasedAt : null,
         assignedAt,
         updatedAt,
@@ -563,12 +569,12 @@ export class PortfolioStateDO {
         if (item.status !== "active") continue;
         if (!retained.has(assignmentId)) {
           records.set(assignmentId, {
-            ...item, status: "unassigned", openQuantity: 0, marketValue: null,
+            ...item, status: "unassigned", openQuantity: 0, marketValue: null, value: null,
             endedAt: updatedAt, updatedAt
           });
         } else if (!active.has(assignmentId)) {
           records.set(assignmentId, {
-            ...item, status: "closed", openQuantity: 0, marketValue: null,
+            ...item, status: "closed", openQuantity: 0, marketValue: null, value: null,
             endedAt: updatedAt, updatedAt
           });
         }
