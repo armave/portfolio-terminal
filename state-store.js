@@ -751,9 +751,13 @@ export class PortfolioStateDO {
       return { revisions };
     });
     if (result.error) return authJson({ error: result.error }, result.status || 409);
+    const responseHeaders = { ...CORS_HEADERS, "Cache-Control": "no-store" };
+    if (prepared.length === 1) {
+      responseHeaders.ETag = `"${result.revisions[prepared[0].guestId]}"`;
+    }
     return new Response(JSON.stringify({ success: true, revisions: result.revisions }), {
       status: 200,
-      headers: { ...CORS_HEADERS, "Cache-Control": "no-store" }
+      headers: responseHeaders
     });
   }
 
