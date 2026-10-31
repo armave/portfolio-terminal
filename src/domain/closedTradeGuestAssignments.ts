@@ -1,14 +1,37 @@
 import type { ClosedTradeAllocation, GuestTrancheLedgerRecord } from '../types/portfolio';
 
+export interface ClosedTradeGuestMetrics {
+  quantity: number;
+  averagePrice: number | null;
+  purchasedAt: number | null;
+}
+
 export interface ClosedTradeLedgerSourceRow {
   allocationKey: string;
   ticker: string;
   name?: string;
+  quantity?: number;
+  averagePrice?: number | null;
+  purchasedAt?: number | string | null;
+  netProfit?: number | null;
+  guestMetrics?: Record<string, ClosedTradeGuestMetrics>;
 }
 
 export interface ClosedTradeGuestLedgerUpsert {
   guestId: string;
   record: GuestTrancheLedgerRecord;
+}
+
+function parseTrancheTimestamp(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value > 20000 && value < 100000) {
+      return Date.UTC(1899, 11, 30) + value * 86400000;
+    }
+    return value > 0 ? (value < 1e11 ? value * 1000 : value) : null;
+  }
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function stableKey(value: string): string {
@@ -74,9 +97,23 @@ export function buildClosedTradeGuestLedgerUpserts(
     }
 
     const rowKey = stableKey(allocationKey);
+    const sourceQuantity = Number(source.quantity);
     for (const assignment of history.values()) {
       const isCurrent = hasCurrentAssignment && assignment.guestId === currentGuestId;
       const guestKey = stableKey(assignment.guestId);
+      const guestMetric = source.guestMetrics?.[assignment.guestId];
+      const averagePrice = guestMetric
+        ? guestMetric.averagePrice
+        : source.averagePrice ?? null;
+      const purchasedAt = parseTrancheTimestamp(
+        guestMetric ? guestMetric.purchasedAt : source.purchasedAt
+      );
+      const profitQuantity = guestMetric && Number.isFinite(guestMetric.quantity) && guestMetric.quantity > 0
+        ? guestMetric.quantity : assignment.assignedQuantity;
+      const netProfit = source.netProfit !== null && source.netProfit !== undefined &&
+        Number.isFinite(Number(source.netProfit)) && Number.isFinite(sourceQuantity) && sourceQuantity > 0
+        ? Number(source.netProfit) * Math.min(1, profitQuantity / sourceQuantity)
+        : null;
       result.push({
         guestId: assignment.guestId,
         record: {
@@ -86,9 +123,11 @@ export function buildClosedTradeGuestLedgerUpserts(
           name: String(source.name || ticker).trim().slice(0, 120) || ticker,
           assignedQuantity: isCurrent ? currentCashQuantity : assignment.assignedQuantity,
           openQuantity: 0,
-          averagePrice: null,
+          averagePrice: averagePrice !== null && Number.isFinite(Number(averagePrice)) && Number(averagePrice) > 0
+            ? Number(averagePrice) : null,
+          netProfit,
           marketPrice: null,
-          purchasedAt: null,
+          purchasedAt,
           assignedAt: assignment.assignedAt,
           updatedAt,
           endedAt: assignment.assignedAt,
