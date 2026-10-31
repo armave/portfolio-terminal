@@ -108,7 +108,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
       ) : filteredRecords.length === 0 ? (
         <p class="rounded-lg border border-dashed border-slate-800 px-3 py-5 text-center text-xs text-slate-500">No assignments match these filters.</p>
       ) : (
-        <TableScrollRegion label="Guest assignment history table" className="focus-visible:outline-indigo-400">
+        <TableScrollRegion label="Guest assignment history table" className="table-scroll-wrapper focus-visible:outline-indigo-400">
           <table class="w-full min-w-[760px] border-collapse text-left text-xs">
             <caption class="sr-only">Guest assignment history table</caption>
             <thead>
