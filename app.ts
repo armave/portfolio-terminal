@@ -73,6 +73,7 @@ import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTranc
 import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
+import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, GuestTrancheLedgerRecord } from './src/types/portfolio';
 
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
@@ -243,17 +244,19 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
   }
 
   const activeTrancheGuestAssignments = { ...(current.activeTrancheGuestAssignments || {}) };
+  const activeTrancheGuestAssignmentDetails = { ...(current.activeTrancheGuestAssignmentDetails || {}) };
   if (activeTranche && getAssignableActiveTrancheCashQuantity(
     selectedType,
     activeTranche.quantity,
     activeTrancheMixes[operationId]
   ) <= 0) {
     delete activeTrancheGuestAssignments[operationId];
+    delete activeTrancheGuestAssignmentDetails[operationId];
   }
 
   const snapshot = current.brokerAccountInfo;
   if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) {
-    portfolioStore.setState({ activeTrancheTypes, activeTrancheMixes, activeTrancheGuestAssignments });
+    portfolioStore.setState({ activeTrancheTypes, activeTrancheMixes, activeTrancheGuestAssignments, activeTrancheGuestAssignmentDetails });
     // Persist the preference even when broker data is not ready yet.
     saveState(state);
     pushStateToGist();
@@ -280,6 +283,7 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     activeTrancheTypes,
     activeTrancheMixes,
     activeTrancheGuestAssignments,
+    activeTrancheGuestAssignmentDetails,
     positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
     cashStocks: brokerCashHoldings,
     cashCushion: {
@@ -302,21 +306,24 @@ addBrokerEventListener('broker:assign-active-tranche-guest', async (detail) => {
   if (!trancheId) return;
 
   const current = portfolioStore.getState();
+  let candidateTranche: ActiveBrokerTranche | null = null;
+  let candidateCashQuantity = 0;
   if (guestId) {
     const trades = Array.isArray(current.brokerExecutedTrades) ? current.brokerExecutedTrades : undefined;
-    const tranche = getActiveTranchesFromTrades(trades, current.brokerAccountInfo)
-      .find((item) => item.id === trancheId);
-    if (!tranche) {
+    candidateTranche = getActiveTranchesFromTrades(trades, current.brokerAccountInfo)
+      .find((item) => item.id === trancheId) || null;
+    if (!candidateTranche) {
       showToast('Only an active purchase tranche can be linked to a guest.', 'error');
       return;
     }
     const type = current.activeTrancheTypes?.[trancheId] ||
-      current.activeTrancheTypes?.[tranche.ticker] || 'cash';
+      current.activeTrancheTypes?.[candidateTranche.ticker] || 'cash';
     const mix = normalizeActiveTrancheMix(
-      tranche.quantity,
-      current.activeTrancheMixes?.[trancheId] || current.activeTrancheMixes?.[tranche.ticker]
+      candidateTranche.quantity,
+      current.activeTrancheMixes?.[trancheId] || current.activeTrancheMixes?.[candidateTranche.ticker]
     );
-    if (getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix) <= 0) {
+    candidateCashQuantity = getAssignableActiveTrancheCashQuantity(type, candidateTranche.quantity, mix);
+    if (!Number.isFinite(candidateCashQuantity) || candidateCashQuantity <= 0) {
       showToast('Only a tranche with a positive cash allocation can be linked to a guest.', 'error');
       return;
     }
@@ -335,12 +342,34 @@ addBrokerEventListener('broker:assign-active-tranche-guest', async (detail) => {
   }
 
   const assignments = { ...(current.activeTrancheGuestAssignments || {}) };
-  if (guestId) assignments[trancheId] = guestId;
-  else delete assignments[trancheId];
+  const assignmentDetails: Record<string, ActiveTrancheGuestAssignmentDetail> = {
+    ...(current.activeTrancheGuestAssignmentDetails || {})
+  };
+  if (guestId && candidateTranche) {
+    const previous = assignmentDetails[trancheId];
+    assignments[trancheId] = guestId;
+    if (current.activeTrancheGuestAssignments?.[trancheId] !== guestId ||
+        previous?.guestId !== guestId || !previous.assignmentId) {
+      assignmentDetails[trancheId] = {
+        assignmentId: createGuestTrancheAssignmentId(),
+        guestId,
+        assignedAt: Date.now(),
+        assignedQuantity: candidateCashQuantity
+      };
+    }
+  } else {
+    delete assignments[trancheId];
+    delete assignmentDetails[trancheId];
+  }
 
-  portfolioStore.setState({ activeTrancheGuestAssignments: assignments });
+  portfolioStore.setState({
+    activeTrancheGuestAssignments: assignments,
+    activeTrancheGuestAssignmentDetails: assignmentDetails
+  });
+  state = portfolioStore.getState();
   saveState(state);
   pushStateToGist();
+  void publishGuestPortfolioSnapshots();
   renderBoard();
 });
 
@@ -407,51 +436,150 @@ addBrokerEventListener('broker:account-info-error', () => {
 let guestPortfolioPublishQueue: Promise<void> = Promise.resolve();
 let brokerTradeHistoryLoaded = false;
 
-/** Publish only cash-backed lots assigned to each guest. Never include account balances,
- * margin positions, closed history, unassigned lots, or another guest's assignments. */
+function createGuestTrancheAssignmentId(): string {
+  try {
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  } catch {
+    // Fall through to a local non-secret identifier if the runtime lacks randomUUID.
+  }
+  return `assignment-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function createLegacyGuestTrancheAssignmentId(guestId: string, trancheId: string): string {
+  const source = `${guestId}|${trancheId}`;
+  let first = 2166136261;
+  let second = 2246822519;
+  for (let index = 0; index < source.length; index += 1) {
+    const code = source.charCodeAt(index);
+    first = Math.imul(first ^ code, 16777619);
+    second = Math.imul(second ^ code, 3266489917);
+  }
+  return `legacy-${(first >>> 0).toString(36)}-${(second >>> 0).toString(36)}`;
+}
+
+/** Publish current cash-backed holdings plus durable assignment lifecycle updates.
+ * The server retains closed/unassigned rows; only a guest can read their own ledger. */
 function publishGuestPortfolioSnapshots(): Promise<void> {
   if (currentAccountRole !== 'admin') return Promise.resolve();
   const operation = guestPortfolioPublishQueue.then(async () => {
     if (currentAccountRole !== 'admin') return;
-    const current = portfolioStore.getState();
-    if (!current.brokerAccountInfo?.loaded || !Array.isArray(current.brokerAccountInfo.positions) ||
+    let current = portfolioStore.getState();
+    if (!current.brokerAccountInfo?.loaded ||
+      current.brokerAccountInfo.status === 'stale' ||
+      current.brokerAccountInfo.status === 'unavailable' ||
+      !Array.isArray(current.brokerAccountInfo.positions) ||
       !brokerTradeHistoryLoaded || !Array.isArray(current.brokerExecutedTrades)) return;
 
     const activeTranches = getActiveTranchesFromTrades(current.brokerExecutedTrades, current.brokerAccountInfo);
     const guests = (await listUsers()).filter((user) => user.role === 'guest');
     const updatedAt = Date.now();
-    const publications = guests.map((guest) => ({
-      guestId: guest.id,
-      snapshot: {
-        updatedAt,
-        tranches: activeTranches.flatMap((tranche) => {
-          if (current.activeTrancheGuestAssignments?.[tranche.id] !== guest.id) return [];
-          const type = current.activeTrancheTypes?.[tranche.id] ||
-            current.activeTrancheTypes?.[tranche.ticker] || 'cash';
-          const mix = normalizeActiveTrancheMix(
-            tranche.quantity,
-            current.activeTrancheMixes?.[tranche.id] || current.activeTrancheMixes?.[tranche.ticker]
-          );
-          const assignedQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
-          if (!Number.isFinite(assignedQuantity) || assignedQuantity <= 0) return [];
-          return [{
-            id: tranche.id,
-            ticker: tranche.ticker,
-            name: tranche.name,
-            quantity: assignedQuantity,
-            averagePrice: tranche.averagePrice,
-            marketPrice: tranche.marketPrice,
-            marketValue: tranche.marketPrice === null ? null : tranche.marketPrice * assignedQuantity,
-            purchasedAt: tranche.purchasedAt
-          }];
-        })
-      }
-    }));
+    const assignments = current.activeTrancheGuestAssignments || {};
+    const assignmentDetails: Record<string, ActiveTrancheGuestAssignmentDetail> = {
+      ...(current.activeTrancheGuestAssignmentDetails || {})
+    };
+    let migratedLegacyAssignments = false;
+
+    // Backfill IDs for still-open assignments created before the durable ledger.
+    // The actual assignment date is unknown, so use the first successful backfill
+    // time rather than mislabeling the purchase date as the assignment date.
+    // Closed historical quantities are not reconstructed because the old state
+    // never stored enough information to do so reliably.
+    for (const tranche of activeTranches) {
+      const guestId = assignments[tranche.id];
+      if (!guestId) continue;
+      const type = current.activeTrancheTypes?.[tranche.id] ||
+        current.activeTrancheTypes?.[tranche.ticker] || 'cash';
+      const mix = normalizeActiveTrancheMix(
+        tranche.quantity,
+        current.activeTrancheMixes?.[tranche.id] || current.activeTrancheMixes?.[tranche.ticker]
+      );
+      const assignedQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
+      if (!Number.isFinite(assignedQuantity) || assignedQuantity <= 0) continue;
+      const existing = assignmentDetails[tranche.id];
+      if (existing?.guestId === guestId && existing.assignmentId) continue;
+      assignmentDetails[tranche.id] = {
+        assignmentId: createLegacyGuestTrancheAssignmentId(guestId, tranche.id),
+        guestId,
+        assignedAt: updatedAt,
+        assignedQuantity
+      };
+      migratedLegacyAssignments = true;
+    }
+
+    if (migratedLegacyAssignments) {
+      portfolioStore.setState({ activeTrancheGuestAssignmentDetails: assignmentDetails });
+      current = portfolioStore.getState();
+      state = current;
+      saveState(state);
+      pushStateToGist();
+    }
+
+    const publications = guests.map((guest) => {
+      const ledgerUpserts: GuestTrancheLedgerRecord[] = activeTranches.flatMap((tranche) => {
+        if (current.activeTrancheGuestAssignments?.[tranche.id] !== guest.id) return [];
+        const detail = current.activeTrancheGuestAssignmentDetails?.[tranche.id];
+        if (!detail || detail.guestId !== guest.id || !detail.assignmentId) return [];
+        const type = current.activeTrancheTypes?.[tranche.id] ||
+          current.activeTrancheTypes?.[tranche.ticker] || 'cash';
+        const mix = normalizeActiveTrancheMix(
+          tranche.quantity,
+          current.activeTrancheMixes?.[tranche.id] || current.activeTrancheMixes?.[tranche.ticker]
+        );
+        const openQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
+        if (!Number.isFinite(openQuantity) || openQuantity <= 0) return [];
+        return [{
+          assignmentId: detail.assignmentId,
+          trancheId: tranche.id,
+          ticker: tranche.ticker,
+          name: tranche.name,
+          assignedQuantity: Math.max(detail.assignedQuantity, openQuantity),
+          openQuantity,
+          averagePrice: tranche.averagePrice,
+          purchasedAt: tranche.purchasedAt,
+          assignedAt: detail.assignedAt,
+          updatedAt,
+          endedAt: null,
+          status: 'active' as const
+        }];
+      });
+      const retainedAssignmentIds = Object.entries(current.activeTrancheGuestAssignmentDetails || {})
+        .filter(([trancheId, detail]) =>
+          detail.guestId === guest.id && current.activeTrancheGuestAssignments?.[trancheId] === guest.id
+        )
+        .map(([, detail]) => detail.assignmentId);
+      const snapshotTranches = activeTranches.flatMap((tranche) => {
+        if (current.activeTrancheGuestAssignments?.[tranche.id] !== guest.id) return [];
+        const type = current.activeTrancheTypes?.[tranche.id] ||
+          current.activeTrancheTypes?.[tranche.ticker] || 'cash';
+        const mix = normalizeActiveTrancheMix(
+          tranche.quantity,
+          current.activeTrancheMixes?.[tranche.id] || current.activeTrancheMixes?.[tranche.ticker]
+        );
+        const assignedQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
+        if (!Number.isFinite(assignedQuantity) || assignedQuantity <= 0) return [];
+        return [{
+          id: tranche.id,
+          ticker: tranche.ticker,
+          name: tranche.name,
+          quantity: assignedQuantity,
+          averagePrice: tranche.averagePrice,
+          marketPrice: tranche.marketPrice,
+          marketValue: tranche.marketPrice === null ? null : tranche.marketPrice * assignedQuantity,
+          purchasedAt: tranche.purchasedAt
+        }];
+      });
+      return {
+        guestId: guest.id,
+        snapshot: { updatedAt, tranches: snapshotTranches },
+        ledgerUpserts,
+        retainedAssignmentIds
+      };
+    });
     await publishGuestPortfolioSnapshotsBatch(publications);
   });
   guestPortfolioPublishQueue = operation.catch((error) => {
     console.error('Unable to publish guest portfolio projections:', error);
-    logTerminal('[Guest Portfolio Sync Error]: Assigned holdings could not be refreshed.');
+    logTerminal('[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.');
   });
   return guestPortfolioPublishQueue;
 }
@@ -481,7 +609,8 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
     activeTrancheGuestAssignments: assignments,
     activeTrancheTypes: types,
     activeTrancheMixes: {},
-    guestPortfolioSnapshot: snapshot,
+    guestPortfolioSnapshot: { updatedAt: snapshot.updatedAt, tranches: snapshot.tranches },
+    guestTrancheLedger: snapshot.ledger,
     brokerAccountInfo: undefined,
     brokerExecutedTrades: [],
     cashflows: [],
