@@ -15,6 +15,8 @@ The Worker still requires the existing `GATEWAY_SECRET` for all app requests. Af
 
 ## Read-only actions
 
+- `freedom-trades` retrieves the full TradeNet execution history for FIFO matching. The Worker requests `getTradesHistory` with `sort: 0` and intentionally omits `max`; TradeNet documents this combination as returning the full history count. The latest-first `sort: 1` mode defaults to a maximum of 100 executions when `max` is omitted, which can omit older opening buys and make closed-trade duration/buy-commission calculations incomplete.
+
 - `freedom-quote`: requests a quote for one symbol.
 - `freedom-news`: requests company news for one symbol.
 - `freedom-history`: requests daily historical data for one symbol.
