@@ -5,6 +5,8 @@ interface ClosedTradeGuestMetrics {
   averagePrice: number | null;
   purchasedAt: number | null;
   assignedAt?: number | null;
+  value?: number | null;
+  netProfit?: number | null;
 }
 
 export interface ClosedTradeOperationDateSource {
@@ -182,12 +184,19 @@ export function buildClosedTradeGuestLedgerUpserts(
         : isCurrent ? currentCashQuantity : assignment.assignedQuantity;
       const proportion = Number.isFinite(sourceQuantity) && sourceQuantity > 0
         ? Math.min(1, assignedQuantity / sourceQuantity) : null;
-      const netProfit = source.netProfit !== null && source.netProfit !== undefined &&
-        Number.isFinite(Number(source.netProfit)) && proportion !== null
-        ? Number(source.netProfit) * proportion : null;
-      const value = source.value !== null && source.value !== undefined &&
-        Number.isFinite(Number(source.value)) && Number(source.value) >= 0 && proportion !== null
-        ? Number(source.value) * proportion : null;
+      const metricValue = isAutomaticallyAttributed ? guestMetric?.value : undefined;
+      const metricNetProfit = isAutomaticallyAttributed ? guestMetric?.netProfit : undefined;
+      const netProfit = metricNetProfit !== undefined
+        ? metricNetProfit !== null && Number.isFinite(Number(metricNetProfit)) ? Number(metricNetProfit) : null
+        : source.netProfit !== null && source.netProfit !== undefined &&
+          Number.isFinite(Number(source.netProfit)) && proportion !== null
+          ? Number(source.netProfit) * proportion : null;
+      const value = metricValue !== undefined
+        ? metricValue !== null && Number.isFinite(Number(metricValue)) && Number(metricValue) >= 0
+          ? Number(metricValue) : null
+        : source.value !== null && source.value !== undefined &&
+          Number.isFinite(Number(source.value)) && Number(source.value) >= 0 && proportion !== null
+          ? Number(source.value) * proportion : null;
       result.push({
         guestId: assignment.guestId,
         record: {
