@@ -1051,8 +1051,10 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(reloadedStore.getState().closedTrades).toHaveLength(2);
   });
   it('resets portfolio-owned and broker-history state while retaining account settings', () => {
+    stored.set('portfolio_active_view', 'AAPL');
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
+    expect(store.getState().activeView).toBe('AAPL');
     const originalRules = { ...store.getState().brokerAssumptions, annualRate: 0.12 };
     store.importState({
       positions: {
@@ -1085,6 +1087,8 @@ describe('canonical trade lifecycle and persistence', () => {
     store.resetToBlankState(Date.parse('2026-10-31T00:00:00.000Z'));
 
     const state = store.getState();
+    expect(state.activeView).toBe('COMBINED');
+    expect(stored.get('portfolio_active_view')).toBe('COMBINED');
     expect(state.positions).toEqual({});
     expect(state.holdings).toEqual([]);
     expect(state.cashCushion).toEqual({ freeCash: 0, holdings: [] });
