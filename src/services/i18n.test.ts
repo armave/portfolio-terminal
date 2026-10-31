@@ -190,7 +190,7 @@ describe('app localization', () => {
   });
 
   it('localizes multiline terminal outputs line by line', () => {
-    expect(translateText('Terminal cleared.\\nRefreshing all live quotes...', 'ru'))
+    expect(translateText('Terminal cleared.\nRefreshing all live quotes...', 'ru'))
       .toBe('Терминал очищен.\\nОбновление всех актуальных котировок…');
   });
 
