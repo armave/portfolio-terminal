@@ -91,7 +91,7 @@ export function buildClosedTradeGuestLedgerUpserts(
           purchasedAt: null,
           assignedAt: assignment.assignedAt,
           updatedAt,
-          endedAt: updatedAt,
+          endedAt: assignment.assignedAt,
           status: isCurrent ? 'closed' : 'unassigned'
         }
       });
