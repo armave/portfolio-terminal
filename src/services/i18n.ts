@@ -605,6 +605,8 @@ const RU: Record<string, string> = {
   "[System]": "Система",
   "[Broker]": "Брокер",
   "[Freedom]": "Freedom",
+  "[Guest Portfolio Sync Error]: Assigned holdings and history could not be refreshed.": "Ошибка синхронизации гостевого портфеля: Не удалось обновить назначенные активы и историю.",
+  "[Warning]: No quotes updated during batch fetch.": "[Предупреждение]: Не удалось обновить ни одной котировки в пакетном запросе.",
 };
 
 const TEXT_ATTRIBUTES = ['aria-label', 'alt', 'placeholder', 'title', 'label', 'data-tooltip'] as const;
@@ -657,7 +659,62 @@ function translateDynamicText(normalized: string): string | undefined {
   if (noOpenShares) return 'Не найдено допустимое количество открытых акций для ' + noOpenShares[1] + '.';
 
   const sold = normalized.match(/^Sold ([\d,.]+) ([A-Z0-9.-]+) @ \$(\d+(?:\.\d{2})?)$/i);
-  if (sold) return 'Продано ' + sold[1] + ' акций ' + sold[2] + ' по цене   const prefixes: Array<[string, string, string]> = [
+  if (sold) return 'Продано ' + sold[1] + ' акций ' + sold[2] + ' по цене   const settingsLoadError = normalized.match(/^\[Settings Error\]: Could not load saved broker assumptions \((.+)\)\. Using defaults\.$/i);
+  if (settingsLoadError) return '[Ошибка настроек]: Не удалось загрузить сохранённые параметры брокера (' + settingsLoadError[1] + '). Используются значения по умолчанию.';
+
+  const marketDataFailure = normalized.match(/^\[Market Data Error\]: Could not fetch (.+)\. (.+)\. Retained tracked price: (.+)\. Set manually via: price (.+) <number>\.$/i);
+  if (marketDataFailure) return '[Ошибка рыночных данных]: Не удалось получить котировку ' + marketDataFailure[1] +
+    '. ' + marketDataFailure[2] + '. Сохранена отслеживаемая цена: ' + marketDataFailure[3] +
+    '. Установить вручную: price ' + marketDataFailure[4] + ' <number>.';
+
+  const unsupportedAiAction = normalized.match(/^\[AI Action Error\]: Unsupported action "(.+)"\. No changes were made\.$/i);
+  if (unsupportedAiAction) return '[Ошибка действия ИИ]: Неподдерживаемое действие "' + unsupportedAiAction[1] + '". Изменения не внесены.';
+
+  const executedBuy = normalized.match(/^\[Executed Buy\]: Added (.+?) (.+?) @ (.+?)\. Outlay: (.+?) \(Comm: (.+?)\)\. Funded: (.+?) cash \| \+(.+?) margin debt\. Free Cash remaining: (.+?)\. Total Margin Debt: -(.+?) \(was -(.+?)\)\.$/i);
+  if (executedBuy) return '[Покупка выполнена]: Добавлено ' + executedBuy[1] + ' ' + executedBuy[2] +
+    ' @ ' + executedBuy[3] + '. Сумма: ' + executedBuy[4] + ' (комиссия: ' + executedBuy[5] +
+    '). Оплачено денежными средствами: ' + executedBuy[6] + ' | +маржинальный долг: ' + executedBuy[7] +
+    '. Остаток свободных средств: ' + executedBuy[8] + '. Общий маржинальный долг: -' + executedBuy[9] + ' (до операции: -' + executedBuy[10] + ').';
+
+  const cashClosed = normalized.match(/^\[Cash Holding Closed\]: Sold ([\d,.]+) ([A-Z0-9.-]+) @ (.+?)\. Net credited: \+(.+?) \(Debt paid: (.+?), Free Cash added: (.+?)\)\.$/i);
+  if (cashClosed) return '[Денежная позиция закрыта]: Продано ' + cashClosed[1] + ' акций ' + cashClosed[2] +
+    ' @ ' + cashClosed[3] + '. Зачислено чистыми: +' + cashClosed[4] +
+    ' (погашение долга: ' + cashClosed[5] + ', добавлено свободных средств: ' + cashClosed[6] + ').';
+
+  const cashPartial = normalized.match(/^\[Cash Holding Partial Sell\]: Sold ([\d,.]+) ([A-Z0-9.-]+) @ (.+?)\. Remaining: (.+?) shares\. Net credited: \+(.+?) \(Debt paid: (.+?), Free Cash added: (.+?)\)\.$/i);
+  if (cashPartial) return '[Частичная продажа денежной позиции]: Продано ' + cashPartial[1] + ' акций ' + cashPartial[2] +
+    ' @ ' + cashPartial[3] + '. Остаток: ' + cashPartial[4] + ' акций. Зачислено чистыми: +' + cashPartial[5] +
+    ' (погашение долга: ' + cashPartial[6] + ', добавлено свободных средств: ' + cashPartial[7] + ').';
+
+  const positionClosed = normalized.match(/^\[Position Closed\]: Sold ([\d,.]+) ([A-Z0-9.-]+) @ (.+?)\. Net credited: \+(.+?) \(Debt paid: (.+?), Free Cash added: (.+?)\)\. Remaining Debt: -(.+?)\. Free Cash: (.+?)\.$/i);
+  if (positionClosed) return '[Позиция закрыта]: Продано ' + positionClosed[1] + ' акций ' + positionClosed[2] +
+    ' @ ' + positionClosed[3] + '. Зачислено чистыми: +' + positionClosed[4] +
+    ' (погашение долга: ' + positionClosed[5] + ', добавлено свободных средств: ' + positionClosed[6] +
+    '). Остаток долга: -' + positionClosed[7] + '. Свободные средства: ' + positionClosed[8] + '.';
+
+  const partialSell = normalized.match(/^\[Partial Sell\]: Sold ([\d,.]+) ([A-Z0-9.-]+) @ (.+?)\. Net credited: \+(.+?) \(Debt paid: (.+?), Free Cash added: (.+?)\)\. Remaining: (.+?) shares\.$/i);
+  if (partialSell) return '[Частичная продажа]: Продано ' + partialSell[1] + ' акций ' + partialSell[2] +
+    ' @ ' + partialSell[3] + '. Зачислено чистыми: +' + partialSell[4] +
+    ' (погашение долга: ' + partialSell[5] + ', добавлено свободных средств: ' + partialSell[6] +
+    '). Остаток: ' + partialSell[7] + ' акций.';
+
+  const targetUpdate = normalized.match(/^\[Target Updated\]: (.+) PT updated to (.+)\.$/i);
+  if (targetUpdate) return '[Целевая цена обновлена]: Целевая цена ' + targetUpdate[1] + ' установлена на ' + targetUpdate[2] + '.';
+  const priceUnchanged = normalized.match(/^\[Price Unchanged\]: No valid price amount supplied\. Enter: price (.+) <number>\.$/i);
+  if (priceUnchanged) return '[Цена не изменена]: Не указана корректная цена. Введите: price ' + priceUnchanged[1] + ' <number>.';
+  const priceUpdated = normalized.match(/^\[Price Updated\]: (.+) market price set to (.+)\.$/i);
+  if (priceUpdated) return '[Цена обновлена]: Рыночная цена ' + priceUpdated[1] + ' установлена на ' + priceUpdated[2] + '.';
+  const marginSynced = normalized.match(/^\[Margin Synced\]: Total margin balance explicitly set to -(.+)\.$/i);
+  if (marginSynced) return '[Маржинальный баланс синхронизирован]: Общий маржинальный баланс установлен на -' + marginSynced[1] + '.';
+
+  const balanceUpdated = normalized.match(/^\[Balance\]: Current balance\/debt updated\. Balance: (.+) \| Margin debt: -(.+)\.$/i);
+  if (balanceUpdated) return '[Баланс]: Баланс и долг обновлены. Баланс: ' + balanceUpdated[1] + ' | Маржинальный долг: -' + balanceUpdated[2] + '.';
+  const balanceAdded = normalized.match(/^\[Balance\]: Added (.+) (.+) to balance holdings\. Syncing online quote\.\.\.$/i);
+  if (balanceAdded) return '[Баланс]: В активы баланса добавлено ' + balanceAdded[1] + ' ' + balanceAdded[2] + '. Синхронизация онлайн-котировки…';
+  const balanceRemoved = normalized.match(/^\[Balance\]: Removed (.+) from balance holdings\.$/i);
+  if (balanceRemoved) return '[Баланс]: ' + balanceRemoved[1] + ' удалён из активов баланса.';
+
+  const prefixes: Array<[string, string, string]> = [
     ['Name for ', 'Name for ', ''],
     ['Role for ', 'Role for ', ''],
     ['Language for ', 'Language for ', ''],
