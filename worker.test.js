@@ -1455,6 +1455,43 @@ describe('Durable Object guest portfolio ownership', () => {
     });
   });
 
+  it('marks a still-open tranche unassigned when the guest link is removed', async () => {
+    const { store } = await makeScopedStore();
+    const record = {
+      assignmentId: 'assignment-nvda-1', trancheId: 'NVDA:buy-1', ticker: 'NVDA', name: 'NVIDIA',
+      assignedQuantity: 5, openQuantity: 5, averagePrice: 100, marketPrice: 120,
+      purchasedAt: 10, assignedAt: 20, updatedAt: 30, endedAt: null, status: 'active'
+    };
+    const publish = (retainedAssignmentIds) => store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({
+        snapshots: [{
+          guestId: 'guest-1',
+          snapshot: { updatedAt: 40, tranches: [] },
+          ledgerUpserts: retainedAssignmentIds.length ? [record] : [],
+          retainedAssignmentIds
+        }]
+      })
+    }));
+    expect((await publish([record.assignmentId])).status).toBe(200);
+    expect((await publish([])).status).toBe(200);
+
+    const guestRead = await store.fetch(new Request('https://store.test/api/guest-portfolio', {
+      headers: authHeaders('guest-one-token')
+    }));
+    await expect(guestRead.json()).resolves.toMatchObject({
+      ledger: [{
+        assignmentId: record.assignmentId,
+        assignedQuantity: 5,
+        openQuantity: 0,
+        marketValue: null,
+        status: 'unassigned',
+        endedAt: 40
+      }]
+    });
+  });
+
   it('keeps an existing ledger when a legacy client only posts the live snapshot', async () => {
     const { store } = await makeScopedStore();
     const record = {
