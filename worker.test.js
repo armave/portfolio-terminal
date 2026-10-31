@@ -761,11 +761,12 @@ describe('Freedom cashflows Worker action', () => {
     vi.unstubAllGlobals();
   });
 
-  it('returns the read-only cashflows payload as JSON with CORS headers', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ cashflows: [] }), {
+  it('calls the documented getUserCashFlows command and returns cashflows as JSON with CORS headers', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ cashflows: [] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
-    })));
+    }));
+    vi.stubGlobal('fetch', fetchMock);
     const response = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows', {
       headers: { 'X-App-Auth': 'test-secret', Origin: 'https://app.test' }
     }), {
@@ -780,6 +781,15 @@ describe('Freedom cashflows Worker action', () => {
       ok: true,
       provider: 'Freedom TradeNet',
       data: { cashflows: [] }
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [upstreamUrl, upstreamInit] = fetchMock.mock.calls[0];
+    expect(upstreamUrl).toBe('https://tradernet.com/api/getUserCashFlows');
+    expect(upstreamInit.method).toBe('POST');
+    expect(JSON.parse(upstreamInit.body)).toEqual({
+      cmd: 'getUserCashFlows',
+      params: {}
     });
   });
 });

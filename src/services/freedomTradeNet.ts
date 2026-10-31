@@ -7,7 +7,7 @@ interface TradeNetWorkerEnv {
     FREEDOM_PRIVATE_KEY?: string;
 }
 
-export type TradeNetReadCommand = "getPositionJson" | "getTradesHistory" | "getQuotes" | "getNews" | "getHloc" | "getCashflows" | "getNotifyOrderJson";
+export type TradeNetReadCommand = "getPositionJson" | "getTradesHistory" | "getQuotes" | "getNews" | "getHloc" | "getUserCashFlows" | "getNotifyOrderJson";
 
 export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetReadCommand = "getPositionJson", paramsOverride?: Record<string, string | number | boolean>): Promise<Record<string, unknown>> {
     if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
