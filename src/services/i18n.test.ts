@@ -191,7 +191,7 @@ describe('app localization', () => {
 
   it('localizes multiline terminal outputs line by line', () => {
     expect(translateText('Terminal cleared.\nRefreshing all live quotes...', 'ru'))
-      .toBe('Терминал очищен.\\nОбновление всех актуальных котировок…');
+      .toBe('Терминал очищен.\nОбновление всех актуальных котировок…');
   });
 
   it('localizes detailed portfolio execution and synchronization logs', () => {
