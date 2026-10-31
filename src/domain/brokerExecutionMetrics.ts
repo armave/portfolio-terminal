@@ -28,7 +28,7 @@ export function calculateBrokerExecutionMetrics(executions: Execution[]): Map<Ex
   })).filter(row => row.ticker && Number.isFinite(row.time) && Number.isFinite(row.quantity) && row.quantity > 0)
     .sort((a, b) => a.time - b.time || a.index - b.index);
 
-  const queues = new Map<string, Array<{ date: number; quantity: number; commissionPerShare: number | null }>>();
+  const queues = new Map<string, Array<{ date: number; quantity: number; commissionCentsRemaining: number | null }>>();
   const metrics = new Map<Execution, BrokerExecutionMetrics>();
   for (const row of sorted) {
     if (BUY_SIDES.has(row.side)) {
@@ -40,7 +40,9 @@ export function calculateBrokerExecutionMetrics(executions: Execution[]): Map<Ex
       queue.push({
         date: row.time,
         quantity: row.quantity,
-        commissionPerShare: Number.isFinite(commission) && isUsdCommission(row.trade) ? commission / row.quantity : null
+        commissionCentsRemaining: Number.isFinite(commission) && isUsdCommission(row.trade)
+          ? Math.round(commission * 100)
+          : null
       });
       queues.set(row.ticker, queue);
       continue;
@@ -51,15 +53,24 @@ export function calculateBrokerExecutionMetrics(executions: Execution[]): Map<Ex
     let remaining = row.quantity;
     let weightedDays = 0;
     let matched = 0;
-    let buyCommission = 0;
+    let buyCommissionCents = 0;
     let commissionKnown = true;
     while (remaining > 1e-8 && queue.length > 0) {
       const lot = queue[0];
       const used = Math.min(remaining, lot.quantity);
       weightedDays += Math.max(0, row.time - lot.date) / 86400000 * used;
       matched += used;
-      if (lot.commissionPerShare === null) commissionKnown = false;
-      else buyCommission += lot.commissionPerShare * used;
+      if (lot.commissionCentsRemaining === null) {
+        commissionKnown = false;
+      } else {
+        // Carry residual cents forward through partial closes. The final slice
+        // receives the remainder, so all matched buy-side commission is retained.
+        const allocatedCents = used >= lot.quantity - 1e-8
+          ? lot.commissionCentsRemaining
+          : Math.floor(lot.commissionCentsRemaining * used / lot.quantity);
+        buyCommissionCents += allocatedCents;
+        lot.commissionCentsRemaining -= allocatedCents;
+      }
       remaining -= used;
       lot.quantity -= used;
       if (lot.quantity <= 1e-8) queue.shift();
@@ -67,7 +78,7 @@ export function calculateBrokerExecutionMetrics(executions: Execution[]): Map<Ex
     const fullyMatched = matched > 0 && remaining <= 1e-8;
     metrics.set(row.trade, {
       holdingDays: fullyMatched ? weightedDays / matched : null,
-      buyCommission: fullyMatched && commissionKnown ? Number(buyCommission.toFixed(2)) : null
+      buyCommission: fullyMatched && commissionKnown ? Number((buyCommissionCents / 100).toFixed(2)) : null
     });
   }
   return metrics;

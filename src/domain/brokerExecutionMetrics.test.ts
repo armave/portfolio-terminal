@@ -40,3 +40,18 @@ it('marks foreign-currency buy commissions incomplete instead of adding them to 
   expect(calculateBrokerExecutionMetrics([buy, sell]).get(sell))
     .toEqual({ holdingDays: 1, buyCommission: null });
 });
+
+it('preserves every cent of a small buy commission across multiple partial sells', () => {
+  const buy = { ticker: 'AAPL', side: 'buy', quantity: 3, commission: 0.01, executedAt: '2026-09-01T00:00:00Z' };
+  const firstSell = { ticker: 'AAPL', side: 'sell', quantity: 1, commission: 0, executedAt: '2026-09-02T00:00:00Z' };
+  const secondSell = { ticker: 'AAPL', side: 'sell', quantity: 1, commission: 0, executedAt: '2026-09-03T00:00:00Z' };
+  const finalSell = { ticker: 'AAPL', side: 'sell', quantity: 1, commission: 0, executedAt: '2026-09-04T00:00:00Z' };
+  const metrics = calculateBrokerExecutionMetrics([buy, firstSell, secondSell, finalSell]);
+  const allocated = [
+    metrics.get(firstSell)?.buyCommission ?? 0,
+    metrics.get(secondSell)?.buyCommission ?? 0,
+    metrics.get(finalSell)?.buyCommission ?? 0
+  ];
+  expect(allocated.reduce((sum, amount) => sum + amount, 0)).toBe(0.01);
+  expect(allocated).toEqual([0, 0, 0.01]);
+});
