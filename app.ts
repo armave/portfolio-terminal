@@ -657,6 +657,12 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
     });
 
     const brokerExecutions = current.brokerExecutedTrades || [];
+    // Match ClosedHistoryDesk's sell-only fallback index when a broker row
+    // has no execution ID; using the all-executions index would break override
+    // lookup whenever buy executions are interleaved.
+    const brokerSellExecutions = brokerExecutions.filter((trade: any) =>
+      ['sell', 's', 'sale', 'sold', '2'].includes(String(trade?.side ?? '').toLowerCase())
+    );
     const brokerAttributions = attributeClosedTradeExecutions(brokerExecutions, {
       trancheTypes: current.activeTrancheTypes,
       trancheMixes: current.activeTrancheMixes,
@@ -664,9 +670,8 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
       guestAssignmentDetails: current.activeTrancheGuestAssignmentDetails
     });
     const brokerTradeMetrics = calculateBrokerExecutionMetrics(brokerExecutions);
-    const brokerSaleRows = brokerExecutions
+    const brokerSaleRows = brokerSellExecutions
       .map((trade: any, index: number) => {
-        if (!['sell', 's', 'sale', 'sold', '2'].includes(String(trade?.side ?? '').toLowerCase())) return null;
         const ticker = normalizeExecutionTicker(trade?.ticker);
         const quantity = Math.abs(Number(trade?.quantity ?? trade?.shares ?? 0));
         if (!ticker || !Number.isFinite(quantity) || quantity <= 0) return null;
