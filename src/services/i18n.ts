@@ -160,7 +160,6 @@ const RU: Record<string, string> = {
   'Price': 'Цена',
   'Quantity': 'Количество',
   'Spread': 'Спред',
-  'Updated': 'Обновлено',
   'Loading market depth…': 'Загрузка стакана заявок…',
   'Refresh depth': 'Обновить стакан',
   'No bid levels returned.': 'Нет уровней спроса.',
