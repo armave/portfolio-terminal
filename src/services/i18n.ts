@@ -9,7 +9,7 @@ const RU_DOCUMENT_TITLE = 'Маржинальный портфель — тер�
 const RU: Record<string, string> = {
   'MARGIN DESK': 'МАРЖИНАЛЬНЫЙ РАЗДЕЛ',
   'COMBINED PORTFOLIO': 'ОБЩИЙ ПОРТФЕЛЬ',
-  '🛡️ BALANCE': '🛡️ БАЛАНС',
+  'BALANCE': 'БАЛАНС',
   'CLOSED HISTORY': 'ИСТОРИЯ ЗАКРЫТЫХ СДЕЛОК',
   '⚙️ SETTINGS': '⚙️ НАСТРОЙКИ',
   'Settings': 'Настройки',
@@ -561,7 +561,6 @@ const RU: Record<string, string> = {
   "MARKET": "РЫНОК",
   "QUOTE": "КОТИРОВКА",
   "CLI": "ТЕРМИНАЛ",
-  "BALANCE": "БАЛАНС",
   "CASH": "ДЕНЬГИ",
   "BROKER": "БРОКЕР",
   "ROLLOVER": "ПЕРЕНОС",

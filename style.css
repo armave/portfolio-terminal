@@ -416,6 +416,7 @@ summary:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   max-width: 100%;
   padding-bottom: 0.25rem;
