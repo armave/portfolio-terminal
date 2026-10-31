@@ -176,7 +176,7 @@ export function normalizeFreedomCashflowRows(response: unknown): NormalizedFreed
     const fallbackId = [date, type, amount.toFixed(8), currency, description].join("|").toLowerCase();
     const brokerId = stringifyRawValue(idValue).trim();
     normalized.push({
-      id: brokerId ? `freedom-${brokerId}` : `cashflow-${fallbackId}`,
+      id: brokerId ? `freedom-${brokerId}` : `freedom-${fallbackId}`,
       date,
       type,
       amount,
@@ -190,6 +190,14 @@ export function normalizeFreedomCashflowRows(response: unknown): NormalizedFreed
     throw new Error("Freedom returned cashflow rows without usable dates and amounts. Existing cashflow history was left unchanged.");
   }
   return mergeFreedomCashflowRows([], normalized);
+}
+
+/**
+ * True only for cashflow rows received from the Freedom API. Older locally
+ * saved file-import rows are retained for history but are not fee inputs.
+ */
+export function isFreedomCashflowRow(row: Pick<NormalizedFreedomCashflow, "id">): boolean {
+  return row.id.startsWith("freedom-");
 }
 
 /**

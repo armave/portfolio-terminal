@@ -6,7 +6,7 @@ import { getAppLanguage } from '../services/i18n';
 import { fetchFreedomCashflows, pullCloudHistory, pushCloudHistory } from '../services/api';
 import { loadSavedHistory, saveSavedHistory } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
-import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
+import { isFreedomCashflowRow, mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 
 export function ClosedHistoryDesk() {
@@ -103,6 +103,7 @@ export function ClosedHistoryDesk() {
       // Persist broker-normalized cashflow rows as the source of truth so fee
       // allocations can be recalculated after refresh without another API read.
       const feeRows = cashflowRows.filter(item => {
+        if (!isFreedomCashflowRow(item)) return false;
         const text = [item.type, item.description, ...Object.values(item.raw ?? {})].join(' ').toLowerCase();
         // Broker payloads may place direction and operation identifiers in
         // separate fields. Inspect all returned fields to detect financing fees.

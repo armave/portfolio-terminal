@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isFreedomCashflowRow,
   mergeFreedomCashflowRows,
   normalizeFreedomCashflowRows,
   type NormalizedFreedomCashflow
@@ -33,7 +34,24 @@ describe("Freedom cashflow normalization", () => {
       currency: "USD",
       description: "Negative cash balance fee"
     });
-    expect(rows[0].raw.operation_id).toBe("4812");
+  it("assigns a Freedom source ID when a broker row has no operation ID", () => {
+    const rows = normalizeFreedomCashflowRows({
+      cashflows: [{
+        operation_date: "2026-10-30",
+        operation_type: "Margin Fee",
+        amount: "-4.25",
+        curr: "USD"
+      }]
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id.startsWith("freedom-")).toBe(true);
+    expect(isFreedomCashflowRow(rows[0])).toBe(true);
+  });
+
+  it("does not treat legacy file-import IDs as broker fee sources", () => {
+    expect(isFreedomCashflowRow({ id: "freedom-4812" })).toBe(true);
+    expect(isFreedomCashflowRow({ id: "cashflow-legacy-workbook-row" })).toBe(false);
   });
 
   it("accepts a confirmed empty cashflow collection", () => {
