@@ -271,18 +271,49 @@ export function sanitizeFreedomMarketDepth(response, requestedSymbol) {
     };
 }
 
-/** Request one full order-book snapshot; SID is never sent to the browser. */
+/** Sign the TradeNet Socket.IO API-key authentication challenge using the official
+ * preSign format: alphabetically sorted key=value pairs, HMAC-SHA256 with the
+ * private API key. Private material remains inside this Worker. */
+export async function signFreedomSocketAuth(data, privateKey) {
+    const payload = Object.keys(data).sort().map(key => {
+        const value = data[key];
+        return key + "=" + (value && typeof value === "object" && !Array.isArray(value)
+            ? Object.keys(value).sort().map(child => child + "=" + value[child]).join("&")
+            : String(value));
+    }).join("&");
+    const key = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(privateKey),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"]
+    );
+    const signed = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+    return Array.from(new Uint8Array(signed)).map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** Obtain a full order-book snapshot through TradeNet's API-key-authenticated
+ * Socket.IO feed. This uses the same public/private keys already configured for
+ * REST; no browser credential or separate SID is required. */
 async function fetchFreedomMarketDepth(env, symbol) {
-    const sid = String(env.FREEDOM_MARKET_DATA_SID || "").trim();
-    if (!sid) {
-        const error = new Error("Live market depth requires the FREEDOM_MARKET_DATA_SID Worker secret. API keys alone do not authorize the live WebSocket feed.");
+    if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
+        const error = new Error("Freedom API keys are not configured in this Worker.");
         error.status = 503;
         throw error;
     }
+    const authData = {
+        apiKey: env.FREEDOM_PUBLIC_KEY,
+        cmd: "getAuthInfo",
+        nonce: Date.now()
+    };
+    const authSignature = await signFreedomSocketAuth(authData, env.FREEDOM_PRIVATE_KEY);
+
     return new Promise((resolve, reject) => {
         let settled = false;
-        let authorizedProductionSession = false;
+        let namespaceConnected = false;
+        let authenticated = false;
         let socket;
+        const authAckId = "1";
         const finish = (error, result) => {
             if (settled) return;
             settled = true;
@@ -291,54 +322,105 @@ async function fetchFreedomMarketDepth(env, symbol) {
             if (error) reject(error); else resolve(result);
         };
         const timeout = setTimeout(() => {
-            const error = new Error("TradeNet market-depth WebSocket timed out before returning a verified live snapshot.");
+            const error = new Error("TradeNet market-depth connection timed out before returning an authenticated order book.");
             error.status = 504;
             finish(error);
         }, 10000);
+
         try {
-            const url = new URL("wss://wss.tradernet.com/");
-            url.searchParams.set("SID", sid);
-            socket = new WebSocket(url.toString());
-            socket.addEventListener("open", () => {
-                // Read-only subscription; no trading commands are sent.
-                socket.send(JSON.stringify(["notifyOrderBook", [symbol]]));
-            });
+            const url = "wss://ws.tradernet.ru/socket.io/?EIO=3&transport=websocket";
+            socket = new WebSocket(url);
             socket.addEventListener("message", message => {
                 if (settled) return;
-                let frame;
-                try { frame = JSON.parse(String(message.data)); } catch { return; }
-                if (!Array.isArray(frame) || typeof frame[0] !== "string") return;
-                const [event, payload] = frame;
-                if (event === "userData") {
-                    if (payload?.isDemo === true || String(payload?.mode || "").toLowerCase() === "demo") {
-                        const error = new Error("TradeNet authenticated this WebSocket as a demo session. Demo order-book data is intentionally not shown.");
-                        error.status = 403;
-                        finish(error);
-                        return;
-                    }
-                    authorizedProductionSession = payload?.isDemo === false || String(payload?.mode || "").toLowerCase() === "prod";
+                const frame = String(message.data || "");
+
+                // Engine.IO v3 handshake and heartbeat.
+                if (frame.startsWith("0{")) {
+                    socket.send("40");
                     return;
                 }
-                if (event === "error") {
-                    const error = new Error("TradeNet rejected the market-depth subscription.");
+                if (frame === "2" || frame.startsWith("2probe")) {
+                    socket.send(frame === "2" ? "3" : "3probe");
+                    return;
+                }
+                if (frame.startsWith("41")) {
+                    const error = new Error("TradeNet closed the Socket.IO session.");
                     error.status = 502;
                     finish(error);
                     return;
                 }
-                if (event === "b" && authorizedProductionSession) {
-                    const hasTicker = Array.isArray(payload?.dom) && payload.dom.some(row =>
-                        String(row?.i || "").trim().toUpperCase() === symbol.toUpperCase());
-                    if (!hasTicker) return;
-                    try { finish(null, sanitizeFreedomMarketDepth(payload, symbol)); }
-                    catch (error) {
-                        const failure = new Error(error instanceof Error ? error.message : "Invalid TradeNet order-book snapshot.");
-                        failure.status = 502;
-                        finish(failure);
+                if (frame.startsWith("44")) {
+                    const error = new Error("TradeNet rejected the Socket.IO connection.");
+                    error.status = 502;
+                    finish(error);
+                    return;
+                }
+
+                // Socket.IO namespace acknowledgement.
+                if (frame.startsWith("40")) {
+                    if (namespaceConnected) return;
+                    namespaceConnected = true;
+                    // Callback acknowledgement is packet id 1.
+                    socket.send("42" + authAckId + JSON.stringify(["auth", authData, authSignature]));
+                    return;
+                }
+
+                // API-key auth callback: [err, authInfo]. Require an explicit
+                // non-demo mode before accepting any order-book payload.
+                if (frame.startsWith("43")) {
+                    const ack = frame.slice(2).match(/^(\d+)(\[.*\])$/s);
+                    if (!ack || ack[1] !== authAckId || authenticated) return;
+                    let values;
+                    try { values = JSON.parse(ack[2]); } catch { values = null; }
+                    const authError = Array.isArray(values) ? values[0] : "invalid acknowledgement";
+                    const authInfo = Array.isArray(values) ? values[1] : null;
+                    if (authError || !authInfo || typeof authInfo !== "object") {
+                        const error = new Error("TradeNet API-key WebSocket authentication failed.");
+                        error.status = 401;
+                        finish(error);
+                        return;
+                    }
+                    const mode = String(authInfo.mode || "").trim().toLowerCase();
+                    if (!mode || ["demo", "test", "paper", "beta"].includes(mode)) {
+                        const error = new Error("TradeNet authenticated a demo or unverified session. Demo order-book data is intentionally not shown.");
+                        error.status = 403;
+                        finish(error);
+                        return;
+                    }
+                    authenticated = true;
+                    // The official Socket.IO API documents this event for market depth.
+                    socket.send("42" + JSON.stringify(["notifyOrderBook", [symbol]]));
+                    return;
+                }
+
+                // Socket.IO event packet: 4 (Engine.IO message) + 2 (event).
+                if (frame.startsWith("42")) {
+                    let packet;
+                    try { packet = JSON.parse(frame.slice(2)); } catch { return; }
+                    if (!Array.isArray(packet) || typeof packet[0] !== "string") return;
+                    const [event, payload] = packet;
+                    if (event === "error") {
+                        const error = new Error("TradeNet rejected the market-depth subscription.");
+                        error.status = 502;
+                        finish(error);
+                        return;
+                    }
+                    if (event === "b" && authenticated) {
+                        const hasTicker = Array.isArray(payload?.dom) && payload.dom.some(row =>
+                            String(row?.i || "").trim().toUpperCase() === symbol.toUpperCase());
+                        if (!hasTicker) return;
+                        try {
+                            finish(null, sanitizeFreedomMarketDepth(payload, symbol));
+                        } catch (error) {
+                            const failure = new Error(error instanceof Error ? error.message : "Invalid TradeNet order-book snapshot.");
+                            failure.status = 502;
+                            finish(failure);
+                        }
                     }
                 }
             });
             socket.addEventListener("error", () => {
-                const error = new Error("Could not connect to the TradeNet market-depth WebSocket.");
+                const error = new Error("Could not connect to the TradeNet live market-depth feed.");
                 error.status = 502;
                 finish(error);
             });
@@ -350,7 +432,7 @@ async function fetchFreedomMarketDepth(env, symbol) {
                 }
             });
         } catch {
-            const error = new Error("Could not initialize the TradeNet market-depth WebSocket.");
+            const error = new Error("Could not initialize the TradeNet market-depth connection.");
             error.status = 502;
             finish(error);
         }
