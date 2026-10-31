@@ -183,8 +183,6 @@ export interface GuestTrancheLedgerOperationGroup {
   operationAt: number | null;
 }
 
-const GUEST_TRANCHE_OPERATION_GROUP_WINDOW_MS = 10 * 60 * 1000;
-
 function getGuestTrancheLedgerOperationAt(record: GuestTrancheLedgerRecord): number | null {
   const isClosedTrade = record.trancheId.startsWith('closed-trade:');
   const value = isClosedTrade ? record.operationAt : record.operationAt ?? record.purchasedAt;
@@ -194,19 +192,15 @@ function getGuestTrancheLedgerOperationAt(record: GuestTrancheLedgerRecord): num
 }
 
 /**
- * Group the date-sorted ledger rows for display. Tranche (buy-side) and Trade
- * (sell-side) operations are kept separate. Consecutive same-ticker operations
- * join while each is no more than ten minutes after the previous operation.
- * Rows without a usable operation timestamp remain separate.
+ * Group LOTS rows by ticker, operation side, and the calendar date shown in
+ * the user's local timezone. The display is date-only, so intraday time gaps
+ * do not split operations that appear on the same date.
  */
 export function groupGuestTrancheLedgerOperations(
   records: GuestTrancheLedgerRecord[]
 ): GuestTrancheLedgerOperationGroup[] {
   const groups: GuestTrancheLedgerOperationGroup[] = [];
-  const groupsByOperation = new Map<string, Array<{
-    group: GuestTrancheLedgerOperationGroup;
-    lastOperationAt: number;
-  }>>();
+  const groupsByOperation = new Map<string, GuestTrancheLedgerOperationGroup>();
 
   for (const record of records || []) {
     const ticker = String(record.ticker || '').trim().toUpperCase();
@@ -217,26 +211,27 @@ export function groupGuestTrancheLedgerOperations(
       continue;
     }
 
-    const key = ticker + ':' + (isClosedTrade ? 'trade' : 'tranche');
-    const operationGroups = groupsByOperation.get(key) || [];
-    const previous = operationGroups[operationGroups.length - 1];
-    if (previous && Math.abs(previous.lastOperationAt - operationAt) <= GUEST_TRANCHE_OPERATION_GROUP_WINDOW_MS) {
-      previous.group.records.push(record);
-      previous.lastOperationAt = operationAt;
+    const date = new Date(operationAt);
+    const localOperationDate = [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')
+    ].join('-');
+    const key = ticker + ':' + (isClosedTrade ? 'trade' : 'tranche') + ':' + localOperationDate;
+    const existing = groupsByOperation.get(key);
+    if (existing) {
+      existing.records.push(record);
       continue;
     }
 
     const group = { records: [record], operationAt };
     groups.push(group);
-    operationGroups.push({ group, lastOperationAt: operationAt });
-    groupsByOperation.set(key, operationGroups);
+    groupsByOperation.set(key, group);
   }
 
   return groups;
 }
 
-/** Summarize historical assignment capital and today's open position value.
- * Realized net P&L is carried on closed-trade ledger records when the source is complete. */
 export function summarizeGuestTrancheLedger(
   records: GuestTrancheLedgerRecord[],
   activeTranches: ActiveBrokerTranche[] = []
