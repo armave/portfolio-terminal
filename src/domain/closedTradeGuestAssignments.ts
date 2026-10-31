@@ -4,6 +4,7 @@ interface ClosedTradeGuestMetrics {
   quantity: number;
   averagePrice: number | null;
   purchasedAt: number | null;
+  assignedAt?: number | null;
 }
 
 export interface ClosedTradeOperationDateSource {
@@ -86,29 +87,54 @@ export function buildClosedTradeGuestLedgerUpserts(
 ): ClosedTradeGuestLedgerUpsert[] {
   const sourceByKey = new Map(sourceRows.map((row) => [row.allocationKey, row]));
   const result: ClosedTradeGuestLedgerUpsert[] = [];
+  const savedAllocations = allocations || {};
+  const allocationKeys = new Set([
+    ...Object.keys(savedAllocations),
+    // Active-tranche guest assignments are inferred from FIFO sell attribution.
+    // They must flow into LOTS even when an admin never edited the closed row.
+    ...sourceRows
+      .filter((row) => Object.keys(row.guestMetrics || {}).length > 0)
+      .map((row) => row.allocationKey)
+  ]);
 
-  for (const [allocationKey, allocation] of Object.entries(allocations || {})) {
+  for (const allocationKey of allocationKeys) {
     const source = sourceByKey.get(allocationKey);
     if (!source) continue;
-    const ticker = String(source.ticker || '').trim().toUpperCase().replace(/\.US$/i, '');
+    const ticker = String(source.ticker || '').trim().toUpperCase().replace(/\\.US$/i, '');
     if (!/^[A-Z0-9.^=-]{1,20}$/.test(ticker)) continue;
 
+    const isAutomaticallyAttributed = !Object.prototype.hasOwnProperty.call(savedAllocations, allocationKey);
+    const allocation = savedAllocations[allocationKey];
     const currentGuestId = String(allocation?.guestId || '').trim();
     const currentCashQuantity = Number(allocation?.cashQuantity);
     const hasCurrentAssignment = Boolean(currentGuestId) &&
       Number.isFinite(currentCashQuantity) && currentCashQuantity > 0 && currentCashQuantity <= 1e9;
 
     const history = new Map<string, { guestId: string; assignedQuantity: number; assignedAt: number }>();
-    for (const item of Array.isArray(allocation?.guestAssignments) ? allocation.guestAssignments : []) {
-      const guestId = String(item?.guestId || '').trim();
-      const quantity = Number(item?.assignedQuantity);
-      const assignedAt = Number(item?.assignedAt);
-      if (!guestId || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9) continue;
-      history.set(guestId, {
-        guestId,
-        assignedQuantity: quantity,
-        assignedAt: Number.isFinite(assignedAt) && assignedAt > 0 ? assignedAt : updatedAt
-      });
+    if (isAutomaticallyAttributed) {
+      for (const [guestIdValue, metric] of Object.entries(source.guestMetrics || {})) {
+        const guestId = String(guestIdValue || '').trim();
+        const quantity = Number(metric?.quantity);
+        const assignedAt = Number(metric?.assignedAt);
+        if (!guestId || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9) continue;
+        history.set(guestId, {
+          guestId,
+          assignedQuantity: quantity,
+          assignedAt: Number.isFinite(assignedAt) && assignedAt > 0 ? assignedAt : updatedAt
+        });
+      }
+    } else {
+      for (const item of Array.isArray(allocation?.guestAssignments) ? allocation.guestAssignments : []) {
+        const guestId = String(item?.guestId || '').trim();
+        const quantity = Number(item?.assignedQuantity);
+        const assignedAt = Number(item?.assignedAt);
+        if (!guestId || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1e9) continue;
+        history.set(guestId, {
+          guestId,
+          assignedQuantity: quantity,
+          assignedAt: Number.isFinite(assignedAt) && assignedAt > 0 ? assignedAt : updatedAt
+        });
+      }
     }
 
     // Migrate rows saved before assignment history was introduced.
@@ -118,15 +144,16 @@ export function buildClosedTradeGuestLedgerUpserts(
         guestId: currentGuestId,
         assignedQuantity: currentCashQuantity,
         assignedAt: previous?.assignedAt ||
-          (Number.isFinite(Number(allocation.assignedAt)) && Number(allocation.assignedAt) > 0
-            ? Number(allocation.assignedAt) : updatedAt)
+          (Number.isFinite(Number(allocation?.assignedAt)) && Number(allocation?.assignedAt) > 0
+            ? Number(allocation?.assignedAt) : updatedAt)
       });
     }
 
     const rowKey = stableKey(allocationKey);
     const sourceQuantity = Number(source.quantity);
     for (const assignment of history.values()) {
-      const isCurrent = hasCurrentAssignment && assignment.guestId === currentGuestId;
+      const isCurrent = isAutomaticallyAttributed ||
+        (hasCurrentAssignment && assignment.guestId === currentGuestId);
       const guestKey = stableKey(assignment.guestId);
       const guestMetric = source.guestMetrics?.[assignment.guestId];
       const averagePrice = guestMetric
@@ -138,7 +165,9 @@ export function buildClosedTradeGuestLedgerUpserts(
       // A Trade date must come from its closing operation, never from the
       // source buy date or the time the guest assignment was created.
       const operationAt = parseTrancheTimestamp(source.operationAt);
-      const assignedQuantity = isCurrent ? currentCashQuantity : assignment.assignedQuantity;
+      const assignedQuantity = isAutomaticallyAttributed
+        ? assignment.assignedQuantity
+        : isCurrent ? currentCashQuantity : assignment.assignedQuantity;
       const proportion = Number.isFinite(sourceQuantity) && sourceQuantity > 0
         ? Math.min(1, assignedQuantity / sourceQuantity) : null;
       const netProfit = source.netProfit !== null && source.netProfit !== undefined &&
@@ -154,7 +183,7 @@ export function buildClosedTradeGuestLedgerUpserts(
           trancheId: 'closed-trade:' + rowKey,
           ticker,
           name: String(source.name || ticker).trim().slice(0, 120) || ticker,
-          assignedQuantity: isCurrent ? currentCashQuantity : assignment.assignedQuantity,
+          assignedQuantity,
           openQuantity: 0,
           averagePrice: averagePrice !== null && Number.isFinite(Number(averagePrice)) && Number(averagePrice) > 0
             ? Number(averagePrice) : null,
