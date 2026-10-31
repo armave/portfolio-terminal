@@ -237,6 +237,10 @@ export interface GuestTrancheLedgerRecord {
   /** Market value is optional because closed tranches have no current valuation. */
   marketPrice?: number | null;
   marketValue?: number | null;
+  /** Date of the transaction represented by this ledger row (buy for Tranche, sell for Trade). */
+  operationAt?: number | null;
+  /** Current market value for open tranches or attributed sale proceeds for closed trades. */
+  value?: number | null;
   purchasedAt: number | null;
   assignedAt: number;
   updatedAt: number;
