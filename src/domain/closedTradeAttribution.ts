@@ -272,6 +272,7 @@ export function attributeClosedTradeExecutions<T extends ExecutionLike>(
       costKnown: boolean;
       purchasedAt: number | null;
       purchaseDateKnown: boolean;
+      assignedAt: number | null;
     }>();
     const fundingTypes = new Set<ActiveTrancheType>();
     let cashQuantitySold = 0;
