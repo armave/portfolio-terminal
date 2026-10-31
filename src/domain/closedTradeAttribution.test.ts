@@ -34,6 +34,37 @@ describe('closed trade tranche attribution', () => {
     });
   });
 
+  it('carries a guest-assigned default-Cash tranche into a sale when no funding override exists', () => {
+    const buy = { id: 'assigned-default-buy', ticker: 'AAPL', side: 'BUY', quantity: 4, executedAt: at(9) };
+    const sale = { id: 'assigned-default-sale', ticker: 'AAPL', side: 'SELL', quantity: 3, executedAt: at(12) };
+    const id = trancheId('AAPL', at(9), 'assigned-default-buy');
+    const result = attributeClosedTradeExecutions([buy, sale], {
+      guestAssignments: { [id]: 'guest-default' },
+      guestAssignmentDetails: {
+        [id]: {
+          assignmentId: 'assignment-default',
+          guestId: 'guest-default',
+          assignedAt: at(10),
+          assignedQuantity: 4
+        }
+      }
+    }).get(sale);
+
+    expect(result).toMatchObject({
+      fundingType: 'cash',
+      cashQuantity: 3,
+      marginQuantity: 0,
+      guestAllocations: [{ guestId: 'guest-default', quantity: 3 }],
+      guestMetrics: {
+        'guest-default': {
+          quantity: 3,
+          purchasedAt: at(9),
+          assignedAt: at(10)
+        }
+      }
+    });
+  });
+
   it('returns FIFO-weighted buy cost and tranche date for the sale and assigned guest', () => {
     const firstBuy = { id: 'buy-a', ticker: 'AAPL', side: 'BUY', quantity: 2, price: 100, executedAt: at(9) };
     const secondBuy = { id: 'buy-b', ticker: 'AAPL', side: 'BUY', quantity: 2, price: 120, executedAt: at(9, 4) };
