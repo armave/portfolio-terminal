@@ -934,7 +934,7 @@ describe('market news request deduplication', () => {
   it('caches news by ticker and refreshes only when explicitly requested', async () => {
     clearYahooDeepStockDataCache();
     let newsRequestCount = 0;
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => ({
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _options?: RequestInit) => ({
       ok: true,
       headers: new Headers({ 'Content-Type': 'application/json' }),
       json: async () => [{ headline: newsRequestCount++ === 0 ? 'First result' : 'Fresh result' }]
