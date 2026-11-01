@@ -47,6 +47,7 @@ describe('Freedom execution contract normalization', () => {
       quantity: 2,
       price: 20,
       executedAt: '2026-10-31T11:00:00Z',
+      tradeValue: 40,
       currency: 'USD',
       commissionCurrency: 'USD',
       marginFeeAllocations: { 'freedom-1': 0.17 },
@@ -56,6 +57,8 @@ describe('Freedom execution contract normalization', () => {
 
     expect(trade).toMatchObject({
       id: 'saved-sell-1',
+      executedAt: '2026-10-31T11:00:00Z',
+      tradeValue: 40,
       marginFeeAllocations: { 'freedom-1': 0.17 },
       feesAndCommissions: 0.42,
       netProfit: 3.58

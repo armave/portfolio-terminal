@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useReducer, useRef, useState } from 'preact/hooks';
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
-import { getAppLanguage } from '../services/i18n';
+import { getAppLanguage, translateText } from '../services/i18n';
 import { fetchFreedomCashflows, listUsers, normalizeFreedomTrades, pullCloudHistory, pushCloudHistory, type AuthUser } from '../services/api';
-import { loadSavedHistory, savePortfolioSnapshot } from '../services/storage';
+import {
+  hasFreedomCashflowHistoryBaseline,
+  loadSavedHistory,
+  markFreedomCashflowHistoryBaseline,
+  savePortfolioSnapshot
+} from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, normalizeSavedFreedomCashflows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
@@ -15,13 +20,37 @@ import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from '../do
 import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { TableScrollRegion } from './TableScrollRegion';
+import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
+import { getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 
-export function ClosedHistoryDesk() {
+/** Restore the local execution snapshot synchronously before the first Trades render. */
+function loadInitialBrokerExecutions(): FreedomExecutedTrade[] {
+  const savedExecutions = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
+  const currentExecutions = portfolioStore.getState().brokerExecutedTrades || [];
+  return mergeBrokerExecutionHistory(
+    savedExecutions,
+    preservePersistedBrokerFeeAllocations(currentExecutions, savedExecutions)
+  );
+}
+
+export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
   const state = usePortfolio();
-  const [brokerTrades, setBrokerTrades] = useState<FreedomExecutedTrade[]>([]);
-  const [brokerTradesLoading, setBrokerTradesLoading] = useState(true);
-  const [brokerTradesError, setBrokerTradesError] = useState(false);
-  const [brokerTradesRefreshing, setBrokerTradesRefreshing] = useState(false);
+  const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
+    brokerExecutionHistoryReducer<FreedomExecutedTrade>,
+    undefined,
+    () => createBrokerExecutionHistoryState(loadInitialBrokerExecutions(), [], true)
+  );
+  const brokerTrades = brokerExecutionHistory.trades;
+  const brokerTradesLoading = brokerExecutionHistory.status === 'loading';
+  const brokerTradesRefreshing = brokerExecutionHistory.status === 'refreshing';
+  const brokerTradesError = brokerExecutionHistory.status === 'stale' ||
+    brokerExecutionHistory.status === 'error';
+  // Keep the first cached range for both API requests. The broker trade refresh
+  // may return newer sells before the cashflow request starts; that must not move
+  // the cashflow cursor forward and skip fees for those newly fetched trades.
+  const cashflowSyncStartDate = useRef(
+    getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])
+  );
   const [cashflowSyncMessage, setCashflowSyncMessage] = useState('');
   const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
@@ -33,8 +62,7 @@ export function ClosedHistoryDesk() {
   const cashflowSyncStarted = useRef(false);
   const latestBrokerFetch = useRef<FreedomExecutedTrade[] | null>(null);
   const retryBrokerTrades = () => {
-    setBrokerTradesError(false);
-    setBrokerTradesRefreshing(true);
+    dispatchBrokerExecutionHistory({ type: 'refresh' });
     emitBrokerEvent('broker:request-executed-trades');
   };
   useEffect(() => {
@@ -62,7 +90,7 @@ export function ClosedHistoryDesk() {
       // cloud-history read completed. Enrich it from persisted calculated rows by
       // execution ID before deciding which copy is safe to restore.
       const localExecutions = mergeBrokerExecutionHistory(
-        savedExecutions,
+        [...savedExecutions, ...brokerTrades],
         preservePersistedBrokerFeeAllocations(currentExecutions, savedExecutions)
       );
       const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
@@ -90,6 +118,13 @@ export function ClosedHistoryDesk() {
         cashflows: localCashflows
       };
       portfolioStore.setState(resolved);
+      // Calculate the next incremental cursor only after cloud history has been
+      // reconciled with the device snapshot, so a stale one-row local cache does
+      // not narrow the next cashflow request prematurely.
+      cashflowSyncStartDate.current = getLatestClosedTradeDate(
+        resolved.brokerExecutedTrades,
+        current.closedTrades || []
+      );
       if (JSON.stringify(resolved) !== JSON.stringify(cloud) && (resolved.brokerExecutedTrades.length || resolved.cashflows.length)) {
         try { await pushCloudHistory(resolved); }
         catch (error) { console.error('Unable to sync closed history:', error); }
@@ -223,7 +258,9 @@ export function ClosedHistoryDesk() {
           }
         }
       }
-      if (updatedTradeCount > 0 && brokerExecutions.length) setBrokerTrades(updatedExecutions);
+      if (updatedTradeCount > 0 && brokerExecutions.length) {
+        dispatchBrokerExecutionHistory({ type: 'success', trades: updatedExecutions });
+      }
       return true;
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unknown cashflow processing error.';
@@ -237,15 +274,18 @@ export function ClosedHistoryDesk() {
     if (cashflowSyncStarted.current) return;
     cashflowSyncStarted.current = true;
     try {
-      const response = await fetchFreedomCashflows();
+      const hasCompleteBaseline = hasFreedomCashflowHistoryBaseline(accountId);
+      const fromDate = hasCompleteBaseline ? cashflowSyncStartDate.current : undefined;
+      const response = await fetchFreedomCashflows(fromDate);
       const fetchedRows = normalizeFreedomCashflowRows(response);
       const existingRows = portfolioStore.getState().cashflows || [];
       const mergedRows = mergeFreedomCashflowRows(existingRows, fetchedRows);
 
-      if (mergedRows.length > 0) {
-        const saved = await processCashflowRows(mergedRows, true);
-        if (!saved) return;
-      }
+      // On the first upgraded session, backfill the complete ledger before
+      // switching to date-bounded requests. Process empty snapshots as well.
+      const saved = await processCashflowRows(mergedRows, true);
+      if (!saved) return;
+      if (!hasCompleteBaseline) markFreedomCashflowHistoryBaseline(accountId);
 
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unknown broker API error.';
@@ -297,14 +337,10 @@ export function ClosedHistoryDesk() {
         [...savedFeeRows, ...stored]
       );
       latestBrokerFetch.current = normalizedPage;
-      // TradeNet now requests the complete execution history, including older
-      // opening buys needed for FIFO duration and buy-commission matching. Retain
-      // already-persisted rows as a compatibility safeguard during reconciliation.
-      const normalized = mergeBrokerExecutionHistory([...savedFeeRows, ...stored], normalizedPage);
-      setBrokerTrades(normalized);
-      setBrokerTradesLoading(false);
-      setBrokerTradesError(false);
-      setBrokerTradesRefreshing(false);
+      // The API may return only the requested date range. Retain the complete
+      // pre-refresh cache, including opening buys needed for FIFO matching.
+      const normalized = mergeBrokerExecutionHistory([...savedFeeRows, ...stored, ...brokerTrades], normalizedPage);
+      dispatchBrokerExecutionHistory({ type: 'success', trades: normalized });
       // Persist the normalized source rows in canonical state so they survive
       // refresh and can be reapplied after broker history has hydrated.
       const current = portfolioStore.getState().brokerExecutedTrades || [];
@@ -339,10 +375,9 @@ export function ClosedHistoryDesk() {
       persistBrokerTrades(trades);
     });
     const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => {
-      setBrokerTradesLoading(false);
-      setBrokerTradesRefreshing(false);
-      setBrokerTradesError(true);
+      dispatchBrokerExecutionHistory({ type: 'failure' });
     });
+    dispatchBrokerExecutionHistory({ type: 'refresh' });
     emitBrokerEvent('broker:request-executed-trades');
     return () => {
       removeTradesListener();
@@ -515,8 +550,12 @@ export function ClosedHistoryDesk() {
   const knownDurations = trades.map((row) => Number((row.trade as any).holdingDays ?? (row.trade as any).daysHeld)).filter((days) => Number.isFinite(days) && days >= 0);
   const averageHoldingDays = knownDurations.length ? knownDurations.reduce((total, days) => total + days, 0) / knownDurations.length : null;
   const winRate = profitKnownTrades.length ? (winningTrades / profitKnownTrades.length) * 100 : 0;
+  const backgroundSyncPending = !cashflowHistoryReady || !cashflowSyncReady || !cashflowAllocationReady;
+  const isBackgroundUpdating = backgroundSyncPending || brokerTradesRefreshing;
 
-  if (brokerTradesLoading || !cashflowHistoryReady || !cashflowSyncReady || !cashflowAllocationReady) {
+  // Only block the desk when there is nothing cached or app-owned to display.
+  // Cloud reconciliation and fee refreshes continue independently in the background.
+  if (brokerTradesLoading && brokerTrades.length === 0 && appTrades.length === 0) {
     return <DeskLoading
       title="Preparing trades"
       message="Restoring saved trade history and loading the latest Freedom activity…"
@@ -528,8 +567,33 @@ export function ClosedHistoryDesk() {
     <section class="rounded-xl border-card p-4 space-y-4" aria-label="Trades">
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
         <div>
-          <h2 class="text-base font-black uppercase tracking-wider text-purple-300">
+          <h2 class="flex items-center gap-2 text-base font-black uppercase tracking-wider text-purple-300">
             Trades
+            {isBackgroundUpdating && (
+              <span
+                role="status"
+                aria-label={translateText('Updating saved trade calculations in the background…')}
+                title={translateText('Updating saved trade calculations in the background…')}
+                class="inline-flex h-4 w-4 items-center justify-center text-purple-300"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  class="h-4 w-4 flex-none animate-spin text-purple-300 motion-reduce:animate-none"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <circle
+                    cx="8"
+                    cy="8"
+                    r="6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeDasharray="24 14"
+                  />
+                </svg>
+              </span>
+            )}
           </h2>
           <p class="text-xs text-slate-400">
             Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.
@@ -543,7 +607,7 @@ export function ClosedHistoryDesk() {
       </div>
 
       {cashflowSyncMessage && <p role="alert" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-200 transition-all">{cashflowSyncMessage}</p>}
-      {brokerTradesRefreshing && <p role="status" aria-live="polite" class="rounded-lg border border-cyan-900/60 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-200">Refreshing TradeNet history…</p>}
+
       {brokerTradesError && trades.length > 0 && (
         <div role="alert" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
           <span>TradeNet refresh failed. Showing saved history, which may be out of date.</span>
@@ -556,25 +620,25 @@ export function ClosedHistoryDesk() {
           >{brokerTradesRefreshing ? 'Retrying…' : 'Retry'}</button>
         </div>
       )}
-      <div class="grid grid-cols-2 gap-2 lg:grid-cols-4" aria-label="Closed trade performance summary">
+      <div class="grid grid-cols-2 gap-2 lg:grid-cols-4 text-center" aria-label="Closed trade performance summary">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{hasUnknownProfit ? 'Known net P&L' : 'Realized net P&L'}</div>
-          <div class={`mt-1 font-mono text-sm font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+          <div class={`mt-1 font-mono text-lg font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
             {realizedNet >= 0 ? '+' : '−'}${formatUSD(Math.abs(realizedNet))}
           </div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Win rate</div>
-          <div class="mt-1 font-mono text-sm font-bold text-white">{winRate.toFixed(1)}%</div>
+          <div class="mt-1 font-mono text-lg font-bold text-white">{winRate.toFixed(1)}%</div>
           <div class="text-[10px] text-slate-500">{winningTrades} of {profitKnownTrades.length} records with known profit profitable</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees &amp; commissions</div>
-          <div class="mt-1 font-mono text-sm font-bold text-slate-200">{hasIncompleteCommissions ? '≥' : ''}${formatUSD(totalFees)}</div>
+          <div class="mt-1 font-mono text-lg font-bold text-slate-200">{hasIncompleteCommissions ? '≥' : ''}${formatUSD(totalFees)}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Avg. holding time</div>
-          <div class="mt-1 font-mono text-sm font-bold text-slate-200">{averageHoldingDays === null ? '—' : averageHoldingDays.toFixed(1) + ' days'}</div>
+          <div class="mt-1 font-mono text-lg font-bold text-slate-200">{averageHoldingDays === null ? '—' : averageHoldingDays.toFixed(1) + ' days'}</div>
         </div>
       </div>
 

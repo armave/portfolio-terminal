@@ -2,6 +2,8 @@ import type { BrokerAssumptions } from '../types/portfolio';
 
 const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
 const STORAGE_KEY_CLOSED_HISTORY = 'portfolio_closed_history_v1';
+const STORAGE_KEY_TRADE_HISTORY_BASELINE = 'portfolio_tradenet_trade_history_baseline_v1';
+const STORAGE_KEY_CASHFLOW_HISTORY_BASELINE = 'portfolio_tradenet_cashflow_history_baseline_v1';
 let lastPersistedHistory: ClosedHistorySnapshot | null = null;
 
 const STORAGE_KEY_LEGACY_STATE = 'portfolio_state';
@@ -30,6 +32,53 @@ export interface PortfolioSnapshotOptions {
 /** Returns browser storage only when it is available to the current runtime. */
 function getBrowserStorage(): Storage | null {
   return typeof localStorage !== 'undefined' && localStorage ? localStorage : null;
+}
+
+/** A warm cache is eligible for date-bounded requests only after a full baseline has been persisted. */
+function historyBaselineKey(key: string, accountId: string): string {
+  return key + ':' + encodeURIComponent(String(accountId || ''));
+}
+
+export function hasFreedomTradeHistoryBaseline(accountId: string): boolean {
+  if (!accountId) return false;
+  try {
+    return getBrowserStorage()?.getItem(historyBaselineKey(STORAGE_KEY_TRADE_HISTORY_BASELINE, accountId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markFreedomTradeHistoryBaseline(accountId: string): boolean {
+  if (!accountId) return false;
+  try {
+    const storage = getBrowserStorage();
+    if (!storage) return false;
+    storage.setItem(historyBaselineKey(STORAGE_KEY_TRADE_HISTORY_BASELINE, accountId), '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function hasFreedomCashflowHistoryBaseline(accountId: string): boolean {
+  if (!accountId) return false;
+  try {
+    return getBrowserStorage()?.getItem(historyBaselineKey(STORAGE_KEY_CASHFLOW_HISTORY_BASELINE, accountId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markFreedomCashflowHistoryBaseline(accountId: string): boolean {
+  if (!accountId) return false;
+  try {
+    const storage = getBrowserStorage();
+    if (!storage) return false;
+    storage.setItem(historyBaselineKey(STORAGE_KEY_CASHFLOW_HISTORY_BASELINE, accountId), '1');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Removes related legacy keys together so credential cleanup follows one path. */

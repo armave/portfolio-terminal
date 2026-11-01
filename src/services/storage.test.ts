@@ -20,7 +20,11 @@ import {
   clearBrokerRules,
   getQuoteRefreshInterval,
   saveQuoteRefreshInterval,
-  saveApiKeys
+  saveApiKeys,
+  hasFreedomCashflowHistoryBaseline,
+  hasFreedomTradeHistoryBaseline,
+  markFreedomCashflowHistoryBaseline,
+  markFreedomTradeHistoryBaseline
 } from './storage.ts';
 
 describe('storage service', () => {
@@ -513,6 +517,29 @@ describe('storage service', () => {
       });
 
       expect(saveSavedHistory({ brokerExecutedTrades: [], cashflows: [] })).toBe(false);
+    });
+  });
+
+  describe('TradeNet history baseline markers', () => {
+    it('stores trade and cashflow completeness separately for each account', () => {
+      expect(hasFreedomTradeHistoryBaseline('admin-a')).toBe(false);
+      expect(hasFreedomCashflowHistoryBaseline('admin-a')).toBe(false);
+
+      expect(markFreedomTradeHistoryBaseline('admin-a')).toBe(true);
+      expect(hasFreedomTradeHistoryBaseline('admin-a')).toBe(true);
+      expect(hasFreedomCashflowHistoryBaseline('admin-a')).toBe(false);
+
+      expect(markFreedomCashflowHistoryBaseline('admin-a')).toBe(true);
+      expect(hasFreedomCashflowHistoryBaseline('admin-a')).toBe(true);
+      expect(hasFreedomTradeHistoryBaseline('admin-b')).toBe(false);
+      expect(hasFreedomCashflowHistoryBaseline('admin-b')).toBe(false);
+    });
+
+    it('does not mark a missing account identity as complete', () => {
+      expect(markFreedomTradeHistoryBaseline('')).toBe(false);
+      expect(markFreedomCashflowHistoryBaseline('')).toBe(false);
+      expect(hasFreedomTradeHistoryBaseline('')).toBe(false);
+      expect(hasFreedomCashflowHistoryBaseline('')).toBe(false);
     });
   });
 

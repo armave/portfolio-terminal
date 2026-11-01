@@ -271,6 +271,26 @@ it('treats legacy totalCommissions as commission-only when no aggregate fee fiel
 });
 
 describe('bounded broker execution history merge', () => {
+  it('retains the complete displayed cache when an incremental response contains one recent sale', () => {
+    const cached = Array.from({ length: 77 }, (_, index) => ({
+      id: 'cached-' + index,
+      ticker: index === 76 ? 'META' : 'OLD' + index,
+      side: 'sell',
+      executedAt: '2026-10-' + String(Math.max(1, 28 - Math.floor(index / 3))).padStart(2, '0') + 'T10:00:00Z'
+    }));
+    const incrementalPage = [{
+      id: 'cached-76',
+      ticker: 'META',
+      side: 'sell',
+      executedAt: '2026-10-29T10:00:00Z',
+      profit: 12
+    }];
+    const merged = mergeBrokerExecutionHistory(cached, incrementalPage);
+    expect(merged).toHaveLength(77);
+    expect(merged.find((trade) => trade.id === 'cached-0')).toBeDefined();
+    expect(merged.find((trade) => trade.id === 'cached-76')).toMatchObject({ profit: 12 });
+  });
+
   it('retains older executions and replaces refreshed rows by stable trade ID', () => {
     const older = { id: 'old-1', ticker: 'AAPL', side: 'buy', quantity: 5, executedAt: '2025-01-01T10:00:00Z' };
     const refreshed = { id: 'recent-1', ticker: 'AAPL', side: 'sell', quantity: 5, executedAt: '2026-01-01T10:00:00Z' };

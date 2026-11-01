@@ -77,7 +77,7 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
   };
   return rows.map((value): FreedomExecutedTrade => {
     const row = asRecord(value) ?? {};
-    const executedAt = row.date ?? row.time ?? row.datetime ?? row.exec_time ?? null;
+    const executedAt = row.executedAt ?? row.date ?? row.time ?? row.datetime ?? row.exec_time ?? null;
     return {
       id: String(row.id ?? row.trade_id ?? row.tradeId ?? stableFallbackId(row)),
       ticker: String(row.instr_nm ?? row.i ?? row.ticker ?? row.symbol ?? row.instr ?? ''),
@@ -87,7 +87,7 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
       price: positiveMagnitudeOrNull(row.p, row.price, row.exec_price),
       currency: String(row.curr_c ?? row.curr ?? row.currency ?? row.base_currency ?? ''),
       executedAt: executedAt === null || executedAt === undefined ? null : String(executedAt),
-      tradeValue: numberOrNull(row.v ?? row.summ ?? row.value),
+      tradeValue: numberOrNull(row.tradeValue ?? row.v ?? row.summ ?? row.value),
       profit: numberOrNull(row.profit ?? row.pnl),
       marginFee: numberOrNull(row.margin_fee ?? row.marginFee ?? row.margin_interest ?? row.marginInterest ?? row.fee_margin ?? row.feeMargin ?? row.margin_commission ?? row.margin_commiss),
       commission: numberOrNull(row.commission ?? row.commiss ?? row.commissions ?? row.fee ?? row.commiss_exchange),

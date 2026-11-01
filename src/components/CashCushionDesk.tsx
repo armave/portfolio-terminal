@@ -346,7 +346,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     {!hasMarketPrice && <p class="mt-1 text-[10px] leading-relaxed text-amber-300" role="status">Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.</p>}
                   </div>
                   <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-800 pt-3">
-                    <div><p class="text-[10px] text-slate-500">Total shares</p><p class="mt-1 font-mono text-sm font-bold text-slate-200">{shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
+                    <div><p class="text-[10px] text-slate-500">Total shares</p><p class="mt-1 font-mono text-lg font-bold text-slate-200">{shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
                     <div><p class="text-[10px] text-slate-500">Price · share</p><p class="mt-1 font-mono text-sm font-bold text-emerald-300">{price !== null ? formatUSD(price) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Avg. entry</p><p class="mt-1 font-mono text-sm text-slate-300">{hasCost ? formatUSD(averagePrice) : '—'}</p></div>
                     <div><p class="text-[10px] text-slate-500">Unrealized P/L</p><p class={`mt-1 font-mono text-sm font-bold ${pnl === null ? 'text-slate-500' : pnl >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{pnl === null ? '—' : `${pnl >= 0 ? '+' : '−'}${formatUSD(Math.abs(pnl))}`}{pnlPercent !== null ? <span class="block text-[10px] font-normal">{pnlPercent >= 0 ? '+' : ''}{pnlPercent.toFixed(2)}%</span> : null}</p></div>

@@ -67,11 +67,11 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
           <p class="text-[9px] uppercase tracking-wide text-slate-500">Open cost basis</p>
-          <p class="mt-1 font-mono text-sm font-bold text-slate-100">{summary.openCostBasis > 0 ? formatUSD(summary.openCostBasis) : '—'}</p>
+          <p class="mt-1 font-mono text-lg font-bold text-slate-100">{summary.openCostBasis > 0 ? formatUSD(summary.openCostBasis) : '—'}</p>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900/70 p-2.5">
           <p class="text-[9px] uppercase tracking-wide text-slate-500">Open market value</p>
-          <p class="mt-1 font-mono text-sm font-bold text-cyan-300">{summary.pricedOpenTranches + summary.unpricedOpenTranches > 0 ? marketValueLabel : '—'}</p>
+          <p class="mt-1 font-mono text-lg font-bold text-cyan-300">{summary.pricedOpenTranches + summary.unpricedOpenTranches > 0 ? marketValueLabel : '—'}</p>
         </div>
       </div>
       <div class="flex flex-wrap items-end gap-2">
