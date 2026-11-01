@@ -18,7 +18,6 @@ import {
   clearFreedomCashflowCache,
   fetchFreedomCashflows,
   fetchFallbackQuote,
-  normalizeYahooBatchResults,
   validateGatewaySecret,
   fetchYahooDeepStockData,
   fetchYahooQuoteData,
@@ -1072,26 +1071,6 @@ describe('fallback provider quote normalization', () => {
 });
 
 
-describe('Yahoo batch result normalization', () => {
-  it('keeps individual Yahoo results unchanged', () => {
-    const results = [{ symbol: 'AAPL', price: { current: 100 } }, { symbol: 'MSFT', error: 'unavailable' }];
-    expect(normalizeYahooBatchResults(results, ['AAPL', 'MSFT'])).toBe(results);
-  });
-
-  it('creates per-symbol fallback entries when the Yahoo batch request fails', () => {
-    expect(normalizeYahooBatchResults(null, ['AAPL', 'MSFT'])).toEqual([
-      { symbol: 'AAPL', error: 'Yahoo batch request failed' },
-      { symbol: 'MSFT', error: 'Yahoo batch request failed' }
-    ]);
-  });
-
-  it('wraps a single-symbol result in an array', () => {
-    const result = { symbol: 'AAPL', price: { current: 100 } };
-    expect(normalizeYahooBatchResults(result, ['AAPL'])).toEqual([result]);
-  });
-});
-
-
 describe('lightweight Yahoo quote batching', () => {
   beforeEach(() => {
     clearYahooDeepStockDataCache();
@@ -1118,13 +1097,43 @@ describe('lightweight Yahoo quote batching', () => {
       fetchYahooQuoteData('MSFT')
     ]);
 
-    expect(aapl.price.current).toBe(210);
-    expect(msft.price.current).toBe(420);
+    expect(aapl?.price).toMatchObject({ current: 210 });
+    expect(msft?.price).toMatchObject({ current: 420 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('symbol')).toBe('AAPL,MSFT');
 
     const cached = await fetchYahooQuoteData('AAPL');
-    expect(cached.price.current).toBe(210);
+    expect(cached?.price).toMatchObject({ current: 210 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Yahoo quote batch contract handling', () => {
+  beforeEach(() => clearYahooDeepStockDataCache());
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('resolves omitted batch symbols with explicit errors so callers can use fallback providers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => [{ symbol: 'AAPL', price: { current: 210 } }]
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const [aapl, msft] = await Promise.all([
+      fetchYahooQuoteData('AAPL'),
+      fetchYahooQuoteData('MSFT')
+    ]);
+
+    expect(aapl?.price).toMatchObject({ current: 210 });
+    expect(msft).toMatchObject({
+      symbol: 'MSFT',
+      error: 'Yahoo batch response omitted this symbol.'
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
@@ -1156,6 +1165,8 @@ describe('Yahoo deep-data forced refresh', () => {
     expect(cached.price.current).toBe(210);
     expect(refreshed.price.current).toBe(212);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' });
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'POST', cache: 'no-store' });
   });
 
   it('does not join an in-flight request on force or let the older response overwrite the cache', async () => {
