@@ -286,6 +286,12 @@ export async function saveApiKeys(options: SaveApiKeysOptions): Promise<boolean>
   return true;
 }
 
+interface PortfolioSnapshotPersistResult {
+  success: boolean;
+  stateChanged: boolean;
+  savedAt: number | null;
+}
+
 /**
  * Persists the portfolio state and any changed closed-history sidecar as one
  * best-effort local transaction. If a later key fails, already-written keys
@@ -295,9 +301,9 @@ function persistPortfolioSnapshot(
   state: Record<string, any>,
   history: ClosedHistorySnapshot | null,
   options: PortfolioSnapshotOptions = {}
-): boolean {
+): PortfolioSnapshotPersistResult {
   const storage = getBrowserStorage();
-  if (!storage) return false;
+  if (!storage) return { success: false, stateChanged: false, savedAt: null };
 
   const savedAt = Date.now();
   let persistedStateJson: string;
@@ -320,7 +326,7 @@ function persistPortfolioSnapshot(
     }
   } catch (err) {
     console.error('Failed to serialize portfolio snapshot:', err);
-    return false;
+    return { success: false, stateChanged: false, savedAt: null };
   }
 
   const writes: Array<{ key: string; value: string }> = [
@@ -340,7 +346,7 @@ function persistPortfolioSnapshot(
     }
   } catch (err) {
     console.error('Failed to inspect existing portfolio snapshot before saving:', err);
-    return false;
+    return { success: false, stateChanged: false, savedAt: null };
   }
 
   let previousComparable = '';
@@ -380,19 +386,12 @@ function persistPortfolioSnapshot(
       }
     }
     console.error('Failed to save portfolio snapshot; attempted local changes were rolled back:', err);
-    return false;
+    return { success: false, stateChanged: false, savedAt: null };
   }
 
   state.lastUpdated = savedAt;
   if (history) lastPersistedHistory = history;
-
-  // Opening a section or re-saving an identical state must not trigger a full
-  // cloud write. Sync only when persisted portfolio data actually changed.
-  // Closed-history synchronization is owned by its dedicated service.
-  if (stateChanged) {
-    return true;
-  }
-  return true;
+  return { success: true, stateChanged, savedAt };
 }
 
 /**
@@ -410,7 +409,7 @@ export function savePortfolioSnapshot(
       !Array.isArray(history.cashflows)) {
     return false;
   }
-  return persistPortfolioSnapshot(state, history, options);
+  return persistPortfolioSnapshot(state, history, options).success;
 }
 
 /**
@@ -422,9 +421,7 @@ export function saveState(
   state?: Record<string, any> | null,
   onPushToGist?: (forcePrompt?: boolean) => void
 ): boolean {
-  if (!state || typeof state !== 'object' || Array.isArray(state)) {
-    return false;
-  }
+  if (!state || typeof state !== 'object' || Array.isArray(state)) return false;
 
   const brokerExecutedTrades = Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades : [];
   const cashflows = Array.isArray(state.cashflows) ? state.cashflows : [];
@@ -435,48 +432,13 @@ export function saveState(
     lastPersistedHistory.cashflows !== cashflows
   );
 
-  const previousUpdatedAt = state.lastUpdated;
-  const stateForComparison = { ...state };
-  const storage = getBrowserStorage();
-  if (!storage) return false;
-  let previousComparable = '';
-  try {
-    const previousRaw = storage.getItem(STORAGE_KEY_STATE);
-    if (previousRaw) {
-      const previous = JSON.parse(previousRaw);
-      if (previous && typeof previous === 'object' && !Array.isArray(previous)) {
-        const comparable = { ...previous };
-        delete comparable.lastUpdated;
-        delete comparable.gatewaySecret;
-        previousComparable = JSON.stringify(comparable);
-      }
-    }
-  } catch (err) {
-    console.error('Failed to inspect existing portfolio state:', err);
-    return false;
-  }
+  const result = persistPortfolioSnapshot(
+    state,
+    historyChanged ? { brokerExecutedTrades, cashflows } : null
+  );
+  if (!result.success) return false;
 
-  const persistedHistory = historyChanged
-    ? { brokerExecutedTrades, cashflows }
-    : null;
-  if (!persistPortfolioSnapshot(stateForComparison, persistedHistory)) {
-    // The caller's in-memory state must not claim it was persisted successfully.
-    state.lastUpdated = previousUpdatedAt;
-    return false;
-  }
-
-  // persistPortfolioSnapshot updates its supplied object; mirror that timestamp
-  // onto the canonical caller object only after every local write succeeded.
-  state.lastUpdated = stateForComparison.lastUpdated;
-  const persistedForComparison: Record<string, unknown> = { ...state };
-  delete persistedForComparison.gatewaySecret;
-  delete persistedForComparison.brokerExecutedTrades;
-  delete persistedForComparison.cashflows;
-  delete persistedForComparison.lastUpdated;
-  const nextComparable = JSON.stringify(persistedForComparison);
-  const stateChanged = previousComparable !== nextComparable;
-
-  if (stateChanged && typeof onPushToGist === 'function') {
+  if (result.stateChanged && typeof onPushToGist === 'function') {
     try {
       onPushToGist(false);
     } catch (err) {
