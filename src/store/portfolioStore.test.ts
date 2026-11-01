@@ -942,7 +942,7 @@ describe('canonical trade lifecycle and persistence', () => {
       store.setState({
         positions: {
           ...store.getState().positions,
-          AAPL: { ...currentPosition, marginCharged: 10 } as any
+          AAPL: { ...currentPosition, marginCharged: 10 }
         }
       });
     }
