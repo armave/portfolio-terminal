@@ -72,11 +72,12 @@ describe('table pagination, Settings, and Auth fluid interactions', () => {
   const authSource = readFileSync(new URL('../components/AuthModal.tsx', import.meta.url), 'utf8');
 
   it('animates the keyed Trades page body and keeps pagination controls connected accessibly', () => {
-    expect(closedHistorySource).toContain('key={tradesPage} id="closedTradesTableBody"');
+    expect(closedHistorySource).toContain('<div key={tradesPage} class="closed-history-page-transition">');
+    expect(closedHistorySource).not.toContain('<tbody key={tradesPage}');
     expect(closedHistorySource).toContain('closed-history-page-transition');
     expect(closedHistorySource).toContain('closed-history-pagination');
     expect(closedHistorySource).toContain('aria-controls="closedTradesTableBody"');
-    expect(fluidStyles).toMatch(/\.closed-history-page-transition\s*\{[^}]*animation:\s*closed-history-page-enter/s);
+    expect(fluidStyles).toMatch(/\.closed-history-page-transition\s*\{[^}]*display:\s*flow-root/s);
     expect(fluidStyles).toMatch(/\.closed-history-pagination-controls\s*\{[^}]*flex-wrap:\s*wrap;/s);
     expect(fluidStyles).toMatch(/\.table-pagination-button:not\(:disabled\):hover/);
   });
@@ -120,9 +121,9 @@ describe('table page swaps and shared desk loading reveals', () => {
     expect(closedSource).toContain('<div key={tradesPage} class="closed-history-page-transition">');
     expect(closedSource).toContain('<tbody id="closedTradesTableBody"');
     expect(closedSource).not.toContain('<tbody key={tradesPage}');
-    expect(fluidStyles).toMatch(/\\.closed-history-page-transition\\s*\\{[^}]*display:\\s*flow-root/s);
+    expect(fluidStyles).toMatch(/\.closed-history-page-transition\s*\{[^}]*display:\s*flow-root/s);
     expect(fluidStyles).toMatch(/@keyframes trades-page-swap/);
-    expect(fluidStyles).toMatch(/animation:\\s*trades-page-swap\\s+340ms/);
+    expect(fluidStyles).toMatch(/animation:\s*trades-page-swap\s+340ms/);
   });
 
   it('reveals ready content after the shell-level loading screens for each desk', () => {
@@ -131,10 +132,10 @@ describe('table page swaps and shared desk loading reveals', () => {
     expect(closedSource).toContain('desk-content-reveal rounded-xl');
     expect(settingsSource).toContain('settings-desk desk-content-reveal');
     expect(fluidStyles).toMatch(/@keyframes desk-content-reveal/);
-    expect(fluidStyles).toMatch(/animation:\\s*desk-content-reveal\\s+420ms/);
+    expect(fluidStyles).toMatch(/animation:\s*desk-content-reveal\s+420ms/);
   });
 
   it('uses one reduced-motion rule for page swaps and all desk reveals', () => {
-    expect(fluidStyles).toMatch(/@media\\s*\\(prefers-reduced-motion:\\s*reduce\\)[\\s\\S]*\\.desk-content-reveal,[\\s\\S]*\\.closed-history-page-transition/);
+    expect(fluidStyles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*\.desk-content-reveal,[\s\S]*\.closed-history-page-transition/);
   });
 });
