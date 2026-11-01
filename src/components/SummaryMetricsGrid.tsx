@@ -16,6 +16,12 @@ import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
 import { normalizeFreedomTrades } from '../services/api';
 
+export function getUsableMarketPrice(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const price = Number(value);
+  return Number.isFinite(price) && price > 0 ? price : null;
+}
+
 function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string; rules: BrokerAssumptions }) {
   const stopOutTitle = `Estimate assumes the configured ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
   const marginRiskTitle = `Estimated from portfolio equity and configured thresholds: ${(rules.maintenanceEquityRatio * 100).toFixed(2)}% maintenance equity and ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity. Not a live broker risk indicator.`;
@@ -274,12 +280,20 @@ export function SummaryMetricsGrid() {
     let totalCommBuy = 0;
     let totalCommSell = 0;
     let totalMarginCharged = state.realizedMarginCharged || 0;
+    let pricedMarginPositionCount = 0;
+    let unpricedMarginPositionCount = 0;
 
     tickers.forEach((t) => {
       const pos = state.positions![t];
       const cost = (pos.tranches || []).reduce((sum, tr) => sum + tr.qty * tr.price, 0);
       totalInvested += cost;
-      totalMarketValue += pos.shares * pos.currentPrice;
+      const marketPrice = getUsableMarketPrice(pos.currentPrice);
+      if (pos.shares > 0 && marketPrice === null) {
+        unpricedMarginPositionCount += 1;
+      } else if (marketPrice !== null) {
+        pricedMarginPositionCount += 1;
+        totalMarketValue += pos.shares * marketPrice;
+      }
       totalCommBuy += pos.commBuy;
       const valSell = pos.shares * pos.pt;
       totalCommSell += calculateCommission(pos.shares, valSell, resolveCommissionConfig(rules));
@@ -297,8 +311,8 @@ export function SummaryMetricsGrid() {
     totalMarginCharged += openMarginCharged;
 
     const totalComms = totalCommBuy + totalCommSell;
-    const totalUnrealized = totalMarketValue - totalInvested;
-    const unrealizedPct = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
+    const totalUnrealized = unpricedMarginPositionCount === 0 ? totalMarketValue - totalInvested : null;
+    const unrealizedPct = totalUnrealized !== null && totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
     const totalDebt = Math.max(0, -(Number(state.balance) || 0));
     const dailyAccrual = totalDebt * dailyRate;
 
@@ -310,7 +324,7 @@ export function SummaryMetricsGrid() {
         : 'None';
 
     const investedText = `${formatUSD(totalInvested)} | Across ${tickers.length} Assets`;
-    const unSign = totalUnrealized >= 0 ? '+' : '';
+    const unSign = (totalUnrealized ?? 0) >= 0 ? '+' : '';
     const marginText = `-${formatUSD(totalDebt)} (${formatUSD(dailyAccrual)}/day @ ${(
       dailyRate * 100
     ).toFixed(4)}%)`;
@@ -321,7 +335,12 @@ export function SummaryMetricsGrid() {
 
     const cushionTotal = getCashCushionTotal(state);
     const quoteSummary = summarizeQuoteFreshness(
-      tickers.map((ticker) => state.positions![ticker]),
+      tickers.map((ticker) => {
+        const position = state.positions![ticker];
+        return getUsableMarketPrice(position.currentPrice) === null
+          ? { ...position, quoteUpdatedAt: undefined, quoteSource: undefined, quoteDetails: undefined }
+          : position;
+      }),
       Date.now(),
       refreshIntervalMs
     );
@@ -329,7 +348,7 @@ export function SummaryMetricsGrid() {
       ? `${translateText('Margin quote coverage', getAppLanguage())} · ${formatQuoteFreshnessSummary(quoteSummary)}`
       : translateText('No margin positions', getAppLanguage());
     const quoteStatusLabel = `${translateText('Quote status', getAppLanguage())}: ${quoteMetaText}`;
-    const quoteCoverageClass = quoteSummary.stale > 0 || quoteSummary.unknown > 0 || quoteSummary.unavailable > 0
+    const quoteCoverageClass = unpricedMarginPositionCount > 0 || quoteSummary.stale > 0 || quoteSummary.unknown > 0 || quoteSummary.unavailable > 0
       ? 'text-amber-300'
       : quoteSummary.delayed > 0 ? 'text-sky-300' : 'text-emerald-400';
 
@@ -365,10 +384,21 @@ export function SummaryMetricsGrid() {
             <div class="portfolio-micro-row portfolio-micro-market-primary">
               <span class="portfolio-metric-label text-[10px]">Market Value / Return</span>
               <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
-                {formatUSD(totalMarketValue)} -{' '}
-                <span class={totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                  {unSign}{formatUSD(totalUnrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
-                </span>
+                {unpricedMarginPositionCount > 0 ? (
+                  <>
+                    {pricedMarginPositionCount > 0 ? `≥${formatUSD(totalMarketValue)} · ${translateText('Priced market value', getAppLanguage())}` : '—'}
+                    <span class="block text-amber-300">
+                      {translateText('Unrealized return unavailable', getAppLanguage())} ({translateText('Unpriced positions', getAppLanguage())}: {unpricedMarginPositionCount})
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    {formatUSD(totalMarketValue)} -{' '}
+                    <span class={totalUnrealized !== null && totalUnrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                      {unSign}{formatUSD(totalUnrealized ?? 0)} ({unSign}{unrealizedPct.toFixed(2)}%)
+                    </span>
+                  </>
+                )}
               </span>
             </div>
             <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
@@ -428,14 +458,17 @@ export function SummaryMetricsGrid() {
     totalDebt: totalAccountDebt
   });
 
-  const currentMktVal = pos.shares * pos.currentPrice;
+  const usableMarketPrice = getUsableMarketPrice(pos.currentPrice);
+  // Keep a zero market value for conservative risk calculations when no usable
+  // quote exists, but never display that fallback as a real market price or P&L.
+  const currentMktVal = usableMarketPrice === null ? 0 : pos.shares * usableMarketPrice;
   const previousPrice = previousPricesRef.current[pos.ticker];
-  const priceFlashClass = previousPrice === undefined || previousPrice === pos.currentPrice
+  const priceFlashClass = usableMarketPrice === null || previousPrice === undefined || previousPrice === pos.currentPrice
     ? ''
     : pos.currentPrice > previousPrice ? 'quote-flash-up' : 'quote-flash-down';
   previousPricesRef.current[pos.ticker] = pos.currentPrice;
-  const unrealized = currentMktVal - totalInvested;
-  const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
+  const unrealized = usableMarketPrice === null ? null : currentMktVal - totalInvested;
+  const unrealizedPct = usableMarketPrice !== null && avgPrice > 0 ? ((usableMarketPrice - avgPrice) / avgPrice) * 100 : null;
 
   const positionTranches = pos.tranches || [];
   const persistedBrokerTrades = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
@@ -454,7 +487,7 @@ export function SummaryMetricsGrid() {
   const hiddenTrancheCount = positionTranches.length;
 
   const investedText = `${formatUSD(totalInvested)} | ${formatUSD(avgPrice)}`;
-  const unSign = unrealized >= 0 ? '+' : '';
+  const unSign = (unrealized ?? 0) >= 0 ? '+' : '';
   const dailyQuoteMeta = getDailyQuoteMeta(pos.quoteDetails);
 
   const isFullDebt = Math.abs(allocatedDebt - totalAccountDebt) < 0.01;
@@ -469,8 +502,12 @@ export function SummaryMetricsGrid() {
     commSell
   )} sell)`;
   const marginChargedText = `${formatUSD(posMarginCharged)} (Position To Date)`;
-  const quoteMetaText = formatQuoteMetadata(pos, refreshIntervalMs);
-  const quoteFreshness = getQuoteFreshness(pos, Date.now(), refreshIntervalMs);
+  const quoteMetaText = usableMarketPrice === null
+    ? translateText('Quote unavailable', getAppLanguage())
+    : formatQuoteMetadata(pos, refreshIntervalMs);
+  const quoteFreshness = usableMarketPrice === null
+    ? 'unavailable'
+    : getQuoteFreshness(pos, Date.now(), refreshIntervalMs);
 
   const positionAssets = currentMktVal + allocatedCushion;
   const positionEquity = positionAssets - allocatedDebt;
@@ -526,10 +563,14 @@ export function SummaryMetricsGrid() {
           <div class="portfolio-micro-row portfolio-micro-market-primary">
             <span class="portfolio-metric-label text-[10px]">Share Price / Market Value</span>
             <span key={`${pos.ticker}-${pos.currentPrice}`} id="boardPrice" class={`portfolio-metric-value text-xs sm:text-sm ${priceFlashClass}`}>
-              {formatUSD(pos.currentPrice)} | {formatUSD(currentMktVal)}{' '}
-              <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                {unSign}{formatUSD(unrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
-              </span>
+              {usableMarketPrice !== null ? formatUSD(usableMarketPrice) : '—'} | {usableMarketPrice !== null ? formatUSD(currentMktVal) : '—'}{' '}
+              {unrealized !== null && unrealizedPct !== null ? (
+                <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                  {unSign}{formatUSD(unrealized)} ({unSign}{unrealizedPct.toFixed(2)}%)
+                </span>
+              ) : (
+                <span class="text-amber-300">{translateText('Unrealized return unavailable', getAppLanguage())}</span>
+              )}
             </span>
           </div>
           <span id="boardDailyQuote" class={dailyQuoteMeta?.className || 'block text-[10px] text-slate-500'}>

@@ -350,6 +350,8 @@ const RU: Record<string, string> = {
   "Priced market value": "Рыночная стоимость позиций с котировкой",
   "Margin quote coverage": "Покрытие котировками маржинальных позиций",
   "No margin positions": "Нет маржинальных позиций",
+  "Unrealized return unavailable": "Нереализованная доходность недоступна",
+  "Unpriced positions": "Позиции без котировки",
   "Source unavailable": "Источник недоступен",
   "Stale": "Устарело",
   "Delayed": "С задержкой",

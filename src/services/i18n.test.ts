@@ -23,6 +23,11 @@ describe('app localization', () => {
     expect(translateText('Priced market value', 'ru')).toBe('Рыночная стоимость позиций с котировкой');
   });
 
+  it('localizes unavailable margin valuation guidance', () => {
+    expect(translateText('Unrealized return unavailable', 'ru')).toBe('Нереализованная доходность недоступна');
+    expect(translateText('Unpriced positions', 'ru')).toBe('Позиции без котировки');
+  });
+
   it('localizes portfolio quote coverage labels', () => {
     expect(translateText('Fresh', 'ru')).toBe('Свежие');
     expect(translateText('Stale', 'ru')).toBe('Устарело');

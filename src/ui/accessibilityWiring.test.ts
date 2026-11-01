@@ -71,6 +71,15 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('<th scope="row"');
   });
 
+  it('does not display missing margin quotes as zero-value positions or false negative returns', () => {
+    const source = readSource('../components/SummaryMetricsGrid.tsx');
+    expect(source).toContain('getUsableMarketPrice(pos.currentPrice)');
+    expect(source).toContain("usableMarketPrice !== null ? formatUSD(usableMarketPrice) : '—'");
+    expect(source).toContain("translateText('Unrealized return unavailable', getAppLanguage())");
+    expect(source).toContain('unpricedMarginPositionCount > 0');
+    expect(source).toContain("translateText('Unpriced positions', getAppLanguage())");
+  });
+
   it('uses a body portal and viewport-sized scrolling for Market Depth on mobile', () => {
     const source = readSource('../components/MarketDepthButton.tsx');
     const stylesheet = readSource('../../style.css');

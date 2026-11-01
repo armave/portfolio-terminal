@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities } from './SummaryMetricsGrid';
+import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice } from './SummaryMetricsGrid';
+
+describe('usable margin market prices', () => {
+  it('accepts only finite positive prices', () => {
+    expect(getUsableMarketPrice(123.45)).toBe(123.45);
+    expect(getUsableMarketPrice('123.45')).toBe(123.45);
+    expect(getUsableMarketPrice(0)).toBeNull();
+    expect(getUsableMarketPrice(-1)).toBeNull();
+    expect(getUsableMarketPrice(Number.NaN)).toBeNull();
+    expect(getUsableMarketPrice(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(getUsableMarketPrice(null)).toBeNull();
+    expect(getUsableMarketPrice(undefined)).toBeNull();
+    expect(getUsableMarketPrice('')).toBeNull();
+  });
+});
 
 describe('margin tranche preview', () => {
   it('hides every individual tranche by default', () => {
