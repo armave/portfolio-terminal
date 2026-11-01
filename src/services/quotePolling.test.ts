@@ -65,9 +65,14 @@ describe('refreshTrackedQuotes', () => {
       responses.get(tickers[index])!.resolve({
         price: 100 + index,
         sourceName: 'Twelve Data',
-        previousClose: 100,
-        change: index,
-        changePercent: index,
+        quoteDetails: {
+          marketState: 'UNKNOWN',
+          freshness: 'unknown',
+          receivedAt: 1000 + index,
+          price: 100 + index,
+          change: index,
+          changePercent: index
+        }
       });
       await Promise.resolve();
     }
@@ -76,9 +81,14 @@ describe('refreshTrackedQuotes', () => {
     responses.get('META')!.resolve({
       price: 104,
       sourceName: 'Twelve Data',
-      previousClose: 100,
-      change: 4,
-      changePercent: 4,
+      quoteDetails: {
+        marketState: 'UNKNOWN',
+        freshness: 'unknown',
+        receivedAt: 1004,
+        price: 104,
+        change: 4,
+        changePercent: 4
+      }
     });
 
     await expect(pending).resolves.toBe(5);
