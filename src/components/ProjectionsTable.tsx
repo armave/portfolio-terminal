@@ -9,7 +9,7 @@ import { usePortfolio } from '../store/portfolioStore';
 import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
 import { getAppLanguage } from '../services/i18n';
 
-const ROWS_PER_PAGE = 8;
+const ROWS_PER_PAGE = 10;
 const MAX_BREAKEVEN_SEARCH_DAYS = 3650;
 
 export function ProjectionsTable() {
@@ -71,7 +71,7 @@ export function ProjectionsTable() {
 
         if (kind === 'entry') {
           return (
-            <tr key={`entry-${daysFromToday}-${idx}`} class="border-b border-slate-800/50 text-slate-500">
+            <tr key={`entry-${daysFromToday}-${idx}`} class="projection-page-row border-b border-slate-800/50 text-slate-500">
               <td class="sticky left-0 z-10 backdrop-blur-sm py-1 px-2 text-left projection-date-cell">
                 <span class="text-[10px] font-medium text-slate-400">Entry</span>
                 <span class="text-[10px] text-slate-500 font-mono">{dateFormatted}</span>
@@ -115,7 +115,7 @@ export function ProjectionsTable() {
         }
 
         return (
-          <tr key={`${kind}-${daysFromToday}-${idx}`} class={rowClass}>
+          <tr key={`${kind}-${daysFromToday}-${idx}`} class={`${rowClass} projection-page-row`}>
             <td class="sticky left-0 z-10 backdrop-blur-sm py-1 px-2 text-slate-300 font-semibold projection-date-cell">
               <span>{dateFormatted}</span>
               <span class={badgeClass}>{badgeText}</span>
@@ -134,14 +134,14 @@ export function ProjectionsTable() {
       {pageCount > 1 && (
         <tr class="border-t border-slate-800">
           <td colSpan={5} class="px-2 py-3">
-            <div class="flex items-center justify-between gap-3 text-xs text-slate-400" aria-label="Projection table pagination">
+            <div class="projection-pagination flex items-center justify-between gap-3 text-xs text-slate-400" aria-label="Projection table pagination" aria-live="polite">
               <span>
                 Rows {currentPage * ROWS_PER_PAGE + 1}–{Math.min((currentPage + 1) * ROWS_PER_PAGE, projectionItems.length)} of {projectionItems.length}
               </span>
-              <div class="flex items-center gap-2">
+              <div class="projection-pagination-controls flex items-center gap-2">
                 <button
                   type="button"
-                  class="rounded border border-slate-700 px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800"
+                  class="projection-pagination-button rounded border border-slate-700 px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800"
                   aria-label="Previous projection page"
                   disabled={currentPage === 0}
                   onClick={() => setPage(Math.max(0, currentPage - 1))}

@@ -216,8 +216,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   }
 
   return (
-    <>
-      <div class="border-b border-slate-800 pb-3">
+    <div id="settingsDesk" class="settings-desk desk-content-reveal min-w-0 space-y-4">
+      <div class="settings-header border-b border-slate-800 pb-3">
         <h2 class="text-lg font-black text-slate-200 tracking-wide">
           TERMINAL SETTINGS &amp; SYNC
         </h2>
@@ -228,7 +228,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         </p>
       </div>
 
-      <div class="terminal-toolbar flex flex-col lg:flex-row w-full items-center lg:divide-x divide-slate-700 gap-y-3 lg:gap-y-0 py-1">
+      <div class="terminal-toolbar settings-toolbar flex flex-col lg:flex-row w-full items-center lg:divide-x divide-slate-700 gap-y-3 lg:gap-y-0 py-1">
         <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-2 lg:px-2">
           <div class="text-xs text-slate-300">
             {account ? <><span class="font-bold text-white">{account.name}</span><span class="ml-2 rounded bg-slate-800 px-2 py-1 uppercase text-[10px] text-cyan-300">{account.role}</span></> : "Account information unavailable"}
@@ -299,21 +299,21 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         Recovery tip: export a JSON backup before resetting local data or relying on cloud sync as your only copy.
       </p>}
 
-      {account?.role === "admin" && <section class="space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
+      {account?.role === "admin" && <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div><h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">User management</h3>
             <p class="text-[10px] text-slate-500">Accounts share this portfolio. Guests have read-only access; admins can manage accounts.</p></div>
           {account?.role === "admin" && <span class="text-[10px] uppercase tracking-wider text-emerald-400">Admin controls</span>}
         </div>
         {account?.role === "admin" ? <>
-          <form onSubmit={handleCreateUser} class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_110px_120px_auto]">
+          <form onSubmit={handleCreateUser} class="settings-user-form grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_110px_120px_auto]">
             <input type="text" aria-label="User name" minLength={2} maxLength={60} required value={newName} onInput={(event) => setNewName((event.target as HTMLInputElement).value)} placeholder="User name" class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
             <input type="password" aria-label="Password (6+ characters)" minLength={6} maxLength={128} required value={newPassword} onInput={(event) => setNewPassword((event.target as HTMLInputElement).value)} placeholder="Password (6+ characters)" autoComplete="new-password" class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
             <select value={newRole} onChange={(event) => setNewRole((event.target as HTMLSelectElement).value as "guest" | "admin")} aria-label="New user role" class="rounded border border-slate-700 bg-slate-900 px-2 py-2 text-center text-xs text-white"><option class="text-center" value="guest">Guest</option><option class="text-center" value="admin">Admin</option></select>
             <select value={newLanguage} onChange={(event) => setNewLanguage((event.target as HTMLSelectElement).value as AppLanguage)} aria-label="New user language" class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-2 text-xs text-white"><option class="text-center" value="en">English</option><option class="text-center" value="ru">Russian</option></select>
             <button type="submit" disabled={savingUser} class="rounded bg-cyan-800 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-700 disabled:opacity-50">Add user</button>
           </form>
-          <TableScrollRegion label="User management table" className="table-scroll-wrapper"><table class="w-full min-w-[790px] text-left text-xs">
+          <TableScrollRegion label="User management table" className="table-scroll-wrapper settings-table-scroll"><table class="w-full min-w-[790px] text-left text-xs">
             <caption class="sr-only">User management table</caption>
             <thead class="text-[10px] uppercase tracking-wider text-slate-500"><tr><th scope="col" class="p-2">Name</th><th scope="col" class="p-2">Role</th><th scope="col" class="p-2">Language</th><th scope="col" class="p-2">New password</th><th scope="col" class="p-2">Actions</th></tr></thead>
             <tbody>{users.map((user) => <tr key={user.id} class="border-t border-slate-800">
@@ -329,12 +329,12 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         {usersError && <p class="text-xs text-rose-300" role="alert">{usersError}</p>}
       </section>}
 
-      {permissions.canEditBrokerRules && <details class="space-y-3">
+      {permissions.canEditBrokerRules && <details class="settings-panel settings-broker-rules space-y-3">
         <summary class="cursor-pointer justify-center text-xs font-bold text-slate-300 hover:text-cyan-300">
           Broker Rules
         </summary>
         <div class="mt-3">
-          <form id="brokerRulesForm" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement; if (!form.reportValidity()) return; const values = { ...ruleValues }; const stopOut = Number(values.stopOutRatio); const maintenance = Number(values.maintenanceMargin); if (stopOut > maintenance) { stopOutInputRef.current?.setCustomValidity("Stop-out equity must not exceed maintenance equity."); stopOutInputRef.current?.reportValidity(); return; } stopOutInputRef.current?.setCustomValidity(""); emitUiEvent('settings:save-broker-rules', { values }); }} class="space-y-2">
+          <form id="brokerRulesForm" onSubmit={(event) => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement; if (!form.reportValidity()) return; const values = { ...ruleValues }; const stopOut = Number(values.stopOutRatio); const maintenance = Number(values.maintenanceMargin); if (stopOut > maintenance) { stopOutInputRef.current?.setCustomValidity("Stop-out equity must not exceed maintenance equity."); stopOutInputRef.current?.reportValidity(); return; } stopOutInputRef.current?.setCustomValidity(""); emitUiEvent('settings:save-broker-rules', { values }); }} class="settings-rules-form space-y-2">
             <p class="text-[10px] uppercase tracking-wider text-slate-500">
               Margin and commission rules (USD)
             </p>
@@ -480,6 +480,6 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </form>
         </div>
       </details>}
-    </>
+    </div>
   );
 }

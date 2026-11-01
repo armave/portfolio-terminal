@@ -244,6 +244,14 @@ export class PortfolioStore {
         ? saved.guestPortfolioSnapshot
         : undefined,
       guestTrancheLedger: Array.isArray(saved?.guestTrancheLedger) ? saved.guestTrancheLedger : [],
+      // Balance relies on the last successful broker snapshot being available on
+      // the very first render. Older records may not have the newer status field.
+      brokerAccountInfo: saved?.brokerAccountInfo &&
+        saved.brokerAccountInfo.loaded === true &&
+        Array.isArray(saved.brokerAccountInfo.balances) &&
+        Array.isArray(saved.brokerAccountInfo.positions)
+        ? saved.brokerAccountInfo
+        : undefined,
       cashCushion: saved?.cashCushion || { freeCash: 0, holdings: [] },
       balance: Number.isFinite(Number(saved?.balance)) ? Number(saved?.balance) : 0,
       realizedMarginCharged: Number.isFinite(Number(saved?.realizedMarginCharged))

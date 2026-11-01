@@ -410,7 +410,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     // A guest may use Settings after signing in, but the sign-in transition itself
     // always starts at Balance. Do not repeat this when their language changes.
     if (currentUser?.role === 'guest' &&
-        (previousUser?.id !== currentUser.id || previousUser?.role !== 'guest')) {
+      (previousUser?.id !== currentUser.id || previousUser?.role !== 'guest')) {
       emitUiEvent('portfolio:set-active-view', { view: 'BALANCE' });
     }
   }, [currentUser?.id, currentUser?.role]);
@@ -421,7 +421,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       return;
     }
     if (currentUser?.role === 'guest' &&
-        !['CASH_CUSHION', 'BALANCE', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView)) {
+      !['CASH_CUSHION', 'BALANCE', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView)) {
       emitUiEvent('portfolio:set-active-view', { view: 'BALANCE' });
     }
     if (activeDeskView === 'CLOSED_HISTORY' && permissions.canViewClosedHistory) setHasOpenedClosedHistory(true);
@@ -455,6 +455,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const existing = accountRequests.get(requestKey);
     if (existing) return existing;
 
+    emitBrokerEvent('broker:account-info-refreshing');
     const request = (async () => {
       const secret = await restoreGatewaySecret();
       if (!secret.trim()) throw new Error('Gateway Secret is not available.');
@@ -498,9 +499,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         const hasCompleteBaseline = hasFreedomTradeHistoryBaseline(accountId);
         const fromDate = hasCompleteBaseline
           ? getLatestClosedTradeDate(
-              [...savedExecutions, ...(currentPortfolio.brokerExecutedTrades || [])],
-              currentPortfolio.closedTrades || []
-            )
+            [...savedExecutions, ...(currentPortfolio.brokerExecutedTrades || [])],
+            currentPortfolio.closedTrades || []
+          )
           : undefined;
         const response = await fetchFreedomTradeNetTrades(fromDate);
         if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
@@ -640,7 +641,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
         <div id="tradingWorkspaceGrid" class={["BALANCE", "GUEST_HISTORY"].includes(activeDeskView)
           ? ""
-          : "trading-workspace-grid " + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
+          : "trading-workspace-grid " + (permissions.canViewMarginDesk && !["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "margin-workspace-layout " : "") + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
           {permissions.canViewMarginDesk && <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
             {deskLoadingView === activeDeskView ? (
@@ -649,71 +650,79 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 message="Refreshing live quotes and preparing the latest portfolio view…"
                 accent="cyan"
               />
-            ) : <>
-            <div
-              id="emptyStatePanel"
-              class={"border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4 " + (emptyStateVisible ? "" : "hidden")}
-            >{emptyStateVisible && <EmptyStatePanel />}</div>
+            ) : <div class="desk-content-reveal">
 
-            <div
-              id="boardTitleRow"
-              class={"board-title-row flex flex-wrap items-center justify-between gap-2 " + (emptyStateVisible ? "hidden" : "")}
-            >
-              <div class="min-w-0 flex-1 text-lg font-bold text-white" id="boardTitle">
-                {boardTitle}
+              <div
+                id="emptyStatePanel"
+                class={"border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4 " + (emptyStateVisible ? "" : "hidden")}
+              >{emptyStateVisible && <EmptyStatePanel />}</div>
+
+              <div
+                id="boardTitleRow"
+                class={"board-title-row flex flex-wrap items-center justify-between gap-2 " + (emptyStateVisible ? "hidden" : "")}
+              >
+                <div class="min-w-0 flex-1 text-lg font-bold text-white" id="boardTitle">
+                  {boardTitle}
+                </div>
               </div>
-            </div>
 
 
 
-            <div
-              id="boardTitleActions"
-              class="board-title-actions flex flex-wrap items-center gap-2"
-            >
-              <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
-              {permissions.isAdmin && portfolioSnapshot.positions?.[activeDeskView]?.ticker && (
-                <MarketDepthButton ticker={portfolioSnapshot.positions[activeDeskView].ticker} />
-              )}
-              <div id="boardAnalystConsensus" class={analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
-              <div id="boardExternalLinks" class="flex items-center gap-2"><BoardExternalLinks /></div>
-            </div>
+              <div
+                id="boardTitleActions"
+                class="board-title-actions flex flex-wrap items-center gap-2"
+              >
+                <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
+                {permissions.isAdmin && portfolioSnapshot.positions?.[activeDeskView]?.ticker && (
+                  <MarketDepthButton ticker={portfolioSnapshot.positions[activeDeskView].ticker} />
+                )}
+                <div id="boardAnalystConsensus" class={analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
+                <div id="boardExternalLinks" class="flex items-center gap-2"><BoardExternalLinks /></div>
+              </div>
 
-            <div
-              id="portfolioMetricsGrid"
-              aria-label="Portfolio summary metrics"
-              class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateVisible ? "hidden" : "")}
-            ><SummaryMetricsGrid /></div>
+              <div
+                id="portfolioMetricsGrid"
+                aria-label="Portfolio summary metrics"
+                class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateVisible ? "hidden" : "")}
+              ><SummaryMetricsGrid /></div>
 
-            {/* Projection Table */}
-            <TableScrollRegion
-              label="Portfolio projection by date"
-              id="projectionTableContainer"
-              className={"table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none " + (emptyStateVisible ? "hidden" : "")}
-            >
-              <table aria-label="Portfolio projection by date" class="w-full min-w-[300px] text-xs border-collapse">
-                <caption class="sr-only">Projected portfolio net value, fees and commissions, margin fee, and balance by date.</caption>
-                <thead>
-                  <tr class="border-b border-slate-800 text-slate-400">
-                    <th scope="col" class="py-2 px-3">Date</th>
-                    <th scope="col" class="py-2 px-3">Net</th>
-                    <th scope="col" class="py-2 px-3">F&amp;C</th>
-                    <th scope="col" class="py-2 px-3">M Fee</th>
-                    <th scope="col" class="py-2 px-3">Balance</th>
-                  </tr>
-                </thead>
-                <tbody
-                  id="projectionTableBody"
-                  class="divide-y divide-slate-800/60 font-mono"
-                ><ProjectionsTable /></tbody>
-              </table>
-            </TableScrollRegion>
-            </>}
+              <div id="marginDataWorkspace" class="margin-data-workspace">
+                {/* Projection Table */}
+                <TableScrollRegion
+                  label="Portfolio projection by date"
+                  id="projectionTableContainer"
+                  className={"table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none " + (emptyStateVisible ? "hidden" : "")}
+                >
+                  <table aria-label="Portfolio projection by date" class="w-full min-w-[300px] text-xs border-collapse">
+                    <caption class="sr-only">Projected portfolio net value, fees and commissions, margin fee, and balance by date.</caption>
+                    <thead>
+                      <tr class="border-b border-slate-800 text-slate-400">
+                        <th scope="col" class="py-2 px-3">Date</th>
+                        <th scope="col" class="py-2 px-3">Net</th>
+                        <th scope="col" class="py-2 px-3">F&amp;C</th>
+                        <th scope="col" class="py-2 px-3">M Fee</th>
+                        <th scope="col" class="py-2 px-3">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody
+                      id="projectionTableBody"
+                      class="divide-y divide-slate-800/60 font-mono"
+                    ><ProjectionsTable /></tbody>
+                  </table>
+                </TableScrollRegion>
+                <section
+                  id="marketInsightsPanel"
+                  class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
+                  aria-label="Market insights"
+                >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? <MarketInsightsPanel /> : null}</section>
+              </div>
+            </div>}
           </div>}
 
           {/* Cash Cushion Management Panel */}
           <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>
             {hasOpenedCashCushion
-              ? <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} />
+              ? <div class="desk-content-reveal"><CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
               : <DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}
           </div>
 
@@ -723,20 +732,15 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             class={`desk-view-transition min-w-0 ${activeDeskView === 'GUEST_HISTORY' ? '' : 'hidden'}`}
           >
             {hasOpenedGuestHistory
-              ? <GuestTrancheHistory
+              ? <div class="desk-content-reveal"><GuestTrancheHistory
                 records={portfolioSnapshot.guestTrancheLedger || []}
                 activeTranches={portfolioSnapshot.guestPortfolioSnapshot?.tranches || []}
-              />
+              /></div>
               : <DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}
           </div>}
 
           {/* Keep the command console available on both Margin and Cash desks. */}
           {permissions.canUseTerminal && !["BALANCE", "GUEST_HISTORY"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
-            <section
-              id="marketInsightsPanel"
-              class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
-              aria-label="Market insights"
-            >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? <MarketInsightsPanel /> : null}</section>
             <div
               id="tradingConsoleCard"
               key={`trading-console-${activeDeskView}`}
@@ -750,18 +754,18 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       {/* Trades */}
       <div
         id="closedHistoryContainer"
-       
+
         class={"desk-view-transition rounded-lg " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
       >
         {permissions.canViewClosedHistory && (hasOpenedClosedHistory
-          ? <ClosedHistoryDesk accountId={currentUser?.id || ''} />
+          ? <div class="desk-content-reveal"><ClosedHistoryDesk accountId={currentUser?.id || ''} /></div>
           : <DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />)}
       </div>
 
       {/* Settings */}
       <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">
         {hasOpenedSettings
-          ? <SettingsDesk currentUser={currentUser} />
+          ? <div class="desk-content-reveal"><SettingsDesk currentUser={currentUser} /></div>
           : <DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}
       </div>
 

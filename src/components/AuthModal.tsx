@@ -67,7 +67,7 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
   };
 
   return (
-    <div ref={dialogRef} class="auth-card border-card" role="dialog" aria-modal="true" aria-labelledby="authModalTitle" aria-busy={submitting} tabIndex={-1}>
+    <div ref={dialogRef} class="auth-card auth-dialog-surface border-card" role="dialog" aria-modal="true" aria-labelledby="authModalTitle" aria-busy={submitting} tabIndex={-1}>
       <div class="space-y-1">
         <h2 id="authModalTitle" class="text-sm font-bold text-emerald-400 tracking-wider uppercase">
           {setupRequired ? "Create administrator account" : "Portfolio Terminal sign in"}
@@ -78,21 +78,21 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
             : "Sign in with the account created by an administrator."}
         </p>
       </div>
-      {statusLoading ? <p class="text-xs text-slate-400" role="status">Checking account setup…</p> : (
-        <form onSubmit={handleSubmit} class="flex flex-col gap-2 pt-2">
+      {statusLoading ? <p class="auth-feedback auth-feedback--status text-xs text-slate-400" role="status">Checking account setup…</p> : (
+        <form onSubmit={handleSubmit} class="auth-form flex flex-col gap-2 pt-2">
           <label class="flex flex-col gap-1 text-xs text-slate-400">
             Name
             <input id="authUserName" name="username" ref={nameRef} type="text" value={name}
               onInput={(event) => setName((event.target as HTMLInputElement).value)}
               minLength={2} maxLength={60} required autoComplete="username" disabled={submitting}
-              class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
+              class="auth-input bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
           </label>
           <label class="flex flex-col gap-1 text-xs text-slate-400">
             Password
             <input id="authPassword" name="password" type="password" value={password}
               onInput={(event) => setPassword((event.target as HTMLInputElement).value)}
               minLength={6} maxLength={128} required autoComplete={setupRequired ? "new-password" : "current-password"} disabled={submitting}
-              class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
+              class="auth-input bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
             {setupRequired && <span class="text-[10px] text-slate-500">Use at least 6 characters.</span>}
           </label>
           {setupRequired && <label class="flex flex-col gap-1 text-xs text-slate-400">
@@ -100,18 +100,18 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
             <input id="bootstrapSecret" name="bootstrapSecret" type="password" value={bootstrapSecret}
               onInput={(event) => setBootstrapSecret((event.target as HTMLInputElement).value)}
               required autoComplete="off" disabled={submitting}
-              class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
+              class="auth-input bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
           </label>}
-          <button type="submit" disabled={submitting} class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-black text-xs font-bold px-4 py-2 rounded transition">
+          <button type="submit" disabled={submitting} class="auth-submit-button bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-black text-xs font-bold px-4 py-2 rounded transition">
             {submitting ? "Loading portfolio…" : setupRequired ? "Create admin account" : "Sign in"}
           </button>
-          {submitting && <div class="flex items-center justify-center gap-2 rounded border border-cyan-900/70 bg-cyan-950/30 px-3 py-3 text-xs text-cyan-200" role="status" aria-live="polite">
+          {submitting && <div class="auth-feedback auth-feedback--pending flex items-center justify-center gap-2 rounded border border-cyan-900/70 bg-cyan-950/30 px-3 py-3 text-xs text-cyan-200" role="status" aria-live="polite">
             <span class="h-4 w-4 animate-spin rounded-full border-2 border-cyan-300/30 border-t-cyan-300" aria-hidden="true" />
             <span>Loading your portfolio and assigned stocks. Please wait…</span>
           </div>}
         </form>
       )}
-      {error && <p class="text-xs text-red-400" role="alert">{error}</p>}
+      {error && <p class="auth-feedback auth-feedback--error text-xs text-red-400" role="alert">{error}</p>}
     </div>
   );
 }

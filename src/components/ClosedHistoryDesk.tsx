@@ -564,7 +564,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
   }
 
   return (
-    <section class="rounded-xl border-card p-4 space-y-4" aria-label="Trades">
+    <section class="desk-content-reveal rounded-xl border-card p-4 space-y-4" aria-label="Trades">
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
         <div>
           <h2 class="flex items-center gap-2 text-base font-black uppercase tracking-wider text-purple-300">
@@ -621,27 +621,28 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
         </div>
       )}
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-4 text-center" aria-label="Closed trade performance summary">
-        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{hasUnknownProfit ? 'Known net P&L' : 'Realized net P&L'}</div>
           <div class={`mt-1 font-mono text-lg font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
             {realizedNet >= 0 ? '+' : '−'}${formatUSD(Math.abs(realizedNet))}
           </div>
         </div>
-        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Win rate</div>
           <div class="mt-1 font-mono text-lg font-bold text-white">{winRate.toFixed(1)}%</div>
           <div class="text-[10px] text-slate-500">{winningTrades} of {profitKnownTrades.length} records with known profit profitable</div>
         </div>
-        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees &amp; commissions</div>
           <div class="mt-1 font-mono text-lg font-bold text-slate-200">{hasIncompleteCommissions ? '≥' : ''}${formatUSD(totalFees)}</div>
         </div>
-        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Avg. holding time</div>
           <div class="mt-1 font-mono text-lg font-bold text-slate-200">{averageHoldingDays === null ? '—' : averageHoldingDays.toFixed(1) + ' days'}</div>
         </div>
       </div>
-
+      
+      <div key={tradesPage} class="closed-history-page-transition">
       <TableScrollRegion label="Closed trade history" className="border border-slate-800 bg-slate-950/60">
         <table class="w-full min-w-[900px] text-left text-xs font-mono">
           <caption class="sr-only">Closed trade history with funding type, guest assignment, ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
@@ -828,15 +829,16 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
           </tbody>
         </table>
       </TableScrollRegion>
+      </div>
       {trades.length > 0 && (
-        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 px-1 pt-3 text-xs" aria-label="Closed history pagination">
+        <div class="closed-history-pagination flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 px-1 pt-3 text-xs" aria-label="Closed history pagination">
           <span class="text-slate-500" aria-live="polite">
             Showing {(tradesPage - 1) * tradesPageSize + 1}–{Math.min(tradesPage * tradesPageSize, trades.length)} of {trades.length} trades
           </span>
-          <div class="flex items-center gap-2">
-            <button type="button" onClick={() => setTradesPage(page => Math.max(1, page - 1))} disabled={tradesPage <= 1} class="rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Previous closed history page">Previous</button>
-            <span class="min-w-16 text-center font-mono text-slate-400">Page {tradesPage} / {tradesPageCount}</span>
-            <button type="button" onClick={() => setTradesPage(page => Math.min(tradesPageCount, page + 1))} disabled={tradesPage >= tradesPageCount} class="rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Next closed history page">Next</button>
+          <div class="closed-history-pagination-controls flex items-center gap-2">
+            <button type="button" onClick={() => setTradesPage(page => Math.max(1, page - 1))} disabled={tradesPage <= 1} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Previous closed history page" aria-controls="closedTradesTableBody">&lt;</button>
+            <span class="table-pagination-current min-w-16 text-center font-mono text-slate-400" aria-current="page" aria-live="polite">Page {tradesPage} / {tradesPageCount}</span>
+            <button type="button" onClick={() => setTradesPage(page => Math.min(tradesPageCount, page + 1))} disabled={tradesPage >= tradesPageCount} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Next closed history page" aria-controls="closedTradesTableBody">&gt;</button>
           </div>
         </div>
       )}

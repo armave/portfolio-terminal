@@ -8,11 +8,13 @@ import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEvent
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { listUsers, normalizeFreedomTrades, type AuthUser } from '../services/api';
 import { loadSavedHistory } from '../services/storage';
+import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from '../domain/closedHistoryFees';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
+import { balanceSyncReducer, createBalanceSyncState } from '../domain/balanceSyncState';
 import { createGuestDirectoryState, guestDirectoryReducer } from '../domain/guestDirectoryState';
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
-import { getAppLanguage } from '../services/i18n';
+import { getAppLanguage, translateText } from '../services/i18n';
 import { MarketDepthButton } from './MarketDepthButton';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
@@ -65,17 +67,40 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   const state = usePortfolio();
   const refreshIntervalMs = useQuoteRefreshInterval(guestUserId ? 15_000 : 60_000, guestUserId ? 'guest' : 'admin');
   const shouldReadBrokerHistory = !guestUserId && (showActiveTranches || isAdmin);
+  const [balanceSync, dispatchBalanceSync] = useReducer(
+    balanceSyncReducer,
+    undefined,
+    () => createBalanceSyncState(Boolean(state.brokerAccountInfo?.loaded), isAdmin)
+  );
   const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
     brokerExecutionHistoryReducer<FreedomExecutedTradeLike>,
     undefined,
-    () => createBrokerExecutionHistoryState(
-      guestUserId ? [] : state.brokerExecutedTrades,
-      shouldReadBrokerHistory ? normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades) : [],
-      shouldReadBrokerHistory
-    )
+    () => {
+      const savedTrades = shouldReadBrokerHistory
+        ? normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades)
+        : [];
+      const currentTrades = shouldReadBrokerHistory && Array.isArray(state.brokerExecutedTrades)
+        ? state.brokerExecutedTrades
+        : [];
+      const completeCachedHistory = mergeBrokerExecutionHistory(
+        savedTrades,
+        preservePersistedBrokerFeeAllocations(currentTrades, savedTrades)
+      );
+      return createBrokerExecutionHistoryState(
+        completeCachedHistory,
+        [],
+        shouldReadBrokerHistory
+      );
+    }
   );
+  const brokerExecutionHistoryRef = useRef(brokerExecutionHistory);
+  brokerExecutionHistoryRef.current = brokerExecutionHistory;
   const executedTrades = brokerExecutionHistory.trades;
   const executedTradesLoading = brokerExecutionHistory.status === 'loading';
+  const retryBalance = () => {
+    dispatchBalanceSync({ type: 'refresh' });
+    emitBrokerEvent('broker:request-account-info');
+  };
   const retryExecutedTrades = () => {
     dispatchBrokerExecutionHistory({ type: 'refresh' });
     emitBrokerEvent('broker:request-executed-trades');
@@ -88,6 +113,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   );
   const guestUsers = guestDirectory.users;
   const guestUsersLoading = guestDirectory.status === 'loading';
+  const balanceRefreshing = balanceSync.status === 'refreshing' ||
+    brokerExecutionHistory.status === 'refreshing' || executedTradesLoading || guestUsersLoading;
   const guestUsersRequestGeneration = useRef(0);
   const loadGuestUsers = () => {
     const requestId = ++guestUsersRequestGeneration.current;
@@ -118,11 +145,44 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   };
 
   useEffect(() => {
+    if (!isAdmin) return;
+    dispatchBalanceSync({
+      type: 'snapshot',
+      loaded: state.brokerAccountInfo?.loaded === true,
+      status: state.brokerAccountInfo?.status
+    });
+  }, [isAdmin, state.brokerAccountInfo?.loaded, state.brokerAccountInfo?.receivedAt, state.brokerAccountInfo?.status]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const removeRefreshingListener = addBrokerEventListener('broker:account-info-refreshing', () => {
+      dispatchBalanceSync({ type: 'refresh' });
+    });
+    const removeAccountListener = addBrokerEventListener('broker:account-info', () => {
+      dispatchBalanceSync({ type: 'success' });
+    });
+    const removeAccountErrorListener = addBrokerEventListener('broker:account-info-error', () => {
+      dispatchBalanceSync({ type: 'failure' });
+    });
+    dispatchBalanceSync({ type: 'refresh' });
+    emitBrokerEvent('broker:request-account-info');
+    return () => {
+      removeRefreshingListener();
+      removeAccountListener();
+      removeAccountErrorListener();
+    };
+  }, [isAdmin]);
+
+  useEffect(() => {
     // Guests use their assigned portfolio snapshot and must not subscribe to
     // account-wide broker execution events or restore the administrator's history.
     if (!shouldReadBrokerHistory) return;
     const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
-      dispatchBrokerExecutionHistory({ type: 'success', trades });
+      const mergedTrades = mergeBrokerExecutionHistory(
+        brokerExecutionHistoryRef.current.trades,
+        trades
+      );
+      dispatchBrokerExecutionHistory({ type: 'success', trades: mergedTrades });
     });
     const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => {
       // Preserve the last good in-memory or saved snapshot; only mark it stale.
@@ -145,7 +205,10 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     if (Array.isArray(currentTrades) && currentTrades.length > 0) {
       dispatchBrokerExecutionHistory({
         type: 'success',
-        trades: currentTrades
+        trades: mergeBrokerExecutionHistory(
+          brokerExecutionHistoryRef.current.trades,
+          currentTrades
+        )
       });
     }
   }, [state.brokerExecutedTrades, shouldReadBrokerHistory]);
@@ -243,16 +306,16 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   );
   const renderedMarketDepthTickers = new Set<string>();
 
-  if (executedTradesLoading || guestUsersLoading) {
+  if (isAdmin && balanceSync.status === 'loading' && !balanceSync.hasSnapshot) {
     return <DeskLoading
       title="Preparing balance"
-      message="Loading holdings, trade activity and account allocations…"
+      message="Loading the latest broker account snapshot…"
       accent="cyan"
     />;
   }
 
   return (
-    <>
+    <div class="desk-content-reveal">
       <style>{`
         @keyframes guest-stock-card-enter {
           from { opacity: 0; transform: translateY(12px) scale(0.985); }
@@ -267,33 +330,49 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       `}</style>
       <div class="flex justify-between items-center border-b border-slate-800 pb-2">
         <div>
-          <h2 class="text-lg font-black text-cyan-400 tracking-wide">
-            {guestUserId ? 'MY STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE'}
-          </h2>
+          <div class="flex items-center gap-2">
+            <h2 class="text-lg font-black text-cyan-400 tracking-wide">
+              {guestUserId ? 'MY STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE'}
+            </h2>
+            {balanceRefreshing && (
+              <span role="status" aria-label={translateText('Refreshing balance…', getAppLanguage())} title={translateText('Refreshing balance…', getAppLanguage())} class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300">
+                <svg viewBox="0 0 24 24" aria-hidden="true" class="h-3.5 w-3.5 animate-spin">
+                  <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="3" opacity="0.25" />
+                  <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+                </svg>
+                {translateText('Syncing…', getAppLanguage())}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
-      {(brokerExecutionHistory.status === 'stale' || brokerExecutionHistory.status === 'error' || brokerExecutionHistory.status === 'refreshing') && (
+      {(balanceSync.status === 'stale' || balanceSync.status === 'error') && (
+        <div role="alert" aria-live="polite" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+          <span>{balanceSync.hasSnapshot
+            ? translateText('Balance refresh failed. Showing the last saved broker snapshot.', getAppLanguage())
+            : translateText('Unable to load the broker balance. Please retry.', getAppLanguage())}</span>
+          <button type="button" onClick={retryBalance} aria-label={translateText('Retry balance refresh', getAppLanguage())} class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto">Retry</button>
+        </div>
+      )}
+
+      {(brokerExecutionHistory.status === 'stale' || brokerExecutionHistory.status === 'error') && (
         <div
-          role={brokerExecutionHistory.status === 'refreshing' ? 'status' : 'alert'}
+          role="alert"
           aria-live="polite"
           class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between"
         >
           <span>
-            {brokerExecutionHistory.status === 'refreshing'
-              ? 'Refreshing TradeNet history…'
-              : brokerExecutionHistory.status === 'stale'
-                ? 'TradeNet refresh failed. Showing saved history, which may be out of date.'
-                : 'Unable to load TradeNet history. Please retry.'}
+            {brokerExecutionHistory.status === 'stale'
+              ? 'TradeNet refresh failed. Showing saved history, which may be out of date.'
+              : 'Unable to load TradeNet history. Please retry.'}
           </span>
-          {brokerExecutionHistory.status !== 'refreshing' && (
-            <button
-              type="button"
-              onClick={retryExecutedTrades}
-              aria-label="Retry TradeNet history"
-              class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto"
-            >Retry</button>
-          )}
+          <button
+            type="button"
+            onClick={retryExecutedTrades}
+            aria-label="Retry TradeNet history"
+            class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto"
+          >Retry</button>
         </div>
       )}
 
@@ -737,6 +816,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           </div>
         </section>}
       </div>
-    </>
+    </div>
   );
 }
