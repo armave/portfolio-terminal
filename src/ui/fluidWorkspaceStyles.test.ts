@@ -57,10 +57,10 @@ describe('Margin projection and insights layout', () => {
   });
 
   it('uses two columns only when the Margin desk has enough room and stacks on smaller screens', () => {
-    expect(fluidStyles).toMatch(/#tradingWorkspaceGrid\\.margin-workspace-layout\\s*\\{[^}]*grid-template-columns:\\s*minmax\\(0,\\s*1fr\\)/s);
-    expect(fluidStyles).toMatch(/container-name:\\s*margin-desk;/);
-    expect(fluidStyles).toMatch(/@container\\s+margin-desk\\s*\\(min-width:\\s*56rem\\)/);
-    expect(fluidStyles).toMatch(/\\.margin-data-workspace\\s*\\{[^}]*grid-template-columns:\\s*minmax\\(0,\\s*1\\.25fr\\)\\s+minmax\\(18rem,\\s*0\\.85fr\\)/s);
-    expect(fluidStyles).toMatch(/@media\\s*\\(max-width:\\s*767px\\)\\s*\\{\\s*\\.margin-data-workspace\\s*\\{[^}]*grid-template-columns:\\s*minmax\\(0,\\s*1fr\\)/s);
+    expect(fluidStyles).toMatch(/#tradingWorkspaceGrid\.margin-workspace-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
+    expect(fluidStyles).toMatch(/container-name:\s*margin-desk;/);
+    expect(fluidStyles).toMatch(/@container\s+margin-desk\s*\(min-width:\s*56rem\)/);
+    expect(fluidStyles).toMatch(/\.margin-data-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.25fr\)\s+minmax\(18rem,\s*0\.85fr\)/s);
+    expect(fluidStyles).toMatch(/@media\s*\(max-width:\s*767px\)\s*\{\s*\.margin-data-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
   });
 });
