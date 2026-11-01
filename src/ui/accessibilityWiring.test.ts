@@ -35,6 +35,26 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('ref={closeButtonRef}');
   });
 
+  it('makes long modal content keyboard-scrollable and labelled by its dialog title', () => {
+    const news = readSource('../components/MarketInsightsPanel.tsx');
+    const report = readSource('../components/ScenarioReportModal.tsx');
+    const comparison = readSource('../components/ScenarioComparisonModal.tsx');
+    const intelligence = readSource('../components/MarginIntelligenceModal.tsx');
+
+    expect(news).toContain('role="region" aria-labelledby="newsArticleModalTitle" tabIndex={0}');
+    expect(report).toContain('role="region" aria-labelledby="scenarioReportTitle" tabIndex={0}');
+    expect(comparison).toContain('role="region" aria-labelledby="scenarioComparisonTitle" tabIndex={0}');
+    expect(intelligence).toContain('role="region" aria-labelledby="marginIntelligenceTitle" tabIndex={0}');
+  });
+
+  it('provides scoped row and column headings for scenario comparison tables', () => {
+    const source = readSource('../components/ScenarioComparisonModal.tsx');
+
+    expect(source).toContain('<caption class="sr-only">{data.title}</caption>');
+    expect(source).toContain('<th scope="col"');
+    expect(source).toContain('<th scope="row"');
+  });
+
   it('uses a body portal and viewport-sized scrolling for Market Depth on mobile', () => {
     const source = readSource('../components/MarketDepthButton.tsx');
     const stylesheet = readSource('../../style.css');

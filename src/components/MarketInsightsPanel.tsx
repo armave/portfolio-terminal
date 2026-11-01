@@ -683,7 +683,7 @@ export function MarketInsightsPanel() {
               </div>
               <button ref={newsCloseButtonRef} type="button" class="shrink-0 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white" onClick={closeNewsDialog} aria-label="Close news article" data-news-dialog-close>✕</button>
             </header>
-            <div class="news-article-content min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5">
+            <div class="news-article-content min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5" role="region" aria-labelledby="newsArticleModalTitle" tabIndex={0}>
               <div class="whitespace-pre-wrap break-words leading-relaxed text-slate-300">
                 {selectedNews.summary || selectedNews.description || selectedNews.content || 'A summary is not available from the news provider. Open the original article for the full story.'}
               </div>
