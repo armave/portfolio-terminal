@@ -17,6 +17,7 @@ import {
   clearApiRequestCaches,
   clearFreedomCashflowCache,
   fetchFreedomCashflows,
+  fetchFreedomTradeNetTrades,
   fetchFallbackQuote,
   validateGatewaySecret,
   fetchYahooDeepStockData,
@@ -1508,6 +1509,36 @@ describe('Freedom cashflow request cache', () => {
     storage.setGatewaySecret('another-test-gateway-secret');
     await fetchFreedomCashflows();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not reuse a cashflow cache entry for a different date range', async () => {
+    clearFreedomCashflowCache();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { cashflows: [] } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchFreedomCashflows('2026-10-29');
+    await fetchFreedomCashflows('2026-10-29');
+    await fetchFreedomCashflows('2026-10-30');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('fromDate')).toBe('2026-10-29');
+    expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('fromDate')).toBe('2026-10-30');
+  });
+
+  it('passes an incremental TradeNet execution date to the authenticated Worker route', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { trades: { trade: [] } } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchFreedomTradeNetTrades('2026-10-29');
+
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('action')).toBe('freedom-trades');
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('fromDate')).toBe('2026-10-29');
   });
 });
 
