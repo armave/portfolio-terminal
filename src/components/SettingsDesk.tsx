@@ -242,7 +242,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </label>}
           {languageError && <span role="alert" class="text-[10px] text-rose-300">{languageError}</span>}
           <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-8 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">Sign out</button>
-          {account?.role === "admin" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title="Pull the latest shared portfolio state" class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>}
+          {account?.role === "admin" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title={translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")} aria-label={translateText('Replace local portfolio from KV cloud')} class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>}
         </div>
 
         {/* Cluster 2: Polling & Backups */}
@@ -285,8 +285,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             <button
               type="button"
               onClick={() => emitUiEvent('settings:reset-to-blank-state')}
-              title="Clear all local data and return to blank slate. Export a backup first if you may need this portfolio again."
-              aria-label="Reset all local portfolio data"
+              title={translateText("Reset deletes saved portfolio and history data from this device and KV cloud. TradeNet records held by the broker are not deleted.")}
+              aria-label={translateText('Reset local and cloud portfolio data')}
               class="h-8 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
             >
               Reset
@@ -295,9 +295,11 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         </div>
       </div>
 
-      {permissions.canManageBackups && <p class="w-full text-center text-[10px] leading-relaxed text-slate-500">
-        Recovery tip: export a JSON backup before resetting local data or relying on cloud sync as your only copy.
-      </p>}
+      {permissions.canManageBackups && <div class="settings-data-safety-note w-full rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
+        <p>{translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")}</p>
+        <p class="mt-1">{translateText("Reset deletes saved portfolio and history data from this device and KV cloud. TradeNet records held by the broker are not deleted.")}</p>
+        <p class="mt-1 font-semibold text-amber-200">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
+      </div>}
 
       {account?.role === "admin" && <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="flex flex-wrap items-center justify-between gap-2">

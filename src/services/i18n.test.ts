@@ -76,6 +76,17 @@ describe('app localization', () => {
       .toBe('История закрытых сделок с тикером, датой закрытия, количеством акций, сроком удержания, сборами, комиссиями и чистой прибылью.');
   });
 
+  it('localizes the data-loss consequences of manual cloud pull and full reset', () => {
+    expect(translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.", 'ru'))
+      .toBe('Загрузка из облака заменяет локальный портфель на этом устройстве общей версией из облака KV. Несинхронизированные изменения могут быть потеряны.');
+    expect(translateText("Reset deletes saved portfolio and history data from this device and KV cloud. TradeNet records held by the broker are not deleted.", 'ru'))
+      .toBe('Сброс удаляет сохранённые данные портфеля и историю на этом устройстве и в облаке KV. Записи TradeNet у брокера не удаляются.');
+    expect(translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.", 'ru'))
+      .toBe('Перед загрузкой из облака или сбросом портфеля экспортируйте резервную копию JSON.');
+    expect(translateText("Pulling cloud will replace this device's local portfolio with the shared KV cloud snapshot. Any changes that have not synced can be lost. Export a JSON backup first if you may need them. Continue?", 'ru'))
+      .toBe('Загрузка из облака заменит локальный портфель на этом устройстве общей версией из облака KV. Несинхронизированные изменения могут быть потеряны. Сначала экспортируйте резервную копию JSON, если эти данные могут понадобиться. Продолжить?');
+  });
+
   it('clarifies that full reset does not delete broker-side TradeNet records', () => {
     expect(translateText(
       'Reset the terminal to a blank slate? This clears saved portfolio and history data locally and in KV cloud. It does not delete TradeNet records held by the broker; those read-only records may reappear when broker history is refreshed.',
