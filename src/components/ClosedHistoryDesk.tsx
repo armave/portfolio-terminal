@@ -3,10 +3,11 @@ import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage } from '../services/i18n';
-import { fetchFreedomCashflows, listUsers, pullCloudHistory, pushCloudHistory, type AuthUser } from '../services/api';
+import { fetchFreedomCashflows, listUsers, normalizeFreedomTrades, pullCloudHistory, pushCloudHistory, type AuthUser } from '../services/api';
 import { loadSavedHistory, savePortfolioSnapshot } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
-import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
+import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, normalizeSavedFreedomCashflows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
+import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
 import { resolveClosedTradeAllocation } from '../domain/closedTradeAllocation';
 import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFees';
@@ -17,7 +18,7 @@ import { TableScrollRegion } from './TableScrollRegion';
 
 export function ClosedHistoryDesk() {
   const state = usePortfolio();
-  const [brokerTrades, setBrokerTrades] = useState<any[]>([]);
+  const [brokerTrades, setBrokerTrades] = useState<FreedomExecutedTrade[]>([]);
   const [brokerTradesLoading, setBrokerTradesLoading] = useState(true);
   const [brokerTradesError, setBrokerTradesError] = useState(false);
   const [brokerTradesRefreshing, setBrokerTradesRefreshing] = useState(false);
@@ -30,7 +31,7 @@ export function ClosedHistoryDesk() {
   const lastRecalculationKey = useRef('');
   const historyHydrated = useRef(false);
   const cashflowSyncStarted = useRef(false);
-  const latestBrokerFetch = useRef<any[] | null>(null);
+  const latestBrokerFetch = useRef<FreedomExecutedTrade[] | null>(null);
   const retryBrokerTrades = () => {
     setBrokerTradesError(false);
     setBrokerTradesRefreshing(true);
@@ -53,23 +54,27 @@ export function ClosedHistoryDesk() {
       if (!active) return;
       const current = portfolioStore.getState();
       const saved = loadSavedHistory();
-      const localCashflows = current.cashflows?.length ? current.cashflows : saved.cashflows;
-      const currentExecutions = current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : saved.brokerExecutedTrades;
+      const savedExecutions = normalizeFreedomTrades(saved.brokerExecutedTrades);
+      const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
+      const localCashflows = current.cashflows?.length ? current.cashflows : savedCashflows;
+      const currentExecutions = current.brokerExecutedTrades?.length ? current.brokerExecutedTrades : savedExecutions;
       // Current memory may have just hydrated raw broker executions before this
       // cloud-history read completed. Enrich it from persisted calculated rows by
       // execution ID before deciding which copy is safe to restore.
       const localExecutions = mergeBrokerExecutionHistory(
-        saved.brokerExecutedTrades,
-        preservePersistedBrokerFeeAllocations(currentExecutions, saved.brokerExecutedTrades)
+        savedExecutions,
+        preservePersistedBrokerFeeAllocations(currentExecutions, savedExecutions)
       );
       const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
+      const cloudExecutions = normalizeFreedomTrades(cloud.brokerExecutedTrades);
+      const cloudCashflows = normalizeSavedFreedomCashflows(cloud.cashflows);
       historyHydrated.current = true;
       // Cloud history is the durable baseline, but the just-fetched broker page
       // is fresher. Merge it instead of allowing a slow cloud pull to erase new
       // executions that arrived while this component was mounting.
       const cloudBaseline = mergeBrokerExecutionHistory(
         localExecutions,
-        cloud.brokerExecutedTrades || []
+        cloudExecutions
       );
       const cloudExecutions = preservePersistedBrokerFeeAllocations(
         mergeBrokerExecutionHistory(cloudBaseline, latestBrokerFetch.current || []),
@@ -79,7 +84,7 @@ export function ClosedHistoryDesk() {
         brokerExecutedTrades: cloudExecutions,
         // Keep locally saved legacy rows when the cloud record exists but predates them.
         // Broker rows update matching IDs; unmatched historical rows are retained.
-        cashflows: mergeFreedomCashflowRows(localCashflows, cloud.cashflows || [])
+        cashflows: mergeFreedomCashflowRows(localCashflows, cloudCashflows)
       } : {
         brokerExecutedTrades: localExecutions,
         cashflows: localCashflows
@@ -95,12 +100,14 @@ export function ClosedHistoryDesk() {
       if (active) {
         const current = portfolioStore.getState();
         const saved = loadSavedHistory();
+        const savedExecutions = normalizeFreedomTrades(saved.brokerExecutedTrades);
+        const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
         portfolioStore.setState({
           brokerExecutedTrades: mergeBrokerExecutionHistory(
-            saved.brokerExecutedTrades,
+            savedExecutions,
             current.brokerExecutedTrades || []
           ),
-          cashflows: current.cashflows?.length ? current.cashflows : saved.cashflows
+          cashflows: current.cashflows?.length ? current.cashflows : savedCashflows
         });
         setCashflowHistoryReady(true);
       }
@@ -117,10 +124,10 @@ export function ClosedHistoryDesk() {
     // Exclude calculated metadata from the input fingerprint; otherwise a
     // successful allocation changes its own key and triggers another pass.
     const calculatedFields = new Set(['marginFeeAllocations', 'marginFee', 'feesAndCommissions', 'netProfit']);
-    const sourceExecutions = executions.map((trade: any) =>
+    const sourceExecutions = executions.map((trade) =>
       Object.fromEntries(Object.entries(trade).filter(([field]) => !calculatedFields.has(field)))
     );
-    const sourceAppTrades = (state.closedTrades || []).map((trade: any) =>
+    const sourceAppTrades = (state.closedTrades || []).map((trade) =>
       Object.fromEntries(Object.entries(trade).filter(([field]) =>
         !['marginFee', 'marginInterest', 'feesAndCommissions', 'totalCommissions', 'netProfit', 'netRealizedGain'].includes(field)
       ))
@@ -149,8 +156,8 @@ export function ClosedHistoryDesk() {
       const storedBrokerExecutions = portfolioStore.getState().brokerExecutedTrades || [];
       // The canonical store may be empty while the broker table has already
       // hydrated. Use the same visible execution set for allocation and display.
-      const brokerExecutions = [...(storedBrokerExecutions.length ? storedBrokerExecutions : brokerTrades)] as any[];
-      const appTrades = [...(state.closedTrades || [])] as any[];
+      const brokerExecutions = [...(storedBrokerExecutions.length ? storedBrokerExecutions : brokerTrades)];
+      const appTrades = [...(state.closedTrades || [])];
       const { brokerAllocations, appAllocations } = calculateFreedomMarginFeeAllocations(
         cashflowRows,
         brokerExecutions,
@@ -255,10 +262,10 @@ export function ClosedHistoryDesk() {
   }, [cashflowHistoryReady]);
 
   useEffect(() => {
-    const persistBrokerTrades = (trades: any[]) => {
+    const persistBrokerTrades = (trades: FreedomExecutedTrade[]) => {
       const stored = portfolioStore.getState().brokerExecutedTrades || [];
-      const storedById = new Map<string, any>(stored.map((trade: any) => [String(trade.id ?? ''), trade] as [string, any]));
-      const normalizedRaw = trades.map((trade: any) => {
+      const storedById = new Map<string, FreedomExecutedTrade>(stored.map((trade) => [String(trade.id ?? ''), trade]));
+      const normalizedRaw: FreedomExecutedTrade[] = trades.map((trade) => {
         const previous = storedById.get(String(trade.id ?? ''));
         // Keep only the fields needed for closed-history rendering and fee matching.
         // TradeNet's raw response can be large and must not be copied into synced state.
@@ -277,13 +284,14 @@ export function ClosedHistoryDesk() {
           commissionCurrency: String(trade?.commissionCurrency ?? ''),
           marginFeeAllocations: previous?.marginFeeAllocations ?? trade?.marginFeeAllocations,
           feesAndCommissions: previous?.feesAndCommissions ?? trade?.feesAndCommissions,
-          netProfit: previous?.netProfit ?? trade?.netProfit
+          netProfit: previous?.netProfit ?? trade?.netProfit,
+          raw: {}
         };
       });
       // In-memory rows can contain explicit empty allocation objects from a
       // pre-hydration broker response. Restore real saved allocations by ID before
       // writing these rows into the canonical store or triggering cloud sync.
-      const savedFeeRows = loadSavedHistory().brokerExecutedTrades;
+      const savedFeeRows = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
       const normalizedPage = preservePersistedBrokerFeeAllocations(
         normalizedRaw,
         [...savedFeeRows, ...stored]
@@ -302,7 +310,7 @@ export function ClosedHistoryDesk() {
       const current = portfolioStore.getState().brokerExecutedTrades || [];
       // Compare the complete normalized execution history, not a subset of
       // display fields. Incoming closed-trade metadata must sync just like cashflows.
-      const fingerprint = (rows: any[]) => JSON.stringify(rows);
+      const fingerprint = (rows: FreedomExecutedTrade[]) => JSON.stringify(rows);
       if (fingerprint(current) !== fingerprint(normalized)) {
         portfolioStore.setState({ brokerExecutedTrades: normalized.map((trade) => ({ ...trade })) });
         // Sync only when the authoritative broker history actually changes, and
@@ -323,7 +331,7 @@ export function ClosedHistoryDesk() {
         return;
       }
       const saved = loadSavedHistory().brokerExecutedTrades;
-      if (Array.isArray(saved) && saved.length) persistBrokerTrades(saved);
+      if (Array.isArray(saved) && saved.length) persistBrokerTrades(normalizeFreedomTrades(saved));
     };
     readCurrentTrades();
     // Trades requests a refresh on mount; the canonical cache remains in portfolioStore.
@@ -342,11 +350,11 @@ export function ClosedHistoryDesk() {
     };
   }, []);
   const appTrades = (state.closedTrades || []).map((trade, index) => {
-    const feeBreakdown = resolveClosedTradeFeeBreakdown(trade as any);
-    const profit = resolveClosedTradeNetProfit(trade as any, feeBreakdown);
+    const feeBreakdown = resolveClosedTradeFeeBreakdown(trade);
+    const profit = resolveClosedTradeNetProfit(trade, feeBreakdown);
     return {
-      trade: { ...(trade as any), source: 'app' as const }, index, source: 'app' as const,
-      allocationKey: 'app:' + String((trade as any).id || `${String((trade as any).ticker || 'trade')}:${String((trade as any).closedAt ?? (trade as any).exitDate ?? (trade as any).date ?? index)}`),
+      trade: { ...trade, source: 'app' as const }, index, source: 'app' as const,
+      allocationKey: 'app:' + String(trade.id || `${String(trade.ticker || 'trade')}:${String(trade.closedAt ?? trade.exitDate ?? trade.date ?? index)}`),
       profit,
       commissionsComplete: feeBreakdown.commissionsKnown,
       allocationType: 'unclassified' as const,
@@ -363,7 +371,7 @@ export function ClosedHistoryDesk() {
     guestAssignmentDetails: state.activeTrancheGuestAssignmentDetails
   });
   const guestNameById = new Map(guestUsers.map((user) => [user.id, user.name]));
-  const brokerRows = brokerTrades.filter((broker: any) => ['sell', 's', 'sale', 'sold', '2'].includes(String(broker.side ?? '').toLowerCase())).map((broker: any, index) => {
+  const brokerRows = brokerTrades.filter((broker) => ['sell', 's', 'sale', 'sold', '2'].includes(String(broker.side ?? '').toLowerCase() )).map((broker, index) => {
     const allocatedMarginFee = Object.values((broker.marginFeeAllocations || {}) as Record<string, number>)
       .reduce((sum, amount) => sum + (Number(amount) || 0), 0);
     const marginFee = Number((broker.marginFeeAllocations && typeof broker.marginFeeAllocations === 'object')
