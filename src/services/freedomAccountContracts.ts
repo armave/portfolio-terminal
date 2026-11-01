@@ -74,16 +74,19 @@ export function normalizeFreedomActiveOrders(response: unknown): FreedomActiveOr
   const envelope = asRecord(response);
   const data = asRecord(envelope?.data);
   const result = asRecord(data?.result);
-  const root = result ?? data ?? asRecord(envelope?.result) ?? envelope;
+  const root = Array.isArray(response)
+    ? response
+    : result ?? data ?? asRecord(envelope?.result) ?? envelope;
   if (!root) return [];
 
-  const orders = asRecord(root.orders);
+  const rootRecord = asRecord(root);
+  const orders = asRecord(rootRecord?.orders);
   const rows = Array.isArray(root)
     ? root
     : Array.isArray(orders?.order) ? orders.order
-      : Array.isArray(root.orders) ? root.orders
-        : Array.isArray(root.items) ? root.items
-          : Array.isArray(root.data) ? root.data
+      : Array.isArray(rootRecord?.orders) ? rootRecord.orders
+        : Array.isArray(rootRecord?.items) ? rootRecord.items
+          : Array.isArray(rootRecord?.data) ? rootRecord.data
             : [];
 
   return rows.flatMap((value, index): FreedomActiveOrder[] => {
