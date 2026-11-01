@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { addUiEventListener, emitUiEvent, removeUiEventListener } from './uiEventBus';
+import type { ScenarioModalData } from '../features/terminal/scenarioContracts';
 
 describe('typed UI event bus', () => {
   afterEach(() => {
@@ -15,6 +16,25 @@ describe('typed UI event bus', () => {
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0][0].detail).toEqual({ ticker: 'AAPL', refresh: true });
     removeUiEventListener('terminal:margin-intelligence-request', listener);
+  });
+
+  it('delivers the discriminated scenario modal contract to subscribers', () => {
+    const listener = vi.fn((event: { detail: ScenarioModalData }) => event.detail);
+    const scenario: ScenarioModalData = {
+      kind: 'buy-more',
+      title: 'Buy More Projection · AAPL',
+      subtitle: 'Hypothetical projection · no order placed',
+      columns: ['NOW Net', 'AFTER Net'],
+      rows: [{ label: 'Net P&L', values: ['$10.00', '$12.00'], kind: 'result' }],
+      note: 'No portfolio mutation or order placement occurs.'
+    };
+
+    addUiEventListener('terminal:scenario-modal', listener);
+    emitUiEvent('terminal:scenario-modal', scenario);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0].detail).toEqual(scenario);
+    removeUiEventListener('terminal:scenario-modal', listener);
   });
 
   it('stops delivering events after a subscriber is removed', () => {
