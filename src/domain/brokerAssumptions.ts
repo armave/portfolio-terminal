@@ -1,4 +1,4 @@
-import type { BrokerAssumptions } from '../types/portfolio';
+import type { BrokerAssumptions, BrokerRules } from '../types/portfolio';
 
 /** Default Freedom Broker assumptions. Rates are decimal fractions, not percentages. */
 export const DEFAULT_BROKER_ASSUMPTIONS: BrokerAssumptions = {
@@ -15,7 +15,7 @@ export const DEFAULT_BROKER_ASSUMPTIONS: BrokerAssumptions = {
   commissionRatePct: 0.0012
 };
 
-type UnknownRecord = Record<string, unknown>;
+type UnknownRecord = Record<string, unknown> & Partial<BrokerAssumptions> & Partial<BrokerRules>;
 function asRecord(value: unknown): UnknownRecord | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : null;
 }
