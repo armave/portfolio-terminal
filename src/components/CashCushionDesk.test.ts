@@ -1,7 +1,22 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { formatDailyQuoteRange } from './CashCushionDesk';
+import { formatDailyQuoteRange, getCashHoldingMarketPrice } from './CashCushionDesk';
 import { mergeBrokerExecutionHistory } from '../domain/closedHistoryFees';
+
+describe('cash holding market price', () => {
+  it('prefers a valid current quote and falls back to the stored price', () => {
+    expect(getCashHoldingMarketPrice({ currentPrice: 125, price: 120 })).toBe(125);
+    expect(getCashHoldingMarketPrice({ currentPrice: 0, price: 120 })).toBe(120);
+    expect(getCashHoldingMarketPrice({ currentPrice: null, price: '120.5' })).toBe(120.5);
+  });
+
+  it('does not turn missing, invalid, zero, or negative prices into a zero quote', () => {
+    expect(getCashHoldingMarketPrice({})).toBeNull();
+    expect(getCashHoldingMarketPrice({ currentPrice: '', price: undefined })).toBeNull();
+    expect(getCashHoldingMarketPrice({ currentPrice: 'not-a-price', price: Number.NaN })).toBeNull();
+    expect(getCashHoldingMarketPrice({ currentPrice: -1, price: 0 })).toBeNull();
+  });
+});
 
 describe('cash holdings daily quote range', () => {
   it('formats the actual high and low prices instead of placeholder text', () => {
@@ -44,6 +59,15 @@ describe('Balance cache-first rendering wiring', () => {
     expect(deskSource).toContain("if (isAdmin && balanceSync.status === 'loading' && !balanceSync.hasSnapshot)");
     expect(deskSource).not.toContain('if (executedTradesLoading || guestUsersLoading)');
     expect(deskSource).toContain("emitBrokerEvent('broker:request-account-info')");
+  });
+
+  it('shows unpriced admin holdings as unavailable instead of zero-valued assets', () => {
+    expect(deskSource).toContain('getCashHoldingMarketPrice(h)');
+    expect(deskSource).toContain("{price !== null ? formatUSD(price) : '—'}");
+    expect(deskSource).toContain("{val !== null ? formatUSD(val) : '—'}");
+    expect(deskSource).toContain("allocation !== null ? allocation.toFixed(1) + '%' : '—'");
+    expect(deskSource).toContain("unpricedHoldingCount === 0 && stocksTotal > 0");
+    expect(deskSource).toContain("translateText('Unpriced holdings', getAppLanguage())");
   });
 
   it('merges saved and in-memory executions instead of choosing only one cache', () => {
