@@ -1,6 +1,4 @@
 import { isFreedomCashflowRow, type NormalizedFreedomCashflow } from './freedomCashflows';
-import type { ClosedTrade } from '../types/portfolio';
-import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
 type CashflowInput = Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> };
 type BrokerExecutionFeeInput = {
