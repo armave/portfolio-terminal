@@ -86,11 +86,12 @@ export function normalizeFreedomActiveOrders(response: unknown): FreedomActiveOr
           : Array.isArray(root.data) ? root.data
             : [];
 
-  return rows.map((value, index): FreedomActiveOrder => {
-    const row = asRecord(value) ?? {};
+  return rows.flatMap((value, index): FreedomActiveOrder[] => {
+    const row = asRecord(value);
+    if (!row) return [];
     const idValue = readFirst(row, ['order_id', 'id', 'orderId']);
     const dateValue = readFirst(row, ['date', 'created_at', 'createdAt', 'created', 'time', 'timestamp']);
-    return {
+    return [{
       id: textOr(idValue, String(index)),
       ticker: textOr(readFirst(row, ['instr_nm', 'i', 'ticker', 'symbol', 'instr'])).trim().toUpperCase(),
       operation: numberOrNull(readFirst(row, ['oper', 'operation', 'open'])),
@@ -102,7 +103,7 @@ export function normalizeFreedomActiveOrders(response: unknown): FreedomActiveOr
         : null,
       status: textOr(readFirst(row, ['stat', 'status'])),
       raw: row
-    };
+    }];
   });
 }
 
