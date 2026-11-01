@@ -181,7 +181,7 @@ describe('market insights provider client', () => {
     await Promise.resolve();
 
     client.clear();
-    await expect(request).resolves.toEqual([]);
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' });
     expect(transportSignal?.aborted).toBe(true);
   });
 
