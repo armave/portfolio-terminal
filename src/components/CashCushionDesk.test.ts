@@ -39,6 +39,8 @@ describe('Balance cache-first rendering wiring', () => {
 
   it('uses the saved broker snapshot before showing a blocking first-load state', () => {
     expect(deskSource).toContain('createBalanceSyncState(Boolean(state.brokerAccountInfo?.loaded), isAdmin)');
+    expect(deskSource).toContain("type: 'snapshot'");
+    expect(deskSource).toContain('loaded: state.brokerAccountInfo?.loaded === true');
     expect(deskSource).toContain("if (isAdmin && balanceSync.status === 'loading' && !balanceSync.hasSnapshot)");
     expect(deskSource).not.toContain('if (executedTradesLoading || guestUsersLoading)');
     expect(deskSource).toContain("emitBrokerEvent('broker:request-account-info')");
