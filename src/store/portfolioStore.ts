@@ -19,8 +19,6 @@ import {
 import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, createBlankState, resolveCommissionConfig } from '../domain/portfolio';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
 
-
-
 function todayIso(): string {
   const d = new Date();
   const y = d.getFullYear();
