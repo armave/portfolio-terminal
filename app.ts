@@ -1056,6 +1056,12 @@ async function resetToBlankState(): Promise<void> {
   }
 
   const previousState = portfolioStore.getState();
+  let previousDeviceActiveView: string | null = null;
+  try {
+    previousDeviceActiveView = localStorage.getItem('portfolio_active_view');
+  } catch {
+    // The snapshot helper will report unavailable storage if it cannot commit.
+  }
   // Defer the store's ordinary save so the blank portfolio, explicit empty
   // history sidecar, and device-local active-view preference can be committed
   // together. If any write fails, restore the previous in-memory snapshot.
@@ -1068,6 +1074,12 @@ async function resetToBlankState(): Promise<void> {
   );
 
   if (!localSnapshotSaved) {
+    try {
+      if (previousDeviceActiveView === null) localStorage.removeItem('portfolio_active_view');
+      else localStorage.setItem('portfolio_active_view', previousDeviceActiveView);
+    } catch (error) {
+      console.error('Could not restore the previous device desk preference after reset rollback:', error);
+    }
     portfolioStore.update(() => previousState, false);
     state = portfolioStore.getState();
     renderBoard();
