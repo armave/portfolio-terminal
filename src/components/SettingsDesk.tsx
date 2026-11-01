@@ -216,7 +216,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   }
 
   return (
-    <div id="settingsDesk" class="settings-desk min-w-0 space-y-4">
+    <div id="settingsDesk" class="settings-desk desk-content-reveal min-w-0 space-y-4">
       <div class="settings-header border-b border-slate-800 pb-3">
         <h2 class="text-lg font-black text-slate-200 tracking-wide">
           TERMINAL SETTINGS &amp; SYNC

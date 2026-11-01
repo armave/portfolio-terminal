@@ -564,7 +564,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
   }
 
   return (
-    <section class="rounded-xl border-card p-4 space-y-4" aria-label="Trades">
+    <section class="desk-content-reveal rounded-xl border-card p-4 space-y-4" aria-label="Trades">
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
         <div>
           <h2 class="flex items-center gap-2 text-base font-black uppercase tracking-wider text-purple-300">
@@ -642,6 +642,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
         </div>
       </div>
       
+      <div key={tradesPage} class="closed-history-page-transition">
       <TableScrollRegion label="Closed trade history" className="border border-slate-800 bg-slate-950/60">
         <table class="w-full min-w-[900px] text-left text-xs font-mono">
           <caption class="sr-only">Closed trade history with funding type, guest assignment, ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
@@ -657,7 +658,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
               <th scope="col" class="py-2.5 px-3 text-right">Net Profit</th>
             </tr>
           </thead>
-          <tbody key={tradesPage} id="closedTradesTableBody" class="closed-history-page-transition divide-y divide-slate-800/60">
+          <tbody id="closedTradesTableBody" class="divide-y divide-slate-800/60">
             {brokerTradesLoading && brokerTrades.length === 0 ? (
               <tr><td colSpan={8} class="py-8 text-center text-slate-400">
                 <span class="inline-flex items-center gap-2"><span class="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-purple-400" aria-hidden="true" />Loading closed trade history…</span>
@@ -828,6 +829,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
           </tbody>
         </table>
       </TableScrollRegion>
+      </div>
       {trades.length > 0 && (
         <div class="closed-history-pagination flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 px-1 pt-3 text-xs" aria-label="Closed history pagination">
           <span class="text-slate-500" aria-live="polite">

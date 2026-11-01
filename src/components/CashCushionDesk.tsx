@@ -315,7 +315,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   }
 
   return (
-    <>
+    <div class="desk-content-reveal">
       <style>{`
         @keyframes guest-stock-card-enter {
           from { opacity: 0; transform: translateY(12px) scale(0.985); }
@@ -816,6 +816,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           </div>
         </section>}
       </div>
-    </>
+    </div>
   );
 }

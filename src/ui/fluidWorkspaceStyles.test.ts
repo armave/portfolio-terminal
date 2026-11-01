@@ -108,3 +108,33 @@ describe('table pagination, Settings, and Auth fluid interactions', () => {
     expect(fluidStyles).toMatch(/#auth-container \.auth-submit-button/);
   });
 });
+
+
+describe('table page swaps and shared desk loading reveals', () => {
+  const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+  const cashSource = readFileSync(new URL('../components/CashCushionDesk.tsx', import.meta.url), 'utf8');
+  const closedSource = readFileSync(new URL('../components/ClosedHistoryDesk.tsx', import.meta.url), 'utf8');
+  const settingsSource = readFileSync(new URL('../components/SettingsDesk.tsx', import.meta.url), 'utf8');
+
+  it('animates pagination on a keyed block wrapper outside table-internal elements', () => {
+    expect(closedSource).toContain('<div key={tradesPage} class="closed-history-page-transition">');
+    expect(closedSource).toContain('<tbody id="closedTradesTableBody"');
+    expect(closedSource).not.toContain('<tbody key={tradesPage}');
+    expect(fluidStyles).toMatch(/\\.closed-history-page-transition\\s*\\{[^}]*display:\\s*flow-root/s);
+    expect(fluidStyles).toMatch(/@keyframes trades-page-swap/);
+    expect(fluidStyles).toMatch(/animation:\\s*trades-page-swap\\s+340ms/);
+  });
+
+  it('reveals ready content after the shell-level loading screens for each desk', () => {
+    expect(appSource).toContain('desk-content-reveal');
+    expect(cashSource).toContain('<div class="desk-content-reveal">');
+    expect(closedSource).toContain('desk-content-reveal rounded-xl');
+    expect(settingsSource).toContain('settings-desk desk-content-reveal');
+    expect(fluidStyles).toMatch(/@keyframes desk-content-reveal/);
+    expect(fluidStyles).toMatch(/animation:\\s*desk-content-reveal\\s+420ms/);
+  });
+
+  it('uses one reduced-motion rule for page swaps and all desk reveals', () => {
+    expect(fluidStyles).toMatch(/@media\\s*\\(prefers-reduced-motion:\\s*reduce\\)[\\s\\S]*\\.desk-content-reveal,[\\s\\S]*\\.closed-history-page-transition/);
+  });
+});
