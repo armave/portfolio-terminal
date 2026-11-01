@@ -114,15 +114,15 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
             <caption class="sr-only">Guest assignment history table</caption>
             <thead>
               <tr class="border-b border-slate-800 text-[9px] uppercase tracking-wide text-slate-500">
-                <th class="px-2 py-2">Date</th>
-                <th class="px-2 py-2">Source</th>
-                <th class="px-2 py-2">Ticker</th>
-                <th class="px-2 py-2 text-right">Shares</th>
-                <th class="px-2 py-2 text-right">Open shares</th>
-                <th class="px-2 py-2 text-right">Avg. cost</th>
-                <th class="px-2 py-2 text-right">Value</th>
-                <th class="px-2 py-2 text-right">Net P&amp;L</th>
-                <th class="px-2 py-2 text-right">Status</th>
+                <th scope="col" class="px-2 py-2">Date</th>
+                <th scope="col" class="px-2 py-2">Source</th>
+                <th scope="col" class="px-2 py-2">Ticker</th>
+                <th scope="col" class="px-2 py-2 text-right">Shares</th>
+                <th scope="col" class="px-2 py-2 text-right">Open shares</th>
+                <th scope="col" class="px-2 py-2 text-right">Avg. cost</th>
+                <th scope="col" class="px-2 py-2 text-right">Value</th>
+                <th scope="col" class="px-2 py-2 text-right">Net P&amp;L</th>
+                <th scope="col" class="px-2 py-2 text-right">Status</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-800/70 font-mono">
