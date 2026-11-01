@@ -1097,13 +1097,43 @@ describe('lightweight Yahoo quote batching', () => {
       fetchYahooQuoteData('MSFT')
     ]);
 
-    expect(aapl.price.current).toBe(210);
-    expect(msft.price.current).toBe(420);
+    expect(aapl?.price).toMatchObject({ current: 210 });
+    expect(msft?.price).toMatchObject({ current: 420 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('symbol')).toBe('AAPL,MSFT');
 
     const cached = await fetchYahooQuoteData('AAPL');
-    expect(cached.price.current).toBe(210);
+    expect(cached?.price).toMatchObject({ current: 210 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Yahoo quote batch contract handling', () => {
+  beforeEach(() => clearYahooDeepStockDataCache());
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('resolves omitted batch symbols with explicit errors so callers can use fallback providers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => [{ symbol: 'AAPL', price: { current: 210 } }]
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const [aapl, msft] = await Promise.all([
+      fetchYahooQuoteData('AAPL'),
+      fetchYahooQuoteData('MSFT')
+    ]);
+
+    expect(aapl?.price).toMatchObject({ current: 210 });
+    expect(msft).toMatchObject({
+      symbol: 'MSFT',
+      error: 'Yahoo batch response omitted this symbol.'
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
