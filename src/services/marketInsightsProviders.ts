@@ -107,7 +107,11 @@ function setBoundedCache<T>(
   }
 }
 
-function subscribeToRequest<T>(entry: RequestEntry<T>, signal?: AbortSignal): Promise<T> {
+function subscribeToRequest<T>(
+  entry: RequestEntry<T>,
+  signal: AbortSignal | undefined,
+  onLastSubscriberAbort: () => void
+): Promise<T> {
   if (signal?.aborted) return Promise.reject(createAbortError());
 
   entry.subscribers += 1;
@@ -124,7 +128,10 @@ function subscribeToRequest<T>(entry: RequestEntry<T>, signal?: AbortSignal): Pr
 
     const onAbort = (): void => {
       if (!release()) return;
-      if (!entry.settled && entry.subscribers === 0) entry.controller.abort();
+      if (!entry.settled && entry.subscribers === 0) {
+        onLastSubscriberAbort();
+        entry.controller.abort();
+      }
       reject(createAbortError());
     };
 
@@ -190,7 +197,9 @@ function createSymbolResource<T>(options: SymbolResourceOptions<T>): SymbolResou
 
     const existing = force ? undefined : requests.get(symbol);
     const entry = existing ?? startRequest(symbol, force);
-    return subscribeToRequest(entry, signal);
+    return subscribeToRequest(entry, signal, () => {
+      if (requests.get(symbol) === entry) requests.delete(symbol);
+    });
   }
 
   function clear(): void {
