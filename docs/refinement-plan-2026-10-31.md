@@ -373,3 +373,17 @@ The previous guest directory error handler cleared the guest list on request fai
 - [ ] Complete broader cross-device responsive and assistive-technology QA for Cash/Balance, Margin, Closed History, Guest LOTS, Settings and News, including keyboard navigation, visible focus, dialog focus handling and small-screen table interactions.
 
 Only the broader UX/accessibility sign-off remains as a manual release gate; the automated code-quality checks are green on the current PR head.
+
+## Stage 10 — responsive and accessibility QA implementation (2026-11-01)
+
+- [x] Standardize the News article and Market Depth dialogs on the shared focus manager: initial focus, forward/reverse Tab containment, Escape, body-scroll locking, and focus restoration to the invoking control.
+- [x] Prefer the invoking trigger for focus restoration when it remains connected; safely fall back to the previously active element when it does not.
+- [x] Convert Market Depth bid/ask levels into semantic tables with captions and scoped column headers while retaining the read-only order-book presentation.
+- [x] Make the Margin projection table a named, keyboard-focusable horizontal scroll region while preserving its existing DOM id and CSS hooks.
+- [x] Add explicit column-header scope to Cash & Balance, Guest LOTS, Closed History, and Settings tables.
+- [x] Add accessible names to the Settings new-user name and password fields using existing English/Russian dictionary entries.
+- [x] Add regression coverage for focus restoration and the Stage 10 modal/table/form accessibility wiring.
+- [x] Complete real-browser responsive checks for Cash/Balance, Margin, Closed History, Guest LOTS, Settings, and News on phone, tablet, and desktop viewports (user confirmed complete, 2026-11-01).
+- [x] Complete manual keyboard-only and assistive-technology review, including focus order, visible focus, dialogs, table scrolling, and screen-reader table navigation (user confirmed complete, 2026-11-01).
+
+The implementation is client-side presentation and accessibility work only. It does not change portfolio calculations, broker requests or orders, account permissions, persisted data formats, Worker routes, or server authorization. User confirmed the real-browser cross-device, keyboard-only, and assistive-technology release checks complete on 2026-11-01.

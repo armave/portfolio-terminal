@@ -389,14 +389,14 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               <caption class="sr-only">Cash-funded stock holdings</caption>
               <thead>
                 <tr class="border-b border-slate-800 text-slate-400 font-medium">
-                  <th class="w-[12%] py-2 px-2">Ticker</th>
-                  <th class="w-[9%] py-2 px-2 text-right whitespace-nowrap">Q</th>
-                  <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Mkt</th>
-                  <th class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Avg B.</th>
-                  <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Avg Val.</th>
-                  <th class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Mkt Val.</th>
-                  <th class="w-[13%] py-2 px-2 text-right whitespace-nowrap">P/L</th>
-                  <th class="w-[10%] py-2 px-2 text-right whitespace-nowrap">Eq. Alloc</th>
+                  <th scope="col" class="w-[12%] py-2 px-2">Ticker</th>
+                  <th scope="col" class="w-[9%] py-2 px-2 text-right whitespace-nowrap">Q</th>
+                  <th scope="col" class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Mkt</th>
+                  <th scope="col" class="w-[12%] py-2 px-2 text-right whitespace-nowrap">Avg B.</th>
+                  <th scope="col" class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Avg Val.</th>
+                  <th scope="col" class="w-[16%] py-2 px-2 text-right whitespace-nowrap">Mkt Val.</th>
+                  <th scope="col" class="w-[13%] py-2 px-2 text-right whitespace-nowrap">P/L</th>
+                  <th scope="col" class="w-[10%] py-2 px-2 text-right whitespace-nowrap">Eq. Alloc</th>
                 </tr>
               </thead>
               <tbody id="cashStocksTableBody" class="cash-holdings-body divide-y divide-slate-800/60 font-mono">
@@ -579,13 +579,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                   <caption class="sr-only">Active tranches and guest assignments</caption>
                   <thead class="active-tranches-head">
                     <tr class="border-b border-slate-800 text-slate-500">
-                      <th class="py-2 px-2">Ticker</th>
-                      <th class="py-2 px-2">Purchase date</th>
-                      <th class="py-2 px-2 text-right">Shares</th>
-                      <th class="py-2 px-2 text-right">Avg. Cost</th>
-                      <th class="py-2 px-2 text-right">Value</th>
-                      <th class="py-2 px-2 text-center">Operation</th>
-                      <th class="py-2 px-2 text-center">Guest · cash shares</th>
+                      <th scope="col" class="py-2 px-2">Ticker</th>
+                      <th scope="col" class="py-2 px-2">Purchase date</th>
+                      <th scope="col" class="py-2 px-2 text-right">Shares</th>
+                      <th scope="col" class="py-2 px-2 text-right">Avg. Cost</th>
+                      <th scope="col" class="py-2 px-2 text-right">Value</th>
+                      <th scope="col" class="py-2 px-2 text-center">Operation</th>
+                      <th scope="col" class="py-2 px-2 text-center">Guest · cash shares</th>
                     </tr>
                   </thead>
                   <tbody class="active-tranches-body divide-y divide-slate-800/60 font-mono">

@@ -12,6 +12,7 @@ import { SummaryMetricsGrid } from './components/SummaryMetricsGrid';
 import { ProjectionsTable } from './components/ProjectionsTable';
 import { MarketInsightsPanel } from './components/MarketInsightsPanel';
 import { MarketDepthButton } from './components/MarketDepthButton';
+import { TableScrollRegion } from './components/TableScrollRegion';
 import { TradingConsole } from './components/TradingConsole';
 import { BoardExternalLinks } from './components/BoardExternalLinks';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
@@ -640,9 +641,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             ><SummaryMetricsGrid /></div>
 
             {/* Projection Table */}
-            <div
-              class={"table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none " + (emptyStateVisible ? "hidden" : "")}
+            <TableScrollRegion
+              label="Portfolio projection by date"
               id="projectionTableContainer"
+              className={"table-scroll-wrapper overflow-x-auto pt-2 max-w-2xl mx-auto w-full lg:max-w-none " + (emptyStateVisible ? "hidden" : "")}
             >
               <table aria-label="Portfolio projection by date" class="w-full min-w-[300px] text-xs border-collapse">
                 <caption class="sr-only">Projected portfolio net value, fees and commissions, margin fee, and balance by date.</caption>
@@ -660,7 +662,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   class="divide-y divide-slate-800/60 font-mono"
                 ><ProjectionsTable /></tbody>
               </table>
-            </div>
+            </TableScrollRegion>
             </>}
           </div>}
 

@@ -5,6 +5,7 @@ import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type M
 import { normalizeYahooDeepStockData } from '../services/yahooDeepDataContracts';
 import { usePortfolio } from '../store/portfolioStore';
 import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
+import { useDialogFocus } from '../ui/dialogFocus';
 
 export type InsightSection = 'news' | 'fundamentals' | 'earnings' | 'analysts';
 
@@ -78,38 +79,6 @@ function renderStocktwitsBody(body: string) {
   );
 }
 
-const NEWS_DIALOG_FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-export function handleNewsDialogKeyDown(
-  event: Pick<KeyboardEvent, 'key' | 'shiftKey' | 'preventDefault'>,
-  focusableElements: Array<{ focus: () => void }>,
-  activeElement: unknown,
-  closeDialog: () => void
-): void {
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    closeDialog();
-    return;
-  }
-
-  if (event.key !== 'Tab') return;
-  if (focusableElements.length === 0) {
-    event.preventDefault();
-    return;
-  }
-
-  const activeIndex = focusableElements.findIndex((element) => element === activeElement);
-  const lastIndex = focusableElements.length - 1;
-
-  if (event.shiftKey && (activeIndex === 0 || activeIndex === -1)) {
-    event.preventDefault();
-    focusableElements[lastIndex].focus();
-  } else if (!event.shiftKey && (activeIndex === lastIndex || activeIndex === -1)) {
-    event.preventDefault();
-    focusableElements[0].focus();
-  }
-}
-
 export function MarketInsightsPanel() {
   const portfolio = usePortfolio();
   const ticker = getMarketInsightsTicker(portfolio);
@@ -123,29 +92,15 @@ export function MarketInsightsPanel() {
   const [newsUpdatedAt, setNewsUpdatedAt] = useState<number | null>(null);
   const [newsRefreshRequest, setNewsRefreshRequest] = useState(0);
   const newsDialogRef = useRef<HTMLElement | null>(null);
+  const newsCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const newsTriggerRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (!selectedNews) return;
-
-    const previousFocus = newsTriggerRef.current;
-    const dialog = newsDialogRef.current;
-    dialog?.querySelector<HTMLButtonElement>('[data-news-dialog-close]')?.focus();
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const focusableElements = dialog
-        ? Array.from(dialog.querySelectorAll<HTMLElement>(NEWS_DIALOG_FOCUSABLE_SELECTOR))
-          .filter((element) => element.tabIndex >= 0 && !element.hasAttribute('disabled'))
-        : [];
-      handleNewsDialogKeyDown(event, focusableElements, document.activeElement, () => setSelectedNews(null));
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      if (previousFocus?.isConnected) previousFocus.focus();
-    };
-  }, [selectedNews]);
+  const closeNewsDialog = () => setSelectedNews(null);
+  useDialogFocus(newsDialogRef, {
+    active: selectedNews !== null,
+    initialFocusRef: newsCloseButtonRef,
+    restoreFocusRef: newsTriggerRef,
+    onEscape: closeNewsDialog
+  });
   const [stockData, setStockData] = useState<YahooDeepStockData | null>(null);
   const [stocktwitsData, setStocktwitsData] = useState<StocktwitsStream | null>(null);
   const [stocktwitsRequested, setStocktwitsRequested] = useState(false);
@@ -700,7 +655,7 @@ export function MarketInsightsPanel() {
                   {selectedNews.headline || 'Untitled article'}
                 </h2>
               </div>
-              <button type="button" class="shrink-0 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white" onClick={() => setSelectedNews(null)} aria-label="Close news article" data-news-dialog-close>✕</button>
+              <button ref={newsCloseButtonRef} type="button" class="shrink-0 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white" onClick={closeNewsDialog} aria-label="Close news article" data-news-dialog-close>✕</button>
             </header>
             <div class="max-h-[min(72dvh,42rem)] space-y-4 overflow-y-auto p-4 sm:p-5">
               <div class="whitespace-pre-wrap break-words leading-relaxed text-slate-300">

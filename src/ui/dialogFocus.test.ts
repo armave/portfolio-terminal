@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getDialogFocusableElements, trapDialogTabKey } from './dialogFocus';
+import { getDialogFocusableElements, resolveDialogRestoreTarget, trapDialogTabKey } from './dialogFocus';
 
 interface FocusableOptions {
   rendered?: boolean;
@@ -41,6 +41,19 @@ function makeEvent(shiftKey = false) {
 }
 
 describe('dialog focus management', () => {
+  it('prefers a connected invoking control when restoring focus', () => {
+    const trigger = { isConnected: true } as HTMLElement;
+    const previouslyFocused = { isConnected: true } as HTMLElement;
+    expect(resolveDialogRestoreTarget(trigger, previouslyFocused)).toBe(trigger);
+  });
+
+  it('falls back to the previously active element when the trigger is unavailable', () => {
+    const previouslyFocused = { isConnected: true } as HTMLElement;
+    const disconnectedTrigger = { isConnected: false } as HTMLElement;
+    expect(resolveDialogRestoreTarget(null, previouslyFocused)).toBe(previouslyFocused);
+    expect(resolveDialogRestoreTarget(disconnectedTrigger, previouslyFocused)).toBe(previouslyFocused);
+  });
+
   it('excludes hidden, inert, aria-hidden, visually unrendered, and negative-tabindex elements', () => {
     const visible = makeFocusable('visible');
     const hiddenAncestor = makeFocusable('hidden-ancestor', { hiddenAncestor: true });
