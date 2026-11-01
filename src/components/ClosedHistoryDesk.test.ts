@@ -5,6 +5,10 @@ function readSource(): string {
   return readFileSync(new URL('./ClosedHistoryDesk.tsx', import.meta.url), 'utf8');
 }
 
+function readAppSource(): string {
+  return readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+}
+
 describe('Trades cache-first rendering', () => {
   it('hydrates saved executions synchronously before the first component effect', () => {
     const source = readSource();
@@ -27,6 +31,15 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('hasFreedomCashflowHistoryBaseline(accountId)');
     expect(source).toContain('hasCompleteBaseline ? cashflowSyncStartDate.current : undefined');
     expect(source).toContain('markFreedomCashflowHistoryBaseline(accountId)');
+  });
+
+  it('performs a one-time full trades backfill before trusting a cached date cursor', () => {
+    const source = readAppSource();
+    expect(source).toContain('hasFreedomTradeHistoryBaseline(accountId)');
+    expect(source).toContain('const fromDate = hasCompleteBaseline');
+    expect(source).toContain('mergeBrokerExecutionHistory(retainedExecutions, normalizedPageWithFees)');
+    expect(source).toContain('persistedCount >= mergedTrades.length');
+    expect(source).toContain('markFreedomTradeHistoryBaseline(accountId)');
   });
 
   it('keeps the cashflow cursor anchored to the cached table before trades refresh', () => {
