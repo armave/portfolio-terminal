@@ -834,9 +834,9 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
             Showing {(tradesPage - 1) * tradesPageSize + 1}–{Math.min(tradesPage * tradesPageSize, trades.length)} of {trades.length} trades
           </span>
           <div class="closed-history-pagination-controls flex items-center gap-2">
-            <button type="button" onClick={() => setTradesPage(page => Math.max(1, page - 1))} disabled={tradesPage <= 1} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Previous closed history page" aria-controls="closedTradesTableBody">Previous</button>
+            <button type="button" onClick={() => setTradesPage(page => Math.max(1, page - 1))} disabled={tradesPage <= 1} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Previous closed history page" aria-controls="closedTradesTableBody">&lt;</button>
             <span class="table-pagination-current min-w-16 text-center font-mono text-slate-400" aria-current="page" aria-live="polite">Page {tradesPage} / {tradesPageCount}</span>
-            <button type="button" onClick={() => setTradesPage(page => Math.min(tradesPageCount, page + 1))} disabled={tradesPage >= tradesPageCount} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Next closed history page" aria-controls="closedTradesTableBody">Next</button>
+            <button type="button" onClick={() => setTradesPage(page => Math.min(tradesPageCount, page + 1))} disabled={tradesPage >= tradesPageCount} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Next closed history page" aria-controls="closedTradesTableBody">&gt;</button>
           </div>
         </div>
       )}
