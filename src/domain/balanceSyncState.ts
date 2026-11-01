@@ -1,4 +1,4 @@
-export type BalanceSyncStatus = 'loading' | 'ready' | 'refreshing' | 'stale' | 'error';
+type BalanceSyncStatus = 'loading' | 'ready' | 'refreshing' | 'stale' | 'error';
 
 export interface BalanceSyncState {
   status: BalanceSyncStatus;
