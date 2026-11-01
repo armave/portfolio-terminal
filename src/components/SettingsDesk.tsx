@@ -296,9 +296,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       </div>
 
       {permissions.canManageBackups && <div class="settings-data-safety-note w-full rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
-        <p>{translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")}</p>
-        <p class="mt-1">{translateText("Reset deletes saved portfolio and history data from this device and KV cloud. TradeNet records held by the broker are not deleted.")}</p>
-        <p class="mt-1 font-semibold text-amber-200">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
+        <p class="mt-1 font-semibold text-amber-200 text-center">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
       </div>}
 
       {account?.role === "admin" && <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
