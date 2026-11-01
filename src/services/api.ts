@@ -1173,9 +1173,10 @@ export async function fetchFreedomTradeNetPositions(): Promise<unknown> {
   return proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
 }
 
-/** Fetch the complete read-only TradeNet execution history required for FIFO matching. */
-export async function fetchFreedomTradeNetTrades(): Promise<unknown> {
-  return proxyFetch('freedom-trades', undefined, { cache: 'no-store' });
+/** Fetch read-only TradeNet executions, optionally bounded from the latest locally closed trade date. */
+export async function fetchFreedomTradeNetTrades(fromDate?: string): Promise<unknown> {
+  const startDate = typeof fromDate === 'string' && fromDate.trim() ? fromDate.trim() : undefined;
+  return proxyFetch('freedom-trades', startDate ? { fromDate: startDate } : undefined, { cache: 'no-store' });
 }
 
 /** Fetch current active TradeNet orders without reusing a cached response. */
@@ -1199,25 +1200,40 @@ export async function ensureFreedomTradeNetSession(): Promise<unknown> {
   });
 }
 
-/** Cache the full broker cashflow snapshot briefly to avoid repeat reads on quick Trades navigation. */
+/** Cache each broker cashflow date range briefly to avoid repeat reads on quick Trades navigation. */
 const FREEDOM_CASHFLOW_CACHE_TTL_MS = 5 * 60 * 1000;
-let freedomCashflowCache: { secret: string; expiresAt: number; data: unknown } | null = null;
-let freedomCashflowRequest: { secret: string; promise: Promise<unknown> } | null = null;
+let freedomCashflowCache: { secret: string; fromDate?: string; expiresAt: number; data: unknown } | null = null;
+let freedomCashflowRequest: { secret: string; fromDate?: string; promise: Promise<unknown> } | null = null;
 
-export async function fetchFreedomCashflows(): Promise<unknown> {
+export async function fetchFreedomCashflows(fromDate?: string): Promise<unknown> {
   const secret = getActiveGatewaySecret().trim();
-  if (freedomCashflowCache && freedomCashflowCache.secret === secret && freedomCashflowCache.expiresAt > Date.now()) {
+  const startDate = typeof fromDate === 'string' && fromDate.trim() ? fromDate.trim() : undefined;
+  if (
+    freedomCashflowCache &&
+    freedomCashflowCache.secret === secret &&
+    freedomCashflowCache.fromDate === startDate &&
+    freedomCashflowCache.expiresAt > Date.now()
+  ) {
     recordApiMetric('cache_hit', { cache: 'freedom_cashflows' });
     return freedomCashflowCache.data;
   }
-  if (freedomCashflowRequest?.secret === secret) {
+  if (freedomCashflowRequest?.secret === secret && freedomCashflowRequest.fromDate === startDate) {
     recordApiMetric('inflight_dedup', { operation: 'freedom_cashflows' });
     return freedomCashflowRequest.promise;
   }
 
-  const request: Promise<unknown> = proxyFetch('freedom-cashflows', {}, { cache: 'no-store' })
+  const request: Promise<unknown> = proxyFetch(
+    'freedom-cashflows',
+    startDate ? { fromDate: startDate } : {},
+    { cache: 'no-store' }
+  )
     .then((data: unknown) => {
-      freedomCashflowCache = { secret, expiresAt: Date.now() + FREEDOM_CASHFLOW_CACHE_TTL_MS, data };
+      freedomCashflowCache = {
+        secret,
+        fromDate: startDate,
+        expiresAt: Date.now() + FREEDOM_CASHFLOW_CACHE_TTL_MS,
+        data
+      };
       return data;
     })
     .catch((error) => {
@@ -1227,7 +1243,7 @@ export async function fetchFreedomCashflows(): Promise<unknown> {
     .finally(() => {
       if (freedomCashflowRequest?.promise === request) freedomCashflowRequest = null;
     });
-  freedomCashflowRequest = { secret, promise: request };
+  freedomCashflowRequest = { secret, fromDate: startDate, promise: request };
   return request;
 }
 
