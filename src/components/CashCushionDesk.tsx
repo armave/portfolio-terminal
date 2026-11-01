@@ -30,6 +30,16 @@ export function formatDailyQuoteRange(details: Pick<QuoteDetails, 'high' | 'low'
   return `H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`;
 }
 
+export function getCashHoldingMarketPrice(holding: { currentPrice?: unknown; price?: unknown }): number | null {
+  const positivePrice = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+
+  return positivePrice(holding.currentPrice) ?? positivePrice(holding.price);
+}
+
 function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   if (!details || typeof details !== 'object') return null;
   const hasChange = Number.isFinite(details.change) && Number.isFinite(details.changePercent);
@@ -263,9 +273,16 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
   const [activeTranchesExpanded, setActiveTranchesExpanded] = useState(false);
 
-  const stocksTotal = holdings.reduce((sum, h) => {
-    const price = Number(h.currentPrice ?? h.price) || 0;
-    return sum + (Number(h.shares) || 0) * price;
+  const unpricedHoldingCount = holdings.filter((holding) =>
+    Number(holding.shares) > 0 && getCashHoldingMarketPrice(holding) === null
+  ).length;
+  const pricedHoldingCount = holdings.filter((holding) =>
+    Number(holding.shares) > 0 && getCashHoldingMarketPrice(holding) !== null
+  ).length;
+  const stocksTotal = holdings.reduce((sum, holding) => {
+    const price = getCashHoldingMarketPrice(holding);
+    const shares = Number(holding.shares);
+    return price !== null && Number.isFinite(shares) && shares > 0 ? sum + shares * price : sum;
   }, 0);
 
   const adminHoldingGroups = isAdmin ? guestUsers.map((guest) => ({
@@ -373,6 +390,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
             aria-label="Retry TradeNet history"
             class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto"
           >Retry</button>
+        </div>
+      )}
+
+      {isAdmin && unpricedHoldingCount > 0 && (
+        <div role="status" class="flex flex-col gap-1 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+          <span class="font-semibold">{translateText('Unpriced holdings', getAppLanguage())}: {unpricedHoldingCount}</span>
+          <span>{translateText('Their market value and allocation are unavailable until a valid quote is received.', getAppLanguage())}</span>
         </div>
       )}
 
@@ -488,17 +512,19 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 ) : (
                   displayHoldings.map((h) => {
                     const shares = Number(h.shares) || 0;
-                    const price = Number(h.currentPrice ?? h.price) || 0;
+                    const price = getCashHoldingMarketPrice(h);
                     const averagePrice = Number(h.averagePrice);
                     const hasAveragePrice = Number.isFinite(averagePrice) && averagePrice > 0;
-                    const hasMarketComparison = hasAveragePrice && price > 0;
+                    const hasMarketComparison = hasAveragePrice && price !== null;
                     const averageValue = hasAveragePrice ? shares * averagePrice : null;
-                    const val = shares * price;
-                    const totalDifference = hasMarketComparison ? val - averageValue! : null;
-                    const totalDifferencePercent = hasMarketComparison && averageValue! > 0
-                      ? (totalDifference! / averageValue!) * 100
+                    const val = price === null ? null : shares * price;
+                    const totalDifference = hasMarketComparison && val !== null ? val - averageValue! : null;
+                    const totalDifferencePercent = hasMarketComparison && averageValue! > 0 && totalDifference !== null
+                      ? (totalDifference / averageValue!) * 100
                       : null;
-                    const allocation = stocksTotal > 0 ? (val / stocksTotal) * 100 : 0;
+                    const allocation = unpricedHoldingCount === 0 && stocksTotal > 0 && val !== null
+                      ? (val / stocksTotal) * 100
+                      : null;
                     const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
                     const showMarketDepthButton = !renderedMarketDepthTickers.has(h.ticker);
                     renderedMarketDepthTickers.add(h.ticker);
@@ -544,7 +570,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                             {shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}
                           </td>
                           <td data-label="Market price" class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums whitespace-nowrap">
-                            <span>{formatUSD(price)}</span>
+                            <span>{price !== null ? formatUSD(price) : '—'}</span>
                             {renderDailyQuoteSubtext(h.quoteDetails)}
                             <span class="mt-0.5 block text-[9px] font-normal text-slate-500">
                               {quoteMeta}
@@ -557,7 +583,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                             {averageValue !== null ? formatUSD(averageValue) : '—'}
                           </td>
                           <td data-label="Market value" class="py-2 px-3 text-right text-white font-semibold tabular-nums whitespace-nowrap">
-                            {formatUSD(val)}
+                            {val !== null ? formatUSD(val) : '—'}
                           </td>
                           <td data-label="Unrealized P/L" class="py-2 px-3 text-right font-semibold tabular-nums whitespace-nowrap">
                             {hasMarketComparison ? (
@@ -583,7 +609,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                             )}
                           </td>
                           <td data-label="Allocation" class="py-2 px-3 text-right text-slate-300 tabular-nums">
-                            {allocation.toFixed(1)}%
+                            {allocation !== null ? allocation.toFixed(1) + '%' : '—'}
                           </td>
                         </tr>
                       </>
@@ -595,13 +621,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 {holdings.length > 0 && (
                   <tr>
                     <td data-label="Summary" class="py-2 px-3 text-slate-300 font-bold" colSpan={6}>
-                      {holdings.length} holding{holdings.length === 1 ? '' : 's'}
+                      {holdings.length} holding{holdings.length === 1 ? '' : 's'} · {translateText('Priced market value', getAppLanguage())}
                     </td>
-                    <td data-label="Market value" class="py-2 px-3 text-right text-white font-bold">
-                      {formatUSD(stocksTotal)}
+                    <td data-label="Priced market value" class="py-2 px-3 text-right text-white font-bold">
+                      {pricedHoldingCount > 0 ? (unpricedHoldingCount > 0 ? '≥' : '') + formatUSD(stocksTotal) : '—'}
                     </td>
                     <td data-label="Allocation" class="py-2 px-3 text-right text-slate-300 font-bold">
-                      {stocksTotal > 0 ? '100.0%' : '—'}
+                      {unpricedHoldingCount === 0 && stocksTotal > 0 ? '100.0%' : '—'}
                     </td>
                   </tr>
                 )}

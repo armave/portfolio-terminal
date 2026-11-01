@@ -16,6 +16,13 @@ describe('app localization', () => {
     expect(translateText('Retry balance refresh', 'ru')).toBe('Повторить обновление баланса');
   });
 
+  it('localizes unpriced cash holding guidance', () => {
+    expect(translateText('Unpriced holdings', 'ru')).toBe('Позиции без котировки');
+    expect(translateText('Their market value and allocation are unavailable until a valid quote is received.', 'ru'))
+      .toBe('Их рыночная стоимость и доля распределения недоступны до получения действительной котировки.');
+    expect(translateText('Priced market value', 'ru')).toBe('Рыночная стоимость позиций с котировкой');
+  });
+
   it('localizes portfolio quote coverage labels', () => {
     expect(translateText('Fresh', 'ru')).toBe('Свежие');
     expect(translateText('Stale', 'ru')).toBe('Устарело');
