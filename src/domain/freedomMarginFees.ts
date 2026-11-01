@@ -11,6 +11,9 @@ type BrokerExecutionFeeInput = {
   price?: number | null;
   executionPrice?: number | null;
   tradeValue?: number | null;
+  commission?: number | string | null;
+  profit?: number | null;
+  marginFeeAllocations?: Record<string, number>;
   currency?: string | null;
 };
 type AppClosedTradeFeeInput = {
