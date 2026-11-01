@@ -1,5 +1,6 @@
 import type { ActiveBrokerTranche, ActiveTrancheMix, ActiveTrancheType, PositionRecord } from '../types/portfolio';
 import { calculateCommission, type CommissionConfig } from './portfolio';
+import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
 /** Preserve the cash/margin ratio when an open operation's quantity changes. */
 export function normalizeActiveTrancheMix(
@@ -171,21 +172,15 @@ function tradeSide(value: unknown): 'buy' | 'sell' | null {
   return null;
 }
 
-export interface FreedomExecutedTradeLike {
-  id?: string;
-  ticker?: string;
-  side?: string;
-  /** Legacy broker aliases are accepted alongside the normalized fields. */
+export type FreedomExecutedTradeLike = Omit<Partial<FreedomExecutedTrade>, 'commission'> & {
+  /** Legacy broker aliases remain accepted for older saved/imported rows. */
   operation?: string | number | null;
   type?: string | number | null;
   date?: string | number | null;
   time?: string | number | null;
-  quantity?: number | null;
-  price?: number | null;
-  executedAt?: string | null;
+  qty?: number | string | null;
   commission?: number | string | null;
-  raw?: Record<string, unknown>;
-}
+};
 
 /** Derive still-open purchase operations from Freedom's executed-trades history using FIFO sells. */
 function executedBuyCommission(trade: FreedomExecutedTradeLike, quantity: number, price: number | null, rules?: CommissionConfig): number | undefined {
@@ -259,7 +254,7 @@ export function getActiveTranchesFromTrades(
       ticker: tickerKey(firstNonEmptyText(trade?.ticker, raw.instr_nm, raw.i, raw.ticker, raw.symbol)),
       side,
       quantity: firstPositiveMagnitude(
-        trade?.quantity, (trade as any)?.qty,
+        trade?.quantity, trade?.qty,
         raw.q, raw.quantity, raw.qty
       ),
       price: firstPositivePrice(trade?.price, raw.p, raw.price, raw.exec_price),
