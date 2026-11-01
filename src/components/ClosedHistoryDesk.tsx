@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useReducer, useRef, useState } from 'preact/hooks';
 import { usePortfolio, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
-import { getAppLanguage } from '../services/i18n';
+import { getAppLanguage, translateText } from '../services/i18n';
 import { fetchFreedomCashflows, listUsers, normalizeFreedomTrades, pullCloudHistory, pushCloudHistory, type AuthUser } from '../services/api';
 import { loadSavedHistory, savePortfolioSnapshot } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
@@ -15,13 +15,30 @@ import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from '../do
 import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { TableScrollRegion } from './TableScrollRegion';
+import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
+
+/** Restore the local execution snapshot synchronously before the first Trades render. */
+function loadInitialBrokerExecutions(): FreedomExecutedTrade[] {
+  const savedExecutions = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
+  const currentExecutions = portfolioStore.getState().brokerExecutedTrades || [];
+  return mergeBrokerExecutionHistory(
+    savedExecutions,
+    preservePersistedBrokerFeeAllocations(currentExecutions, savedExecutions)
+  );
+}
 
 export function ClosedHistoryDesk() {
   const state = usePortfolio();
-  const [brokerTrades, setBrokerTrades] = useState<FreedomExecutedTrade[]>([]);
-  const [brokerTradesLoading, setBrokerTradesLoading] = useState(true);
-  const [brokerTradesError, setBrokerTradesError] = useState(false);
-  const [brokerTradesRefreshing, setBrokerTradesRefreshing] = useState(false);
+  const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
+    brokerExecutionHistoryReducer<FreedomExecutedTrade>,
+    undefined,
+    () => createBrokerExecutionHistoryState(loadInitialBrokerExecutions(), [], true)
+  );
+  const brokerTrades = brokerExecutionHistory.trades;
+  const brokerTradesLoading = brokerExecutionHistory.status === 'loading';
+  const brokerTradesRefreshing = brokerExecutionHistory.status === 'refreshing';
+  const brokerTradesError = brokerExecutionHistory.status === 'stale' ||
+    brokerExecutionHistory.status === 'error';
   const [cashflowSyncMessage, setCashflowSyncMessage] = useState('');
   const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
@@ -33,8 +50,7 @@ export function ClosedHistoryDesk() {
   const cashflowSyncStarted = useRef(false);
   const latestBrokerFetch = useRef<FreedomExecutedTrade[] | null>(null);
   const retryBrokerTrades = () => {
-    setBrokerTradesError(false);
-    setBrokerTradesRefreshing(true);
+    dispatchBrokerExecutionHistory({ type: 'refresh' });
     emitBrokerEvent('broker:request-executed-trades');
   };
   useEffect(() => {
@@ -223,7 +239,9 @@ export function ClosedHistoryDesk() {
           }
         }
       }
-      if (updatedTradeCount > 0 && brokerExecutions.length) setBrokerTrades(updatedExecutions);
+      if (updatedTradeCount > 0 && brokerExecutions.length) {
+        dispatchBrokerExecutionHistory({ type: 'success', trades: updatedExecutions });
+      }
       return true;
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unknown cashflow processing error.';
@@ -301,10 +319,7 @@ export function ClosedHistoryDesk() {
       // opening buys needed for FIFO duration and buy-commission matching. Retain
       // already-persisted rows as a compatibility safeguard during reconciliation.
       const normalized = mergeBrokerExecutionHistory([...savedFeeRows, ...stored], normalizedPage);
-      setBrokerTrades(normalized);
-      setBrokerTradesLoading(false);
-      setBrokerTradesError(false);
-      setBrokerTradesRefreshing(false);
+      dispatchBrokerExecutionHistory({ type: 'success', trades: normalized });
       // Persist the normalized source rows in canonical state so they survive
       // refresh and can be reapplied after broker history has hydrated.
       const current = portfolioStore.getState().brokerExecutedTrades || [];
@@ -339,10 +354,9 @@ export function ClosedHistoryDesk() {
       persistBrokerTrades(trades);
     });
     const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => {
-      setBrokerTradesLoading(false);
-      setBrokerTradesRefreshing(false);
-      setBrokerTradesError(true);
+      dispatchBrokerExecutionHistory({ type: 'failure' });
     });
+    dispatchBrokerExecutionHistory({ type: 'refresh' });
     emitBrokerEvent('broker:request-executed-trades');
     return () => {
       removeTradesListener();
@@ -515,8 +529,11 @@ export function ClosedHistoryDesk() {
   const knownDurations = trades.map((row) => Number((row.trade as any).holdingDays ?? (row.trade as any).daysHeld)).filter((days) => Number.isFinite(days) && days >= 0);
   const averageHoldingDays = knownDurations.length ? knownDurations.reduce((total, days) => total + days, 0) / knownDurations.length : null;
   const winRate = profitKnownTrades.length ? (winningTrades / profitKnownTrades.length) * 100 : 0;
+  const backgroundSyncPending = !cashflowHistoryReady || !cashflowSyncReady || !cashflowAllocationReady;
 
-  if (brokerTradesLoading || !cashflowHistoryReady || !cashflowSyncReady || !cashflowAllocationReady) {
+  // Only block the desk when there is nothing cached or app-owned to display.
+  // Cloud reconciliation and fee refreshes continue independently in the background.
+  if (brokerTradesLoading && brokerTrades.length === 0 && appTrades.length === 0) {
     return <DeskLoading
       title="Preparing trades"
       message="Restoring saved trade history and loading the latest Freedom activity…"
@@ -543,6 +560,11 @@ export function ClosedHistoryDesk() {
       </div>
 
       {cashflowSyncMessage && <p role="alert" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-200 transition-all">{cashflowSyncMessage}</p>}
+      {backgroundSyncPending && trades.length > 0 && (
+        <p role="status" aria-live="polite" class="rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-xs text-slate-400">
+          {translateText('Updating saved trade calculations in the background…')}
+        </p>
+      )}
       {brokerTradesRefreshing && <p role="status" aria-live="polite" class="rounded-lg border border-cyan-900/60 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-200">Refreshing TradeNet history…</p>}
       {brokerTradesError && trades.length > 0 && (
         <div role="alert" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
