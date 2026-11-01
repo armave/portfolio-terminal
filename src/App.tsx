@@ -455,6 +455,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const existing = accountRequests.get(requestKey);
     if (existing) return existing;
 
+    emitBrokerEvent('broker:account-info-refreshing');
     const request = (async () => {
       const secret = await restoreGatewaySecret();
       if (!secret.trim()) throw new Error('Gateway Secret is not available.');
