@@ -1,22 +1,5 @@
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
-export interface FreedomExecutedTrade {
-  id: string;
-  ticker: string;
-  side: string;
-  quantity: number | null;
-  price: number | null;
-  currency: string;
-  executedAt: string | null;
-  tradeValue: number | null;
-  profit: number | null;
-  /** Margin financing fee for this specific execution/stock, when supplied by a source. */
-  marginFee: number | null;
-  commission: number | null;
-  commissionCurrency: string;
-  raw: Record<string, unknown>;
-}
-
 /** Normalize common TradeNet history field aliases without fabricating missing values. */
 export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[] {
   const asRecord = (value: unknown): Record<string, unknown> | null => {
