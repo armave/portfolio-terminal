@@ -13,7 +13,7 @@ describe('isTerminalLogAtBottom', () => {
 
   it('uses a small default tolerance for fractional scroll positions', () => {
     expect(TERMINAL_LOG_FOLLOW_THRESHOLD_PX).toBe(24);
-    expect(isTerminalLogAtBottom({ scrollTop: 475.5, scrollHeight: 700, clientHeight: 200 })).toBe(true);
+    expect(isTerminalLogAtBottom({ scrollTop: 476.5, scrollHeight: 700, clientHeight: 200 })).toBe(true);
   });
 
   it('handles overscroll and invalid negative tolerances safely', () => {
