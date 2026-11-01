@@ -7,7 +7,7 @@ export { resolvePositionEntryDate } from '../domain/portfolioSelectors';
 import { formatUSD } from '../utils/formatters';
 export { formatUSD } from '../utils/formatters';
 import {
-  BrokerRules,
+  BrokerAssumptions,
   PositionRecord,
   BoardState
 } from '../types/portfolio';
@@ -28,7 +28,7 @@ export function resolveActiveView(state: BoardState): string {
 }
 
 interface RenderSummaryCardsOptions {
-  rules: BrokerRules;
+  rules: BrokerAssumptions;
   onRenderAnalystConsensus?: (ticker: string) => void;
 }
 
@@ -40,7 +40,7 @@ function renderSummaryCards(
   const { rules, onRenderAnalystConsensus } = options;
   if (!rules) return;
 
-  const dailyRate = rules.annualRate / rules.dayCountBasis;
+  const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
   const isCombined = state.activeView === 'COMBINED' || (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
@@ -79,7 +79,7 @@ function renderSummaryCards(
 }
 
 export interface RenderBoardOptions {
-  rules: BrokerRules;
+  rules: BrokerAssumptions;
   onRenderAnalystConsensus?: (ticker: string) => void;
   onUpdateCombinedBreakeven?: () => void;
   lastDeskView?: string | null;
