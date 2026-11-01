@@ -64,3 +64,47 @@ describe('Margin projection and insights layout', () => {
     expect(fluidStyles).toMatch(/@media\s*\(max-width:\s*767px\)\s*\{\s*\.margin-data-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
   });
 });
+
+
+describe('table pagination, Settings, and Auth fluid interactions', () => {
+  const closedHistorySource = readFileSync(new URL('../components/ClosedHistoryDesk.tsx', import.meta.url), 'utf8');
+  const settingsSource = readFileSync(new URL('../components/SettingsDesk.tsx', import.meta.url), 'utf8');
+  const authSource = readFileSync(new URL('../components/AuthModal.tsx', import.meta.url), 'utf8');
+
+  it('animates the keyed Trades page body and keeps pagination controls connected accessibly', () => {
+    expect(closedHistorySource).toContain('key={tradesPage} id="closedTradesTableBody"');
+    expect(closedHistorySource).toContain('closed-history-page-transition');
+    expect(closedHistorySource).toContain('closed-history-pagination');
+    expect(closedHistorySource).toContain('aria-controls="closedTradesTableBody"');
+    expect(fluidStyles).toMatch(/\\.closed-history-page-transition\\s*\\{[^}]*animation:\\s*closed-history-page-enter/s);
+    expect(fluidStyles).toMatch(/\\.closed-history-pagination-controls\\s*\\{[^}]*flex-wrap:\\s*wrap;/s);
+    expect(fluidStyles).toMatch(/\\.table-pagination-button:not\\(:disabled\\):hover/);
+  });
+
+  it('gives Settings a fluid container, responsive toolbar, panels, and scrollable user table', () => {
+    expect(settingsSource).toContain('id="settingsDesk"');
+    expect(settingsSource).toContain('settings-user-form');
+    expect(settingsSource).toContain('settings-user-panel');
+    expect(settingsSource).toContain('settings-broker-rules');
+    expect(fluidStyles).toMatch(/container-name:\\s*settings-workspace;/);
+    expect(fluidStyles).toMatch(/@container\\s+settings-workspace\\s*\\(min-width:\\s*54rem\\)/);
+    expect(fluidStyles).toMatch(/#settingsDesk \\.settings-table-scroll table\\s*\\{[^}]*min-width:\\s*49rem/s);
+  });
+
+  it('keeps Auth transitions responsive and gives fields and status messages smooth feedback', () => {
+    expect(authSource).toContain('auth-dialog-surface');
+    expect(authSource).toContain('auth-form');
+    expect(authSource).toContain('auth-input');
+    expect(authSource).toContain('auth-feedback');
+    expect(fluidStyles).toMatch(/#auth-container \\.auth-dialog-surface\\s*\\{[^}]*max-height:/s);
+    expect(fluidStyles).toMatch(/#auth-container \\.auth-input:focus-visible/);
+    expect(fluidStyles).toMatch(/@keyframes auth-feedback-enter/);
+    expect(fluidStyles).toMatch(/@media\\s*\\(max-width:\\s*480px\\)/);
+  });
+
+  it('respects reduced-motion settings for the new page, Settings, and Auth interactions', () => {
+    expect(fluidStyles).toMatch(/@media\\s*\\(prefers-reduced-motion:\\s*reduce\\)[\\s\\S]*\\.closed-history-page-transition/);
+    expect(fluidStyles).toMatch(/#settingsDesk \\.settings-panel/);
+    expect(fluidStyles).toMatch(/#auth-container \\.auth-submit-button/);
+  });
+});
