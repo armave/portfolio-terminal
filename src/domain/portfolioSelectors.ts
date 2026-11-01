@@ -1,4 +1,4 @@
-import type { BoardState, BrokerRules, PositionRecord } from '../types/portfolio';
+import type { BoardState, BrokerAssumptions, PositionRecord } from '../types/portfolio';
 import {
   calculateCommission,
   calculateMarginInterest,
@@ -102,9 +102,9 @@ export function resolvePositionEntryDate(
 /** Calculate combined-view financial inputs shared by board summary and projections. */
 export function calculateCombinedMetrics(
   state: BoardState,
-  rules: BrokerRules,
+  rules: BrokerAssumptions,
   tickers = Object.keys(state.positions || {}),
-  dailyRate = rules.annualRate / rules.dayCountBasis
+  dailyRate = rules.annualBorrowRate / rules.dayCountBasis
 ) {
   let totalInvested = 0;
   let totalCommBuy = 0;
@@ -139,8 +139,8 @@ export function calculateCombinedMetrics(
 export function calculatePositionMetrics(
   state: BoardState,
   position: PositionRecord,
-  rules: BrokerRules,
-  dailyRate = rules.annualRate / rules.dayCountBasis
+  rules: BrokerAssumptions,
+  dailyRate = rules.annualBorrowRate / rules.dayCountBasis
 ) {
   const totalInvested = (position.tranches || []).reduce((sum, tranche) => sum + tranche.qty * tranche.price, 0);
   const valueAtTarget = position.shares * position.pt;
@@ -167,10 +167,10 @@ export function calculatePositionMetrics(
 /** Derive the projections row inputs directly from canonical portfolio state. */
 export function getPortfolioProjectionInputs(
   state: BoardState,
-  rules: BrokerRules
+  rules: BrokerAssumptions
 ): PortfolioProjectionInputs {
   const tickers = Object.keys(state.positions || {});
-  const dailyRate = rules.annualRate / rules.dayCountBasis;
+  const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
   const isCombined = state.activeView === 'COMBINED' ||
     (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
 
