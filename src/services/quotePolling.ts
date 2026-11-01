@@ -1,4 +1,4 @@
-import { fetchFallbackPrice, nextQuoteRequestSequence } from './quoteProvider';
+import { fetchFallbackPrice, nextQuoteRequestSequence, resolveQuoteProvenance } from './quoteProvider';
 import { fetchYahooStockData, normalizeYahooBatchResults } from './api';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 import type { QuoteDetails } from '../types/portfolio';
@@ -70,8 +70,16 @@ export async function refreshTrackedQuotes(
     });
     const previousClose = Number(previous);
     const hasPreviousClose = Number.isFinite(previousClose) && previousClose > 0;
+    const sourceTime = marketState === 'PRE'
+      ? (data.price.preMarketTime ?? data.price.regularMarketTime)
+      : marketState === 'POST'
+        ? (data.price.postMarketTime ?? data.price.regularMarketTime)
+        : data.price.regularMarketTime;
+    const provenance = resolveQuoteProvenance(marketState, sourceTime);
     const quoteDetails = {
       marketState,
+      ...provenance,
+      receivedAt: Date.now(),
       requestSequence,
       requestStartedAt,
       price: current,
