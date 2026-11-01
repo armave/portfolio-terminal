@@ -90,6 +90,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('formatPortfolioEquityBadge({');
     expect(source).toContain('hasUnpricedHoldings: isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings');
     expect(source).toContain("'Partial value: holdings without a valid market quote are excluded.'");
+    expect(source).toContain("aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}");
   });
 
   it('uses a body portal and viewport-sized scrolling for Market Depth on mobile', () => {

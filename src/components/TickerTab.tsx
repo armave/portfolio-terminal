@@ -239,7 +239,7 @@ export function TickerTabs({
       <button
         type="button"
         onClick={() => selectView('BALANCE')}
-        aria-label="Balance"
+        aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}
         aria-pressed={isCushionActive}
         class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
           ? 'bg-cyan-500 text-black'
