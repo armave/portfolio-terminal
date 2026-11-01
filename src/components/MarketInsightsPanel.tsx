@@ -174,16 +174,17 @@ export function MarketInsightsPanel() {
 
     const currentRequestId = ++requestIdRef.current;
     const forceRefresh = false;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
 
-    fetchYahooDeepStockData(ticker, forceRefresh)
+    fetchYahooDeepStockData(ticker, forceRefresh, controller.signal)
       .then((data) => {
         if (currentRequestId !== requestIdRef.current) return;
         setStockData(data);
       })
       .catch((err: unknown) => {
-        if (currentRequestId !== requestIdRef.current) return;
+        if (currentRequestId !== requestIdRef.current || isAbortError(err)) return;
         setError(err instanceof Error ? err.message : 'Unknown error');
       })
       .finally(() => {
@@ -191,6 +192,7 @@ export function MarketInsightsPanel() {
       });
 
     return () => {
+      controller.abort();
       requestIdRef.current += 1;
     };
   }, [ticker, activeSection]);
