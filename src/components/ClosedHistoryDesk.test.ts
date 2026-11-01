@@ -21,6 +21,14 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain("brokerExecutionHistory.status === 'stale'");
   });
 
+  it('keeps the cashflow cursor anchored to the cached table before trades refresh', () => {
+    const source = readSource();
+    expect(source).toContain('const cashflowSyncStartDate = useRef(');
+    expect(source).toContain('getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])');
+    expect(source).toContain('fetchFreedomCashflows(cashflowSyncStartDate.current)');
+    expect(source).not.toContain('fetchFreedomCashflows(getLatestClosedTradeDate(brokerTrades');
+  });
+
   it('waits only when there is no cached broker or app-owned trade data', () => {
     const source = readSource();
     expect(source).toContain('if (brokerTradesLoading && brokerTrades.length === 0 && appTrades.length === 0)');
