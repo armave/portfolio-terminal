@@ -25,5 +25,5 @@ jobs:
       - run: npm run build
       - name: Dead-code validation
         run: npm run validate:dead-code
-      - name: Production dependency security audit
-        run: npm audit --omit=dev --audit-level=high
+      - name: Full dependency security audit
+        run: npm run audit:dependencies
