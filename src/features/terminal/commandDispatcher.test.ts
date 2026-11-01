@@ -140,6 +140,27 @@ describe('terminal command validation and cash routing', () => {
     expect(result.sideEffect).toEqual({ type: 'FETCH_QUOTE', ticker: 'WDC' });
   });
 
+  it('evaluates a single projection through a typed read-only scenario input', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state, activeView: 'AAPL', balance: -1000,
+      positions: { ...state.positions, AAPL: {
+        ticker: 'AAPL', shares: 10, currentPrice: 100, pt: 120, commBuy: 2,
+        tranches: [{ qty: 10, price: 100, buyCommission: 2 }]
+      } }
+    } as any);
+    const buyStock = vi.spyOn(portfolioStore, 'buyStock');
+    const sellStock = vi.spyOn(portfolioStore, 'sellStock');
+
+    const result = CommandDispatcher.execute('sim AAPL 120 in 14 days');
+
+    expect(result.type).toBe('res');
+    expect(result.text).toContain('[Sim AAPL @ $120.00 in 14d]');
+    expect(result.text).toContain('Net P&L:');
+    expect(buyStock).not.toHaveBeenCalled();
+    expect(sellStock).not.toHaveBeenCalled();
+  });
+
   it('compares multiple user-specified exit dates without changing the portfolio', () => {
     const state = portfolioStore.getState();
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
@@ -149,6 +170,8 @@ describe('terminal command validation and cash routing', () => {
         tranches: [{ qty: 10, price: 100, buyCommission: 2 }]
       } }
     } as any);
+    const sellStock = vi.spyOn(portfolioStore, 'sellStock');
+    const updateTargetPrice = vi.spyOn(portfolioStore, 'updateTargetPrice');
     const result = CommandDispatcher.execute('compare exits AAPL today at 110, tomorrow at 111, after 4 days at 113, in 2 weeks at 115, 7 days later at 116, after 1 month at 118, 2 months later at 120');
     expect(result.type).toBe('res');
     expect(result.text).toContain('[EXIT COMPARISON: AAPL]');
@@ -179,6 +202,8 @@ describe('terminal command validation and cash routing', () => {
     expect(result.modal?.action?.command).toMatch(/^target AAPL \d+\.\d{2}$/);
     expect(result.modal?.note).toContain('Future prices are assumptions');
     expect(result.modal?.note).toContain('does not submit a broker order');
+    expect(sellStock).not.toHaveBeenCalled();
+    expect(updateTargetPrice).not.toHaveBeenCalled();
   });
 
   it.each([
