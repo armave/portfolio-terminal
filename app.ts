@@ -48,7 +48,7 @@ import {
   persistGatewaySecret,
   loadSavedState,
   loadSavedHistory,
-  saveSavedHistory,
+  savePortfolioSnapshot,
   saveApiKeys,
   saveBrokerRules,
   saveGatewaySecret,
@@ -1055,20 +1055,34 @@ async function resetToBlankState(): Promise<void> {
     return;
   }
 
-  portfolioStore.resetToBlankState();
+  const previousState = portfolioStore.getState();
+  // Defer the store's ordinary save so the blank portfolio, explicit empty
+  // history sidecar, and device-local active-view preference can be committed
+  // together. If any write fails, restore the previous in-memory snapshot.
+  portfolioStore.resetToBlankState(Date.now(), false);
   state = portfolioStore.getState();
-  const localHistorySaved = saveSavedHistory({ brokerExecutedTrades: [], cashflows: [] });
-  const localStateSaved = saveState(state, pushStateToGist);
+  const localSnapshotSaved = savePortfolioSnapshot(
+    state,
+    { brokerExecutedTrades: [], cashflows: [] },
+    { deviceActiveView: 'COMBINED' }
+  );
+
+  if (!localSnapshotSaved) {
+    portfolioStore.update(() => previousState, false);
+    state = portfolioStore.getState();
+    renderBoard();
+    showToast(
+      "Portfolio reset was cancelled because the complete local snapshot could not be saved. Your previous portfolio and history have been retained.",
+      "error"
+    );
+    logTerminal("[System]: Portfolio reset cancelled; local storage could not commit the portfolio and history together.");
+    return;
+  }
+
+  // Only enqueue remote writes after the complete local reset is durable.
   pushStateToGist(true);
   renderBoard();
   logTerminal("[System]: Portfolio reset to a clean blank slate.");
-
-  if (!localHistorySaved || !localStateSaved) {
-    showToast(
-      "The portfolio was reset in memory, but some local data could not be cleared. Check browser storage before reloading.",
-      "error"
-    );
-  }
 
   try {
     const historyCleared = await clearCloudHistory();
