@@ -97,8 +97,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   brokerExecutionHistoryRef.current = brokerExecutionHistory;
   const executedTrades = brokerExecutionHistory.trades;
   const executedTradesLoading = brokerExecutionHistory.status === 'loading';
-  const balanceRefreshing = balanceSync.status === 'refreshing' ||
-    brokerExecutionHistory.status === 'refreshing' || executedTradesLoading || guestUsersLoading;
   const retryBalance = () => {
     dispatchBalanceSync({ type: 'refresh' });
     emitBrokerEvent('broker:request-account-info');
@@ -115,6 +113,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   );
   const guestUsers = guestDirectory.users;
   const guestUsersLoading = guestDirectory.status === 'loading';
+  const balanceRefreshing = balanceSync.status === 'refreshing' ||
+    brokerExecutionHistory.status === 'refreshing' || executedTradesLoading || guestUsersLoading;
   const guestUsersRequestGeneration = useRef(0);
   const loadGuestUsers = () => {
     const requestId = ++guestUsersRequestGeneration.current;
