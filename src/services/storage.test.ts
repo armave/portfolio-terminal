@@ -375,6 +375,32 @@ describe('storage service', () => {
   });
 
   describe('separate closed history persistence', () => {
+    it('migrates history embedded in a legacy portfolio snapshot when the sidecar is absent', () => {
+      const expected = {
+        brokerExecutedTrades: [{ id: 'legacy-trade', ticker: 'AAPL' }],
+        cashflows: [{ id: 'legacy-fee', amount: -2 }]
+      };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(expected));
+
+      expect(loadSavedHistory()).toEqual(expected);
+      expect(JSON.parse(storageMap.get('portfolio_closed_history_v1')!)).toEqual(expected);
+    });
+
+    it('recovers embedded history without overwriting an unreadable sidecar', () => {
+      const damagedSidecar = '{"brokerExecutedTrades":';
+      const expected = {
+        brokerExecutedTrades: [{ id: 'recoverable-trade', ticker: 'MSFT' }],
+        cashflows: [{ id: 'recoverable-fee', amount: -3 }]
+      };
+      storageMap.set('portfolio_closed_history_v1', damagedSidecar);
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(expected));
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      expect(loadSavedHistory()).toEqual(expected);
+      expect(storageMap.get('portfolio_closed_history_v1')).toBe(damagedSidecar);
+      expect(warning).toHaveBeenCalledWith('Failed to parse saved closed history:', expect.any(SyntaxError));
+    });
+
     it('persists an explicit empty history snapshot so a full reset cannot restore old rows', () => {
       storageMap.set('portfolio_closed_history_v1', JSON.stringify({
         brokerExecutedTrades: [{ id: 'old-trade' }],
