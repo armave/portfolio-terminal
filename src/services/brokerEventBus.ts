@@ -27,6 +27,7 @@ interface ClosedTradeAllocationRequest {
 
 export interface BrokerEventPayloads {
   'broker:account-info': FreedomPortfolioSnapshot;
+  'broker:account-info-refreshing': undefined;
   'broker:account-info-error': undefined;
   'broker:executed-trades': FreedomExecutedTrade[];
   'broker:executed-trades-error': undefined;
