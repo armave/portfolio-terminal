@@ -146,11 +146,11 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
   useEffect(() => {
     if (!isAdmin) return;
-    if (state.brokerAccountInfo?.loaded && state.brokerAccountInfo.status === 'current') {
-      dispatchBalanceSync({ type: 'success' });
-    } else if (state.brokerAccountInfo?.status === 'stale') {
-      dispatchBalanceSync({ type: 'failure' });
-    }
+    dispatchBalanceSync({
+      type: 'snapshot',
+      loaded: state.brokerAccountInfo?.loaded === true,
+      status: state.brokerAccountInfo?.status
+    });
   }, [isAdmin, state.brokerAccountInfo?.loaded, state.brokerAccountInfo?.receivedAt, state.brokerAccountInfo?.status]);
 
   useEffect(() => {
