@@ -32,6 +32,15 @@ describe('typed broker event bus', () => {
     unsubscribe();
   });
 
+  it('notifies Balance subscribers when a full account refresh starts', () => {
+    const listener = vi.fn();
+    const unsubscribe = addBrokerEventListener('broker:account-info-refreshing', listener);
+    emitBrokerEvent('broker:account-info-refreshing');
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(undefined);
+    unsubscribe();
+  });
+
   it('stops delivering events after a subscriber is removed', () => {
     const listener = vi.fn();
     const unsubscribe = addBrokerEventListener('broker:executed-trades', listener);

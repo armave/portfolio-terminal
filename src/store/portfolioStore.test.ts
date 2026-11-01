@@ -319,6 +319,45 @@ describe('canonical trade lifecycle and persistence', () => {
     vi.unstubAllGlobals();
   });
 
+  it('restores a cached TradeNet account snapshot, including legacy records without status metadata', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const brokerAccountInfo = {
+      loaded: true,
+      balances: [{
+        currency: 'USD',
+        amount: 1250,
+        forecastIn: 0,
+        forecastOut: 0,
+        t2In: 0,
+        t2Out: 0
+      }],
+      positions: [{
+        ticker: 'AAPL',
+        name: 'Apple',
+        quantity: 3,
+        currency: 'USD',
+        marketPrice: 190,
+        marketValue: 570,
+        averagePrice: 180,
+        profitClose: 30,
+        accountPositionId: 1
+      }],
+      receivedAt: 1761930000000
+    };
+    stored.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+      positions: {},
+      brokerAccountInfo,
+      balance: 1250,
+      cashCushion: { freeCash: 1250, holdings: [] }
+    }));
+
+    const state = new PortfolioStore().getState();
+
+    expect(state.brokerAccountInfo).toEqual(brokerAccountInfo);
+    expect(state.balance).toBe(1250);
+    expect(state.cashCushion.freeCash).toBe(1250);
+  });
+
   it('normalizes malformed persisted position and cash-holding records safely', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     stored.set('margin_portfolio_state_dynamic_v2', JSON.stringify({

@@ -10,6 +10,12 @@ describe('app localization', () => {
     expect(translateText('Sign out')).toBe('Sign out');
   });
 
+  it('translates Balance background sync states into Russian', () => {
+    expect(translateText('Refreshing balance…', 'ru')).toBe('Обновление баланса…');
+    expect(translateText('Syncing…', 'ru')).toBe('Синхронизация…');
+    expect(translateText('Retry balance refresh', 'ru')).toBe('Повторить обновление баланса');
+  });
+
   it('translates known UI copy into Russian and leaves unknown text unchanged', () => {
     expect(translateText('User management', 'ru')).toBe('Управление пользователями');
     expect(translateText('Settings', 'ru')).toBe('Настройки');
