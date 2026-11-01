@@ -201,6 +201,41 @@ export function isFreedomCashflowRow(row: Pick<NormalizedFreedomCashflow, "id">)
 }
 
 /**
+ * Validate rows loaded from local/cloud history without changing their stable
+ * IDs. Invalid legacy objects remain in persistence; only usable rows enter
+ * typed calculations.
+ */
+export function normalizeSavedFreedomCashflows(values: readonly unknown[]): NormalizedFreedomCashflow[] {
+  const normalized: NormalizedFreedomCashflow[] = [];
+  for (const candidate of values) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+    const row = candidate as Record<string, unknown>;
+    const id = stringifyRawValue(row.id).trim();
+    const date = stringifyRawValue(row.date).trim();
+    const amount = parseAmount(row.amount);
+    if (!id || !isUsableDate(date) || amount === null) continue;
+    const type = stringifyRawValue(row.type).trim() || "Cashflow";
+    const currency = stringifyRawValue(row.currency).trim();
+    const description = stringifyRawValue(row.description).trim();
+    const rawSource = row.raw && typeof row.raw === "object" && !Array.isArray(row.raw)
+      ? row.raw as Record<string, unknown>
+      : {};
+    const raw: Record<string, string> = {};
+    for (const [key, value] of Object.entries(rawSource)) raw[key] = stringifyRawValue(value);
+    normalized.push({
+      id,
+      date,
+      type,
+      amount,
+      ...(currency ? { currency } : {}),
+      ...(description ? { description } : {}),
+      raw
+    });
+  }
+  return normalized;
+}
+
+/**
  * Older saved rows may predate raw-field persistence. Normalize those at the
  * merge boundary while keeping broker rows fully typed.
  */
