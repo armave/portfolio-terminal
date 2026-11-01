@@ -905,7 +905,7 @@ export function clearCloudHistory(secret = getActiveGatewaySecret()): Promise<bo
 }
 
 async function performPushCloudHistory(
-  history: { brokerExecutedTrades?: any[]; cashflows?: any[] },
+  history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] },
   secret: string,
   knownRevision: number | undefined,
   force: boolean
