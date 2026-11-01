@@ -2,7 +2,8 @@ import type { BoardState, BrokerRules, PositionRecord } from '../types/portfolio
 import {
   calculateCommission,
   calculateMarginInterest,
-  collectOpenPositionTranches
+  collectOpenPositionTranches,
+  resolveCommissionConfig
 } from './portfolio';
 
 /** Returns the cost basis of all open margin-position tranches. */
@@ -117,14 +118,14 @@ export function calculateCombinedMetrics(
     totalInvested += cost;
     totalCommBuy += position.commBuy;
     const valueAtTarget = position.shares * position.pt;
-    totalCommSell += calculateCommission(position.shares, valueAtTarget, rules as any);
+    totalCommSell += calculateCommission(position.shares, valueAtTarget, resolveCommissionConfig(rules));
     totalGrossTarget += valueAtTarget - cost;
   });
 
   const totalDebt = Math.abs(Number(state.balance) || 0);
   const openMarginCharged = calculateMarginInterest(
-    collectOpenPositionTranches(state.positions || {}) as any,
-    { dailyRate, marginDebt: totalDebt, totalDebt } as any
+    collectOpenPositionTranches(state.positions || {}),
+    { dailyRate, marginDebt: totalDebt, totalDebt }
   );
   const totalMarginCharged = (state.realizedMarginCharged || 0) + openMarginCharged;
   const totalComms = totalCommBuy + totalCommSell;
@@ -143,7 +144,7 @@ export function calculatePositionMetrics(
 ) {
   const totalInvested = (position.tranches || []).reduce((sum, tranche) => sum + tranche.qty * tranche.price, 0);
   const valueAtTarget = position.shares * position.pt;
-  const commissionSell = calculateCommission(position.shares, valueAtTarget, rules as any);
+  const commissionSell = calculateCommission(position.shares, valueAtTarget, resolveCommissionConfig(rules));
   const totalComms = position.commBuy + commissionSell;
   const gross = valueAtTarget - totalInvested;
 
@@ -152,11 +153,11 @@ export function calculatePositionMetrics(
   const totalAccountDebt = Math.abs(Number(state.balance) || 0);
   const allocatedDebt = totalAccountDebt * weight;
 
-  const positionMarginCharged = calculateMarginInterest(position.tranches || [] as any, {
+  const positionMarginCharged = calculateMarginInterest(position.tranches || [], {
     dailyRate,
     marginDebt: allocatedDebt,
     totalDebt: totalAccountDebt
-  } as any);
+  });
   const net0 = gross - totalComms - positionMarginCharged;
   const netPct = totalInvested > 0 ? (net0 / totalInvested) * 100 : 0;
 
