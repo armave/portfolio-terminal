@@ -13,6 +13,29 @@ export type RecordTrackedPrice = (
   requestStartedAt?: number
 ) => boolean;
 
+const FALLBACK_QUOTE_CONCURRENCY = 4;
+
+type FallbackQuoteResult = Awaited<ReturnType<typeof fetchFallbackPrice>>;
+
+/**
+ * Resolve missing-symbol fallback quotes with a small worker pool. A bounded
+ * pool keeps a degraded batch from opening one request per position at once.
+ */
+async function fetchFallbackQuotes(tickers: string[]): Promise<Map<string, FallbackQuoteResult>> {
+  const results = new Map<string, FallbackQuoteResult>();
+  let nextIndex = 0;
+  const workerCount = Math.min(FALLBACK_QUOTE_CONCURRENCY, tickers.length);
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < tickers.length) {
+      const ticker = tickers[nextIndex++];
+      results.set(ticker, await fetchFallbackPrice(ticker));
+    }
+  }));
+
+  return results;
+}
+
 /** Fetch batch quotes and apply them through the caller's current-state mutation callback. */
 export async function refreshTrackedQuotes(
   tickers: string[],
@@ -27,7 +50,17 @@ export async function refreshTrackedQuotes(
 
   const responseData = await fetchYahooStockData([...requestedTickers].join(', '));
   const results = normalizeYahooBatchResults(responseData, [...requestedTickers]);
-  let updatedCount = 0;
+  const fallbackTickers: string[] = [];
+  const updates: Array<{
+    ticker: string;
+    price: number;
+    sourceName: string;
+    updatedAt: number;
+    quoteDetails: QuoteDetails;
+  } | {
+    ticker: string;
+    fallback: true;
+  }> = [];
 
   for (const data of results) {
     if (!data?.symbol) {
@@ -41,8 +74,8 @@ export async function refreshTrackedQuotes(
     if (!requestedTickers.has(ticker)) continue;
     if (data.error || !data.price) {
       console.warn(`[Quote Warning]: Missing or failed data for ${ticker}`, data.error);
-      const fallback = await fetchFallbackPrice(ticker);
-      if (fallback && recordTrackedPrice(ticker, fallback.price, fallback.sourceName, Date.now(), { ...fallback.quoteDetails, requestSequence, requestStartedAt }, requestStartedAt)) updatedCount++;
+      fallbackTickers.push(ticker);
+      updates.push({ ticker, fallback: true });
       continue;
     }
 
@@ -57,8 +90,8 @@ export async function refreshTrackedQuotes(
     });
 
     if (current === null) {
-      const fallback = await fetchFallbackPrice(ticker);
-      if (fallback && recordTrackedPrice(ticker, fallback.price, fallback.sourceName, Date.now(), { ...fallback.quoteDetails, requestSequence, requestStartedAt }, requestStartedAt)) updatedCount++;
+      fallbackTickers.push(ticker);
+      updates.push({ ticker, fallback: true });
       continue;
     }
 
@@ -88,7 +121,46 @@ export async function refreshTrackedQuotes(
       changePercent: hasPreviousClose ? (change / previousClose) * 100 : 0
     };
 
-    if (recordTrackedPrice(ticker, Number(current), 'Yahoo', Date.now(), quoteDetails, requestStartedAt)) updatedCount++;
+    updates.push({
+      ticker,
+      price: Number(current),
+      sourceName: 'Yahoo',
+      updatedAt: Date.now(),
+      quoteDetails
+    });
+  }
+
+  const fallbackQuotes = await fetchFallbackQuotes(fallbackTickers);
+  let updatedCount = 0;
+
+  // Apply values in the normalized provider response order, even though
+  // fallback requests complete independently within the bounded worker pool.
+  for (const update of updates) {
+    const quote = 'fallback' in update
+      ? fallbackQuotes.get(update.ticker)
+      : update;
+
+    if (!quote) continue;
+    if ('fallback' in update) {
+      if (recordTrackedPrice(
+        update.ticker,
+        quote.price,
+        quote.sourceName,
+        Date.now(),
+        { ...quote.quoteDetails, requestSequence, requestStartedAt },
+        requestStartedAt
+      )) updatedCount++;
+      continue;
+    }
+
+    if (recordTrackedPrice(
+      update.ticker,
+      update.price,
+      update.sourceName,
+      update.updatedAt,
+      update.quoteDetails,
+      requestStartedAt
+    )) updatedCount++;
   }
 
   return updatedCount;
