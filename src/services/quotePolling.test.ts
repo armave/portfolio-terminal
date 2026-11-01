@@ -35,6 +35,114 @@ describe('refreshTrackedQuotes', () => {
     }), 123);
   });
 
+  it('resolves fallback quotes with a bounded pool and preserves batch update order', async () => {
+    const tickers = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'META'];
+    const deferred = new Map<string, {
+      promise: Promise<{
+        price: number;
+        sourceName: string;
+        quoteDetails: {
+          marketState: 'UNKNOWN';
+          freshness: 'unknown';
+          receivedAt: number;
+          price: number;
+          change: number;
+          changePercent: number;
+        };
+      } | null>;
+      resolve: (value: {
+        price: number;
+        sourceName: string;
+        quoteDetails: {
+          marketState: 'UNKNOWN';
+          freshness: 'unknown';
+          receivedAt: number;
+          price: number;
+          change: number;
+          changePercent: number;
+        };
+      }) => void;
+    }>();
+    for (const [index, ticker] of tickers.entries()) {
+      let resolve!: (value: {
+        price: number;
+        sourceName: string;
+        quoteDetails: {
+          marketState: 'UNKNOWN';
+          freshness: 'unknown';
+          receivedAt: number;
+          price: number;
+          change: number;
+          changePercent: number;
+        };
+      }) => void;
+      const promise = new Promise<{
+        price: number;
+        sourceName: string;
+        quoteDetails: {
+          marketState: 'UNKNOWN';
+          freshness: 'unknown';
+          receivedAt: number;
+          price: number;
+          change: number;
+          changePercent: number;
+        };
+      } | null>((res) => { resolve = res; });
+      deferred.set(ticker, { promise, resolve });
+      void index;
+    }
+
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue(
+      tickers.map((symbol) => ({ symbol, error: 'Missing batch quote' })) as never
+    );
+    const started: string[] = [];
+    vi.mocked(fetchFallbackPrice).mockImplementation((ticker) => {
+      started.push(ticker);
+      return deferred.get(ticker)!.promise as never;
+    });
+    const record = vi.fn().mockReturnValue(true);
+
+    const pending = refreshTrackedQuotes(tickers, 765, record);
+    await Promise.resolve();
+
+    // Four workers start immediately, but a fifth request waits for a slot.
+    expect(started).toEqual(tickers.slice(0, 4));
+    for (let index = 0; index < 4; index++) {
+      const ticker = tickers[index];
+      deferred.get(ticker)!.resolve({
+        price: 100 + index,
+        sourceName: 'Twelve Data',
+        quoteDetails: {
+          marketState: 'UNKNOWN',
+          freshness: 'unknown',
+          receivedAt: 1000 + index,
+          price: 100 + index,
+          change: 0,
+          changePercent: 0
+        }
+      });
+      await Promise.resolve();
+    }
+
+    expect(started).toEqual(tickers);
+    deferred.get('META')!.resolve({
+      price: 104,
+      sourceName: 'Twelve Data',
+      quoteDetails: {
+        marketState: 'UNKNOWN',
+        freshness: 'unknown',
+        receivedAt: 1004,
+        price: 104,
+        change: 0,
+        changePercent: 0
+      }
+    });
+
+    await expect(pending).resolves.toBe(5);
+    expect(record.mock.calls.map(([ticker]) => ticker)).toEqual(tickers);
+  });
+
   it('uses fallback quotes when batch data has no usable price', async () => {
     vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
     vi.mocked(normalizeYahooBatchResults).mockReturnValue([{ symbol: 'MSFT', error: 'No batch quote' }] as never);
