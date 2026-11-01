@@ -21,6 +21,14 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain("brokerExecutionHistory.status === 'stale'");
   });
 
+  it('does not replace pre-existing history with an incremental page and performs a one-time cashflow backfill', () => {
+    const source = readSource();
+    expect(source).toContain('...savedFeeRows, ...stored, ...brokerTrades');
+    expect(source).toContain('hasFreedomCashflowHistoryBaseline(accountId)');
+    expect(source).toContain('hasCompleteBaseline ? cashflowSyncStartDate.current : undefined');
+    expect(source).toContain('markFreedomCashflowHistoryBaseline(accountId)');
+  });
+
   it('keeps the cashflow cursor anchored to the cached table before trades refresh', () => {
     const source = readSource();
     expect(source).toContain('const cashflowSyncStartDate = useRef(');
