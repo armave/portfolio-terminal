@@ -51,7 +51,7 @@ describe('market insights provider client', () => {
             conversation: { parent_message_id: null }
           },
           { id: 'bad', body: 42 },
-          { id: 2, body: 'Missing required id' }
+          { body: 'Missing required id' }
         ]
       })
     });
