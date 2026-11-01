@@ -25,7 +25,11 @@ describe('Trades cache-first rendering', () => {
     const source = readSource();
     expect(source).toContain('if (brokerTradesLoading && brokerTrades.length === 0 && appTrades.length === 0)');
     expect(source).not.toContain('if (brokerTradesLoading || !cashflowHistoryReady');
-    expect(source).toContain('backgroundSyncPending && trades.length > 0');
-    expect(source).toContain('Updating saved trade calculations in the background…');
+    expect(source).toContain('const isBackgroundUpdating = backgroundSyncPending || brokerTradesRefreshing;');
+    expect(source).toContain('role="status"');
+    expect(source).toContain('animate-spin');
+    expect(source).toContain('motion-reduce:animate-none');
+    expect(source).not.toContain('backgroundSyncPending && trades.length > 0');
+    expect(source).not.toContain('Refreshing TradeNet history…</p>');
   });
 });
