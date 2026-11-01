@@ -53,6 +53,9 @@ describe('storage service', () => {
   });
 
   afterEach(() => {
+    localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+      storageMap.set(key, String(value));
+    });
     vi.unstubAllGlobals();
   });
 
