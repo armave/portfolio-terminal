@@ -111,7 +111,7 @@ export function applyCashflowAllocationsToBrokerExecutions<T extends object>(
     if (
       sameAllocations &&
       Number(record.marginFee ?? 0) === marginFee &&
-      Number(trade.feesAndCommissions ?? 0) === feesAndCommissions &&
+      Number(record.feesAndCommissions ?? 0) === feesAndCommissions &&
       (record.netProfit == null ? netProfit == null : Number(record.netProfit) === netProfit)
     ) return trade;
     return { ...trade, marginFeeAllocations, marginFee, feesAndCommissions, netProfit } as T;
