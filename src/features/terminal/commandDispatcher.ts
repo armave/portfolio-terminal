@@ -1,6 +1,7 @@
 import { portfolioStore } from '../../store/portfolioStore';
 import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedDebt, resolveCommissionConfig } from '../../domain/portfolio';
 import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
+import type { ScenarioInput, ScenarioModalData } from './scenarioContracts';
 
 type SideEffectAction =
   | { type: 'FETCH_QUOTE'; ticker: string }
@@ -14,23 +15,6 @@ export interface CommandOutput {
   type: 'cmd' | 'res' | 'err' | 'confirm' | 'unrecognized';
   sideEffect?: SideEffectAction;
   modal?: ScenarioModalData;
-}
-
-export interface ScenarioModalData {
-  kind: 'buy-more' | 'exit-comparison';
-  title: string;
-  subtitle: string;
-  columns: string[];
-  rows: Array<{
-    label: string;
-    values: string[];
-    kind?: 'section' | 'fee' | 'result' | 'risk' | 'balance';
-    deltas?: Array<string | undefined>;
-  }>;
-  presets?: Array<{ label: string; columnIndexes: number[] }>;
-  quickActions?: Array<{ label: string; command?: string; columnIndexes?: number[]; invert?: boolean }>;
-  action?: { label: string; command: string };
-  note: string;
 }
 
 function cleanNumber(val: string | undefined): number {
@@ -241,10 +225,10 @@ export class CommandDispatcher {
           scenarios.push({ label: match[2], days, price });
         }
         if (scenarios.length < 2) throw new Error('Provide at least two exit scenarios to compare.');
-        return this.evaluateExitScenarios(tickerArg, scenarios);
+        return this.evaluateScenario({ kind: 'exit-comparison', ...(tickerArg ? { ticker: tickerArg } : {}), scenarios });
       }
       const buyScenarioMatch = raw.match(/^buy\s+scenario\s+([0-9.,]+)\s+([A-Za-z]{1,10})\s+(?:at|for|@)\s*([$0-9.,]+)$/i);
-      if (buyScenarioMatch) return this.evaluateBuyScenario(cleanNumber(buyScenarioMatch[1]), buyScenarioMatch[2].toUpperCase(), cleanNumber(buyScenarioMatch[3]));
+      if (buyScenarioMatch) return this.evaluateScenario({ kind: 'buy-more', shares: cleanNumber(buyScenarioMatch[1]), ticker: buyScenarioMatch[2].toUpperCase(), price: cleanNumber(buyScenarioMatch[3]) });
 
       // 3. NATURAL-LANGUAGE EXIT COMPARISON:
       // "sell GOOGL tomorrow for 333.10 vs sell 14 days later for 343.09"
@@ -259,10 +243,14 @@ export class CommandDispatcher {
         const firstDays = parseRelativeExitDays(firstDate);
         const secondDays = parseRelativeExitDays(secondDate);
         if (firstDays > 3650 || secondDays > 3650) throw new Error('Exit date must be within the next 10 years.');
-        return this.evaluateExitScenarios(vsMatch[1], [
-          { label: firstDate, days: firstDays, price: firstPrice },
-          { label: secondDate, days: secondDays, price: secondPrice }
-        ]);
+        return this.evaluateScenario({
+          kind: 'exit-comparison',
+          ...(vsMatch[1] ? { ticker: vsMatch[1] } : {}),
+          scenarios: [
+            { label: firstDate, days: firstDays, price: firstPrice },
+            { label: secondDate, days: secondDays, price: secondPrice }
+          ]
+        });
       }
 
       // 4. SINGLE SIMULATION: "sim AAPL 200 in 14 days" or "sell in 10 days for 195"
@@ -274,7 +262,7 @@ export class CommandDispatcher {
         const tickerArg = simMatch[1];
         const price = cleanNumber(isSellSyntax ? simMatch[3] : simMatch[2]);
         const days = parseInt((isSellSyntax ? simMatch[2] : simMatch[3]) || '0', 10);
-        return this.evaluateSingleSim(tickerArg, price, days);
+        return this.evaluateScenario({ kind: 'single-projection', ...(tickerArg ? { ticker: tickerArg } : {}), price, days });
       }
 
       // 9. SELL POSITION (PARTIAL OR ALL): "sold 5 AAPL for $190" or "sold all AAPL for $190"
@@ -476,6 +464,21 @@ export class CommandDispatcher {
   }
 
   // --- LOCAL MATH & STATE HELPERS ---
+
+  private static evaluateScenario(input: ScenarioInput): CommandOutput {
+    switch (input.kind) {
+      case 'single-projection':
+        return this.evaluateSingleSim(input.ticker, input.price, input.days);
+      case 'exit-comparison':
+        return this.evaluateExitScenarios(input.ticker, input.scenarios);
+      case 'buy-more':
+        return this.evaluateBuyScenario(input.shares, input.ticker, input.price);
+      default: {
+        const exhaustive: never = input;
+        throw new Error(`Unsupported scenario input: ${String(exhaustive)}`);
+      }
+    }
+  }
 
   private static resolveActivePosition(tickerArg?: string) {
     const state = portfolioStore.getState();

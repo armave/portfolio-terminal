@@ -14,7 +14,8 @@ import {
   normalizePortfolioBackup,
   resolveSaleQuantity,
 } from './src/domain/portfolio';
-import { evaluateIntent, parseAiIntent } from './src/features/ai/intent';
+import { extractGeminiResponseText, parseAiIntent, type PortfolioActionIntent } from './src/features/ai/intent';
+import { applyAiPortfolioActionAfterConfirmation } from './src/features/ai/confirmedPortfolioAction';
 import { canAccessPortfolioView } from './src/domain/accountPermissions';
 import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
@@ -74,7 +75,7 @@ import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSe
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
-import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
+import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
 import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, BrokerAssumptions, GuestTrancheLedgerRecord, QuoteDetails } from './src/types/portfolio';
 import { buildClosedTradeGuestLedgerUpserts, resolveClosedTradeOperationDate } from './src/domain/closedTradeGuestAssignments';
 import { attributeClosedTradeExecutions } from './src/domain/closedTradeAttribution';
@@ -1634,7 +1635,7 @@ async function importBackupFile(file: File) {
 // ==========================================
 // PORTFOLIO ACTIONS (CASH-FIRST ORDER FLOW)
 // ==========================================
-async function applyPortfolioActions(action: any) {
+async function applyPortfolioActions(action: PortfolioActionIntent) {
   applyOvernightRollover();
   if (action.action === "buy") {
     const ticker = String(action.ticker || '').trim().toUpperCase();
@@ -1800,20 +1801,22 @@ async function applyPortfolioActions(action: any) {
   renderBoard();
 }
 
-function confirmAiPortfolioAction(action: any) {
-  let ticker = typeof action.ticker === 'string' ? action.ticker.trim().toUpperCase() : '';
-  if (!ticker && ['set_pt', 'set_price'].includes(action.action)) {
+function assertNeverAiAction(action: never): never {
+  throw new Error(`Unsupported AI portfolio action: ${String(action)}`);
+}
+
+function confirmAiPortfolioAction(action: PortfolioActionIntent): boolean {
+  let ticker = 'ticker' in action && typeof action.ticker === 'string'
+    ? action.ticker.trim().toUpperCase()
+    : '';
+  if (!ticker && (action.action === 'set_pt' || action.action === 'set_price')) {
     ticker = state.positions[state.activeView] ? state.activeView : Object.keys(state.positions)[0] || '';
   }
   const validTicker = /^[A-Z0-9._:-]+$/.test(ticker);
-  const isPositiveFinite = (value: any) => Number.isFinite(Number(value)) && Number(value) > 0;
-  const isFiniteNumber = (value: any) =>
-    value !== null &&
-    value !== undefined &&
-    !(typeof value === 'string' && value.trim() === '') &&
-    Number.isFinite(Number(value));
-  const actionsWithTicker = ['buy', 'sell', 'set_pt', 'set_price', 'add_cash_stock', 'remove_cash_stock'];
-  if (actionsWithTicker.includes(action.action) && !validTicker) {
+  const isPositiveFinite = (value: number) => Number.isFinite(value) && value > 0;
+  const isFiniteNumber = (value: number) => Number.isFinite(value);
+  const actionRequiresTicker = action.action !== 'set_balance' && action.action !== 'set_free_cash';
+  if (actionRequiresTicker && !validTicker) {
     logTerminal('[AI Action Error]: Gemini returned an invalid ticker. No changes were made.');
     return false;
   }
@@ -1823,8 +1826,7 @@ function confirmAiPortfolioAction(action: any) {
     return false;
   }
   if (action.action === 'sell' &&
-    ((action.shares !== null && action.shares !== undefined && !isPositiveFinite(action.shares)) ||
-      !isPositiveFinite(action.price))) {
+    ((action.shares !== null && !isPositiveFinite(action.shares)) || !isPositiveFinite(action.price))) {
     logTerminal('[AI Action Error]: Gemini returned an invalid sale quantity or price. No changes were made.');
     return false;
   }
@@ -1835,7 +1837,7 @@ function confirmAiPortfolioAction(action: any) {
   }
   if (action.action === 'add_cash_stock' &&
     (!isPositiveFinite(action.shares) ||
-      (action.price != null && (!Number.isFinite(Number(action.price)) || Number(action.price) < 0)))) {
+      (action.price !== null && (!Number.isFinite(action.price) || action.price < 0)))) {
     logTerminal('[AI Action Error]: Gemini returned invalid cash holding details. No changes were made.');
     return false;
   }
@@ -1848,21 +1850,19 @@ function confirmAiPortfolioAction(action: any) {
     return false;
   }
 
-  const details: Record<string, string> = {
-    buy: `Buy ${action.shares} ${ticker} at ${action.price}?`,
-    sell: `Sell ${action.shares == null ? 'all' : action.shares} ${ticker} at ${action.price}?`,
-    set_pt: `Set ${ticker}'s target price to ${action.pt}?`,
-    set_price: `Set ${ticker}'s tracked market price to ${action.price}?`,
-    set_balance: `Set signed margin balance to ${action.balance}?`,
-    set_free_cash: `Set free cash to ${action.amount}?`,
-    add_cash_stock: `Add ${action.shares} shares of ${ticker} to cash holdings?`,
-    remove_cash_stock: `Remove ${ticker} from cash holdings?`
-  };
-  const message = details[action.action];
-  if (!message) {
-    logTerminal(`[AI Action Error]: Unsupported action "${action.action}". No changes were made.`);
-    return false;
-  }
+  const message = (() => {
+    switch (action.action) {
+      case 'buy': return `Buy ${action.shares} ${ticker} at ${action.price}?`;
+      case 'sell': return `Sell ${action.shares === null ? 'all' : action.shares} ${ticker} at ${action.price}?`;
+      case 'set_pt': return `Set ${ticker}'s target price to ${action.pt}?`;
+      case 'set_price': return `Set ${ticker}'s tracked market price to ${action.price}?`;
+      case 'set_balance': return `Set signed margin balance to ${action.balance}?`;
+      case 'set_free_cash': return `Set free cash to ${action.amount}?`;
+      case 'add_cash_stock': return `Add ${action.shares} shares of ${ticker} to cash holdings?`;
+      case 'remove_cash_stock': return `Remove ${ticker} from cash holdings?`;
+      default: return assertNeverAiAction(action);
+    }
+  })();
 
   const confirmationLines = [
     'Gemini interpreted your input as this portfolio change:',
@@ -1870,15 +1870,15 @@ function confirmAiPortfolioAction(action: any) {
     message
   ];
   const currentPosition = state.positions[ticker] ||
-    state.cashCushion?.holdings?.find((holding: any) => holding.ticker === ticker);
+    state.cashCushion?.holdings?.find((holding: { ticker: string; shares?: number }) => holding.ticker === ticker);
   const currentShares = action.action === 'buy'
     ? Number(state.positions[ticker]?.shares) || 0
     : Number(currentPosition?.shares) || 0;
   const rules = state.brokerAssumptions || TRADERNET_RULES;
 
   if (action.action === 'buy') {
-    const shares = Number(action.shares);
-    const price = Number(action.price);
+    const shares = action.shares;
+    const price = action.price;
     const gross = shares * price;
     const commission = calculateCommission(shares, gross, resolveCommissionConfig(rules));
     const totalOutlay = gross + commission;
@@ -1895,8 +1895,8 @@ function confirmAiPortfolioAction(action: any) {
       `Tracked shares: ${currentShares} → ${currentShares + shares}`
     );
   } else if (action.action === 'sell') {
-    const shares = action.shares == null ? currentShares : Number(action.shares);
-    const price = Number(action.price);
+    const shares = action.shares === null ? currentShares : action.shares;
+    const price = action.price;
     const gross = shares * price;
     const commission = calculateCommission(shares, gross, resolveCommissionConfig(rules));
     confirmationLines.push(
@@ -2011,29 +2011,38 @@ async function executeCommand(commandText: string) {
   setAiStatus('CONNECTING...');
 
   try {
-    const targetState: any = portfolioStore.getState();
+    const targetState = portfolioStore.getState();
     const prompt = buildIntentPrompt({
       text: aiQuery,
-      state: targetState,
-      activeTickers: Object.keys(targetState?.positions || {}),
-      activeView: targetState?.activeView || null,
+      state: {
+        positions: targetState.positions,
+        activeView: targetState.activeView || ''
+      },
+      activeTickers: Object.keys(targetState.positions || {}),
+      activeView: targetState.activeView || '',
       today: new Date().toISOString().split("T")[0]
     });
 
-    const data = await proxyFetch('gemini', {}, { method: "POST", body: JSON.stringify({ prompt }) });
-    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    const parsed = evaluateIntent(parseAiIntent(rawText) as any);
+    const data: unknown = await proxyFetch('gemini', {}, { method: "POST", body: JSON.stringify({ prompt }) });
+    const rawText = extractGeminiResponseText(data);
+    const parsed = parseAiIntent(rawText);
 
     if (parsed.intent === "action") {
-      if (confirmAiPortfolioAction(parsed)) await applyPortfolioActions(parsed);
-      else logTerminal("[AI Action]: Cancelled.");
+      const applied = await applyAiPortfolioActionAfterConfirmation(
+        parsed,
+        confirmAiPortfolioAction,
+        applyPortfolioActions
+      );
+      if (!applied) logTerminal("[AI Action]: Cancelled.");
     } else {
-      logTerminal(`[AI Advisor]: ${parsed.response || 'Executed.'}`);
+      const response = parsed.intent === 'chat' ? parsed.response : 'Executed.';
+      logTerminal(`[AI Advisor]: ${response}`);
     }
 
     setAiStatus('READY');
-  } catch (err: any) {
-    logTerminal(`[Error]: ${err.message}`);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown AI request error.';
+    logTerminal(`[Error]: ${message}`);
     setAiStatus('READY');
   }
 }

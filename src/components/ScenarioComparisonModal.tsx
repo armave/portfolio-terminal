@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { ScenarioModalData } from '../features/terminal/commandDispatcher';
+import type { ScenarioModalData } from '../features/terminal/scenarioContracts';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { useDialogFocus } from '../ui/dialogFocus';
 
