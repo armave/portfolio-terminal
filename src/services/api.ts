@@ -7,6 +7,9 @@ import type { AppLanguage } from './i18n';
 import { normalizeYahooBatchResults } from './yahooQuoteContracts';
 import type { YahooBatchQuoteResult } from './yahooQuoteContracts';
 import { createYahooDeepDataCache } from './yahooDeepDataCache';
+import { createMarketInsightsProviderClient } from './marketInsightsProviders';
+import type { MarketNewsItem, StocktwitsStream } from './marketInsightsProviders';
+export type { MarketNewsItem, StocktwitsMessage, StocktwitsStream } from './marketInsightsProviders';
 
 export interface SyncedMarginDigest {
   key: string;
@@ -238,7 +241,7 @@ function dispatchProxyFetch(
   const isMarketData = MARKET_DATA_ACTIONS.has(action) &&
     (action !== '' || Boolean(queryParams.symbol));
   const request = () => performProxyFetch(action, queryParams, fetchOptions);
-  return isMarketData
+  return isMarketData && !fetchOptions.signal
     ? runMarketDataRequest(createMarketRequestIdentity(action, queryParams, fetchOptions), request)
     : request();
 }
@@ -254,7 +257,7 @@ export function proxyFetch(
   fetchOptions: ProxyFetchOptions = {}
 ): Promise<any> {
   const method = (fetchOptions.method || 'GET').toUpperCase();
-  const canCoalesce = fetchOptions.cache !== 'no-store' && COALESCED_READ_ACTIONS.has(action) &&
+  const canCoalesce = !fetchOptions.signal && fetchOptions.cache !== 'no-store' && COALESCED_READ_ACTIONS.has(action) &&
     (method === 'GET' || (action === '' && method === 'POST')) &&
     !fetchOptions.body && !fetchOptions.state;
   if (!canCoalesce) return dispatchProxyFetch(action, queryParams, fetchOptions);
@@ -527,107 +530,45 @@ export function fetchYahooDeepStockData(ticker: string, force = false): Promise<
   return yahooDeepDataCache.fetch(ticker, force);
 }
 
-/** Clears shared deep-data cache state, primarily for isolated tests. */
+const marketInsightsProviders = createMarketInsightsProviderClient({
+  fetchNews: (symbol, signal, force) => proxyFetch('news', { symbol }, {
+    signal,
+    ...(force ? { cache: 'no-store' as RequestCache } : {})
+  }),
+  fetchStocktwits: (symbol, signal, force) => proxyFetch('stocktwits', { symbol }, {
+    signal,
+    ...(force ? { cache: 'no-store' as RequestCache } : {})
+  }),
+  onNewsError: (symbol, error) => {
+    console.warn('[Market News Error for ' + symbol + ']:', error instanceof Error ? error.message : error);
+  }
+});
+
+export function fetchMarketNews(
+  ticker: string,
+  force = false,
+  signal?: AbortSignal
+): Promise<MarketNewsItem[]> {
+  return marketInsightsProviders.fetchMarketNews(ticker, force, signal);
+}
+
+export function fetchStocktwitsStream(
+  ticker: string,
+  force = false,
+  signal?: AbortSignal
+): Promise<StocktwitsStream> {
+  return marketInsightsProviders.fetchStocktwitsStream(ticker, force, signal);
+}
+
+/** Clears shared deep-data and market-insights cache state, primarily for isolated tests. */
 export function clearYahooDeepStockDataCache(): void {
   yahooDeepDataCache.clear();
   yahooQuoteCache.clear();
   yahooQuoteRequests.clear();
   yahooQuoteQueue.clear();
   yahooQuoteFlushScheduled = false;
-  marketNewsCache.clear();
-  marketNewsRequests.clear();
-  stocktwitsCache.clear();
-  stocktwitsRequests.clear();
+  marketInsightsProviders.clear();
   validatedCloudResponse = null;
-}
-
-const MARKET_NEWS_CACHE_TTL_MS = 5 * 60 * 1000;
-const marketNewsCache = new Map<string, { expiresAt: number; data: any[] }>();
-const marketNewsRequests = new Map<string, Promise<any[]>>();
-const STOCKTWITS_CACHE_TTL_MS = 2 * 60 * 1000;
-const stocktwitsCache = new Map<string, { expiresAt: number; data: StocktwitsStream }>();
-const stocktwitsRequests = new Map<string, Promise<StocktwitsStream>>();
-
-export interface StocktwitsMessage {
-  id: number | string;
-  body: string;
-  created_at: string;
-  user?: { username?: string; name?: string };
-  sentiment?: { basic?: 'Bullish' | 'Bearish' | null } | null;
-  likes?: { total?: number };
-  entities?: { sentiment?: { basic?: string | null } | null };
-}
-
-export interface StocktwitsStream {
-  symbol: string;
-  messages: StocktwitsMessage[];
-  streamUrl: string;
-}
-
-export async function fetchStocktwitsStream(ticker: string, force = false): Promise<StocktwitsStream> {
-  const symbol = normalizeYahooSymbol(ticker);
-  if (!symbol) return { symbol: '', messages: [], streamUrl: '' };
-
-  if (!force) {
-    const cached = stocktwitsCache.get(symbol);
-    if (cached && cached.expiresAt > Date.now()) return cached.data;
-    if (cached) stocktwitsCache.delete(symbol);
-  }
-
-  const existing = stocktwitsRequests.get(symbol);
-  if (existing) return existing;
-
-  const request = proxyFetch('stocktwits', { symbol })
-    .then((data) => {
-      const messages = Array.isArray(data?.messages) ? data.messages : [];
-      const stream: StocktwitsStream = {
-        symbol,
-        messages,
-        streamUrl: typeof data?.streamUrl === 'string'
-          ? data.streamUrl
-          : `https://stocktwits.com/symbol/${encodeURIComponent(symbol)}`
-      };
-      setBoundedCache(stocktwitsCache, symbol, { expiresAt: Date.now() + STOCKTWITS_CACHE_TTL_MS, data: stream });
-      return stream;
-    })
-    .finally(() => {
-      if (stocktwitsRequests.get(symbol) === request) stocktwitsRequests.delete(symbol);
-    });
-  stocktwitsRequests.set(symbol, request);
-  return request;
-}
-
-export async function fetchMarketNews(ticker: string, force = false): Promise<any[]> {
-  const symbol = normalizeYahooSymbol(ticker);
-  if (!symbol) return [];
-
-  if (!force) {
-    const cached = marketNewsCache.get(symbol);
-    if (cached && cached.expiresAt > Date.now()) return cached.data;
-    if (cached) marketNewsCache.delete(symbol);
-  }
-
-  const existing = marketNewsRequests.get(symbol);
-  if (existing) return existing;
-
-  const request = (async () => {
-    // Freedom/TradeNet getNews is unavailable on the current broker endpoint.
-    // Do not call it; use the existing market-news provider directly.
-    try {
-      const data = await proxyFetch('news', { symbol });
-      const news = Array.isArray(data) ? data : [];
-      setBoundedCache(marketNewsCache, symbol, { expiresAt: Date.now() + MARKET_NEWS_CACHE_TTL_MS, data: news });
-      return news;
-    } catch (error) {
-      console.warn(`[Market News Error for ${symbol}]:`, error instanceof Error ? error.message : error);
-      return [];
-    }
-  })()
-    .finally(() => {
-      if (marketNewsRequests.get(symbol) === request) marketNewsRequests.delete(symbol);
-    });
-  marketNewsRequests.set(symbol, request);
-  return request;
 }
 
 export interface SyncOptions {
