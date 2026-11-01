@@ -690,7 +690,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           {permissions.canUseTerminal && !["BALANCE", "GUEST_HISTORY"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
             <section
               id="marketInsightsPanel"
-              key={`market-insights-${activeDeskView}`}
               class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
               aria-label="Market insights"
             >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? <MarketInsightsPanel /> : null}</section>

@@ -387,3 +387,32 @@ Only the broader UX/accessibility sign-off remains as a manual release gate; the
 - [x] Complete manual keyboard-only and assistive-technology review, including focus order, visible focus, dialogs, table scrolling, and screen-reader table navigation (user confirmed complete, 2026-11-01).
 
 The implementation is client-side presentation and accessibility work only. It does not change portfolio calculations, broker requests or orders, account permissions, persisted data formats, Worker routes, or server authorization. User confirmed the real-browser cross-device, keyboard-only, and assistive-technology release checks complete on 2026-11-01.
+
+## Stage 11 — Market Insights request lifecycle and ticker navigation (2026-11-01)
+
+**Finding**
+
+The Market Insights section was keyed by the active portfolio view. Switching between ticker tabs remounted the panel, resetting the selected insight tab and the Stocktwits opt-in state. Since the panel's News effect ran on mount regardless of the selected insight tab, navigating ticker-to-ticker while viewing Fundamentals, Earnings, or Analysts could trigger an unnecessary News request for each newly mounted panel.
+
+**Implementation**
+
+- [x] Keep the Market Insights panel mounted across ticker-view changes by removing its active-view-specific key; keep the trading console's existing key unchanged.
+- [x] Add a pure request policy: News is requested only while the News tab is selected; Yahoo deep data is requested only for Fundamentals, Earnings, or Analysts; Stocktwits remains gated by explicit user opt-in.
+- [x] Preserve the selected insight tab and the Stocktwits opt-in preference while switching between ticker tabs.
+- [x] Keep the first Stocktwits opt-in on the normal cache path; only subsequent explicit Refresh clicks bypass the cache.
+- [x] Scope displayed News, Stocktwits, and Yahoo deep-data results/status to the current ticker so late or retained data from another ticker is not shown under the selected symbol.
+- [x] Abort and invalidate prior Yahoo deep-data work when the selected ticker changes or the user leaves the deep-data tabs; share one in-flight payload across Fundamentals, Earnings, and Analysts.
+- [x] Retain the existing provider-service caches, TTLs, request coalescing, subscriber-scoped cancellation, forced-refresh semantics, and closed-market request gate; no duplicate cache or networking layer was added.
+- [x] Add tests for request-policy decisions, per-symbol News request counts/cache reuse, panel mount stability, request gating, ticker-scoped rendering, cancellation, and Stocktwits opt-in versus explicit refresh.
+
+**Scope**
+
+Client-side request lifecycle and presentation state only. No provider endpoints, Worker routes, broker requests/orders, portfolio accounting, financial calculations, persisted schemas, authorization, or dependencies changed. The old `perf/onload-request-optimization` branch was not rebased or cherry-picked: it is 2 commits ahead and 646 behind current `main`, and its changes target obsolete window-event/prop bridge assumptions. The useful current-scope behavior was implemented against the present typed Preact architecture instead.
+
+**Release validation**
+
+- [ ] Exact-PR-head GitHub Actions: typecheck, Vitest, production build, dead-code validation, and production dependency audit.
+- [ ] Browser network-panel verification that switching ticker tabs while on Fundamentals/Earnings/Analysts does not request News, while the selected deep-data request remains scoped to the new ticker.
+- [ ] Verify News/Stocktwits opt-in, cached revisit, explicit refresh, and rapid ticker switching with delayed responses in a real browser.
+
+No live browser network trace or manual request-count measurement is claimed by this implementation. Automated request-count/policy regression tests are included; the browser network review remains a separate release check.
