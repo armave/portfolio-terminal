@@ -381,6 +381,39 @@ describe('Freedom trades Worker action', () => {
     expect(upstreamInit.method).toBe('POST');
     expect(JSON.parse(upstreamInit.body)).toEqual({ sort: 0 });
   });
+
+  it('requests only executions on or after a validated date through now', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ trades: { trade: [] } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-trades&fromDate=2026-10-29', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_PUBLIC_KEY: 'public-key',
+      FREEDOM_PRIVATE_KEY: 'private-key'
+    });
+
+    expect(response.status).toBe(200);
+    const [, upstreamInit] = fetchMock.mock.calls[0];
+    const params = JSON.parse(upstreamInit.body);
+    expect(params).toMatchObject({ beginDate: '2026-10-29T00:00:00', sort: 0 });
+    expect(params.endDate).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+    expect(params).not.toHaveProperty('max');
+  });
+
+  it('rejects malformed incremental trade dates before calling TradeNet', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-trades&fromDate=not-a-date', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), { GATEWAY_SECRET: 'test-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key' });
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('Freedom news fallback', () => {
@@ -889,6 +922,37 @@ describe('Freedom cashflows Worker action', () => {
     expect(upstreamUrl).toBe('https://tradernet.com/api/getUserCashFlows');
     expect(upstreamInit.method).toBe('POST');
     expect(JSON.parse(upstreamInit.body)).toEqual({});
+  });
+
+  it('filters cashflows inclusively from a validated start date', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ cashflow: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows&fromDate=2026-10-29', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_PUBLIC_KEY: 'public-test-key',
+      FREEDOM_PRIVATE_KEY: 'private-test-key'
+    });
+    expect(response.status).toBe(200);
+    const [, upstreamInit] = fetchMock.mock.calls[0];
+    expect(JSON.parse(upstreamInit.body)).toEqual({
+      filters: [{ field: 'date', operator: 'eqormore', value: '2026-10-29' }],
+      sort: { field: 'date', dir: 'ASC' }
+    });
+  });
+
+  it('rejects malformed incremental cashflow dates before calling TradeNet', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows&fromDate=2026-02-30', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), { GATEWAY_SECRET: 'test-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key' });
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
