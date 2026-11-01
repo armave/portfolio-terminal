@@ -423,11 +423,11 @@ export class PortfolioStore {
     this.notify(persist);
   }
 
-  public setState(partial: Partial<PortfolioState>): void {
+  public setState(partial: Partial<PortfolioState>, persist = true): void {
     this.update((state) => ({
       ...state,
       ...partial
-    }));
+    }), persist);
   }
 
   public importState(newState: Partial<PortfolioState>): void {
