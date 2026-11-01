@@ -66,7 +66,7 @@ export function ClosedHistoryDesk() {
         preservePersistedBrokerFeeAllocations(currentExecutions, savedExecutions)
       );
       const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
-      const cloudExecutions = normalizeFreedomTrades(cloud.brokerExecutedTrades);
+      const cloudSourceExecutions = normalizeFreedomTrades(cloud.brokerExecutedTrades);
       const cloudCashflows = normalizeSavedFreedomCashflows(cloud.cashflows);
       historyHydrated.current = true;
       // Cloud history is the durable baseline, but the just-fetched broker page
@@ -74,7 +74,7 @@ export function ClosedHistoryDesk() {
       // executions that arrived while this component was mounting.
       const cloudBaseline = mergeBrokerExecutionHistory(
         localExecutions,
-        cloudExecutions
+        cloudSourceExecutions
       );
       const cloudExecutions = preservePersistedBrokerFeeAllocations(
         mergeBrokerExecutionHistory(cloudBaseline, latestBrokerFetch.current || []),
@@ -380,7 +380,7 @@ export function ClosedHistoryDesk() {
     const metrics = brokerTradeMetrics.get(broker);
     const sellCommissionCurrency = String(broker.commissionCurrency ?? broker.currency ?? '').trim().toUpperCase();
     const sellCommissionCurrencyIsUsd = sellCommissionCurrency === '' || sellCommissionCurrency === 'USD';
-    const rawSellCommission = !sellCommissionCurrencyIsUsd || broker.commission === null || broker.commission === undefined || broker.commission === ''
+    const rawSellCommission = !sellCommissionCurrencyIsUsd || broker.commission === null || broker.commission === undefined
       ? NaN
       : Math.abs(Number(broker.commission));
     const sellCommission = Number.isFinite(rawSellCommission) ? rawSellCommission : null;
