@@ -143,22 +143,22 @@ export interface BrokerAssumptions {
 /** Explicit legacy settings keys accepted only by the broker-assumption normalizer. */
 export interface BrokerRules {
   broker?: string;
-  annualRate?: number;
-  annualBorrowRate?: number;
-  dayCountBasis?: number;
+  annualRate?: number | string;
+  annualBorrowRate?: number | string;
+  dayCountBasis?: number | string;
   dailyRolloverCutoffArmenia?: string;
-  rolloverHour?: number;
-  rolloverMinute?: number;
+  rolloverHour?: number | string;
+  rolloverMinute?: number | string;
   rolloverTimeZone?: string;
-  maintenanceMarginRatio?: number;
-  maintenanceEquityRatio?: number;
-  stopOutRatio?: number;
-  commissionMin?: number;
-  commissionPerShare?: number;
-  commissionRatePct?: number;
-  commPerShare?: number;
-  commVolumePct?: number;
-  minCommOrder?: number;
+  maintenanceMarginRatio?: number | string;
+  maintenanceEquityRatio?: number | string;
+  stopOutRatio?: number | string;
+  commissionMin?: number | string;
+  commissionPerShare?: number | string;
+  commissionRatePct?: number | string;
+  commPerShare?: number | string;
+  commVolumePct?: number | string;
+  minCommOrder?: number | string;
 }
 
 interface ApiKeys {
