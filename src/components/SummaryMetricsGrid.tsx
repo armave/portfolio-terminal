@@ -1,6 +1,6 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { useRef, useState } from 'preact/hooks';
-import type { BrokerRules, QuoteDetails } from '../types/portfolio';
+import type { BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
@@ -16,9 +16,9 @@ import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
 import { normalizeFreedomTrades } from '../services/api';
 
-function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string; rules: BrokerRules }) {
+function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string; rules: BrokerAssumptions }) {
   const stopOutTitle = `Estimate assumes the configured ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
-  const marginRiskTitle = `Estimated from portfolio equity and configured thresholds: ${(rules.maintenanceMarginRatio * 100).toFixed(2)}% maintenance equity and ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity. Not a live broker risk indicator.`;
+  const marginRiskTitle = `Estimated from portfolio equity and configured thresholds: ${(rules.maintenanceEquityRatio * 100).toFixed(2)}% maintenance equity and ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity. Not a live broker risk indicator.`;
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
   const equityWidth = Math.max(0, Math.min(100, equity));
   const buffer = Number.isFinite(risk.marginCallBufferPct) ? Math.max(0, Math.min(100, risk.marginCallBufferPct)) : 0;
@@ -30,10 +30,10 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
       </div>
       <div class="margin-risk-meter" role="progressbar" aria-label="Account equity percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth}>
-        <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceMarginRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, 40 - Math.min(100, Math.max(0, rules.maintenanceMarginRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
+        <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, 40 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
         <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
       </div>
-      <div class="margin-risk-legend"><span>{(rules.maintenanceMarginRatio * 100).toFixed(1)}% maintenance</span><span>40% reference</span><span>100% assets</span></div>
+      <div class="margin-risk-legend"><span>{(rules.maintenanceEquityRatio * 100).toFixed(1)}% maintenance</span><span>40% reference</span><span>100% assets</span></div>
       <div class="margin-risk-gauge-grid">
         <div class="margin-risk-gauge-item">
           <div class="margin-risk-gauge-row"><span class="margin-risk-label">MARGIN-CALL BUFFER</span><strong>{Number.isFinite(risk.marginCallBufferPct) ? risk.marginCallBufferPct.toFixed(1) + '%' : '—'}</strong></div>
@@ -89,7 +89,7 @@ function computeMarginRiskDisplay(
   debt: number,
   positionValue: number,
   collateral: number,
-  rules: BrokerRules
+  rules: BrokerAssumptions
 ) {
   if (debt <= 0) {
     return {
@@ -108,7 +108,7 @@ function computeMarginRiskDisplay(
   const assets = positionValue + collateral;
   const equity = assets - debt;
   const equityRatio = assets > 0 ? (equity / assets) * 100 : -Infinity;
-  const maintenanceRatio = rules.maintenanceMarginRatio * 100;
+  const maintenanceRatio = rules.maintenanceEquityRatio * 100;
   const stopOutRatio = rules.stopOutRatio * 100;
 
   let riskLevel = 'Healthy';
@@ -128,7 +128,7 @@ function computeMarginRiskDisplay(
   const summaryText = `${riskLevel} · ${Number.isFinite(equityRatio) ? `${equityRatio.toFixed(1)}% equity` : 'negative equity'
     } (${maintenanceRatio.toFixed(1)}% maintenance)`;
 
-  const marginCallAssetsRequired = debt / (1 - rules.maintenanceMarginRatio);
+  const marginCallAssetsRequired = debt / (1 - rules.maintenanceEquityRatio);
   const stopOutAssetsRequired = debt / (1 - rules.stopOutRatio);
 
   const showMarginCall = collateral < marginCallAssetsRequired;
@@ -262,7 +262,7 @@ export function SummaryMetricsGrid() {
   const refreshIntervalMs = useQuoteRefreshInterval();
   const previousPricesRef = useRef<Record<string, number>>({});
   const [expandedTrancheTicker, setExpandedTrancheTicker] = useState<string | null>(null);
-  const dailyRate = rules.annualRate / rules.dayCountBasis;
+  const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
   const isCombined =
     state.activeView === 'COMBINED' ||
@@ -445,11 +445,7 @@ export function SummaryMetricsGrid() {
   const brokerOpenLots = getActiveTranchesFromTrades(
     brokerTrades,
     state.brokerAccountInfo as any,
-    {
-      commPerShare: Number(rules.commPerShare ?? rules.commissionPerShare ?? 0),
-      commVolumePct: Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0),
-      minCommOrder: Number(rules.minCommOrder ?? rules.commissionMin ?? 0)
-    },
+    resolveCommissionConfig(rules),
     false
   );
   const trancheQuantities = getMarginTrancheQuantities(positionTranches, brokerOpenLots, pos.ticker);
