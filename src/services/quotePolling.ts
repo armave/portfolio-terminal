@@ -1,5 +1,6 @@
 import { fetchFallbackPrice, nextQuoteRequestSequence, resolveQuoteProvenance } from './quoteProvider';
-import { fetchYahooStockData, normalizeYahooBatchResults } from './api';
+import { fetchYahooStockData } from './api';
+import { normalizeYahooBatchResults } from './yahooQuoteContracts';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 import type { QuoteDetails } from '../types/portfolio';
 
