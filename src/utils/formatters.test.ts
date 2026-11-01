@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setAppLanguage } from '../services/i18n';
-import { decodeHtmlEntities, formatQuoteMetadata, formatRiskTrigger, formatTrancheDate, formatUSD, getQuoteFreshness } from './formatters';
+import { decodeHtmlEntities, formatQuoteFreshnessSummary, formatQuoteMetadata, formatRiskTrigger, formatTrancheDate, formatUSD, getQuoteFreshness, summarizeQuoteFreshness } from './formatters';
 
 afterEach(() => setAppLanguage('en'));
 
@@ -54,9 +54,32 @@ describe('display formatters', () => {
     expect(getQuoteFreshness({}, now, 60_000)).toBe('unavailable');
   });
 
+  it('summarizes freshness across every held position instead of only the latest response', () => {
+    const now = 1_800_000_000_000;
+    const summary = summarizeQuoteFreshness([
+      { quoteSource: 'Yahoo', quoteUpdatedAt: now, quoteDetails: { sourceTimestamp: now - 30_000 } },
+      { quoteSource: 'Yahoo', quoteUpdatedAt: now, quoteDetails: { sourceTimestamp: now - 600_000 } },
+      { quoteSource: 'Yahoo', quoteUpdatedAt: now, quoteDetails: { sourceTimestamp: now - 86_400_000, marketState: 'CLOSED' } },
+      { quoteSource: 'Twelve Data', quoteUpdatedAt: now },
+      {},
+      { quoteSource: 'Manual', quoteUpdatedAt: now }
+    ], now, 60_000);
+
+    expect(summary).toEqual({
+      total: 6,
+      fresh: 1,
+      stale: 1,
+      delayed: 1,
+      unknown: 1,
+      unavailable: 2
+    });
+    expect(formatQuoteFreshnessSummary(summary))
+      .toBe('Fresh: 1 · Stale: 1 · Delayed: 1 · Time unknown: 1 · Not fetched: 2');
+  });
+
   it('reports missing and unverified quote timestamps honestly', () => {
-    expect(formatQuoteMetadata({ quoteSource: 'Yahoo' })).toBe('Yahoo');
-    expect(formatQuoteMetadata({ quoteSource: 'Twelve Data', quoteUpdatedAt: 1_800_000_000_000 })).toBe('Twelve Data');
+    expect(formatQuoteMetadata({ quoteSource: 'Yahoo' })).toBe('Yahoo · Time unknown');
+    expect(formatQuoteMetadata({ quoteSource: 'Twelve Data', quoteUpdatedAt: 1_800_000_000_000 })).toBe('Twelve Data · Time unknown');
     expect(formatQuoteMetadata({})).toBe('Not fetched');
   });
 });

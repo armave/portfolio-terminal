@@ -2,9 +2,9 @@ import { formatRelativeTime } from '../utils/relativeTime';
 import { useRef, useState } from 'preact/hooks';
 import type { BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
-import { formatUSD, formatTrancheDate, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness } from '../utils/formatters';
+import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
-import { getAppLanguage } from '../services/i18n';
+import { getAppLanguage, translateText } from '../services/i18n';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import {
   calculateCommission,
@@ -320,18 +320,18 @@ export function SummaryMetricsGrid() {
     const marginChargedText = `${formatUSD(totalMarginCharged)}`;
 
     const cushionTotal = getCashCushionTotal(state);
-    const quotes = tickers
-      .map((ticker) => state.positions![ticker])
-      .filter((position) => position.quoteUpdatedAt);
-    const latestQuote = quotes.sort(
-      (a, b) => (b.quoteUpdatedAt || 0) - (a.quoteUpdatedAt || 0)
-    )[0];
-    const quoteMetaText = latestQuote
-      ? `Latest portfolio quote · ${formatQuoteMetadata(latestQuote, refreshIntervalMs)}`
-      : 'No live quotes fetched for margin positions';
-    const quoteFreshness = latestQuote
-      ? getQuoteFreshness(latestQuote, Date.now(), refreshIntervalMs)
-      : 'unavailable';
+    const quoteSummary = summarizeQuoteFreshness(
+      tickers.map((ticker) => state.positions![ticker]),
+      Date.now(),
+      refreshIntervalMs
+    );
+    const quoteMetaText = quoteSummary.total > 0
+      ? `${translateText('Margin quote coverage', getAppLanguage())} · ${formatQuoteFreshnessSummary(quoteSummary)}`
+      : translateText('No margin positions', getAppLanguage());
+    const quoteStatusLabel = `${translateText('Quote status', getAppLanguage())}: ${quoteMetaText}`;
+    const quoteCoverageClass = quoteSummary.stale > 0 || quoteSummary.unknown > 0 || quoteSummary.unavailable > 0
+      ? 'text-amber-300'
+      : quoteSummary.delayed > 0 ? 'text-sky-300' : 'text-emerald-400';
 
     const valuation = calculatePortfolioValuation({
       signedAccountBalance: state.balance,
@@ -372,8 +372,8 @@ export function SummaryMetricsGrid() {
               </span>
             </div>
             <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
-            <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
-              <span class="text-slate-400"> · </span><span> {quoteMetaText}</span>
+            <span id="boardQuoteMeta" class={`portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] ${quoteCoverageClass}`} aria-label={quoteStatusLabel}>
+              <span class="text-slate-400"> · </span><span>{quoteMetaText}</span>
             </span>
           </div>
           <div class="portfolio-micro-column portfolio-micro-costs">
