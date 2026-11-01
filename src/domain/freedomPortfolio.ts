@@ -1,6 +1,7 @@
 import type { ActiveBrokerTranche, ActiveTrancheMix, ActiveTrancheType, PositionRecord } from '../types/portfolio';
 import { calculateCommission, type CommissionConfig } from './portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
+import { getPositiveMarketPrice } from './portfolioValuation';
 
 /** Preserve the cash/margin ratio when an open operation's quantity changes. */
 export function normalizeActiveTrancheMix(
@@ -396,7 +397,12 @@ export function classifyFreedomPortfolio(
       : undefined;
     const prior = sourcePositions[tranche.ticker];
     const priorCash = previousCash.get(tranche.ticker);
-    const currentPrice = tranche.marketPrice ?? prior?.currentPrice ?? (Number(priorCash?.currentPrice ?? priorCash?.price) || 0);
+    const currentPrice = getPositiveMarketPrice(
+      tranche.marketPrice,
+      prior?.currentPrice,
+      priorCash?.currentPrice,
+      priorCash?.price
+    ) ?? 0;
     // When executed operations are available, they are the sole source of lot cost basis and fees.
     // Snapshot-only fallback may retain legacy cost basis for interest continuity, but never its commissions.
     const entryPrice = tranche.averagePrice ?? (!Array.isArray(executedTrades) ? (Number(prior?.tranches?.[0]?.price) || currentPrice) : 0);

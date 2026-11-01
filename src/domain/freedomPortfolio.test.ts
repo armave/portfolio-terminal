@@ -41,6 +41,18 @@ describe('reconcileFreedomPortfolio', () => {
     expect(result.cashStocks).toEqual([{ ticker: 'AAPL', shares: 3, currentPrice: 185 }]);
   });
 
+  it('uses the stored cash price when current quotes are zero or invalid for a new margin position', () => {
+    const result = classifyFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'AAPL.US', quantity: 5, marketPrice: null }]
+    }, {}, [
+      { ticker: 'AAPL', shares: 2, currentPrice: 0, price: 150 }
+    ], { AAPL: 'margin' });
+
+    expect(result.positions.AAPL.currentPrice).toBe(150);
+  });
+
   it('preserves cash holdings for a margin ticker missing from the broker snapshot', () => {
     const result = reconcileFreedomPortfolio({
       loaded: true,
