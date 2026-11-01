@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { formatRelativeTime } from '../utils/relativeTime';
 import { formatNewsRelativeTime, getStocktwitsCashtags, getVisibleStocktwitsMessages, hasStocktwitsCommentary, isBearishStocktwitsMessage, isStandaloneStocktwitsMessage } from './MarketInsightsPanel';
 
 describe('formatNewsRelativeTime', () => {
   it('converts positive provider Unix seconds into relative time', () => {
     const now = 1_800_000_000_000;
-    expect(formatNewsRelativeTime(1_799_999_940, now)).toBe('1m ago');
-    expect(formatNewsRelativeTime('1799999940', now)).toBe('1m ago');
+    expect(formatNewsRelativeTime(1_799_999_940, now)).toBe(formatRelativeTime(1_799_999_940_000, now));
+    expect(formatNewsRelativeTime('1799999940', now)).toBe(formatRelativeTime(1_799_999_940_000, now));
   });
 
   it('shows unknown time instead of interpreting missing values as the Unix epoch', () => {
