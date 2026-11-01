@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { fetchFreedomTradeNetMarketDepth } from '../services/api';
-import { normalizeFreedomMarketDepth, type FreedomMarketDepthSnapshot } from '../services/freedomMarketDepth';
+import { normalizeFreedomMarketDepth, type FreedomMarketDepthLevel, type FreedomMarketDepthSnapshot } from '../services/freedomMarketDepth';
 interface MarketDepthButtonProps { ticker: string; compact?: boolean; }
 
 function formatPrice(value: number): string {
@@ -54,7 +54,7 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
   const spreadPercent = spread !== null && bestBid ? spread / bestBid * 100 : null;
   const maxQuantity = Math.max(1, ...(snapshot?.bids.map(level => level.quantity) || []), ...(snapshot?.asks.map(level => level.quantity) || []));
 
-  const renderLevels = (levels: MarketDepthLevel[], side: 'bid' | 'ask') => {
+  const renderLevels = (levels: FreedomMarketDepthLevel[], side: 'bid' | 'ask') => {
     const textClass = side === 'bid' ? 'text-emerald-300' : 'text-rose-300';
     const barClass = side === 'bid' ? 'bg-emerald-500/20' : 'bg-rose-500/20';
     return levels.map((level, index) => (
