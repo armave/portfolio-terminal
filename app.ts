@@ -2016,10 +2016,10 @@ async function executeCommand(commandText: string) {
       text: aiQuery,
       state: {
         positions: targetState.positions,
-        activeView: targetState.activeView
+        activeView: targetState.activeView || ''
       },
       activeTickers: Object.keys(targetState.positions || {}),
-      activeView: targetState.activeView || null,
+      activeView: targetState.activeView || '',
       today: new Date().toISOString().split("T")[0]
     });
 
