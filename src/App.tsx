@@ -25,7 +25,13 @@ import { getAccountPermissions } from './domain/accountPermissions';
 import { resolveActiveView } from './ui/renderBoard';
 import { ScenarioReportModal } from './components/ScenarioReportModal';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
-import { loadSavedHistory, restoreGatewaySecret } from './services/storage';
+import {
+  hasFreedomTradeHistoryBaseline,
+  loadSavedHistory,
+  markFreedomTradeHistoryBaseline,
+  restoreGatewaySecret
+} from './services/storage';
+import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from './domain/closedHistoryFees';
 import { getLatestClosedTradeDate } from './domain/tradeHistorySync';
 import { setAppLanguage, subscribeAppLanguage } from './services/i18n';
 import { addBrokerEventListener, emitBrokerEvent } from './services/brokerEventBus';
@@ -483,19 +489,50 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           emitBrokerEvent('broker:executed-trades-error');
           return;
         }
+        const accountId = currentUser?.id || '';
         const savedExecutions = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
         const currentPortfolio = portfolioStore.getState();
-        const fromDate = getLatestClosedTradeDate(
-          [...savedExecutions, ...(currentPortfolio.brokerExecutedTrades || [])],
-          currentPortfolio.closedTrades || []
-        );
+        // Pre-incremental caches have no completeness marker. Perform one full
+        // background baseline before trusting their latest date as an incremental
+        // cursor; otherwise a one-row cache could permanently hide older sales.
+        const hasCompleteBaseline = hasFreedomTradeHistoryBaseline(accountId);
+        const fromDate = hasCompleteBaseline
+          ? getLatestClosedTradeDate(
+              [...savedExecutions, ...(currentPortfolio.brokerExecutedTrades || [])],
+              currentPortfolio.closedTrades || []
+            )
+          : undefined;
         const response = await fetchFreedomTradeNetTrades(fromDate);
         if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
-        const normalizedTrades = normalizeFreedomTrades(response);
+        const normalizedPage = normalizeFreedomTrades(response);
+        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+
+        // Merge the returned range into every local source before publishing it.
+        // A bounded response is never an authoritative replacement for history.
+        const latestPortfolio = portfolioStore.getState();
+        const latestSavedExecutions = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
+        const retainedExecutions = [
+          ...latestSavedExecutions,
+          ...(latestPortfolio.brokerExecutedTrades || [])
+        ];
+        const normalizedPageWithFees = preservePersistedBrokerFeeAllocations(
+          normalizedPage,
+          retainedExecutions
+        );
+        const mergedTrades = mergeBrokerExecutionHistory(retainedExecutions, normalizedPageWithFees);
+        portfolioStore.setState({ brokerExecutedTrades: mergedTrades });
+
+        if (!hasCompleteBaseline) {
+          const persistedCount = loadSavedHistory().brokerExecutedTrades.length;
+          if (mergedTrades.length === 0 || persistedCount >= mergedTrades.length) {
+            markFreedomTradeHistoryBaseline(accountId);
+          }
+        }
+
         if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
         // Keep broker executions separate from app-owned ClosedTrade records.
-        // ClosedHistoryDesk subscribes to this event and renders the broker data.
-        emitBrokerEvent('broker:executed-trades', normalizedTrades);
+        // ClosedHistoryDesk subscribes to this event and renders the merged cache.
+        emitBrokerEvent('broker:executed-trades', mergedTrades);
       } catch (error) {
         if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
         console.error('Unable to load TradeNet executed trades:', error);
