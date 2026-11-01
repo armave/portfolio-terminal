@@ -81,6 +81,12 @@ function validSymbolList(symbol) {
         symbols.every(value => /^[A-Z0-9.^=-]{1,20}$/.test(value));
 }
 
+function isValidDateOnly(value) {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(value + "T00:00:00.000Z");
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 export async function fetchWithTimeout(input, init = {}, timeoutMs = 8000) {
     const controller = new AbortController();
     const externalSignal = init.signal;
@@ -1008,12 +1014,24 @@ export default {
                     }), { headers: corsHeaders });
                 }
             }
-            // Read-only executed trade history. Command and query limits are fixed server-side.
+            // Read-only executed trade history. The command is fixed server-side;
+            // an optional date-only cursor is translated into a bounded broker query.
             if (action === "freedom-trades") {
                 if (request.method !== "GET") {
                     return jsonError("Freedom trades only supports GET.", 405, corsHeaders);
                 }
-                const data = await requestTradeNet(env, "getTradesHistory");
+                const fromDate = incomingUrl.searchParams.get("fromDate");
+                if (fromDate !== null && !isValidDateOnly(fromDate)) {
+                    return jsonError("Trade history start date must use YYYY-MM-DD.", 400, corsHeaders);
+                }
+                const params = fromDate
+                    ? {
+                        beginDate: fromDate + "T00:00:00",
+                        endDate: new Date().toISOString().slice(0, 19),
+                        sort: 0
+                    }
+                    : { sort: 0 };
+                const data = await requestTradeNet(env, "getTradesHistory", params);
                 return new Response(JSON.stringify({
                     ok: true,
                     provider: "Freedom TradeNet",
@@ -1041,13 +1059,23 @@ export default {
                 }), { headers: corsHeaders });
             }
 
-            // Read-only Freedom cashflow history. The upstream command is fixed server-side.
+            // Read-only Freedom cashflow history. The command and date filter shape
+            // are fixed server-side; clients can only provide a validated start date.
             if (action === "freedom-cashflows") {
                 if (request.method !== "GET") {
                     return jsonError("Freedom cashflows only supports GET.", 405, corsHeaders);
                 }
-                // Tradernet SDK documents this cashflow command under Portfolio::cashflows.
-                const data = await requestTradeNet(env, "getUserCashFlows");
+                const fromDate = incomingUrl.searchParams.get("fromDate");
+                if (fromDate !== null && !isValidDateOnly(fromDate)) {
+                    return jsonError("Cashflow start date must use YYYY-MM-DD.", 400, corsHeaders);
+                }
+                // TradeNet's getUserCashFlows accepts a server-side date filter;
+                // eqormore includes every cashflow on the start date.
+                const params = fromDate ? {
+                    filters: [{ field: "date", operator: "eqormore", value: fromDate }],
+                    sort: { field: "date", dir: "ASC" }
+                } : {};
+                const data = await requestTradeNet(env, "getUserCashFlows", params);
                 return new Response(JSON.stringify({
                     ok: true,
                     provider: "Freedom TradeNet",
