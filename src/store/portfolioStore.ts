@@ -404,7 +404,7 @@ export class PortfolioStore {
   }
 
   private notify(persist = true): void {
-    if (persist) saveState(this.state as any);
+    if (persist) saveState(this.state);
     this.listeners.forEach((listener) => listener(this.state));
   }
 
