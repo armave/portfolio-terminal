@@ -136,18 +136,15 @@ export async function refreshTrackedQuotes(
   // Apply values in the normalized provider response order, even though
   // fallback requests complete independently within the bounded worker pool.
   for (const update of updates) {
-    const quote = 'fallback' in update
-      ? fallbackQuotes.get(update.ticker)
-      : update;
-
-    if (!quote) continue;
     if ('fallback' in update) {
+      const fallback = fallbackQuotes.get(update.ticker);
+      if (!fallback) continue;
       if (recordTrackedPrice(
         update.ticker,
-        quote.price,
-        quote.sourceName,
+        fallback.price,
+        fallback.sourceName,
         Date.now(),
-        { ...quote.quoteDetails, requestSequence, requestStartedAt },
+        { ...fallback.quoteDetails, requestSequence, requestStartedAt },
         requestStartedAt
       )) updatedCount++;
       continue;
