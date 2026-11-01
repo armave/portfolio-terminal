@@ -15,6 +15,7 @@ import {
   processRollovers,
   calculateCommission,
   calculateTrancheCommissions,
+  resolveCommissionConfig,
   getAccruedRolloverCycles,
   type MarginPosition,
   type TradeTranche
@@ -776,5 +777,89 @@ describe('financial edge cases', () => {
     expect(calculateTrancheCommissions([], rules)).toBe(0);
     expect(() => calculateTrancheCommissions([{ qty: 2, price: Number.NaN }], rules))
       .toThrow('Each commission tranche must have a positive finite quantity and price.');
+  });
+});
+
+describe('Stage 2 financial domain guarantees', () => {
+  it.each([
+    ['Date objects', new Date('2026-10-01T00:00:00.000Z')],
+    ['numeric timestamps', Date.parse('2026-10-01T00:00:00.000Z')]
+  ])('calculates tranche interest from %s rather than treating it as today', (_label, date) => {
+    const interest = calculateMarginInterest(
+      [{ qty: 10, price: 100, date }],
+      {
+        annualRate: 0.365,
+        dayCountBasis: 365,
+        now: new Date('2026-10-02T01:00:00.000Z')
+      }
+    );
+
+    // 05:00 Asia/Yerevan is one rollover after the 04:00 cutoff.
+    expect(interest).toBeCloseTo(1, 8);
+  });
+
+  it('reconciles FIFO basis, entry fees, sale fees, and financing across sequential fractional exits', () => {
+    let position: MarginPosition = {
+      ticker: 'TEST',
+      shares: 7.5,
+      tranches: [
+        { qty: 2.5, price: 10, acquiredAt: 1_000, buyCommission: 0.75 },
+        { qty: 5, price: 20, acquiredAt: 86_401_000, buyCommission: 1.25 }
+      ],
+      commBuy: 2,
+      marginCharged: 3
+    };
+
+    const steps = [
+      { shares: 1.25, price: 30, commission: 0.2, closedAt: 172_801_000 },
+      { shares: 2.5, price: 28, commission: 0.3, closedAt: 259_201_000 },
+      { shares: 3.75, price: 25, commission: 0.4, closedAt: 345_601_000 }
+    ];
+    const closed = steps.map((step) => {
+      const result = realizeClosedTrade(
+        position,
+        'TEST',
+        step.shares,
+        step.price,
+        step.commission,
+        step.closedAt
+      );
+      position = result.position;
+      expect(result.trade).not.toBeNull();
+      return { trade: result.trade!, marginFee: result.marginFee };
+    });
+
+    const totalSharesClosed = closed.reduce((sum, row) => sum + row.trade.shares, 0);
+    const totalNetProfit = closed.reduce((sum, row) => sum + row.trade.netProfit, 0);
+    const totalFees = closed.reduce((sum, row) => sum + row.trade.feesAndCommissions, 0);
+    const totalMargin = closed.reduce((sum, row) => sum + row.marginFee, 0);
+
+    expect(totalSharesClosed).toBeCloseTo(7.5, 10);
+    expect(totalNetProfit).toBeCloseTo(70.35, 8);
+    expect(totalFees).toBeCloseTo(5.9, 8);
+    expect(totalMargin).toBeCloseTo(3, 8);
+    expect(totalNetProfit + totalFees).toBeCloseTo(76.25, 8);
+    expect(position.shares).toBe(0);
+    expect(position.tranches).toEqual([]);
+    expect(position.commBuy).toBeCloseTo(0, 8);
+    expect(position.marginCharged).toBeCloseTo(0, 8);
+  });
+
+  it('resolves commission aliases through one typed broker-settings boundary', () => {
+    expect(resolveCommissionConfig({
+      commissionPerShare: 0.02,
+      commissionRatePct: 0.001,
+      commissionMin: 1.5
+    })).toEqual({
+      commPerShare: 0.02,
+      commVolumePct: 0.001,
+      minCommOrder: 1.5
+    });
+
+    expect(resolveCommissionConfig({})).toEqual({
+      commPerShare: 0.012,
+      commVolumePct: 0.0012,
+      minCommOrder: 1.2
+    });
   });
 });
