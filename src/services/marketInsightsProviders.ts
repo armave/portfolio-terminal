@@ -152,7 +152,7 @@ function createSymbolResource<T>(options: SymbolResourceOptions<T>): SymbolResou
 
   function startRequest(symbol: string, force: boolean): RequestEntry<T> {
     const controller = new AbortController();
-    let entry: RequestEntry<T>;
+    let entry!: RequestEntry<T>;
 
     const promise = Promise.resolve()
       .then(() => options.fetchData(symbol, controller.signal, force))
