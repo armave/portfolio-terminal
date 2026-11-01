@@ -1851,6 +1851,7 @@ summary:hover {
 #boardTitleActions {
   min-width: 0;
   row-gap: 0.5rem;
+  margin: 0.5rem auto;
 }
 
 #portfolioMetricsGrid {
@@ -3311,7 +3312,7 @@ table tbody tr:hover {
 
 #settingsDesk .settings-toolbar>div {
   min-width: 0;
-  justify-content: flex-start;
+  justify-content: flex-center;
   align-content: center;
   border: 1px solid var(--border-subtle);
   border-radius: var(--surface-radius, 0.875rem);
@@ -3392,12 +3393,24 @@ table tbody tr:hover {
 @media (max-width: 640px) {
   #settingsDesk .settings-toolbar>div {
     justify-content: center;
-    flex-direction: column;
-    gap: 1rem;
+    gap: .75rem;
   }
 
   #settingsDesk .settings-user-panel {
     padding: 0.75rem;
+  }
+
+  #boardTitleActions {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  #boardTitleRow>div,
+  #daysToBreakeven {
+    text-align: center;
   }
 }
 
@@ -3584,6 +3597,18 @@ table tbody tr:hover {
 /* Margin projection pagination: animate newly keyed rows without transforming table internals. */
 #projectionTableContainer .projection-page-row {
   animation: projection-page-swap 260ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+
+.projection-page-row > td:nth-child(1) {
+  min-width: 5.5rem;
+}
+
+.projection-page-row:nth-child(odd) > td:nth-child(1) {
+  background-color: rgba(20, 24, 35, 0.7);
+}
+
+.projection-page-row:nth-child(even) > td:nth-child(1) {
+  background-color: rgba(26, 29, 41, 0.7);
 }
 
 @keyframes projection-page-swap {

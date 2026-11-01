@@ -537,7 +537,7 @@ export function MarketInsightsPanel() {
           <button type="button" onClick={() => setNewsRefreshRequest((value) => value + 1)}
             class="rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
             aria-label="Refresh company news">
-            {currentNewsLoading ? 'Refreshing…' : 'Refresh news'}
+            {currentNewsLoading ? 'Refreshing…' : 'Refresh'}
           </button>
         )}
       </div>

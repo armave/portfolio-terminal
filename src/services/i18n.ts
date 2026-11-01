@@ -543,7 +543,6 @@ const RU: Record<string, string> = {
   "Close market depth": "Закрыть стакан заявок",
   "API keys": "Ключи API",
   "· Refreshing…": "· Обновление…",
-  "Refresh news": "Обновить новости",
   "Could not load users.": "Не удалось загрузить список пользователей.",
   "Could not create user.": "Не удалось создать пользователя.",
   "Could not delete user.": "Не удалось удалить пользователя.",
