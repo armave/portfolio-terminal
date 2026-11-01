@@ -34,6 +34,7 @@ import {
   getAuthStatus,
   getCurrentUser,
   listUsers,
+  normalizeFreedomTrades,
   getGuestPortfolioSnapshot,
   publishGuestPortfolioSnapshots as publishGuestPortfolioSnapshotsBatch,
   clearCloudEncryptionSecretCache
@@ -48,7 +49,6 @@ import {
   persistGatewaySecret,
   loadSavedState,
   loadSavedHistory,
-  normalizeFreedomTrades,
   savePortfolioSnapshot,
   saveApiKeys,
   saveBrokerRules,
