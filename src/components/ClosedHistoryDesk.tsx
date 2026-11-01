@@ -40,6 +40,12 @@ export function ClosedHistoryDesk() {
   const brokerTradesRefreshing = brokerExecutionHistory.status === 'refreshing';
   const brokerTradesError = brokerExecutionHistory.status === 'stale' ||
     brokerExecutionHistory.status === 'error';
+  // Keep the first cached range for both API requests. The broker trade refresh
+  // may return newer sells before the cashflow request starts; that must not move
+  // the cashflow cursor forward and skip fees for those newly fetched trades.
+  const cashflowSyncStartDate = useRef(
+    getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])
+  );
   const [cashflowSyncMessage, setCashflowSyncMessage] = useState('');
   const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
@@ -256,8 +262,7 @@ export function ClosedHistoryDesk() {
     if (cashflowSyncStarted.current) return;
     cashflowSyncStarted.current = true;
     try {
-      const fromDate = getLatestClosedTradeDate(brokerTrades, state.closedTrades || []);
-      const response = await fetchFreedomCashflows(fromDate);
+      const response = await fetchFreedomCashflows(cashflowSyncStartDate.current);
       const fetchedRows = normalizeFreedomCashflowRows(response);
       const existingRows = portfolioStore.getState().cashflows || [];
       const mergedRows = mergeFreedomCashflowRows(existingRows, fetchedRows);
