@@ -16,6 +16,7 @@ import { DeskLoading } from './DeskLoading';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { TableScrollRegion } from './TableScrollRegion';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
+import { getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 
 /** Restore the local execution snapshot synchronously before the first Trades render. */
 function loadInitialBrokerExecutions(): FreedomExecutedTrade[] {
@@ -255,7 +256,8 @@ export function ClosedHistoryDesk() {
     if (cashflowSyncStarted.current) return;
     cashflowSyncStarted.current = true;
     try {
-      const response = await fetchFreedomCashflows();
+      const fromDate = getLatestClosedTradeDate(brokerTrades, state.closedTrades || []);
+      const response = await fetchFreedomCashflows(fromDate);
       const fetchedRows = normalizeFreedomCashflowRows(response);
       const existingRows = portfolioStore.getState().cashflows || [];
       const mergedRows = mergeFreedomCashflowRows(existingRows, fetchedRows);
