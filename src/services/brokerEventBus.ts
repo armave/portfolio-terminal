@@ -1,8 +1,8 @@
 import type {
   FreedomActiveOrder,
-  FreedomExecutedTrade,
   FreedomPortfolioSnapshot
 } from './api';
+import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
 interface ActiveTrancheTypeRequest {
   ticker?: string;
