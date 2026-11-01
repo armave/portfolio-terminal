@@ -142,6 +142,6 @@ describe('normalizeFreedomActiveOrders', () => {
     expect(normalizeFreedomActiveOrders(null)).toEqual([]);
     expect(normalizeFreedomActiveOrders({ data: { orders: 'invalid' } })).toEqual([]);
     expect(normalizeFreedomActiveOrders([{ id: 'good', ticker: 'AAPL' }, 'invalid']))
-      .toHaveLength(2);
+      .toEqual([expect.objectContaining({ id: 'good', ticker: 'AAPL' })]);
   });
 });
