@@ -28,6 +28,8 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('const isBackgroundUpdating = backgroundSyncPending || brokerTradesRefreshing;');
     expect(source).toContain('role="status"');
     expect(source).toContain('animate-spin');
+    expect(source).toContain('strokeDasharray="24 14"');
+    expect(source).toContain('strokeWidth="2"');
     expect(source).toContain('motion-reduce:animate-none');
     expect(source).not.toContain('backgroundSyncPending && trades.length > 0');
     expect(source).not.toContain('Refreshing TradeNet history…</p>');
