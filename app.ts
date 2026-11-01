@@ -1360,8 +1360,8 @@ async function fetchBoardAnalystTarget(ticker: string, force = false) {
         profile: data.profile
       };
     }
-  } catch (err: any) {
-    console.warn(`[Yahoo Worker Error for ${cleanTicker}]:`, err.message);
+  } catch (err: unknown) {
+    console.warn(`[Yahoo Worker Error for ${cleanTicker}]:`, err instanceof Error ? err.message : err);
   }
 
   throw new Error(`Analyst price target unavailable via proxy for ${cleanTicker}.`);

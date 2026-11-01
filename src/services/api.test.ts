@@ -28,6 +28,7 @@ import {
 } from './api';
 import * as storage from './storage';
 import { setMarketRequestSessionForTests } from './marketRequestGate';
+import { normalizeYahooDeepStockData } from './yahooDeepDataContracts';
 
 // Most API tests exercise successful proxy requests; give them a deterministic
 // credential. Tests for missing credentials explicitly override this value.
@@ -828,6 +829,7 @@ describe('Yahoo deep-data request deduplication', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const payload = { symbol: 'AAPL', analystTargets: { median: 200 }, valuation: { peForward: 20 } };
+    const normalizedPayload = normalizeYahooDeepStockData(payload);
     resolveResponse({
       ok: true,
       status: 200,
@@ -835,14 +837,15 @@ describe('Yahoo deep-data request deduplication', () => {
       json: async () => payload
     });
 
-    await expect(Promise.all([first, second])).resolves.toEqual([payload, payload]);
-    await expect(fetchYahooDeepStockData('AAPL')).resolves.toEqual(payload);
+    await expect(Promise.all([first, second])).resolves.toEqual([normalizedPayload, normalizedPayload]);
+    await expect(fetchYahooDeepStockData('AAPL')).resolves.toEqual(normalizedPayload);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('reuses successful batch data and supports an explicit forced refresh', async () => {
     clearYahooDeepStockDataCache();
     const cached = { symbol: 'MSFT', analystTargets: { median: 450 } };
+    const normalizedCached = normalizeYahooDeepStockData(cached);
     rememberYahooDeepStockData(cached);
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -852,33 +855,33 @@ describe('Yahoo deep-data request deduplication', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(fetchYahooDeepStockData('MSFT')).resolves.toEqual(cached);
+    await expect(fetchYahooDeepStockData('MSFT')).resolves.toEqual(normalizedCached);
     expect(fetchMock).not.toHaveBeenCalled();
 
-    await expect(fetchYahooDeepStockData('MSFT', true)).resolves.toEqual({
+    await expect(fetchYahooDeepStockData('MSFT', true)).resolves.toEqual(normalizeYahooDeepStockData({
       ...cached,
       analystTargets: { median: 460 }
-    });
+    }));
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('evicts the oldest deep-data cache entry after the cache reaches its bound', async () => {
     clearYahooDeepStockDataCache();
     for (let index = 0; index <= 500; index += 1) {
-      rememberYahooDeepStockData({ symbol: `CACHE${String(index).padStart(3, '0')}`, marker: index });
+      rememberYahooDeepStockData({ symbol: `CACHE${String(index).padStart(3, '0')}`, analystTargets: { median: index } });
     }
 
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       headers: new Headers({ 'Content-Type': 'application/json' }),
-      json: async () => ({ symbol: 'CACHE000', marker: 'refetched' })
+      json: async () => ({ symbol: 'CACHE000', analystTargets: { median: 99 } })
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(fetchYahooDeepStockData('CACHE000')).resolves.toEqual({
+    await expect(fetchYahooDeepStockData('CACHE000')).resolves.toMatchObject({
       symbol: 'CACHE000',
-      marker: 'refetched'
+      analystTargets: { median: 99 }
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

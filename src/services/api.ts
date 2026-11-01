@@ -8,10 +8,13 @@ import { normalizeYahooBatchResults } from './yahooQuoteContracts';
 import type { YahooBatchQuoteResult } from './yahooQuoteContracts';
 import { createYahooDeepDataCache } from './yahooDeepDataCache';
 import { createMarketInsightsProviderClient } from './marketInsightsProviders';
+import { normalizeYahooDeepStockData } from './yahooDeepDataContracts';
+import type { YahooDeepStockData } from './yahooDeepDataContracts';
 import type { MarketNewsItem, StocktwitsStream } from './marketInsightsProviders';
 export { normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
 export type { FreedomActiveOrder, FreedomCashBalance, FreedomOpenPosition, FreedomPortfolioSnapshot } from './freedomAccountContracts';
 export type { MarketNewsItem, StocktwitsMessage, StocktwitsStream } from './marketInsightsProviders';
+export type { YahooDeepStockData, YahooDeepAnalystTargets, YahooDeepFinancialHealth, YahooDeepPrice, YahooDeepValuation, YahooEarningsHistoryItem, YahooUpgradeDowngrade } from './yahooDeepDataContracts';
 
 export interface SyncedMarginDigest {
   key: string;
@@ -535,8 +538,8 @@ export function rememberYahooDeepStockData(value: unknown): void {
  * Fetches the full Yahoo payload once per ticker and shares it between board
  * analyst targets and all Market Insights tabs. Explicit refreshes bypass cache.
  */
-export function fetchYahooDeepStockData(ticker: string, force = false): Promise<any> {
-  return yahooDeepDataCache.fetch(ticker, force);
+export function fetchYahooDeepStockData(ticker: string, force = false): Promise<YahooDeepStockData> {
+  return yahooDeepDataCache.fetch(ticker, force).then(normalizeYahooDeepStockData);
 }
 
 const marketInsightsProviders = createMarketInsightsProviderClient({

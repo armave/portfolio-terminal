@@ -1,7 +1,8 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { decodeHtmlEntities } from '../utils/formatters';
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type MarketNewsItem, type StocktwitsStream } from '../services/api';
+import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type MarketNewsItem, type StocktwitsStream, type YahooDeepStockData } from '../services/api';
+import { normalizeYahooDeepStockData } from '../services/yahooDeepDataContracts';
 import { usePortfolio } from '../store/portfolioStore';
 import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
 
@@ -145,7 +146,7 @@ export function MarketInsightsPanel() {
       if (previousFocus?.isConnected) previousFocus.focus();
     };
   }, [selectedNews]);
-  const [stockData, setStockData] = useState<any>(null);
+  const [stockData, setStockData] = useState<YahooDeepStockData | null>(null);
   const [stocktwitsData, setStocktwitsData] = useState<StocktwitsStream | null>(null);
   const [stocktwitsRequested, setStocktwitsRequested] = useState(false);
   const [stocktwitsLoading, setStocktwitsLoading] = useState(false);
@@ -179,11 +180,11 @@ export function MarketInsightsPanel() {
     fetchYahooDeepStockData(ticker, forceRefresh)
       .then((data) => {
         if (currentRequestId !== requestIdRef.current) return;
-        setStockData(data || {});
+        setStockData(data);
       })
-      .catch((err: any) => {
+      .catch((err: unknown) => {
         if (currentRequestId !== requestIdRef.current) return;
-        setError(err?.message || 'Unknown error');
+        setError(err instanceof Error ? err.message : 'Unknown error');
       })
       .finally(() => {
         if (currentRequestId === requestIdRef.current) setLoading(false);
@@ -360,7 +361,7 @@ export function MarketInsightsPanel() {
       );
     }
 
-    const data = stockData || {};
+    const data = stockData ?? normalizeYahooDeepStockData(null);
 
     if (activeSection === 'fundamentals') {
       const val = data.valuation || {};
@@ -447,16 +448,16 @@ export function MarketInsightsPanel() {
               Recent Firm Actions
             </span>
             {upDown.length > 0 ? (
-              upDown.slice(0, 4).map((u: any, idx: number) => {
+              upDown.slice(0, 4).map((u, idx) => {
 
                 let fromToGrade = '';
 
                 if (u.fromGrade === u.toGrade) {
-                  fromToGrade = u.toGrade;
+                  fromToGrade = u.toGrade ?? '';
                 } else if (u.fromGrade) {
-                  fromToGrade = u.fromGrade + ' ➝ ' + u.toGrade || '';
+                  fromToGrade = u.fromGrade + ' ➝ ' + (u.toGrade ?? '');
                 } else {
-                  fromToGrade = u.toGrade;
+                  fromToGrade = u.toGrade ?? '';
                 }
 
                 return (
@@ -501,7 +502,7 @@ export function MarketInsightsPanel() {
               Past Earnings Surprises
             </span>
             {eh.length > 0 ? (
-              eh.map((e: any, idx: number) => (
+              eh.map((e, idx) => (
                 <div
                   key={idx}
                   class="flex justify-between items-center border-b border-slate-800/60 py-1.5 last:border-0"
@@ -510,7 +511,7 @@ export function MarketInsightsPanel() {
                   <span class="text-[10px]">
                     Est: {e.epsEstimate} | Act:{' '}
                     <span
-                      class={`${e.epsDifference >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                      class={`${(e.epsDifference ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
                         } font-bold`}
                     >
                       {e.epsActual}
