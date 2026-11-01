@@ -9,6 +9,8 @@ import type { YahooBatchQuoteResult } from './yahooQuoteContracts';
 import { createYahooDeepDataCache } from './yahooDeepDataCache';
 import { createMarketInsightsProviderClient } from './marketInsightsProviders';
 import type { MarketNewsItem, StocktwitsStream } from './marketInsightsProviders';
+export { normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
+export type { FreedomActiveOrder, FreedomCashBalance, FreedomOpenPosition, FreedomPortfolioSnapshot } from './freedomAccountContracts';
 export type { MarketNewsItem, StocktwitsMessage, StocktwitsStream } from './marketInsightsProviders';
 
 export interface SyncedMarginDigest {
@@ -1149,34 +1151,34 @@ export async function syncCloudState(mode = 'push', options: SyncOptions = {}): 
 
 
 /** Read-only connectivity test for Freedom Broker Armenia TradeNet. */
-export async function testFreedomTradeNetConnection(): Promise<any> {
+export async function testFreedomTradeNetConnection(): Promise<unknown> {
   return proxyFetch('freedom-test');
 }
 
 /** Fetch raw read-only TradeNet positions so the actual broker schema can be verified. */
-export async function fetchFreedomTradeNetPositions(): Promise<any> {
+export async function fetchFreedomTradeNetPositions(): Promise<unknown> {
   return proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
 }
 
 /** Fetch the complete read-only TradeNet execution history required for FIFO matching. */
-export async function fetchFreedomTradeNetTrades(): Promise<any> {
+export async function fetchFreedomTradeNetTrades(): Promise<unknown> {
   return proxyFetch('freedom-trades', undefined, { cache: 'no-store' });
 }
 
 /** Fetch current active TradeNet orders without reusing a cached response. */
-export async function fetchFreedomTradeNetActiveOrders(): Promise<any> {
+export async function fetchFreedomTradeNetActiveOrders(): Promise<unknown> {
   return proxyFetch('freedom-orders', { active_only: 1 }, { cache: 'no-store' });
 }
 
 /** Fetch one read-only TradeNet order-book snapshot without response caching. */
-export async function fetchFreedomTradeNetMarketDepth(ticker: string): Promise<any> {
+export async function fetchFreedomTradeNetMarketDepth(ticker: string): Promise<unknown> {
   const symbol = String(ticker || '').trim().toUpperCase();
   if (!/^[A-Z0-9.^=-]{1,20}$/.test(symbol)) throw new Error('A valid ticker is required to load market depth.');
   return proxyFetch('freedom-market-depth', { symbol }, { cache: 'no-store' });
 }
 
 /** Ensure the administrator's live TradeNet SID is present in server-side storage. */
-export async function ensureFreedomTradeNetSession(): Promise<any> {
+export async function ensureFreedomTradeNetSession(): Promise<unknown> {
   return proxyFetch('freedom-session', {}, {
     method: 'POST',
     body: JSON.stringify({}),
@@ -1184,50 +1186,12 @@ export async function ensureFreedomTradeNetSession(): Promise<any> {
   });
 }
 
-export interface FreedomActiveOrder {
-  id: string;
-  ticker: string;
-  operation: number | null;
-  orderType: number | null;
-  limitPrice: number | null;
-  remainingQuantity: number | null;
-  status: string;
-  raw: Record<string, any>;
-}
-
-/** Normalize current-order aliases; keep the raw row so unknown broker fields remain inspectable. */
-export function normalizeFreedomActiveOrders(response: any): FreedomActiveOrder[] {
-  const root = response?.data?.result ?? response?.data ?? response?.result ?? response;
-  const rows = Array.isArray(root) ? root
-    : Array.isArray(root?.orders?.order) ? root.orders.order
-      : Array.isArray(root?.orders) ? root.orders
-        : Array.isArray(root?.items) ? root.items
-          : Array.isArray(root?.data) ? root.data
-            : [];
-  const numberOrNull = (value: unknown): number | null => {
-    if (value === null || value === undefined || value === '') return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-  return rows.map((row: any, index: number) => ({
-    id: String(row?.order_id ?? row?.id ?? row?.orderId ?? index),
-    ticker: String(row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instr ?? '').trim().toUpperCase(),
-    operation: numberOrNull(row?.oper ?? row?.operation ?? row?.open),
-    orderType: numberOrNull(row?.type ?? row?.order_type ?? row?.orderType),
-    limitPrice: numberOrNull(row?.p ?? row?.price ?? row?.limit_price ?? row?.limitPrice),
-    remainingQuantity: numberOrNull(row?.leaves_qty ?? row?.remaining_qty ?? row?.remainingQuantity ?? row?.q ?? row?.quantity),
-    date: row?.date ?? row?.created_at ?? row?.createdAt ?? row?.created ?? row?.time ?? row?.timestamp ?? null,
-    status: String(row?.stat ?? row?.status ?? ''),
-    raw: row && typeof row === 'object' ? row : {}
-  }));
-}
-
 /** Cache the full broker cashflow snapshot briefly to avoid repeat reads on quick Trades navigation. */
 const FREEDOM_CASHFLOW_CACHE_TTL_MS = 5 * 60 * 1000;
-let freedomCashflowCache: { secret: string; expiresAt: number; data: any } | null = null;
-let freedomCashflowRequest: { secret: string; promise: Promise<any> } | null = null;
+let freedomCashflowCache: { secret: string; expiresAt: number; data: unknown } | null = null;
+let freedomCashflowRequest: { secret: string; promise: Promise<unknown> } | null = null;
 
-export async function fetchFreedomCashflows(): Promise<any> {
+export async function fetchFreedomCashflows(): Promise<unknown> {
   const secret = getActiveGatewaySecret().trim();
   if (freedomCashflowCache && freedomCashflowCache.secret === secret && freedomCashflowCache.expiresAt > Date.now()) {
     recordApiMetric('cache_hit', { cache: 'freedom_cashflows' });
@@ -1238,8 +1202,8 @@ export async function fetchFreedomCashflows(): Promise<any> {
     return freedomCashflowRequest.promise;
   }
 
-  const request = proxyFetch('freedom-cashflows', {}, { cache: 'no-store' })
-    .then((data) => {
+  const request: Promise<unknown> = proxyFetch('freedom-cashflows', {}, { cache: 'no-store' })
+    .then((data: unknown) => {
       freedomCashflowCache = { secret, expiresAt: Date.now() + FREEDOM_CASHFLOW_CACHE_TTL_MS, data };
       return data;
     })
@@ -1365,73 +1329,6 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
     };
   });
 }
-
-export interface FreedomCashBalance {
-  currency: string;
-  amount: number;
-  forecastIn: number;
-  forecastOut: number;
-  t2In: number;
-  t2Out: number;
-}
-
-export interface FreedomOpenPosition {
-  ticker: string;
-  name: string;
-  quantity: number;
-  currency: string;
-  marketPrice: number | null;
-  marketValue: number | null;
-  averagePrice: number | null;
-  profitClose: number | null;
-  accountPositionId: number | null;
-}
-
-export interface FreedomPortfolioSnapshot {
-  loaded: boolean;
-  balances: FreedomCashBalance[];
-  positions: FreedomOpenPosition[];
-}
-
-/** Normalize the documented fields without converting currencies or inventing missing values. */
-export function normalizeFreedomPortfolio(response: any): FreedomPortfolioSnapshot {
-  const ps = response?.data?.result?.ps;
-  if (!ps || typeof ps !== 'object') throw new Error('TradeNet response is missing data.result.ps.');
-  if (ps.loaded !== true) throw new Error('TradeNet USD account data is not loaded yet.');
-
-  // This app is intentionally scoped to the active USD account. Do not mix
-  // AED/RUR balances or non-USD positions into the USD portfolio.
-  const usdRows = (rows: any[]) => rows.filter((item) =>
-    String(item?.curr ?? item?.base_currency ?? '').toUpperCase() === 'USD'
-  );
-  const finiteOrNull = (value: unknown): number | null => {
-    if (value === null || value === undefined || value === '') return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-  const balances = Array.isArray(ps.acc) ? usdRows(ps.acc).map((item: any) => ({
-    currency: 'USD',
-    // TradeNet `s` matches the USD balance shown in the broker app; `currval` is a different value.
-    amount: finiteOrNull(item?.s) ?? finiteOrNull(item?.currval) ?? 0,
-    forecastIn: finiteOrNull(item?.forecast_in) ?? 0,
-    forecastOut: finiteOrNull(item?.forecast_out) ?? 0,
-    t2In: finiteOrNull(item?.t2_in) ?? 0,
-    t2Out: finiteOrNull(item?.t2_out) ?? 0
-  })) : [];
-  const positions = Array.isArray(ps.pos) ? usdRows(ps.pos).map((item: any) => ({
-    ticker: String(item?.i ?? item?.base_contract_code ?? ''),
-    name: String(item?.name ?? item?.name2 ?? item?.i ?? 'Unknown instrument'),
-    quantity: finiteOrNull(item?.q) ?? 0,
-    currency: 'USD',
-    marketPrice: finiteOrNull(item?.mkt_price),
-    marketValue: finiteOrNull(item?.market_value),
-    averagePrice: finiteOrNull(item?.bal_price_a),
-    profitClose: finiteOrNull(item?.profit_close),
-    accountPositionId: finiteOrNull(item?.acc_pos_id)
-  })) : [];
-  return { loaded: true, balances, positions };
-}
-
 
 export interface AuthUser {
   id: string;
