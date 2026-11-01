@@ -648,11 +648,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 <caption class="sr-only">Projected portfolio net value, fees and commissions, margin fee, and balance by date.</caption>
                 <thead>
                   <tr class="border-b border-slate-800 text-slate-400">
-                    <th scope="col" class="py-2 px-3 text-left">Date</th>
-                    <th scope="col" class="py-2 px-3 text-right">Net</th>
-                    <th scope="col" class="py-2 px-3 text-right">F&amp;C</th>
-                    <th scope="col" class="py-2 px-3 text-right">M Fee</th>
-                    <th scope="col" class="py-2 px-3 text-right">Balance</th>
+                    <th scope="col" class="py-2 px-3">Date</th>
+                    <th scope="col" class="py-2 px-3">Net</th>
+                    <th scope="col" class="py-2 px-3">F&amp;C</th>
+                    <th scope="col" class="py-2 px-3">M Fee</th>
+                    <th scope="col" class="py-2 px-3">Balance</th>
                   </tr>
                 </thead>
                 <tbody

@@ -116,18 +116,18 @@ export function ProjectionsTable() {
 
         return (
           <tr key={`${kind}-${daysFromToday}-${idx}`} class={rowClass}>
-            <td class="sticky left-0 z-10 backdrop-blur-sm py-1 px-2 text-left text-slate-300 font-semibold projection-date-cell">
+            <td class="sticky left-0 z-10 backdrop-blur-sm py-1 px-2 text-slate-300 font-semibold projection-date-cell">
               <span>{dateFormatted}</span>
               <span class={badgeClass}>{badgeText}</span>
             </td>
-            <td class={`py-1 px-2 text-right ${netClass} font-semibold`}>
+            <td class={`py-1 px-2 ${netClass} font-semibold`}>
               {netSign}{formatUSD(net)}
             </td>
-            <td class="py-1 px-2 text-right text-slate-200">{formatUSD(feesAndCommissions)}</td>
-            <td class="py-1 px-2 text-right text-slate-400">
+            <td class="py-1 px-2 text-slate-200">{formatUSD(feesAndCommissions)}</td>
+            <td class="py-1 px-2 text-slate-400">
               {formatUSD(marginFee)} ({formatUSD(dailyFee)})
             </td>
-            <td class="py-1 px-2 text-right text-rose-400">-{formatUSD(projectedDebt)}</td>
+            <td class="py-1 px-2 text-rose-400">-{formatUSD(projectedDebt)}</td>
           </tr>
         );
       })}

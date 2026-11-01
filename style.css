@@ -211,6 +211,7 @@ select {
 }
 
 table thead {
+  text-align: center;
   background: var(--bg-table-head);
 }
 
@@ -242,6 +243,7 @@ table tbody tr:nth-child(even) {
 }
 
 tbody tr {
+  text-align: center;
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -664,6 +666,7 @@ summary:hover {
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
+  max-width: fit-content;
 }
 
 @media (max-width: 768px) {
@@ -2506,6 +2509,7 @@ table tbody tr:hover {
 
 table th,
 table td {
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
