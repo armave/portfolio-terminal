@@ -10,6 +10,9 @@ export interface Tranche {
 export interface TrancheItem {
   qty: number;
   price: number;
+  /** Legacy aliases retained for normalization and compatibility with older snapshots. */
+  shares?: number;
+  entryPrice?: number;
   date?: string;
   acquiredAt?: number;
   buyCommission?: number;
