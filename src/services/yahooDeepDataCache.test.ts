@@ -23,7 +23,7 @@ describe('Yahoo deep-data cache', () => {
     expect(first).toMatchObject({ symbol: 'AAPL' });
     expect(cached).toBe(first);
     expect(fetchData).toHaveBeenCalledTimes(1);
-    expect(fetchData).toHaveBeenCalledWith('AAPL', false);
+    expect(fetchData.mock.calls[0].slice(0, 2)).toEqual(['AAPL', false]);
 
     now += 5 * 60 * 1000;
     const refreshed = await client.fetch('AAPL');
@@ -48,7 +48,7 @@ describe('Yahoo deep-data cache', () => {
     await expect(client.fetch('AAPL')).resolves.toEqual({ symbol: ' aapl ', source: 'batch' });
     await client.fetch('MSFT');
     expect(fetchData).toHaveBeenCalledTimes(1);
-    expect(fetchData).toHaveBeenCalledWith('MSFT', false);
+    expect(fetchData.mock.calls[0].slice(0, 2)).toEqual(['MSFT', false]);
   });
 
   it('shares one in-flight request for the same symbol but does not block other symbols', async () => {
@@ -84,10 +84,69 @@ describe('Yahoo deep-data cache', () => {
     await client.fetch('AAPL');
     await expect(client.fetch('AAPL', true)).resolves.toEqual({ symbol: 'AAPL', value: 2 });
     await expect(client.fetch('AAPL')).resolves.toEqual({ symbol: 'AAPL', value: 2 });
-    expect(fetchData.mock.calls).toEqual([
+    expect(fetchData.mock.calls.map(([symbol, force]) => [symbol, force])).toEqual([
       ['AAPL', false],
       ['AAPL', true]
     ]);
+  });
+
+  it('lets one consumer abort without cancelling another subscriber', async () => {
+    let resolveResponse!: (value: unknown) => void;
+    let transportSignal: AbortSignal | undefined;
+    const fetchData = vi.fn((_symbol: string, _force: boolean, signal?: AbortSignal) => {
+      transportSignal = signal;
+      return new Promise<unknown>((resolve) => { resolveResponse = resolve; });
+    });
+    const client = createYahooDeepDataCache({
+      fetchData,
+      recordMetric: createMetricRecorder()
+    });
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+
+    const first = client.fetch('AAPL', false, firstController.signal);
+    const second = client.fetch(' aapl ', false, secondController.signal);
+    await Promise.resolve();
+
+    firstController.abort();
+    await expect(first).rejects.toMatchObject({ name: 'AbortError' });
+    expect(transportSignal?.aborted).toBe(false);
+
+    const payload = { symbol: 'AAPL', analystTargets: { median: 200 } };
+    resolveResponse(payload);
+    await expect(second).resolves.toBe(payload);
+    expect(fetchData).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts transport when the last subscriber cancels and allows an immediate retry', async () => {
+    let transportSignal: AbortSignal | undefined;
+    const fetchData = vi.fn()
+      .mockImplementationOnce((_symbol: string, _force: boolean, signal?: AbortSignal) => {
+        if (!signal) throw new Error('Expected an abort signal for this subscriber.');
+        transportSignal = signal;
+        return new Promise<unknown>((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            const error = new Error('aborted');
+            error.name = 'AbortError';
+            reject(error);
+          }, { once: true });
+        });
+      })
+      .mockResolvedValueOnce({ symbol: 'AAPL', retry: true });
+    const client = createYahooDeepDataCache({
+      fetchData,
+      recordMetric: createMetricRecorder()
+    });
+    const controller = new AbortController();
+    const pending = client.fetch('AAPL', false, controller.signal);
+    await Promise.resolve();
+
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(transportSignal?.aborted).toBe(true);
+
+    await expect(client.fetch('AAPL')).resolves.toMatchObject({ retry: true });
+    expect(fetchData).toHaveBeenCalledTimes(2);
   });
 
   it('does not join an in-flight request on force or let an older response overwrite the forced result', async () => {

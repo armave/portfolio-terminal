@@ -1,11 +1,11 @@
 /**
  * Shared cache and in-flight request coordination for Yahoo's full stock payload.
  *
- * Kept separate from API transport so cache lifetime, de-duplication, and
- * forced-refresh ordering can be verified without browser networking.
+ * Cache policy and transport cancellation are kept separate from browser
+ * networking so deduplication, TTL, and subscriber races can be tested alone.
  */
 export interface YahooDeepDataCacheOptions {
-  fetchData: (symbol: string, force: boolean) => Promise<unknown>;
+  fetchData: (symbol: string, force: boolean, signal?: AbortSignal) => Promise<unknown>;
   recordMetric: (metric: string, details: Record<string, unknown>) => void;
   now?: () => number;
   cacheTtlMs?: number;
@@ -14,13 +14,20 @@ export interface YahooDeepDataCacheOptions {
 
 export interface YahooDeepDataCacheClient {
   remember(value: unknown): void;
-  fetch(ticker: string, force?: boolean): Promise<unknown | null>;
+  fetch(ticker: string, force?: boolean, signal?: AbortSignal): Promise<unknown | null>;
   clear(): void;
 }
 
 interface CachedYahooDeepData {
   expiresAt: number;
   data: Record<string, unknown>;
+}
+
+interface InFlightYahooDeepData {
+  controller: AbortController;
+  promise: Promise<unknown>;
+  subscribers: number;
+  settled: boolean;
 }
 
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -34,6 +41,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isAbortError(error: unknown): boolean {
+  return isRecord(error) && error.name === 'AbortError';
+}
+
+function createAbortError(): Error {
+  const error = new Error('The request was aborted.');
+  error.name = 'AbortError';
+  return error;
+}
+
 function setBoundedCache<T>(cache: Map<string, T>, key: string, value: T, maxEntries: number): void {
   cache.set(key, value);
   if (cache.size > maxEntries) {
@@ -42,9 +59,54 @@ function setBoundedCache<T>(cache: Map<string, T>, key: string, value: T, maxEnt
   }
 }
 
+function subscribeToRequest(
+  entry: InFlightYahooDeepData,
+  signal: AbortSignal | undefined,
+  onLastSubscriberAbort: () => void
+): Promise<unknown> {
+  if (signal?.aborted) return Promise.reject(createAbortError());
+
+  entry.subscribers += 1;
+  return new Promise<unknown>((resolve, reject) => {
+    let active = true;
+
+    const release = (): boolean => {
+      if (!active) return false;
+      active = false;
+      signal?.removeEventListener('abort', onAbort);
+      entry.subscribers = Math.max(0, entry.subscribers - 1);
+      return true;
+    };
+
+    const onAbort = (): void => {
+      if (!release()) return;
+      if (!entry.settled && entry.subscribers === 0) {
+        onLastSubscriberAbort();
+        entry.controller.abort();
+      }
+      reject(createAbortError());
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+
+    entry.promise.then(
+      value => {
+        if (release()) resolve(value);
+      },
+      error => {
+        if (release()) reject(error);
+      }
+    );
+  });
+}
+
 export function createYahooDeepDataCache(options: YahooDeepDataCacheOptions): YahooDeepDataCacheClient {
   const cache = new Map<string, CachedYahooDeepData>();
-  const requests = new Map<string, Promise<unknown>>();
+  const requests = new Map<string, InFlightYahooDeepData>();
   const now = options.now ?? Date.now;
   const cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
@@ -65,63 +127,89 @@ export function createYahooDeepDataCache(options: YahooDeepDataCacheOptions): Ya
     }, maxEntries);
   }
 
-  async function fetch(ticker: string, force = false): Promise<unknown | null> {
-    const symbol = normalizeSymbol(ticker);
-    if (!symbol) return null;
+  function startRequest(symbol: string, force: boolean, abortable: boolean): InFlightYahooDeepData {
+    const controller = new AbortController();
+    let entry!: InFlightYahooDeepData;
+    const startedAt = now();
 
-    if (!force) {
-      const cached = cache.get(symbol);
-      if (cached && cached.expiresAt > now()) return cached.data;
-      if (cached) cache.delete(symbol);
+    let transportPromise: Promise<unknown>;
+    try {
+      // Only opt out of proxy-level coalescing when a real caller can cancel.
+      // Non-cancellable readers keep the existing closed-session request gate.
+      transportPromise = options.fetchData(symbol, force, abortable ? controller.signal : undefined);
+    } catch (error) {
+      transportPromise = Promise.reject(error);
     }
 
-    const existing = requests.get(symbol);
-    if (!force && existing) return existing;
-
-    const startedAt = now();
-    const request = options.fetchData(symbol, force)
+    const promise = Promise.resolve(transportPromise)
       .then((data) => {
-        const durationMs = now() - startedAt;
-        const providerError = isRecord(data) && Boolean(data.error);
-        if (providerError) {
-          options.recordMetric('provider_failure', {
-            provider: 'yahoo',
-            operation: 'deep_data',
-            durationMs
-          });
-        } else {
-          options.recordMetric('provider_request', {
-            provider: 'yahoo',
-            operation: 'deep_data',
-            durationMs,
-            success: true
-          });
-        }
+        if (!controller.signal.aborted) {
+          const durationMs = now() - startedAt;
+          const providerError = isRecord(data) && Boolean(data.error);
+          if (providerError) {
+            options.recordMetric('provider_failure', {
+              provider: 'yahoo',
+              operation: 'deep_data',
+              durationMs
+            });
+          } else {
+            options.recordMetric('provider_request', {
+              provider: 'yahoo',
+              operation: 'deep_data',
+              durationMs,
+              success: true
+            });
+          }
 
-        if (
-          requests.get(symbol) === request
-          && data !== null
-          && typeof data === 'object'
-          && !providerError
-        ) {
-          // A superseded request must not overwrite a newer forced refresh in cache.
-          remember(data);
+          if (
+            requests.get(symbol) === entry
+            && data !== null
+            && typeof data === 'object'
+            && !providerError
+          ) {
+            // A superseded request must not overwrite a newer forced refresh.
+            remember(data);
+          }
         }
         return data;
       }, (error: unknown) => {
-        options.recordMetric('provider_failure', {
-          provider: 'yahoo',
-          operation: 'deep_data',
-          durationMs: now() - startedAt
-        });
+        if (!isAbortError(error)) {
+          options.recordMetric('provider_failure', {
+            provider: 'yahoo',
+            operation: 'deep_data',
+            durationMs: now() - startedAt
+          });
+        }
         throw error;
       })
       .finally(() => {
-        if (requests.get(symbol) === request) requests.delete(symbol);
+        entry.settled = true;
+        if (requests.get(symbol) === entry) requests.delete(symbol);
       });
 
-    requests.set(symbol, request);
-    return request;
+    entry = { controller, promise, subscribers: 0, settled: false };
+    requests.set(symbol, entry);
+    return entry;
+  }
+
+  function fetch(ticker: string, force = false, signal?: AbortSignal): Promise<unknown | null> {
+    const symbol = normalizeSymbol(ticker);
+    if (!symbol) return Promise.resolve(null);
+    if (signal?.aborted) return Promise.reject(createAbortError());
+
+    if (!force) {
+      const cached = cache.get(symbol);
+      if (cached && cached.expiresAt > now()) return Promise.resolve(cached.data);
+      if (cached) cache.delete(symbol);
+    }
+
+    const existing = force ? undefined : requests.get(symbol);
+    const entry = existing ?? startRequest(symbol, force, Boolean(signal));
+    return subscribeToRequest(entry, signal, () => {
+      // Remove the completed/cancelled generation immediately so a fresh
+      // consumer can retry even if the underlying transport takes time to stop.
+      if (requests.get(symbol) === entry) requests.delete(symbol);
+    });
   }
 
   function clear(): void {

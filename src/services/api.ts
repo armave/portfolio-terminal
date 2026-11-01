@@ -522,8 +522,9 @@ function normalizeYahooSymbol(symbol: unknown): string {
 }
 
 const yahooDeepDataCache = createYahooDeepDataCache({
-  fetchData: (symbol, force) => proxyFetch('', { symbol }, {
+  fetchData: (symbol, force, signal) => proxyFetch('', { symbol }, {
     method: 'POST',
+    ...(signal ? { signal } : {}),
     ...(force ? { cache: 'no-store' as RequestCache } : {})
   }),
   recordMetric: recordApiMetric
@@ -538,8 +539,12 @@ export function rememberYahooDeepStockData(value: unknown): void {
  * Fetches the full Yahoo payload once per ticker and shares it between board
  * analyst targets and all Market Insights tabs. Explicit refreshes bypass cache.
  */
-export function fetchYahooDeepStockData(ticker: string, force = false): Promise<YahooDeepStockData> {
-  return yahooDeepDataCache.fetch(ticker, force).then(normalizeYahooDeepStockData);
+export function fetchYahooDeepStockData(
+  ticker: string,
+  force = false,
+  signal?: AbortSignal
+): Promise<YahooDeepStockData> {
+  return yahooDeepDataCache.fetch(ticker, force, signal).then(normalizeYahooDeepStockData);
 }
 
 const marketInsightsProviders = createMarketInsightsProviderClient({
