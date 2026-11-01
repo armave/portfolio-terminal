@@ -399,8 +399,8 @@ function persistPortfolioSnapshot(
  * used for destructive operations such as a full reset where empty history is
  * meaningful and must not be treated as an ordinary no-op.
  */
-export function savePortfolioSnapshot(
-  state: Record<string, any>,
+export function savePortfolioSnapshot<TState extends object>(
+  state: TState,
   history: ClosedHistorySnapshot,
   options: PortfolioSnapshotOptions = {}
 ): boolean {
@@ -409,7 +409,7 @@ export function savePortfolioSnapshot(
       !Array.isArray(history.cashflows)) {
     return false;
   }
-  return persistPortfolioSnapshot(state, history, options).success;
+  return persistPortfolioSnapshot(state as Record<string, any>, history, options).success;
 }
 
 /**
