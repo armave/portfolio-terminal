@@ -28,9 +28,9 @@ describe('mobile workspace navigation styles', () => {
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-equity-badge--admin\s*\{\s*display:\s*none;/);
     expect(navigationComponent).toContain("isAdmin ? 'workspace-nav-equity-badge--admin' : ''");
     expect(navigationComponent).toContain('class={`workspace-nav-equity-badge');
-    expect(navigationComponent).toContain('aria-label="Balance"');
+    expect(navigationComponent).toContain("aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}");
     expect(navigationComponent).toContain('aria-hidden="true"');
-    expect(navigationComponent).not.toContain('aria-label={`Balance');
+    expect(navigationComponent).not.toContain('aria-label="Balance"');
     expect(navigationComponent).toContain('aria-label="Trades"');
     expect(navigationComponent).toContain('aria-label="Settings"');
   });

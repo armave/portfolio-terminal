@@ -5,7 +5,8 @@ import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
-import { getAppLanguage } from '../services/i18n';
+import { getAppLanguage, translateText } from '../services/i18n';
+import { formatPortfolioEquityBadge } from '../ui/portfolioEquityBadge';
 
 export function TickerTabs({
   isAdmin = false,
@@ -88,16 +89,26 @@ export function TickerTabs({
     : [];
   const guestEquity = calculateGuestPersonalEquity(guestHoldings);
   const displayedEquity = isAdmin ? portfolioValuation.equity : guestEquity;
+  const hasUnpricedPortfolioHoldings = portfolioValuation.unpricedHoldings > 0;
+  const hasPricedPortfolioHoldings = portfolioValuation.pricedHoldings > 0;
   const hasUnpricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice === null);
   const hasPricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice !== null);
-  const equityBadgeText = !isAdmin && userId
-    ? guestHoldings.length === 0 ? '$0'
-      : !hasPricedGuestHoldings ? '—'
-        : (hasUnpricedGuestHoldings ? '≥$' : '+$') + Math.abs(displayedEquity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 0 })
-    : (displayedEquity >= 0 ? '+$' : '−$') + Math.abs(displayedEquity).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 0 });
-  const equityBadgeTitle = !isAdmin && hasUnpricedGuestHoldings
-    ? 'Partial value: holdings without a valid market quote are excluded.'
-    : 'Current market value of your assigned cash-funded stocks.';
+  const equityBadgeText = formatPortfolioEquityBadge({
+    equity: displayedEquity,
+    locale: getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US',
+    hasUnpricedHoldings: isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings,
+    hasPricedHoldings: isAdmin ? hasPricedPortfolioHoldings : hasPricedGuestHoldings,
+    empty: !isAdmin && Boolean(userId) && guestHoldings.length === 0
+  });
+  const hasPartialEquity = isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings;
+  const equityBadgeTitle = translateText(
+    hasPartialEquity
+      ? 'Partial value: holdings without a valid market quote are excluded.'
+      : isAdmin
+        ? 'Current portfolio equity from available market quotes and broker cash balance.'
+        : 'Current market value of your assigned cash-funded stocks.',
+    getAppLanguage()
+  );
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     const currentButton = event.currentTarget as HTMLButtonElement;
@@ -228,7 +239,7 @@ export function TickerTabs({
       <button
         type="button"
         onClick={() => selectView('BALANCE')}
-        aria-label="Balance"
+        aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}
         aria-pressed={isCushionActive}
         class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
           ? 'bg-cyan-500 text-black'
