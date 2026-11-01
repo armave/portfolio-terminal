@@ -160,6 +160,8 @@ const RU: Record<string, string> = {
   'Ask': 'Продажа',
   'Price': 'Цена',
   'Quantity': 'Количество',
+  'Bid prices and quantities': 'Цены и объёмы заявок на покупку',
+  'Ask prices and quantities': 'Цены и объёмы заявок на продажу',
   'Spread': 'Спред',
   'Loading market depth…': 'Загрузка стакана заявок…',
   'Refresh depth': 'Обновить стакан',
