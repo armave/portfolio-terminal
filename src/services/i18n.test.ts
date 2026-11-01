@@ -23,6 +23,11 @@ describe('app localization', () => {
     expect(translateText('Priced market value', 'ru')).toBe('Рыночная стоимость позиций с котировкой');
   });
 
+  it('localizes the administrator equity badge description', () => {
+    expect(translateText('Current portfolio equity from available market quotes and broker cash balance.', 'ru'))
+      .toBe('Текущий капитал портфеля по доступным рыночным котировкам и денежному балансу брокера.');
+  });
+
   it('localizes unavailable margin valuation guidance', () => {
     expect(translateText('Unrealized return unavailable', 'ru')).toBe('Нереализованная доходность недоступна');
     expect(translateText('Unpriced positions', 'ru')).toBe('Позиции без котировки');

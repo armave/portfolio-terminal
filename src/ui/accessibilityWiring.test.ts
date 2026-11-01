@@ -83,6 +83,15 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain("translateText('Margin risk estimate unavailable until every holding has a valid market quote.', getAppLanguage())");
   });
 
+  it('marks the compact admin Balance equity badge as partial when holdings are unpriced', () => {
+    const source = readSource('../components/TickerTab.tsx');
+    expect(source).toContain('portfolioValuation.unpricedHoldings > 0');
+    expect(source).toContain('hasPricedPortfolioHoldings = portfolioValuation.pricedHoldings > 0');
+    expect(source).toContain('formatPortfolioEquityBadge({');
+    expect(source).toContain('hasUnpricedHoldings: isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings');
+    expect(source).toContain("'Partial value: holdings without a valid market quote are excluded.'");
+  });
+
   it('uses a body portal and viewport-sized scrolling for Market Depth on mobile', () => {
     const source = readSource('../components/MarketDepthButton.tsx');
     const stylesheet = readSource('../../style.css');

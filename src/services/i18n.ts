@@ -353,6 +353,7 @@ const RU: Record<string, string> = {
   "Unrealized return unavailable": "Нереализованная доходность недоступна",
   "Unpriced positions": "Позиции без котировки",
   "Market valuation incomplete": "Рыночная оценка неполная",
+  "Current portfolio equity from available market quotes and broker cash balance.": "Текущий капитал портфеля по доступным рыночным котировкам и денежному балансу брокера.",
   "Margin risk estimate unavailable until every holding has a valid market quote.": "Оценка маржинального риска недоступна, пока для всех активов не получены корректные рыночные котировки.",
   "Source unavailable": "Источник недоступен",
   "Stale": "Устарело",
