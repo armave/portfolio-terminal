@@ -46,7 +46,8 @@ describe('Trades cache-first rendering', () => {
     const source = readSource();
     expect(source).toContain('const cashflowSyncStartDate = useRef(');
     expect(source).toContain('getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])');
-    expect(source).toContain('fetchFreedomCashflows(cashflowSyncStartDate.current)');
+    expect(source).toContain('hasCompleteBaseline ? cashflowSyncStartDate.current : undefined');
+    expect(source).toContain('fetchFreedomCashflows(fromDate)');
     expect(source).not.toContain('fetchFreedomCashflows(getLatestClosedTradeDate(brokerTrades');
   });
 
