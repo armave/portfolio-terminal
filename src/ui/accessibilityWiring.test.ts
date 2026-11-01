@@ -78,6 +78,9 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain("translateText('Unrealized return unavailable', getAppLanguage())");
     expect(source).toContain('unpricedMarginPositionCount > 0');
     expect(source).toContain("translateText('Unpriced positions', getAppLanguage())");
+    expect(source).toContain('valuationAvailable={valuation.unpricedHoldings === 0}');
+    expect(source).toContain('valuationAvailable={valuationAvailable}');
+    expect(source).toContain("translateText('Margin risk estimate unavailable until every holding has a valid market quote.', getAppLanguage())");
   });
 
   it('uses a body portal and viewport-sized scrolling for Market Depth on mobile', () => {

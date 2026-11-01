@@ -26,6 +26,9 @@ describe('app localization', () => {
   it('localizes unavailable margin valuation guidance', () => {
     expect(translateText('Unrealized return unavailable', 'ru')).toBe('Нереализованная доходность недоступна');
     expect(translateText('Unpriced positions', 'ru')).toBe('Позиции без котировки');
+    expect(translateText('Market valuation incomplete', 'ru')).toBe('Рыночная оценка неполная');
+    expect(translateText('Margin risk estimate unavailable until every holding has a valid market quote.', 'ru'))
+      .toBe('Оценка маржинального риска недоступна, пока для всех активов не получены корректные рыночные котировки.');
   });
 
   it('localizes portfolio quote coverage labels', () => {

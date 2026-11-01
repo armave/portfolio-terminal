@@ -22,7 +22,32 @@ export function getUsableMarketPrice(value: unknown): number | null {
   return Number.isFinite(price) && price > 0 ? price : null;
 }
 
-function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string; rules: BrokerAssumptions }) {
+function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationAvailable = true, unpricedHoldings = 0 }: {
+  equityPct: number;
+  risk: ReturnType<typeof computeMarginRiskDisplay>;
+  equityText: string;
+  collateralText: string;
+  rules: BrokerAssumptions;
+  valuationAvailable?: boolean;
+  unpricedHoldings?: number;
+}) {
+  if (!valuationAvailable) {
+    return (
+      <section class="margin-risk-gauge-card" aria-label="Margin risk estimate unavailable">
+        <div class="margin-risk-gauge-heading">
+          <div><span class="margin-risk-label">ACCOUNT EQUITY HEALTH</span><strong class="margin-risk-equity">—</strong></div>
+          <span class="margin-risk-status elevated">{translateText('Market valuation incomplete', getAppLanguage())}</span>
+        </div>
+        <p class="mt-2 text-xs leading-relaxed text-amber-200">
+          {translateText('Margin risk estimate unavailable until every holding has a valid market quote.', getAppLanguage())}
+        </p>
+        <p class="mt-1 text-[10px] text-slate-400">
+          {translateText('Unpriced holdings', getAppLanguage())}: {unpricedHoldings}
+        </p>
+      </section>
+    );
+  }
+
   const stopOutTitle = `Estimate assumes the configured ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
   const marginRiskTitle = `Estimated from portfolio equity and configured thresholds: ${(rules.maintenanceEquityRatio * 100).toFixed(2)}% maintenance equity and ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity. Not a live broker risk indicator.`;
   const equity = Number.isFinite(equityPct) ? equityPct : 0;
@@ -423,7 +448,15 @@ export function SummaryMetricsGrid() {
           </div>
         </section>
 
-        <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(cushionTotal)} rules={rules} />
+        <MarginRiskGaugeCard
+        equityPct={equityPct}
+        risk={risk}
+        equityText={equityText}
+        collateralText={formatUSD(cushionTotal)}
+        rules={rules}
+        valuationAvailable={valuation.unpricedHoldings === 0}
+        unpricedHoldings={valuation.unpricedHoldings}
+      />
       </>
     );
   }
@@ -509,6 +542,13 @@ export function SummaryMetricsGrid() {
     ? 'unavailable'
     : getQuoteFreshness(pos, Date.now(), refreshIntervalMs);
 
+  const cashUnpricedHoldingCount = (state.cashCushion?.holdings || []).filter((holding) => {
+    const shares = Number(holding.shares);
+    const marketPrice = getUsableMarketPrice(holding.currentPrice) ?? getUsableMarketPrice(holding.price);
+    return Number.isFinite(shares) && shares > 0 && marketPrice === null;
+  }).length;
+  const positionUnpricedHoldingCount = (usableMarketPrice === null ? 1 : 0) + cashUnpricedHoldingCount;
+  const valuationAvailable = positionUnpricedHoldingCount === 0;
   const positionAssets = currentMktVal + allocatedCushion;
   const positionEquity = positionAssets - allocatedDebt;
   const equityPct = positionAssets > 0 ? (positionEquity / positionAssets) * 100 : Number.NaN;
@@ -598,7 +638,15 @@ export function SummaryMetricsGrid() {
         </div>
       </section>
 
-      <MarginRiskGaugeCard equityPct={equityPct} risk={risk} equityText={equityText} collateralText={formatUSD(allocatedCushion)} rules={rules} />
+      <MarginRiskGaugeCard
+        equityPct={equityPct}
+        risk={risk}
+        equityText={equityText}
+        collateralText={formatUSD(allocatedCushion)}
+        rules={rules}
+        valuationAvailable={valuationAvailable}
+        unpricedHoldings={positionUnpricedHoldingCount}
+      />
     </>
   );
 }

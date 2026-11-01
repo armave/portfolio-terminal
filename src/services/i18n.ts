@@ -352,6 +352,8 @@ const RU: Record<string, string> = {
   "No margin positions": "Нет маржинальных позиций",
   "Unrealized return unavailable": "Нереализованная доходность недоступна",
   "Unpriced positions": "Позиции без котировки",
+  "Market valuation incomplete": "Рыночная оценка неполная",
+  "Margin risk estimate unavailable until every holding has a valid market quote.": "Оценка маржинального риска недоступна, пока для всех активов не получены корректные рыночные котировки.",
   "Source unavailable": "Источник недоступен",
   "Stale": "Устарело",
   "Delayed": "С задержкой",
