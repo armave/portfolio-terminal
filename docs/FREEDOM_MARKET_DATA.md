@@ -15,7 +15,8 @@ The Worker still requires the existing `GATEWAY_SECRET` for all app requests. Af
 
 ## Read-only actions
 
-- `freedom-trades` retrieves the full TradeNet execution history for FIFO matching. The Worker requests `getTradesHistory` with `sort: 0` and intentionally omits `max`; TradeNet documents this combination as returning the full history count. The latest-first `sort: 1` mode defaults to a maximum of 100 executions when `max` is omitted, which can omit older opening buys and make closed-trade duration/buy-commission calculations incomplete.
+- `freedom-trades` retrieves the full TradeNet execution history for FIFO matching when no local closed-trade cursor exists. On a warm cache, the Worker accepts only a validated `fromDate=YYYY-MM-DD` cursor and translates it to `getTradesHistory` `beginDate` at midnight, `endDate` at the current time, and `sort: 0`. The client merges the returned period into persisted executions so older opening buys remain available for FIFO matching. Without a cursor, the Worker requests `sort: 0` and omits `max`; the latest-first `sort: 1` mode defaults to 100 executions and can omit older opening buys.
+- `freedom-cashflows` accepts the same validated `fromDate` cursor and translates it to the inclusive TradeNet `getUserCashFlows` filter `date eqormore YYYY-MM-DD`, sorted oldest-first. Cached cashflows are retained and merged with the returned period; without a saved closed-trade date, the full cashflow history is requested.
 
 - `freedom-quote`: requests a quote for one symbol.
 - `freedom-news`: requests company news for one symbol.
