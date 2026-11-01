@@ -4,7 +4,7 @@ import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage } from '../services/i18n';
 import { fetchFreedomCashflows, listUsers, pullCloudHistory, pushCloudHistory, type AuthUser } from '../services/api';
-import { loadSavedHistory, saveSavedHistory } from '../services/storage';
+import { loadSavedHistory, savePortfolioSnapshot } from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
@@ -175,13 +175,24 @@ export function ClosedHistoryDesk() {
       if (changedAppRows && JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
         nextState.closedTrades = updatedTrades;
       }
-      if (Object.keys(nextState).length) portfolioStore.setState(nextState);
-      // Persist computed fee allocations immediately; navigation to Balance may
-      // trigger unrelated portfolio saves and a fresh broker-history hydration.
-      saveSavedHistory({
-        brokerExecutedTrades: brokerExecutions.length ? updatedExecutions : (portfolioStore.getState().brokerExecutedTrades || []),
+      const previousPortfolioState = portfolioStore.getState();
+      if (Object.keys(nextState).length) portfolioStore.setState(nextState, false);
+      // Keep canonical portfolio fields and the independently stored history
+      // sidecar aligned. A failed write restores the prior in-memory snapshot
+      // and must never be followed by a cloud history write.
+      const historyPersisted = savePortfolioSnapshot(portfolioStore.getState(), {
+        brokerExecutedTrades: brokerExecutions.length
+          ? updatedExecutions
+          : (portfolioStore.getState().brokerExecutedTrades || []),
         cashflows: cashflowRows
       });
+      if (!historyPersisted) {
+        portfolioStore.update(() => previousPortfolioState, false);
+        const message = 'Closed history was recalculated but could not be saved on this device. Cloud synchronization was skipped.';
+        setCashflowSyncMessage(message);
+        console.error(message);
+        return false;
+      }
       // The closed-history collection lives in its own cloud record; saving the
       // portfolio snapshot alone does not upload updated fee allocations. Without
       // this write, the next section mount reloads stale cloud executions over the

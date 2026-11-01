@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   saveState,
+  savePortfolioSnapshot,
   loadSavedState,
   loadSavedHistory,
   saveSavedHistory,
@@ -52,6 +53,9 @@ describe('storage service', () => {
   });
 
   afterEach(() => {
+    localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+      storageMap.set(key, String(value));
+    });
     vi.unstubAllGlobals();
   });
 
@@ -117,6 +121,88 @@ describe('storage service', () => {
       expect(onPushToGist).not.toHaveBeenCalled();
 
       errorSpy.mockRestore();
+    });
+
+    it('rolls back the portfolio state when its changed history sidecar cannot be saved', () => {
+      const previousState = JSON.stringify({ activeView: 'AAPL', balance: 100 });
+      const previousHistory = JSON.stringify({
+        brokerExecutedTrades: [{ id: 'old-trade' }],
+        cashflows: [{ id: 'old-fee' }]
+      });
+      storageMap.set('margin_portfolio_state_dynamic_v2', previousState);
+      storageMap.set('portfolio_closed_history_v1', previousHistory);
+      const state = {
+        activeView: 'MSFT',
+        balance: 250,
+        lastUpdated: 123,
+        brokerExecutedTrades: [{ id: 'new-trade' }],
+        cashflows: [{ id: 'new-fee' }]
+      };
+      const onPushToGist = vi.fn();
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        if (key === 'portfolio_closed_history_v1') throw new Error('quota exceeded');
+        storageMap.set(key, String(value));
+      });
+
+      expect(saveState(state, onPushToGist)).toBe(false);
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(previousState);
+      expect(storageMap.get('portfolio_closed_history_v1')).toBe(previousHistory);
+      expect(state.lastUpdated).toBe(123);
+      expect(onPushToGist).not.toHaveBeenCalled();
+    });
+
+    it('commits blank portfolio, explicit empty history, and device view together', () => {
+      const state = { activeView: 'COMBINED', balance: 0, lastUpdated: 123 };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({ activeView: 'AAPL', balance: 100 }));
+      storageMap.set('portfolio_closed_history_v1', JSON.stringify({
+        brokerExecutedTrades: [{ id: 'old-trade' }],
+        cashflows: [{ id: 'old-fee' }]
+      }));
+      storageMap.set('portfolio_active_view', 'AAPL');
+
+      expect(savePortfolioSnapshot(
+        state,
+        { brokerExecutedTrades: [], cashflows: [] },
+        { deviceActiveView: 'COMBINED' }
+      )).toBe(true);
+
+      expect(JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2')!)).toMatchObject({
+        activeView: 'COMBINED',
+        balance: 0
+      });
+      expect(JSON.parse(storageMap.get('portfolio_closed_history_v1')!)).toEqual({
+        brokerExecutedTrades: [],
+        cashflows: []
+      });
+      expect(storageMap.get('portfolio_active_view')).toBe('COMBINED');
+      expect(state.lastUpdated).toBeGreaterThanOrEqual(123);
+    });
+
+    it('rolls back portfolio and history when a later device-preference write fails', () => {
+      const previousState = JSON.stringify({ activeView: 'AAPL', balance: 100 });
+      const previousHistory = JSON.stringify({
+        brokerExecutedTrades: [{ id: 'old-trade' }],
+        cashflows: [{ id: 'old-fee' }]
+      });
+      storageMap.set('margin_portfolio_state_dynamic_v2', previousState);
+      storageMap.set('portfolio_closed_history_v1', previousHistory);
+      storageMap.set('portfolio_active_view', 'AAPL');
+      const state = { activeView: 'COMBINED', balance: 0, lastUpdated: 123 };
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        if (key === 'portfolio_active_view') throw new Error('storage unavailable');
+        storageMap.set(key, String(value));
+      });
+
+      expect(savePortfolioSnapshot(
+        state,
+        { brokerExecutedTrades: [], cashflows: [] },
+        { deviceActiveView: 'COMBINED' }
+      )).toBe(false);
+
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(previousState);
+      expect(storageMap.get('portfolio_closed_history_v1')).toBe(previousHistory);
+      expect(storageMap.get('portfolio_active_view')).toBe('AAPL');
+      expect(state.lastUpdated).toBe(123);
     });
 
     it('does not throw when localStorage is undefined', () => {

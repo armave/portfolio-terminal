@@ -404,7 +404,7 @@ export class PortfolioStore {
   }
 
   private notify(persist = true): void {
-    if (persist) saveState(this.state as any);
+    if (persist) saveState(this.state);
     this.listeners.forEach((listener) => listener(this.state));
   }
 
@@ -423,11 +423,11 @@ export class PortfolioStore {
     this.notify(persist);
   }
 
-  public setState(partial: Partial<PortfolioState>): void {
+  public setState(partial: Partial<PortfolioState>, persist = true): void {
     this.update((state) => ({
       ...state,
       ...partial
-    }));
+    }), persist);
   }
 
   public importState(newState: Partial<PortfolioState>): void {
@@ -442,8 +442,10 @@ export class PortfolioStore {
    * Broker rules, provider keys, the signed-in Gateway Secret, and refresh preferences
    * are settings rather than portfolio content and intentionally remain in place.
    */
-  public resetToBlankState(now = Date.now()): void {
-    // The selected desk is device-local, so clear its preference alongside the portfolio.
+  public resetToBlankState(now = Date.now(), persist = true): void {
+    // The selected desk is device-local and also participates in normalization.
+    // Update it before normalization; a caller using persist=false can roll it back
+    // if the subsequent multi-record snapshot transaction fails.
     try {
       if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', 'COMBINED');
     } catch {
@@ -474,7 +476,7 @@ export class PortfolioStore {
       cashStocks: [],
       selectedTicker: null,
       pendingMutation: null
-    }));
+    }), persist);
   }
 
   private readDeviceActiveView(): string | null {
