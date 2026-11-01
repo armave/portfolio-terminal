@@ -721,7 +721,7 @@ summary:hover {
   }
 
   #tickerTabs button,
-  #tickerTabs > * {
+  #tickerTabs>* {
     flex-shrink: 0;
     padding: 0.3rem 0.65rem;
     font-size: 0.85rem;
@@ -2883,9 +2883,7 @@ summary:focus-visible {
 #root {
   width: 100%;
   min-width: 0;
-  padding: clamp(0.5rem, 1.15vw, 1.125rem)
-    clamp(0.5rem, 1.4vw, 1.5rem)
-    calc(1.25rem + env(safe-area-inset-bottom));
+  padding: clamp(0.5rem, 1.15vw, 1.125rem) clamp(0.5rem, 1.4vw, 1.5rem) calc(1.25rem + env(safe-area-inset-bottom));
 }
 
 #mainTerminalView {
@@ -2898,10 +2896,10 @@ summary:focus-visible {
   container-type: inline-size;
 }
 
-#mainTerminalView > *,
+#mainTerminalView>*,
 #mainDeskContainer,
 #tradingWorkspaceGrid,
-#tradingWorkspaceGrid > *,
+#tradingWorkspaceGrid>*,
 #tradingTerminalColumn,
 #cashCushionContainer {
   min-width: 0;
@@ -2955,7 +2953,7 @@ summary:focus-visible {
   gap: var(--layout-stack-gap);
 }
 
-#tradingWorkspaceGrid.trading-workspace-grid > * {
+#tradingWorkspaceGrid.trading-workspace-grid>* {
   min-width: 0;
   width: 100%;
 }
@@ -2973,7 +2971,7 @@ summary:focus-visible {
   container-type: inline-size;
 }
 
-#portfolioMetricsGrid > * {
+#portfolioMetricsGrid>* {
   min-width: 0;
 }
 
@@ -3034,7 +3032,7 @@ summary:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .portfolio-micro-column + .portfolio-micro-column {
+  .portfolio-micro-column+.portfolio-micro-column {
     border-left: 0;
   }
 
@@ -3054,7 +3052,7 @@ summary:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .portfolio-micro-column + .portfolio-micro-column,
+  .portfolio-micro-column+.portfolio-micro-column,
   .portfolio-micro-market {
     border-left: 0;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
@@ -3137,6 +3135,7 @@ table tbody tr:hover {
 }
 
 @media (hover: hover) and (pointer: fine) {
+
   .portfolio-metric:hover,
   .portfolio-micro-summary:hover,
   .margin-risk-gauge-card:hover {
@@ -3146,6 +3145,7 @@ table tbody tr:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .border-card,
   .portfolio-micro-summary,
   .margin-risk-gauge-card,
@@ -3270,7 +3270,7 @@ table tbody tr:hover {
     align-items: stretch;
   }
 
-  .closed-history-pagination > span {
+  .closed-history-pagination>span {
     width: 100%;
   }
 
@@ -3290,8 +3290,8 @@ table tbody tr:hover {
   container-type: inline-size;
 }
 
-#settingsDesk > *,
-#settingsDesk .settings-toolbar > *,
+#settingsDesk>*,
+#settingsDesk .settings-toolbar>*,
 #settingsDesk .settings-panel {
   min-width: 0;
 }
@@ -3309,7 +3309,7 @@ table tbody tr:hover {
   gap: clamp(0.65rem, 1.2cqw, 1rem);
 }
 
-#settingsDesk .settings-toolbar > div {
+#settingsDesk .settings-toolbar>div {
   min-width: 0;
   justify-content: flex-start;
   align-content: center;
@@ -3341,7 +3341,7 @@ table tbody tr:hover {
   align-items: end;
 }
 
-#settingsDesk .settings-user-form > * {
+#settingsDesk .settings-user-form>* {
   min-width: 0;
   width: 100%;
 }
@@ -3360,14 +3360,14 @@ table tbody tr:hover {
   min-width: 0;
 }
 
-#settingsDesk .settings-broker-rules > summary {
+#settingsDesk .settings-broker-rules>summary {
   border-radius: 0.625rem;
   padding: 0.75rem;
   background: rgba(15, 23, 42, 0.38);
   transition: color 160ms var(--motion-fluid, ease), background-color 160ms var(--motion-fluid, ease);
 }
 
-#settingsDesk .settings-broker-rules[open] > div {
+#settingsDesk .settings-broker-rules[open]>div {
   animation: settings-content-enter 180ms var(--motion-fluid, ease) both;
 }
 
@@ -3390,8 +3390,10 @@ table tbody tr:hover {
 }
 
 @media (max-width: 640px) {
-  #settingsDesk .settings-toolbar > div {
-    justify-content: flex-start;
+  #settingsDesk .settings-toolbar>div {
+    justify-content: center;
+    flex-direction: column;
+    gap: 1rem;
   }
 
   #settingsDesk .settings-user-panel {
@@ -3402,8 +3404,7 @@ table tbody tr:hover {
 /* Auth: preserve the existing mounted fade while improving fit and feedback. */
 #auth-container.auth-overlay {
   box-sizing: border-box;
-  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
-    max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -3493,8 +3494,9 @@ table tbody tr:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .closed-history-page-transition,
-  #settingsDesk .settings-broker-rules[open] > div,
+  #settingsDesk .settings-broker-rules[open]>div,
   #auth-container .auth-feedback {
     animation: none !important;
     transform: none !important;
@@ -3502,7 +3504,7 @@ table tbody tr:hover {
 
   .table-pagination-button,
   #settingsDesk .settings-panel,
-  #settingsDesk .settings-broker-rules > summary,
+  #settingsDesk .settings-broker-rules>summary,
   #auth-container .auth-input,
   #auth-container .auth-submit-button {
     transition: none !important;
@@ -3570,6 +3572,7 @@ table tbody tr:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .desk-content-reveal,
   .closed-history-page-transition {
     animation: none !important;
