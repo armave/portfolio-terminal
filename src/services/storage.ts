@@ -417,14 +417,15 @@ export function savePortfolioSnapshot<TState extends object>(
  * Changed non-empty history is committed before the method reports success;
  * a failed sidecar write rolls back the accompanying portfolio-state write.
  */
-export function saveState(
-  state?: Record<string, any> | null,
+export function saveState<TState extends object>(
+  state?: TState | null,
   onPushToGist?: (forcePrompt?: boolean) => void
 ): boolean {
   if (!state || typeof state !== 'object' || Array.isArray(state)) return false;
+  const mutableState = state as TState & Record<string, any>;
 
-  const brokerExecutedTrades = Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades : [];
-  const cashflows = Array.isArray(state.cashflows) ? state.cashflows : [];
+  const brokerExecutedTrades = Array.isArray(mutableState.brokerExecutedTrades) ? mutableState.brokerExecutedTrades : [];
+  const cashflows = Array.isArray(mutableState.cashflows) ? mutableState.cashflows : [];
   const hasHistory = brokerExecutedTrades.length > 0 || cashflows.length > 0;
   const historyChanged = hasHistory && (
     !lastPersistedHistory ||
@@ -433,7 +434,7 @@ export function saveState(
   );
 
   const result = persistPortfolioSnapshot(
-    state,
+    mutableState,
     historyChanged ? { brokerExecutedTrades, cashflows } : null
   );
   if (!result.success) return false;
