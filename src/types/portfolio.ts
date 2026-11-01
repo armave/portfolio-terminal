@@ -37,6 +37,8 @@ export interface PositionRecord {
   currentPrice: number;
   pt: number;
   commBuy: number;
+  /** Unallocated one-shot financing charge retained until the next realized sale. */
+  marginCharged?: number;
   startDate?: string;
   tranches?: TrancheItem[];
   quoteUpdatedAt?: number;
