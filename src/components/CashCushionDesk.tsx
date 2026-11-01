@@ -246,8 +246,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     const cashHolding = (state.cashCushion?.holdings || []).find(
       (holding) => String(holding.ticker || '').trim().toUpperCase() === tranche.ticker
     );
-    const latestPrice = Number(cashHolding?.currentPrice ?? cashHolding?.price ?? tranche.marketPrice);
-    if (!Number.isFinite(latestPrice) || latestPrice <= 0 || latestPrice === tranche.marketPrice) return tranche;
+    const latestPrice = getCashHoldingMarketPrice(cashHolding || {}) ??
+      getCashHoldingMarketPrice({ currentPrice: tranche.marketPrice });
+    if (latestPrice === null || latestPrice === tranche.marketPrice) return tranche;
     return { ...tranche, marketPrice: latestPrice, marketValue: latestPrice * tranche.quantity };
   });
   const guestHoldings = guestUserId

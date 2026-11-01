@@ -24,6 +24,7 @@ import {
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { getMarketInsightsTicker } from './src/domain/portfolioSelectors';
+import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
@@ -139,12 +140,10 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
-    ...holding,
-    ...(Number.isFinite(Number(holding.currentPrice ?? holding.price))
-      ? { price: Number(holding.currentPrice ?? holding.price) }
-      : {})
-  }));
+  const brokerCashHoldings = classified.cashStocks.map((holding: any) => {
+    const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
+    return { ...holding, ...(price !== null ? { price } : {}) };
+  });
   const usdBalance = snapshot.balances.find((item: any) =>
     String(item.currency ?? '').toUpperCase() === 'USD' && Number.isFinite(Number(item.amount))
   );
@@ -195,12 +194,10 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
-    ...holding,
-    ...(Number.isFinite(Number(holding.currentPrice ?? holding.price))
-      ? { price: Number(holding.currentPrice ?? holding.price) }
-      : {})
-  }));
+  const brokerCashHoldings = classified.cashStocks.map((holding: any) => {
+    const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
+    return { ...holding, ...(price !== null ? { price } : {}) };
+  });
   portfolioStore.setState({
     positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
     cashStocks: brokerCashHoldings,
@@ -267,12 +264,10 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     resolveCommissionConfig(TRADERNET_RULES),
     activeTrancheMixes
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
-    ...holding,
-    ...(Number.isFinite(Number(holding.currentPrice ?? holding.price))
-      ? { price: Number(holding.currentPrice ?? holding.price) }
-      : {})
-  }));
+  const brokerCashHoldings = classified.cashStocks.map((holding: any) => {
+    const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
+    return { ...holding, ...(price !== null ? { price } : {}) };
+  });
   portfolioStore.setState({
     activeTrancheTypes,
     activeTrancheMixes,
