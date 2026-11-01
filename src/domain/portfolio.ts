@@ -973,10 +973,12 @@ export function processRollovers(state: RolloverState | null | undefined): boole
   const dailyRate = annualRate / dayCountBasis;
   const configuredHour = rules.rolloverHour;
   const configuredMinute = rules.rolloverMinute;
-  const rolloverHour = Number.isInteger(configuredHour) && configuredHour >= 0 && configuredHour <= 23
+  const rolloverHour = typeof configuredHour === 'number' &&
+    Number.isInteger(configuredHour) && configuredHour >= 0 && configuredHour <= 23
     ? configuredHour
     : 4;
-  const rolloverMinute = Number.isInteger(configuredMinute) && configuredMinute >= 0 && configuredMinute <= 59
+  const rolloverMinute = typeof configuredMinute === 'number' &&
+    Number.isInteger(configuredMinute) && configuredMinute >= 0 && configuredMinute <= 59
     ? configuredMinute
     : 0;
   const now = new Date();
