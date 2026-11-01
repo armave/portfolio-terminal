@@ -3,6 +3,7 @@ import {
   isFreedomCashflowRow,
   mergeFreedomCashflowRows,
   normalizeFreedomCashflowRows,
+  normalizeSavedFreedomCashflows,
   type NormalizedFreedomCashflow
 } from "./freedomCashflows";
 
@@ -35,6 +36,17 @@ describe("Freedom cashflow normalization", () => {
       description: "Negative cash balance fee"
     });
     expect(rows[0].raw.operation_id).toBe("4812");
+  });
+
+  it("normalizes legacy persisted rows without changing broker IDs or requiring raw fields", () => {
+    expect(normalizeSavedFreedomCashflows([
+      { id: "freedom-100", date: "2026-10-30", type: "Margin Fee", amount: "-1.25", currency: "USD" },
+      { id: "legacy-200", date: "2026-10-29", type: "Deposit", amount: 10, raw: { legacy: 7 } },
+      { id: "bad-row", date: "not-a-date", type: "Fee", amount: 2 }
+    ])).toEqual([
+      { id: "freedom-100", date: "2026-10-30", type: "Margin Fee", amount: -1.25, currency: "USD", raw: {} },
+      { id: "legacy-200", date: "2026-10-29", type: "Deposit", amount: 10, raw: { legacy: "7" } }
+    ]);
   });
 
   it("assigns a Freedom source ID when a broker row has no operation ID", () => {
