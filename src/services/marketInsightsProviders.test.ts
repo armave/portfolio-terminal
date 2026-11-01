@@ -99,7 +99,7 @@ describe('market insights provider client', () => {
     const response = deferred<unknown>();
     let transportSignal: AbortSignal | undefined;
     const client = createMarketInsightsProviderClient({
-      fetchNews: vi.fn((_symbol, signal) => {
+      fetchNews: vi.fn((_symbol: string, signal: AbortSignal) => {
         transportSignal = signal;
         return response.promise;
       }),
@@ -123,7 +123,7 @@ describe('market insights provider client', () => {
   it('aborts transport when every subscriber cancels', async () => {
     let transportSignal: AbortSignal | undefined;
     const client = createMarketInsightsProviderClient({
-      fetchNews: vi.fn((_symbol, signal) => {
+      fetchNews: vi.fn((_symbol: string, signal: AbortSignal) => {
         transportSignal = signal;
         return new Promise((_resolve, reject) => {
           signal.addEventListener('abort', () => reject(abortError()), { once: true });
@@ -169,7 +169,7 @@ describe('market insights provider client', () => {
   it('aborts pending provider requests when the client cache is cleared', async () => {
     let transportSignal: AbortSignal | undefined;
     const client = createMarketInsightsProviderClient({
-      fetchNews: vi.fn((_symbol, signal) => {
+      fetchNews: vi.fn((_symbol: string, signal: AbortSignal) => {
         transportSignal = signal;
         return new Promise((_resolve, reject) => {
           signal.addEventListener('abort', () => reject(abortError()), { once: true });
