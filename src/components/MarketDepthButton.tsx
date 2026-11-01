@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { fetchFreedomTradeNetMarketDepth } from '../services/api';
-
-interface MarketDepthLevel { price: number; quantity: number; position: number | null; }
-interface MarketDepthSnapshot {
-  symbol: string; bids: MarketDepthLevel[]; asks: MarketDepthLevel[];
-  depth: number; minPriceStep: number | null; updatedAt: number;
-}
+import { normalizeFreedomMarketDepth, type FreedomMarketDepthLevel, type FreedomMarketDepthSnapshot } from '../services/freedomMarketDepth';
 interface MarketDepthButtonProps { ticker: string; compact?: boolean; }
 
 function formatPrice(value: number): string {
@@ -21,7 +16,7 @@ function formatTime(value: number): string {
 export function MarketDepthButton({ ticker, compact = false }: MarketDepthButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [snapshot, setSnapshot] = useState<MarketDepthSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<FreedomMarketDepthSnapshot | null>(null);
   const [error, setError] = useState('');
 
   const loadDepth = async () => {
@@ -30,11 +25,7 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
     setError('');
     try {
       const response = await fetchFreedomTradeNetMarketDepth(ticker);
-      const data = response?.data?.data ?? response?.data ?? response;
-      if (!data || data.symbol !== ticker.toUpperCase() || !Array.isArray(data.bids) || !Array.isArray(data.asks)) {
-        throw new Error('TradeNet returned an unrecognized market-depth response.');
-      }
-      setSnapshot(data as MarketDepthSnapshot);
+      setSnapshot(normalizeFreedomMarketDepth(response, ticker));
     } catch (loadError) {
       setSnapshot(null);
       setError(loadError instanceof Error ? loadError.message : 'TradeNet market-depth feed is unavailable.');
@@ -63,7 +54,7 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
   const spreadPercent = spread !== null && bestBid ? spread / bestBid * 100 : null;
   const maxQuantity = Math.max(1, ...(snapshot?.bids.map(level => level.quantity) || []), ...(snapshot?.asks.map(level => level.quantity) || []));
 
-  const renderLevels = (levels: MarketDepthLevel[], side: 'bid' | 'ask') => {
+  const renderLevels = (levels: FreedomMarketDepthLevel[], side: 'bid' | 'ask') => {
     const textClass = side === 'bid' ? 'text-emerald-300' : 'text-rose-300';
     const barClass = side === 'bid' ? 'bg-emerald-500/20' : 'bg-rose-500/20';
     return levels.map((level, index) => (
