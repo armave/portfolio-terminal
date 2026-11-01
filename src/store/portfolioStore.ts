@@ -815,8 +815,8 @@ export class PortfolioStore {
         origTranches[0]?.date || pos.startDate || state.startDate || todayIso();
 
       for (const tr of origTranches) {
-        const trQty = Number(tr.qty) || 0;
-        const trPrice = Number(tr.price) || 0;
+        const trQty = Number(tr.qty ?? tr.shares) || 0;
+        const trPrice = Number(tr.price ?? tr.entryPrice) || 0;
 
         if (remainingToSell <= 0) {
           updatedTranches.push({ ...tr });
@@ -870,8 +870,8 @@ export class PortfolioStore {
           (p.tranches || []).reduce(
             (s, t) =>
               s +
-              (Number(t.qty) || 0) *
-              (Number(t.price) || 0),
+              (Number(t.qty ?? t.shares) || 0) *
+              (Number(t.price ?? t.entryPrice) || 0),
             0
           ),
         0
@@ -879,8 +879,8 @@ export class PortfolioStore {
       const posInvested = origTranches.reduce(
         (s, t) =>
           s +
-          (Number(t.qty) || 0) *
-          (Number(t.price) || 0),
+          (Number(t.qty ?? t.shares) || 0) *
+          (Number(t.price ?? t.entryPrice) || 0),
         0
       );
       const weight = totalPortfolioInvested > 0 ? posInvested / totalPortfolioInvested : 1;
