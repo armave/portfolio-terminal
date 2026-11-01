@@ -1094,6 +1094,24 @@ describe('fallback provider quote normalization', () => {
 
     await expect(fetchFallbackQuote('BAD', 'finnhub')).rejects.toThrow('no valid quote');
   });
+
+  it('rejects malformed payloads and boolean values instead of coercing them to prices', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => ({ c: true, pc: false, d: true, dp: false })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchFallbackQuote('BAD', 'finnhub')).rejects.toThrow('no valid quote');
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => null
+    });
+    await expect(fetchFallbackQuote('BAD', 'finnhub')).rejects.toThrow('no valid quote');
+  });
 });
 
 

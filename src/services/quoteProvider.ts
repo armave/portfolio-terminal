@@ -3,6 +3,12 @@ import { fetchFreedomQuote } from './freedomMarketData';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 import type { QuoteDetails } from '../types/portfolio';
 
+function describeProviderError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return String(error);
+}
+
 // Time-anchored and monotonic, including requests started in the same millisecond.
 // Anchoring to epoch time keeps persisted ordering comparable after ordinary reloads.
 let lastQuoteRequestSequence = 0;
@@ -29,8 +35,8 @@ export async function fetchFallbackPrice(symbol: string) {
           changePercent: fallback.changePercent ?? 0
         }
       };
-    } catch (error: any) {
-      console.warn(`[${provider} Quote Error for ${symbol}]:`, error?.message || error);
+    } catch (error: unknown) {
+      console.warn(`[${provider} Quote Error for ${symbol}]:`, describeProviderError(error));
     }
   }
   return null;
@@ -84,7 +90,7 @@ export async function fetchLivePriceFromProviders(symbol: string) {
   if (freedomResult.status === 'fulfilled') {
     freedomQuote = freedomResult.value;
   } else {
-    console.warn(`[Freedom Quote Error for ${symbol}]:`, freedomResult.reason?.message || freedomResult.reason);
+    console.warn(`[Freedom Quote Error for ${symbol}]:`, describeProviderError(freedomResult.reason));
   }
 
   try {
@@ -133,8 +139,8 @@ export async function fetchLivePriceFromProviders(symbol: string) {
         };
       }
     }
-  } catch (e: any) {
-    console.warn(`[Proxy Quote Error for ${symbol}]:`, e?.message || e);
+  } catch (error: unknown) {
+    console.warn(`[Proxy Quote Error for ${symbol}]:`, describeProviderError(error));
   }
 
   if (freedomQuote && Number.isFinite(freedomQuote.price) && freedomQuote.price > 0) {

@@ -460,6 +460,17 @@ export interface NormalizedFallbackQuote {
   sourceName: 'Finnhub' | 'Twelve Data';
 }
 
+function isFallbackQuoteRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseProviderNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /** Fetch and normalize a single quote from a configured fallback provider. */
 export async function fetchFallbackQuote(
   ticker: string,
@@ -468,32 +479,28 @@ export async function fetchFallbackQuote(
   const symbol = normalizeYahooSymbol(ticker);
   if (!symbol) throw new Error('A ticker symbol is required for fallback quotes.');
 
-  const data = await proxyFetch('provider-quote', { symbol, provider });
-  const currentValue = provider === 'finnhub' ? data?.c : data?.close;
-  const previousValue = provider === 'finnhub' ? data?.pc : data?.previous_close;
-  const changeValue = provider === 'finnhub' ? data?.d : data?.change;
-  const percentValue = provider === 'finnhub' ? data?.dp : data?.percent_change;
-  const price = Number(currentValue);
-  const previous = previousValue === null || previousValue === undefined || previousValue === ''
-    ? NaN
-    : Number(previousValue);
-  const suppliedChange = changeValue === null || changeValue === undefined || changeValue === ''
-    ? NaN
-    : Number(changeValue);
-  const suppliedPercent = percentValue === null || percentValue === undefined || percentValue === ''
-    ? NaN
-    : Number(percentValue);
-  const hasPrevious = Number.isFinite(previous) && previous > 0;
-  const change = Number.isFinite(suppliedChange)
-    ? suppliedChange
-    : hasPrevious ? price - previous : null;
-  const changePercent = Number.isFinite(suppliedPercent)
-    ? suppliedPercent
-    : hasPrevious && change !== null ? (change / previous) * 100 : null;
+  const responseData: unknown = await proxyFetch('provider-quote', { symbol, provider });
+  const data = isFallbackQuoteRecord(responseData) ? responseData : {};
+  const currentValue = provider === 'finnhub' ? data.c : data.close;
+  const previousValue = provider === 'finnhub' ? data.pc : data.previous_close;
+  const changeValue = provider === 'finnhub' ? data.d : data.change;
+  const percentValue = provider === 'finnhub' ? data.dp : data.percent_change;
+  const price = parseProviderNumber(currentValue);
+  const previous = parseProviderNumber(previousValue);
+  const suppliedChange = parseProviderNumber(changeValue);
+  const suppliedPercent = parseProviderNumber(percentValue);
 
-  if (!Number.isFinite(price) || price <= 0) {
+  if (price === null || price <= 0) {
     throw new Error(`${provider === 'finnhub' ? 'Finnhub' : 'Twelve Data'} returned no valid quote for ${symbol}.`);
   }
+
+  const hasPrevious = previous !== null && previous > 0;
+  const change = suppliedChange !== null
+    ? suppliedChange
+    : hasPrevious ? price - previous : null;
+  const changePercent = suppliedPercent !== null
+    ? suppliedPercent
+    : hasPrevious && change !== null ? (change / previous) * 100 : null;
 
   return {
     symbol,
