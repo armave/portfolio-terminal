@@ -5,7 +5,7 @@
  * networking so deduplication, TTL, and subscriber races can be tested alone.
  */
 export interface YahooDeepDataCacheOptions {
-  fetchData: (symbol: string, force: boolean, signal: AbortSignal) => Promise<unknown>;
+  fetchData: (symbol: string, force: boolean, signal?: AbortSignal) => Promise<unknown>;
   recordMetric: (metric: string, details: Record<string, unknown>) => void;
   now?: () => number;
   cacheTtlMs?: number;
@@ -127,13 +127,21 @@ export function createYahooDeepDataCache(options: YahooDeepDataCacheOptions): Ya
     }, maxEntries);
   }
 
-  function startRequest(symbol: string, force: boolean): InFlightYahooDeepData {
+  function startRequest(symbol: string, force: boolean, abortable: boolean): InFlightYahooDeepData {
     const controller = new AbortController();
     let entry!: InFlightYahooDeepData;
     const startedAt = now();
 
-    const promise = Promise.resolve()
-      .then(() => options.fetchData(symbol, force, controller.signal))
+    let transportPromise: Promise<unknown>;
+    try {
+      // Only opt out of proxy-level coalescing when a real caller can cancel.
+      // Non-cancellable readers keep the existing closed-session request gate.
+      transportPromise = options.fetchData(symbol, force, abortable ? controller.signal : undefined);
+    } catch (error) {
+      transportPromise = Promise.reject(error);
+    }
+
+    const promise = Promise.resolve(transportPromise)
       .then((data) => {
         if (!controller.signal.aborted) {
           const durationMs = now() - startedAt;
@@ -196,7 +204,7 @@ export function createYahooDeepDataCache(options: YahooDeepDataCacheOptions): Ya
     }
 
     const existing = force ? undefined : requests.get(symbol);
-    const entry = existing ?? startRequest(symbol, force);
+    const entry = existing ?? startRequest(symbol, force, Boolean(signal));
     return subscribeToRequest(entry, signal, () => {
       // Remove the completed/cancelled generation immediately so a fresh
       // consumer can retry even if the underlying transport takes time to stop.
