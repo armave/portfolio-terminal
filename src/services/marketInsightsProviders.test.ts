@@ -140,6 +140,27 @@ describe('market insights provider client', () => {
     expect(transportSignal?.aborted).toBe(true);
   });
 
+  it('allows an immediate retry after the last subscriber cancels', async () => {
+    const fetchNews = vi.fn()
+      .mockImplementationOnce((_symbol: string, signal: AbortSignal) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(abortError()), { once: true });
+      }))
+      .mockResolvedValueOnce([{ headline: 'Recovered result' }]);
+    const client = createMarketInsightsProviderClient({
+      fetchNews,
+      fetchStocktwits: vi.fn().mockResolvedValue({ messages: [] })
+    });
+    const controller = new AbortController();
+
+    const cancelled = client.fetchMarketNews('AAPL', false, controller.signal);
+    await Promise.resolve();
+    controller.abort();
+    await expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+
+    await expect(client.fetchMarketNews('AAPL')).resolves.toEqual([{ headline: 'Recovered result' }]);
+    expect(fetchNews).toHaveBeenCalledTimes(2);
+  });
+
   it('does not join an older in-flight request on force or cache its late response', async () => {
     const first = deferred<unknown>();
     const second = deferred<unknown>();
