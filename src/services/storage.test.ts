@@ -419,25 +419,31 @@ describe('storage service', () => {
   });
 
   describe('broker rules', () => {
-    it('manages broker rules with defensive fallback on corrupted JSON', () => {
-      const defaultRules = { annualRate: 0.15, dayCountBasis: 365 };
-      expect(loadBrokerRules(defaultRules)).toEqual(defaultRules);
-
-      const customRules = { annualRate: 0.12, dayCountBasis: 360 };
-      saveBrokerRules(customRules);
-      expect(loadBrokerRules(defaultRules)).toEqual(customRules);
-
+    const canonicalRules = {
+      broker: 'Freedom Broker Armenia (Tradernet)', annualBorrowRate: 0.12, dayCountBasis: 360 as const,
+      rolloverHour: 5, rolloverMinute: 30, rolloverTimeZone: 'Asia/Yerevan',
+      maintenanceEquityRatio: 0.2, stopOutRatio: 0.01, commissionMin: 2,
+      commissionPerShare: 0.02, commissionRatePct: 0.002
+    };
+    it('round-trips canonical assumptions without changing their values', () => {
+      expect(loadBrokerRules()).toBeNull();
+      saveBrokerRules(canonicalRules);
+      expect(loadBrokerRules()).toEqual(canonicalRules);
+    });
+    it('leaves legacy payloads unknown for the domain compatibility boundary', () => {
+      const legacy = { annualRate: '0.13', dailyRolloverCutoffArmenia: '06:15',
+        maintenanceMarginRatio: '0.18', commPerShare: '0.03' };
+      storageMap.set('tradernet_rules_v1', JSON.stringify(legacy));
+      expect(loadBrokerRules()).toEqual(legacy);
+    });
+    it('returns null for malformed JSON and absent settings', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       storageMap.set('tradernet_rules_v1', '{"broken');
-      expect(loadBrokerRules(defaultRules)).toEqual(defaultRules);
-      expect(warnSpy).toHaveBeenCalledWith(
-        'Failed to parse saved broker rules:',
-        expect.any(SyntaxError)
-      );
+      expect(loadBrokerRules()).toBeNull();
+      expect(warnSpy).toHaveBeenCalledWith('Failed to parse saved broker rules:', expect.any(SyntaxError));
       warnSpy.mockRestore();
-
       clearBrokerRules();
-      expect(loadBrokerRules(defaultRules)).toEqual(defaultRules);
+      expect(loadBrokerRules()).toBeNull();
     });
   });
 
