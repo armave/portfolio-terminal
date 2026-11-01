@@ -524,7 +524,7 @@ function normalizeYahooSymbol(symbol: unknown): string {
 const yahooDeepDataCache = createYahooDeepDataCache({
   fetchData: (symbol, force, signal) => proxyFetch('', { symbol }, {
     method: 'POST',
-    signal,
+    ...(signal ? { signal } : {}),
     ...(force ? { cache: 'no-store' as RequestCache } : {})
   }),
   recordMetric: recordApiMetric
