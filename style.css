@@ -96,7 +96,7 @@ button {
 }
 
 #terminalLog {
-  height: 16rem;
+  height: 10rem;
   overflow-y: auto;
   overflow-x: hidden;
   word-break: break-word;
@@ -757,7 +757,7 @@ summary:hover {
 
   #terminalLogs,
   #terminalLog {
-    height: 14rem;
+    height: 10rem;
     font-size: 0.7rem;
     overflow-y: auto;
   }
@@ -1965,7 +1965,7 @@ textarea {
   }
 
   #terminalLog {
-    height: 14rem;
+    height: 10rem;
     font-size: 0.75rem;
   }
 
@@ -3102,7 +3102,7 @@ table tbody tr:hover {
 }
 
 #terminalLog {
-  height: clamp(12rem, 28vh, 20rem);
+  height: clamp(12rem, 20vh, 20rem);
   max-height: min(60vh, 32rem);
   border-radius: var(--surface-radius);
   line-height: 1.6;
@@ -3131,7 +3131,7 @@ table tbody tr:hover {
   }
 
   #terminalLog {
-    height: clamp(12rem, 32vh, 16rem);
+    height: clamp(12rem, 20vh, 16rem);
     max-height: 45vh;
   }
 }

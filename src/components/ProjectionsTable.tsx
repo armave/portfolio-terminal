@@ -9,7 +9,7 @@ import { usePortfolio } from '../store/portfolioStore';
 import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
 import { getAppLanguage } from '../services/i18n';
 
-const ROWS_PER_PAGE = 8;
+const ROWS_PER_PAGE = 10;
 const MAX_BREAKEVEN_SEARCH_DAYS = 3650;
 
 export function ProjectionsTable() {
