@@ -73,7 +73,7 @@ import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTranc
 import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
-import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, GuestTrancheLedgerRecord } from './src/types/portfolio';
+import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, GuestTrancheLedgerRecord, QuoteDetails } from './src/types/portfolio';
 import { buildClosedTradeGuestLedgerUpserts, resolveClosedTradeOperationDate } from './src/domain/closedTradeGuestAssignments';
 import { attributeClosedTradeExecutions } from './src/domain/closedTradeAttribution';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from './src/domain/brokerExecutionMetrics';
@@ -1429,7 +1429,7 @@ function recordTrackedPrice(
   price: number,
   sourceName: string,
   updatedAt: number | null = null,
-  quoteDetails: any = null,
+  quoteDetails: QuoteDetails | null = null,
   requestStartedAt?: number
 ) {
   const symbol = ticker.toUpperCase();
