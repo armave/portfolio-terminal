@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchFallbackPrice, nextQuoteRequestSequence } from './quoteProvider';
-import { fetchYahooStockData, normalizeYahooBatchResults } from './api';
+import { fetchYahooStockData } from './api';
+import { normalizeYahooBatchResults } from './yahooQuoteContracts';
 import { refreshTrackedQuotes } from './quotePolling';
 
 vi.mock('./quoteProvider', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./quoteProvider')>();
   return { ...actual, fetchFallbackPrice: vi.fn(), nextQuoteRequestSequence: vi.fn() };
 });
-vi.mock('./api', () => ({ fetchYahooStockData: vi.fn(), normalizeYahooBatchResults: vi.fn() }));
+vi.mock('./api', () => ({ fetchYahooStockData: vi.fn() }));
+vi.mock('./yahooQuoteContracts', () => ({ normalizeYahooBatchResults: vi.fn() }));
 
 describe('refreshTrackedQuotes', () => {
   beforeEach(() => {
