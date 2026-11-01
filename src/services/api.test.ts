@@ -1165,6 +1165,8 @@ describe('Yahoo deep-data forced refresh', () => {
     expect(cached.price.current).toBe(210);
     expect(refreshed.price.current).toBe(212);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' });
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ method: 'POST', cache: 'no-store' });
   });
 
   it('does not join an in-flight request on force or let the older response overwrite the cache', async () => {
