@@ -67,6 +67,23 @@ export function focusElementWithoutScrolling(element: HTMLElement | null | undef
   element?.focus({ preventScroll: true });
 }
 
+export function restoreScrollPositionImmediately(
+  documentElement: Pick<HTMLElement, 'style'>,
+  scrollTo: (x: number, y: number) => void,
+  scrollX: number,
+  scrollY: number
+): void {
+  const previousScrollBehavior = documentElement.style.scrollBehavior;
+  // The app enables smooth scrolling globally; modal cleanup must restore the
+  // exact offset synchronously rather than animating from the top of the page.
+  documentElement.style.scrollBehavior = 'auto';
+  try {
+    scrollTo(scrollX, scrollY);
+  } finally {
+    documentElement.style.scrollBehavior = previousScrollBehavior;
+  }
+}
+
 interface UseDialogFocusOptions {
   active?: boolean;
   initialFocusRef?: DialogElementRef;
@@ -133,7 +150,7 @@ export function useDialogFocus(
       body.style.right = previousBodyStyles.right;
       body.style.width = previousBodyStyles.width;
       documentElement.style.overflow = previousDocumentOverflow;
-      window.scrollTo(scrollX, scrollY);
+      restoreScrollPositionImmediately(documentElement, (x, y) => window.scrollTo(x, y), scrollX, scrollY);
       if (previousFocus?.isConnected) focusElementWithoutScrolling(previousFocus);
     };
   }, [active, dialogRef, initialFocusRef, restoreFocusRef]);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { focusElementWithoutScrolling, getDialogFocusableElements, resolveDialogRestoreTarget, trapDialogTabKey } from './dialogFocus';
+import { focusElementWithoutScrolling, getDialogFocusableElements, resolveDialogRestoreTarget, restoreScrollPositionImmediately, trapDialogTabKey } from './dialogFocus';
 
 interface FocusableOptions {
   rendered?: boolean;
@@ -50,6 +50,36 @@ describe('dialog focus management', () => {
     focusElementWithoutScrolling(element);
     expect(options).toEqual({ preventScroll: true });
     expect(() => focusElementWithoutScrolling(null)).not.toThrow();
+  });
+
+  it('restores the saved page offset immediately even when global scrolling is smooth', () => {
+    const style = { scrollBehavior: 'smooth' } as CSSStyleDeclaration;
+    let requestedPosition: [number, number] | null = null;
+
+    restoreScrollPositionImmediately(
+      { style },
+      (x, y) => {
+        expect(style.scrollBehavior).toBe('auto');
+        requestedPosition = [x, y];
+      },
+      18,
+      742
+    );
+
+    expect(requestedPosition).toEqual([18, 742]);
+    expect(style.scrollBehavior).toBe('smooth');
+  });
+
+  it('restores the original scroll behavior even if the browser scroll call throws', () => {
+    const style = { scrollBehavior: 'smooth' } as CSSStyleDeclaration;
+
+    expect(() => restoreScrollPositionImmediately(
+      { style },
+      () => { throw new Error('scroll failed'); },
+      0,
+      0
+    )).toThrow('scroll failed');
+    expect(style.scrollBehavior).toBe('smooth');
   });
 
   it('prefers a connected invoking control when restoring focus', () => {
