@@ -655,7 +655,7 @@ export function MarketInsightsPanel() {
                   : sentiment?.toLowerCase() === 'bearish'
                     ? 'text-rose-400 border-rose-900/70'
                     : 'text-slate-400 border-slate-700';
-                const createdAt = Date.parse(message.created_at);
+                const createdAt = Date.parse(message.created_at ?? '');
                 return (
                   <article key={message.id || idx} class="stocktwits-feed-item rounded border border-slate-800 bg-slate-900/50 p-2.5">
                     <div class="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
