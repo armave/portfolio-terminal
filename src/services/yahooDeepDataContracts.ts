@@ -1,4 +1,4 @@
-export type YahooDisplayValue = string | number | null;
+type YahooDisplayValue = string | number | null;
 
 export interface YahooDeepPrice {
   current: number | null;
