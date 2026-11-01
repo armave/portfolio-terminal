@@ -45,8 +45,7 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
     }
   };
 
-  const openModal = (event: MouseEvent) => {
-    triggerRef.current = event.currentTarget as HTMLButtonElement;
+  const openModal = () => {
     setIsOpen(true);
     setSnapshot(null);
     setError('');
@@ -89,7 +88,7 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
 
   return (
     <div class="inline-flex">
-      <button type="button" onClick={openModal} title={'Market depth · ' + ticker} aria-label={'Open market depth for ' + ticker}
+      <button ref={triggerRef} type="button" onClick={openModal} title={'Market depth · ' + ticker} aria-label={'Open market depth for ' + ticker}
         class={'inline-flex shrink-0 items-center gap-1 rounded border border-cyan-800/80 bg-slate-900 text-cyan-300 hover:border-cyan-500 hover:bg-cyan-950/50 transition ' + (compact ? 'px-1.5 py-0.5 text-[9px] font-bold' : 'px-2 py-1 text-[10px] font-bold')}>
         <span aria-hidden="true">≋</span><span>Depth</span>
       </button>
