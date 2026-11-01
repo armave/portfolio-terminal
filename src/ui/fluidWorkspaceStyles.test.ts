@@ -76,9 +76,9 @@ describe('table pagination, Settings, and Auth fluid interactions', () => {
     expect(closedHistorySource).toContain('closed-history-page-transition');
     expect(closedHistorySource).toContain('closed-history-pagination');
     expect(closedHistorySource).toContain('aria-controls="closedTradesTableBody"');
-    expect(fluidStyles).toMatch(/\\.closed-history-page-transition\\s*\\{[^}]*animation:\\s*closed-history-page-enter/s);
-    expect(fluidStyles).toMatch(/\\.closed-history-pagination-controls\\s*\\{[^}]*flex-wrap:\\s*wrap;/s);
-    expect(fluidStyles).toMatch(/\\.table-pagination-button:not\\(:disabled\\):hover/);
+    expect(fluidStyles).toMatch(/\.closed-history-page-transition\s*\{[^}]*animation:\s*closed-history-page-enter/s);
+    expect(fluidStyles).toMatch(/\.closed-history-pagination-controls\s*\{[^}]*flex-wrap:\s*wrap;/s);
+    expect(fluidStyles).toMatch(/\.table-pagination-button:not\(:disabled\):hover/);
   });
 
   it('gives Settings a fluid container, responsive toolbar, panels, and scrollable user table', () => {
@@ -86,9 +86,9 @@ describe('table pagination, Settings, and Auth fluid interactions', () => {
     expect(settingsSource).toContain('settings-user-form');
     expect(settingsSource).toContain('settings-user-panel');
     expect(settingsSource).toContain('settings-broker-rules');
-    expect(fluidStyles).toMatch(/container-name:\\s*settings-workspace;/);
-    expect(fluidStyles).toMatch(/@container\\s+settings-workspace\\s*\\(min-width:\\s*54rem\\)/);
-    expect(fluidStyles).toMatch(/#settingsDesk \\.settings-table-scroll table\\s*\\{[^}]*min-width:\\s*49rem/s);
+    expect(fluidStyles).toMatch(/container-name:\s*settings-workspace;/);
+    expect(fluidStyles).toMatch(/@container\s+settings-workspace\s*\(min-width:\s*54rem\)/);
+    expect(fluidStyles).toMatch(/#settingsDesk \.settings-table-scroll table\s*\{[^}]*min-width:\s*49rem/s);
   });
 
   it('keeps Auth transitions responsive and gives fields and status messages smooth feedback', () => {
@@ -96,15 +96,15 @@ describe('table pagination, Settings, and Auth fluid interactions', () => {
     expect(authSource).toContain('auth-form');
     expect(authSource).toContain('auth-input');
     expect(authSource).toContain('auth-feedback');
-    expect(fluidStyles).toMatch(/#auth-container \\.auth-dialog-surface\\s*\\{[^}]*max-height:/s);
-    expect(fluidStyles).toMatch(/#auth-container \\.auth-input:focus-visible/);
+    expect(fluidStyles).toMatch(/#auth-container \.auth-dialog-surface\s*\{[^}]*max-height:/s);
+    expect(fluidStyles).toMatch(/#auth-container \.auth-input:focus-visible/);
     expect(fluidStyles).toMatch(/@keyframes auth-feedback-enter/);
-    expect(fluidStyles).toMatch(/@media\\s*\\(max-width:\\s*480px\\)/);
+    expect(fluidStyles).toMatch(/@media\s*\(max-width:\s*480px\)/);
   });
 
   it('respects reduced-motion settings for the new page, Settings, and Auth interactions', () => {
-    expect(fluidStyles).toMatch(/@media\\s*\\(prefers-reduced-motion:\\s*reduce\\)[\\s\\S]*\\.closed-history-page-transition/);
-    expect(fluidStyles).toMatch(/#settingsDesk \\.settings-panel/);
-    expect(fluidStyles).toMatch(/#auth-container \\.auth-submit-button/);
+    expect(fluidStyles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*\.closed-history-page-transition/);
+    expect(fluidStyles).toMatch(/#settingsDesk \.settings-panel/);
+    expect(fluidStyles).toMatch(/#auth-container \.auth-submit-button/);
   });
 });
