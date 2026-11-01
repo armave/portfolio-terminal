@@ -5,7 +5,6 @@ import {
   Holding,
   Tranche,
   TrancheItem,
-  BrokerRules,
   BrokerAssumptions,
   PendingMutation,
   ClosedTrade
@@ -17,27 +16,10 @@ import {
   saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
-import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, createBlankState } from '../domain/portfolio';
+import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, createBlankState, resolveCommissionConfig } from '../domain/portfolio';
+import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
 
-const DEFAULT_BROKER_ASSUMPTIONS: BrokerRules = {
-  broker: 'Freedom Broker Armenia (Tradernet)',
-  annualRate: 0.15,
-  annualBorrowRate: 0.15,
-  dayCountBasis: 365,
-  rolloverHour: 4,
-  rolloverMinute: 0,
-  rolloverTimeZone: 'Asia/Yerevan',
-  dailyRolloverCutoffArmenia: '04:00',
-  maintenanceMarginRatio: 0.1,
-  maintenanceEquityRatio: 0.1,
-  stopOutRatio: 0,
-  commPerShare: 0.012,
-  commissionPerShare: 0.012,
-  commVolumePct: 0.0012,
-  commissionRatePct: 0.0012,
-  minCommOrder: 1.2,
-  commissionMin: 1.2
-};
+
 
 function todayIso(): string {
   const d = new Date();
@@ -190,10 +172,8 @@ export function migrateLegacyCloudHoldingsToPositions(
 }
 
 /** Shared broker commission calculation for all confirmed stock-sale paths. */
-function calculateSaleCommission(shares: number, proceeds: number, rules: BrokerRules): number {
-  const commPerShare = Number(rules.commPerShare ?? rules.commissionPerShare ?? 0.012);
-  const commVolumePct = Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0012);
-  const minCommOrder = Number(rules.minCommOrder ?? rules.commissionMin ?? 1.2);
+function calculateSaleCommission(shares: number, proceeds: number, rules: BrokerAssumptions): number {
+  const { commPerShare, commVolumePct, minCommOrder } = resolveCommissionConfig(rules);
   const fallback = Number(Math.max(minCommOrder, shares * commPerShare + proceeds * commVolumePct).toFixed(2));
 
   try {
@@ -240,7 +220,7 @@ export class PortfolioStore {
 
   private initializeState(): PortfolioState {
     const saved = loadSavedState(this.state) as Partial<PortfolioState> | null;
-    const savedRules = loadBrokerRules(DEFAULT_BROKER_ASSUMPTIONS) as Partial<BrokerRules> | null;
+    const savedRules = loadBrokerRules();
     const refreshInterval = getQuoteRefreshInterval();
 
     const raw: PortfolioState = {
@@ -279,11 +259,10 @@ export class PortfolioStore {
       closedTrades: Array.isArray(saved?.closedTrades) ? saved!.closedTrades : [],
       brokerExecutedTrades: Array.isArray(saved?.brokerExecutedTrades) ? saved!.brokerExecutedTrades : [],
       cashflows: Array.isArray(saved?.cashflows) ? saved!.cashflows : [],
-      brokerAssumptions: {
-        ...DEFAULT_BROKER_ASSUMPTIONS,
-        ...(saved?.brokerAssumptions || {}),
-        ...(savedRules || {})
-      },
+      brokerAssumptions: normalizeBrokerAssumptions(
+        savedRules,
+        normalizeBrokerAssumptions(saved?.brokerAssumptions)
+      ),
       lastRolloverTimestamp: saved?.lastRolloverTimestamp,
       lastUpdated: saved?.lastUpdated || Date.now(),
       gatewaySecret: saved?.gatewaySecret,
@@ -375,6 +354,7 @@ export class PortfolioStore {
 
     return {
       ...raw,
+      brokerAssumptions: normalizeBrokerAssumptions(raw.brokerAssumptions),
       activeView,
       positions,
       holdings,
@@ -508,39 +488,11 @@ export class PortfolioStore {
     });
   }
 
-  private finiteAssumption(value: unknown, fallback: number): number {
-    const number = Number(value);
-    return Number.isFinite(number) ? number : fallback;
-  }
-
-  public updateAssumptions(rules: Partial<BrokerRules & BrokerAssumptions>): void {
+  public updateAssumptions(rules: unknown): void {
     this.update((state) => {
-      const merged: BrokerRules = {
-        ...DEFAULT_BROKER_ASSUMPTIONS,
-        ...state.brokerAssumptions,
-        ...rules,
-        annualRate: this.finiteAssumption(
-          rules.annualRate ?? rules.annualBorrowRate ?? state.brokerAssumptions.annualRate,
-          DEFAULT_BROKER_ASSUMPTIONS.annualRate
-        ),
-        annualBorrowRate: this.finiteAssumption(
-          rules.annualBorrowRate ?? rules.annualRate ?? state.brokerAssumptions.annualBorrowRate,
-          DEFAULT_BROKER_ASSUMPTIONS.annualRate
-        ),
-        maintenanceMarginRatio: this.finiteAssumption(
-          rules.maintenanceMarginRatio ?? rules.maintenanceEquityRatio ?? state.brokerAssumptions.maintenanceMarginRatio,
-          DEFAULT_BROKER_ASSUMPTIONS.maintenanceMarginRatio
-        ),
-        maintenanceEquityRatio: this.finiteAssumption(
-          rules.maintenanceEquityRatio ?? rules.maintenanceMarginRatio ?? state.brokerAssumptions.maintenanceEquityRatio,
-          DEFAULT_BROKER_ASSUMPTIONS.maintenanceMarginRatio
-        )
-      };
-      saveBrokerRules(merged as any);
-      return {
-        ...state,
-        brokerAssumptions: merged
-      };
+      const merged = normalizeBrokerAssumptions(rules, state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS);
+      saveBrokerRules(merged);
+      return { ...state, brokerAssumptions: merged };
     });
   }
 
@@ -637,17 +589,12 @@ export class PortfolioStore {
 
       // Extract broker commission rules with safe fallbacks
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
-      const commPerShare = Number(rules.commPerShare ?? rules.commissionPerShare ?? 0.02);
-      const commVolumePct = Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0005);
-      const minCommOrder = Number(rules.minCommOrder ?? rules.commissionMin ?? 1.50);
 
       // A buyStock call represents one broker execution, so enforce the minimum
       // ticket commission here rather than recalculating across the combined position.
-      const buyComm = Number(calculateCommission(shares, totalVal, {
-        commPerShare,
-        commVolumePct,
-        minCommOrder
-      }).toFixed(2));
+      const buyComm = Number(calculateCommission(
+        shares, totalVal, resolveCommissionConfig(rules)
+      ).toFixed(2));
 
       const positions = { ...(state.positions || {}) };
       const existingPos = positions[clean];
@@ -797,11 +744,7 @@ export class PortfolioStore {
       if (actualSold <= 0) return state;
 
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
-      const annualRate = this.finiteAssumption(
-        rules.annualRate ?? rules.annualBorrowRate,
-        DEFAULT_BROKER_ASSUMPTIONS.annualRate
-      );
-      const dailyRate = annualRate / (Number(rules.dayCountBasis) || 365);
+      const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
 
       let remainingToSell = actualSold;
       let soldCostBasis = 0;
