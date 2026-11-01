@@ -14,7 +14,7 @@ import { balanceSyncReducer, createBalanceSyncState } from '../domain/balanceSyn
 import { createGuestDirectoryState, guestDirectoryReducer } from '../domain/guestDirectoryState';
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
-import { getAppLanguage } from '../services/i18n';
+import { getAppLanguage, translateText } from '../services/i18n';
 import { MarketDepthButton } from './MarketDepthButton';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
@@ -143,6 +143,15 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     if (guestDirectory.status === 'loading' || guestDirectory.status === 'refreshing') return;
     loadGuestUsers();
   };
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (state.brokerAccountInfo?.loaded && state.brokerAccountInfo.status === 'current') {
+      dispatchBalanceSync({ type: 'success' });
+    } else if (state.brokerAccountInfo?.status === 'stale') {
+      dispatchBalanceSync({ type: 'failure' });
+    }
+  }, [isAdmin, state.brokerAccountInfo?.loaded, state.brokerAccountInfo?.receivedAt, state.brokerAccountInfo?.status]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -326,12 +335,12 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
               {guestUserId ? 'MY STOCKS' : isAdmin ? 'CASH & NON-MARGIN HOLDINGS' : 'BALANCE'}
             </h2>
             {balanceRefreshing && (
-              <span role="status" aria-label="Refreshing balance" title="Refreshing balance" class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300">
+              <span role="status" aria-label={translateText('Refreshing balance…', getAppLanguage())} title={translateText('Refreshing balance…', getAppLanguage())} class="inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-300">
                 <svg viewBox="0 0 24 24" aria-hidden="true" class="h-3.5 w-3.5 animate-spin">
                   <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="3" opacity="0.25" />
                   <path d="M21 12a9 9 0 0 0-9-9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
                 </svg>
-                Syncing…
+                {translateText('Syncing…', getAppLanguage())}
               </span>
             )}
           </div>
@@ -341,9 +350,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       {(balanceSync.status === 'stale' || balanceSync.status === 'error') && (
         <div role="alert" aria-live="polite" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
           <span>{balanceSync.hasSnapshot
-            ? 'Balance refresh failed. Showing the last saved broker snapshot.'
-            : 'Unable to load the broker balance. Please retry.'}</span>
-          <button type="button" onClick={retryBalance} aria-label="Retry balance refresh" class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto">Retry</button>
+            ? translateText('Balance refresh failed. Showing the last saved broker snapshot.', getAppLanguage())
+            : translateText('Unable to load the broker balance. Please retry.', getAppLanguage())}</span>
+          <button type="button" onClick={retryBalance} aria-label={translateText('Retry balance refresh', getAppLanguage())} class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto">Retry</button>
         </div>
       )}
 
