@@ -116,7 +116,7 @@ export function MarketInsightsPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newsData, setNewsData] = useState<MarketNewsItem[]>([]);
-  const [selectedNews, setSelectedNews] = useState<any | null>(null);
+  const [selectedNews, setSelectedNews] = useState<MarketNewsItem | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
   const [newsUpdatedAt, setNewsUpdatedAt] = useState<number | null>(null);
