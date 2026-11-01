@@ -442,12 +442,16 @@ export class PortfolioStore {
    * Broker rules, provider keys, the signed-in Gateway Secret, and refresh preferences
    * are settings rather than portfolio content and intentionally remain in place.
    */
-  public resetToBlankState(now = Date.now()): void {
+  public resetToBlankState(now = Date.now(), persist = true): void {
     // The selected desk is device-local, so clear its preference alongside the portfolio.
-    try {
-      if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', 'COMBINED');
-    } catch {
-      // Continue resetting portfolio data when browser preference storage is unavailable.
+    // A caller performing an atomic snapshot commit can defer this preference write
+    // until the portfolio and history records have both been persisted.
+    if (persist) {
+      try {
+        if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', 'COMBINED');
+      } catch {
+        // Continue resetting portfolio data when browser preference storage is unavailable.
+      }
     }
     this.update((state) => ({
       ...state,
@@ -474,7 +478,7 @@ export class PortfolioStore {
       cashStocks: [],
       selectedTicker: null,
       pendingMutation: null
-    }));
+    }), persist);
   }
 
   private readDeviceActiveView(): string | null {
