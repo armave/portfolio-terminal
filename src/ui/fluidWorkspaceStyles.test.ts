@@ -43,6 +43,7 @@ describe('fluid workspace styles', () => {
 
 describe('Margin projection and insights layout', () => {
   const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+  const projectionSource = readFileSync(new URL('../components/ProjectionsTable.tsx', import.meta.url), 'utf8');
 
   it('places the projection table and market insights in the same responsive workspace row', () => {
     const workspaceStart = appSource.indexOf('id="marginDataWorkspace"');
@@ -54,6 +55,15 @@ describe('Margin projection and insights layout', () => {
     expect(insights).toBeGreaterThan(projection);
     expect(workspaceEnd).toBeGreaterThan(insights);
     expect(appSource).toContain('margin-workspace-layout');
+  });
+
+  it('animates Margin projection page rows and keeps its pagination controls fluid', () => {
+    expect(projectionSource).toContain('projection-page-row');
+    expect(projectionSource).toContain('projection-pagination-controls');
+    expect(projectionSource).toContain('aria-live="polite"');
+    expect(fluidStyles).toMatch(/\.projection-page-row\\s*\\{[^}]*animation:\\s*projection-page-swap\\s+260ms/s);
+    expect(fluidStyles).toMatch(/@keyframes projection-page-swap/);
+    expect(fluidStyles).toMatch(/\.projection-pagination-controls\\s*\\{[^}]*flex-wrap:\\s*wrap;/s);
   });
 
   it('uses two columns only when the Margin desk has enough room and stacks on smaller screens', () => {
