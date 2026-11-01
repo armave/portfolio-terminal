@@ -12,6 +12,9 @@ function getTableHeaderTags(source: string): string[] {
 describe('Stage 10 accessibility wiring', () => {
   it('uses shared modal focus behavior for News and restores focus to the article trigger', () => {
     const source = readSource('../components/MarketInsightsPanel.tsx');
+    expect(source).toContain("import { createPortal } from 'preact/compat'");
+    expect(source).toContain('document.body');
+    expect(source).toContain('news-article-content min-h-0 flex-1');
     expect(source).toContain('useDialogFocus(newsDialogRef, {');
     expect(source).toContain('active: selectedNews !== null');
     expect(source).toContain('initialFocusRef: newsCloseButtonRef');
