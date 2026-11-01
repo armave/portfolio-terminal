@@ -5,7 +5,7 @@ export interface FreedomActiveOrder {
   orderType: number | null;
   limitPrice: number | null;
   remainingQuantity: number | null;
-  date: string | number | null;
+  date?: string | number | null;
   status: string;
   raw: Record<string, unknown>;
 }
