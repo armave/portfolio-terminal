@@ -35,14 +35,27 @@ export async function fetchFallbackPrice(symbol: string) {
   return null;
 }
 
-function resolveQuoteProvenance(marketState: string | undefined, sourceTimeSeconds: unknown) {
+export interface QuoteProvenance {
+  freshness: 'fresh' | 'stale' | 'delayed' | 'unknown';
+  sourceTimestamp?: number;
+}
+
+/**
+ * Classifies a provider observation timestamp independently from the time the
+ * browser received it. Yahoo market-data timestamps are Unix seconds.
+ */
+export function resolveQuoteProvenance(
+  marketState: string | undefined,
+  sourceTimeSeconds: unknown,
+  now = Date.now()
+): QuoteProvenance {
   const seconds = Number(sourceTimeSeconds);
   if (!Number.isFinite(seconds) || seconds <= 0) {
     return { freshness: 'unknown' as const, sourceTimestamp: undefined };
   }
 
   const sourceTimestamp = seconds * 1000;
-  const ageMs = Date.now() - sourceTimestamp;
+  const ageMs = now - sourceTimestamp;
   if (ageMs < 0) return { freshness: 'stale' as const, sourceTimestamp };
   if (ageMs > 5 * 60 * 1000) {
     // A closed-market quote can still be the valid last published close, but

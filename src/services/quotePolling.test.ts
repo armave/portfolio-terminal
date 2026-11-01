@@ -3,7 +3,10 @@ import { fetchFallbackPrice, nextQuoteRequestSequence } from './quoteProvider';
 import { fetchYahooStockData, normalizeYahooBatchResults } from './api';
 import { refreshTrackedQuotes } from './quotePolling';
 
-vi.mock('./quoteProvider', () => ({ fetchFallbackPrice: vi.fn(), nextQuoteRequestSequence: vi.fn() }));
+vi.mock('./quoteProvider', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./quoteProvider')>();
+  return { ...actual, fetchFallbackPrice: vi.fn(), nextQuoteRequestSequence: vi.fn() };
+});
 vi.mock('./api', () => ({ fetchYahooStockData: vi.fn(), normalizeYahooBatchResults: vi.fn() }));
 
 describe('refreshTrackedQuotes', () => {
@@ -115,6 +118,130 @@ describe('refreshTrackedQuotes', () => {
 
     expect(fetchFallbackPrice).toHaveBeenCalledWith('AAPL');
     expect(record).not.toHaveBeenCalled();
+  });
+
+  it('preserves a fresh Yahoo observation timestamp in tracked batch quotes', async () => {
+    const sourceTime = Math.floor(Date.now() / 1000);
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([{
+      symbol: 'AAPL',
+      price: {
+        current: 100,
+        previousClose: 99,
+        regularMarketTime: sourceTime,
+        marketState: 'REGULAR'
+      }
+    }] as never);
+    const record = vi.fn().mockReturnValue(true);
+
+    await expect(refreshTrackedQuotes(['AAPL'], 100, record)).resolves.toBe(1);
+
+    expect(record).toHaveBeenCalledWith('AAPL', 100, 'Yahoo', expect.any(Number), expect.objectContaining({
+      freshness: 'fresh',
+      sourceTimestamp: sourceTime * 1000,
+      receivedAt: expect.any(Number)
+    }), 100);
+  });
+
+  it('marks an old regular-session Yahoo observation stale despite recent receipt', async () => {
+    const sourceTime = Math.floor(Date.now() / 1000) - 60 * 60;
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([{
+      symbol: 'MSFT',
+      price: {
+        current: 200,
+        previousClose: 198,
+        regularMarketTime: sourceTime,
+        marketState: 'REGULAR'
+      }
+    }] as never);
+    const record = vi.fn().mockReturnValue(true);
+
+    await refreshTrackedQuotes(['MSFT'], 200, record);
+
+    expect(record).toHaveBeenCalledWith('MSFT', 200, 'Yahoo', expect.any(Number), expect.objectContaining({
+      freshness: 'stale',
+      sourceTimestamp: sourceTime * 1000,
+      receivedAt: expect.any(Number)
+    }), 200);
+  });
+
+  it('marks an old closed-session observation delayed rather than live or stale', async () => {
+    const sourceTime = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([{
+      symbol: 'NVDA',
+      price: {
+        current: 150,
+        previousClose: 149,
+        regularMarketTime: sourceTime,
+        marketState: 'CLOSED'
+      }
+    }] as never);
+    const record = vi.fn().mockReturnValue(true);
+
+    await refreshTrackedQuotes(['NVDA'], 300, record);
+
+    expect(record).toHaveBeenCalledWith('NVDA', 150, 'Yahoo', expect.any(Number), expect.objectContaining({
+      freshness: 'delayed',
+      sourceTimestamp: sourceTime * 1000
+    }), 300);
+  });
+
+  it('keeps batch quote freshness unknown when Yahoo omits observation timestamps', async () => {
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([{
+      symbol: 'TSLA',
+      price: { current: 250, previousClose: 248, marketState: 'REGULAR' }
+    }] as never);
+    const record = vi.fn().mockReturnValue(true);
+
+    await refreshTrackedQuotes(['TSLA'], 400, record);
+
+    expect(record).toHaveBeenCalledWith('TSLA', 250, 'Yahoo', expect.any(Number), expect.objectContaining({
+      freshness: 'unknown',
+      receivedAt: expect.any(Number)
+    }), 400);
+    expect(record.mock.calls[0][4]?.sourceTimestamp).toBeUndefined();
+  });
+
+  it('uses the matching pre-market or post-market observation timestamp', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
+    vi.mocked(normalizeYahooBatchResults).mockReturnValue([
+      {
+        symbol: 'AAPL',
+        price: {
+          current: 100,
+          previousClose: 99,
+          regularMarketTime: now - 60 * 60,
+          preMarketTime: now - 30,
+          marketState: 'PRE'
+        }
+      },
+      {
+        symbol: 'MSFT',
+        price: {
+          current: 200,
+          previousClose: 198,
+          regularMarketTime: now - 60 * 60,
+          postMarketTime: now - 30,
+          marketState: 'POST'
+        }
+      }
+    ] as never);
+    const record = vi.fn().mockReturnValue(true);
+
+    await refreshTrackedQuotes(['AAPL', 'MSFT'], 500, record);
+
+    expect(record).toHaveBeenNthCalledWith(1, 'AAPL', 100, 'Yahoo', expect.any(Number), expect.objectContaining({
+      freshness: 'fresh',
+      sourceTimestamp: (now - 30) * 1000
+    }), 500);
+    expect(record).toHaveBeenNthCalledWith(2, 'MSFT', 200, 'Yahoo', expect.any(Number), expect.objectContaining({
+      freshness: 'fresh',
+      sourceTimestamp: (now - 30) * 1000
+    }), 500);
   });
 
   it('propagates batch provider failures to the caller', async () => {
