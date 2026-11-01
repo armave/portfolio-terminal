@@ -135,7 +135,7 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     current.activeTrancheTypes || {},
     Date.now(),
     executedTrades,
-    TRADERNET_RULES,
+    resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
   const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
@@ -191,7 +191,7 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     current.activeTrancheTypes || {},
     Date.now(),
     tradesWithPersistedFees,
-    TRADERNET_RULES,
+    resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
   const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
@@ -263,7 +263,7 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     activeTrancheTypes,
     Date.now(),
     executedTrades,
-    TRADERNET_RULES,
+    resolveCommissionConfig(TRADERNET_RULES),
     activeTrancheMixes
   );
   const brokerCashHoldings = classified.cashStocks.map((holding: any) => ({
