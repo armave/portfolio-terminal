@@ -18,7 +18,7 @@ import { EmptyStatePanel } from './components/EmptyStatePanel';
 import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
 import { MarginIntelligenceModal, type MarginIntelligenceState, type MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/commandDispatcher';
-import { ensureFreedomTradeNetSession, fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
+import { ensureFreedomTradeNetSession, fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
 import { portfolioStore, usePortfolio, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { resolveActiveView } from './ui/renderBoard';
@@ -169,13 +169,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         const newsByTicker = await Promise.all(newsPositions.map(async (position) => {
           try {
             const items = await fetchMarketNews(position.ticker, true);
-            return { ticker: position.ticker, items: Array.isArray(items) ? items.slice(0, 4) : [] };
+            return { ticker: position.ticker, items: items.slice(0, 4) };
           } catch {
-            return { ticker: position.ticker, items: [] as any[] };
+            return { ticker: position.ticker, items: [] as MarketNewsItem[] };
           }
         }));
         const articles: MarginIntelligenceArticle[] = newsByTicker.flatMap(({ ticker, items }) =>
-          items.map((item: any) => ({
+          items.map((item) => ({
             ticker,
             headline: String(item?.headline || item?.title || 'Untitled news item'),
             source: String(item?.source || item?.publisher || ''),
