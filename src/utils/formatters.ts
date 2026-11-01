@@ -76,7 +76,7 @@ export function getQuoteFreshness(
   if (holding.quoteSource === 'Manual' || holding.quoteSource === 'Trade input') return 'unavailable';
   const sourceTimestamp = Number(holding.sourceTimestamp ?? holding.quoteDetails?.sourceTimestamp);
   if (!Number.isFinite(sourceTimestamp) || sourceTimestamp <= 0) {
-    return holding.quoteUpdatedAt ? 'unknown' : 'unavailable';
+    return holding.quoteUpdatedAt || holding.quoteSource ? 'unknown' : 'unavailable';
   }
 
   const staleAfterMs = Math.max(5 * 60 * 1000, refreshIntervalMs * 2);
@@ -87,6 +87,50 @@ export function getQuoteFreshness(
   return 'fresh';
 }
 
+export interface QuoteFreshnessSummary {
+  total: number;
+  fresh: number;
+  stale: number;
+  delayed: number;
+  unknown: number;
+  unavailable: number;
+}
+
+export function summarizeQuoteFreshness(
+  holdings: readonly QuoteFreshnessInput[],
+  now = Date.now(),
+  refreshIntervalMs = 60000
+): QuoteFreshnessSummary {
+  const summary: QuoteFreshnessSummary = {
+    total: holdings.length,
+    fresh: 0,
+    stale: 0,
+    delayed: 0,
+    unknown: 0,
+    unavailable: 0
+  };
+
+  for (const holding of holdings) {
+    summary[getQuoteFreshness(holding, now, refreshIntervalMs)] += 1;
+  }
+
+  return summary;
+}
+
+export function formatQuoteFreshnessSummary(summary: QuoteFreshnessSummary): string {
+  const labels: Array<[Exclude<QuoteFreshness, 'unavailable'> | 'unavailable', string]> = [
+    ['fresh', 'Fresh'],
+    ['stale', 'Stale'],
+    ['delayed', 'Delayed'],
+    ['unknown', 'Time unknown'],
+    ['unavailable', 'Not fetched']
+  ];
+  return labels
+    .filter(([status]) => summary[status] > 0)
+    .map(([status, label]) => `${translateText(label)}: ${summary[status]}`)
+    .join(' · ');
+}
+
 export function formatQuoteMetadata(
   holding: QuoteFreshnessInput,
   refreshIntervalMs = 60000
@@ -94,7 +138,7 @@ export function formatQuoteMetadata(
   const freshness = getQuoteFreshness(holding, Date.now(), refreshIntervalMs);
   if (freshness === 'unavailable') return holding.quoteSource || translateText('Not fetched');
   const source = holding.quoteSource ? `${holding.quoteSource} · ` : '';
-  if (freshness === 'unknown') return `${holding.quoteSource || translateText('Source unavailable')}`;
+  if (freshness === 'unknown') return `${holding.quoteSource || translateText('Source unavailable')} · ${translateText('Time unknown')}`;
 
   const sourceTimestamp = Number(holding.sourceTimestamp ?? holding.quoteDetails?.sourceTimestamp);
   const locale = getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US';

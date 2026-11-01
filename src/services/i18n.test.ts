@@ -16,6 +16,16 @@ describe('app localization', () => {
     expect(translateText('Retry balance refresh', 'ru')).toBe('Повторить обновление баланса');
   });
 
+  it('localizes portfolio quote coverage labels', () => {
+    expect(translateText('Fresh', 'ru')).toBe('Свежие');
+    expect(translateText('Stale', 'ru')).toBe('Устарело');
+    expect(translateText('Delayed', 'ru')).toBe('С задержкой');
+    expect(translateText('Time unknown', 'ru')).toBe('Время неизвестно');
+    expect(translateText('Not fetched', 'ru')).toBe('Не получено');
+    expect(translateText('Margin quote coverage', 'ru')).toBe('Покрытие котировками маржинальных позиций');
+    expect(translateText('No margin positions', 'ru')).toBe('Нет маржинальных позиций');
+  });
+
   it('translates known UI copy into Russian and leaves unknown text unchanged', () => {
     expect(translateText('User management', 'ru')).toBe('Управление пользователями');
     expect(translateText('Settings', 'ru')).toBe('Настройки');
