@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
+import { useDialogFocus } from '../ui/dialogFocus';
 import { fetchFreedomTradeNetMarketDepth } from '../services/api';
 import { normalizeFreedomMarketDepth, type FreedomMarketDepthLevel, type FreedomMarketDepthSnapshot } from '../services/freedomMarketDepth';
 interface MarketDepthButtonProps { ticker: string; compact?: boolean; }
@@ -18,6 +19,16 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
   const [isLoading, setIsLoading] = useState(false);
   const [snapshot, setSnapshot] = useState<FreedomMarketDepthSnapshot | null>(null);
   const [error, setError] = useState('');
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const closeModal = () => setIsOpen(false);
+  useDialogFocus(dialogRef, {
+    active: isOpen,
+    initialFocusRef: closeButtonRef,
+    restoreFocusRef: triggerRef,
+    onEscape: closeModal
+  });
 
   const loadDepth = async () => {
     if (!ticker || isLoading) return;
@@ -34,19 +45,13 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
     }
   };
 
-  const openModal = () => {
+  const openModal = (event: MouseEvent) => {
+    triggerRef.current = event.currentTarget as HTMLButtonElement;
     setIsOpen(true);
     setSnapshot(null);
     setError('');
     void loadDepth();
   };
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setIsOpen(false); };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen]);
 
   const bestBid = snapshot?.bids[0]?.price;
   const bestAsk = snapshot?.asks[0]?.price;
@@ -57,13 +62,29 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
   const renderLevels = (levels: FreedomMarketDepthLevel[], side: 'bid' | 'ask') => {
     const textClass = side === 'bid' ? 'text-emerald-300' : 'text-rose-300';
     const barClass = side === 'bid' ? 'bg-emerald-500/20' : 'bg-rose-500/20';
-    return levels.map((level, index) => (
-      <div key={level.position ?? index} class="relative grid grid-cols-[1fr_1fr] gap-2 overflow-hidden rounded px-2 py-1 text-right font-mono text-[11px] tabular-nums">
-        <span class={'relative z-10 text-left ' + textClass}>{formatPrice(level.price)}</span>
-        <span class="relative z-10 text-slate-200">{formatQuantity(level.quantity)}</span>
-        <span class={'pointer-events-none absolute inset-y-0 right-0 rounded ' + barClass} style={{ width: (level.quantity / maxQuantity * 100) + '%' }} />
-      </div>
-    ));
+    const caption = side === 'bid' ? 'Bid prices and quantities' : 'Ask prices and quantities';
+    return (
+      <table class="w-full table-fixed border-collapse text-right font-mono text-[11px] tabular-nums">
+        <caption class="sr-only">{caption}</caption>
+        <thead>
+          <tr class="border-b border-slate-800 text-[9px] uppercase tracking-wider text-slate-500">
+            <th scope="col" class="px-2 py-1 text-left">Price</th>
+            <th scope="col" class="px-2 py-1 text-right">Quantity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {levels.map((level, index) => (
+            <tr key={level.position ?? index} class="border-b border-slate-900/70 last:border-0">
+              <td class={'px-2 py-1 text-left ' + textClass}>{formatPrice(level.price)}</td>
+              <td class="relative overflow-hidden rounded-r px-2 py-1 text-slate-200">
+                <span class="relative z-10">{formatQuantity(level.quantity)}</span>
+                <span aria-hidden="true" class={'pointer-events-none absolute inset-y-0 right-0 rounded ' + barClass} style={{ width: (level.quantity / maxQuantity * 100) + '%' }} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
   };
 
   return (
@@ -74,8 +95,8 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
       </button>
       {isOpen && (
         <div class="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/85 p-3 backdrop-blur-sm sm:p-6"
-          role="presentation" onClick={() => setIsOpen(false)}>
-          <section class="w-full max-w-3xl overflow-hidden rounded-xl border border-cyan-900/70 bg-slate-950 shadow-2xl"
+          role="presentation" onClick={closeModal}>
+          <section ref={dialogRef} tabIndex={-1} class="w-full max-w-3xl overflow-hidden rounded-xl border border-cyan-900/70 bg-slate-950 shadow-2xl"
             role="dialog" aria-modal="true" aria-labelledby="marketDepthModalTitle"
             onClick={(event) => event.stopPropagation()}>
             <header class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 sm:px-5">
@@ -88,7 +109,7 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
                   class="rounded border border-slate-700 px-2.5 py-1.5 text-[10px] font-bold text-cyan-300 hover:bg-slate-800 disabled:opacity-50">
                   {isLoading ? 'Loading market depth…' : 'Refresh depth'}
                 </button>
-                <button type="button" onClick={() => setIsOpen(false)}
+                <button ref={closeButtonRef} type="button" onClick={closeModal}
                   class="rounded border border-slate-700 px-2.5 py-1.5 text-[10px] font-bold text-slate-300 hover:bg-slate-800" aria-label="Close market depth">Close</button>
               </div>
             </header>
@@ -110,14 +131,12 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
                 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <section class="min-w-0">
                     <div class="mb-2 flex items-center justify-between border-b border-emerald-900/60 pb-2"><h3 class="text-xs font-black uppercase tracking-wider text-emerald-300">Bids · buyers</h3><span class="text-[9px] text-slate-500">{snapshot.bids.length} levels</span></div>
-                    <div class="mb-1 grid grid-cols-2 gap-2 px-2 text-[9px] uppercase tracking-wider text-slate-500"><span>Price</span><span class="text-right">Quantity</span></div>
-                    <div class="space-y-0.5">{renderLevels(snapshot.bids, 'bid')}</div>
+                    {renderLevels(snapshot.bids, 'bid')}
                     {snapshot.bids.length === 0 && <p class="py-5 text-center text-xs text-slate-500">No bid levels returned.</p>}
                   </section>
                   <section class="min-w-0">
                     <div class="mb-2 flex items-center justify-between border-b border-rose-900/60 pb-2"><h3 class="text-xs font-black uppercase tracking-wider text-rose-300">Asks · sellers</h3><span class="text-[9px] text-slate-500">{snapshot.asks.length} levels</span></div>
-                    <div class="mb-1 grid grid-cols-2 gap-2 px-2 text-[9px] uppercase tracking-wider text-slate-500"><span>Price</span><span class="text-right">Quantity</span></div>
-                    <div class="space-y-0.5">{renderLevels(snapshot.asks, 'ask')}</div>
+                    {renderLevels(snapshot.asks, 'ask')}
                     {snapshot.asks.length === 0 && <p class="py-5 text-center text-xs text-slate-500">No ask levels returned.</p>}
                   </section>
                 </div>
