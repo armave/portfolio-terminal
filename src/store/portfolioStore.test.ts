@@ -1190,7 +1190,11 @@ describe('canonical trade lifecycle and persistence', () => {
       balance: -250,
       cashCushion: { freeCash: 500, holdings: [{ ticker: 'MSFT', shares: 2, price: 20, currentPrice: 20 }] },
       closedTrades: [{ ticker: 'AAPL', shares: 1, netProfit: 10 }],
-      brokerExecutedTrades: [{ id: 'trade-1' }],
+      brokerExecutedTrades: [{
+        id: 'trade-1', ticker: 'AAPL', side: 'SELL', quantity: 1, price: 110,
+        currency: 'USD', executedAt: '2026-10-10T10:00:00Z', tradeValue: 110,
+        profit: 10, marginFee: null, commission: null, commissionCurrency: 'USD', raw: {}
+      }],
       cashflows: [{ id: 'fee-1', date: '2026-10-01', type: 'interest', amount: -1 }],
       activeTrancheTypes: { AAPL: 'margin' } as any,
       activeTrancheMixes: { AAPL: { cashShares: 1, marginShares: 1 } } as any,

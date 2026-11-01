@@ -1,7 +1,37 @@
 import { isFreedomCashflowRow, type NormalizedFreedomCashflow } from './freedomCashflows';
 
-type FeeRecord = Record<string, any>;
 type CashflowInput = Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> };
+type BrokerExecutionFeeInput = {
+  executedAt?: string | null;
+  date?: string | number | null;
+  ticker?: string | null;
+  side?: string | null;
+  quantity?: number | null;
+  shares?: number | null;
+  price?: number | null;
+  executionPrice?: number | null;
+  tradeValue?: number | null;
+  commission?: number | string | null;
+  profit?: number | null;
+  marginFeeAllocations?: Record<string, number>;
+  currency?: string | null;
+};
+type AppClosedTradeFeeInput = {
+  buyDate?: string | number | null;
+  purchaseDate?: string | number | null;
+  entryDate?: string | number | null;
+  openDate?: string | number | null;
+  sellDate?: string | number | null;
+  exitDate?: string | number | null;
+  closedAt?: string | number | null;
+  date?: string | number | null;
+  shares?: number | null;
+  quantity?: number | null;
+  entryPrice?: number | null;
+  avgBuyPrice?: number | null;
+  buyPrice?: number | null;
+  currency?: string | null;
+};
 
 export interface FreedomMarginFeeAllocations {
   brokerAllocations: Map<number, Record<string, number>>;
@@ -82,8 +112,8 @@ function isFinancingCashflow(fee: CashflowInput): boolean {
 /** Allocate daily USD financing fees to FIFO-matched closed executions. */
 export function calculateFreedomMarginFeeAllocations(
   cashflows: CashflowInput[],
-  brokerExecutions: FeeRecord[],
-  appTrades: FeeRecord[] = []
+  brokerExecutions: BrokerExecutionFeeInput[],
+  appTrades: AppClosedTradeFeeInput[] = []
 ): FreedomMarginFeeAllocations {
   const brokerAllocations = new Map<number, Record<string, number>>();
   const appAllocations = new Map<number, number>();

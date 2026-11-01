@@ -34,6 +34,7 @@ import {
   getAuthStatus,
   getCurrentUser,
   listUsers,
+  normalizeFreedomTrades,
   getGuestPortfolioSnapshot,
   publishGuestPortfolioSnapshots as publishGuestPortfolioSnapshotsBatch,
   clearCloudEncryptionSecretCache
@@ -187,7 +188,7 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
   // BEFORE setting raw broker rows, otherwise this listener overwrites the
   // separately persisted, fee-enriched history before ClosedHistoryDesk handles
   // the same event.
-  const savedFeeRows = loadSavedHistory().brokerExecutedTrades;
+  const savedFeeRows = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
   const tradesWithPersistedFees = preservePersistedBrokerFeeAllocations(
     trades,
     [...savedFeeRows, ...(current.brokerExecutedTrades || [])]
@@ -660,7 +661,7 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
     // Match ClosedHistoryDesk's sell-only fallback index when a broker row
     // has no execution ID; using the all-executions index would break override
     // lookup whenever buy executions are interleaved.
-    const brokerSellExecutions = brokerExecutions.filter((trade: any) =>
+    const brokerSellExecutions = brokerExecutions.filter((trade) =>
       ['sell', 's', 'sale', 'sold', '2'].includes(String(trade?.side ?? '').toLowerCase())
     );
     const brokerAttributions = attributeClosedTradeExecutions(brokerExecutions, {

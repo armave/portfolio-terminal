@@ -38,6 +38,17 @@ describe('Freedom margin fee allocation', () => {
     expect(result.allocatedAmount).toBe(10.01);
   });
 
+  it('conserves a one-cent USD fee in the normalized execution contract', () => {
+    const executions = [
+      { id: 'buy-cent', ticker: 'AAPL', side: 'buy', quantity: 1, price: 100, executedAt: '2026-10-01T10:00:00Z' },
+      { id: 'sell-cent', ticker: 'AAPL', side: 'sell', quantity: 1, price: 110, executedAt: '2026-10-03T10:00:00Z' }
+    ];
+    const result = calculateFreedomMarginFeeAllocations([fee('one-cent', '2026-10-02', -0.01)], executions);
+    expect(result.brokerAllocations.get(1)).toEqual({ 'freedom-one-cent': 0.01 });
+    expect(result.allocatedAmount).toBe(0.01);
+    expect(result.matchedFeeRows).toBe(1);
+  });
+
   it('does not allocate known non-USD cashflows or trade commissions to USD trade P/L', () => {
     const executions = [
       { ticker: 'AAPL', side: 'buy', quantity: 1, price: 100, executedAt: '2026-03-01T10:00:00Z' },

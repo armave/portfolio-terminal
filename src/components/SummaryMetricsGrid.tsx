@@ -14,6 +14,7 @@ import {
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
+import { normalizeFreedomTrades } from '../services/api';
 
 function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules }: { equityPct: number; risk: ReturnType<typeof computeMarginRiskDisplay>; equityText: string; collateralText: string; rules: BrokerRules }) {
   const stopOutTitle = `Estimate assumes the configured ${(rules.stopOutRatio * 100).toFixed(2)}% stop-out equity threshold and that the full allocated cushion qualifies as collateral. Actual broker requirements may differ.`;
@@ -437,7 +438,7 @@ export function SummaryMetricsGrid() {
   const unrealizedPct = avgPrice > 0 ? ((pos.currentPrice - avgPrice) / avgPrice) * 100 : 0;
 
   const positionTranches = pos.tranches || [];
-  const persistedBrokerTrades = loadSavedHistory().brokerExecutedTrades;
+  const persistedBrokerTrades = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
   const brokerTrades = Array.isArray(state.brokerExecutedTrades) && state.brokerExecutedTrades.length
     ? state.brokerExecutedTrades
     : persistedBrokerTrades;

@@ -32,6 +32,18 @@ describe('broker execution history view state', () => {
     expect(failed).toEqual({ trades: previous, status: 'stale' });
   });
 
+  it('treats a successful empty refresh as ready rather than a failed refresh', () => {
+    const previous = [{ id: 'saved-buy' }];
+    const refreshing = brokerExecutionHistoryReducer(
+      createBrokerExecutionHistoryState(previous, [], true),
+      { type: 'refresh' }
+    );
+    expect(brokerExecutionHistoryReducer(refreshing, { type: 'success', trades: [] })).toEqual({
+      trades: [],
+      status: 'ready'
+    });
+  });
+
   it('does not show a loading state when the current view must not request account history', () => {
     expect(createBrokerExecutionHistoryState([], [], false)).toEqual({
       trades: [],
