@@ -1,7 +1,7 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { decodeHtmlEntities } from '../utils/formatters';
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type StocktwitsStream } from '../services/api';
+import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type MarketNewsItem, type StocktwitsStream } from '../services/api';
 import { usePortfolio } from '../store/portfolioStore';
 import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
 
@@ -15,6 +15,10 @@ const INSIGHT_TABS: Array<{ id: InsightSection; domId: string; label: string }> 
 ];
 
 const STOCKTWITS_CASHTAG_PATTERN = /\$([A-Z][A-Z0-9.-]{0,9})\b/gi;
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
+}
 
 export function isStandaloneStocktwitsMessage(message: unknown): boolean {
   if (!message || typeof message !== 'object') return false;
@@ -111,7 +115,7 @@ export function MarketInsightsPanel() {
   const [activeSection, setActiveSection] = useState<InsightSection>('news');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [newsData, setNewsData] = useState<any[]>([]);
+  const [newsData, setNewsData] = useState<MarketNewsItem[]>([]);
   const [selectedNews, setSelectedNews] = useState<any | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
@@ -203,19 +207,20 @@ export function MarketInsightsPanel() {
       setNewsError(null);
     }
     let disposed = false;
+    const controller = new AbortController();
 
     const refreshNews = async (force: boolean) => {
       const currentRequestId = ++newsRequestIdRef.current;
       setNewsLoading(true);
       try {
-        const news = await fetchMarketNews(ticker, force);
+        const news = await fetchMarketNews(ticker, force, controller.signal);
         if (disposed || currentRequestId !== newsRequestIdRef.current) return;
         setNewsData(Array.isArray(news) ? news : []);
         setNewsUpdatedAt(Date.now());
         setNewsError(null);
-      } catch (err: any) {
-        if (disposed || currentRequestId !== newsRequestIdRef.current) return;
-        setNewsError(err?.message || 'Unable to load company news.');
+      } catch (err: unknown) {
+        if (disposed || currentRequestId !== newsRequestIdRef.current || isAbortError(err)) return;
+        setNewsError(err instanceof Error ? err.message : 'Unable to load company news.');
       } finally {
         if (!disposed && currentRequestId === newsRequestIdRef.current) setNewsLoading(false);
       }
@@ -224,6 +229,7 @@ export function MarketInsightsPanel() {
     void refreshNews(forceOnStart);
     return () => {
       disposed = true;
+      controller.abort();
       newsRequestIdRef.current += 1;
     };
   }, [ticker, newsRefreshRequest]);
@@ -241,18 +247,19 @@ export function MarketInsightsPanel() {
       setStocktwitsError(null);
     }
     let disposed = false;
+    const controller = new AbortController();
 
     const refreshStocktwits = async (force: boolean) => {
       const currentRequestId = ++stocktwitsRequestIdRef.current;
       setStocktwitsLoading(true);
       try {
-        const data = await fetchStocktwitsStream(ticker, force);
+        const data = await fetchStocktwitsStream(ticker, force, controller.signal);
         if (disposed || currentRequestId !== stocktwitsRequestIdRef.current) return;
         setStocktwitsData(data);
         setStocktwitsUpdatedAt(Date.now());
         setStocktwitsError(null);
       } catch (err: unknown) {
-        if (disposed || currentRequestId !== stocktwitsRequestIdRef.current) return;
+        if (disposed || currentRequestId !== stocktwitsRequestIdRef.current || isAbortError(err)) return;
         setStocktwitsError(err instanceof Error ? err.message : 'Unable to load Stocktwits.');
       } finally {
         if (!disposed && currentRequestId === stocktwitsRequestIdRef.current) setStocktwitsLoading(false);
@@ -262,6 +269,7 @@ export function MarketInsightsPanel() {
     void refreshStocktwits(forceOnStart);
     return () => {
       disposed = true;
+      controller.abort();
       stocktwitsRequestIdRef.current += 1;
     };
   }, [ticker, stocktwitsRefreshRequest, stocktwitsRequested]);
@@ -327,7 +335,7 @@ export function MarketInsightsPanel() {
           {newsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded news.</p>}
           <p class="text-[10px] text-slate-500">{newsUpdatedAt ? `Updated ${formatRelativeTime(Math.floor(newsUpdatedAt / 1000) * 1000)}` : ''}{newsLoading ? ' · Refreshing…' : ''}</p>
           <div class="news-feed-list h-[240px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Company news articles">
-            {newsData.map((n: any, idx: number) => (
+            {newsData.map((n, idx) => (
               <button
                 key={n.id || n.url || idx}
                 type="button"
