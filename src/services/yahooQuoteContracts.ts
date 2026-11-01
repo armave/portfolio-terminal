@@ -40,8 +40,28 @@ function normalizeYahooBatchItem(value: unknown): YahooBatchQuoteResult | null {
 
   const result: YahooBatchQuoteResult = { symbol };
   if (isRecord(value.price)) {
-    // All price leaf values remain unknown; consumers must validate them.
-    result.price = value.price as YahooQuotePricePayload;
+    // Copy only fields consumed by the market-domain layer. Numeric and time
+    // values stay unknown until their domain-specific validation boundary.
+    const price: YahooQuotePricePayload = {};
+    for (const key of [
+      'current',
+      'regularMarketPrice',
+      'previousClose',
+      'regularMarketPreviousClose',
+      'preMarketPrice',
+      'postMarketPrice',
+      'regularMarketTime',
+      'preMarketTime',
+      'postMarketTime',
+      'change',
+      'regularMarketChange'
+    ] as const) {
+      if (key in value.price) price[key] = value.price[key];
+    }
+    if (typeof value.price.marketState === 'string') {
+      price.marketState = value.price.marketState;
+    }
+    result.price = price;
   } else if (value.price === null) {
     result.price = null;
   } else if (value.price !== undefined) {
