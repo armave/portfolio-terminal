@@ -1160,6 +1160,21 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(reloadedStore.getState().holdings.some((holding) => holding.ticker === 'AAPL')).toBe(false);
     expect(reloadedStore.getState().closedTrades).toHaveLength(2);
   });
+  it('can prepare a blank reset without persisting state before an atomic snapshot commit', () => {
+    stored.set('portfolio_active_view', 'AAPL');
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.importState({ balance: -250, activeView: 'AAPL' });
+    const previouslySavedState = stored.get('margin_portfolio_state_dynamic_v2');
+
+    store.resetToBlankState(Date.parse('2026-10-31T00:00:00.000Z'), false);
+
+    expect(store.getState().activeView).toBe('COMBINED');
+    expect(store.getState().balance).toBe(0);
+    expect(stored.get('portfolio_active_view')).toBe('COMBINED');
+    expect(stored.get('margin_portfolio_state_dynamic_v2')).toBe(previouslySavedState);
+  });
+
   it('resets portfolio-owned and broker-history state while retaining account settings', () => {
     stored.set('portfolio_active_view', 'AAPL');
     vi.stubGlobal('localStorage', localStorageMock);
