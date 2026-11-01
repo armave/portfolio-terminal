@@ -25,7 +25,8 @@ import { getAccountPermissions } from './domain/accountPermissions';
 import { resolveActiveView } from './ui/renderBoard';
 import { ScenarioReportModal } from './components/ScenarioReportModal';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
-import { restoreGatewaySecret } from './services/storage';
+import { loadSavedHistory, restoreGatewaySecret } from './services/storage';
+import { getLatestClosedTradeDate } from './domain/tradeHistorySync';
 import { setAppLanguage, subscribeAppLanguage } from './services/i18n';
 import { addBrokerEventListener, emitBrokerEvent } from './services/brokerEventBus';
 import { refreshActiveOrders } from './services/activeOrdersRefresh';
@@ -482,7 +483,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           emitBrokerEvent('broker:executed-trades-error');
           return;
         }
-        const response = await fetchFreedomTradeNetTrades();
+        const savedExecutions = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
+        const currentPortfolio = portfolioStore.getState();
+        const fromDate = getLatestClosedTradeDate(
+          [...savedExecutions, ...(currentPortfolio.brokerExecutedTrades || [])],
+          currentPortfolio.closedTrades || []
+        );
+        const response = await fetchFreedomTradeNetTrades(fromDate);
         if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
         const normalizedTrades = normalizeFreedomTrades(response);
         if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
