@@ -1071,6 +1071,7 @@ summary:hover {
 
 .auth-card button {
   min-height: 2.75rem;
+  margin-top: 0.75rem;
 }
 
 @keyframes modal-overlay-enter {
