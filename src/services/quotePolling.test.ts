@@ -36,62 +36,15 @@ describe('refreshTrackedQuotes', () => {
   });
 
   it('resolves fallback quotes with a bounded pool and preserves batch update order', async () => {
-    const tickers = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'META'];
-    const deferred = new Map<string, {
-      promise: Promise<{
-        price: number;
-        sourceName: string;
-        quoteDetails: {
-          marketState: 'UNKNOWN';
-          freshness: 'unknown';
-          receivedAt: number;
-          price: number;
-          change: number;
-          changePercent: number;
-        };
-      } | null>;
-      resolve: (value: {
-        price: number;
-        sourceName: string;
-        quoteDetails: {
-          marketState: 'UNKNOWN';
-          freshness: 'unknown';
-          receivedAt: number;
-          price: number;
-          change: number;
-          changePercent: number;
-        };
-      }) => void;
-    }>();
-    for (const [index, ticker] of tickers.entries()) {
-      let resolve!: (value: {
-        price: number;
-        sourceName: string;
-        quoteDetails: {
-          marketState: 'UNKNOWN';
-          freshness: 'unknown';
-          receivedAt: number;
-          price: number;
-          change: number;
-          changePercent: number;
-        };
-      }) => void;
-      const promise = new Promise<{
-        price: number;
-        sourceName: string;
-        quoteDetails: {
-          marketState: 'UNKNOWN';
-          freshness: 'unknown';
-          receivedAt: number;
-          price: number;
-          change: number;
-          changePercent: number;
-        };
-      } | null>((res) => { resolve = res; });
-      deferred.set(ticker, { promise, resolve });
-      void index;
+    type FallbackQuote = NonNullable<Awaited<ReturnType<typeof fetchFallbackPrice>>>;
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((res) => { resolve = res; });
+      return { promise, resolve };
     }
 
+    const tickers = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'META'];
+    const responses = new Map(tickers.map((ticker) => [ticker, deferred<FallbackQuote>()]));
     vi.mocked(fetchYahooStockData).mockResolvedValue({} as never);
     vi.mocked(normalizeYahooBatchResults).mockReturnValue(
       tickers.map((symbol) => ({ symbol, error: 'Missing batch quote' })) as never
@@ -99,7 +52,7 @@ describe('refreshTrackedQuotes', () => {
     const started: string[] = [];
     vi.mocked(fetchFallbackPrice).mockImplementation((ticker) => {
       started.push(ticker);
-      return deferred.get(ticker)!.promise as never;
+      return responses.get(ticker)!.promise;
     });
     const record = vi.fn().mockReturnValue(true);
 
@@ -109,34 +62,23 @@ describe('refreshTrackedQuotes', () => {
     // Four workers start immediately, but a fifth request waits for a slot.
     expect(started).toEqual(tickers.slice(0, 4));
     for (let index = 0; index < 4; index++) {
-      const ticker = tickers[index];
-      deferred.get(ticker)!.resolve({
+      responses.get(tickers[index])!.resolve({
         price: 100 + index,
         sourceName: 'Twelve Data',
-        quoteDetails: {
-          marketState: 'UNKNOWN',
-          freshness: 'unknown',
-          receivedAt: 1000 + index,
-          price: 100 + index,
-          change: 0,
-          changePercent: 0
-        }
+        previousClose: 100,
+        change: index,
+        changePercent: index,
       });
       await Promise.resolve();
     }
 
     expect(started).toEqual(tickers);
-    deferred.get('META')!.resolve({
+    responses.get('META')!.resolve({
       price: 104,
       sourceName: 'Twelve Data',
-      quoteDetails: {
-        marketState: 'UNKNOWN',
-        freshness: 'unknown',
-        receivedAt: 1004,
-        price: 104,
-        change: 0,
-        changePercent: 0
-      }
+      previousClose: 100,
+      change: 4,
+      changePercent: 4,
     });
 
     await expect(pending).resolves.toBe(5);
