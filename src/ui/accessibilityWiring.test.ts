@@ -35,6 +35,22 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('ref={closeButtonRef}');
   });
 
+  it('uses a body portal and viewport-sized scrolling for Market Depth on mobile', () => {
+    const source = readSource('../components/MarketDepthButton.tsx');
+    const stylesheet = readSource('../../style.css');
+
+    expect(source).toContain("import { createPortal } from 'preact/compat'");
+    expect(source).toContain('isOpen && createPortal(');
+    expect(source).toContain('document.body');
+    expect(source).toContain('market-depth-dialog flex min-h-0');
+    expect(source).toContain('market-depth-content min-h-0 flex-1');
+    expect(source).toContain('role="region" aria-label={`Market depth order book for ${ticker}`} tabIndex={0}');
+    expect(stylesheet).toContain('.market-depth-modal');
+    expect(stylesheet).toContain('height: 100dvh;');
+    expect(stylesheet).toContain('.market-depth-content');
+    expect(stylesheet).toContain('max-height: min(calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem), 52rem);');
+  });
+
   it('renders order-book levels with semantic table headings and localized captions', () => {
     const source = readSource('../components/MarketDepthButton.tsx');
     expect(source).toContain('<caption class="sr-only">{caption}</caption>');

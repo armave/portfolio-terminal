@@ -1,3 +1,4 @@
+import { createPortal } from 'preact/compat';
 import { useRef, useState } from 'preact/hooks';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { fetchFreedomTradeNetMarketDepth } from '../services/api';
@@ -92,13 +93,13 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
         class={'inline-flex shrink-0 items-center gap-1 rounded border border-cyan-800/80 bg-slate-900 text-cyan-300 hover:border-cyan-500 hover:bg-cyan-950/50 transition ' + (compact ? 'px-1.5 py-0.5 text-[9px] font-bold' : 'px-2 py-1 text-[10px] font-bold')}>
         <span aria-hidden="true">≋</span><span>Depth</span>
       </button>
-      {isOpen && (
-        <div class="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/85 p-3 backdrop-blur-sm sm:p-6"
+      {isOpen && createPortal(
+        <div class="market-depth-modal fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-950/85 backdrop-blur-sm"
           role="presentation" onClick={closeModal}>
-          <section ref={dialogRef} tabIndex={-1} class="w-full max-w-3xl overflow-hidden rounded-xl border border-cyan-900/70 bg-slate-950 shadow-2xl"
+          <section ref={dialogRef} tabIndex={-1} class="market-depth-dialog flex min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-cyan-900/70 bg-slate-950 shadow-2xl"
             role="dialog" aria-modal="true" aria-labelledby="marketDepthModalTitle"
             onClick={(event) => event.stopPropagation()}>
-            <header class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 sm:px-5">
+            <header class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-4 py-3 sm:px-5">
               <div>
                 <h2 id="marketDepthModalTitle" class="text-base font-black tracking-wide text-cyan-300">Market depth · {ticker}</h2>
                 <p class="mt-0.5 text-[10px] text-slate-500">Read-only order book snapshot · TradeNet</p>
@@ -112,7 +113,7 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
                   class="rounded border border-slate-700 px-2.5 py-1.5 text-[10px] font-bold text-slate-300 hover:bg-slate-800" aria-label="Close market depth">Close</button>
               </div>
             </header>
-            <div class="max-h-[min(75vh,680px)] overflow-y-auto p-4 sm:p-5">
+            <div class="market-depth-content min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5" role="region" aria-label={`Market depth order book for ${ticker}`} tabIndex={0}>
               {isLoading && !snapshot && <div class="py-12 text-center text-sm text-cyan-300" role="status">Loading market depth…</div>}
               {error && (
                 <div class="rounded-lg border border-amber-800/70 bg-amber-950/30 p-4 text-sm leading-relaxed text-amber-200" role="alert">
@@ -143,7 +144,8 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
               </>}
             </div>
           </section>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
