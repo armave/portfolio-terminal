@@ -180,7 +180,7 @@ export function MarketInsightsPanel() {
     fetchYahooDeepStockData(ticker, forceRefresh)
       .then((data) => {
         if (currentRequestId !== requestIdRef.current) return;
-        setStockData(data || {});
+        setStockData(data);
       })
       .catch((err: unknown) => {
         if (currentRequestId !== requestIdRef.current) return;
