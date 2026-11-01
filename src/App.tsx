@@ -754,7 +754,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         class={"desk-view-transition rounded-lg " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
       >
         {permissions.canViewClosedHistory && (hasOpenedClosedHistory
-          ? <ClosedHistoryDesk />
+          ? <ClosedHistoryDesk accountId={currentUser?.id || ''} />
           : <DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />)}
       </div>
 
