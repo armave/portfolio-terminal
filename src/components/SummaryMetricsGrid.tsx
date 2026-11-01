@@ -8,7 +8,8 @@ import { getAppLanguage } from '../services/i18n';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import {
   calculateCommission,
-  calculateMarginInterest
+  calculateMarginInterest,
+  resolveCommissionConfig
 } from '../domain/portfolio';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
@@ -280,18 +281,18 @@ export function SummaryMetricsGrid() {
       totalMarketValue += pos.shares * pos.currentPrice;
       totalCommBuy += pos.commBuy;
       const valSell = pos.shares * pos.pt;
-      totalCommSell += calculateCommission(pos.shares, valSell, rules as any);
+      totalCommSell += calculateCommission(pos.shares, valSell, resolveCommissionConfig(rules));
     });
 
     const tranchesForCombined =
       state.tranches && state.tranches.length > 0
         ? state.tranches
         : tickers.flatMap((t) => state.positions![t]?.tranches || []);
-    const openMarginCharged = calculateMarginInterest(tranchesForCombined as any, {
+    const openMarginCharged = calculateMarginInterest(tranchesForCombined, {
       dailyRate,
       marginDebt: Math.abs(Number(state.balance) || 0),
       totalDebt: Math.abs(Number(state.balance) || 0)
-    } as any);
+    });
     totalMarginCharged += openMarginCharged;
 
     const totalComms = totalCommBuy + totalCommSell;
@@ -405,7 +406,7 @@ export function SummaryMetricsGrid() {
   const totalInvested = (pos.tranches || []).reduce((sum, t) => sum + t.qty * t.price, 0);
   const avgPrice = pos.shares > 0 ? totalInvested / pos.shares : 0;
   const valSell = pos.shares * pos.pt;
-  const commSell = calculateCommission(pos.shares, valSell, rules as any);
+  const commSell = calculateCommission(pos.shares, valSell, resolveCommissionConfig(rules));
   const totalComms = pos.commBuy + commSell;
 
   const portfolioInvested = getTotalPortfolioInvested(state);
@@ -420,11 +421,11 @@ export function SummaryMetricsGrid() {
     pos.tranches && pos.tranches.length > 0
       ? pos.tranches
       : (state.tranches && state.tranches.length > 0 ? state.tranches : []);
-  const posMarginCharged = calculateMarginInterest(tranches as any, {
+  const posMarginCharged = calculateMarginInterest(tranches, {
     dailyRate,
     marginDebt: allocatedDebt,
     totalDebt: totalAccountDebt
-  } as any);
+  });
 
   const currentMktVal = pos.shares * pos.currentPrice;
   const previousPrice = previousPricesRef.current[pos.ticker];

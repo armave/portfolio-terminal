@@ -197,7 +197,11 @@ function calculateSaleCommission(shares: number, proceeds: number, rules: Broker
   const fallback = Number(Math.max(minCommOrder, shares * commPerShare + proceeds * commVolumePct).toFixed(2));
 
   try {
-    const calculated = calculateCommission(shares, proceeds, rules as any);
+    const calculated = calculateCommission(shares, proceeds, {
+      commPerShare,
+      commVolumePct,
+      minCommOrder
+    });
     return Number.isFinite(calculated) && calculated > 0
       ? Number(calculated.toFixed(2))
       : fallback;
@@ -805,14 +809,14 @@ export class PortfolioStore {
         { qty: pos.shares, price: pos.currentPrice, date: pos.startDate }
       ];
       const hasPerTrancheCommissions = origTranches.length > 0 && origTranches.every(
-        (tranche) => Number.isFinite(Number((tranche as any).buyCommission))
+        (tranche) => Number.isFinite(Number(tranche.buyCommission))
       );
       const earliestBuyDate =
         origTranches[0]?.date || pos.startDate || state.startDate || todayIso();
 
       for (const tr of origTranches) {
-        const trQty = Number((tr as any).qty ?? (tr as any).shares) || 0;
-        const trPrice = Number((tr as any).price ?? (tr as any).entryPrice) || 0;
+        const trQty = Number(tr.qty ?? tr.shares) || 0;
+        const trPrice = Number(tr.price ?? tr.entryPrice) || 0;
 
         if (remainingToSell <= 0) {
           updatedTranches.push({ ...tr });
@@ -824,7 +828,7 @@ export class PortfolioStore {
         remainingToSell -= take;
 
         const trancheBuyCommission = hasPerTrancheCommissions
-          ? Math.max(0, Number((tr as any).buyCommission) || 0)
+          ? Math.max(0, Number(tr.buyCommission) || 0)
           : 0;
         const commissionForTake = hasPerTrancheCommissions && trQty > 0
           ? Number((trancheBuyCommission * take / trQty).toFixed(2))
@@ -866,8 +870,8 @@ export class PortfolioStore {
           (p.tranches || []).reduce(
             (s, t) =>
               s +
-              (Number((t as any).qty ?? (t as any).shares) || 0) *
-              (Number((t as any).price ?? (t as any).entryPrice) || 0),
+              (Number(t.qty ?? t.shares) || 0) *
+              (Number(t.price ?? t.entryPrice) || 0),
             0
           ),
         0
@@ -875,8 +879,8 @@ export class PortfolioStore {
       const posInvested = origTranches.reduce(
         (s, t) =>
           s +
-          (Number((t as any).qty ?? (t as any).shares) || 0) *
-          (Number((t as any).price ?? (t as any).entryPrice) || 0),
+          (Number(t.qty ?? t.shares) || 0) *
+          (Number(t.price ?? t.entryPrice) || 0),
         0
       );
       const weight = totalPortfolioInvested > 0 ? posInvested / totalPortfolioInvested : 1;
@@ -885,16 +889,16 @@ export class PortfolioStore {
 
       let posMarginInterest = 0;
       try {
-        posMarginInterest = calculateMarginInterest(origTranches as any, {
+        posMarginInterest = calculateMarginInterest(origTranches, {
           dailyRate,
           marginDebt: allocatedDebt,
           totalDebt
-        } as any);
+        });
       } catch {
         posMarginInterest = 0;
       }
       // Keep any already-recorded position charge if the current accrual is lower.
-      posMarginInterest = Math.max(posMarginInterest, Number((pos as any).marginCharged) || 0);
+      posMarginInterest = Math.max(posMarginInterest, Number(pos.marginCharged) || 0);
       const marginInterestAllocated = Number((posMarginInterest * sellRatio).toFixed(2));
 
       const totalCommissions = Number((buyCommAllocated + sellComm).toFixed(2));
@@ -924,7 +928,7 @@ export class PortfolioStore {
         };
         // The sold slice has been realized below; do not carry a one-shot
         // margin charge forward and count it again on the next partial exit.
-        delete (remainingPosition as any).marginCharged;
+        delete remainingPosition.marginCharged;
         positions[clean] = remainingPosition;
       }
 

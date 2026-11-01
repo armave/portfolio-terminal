@@ -61,6 +61,63 @@ export interface CommissionConfig {
   minCommOrder: number;
 }
 
+/** Accepted broker-settings aliases used to build one validated commission contract. */
+export interface CommissionRuleSource {
+  commPerShare?: number;
+  commissionPerShare?: number;
+  commVolumePct?: number;
+  commissionRatePct?: number;
+  minCommOrder?: number;
+  commissionMin?: number;
+}
+
+export function resolveCommissionConfig(rules: CommissionRuleSource): CommissionConfig {
+  return {
+    commPerShare: Number(rules.commPerShare ?? rules.commissionPerShare ?? 0.012),
+    commVolumePct: Number(rules.commVolumePct ?? rules.commissionRatePct ?? 0.0012),
+    minCommOrder: Number(rules.minCommOrder ?? rules.commissionMin ?? 1.2)
+  };
+}
+
+/** Supported options for deterministic portfolio-level financing calculations. */
+export interface MarginInterestOptions {
+  dailyRate?: number;
+  annualRate?: number;
+  annualBorrowRate?: number;
+  dayCountBasis?: number;
+  marginUtilizationRatio?: number;
+  marginRatio?: number;
+  utilizationRatio?: number;
+  marginDebt?: number;
+  totalDebt?: number;
+  balance?: number;
+  days?: number;
+  daysHeld?: number;
+  holdingDays?: number;
+  now?: Date | string | number;
+  rolloverHour?: number;
+  rolloverMinute?: number;
+}
+
+/** Canonical and legacy tranche fields accepted at the margin-interest boundary. */
+export interface MarginInterestTranche {
+  qty?: number;
+  shares?: number;
+  price?: number;
+  entryPrice?: number;
+  date?: string | number | Date;
+  purchaseDate?: string | number | Date;
+  entryDate?: string | number | Date;
+  days?: number;
+  daysHeld?: number;
+  holdingDays?: number;
+}
+
+/** Legacy single-lot and canonical multi-lot shapes accepted by margin-interest calculations. */
+export interface MarginInterestPosition extends MarginInterestOptions, MarginInterestTranche {
+  tranches?: MarginInterestTranche[];
+}
+
 export interface ClosedTradeResult {
   position: MarginPosition;
   trade: ClosedTrade | null;
@@ -163,17 +220,13 @@ export function getAccruedRolloverCycles(purchaseDateStr?: string, now: Date = n
 
 /**
  * Calculates accrued margin interest using daily compounding.
- * Supports:
- * 1. calculateMarginInterest(debt: number, dailyRate: number, days: number): number
- * 2. calculateMarginInterest(principal: number, options: MarginInterestOptions, days?: number): number
- * 3. calculateMarginInterest(stateOrTranches: any, options: MarginInterestOptions, days?: number): number
+ * Supports numeric principal, tranche arrays, and canonical/legacy position objects.
  */
 export function calculateMarginInterest(
-  tranchesOrDebt: any,
-  paramsOrDailyRate?: any,
+  tranchesOrDebt: number | MarginInterestTranche[] | MarginInterestPosition,
+  paramsOrDailyRate?: number | MarginInterestOptions,
   maybeDays?: number
 ): number {
-  // Signature 1: Direct number principal
   if (typeof tranchesOrDebt === 'number') {
     const principal = tranchesOrDebt;
     let dailyRate = 0;
@@ -211,45 +264,43 @@ export function calculateMarginInterest(
       days = Number(maybeDays ?? opts.days ?? opts.daysHeld ?? opts.holdingDays) || 0;
     }
 
-    if (!Number.isFinite(principal) || !Number.isFinite(dailyRate) || !Number.isFinite(days) || !Number.isFinite(marginRatio) || principal <= 0 || dailyRate <= 0 || days <= 0 || marginRatio < 0) return 0;
+    if (!Number.isFinite(principal) || !Number.isFinite(dailyRate) ||
+        !Number.isFinite(days) || !Number.isFinite(marginRatio) ||
+        principal <= 0 || dailyRate <= 0 || days <= 0 || marginRatio < 0) return 0;
     return principal * marginRatio * (Math.pow(1 + dailyRate, days) - 1);
   }
 
-  // Signature 2: Tranches array or state/holding/position object
-  let tranches: any[] = [];
-  const stateObj =
-    typeof tranchesOrDebt === 'object' && tranchesOrDebt !== null && !Array.isArray(tranchesOrDebt)
-      ? tranchesOrDebt
-      : {};
+  let tranches: MarginInterestTranche[] = [];
+  const stateObj: MarginInterestPosition = Array.isArray(tranchesOrDebt)
+    ? {}
+    : tranchesOrDebt as MarginInterestPosition;
 
   if (Array.isArray(tranchesOrDebt)) {
     tranches = tranchesOrDebt;
-  } else if (stateObj) {
-    if (Array.isArray(stateObj.tranches)) {
-      tranches = stateObj.tranches;
-      // An initialized but empty tranche array must not hide a valid legacy
-      // single-lot position. Only fall back when the object has its own entry
-      // price, so we never infer cost basis from a live quote.
-      if (
-        tranches.length === 0 &&
-        (stateObj.shares || stateObj.qty) &&
-        (stateObj.price || stateObj.entryPrice)
-      ) {
-        tranches = [stateObj];
-      }
-    } else if (stateObj.shares || stateObj.qty) {
+  } else if (Array.isArray(stateObj.tranches)) {
+    tranches = stateObj.tranches;
+    // An initialized but empty tranche array must not hide a valid legacy
+    // single-lot position. Only fall back when the object has its own entry
+    // price, so we never infer cost basis from a live quote.
+    if (
+      tranches.length === 0 &&
+      (stateObj.shares || stateObj.qty) &&
+      (stateObj.price || stateObj.entryPrice)
+    ) {
       tranches = [stateObj];
     }
+  } else if (stateObj.shares || stateObj.qty) {
+    tranches = [stateObj];
   }
 
   if (tranches.length === 0) return 0;
 
-  // Merge options: parameters passed in 2nd argument take precedence over properties on state object
-  const passedOpts =
+  // Merge options: parameters passed in 2nd argument take precedence over properties on state object.
+  const passedOpts: MarginInterestOptions =
     typeof paramsOrDailyRate === 'object' && paramsOrDailyRate !== null
       ? paramsOrDailyRate
       : {};
-  const options = { ...stateObj, ...passedOpts };
+  const options: MarginInterestPosition = { ...stateObj, ...passedOpts };
 
   let dailyRate = 0;
   if (typeof paramsOrDailyRate === 'number') {
@@ -266,10 +317,10 @@ export function calculateMarginInterest(
 
   if (!Number.isFinite(dailyRate) || dailyRate <= 0) return 0;
 
-  const totalInvested = tranches.reduce((sum: number, tr: any) => {
-    const q = Number(tr.qty ?? tr.shares ?? 0) || 0;
-    const p = Number(tr.price ?? tr.entryPrice ?? 0) || 0;
-    return sum + q * p;
+  const totalInvested = tranches.reduce((sum, tranche) => {
+    const quantity = Number(tranche.qty ?? tranche.shares ?? 0) || 0;
+    const price = Number(tranche.price ?? tranche.entryPrice ?? 0) || 0;
+    return sum + quantity * price;
   }, 0);
 
   let marginRatio = 1;
@@ -279,7 +330,8 @@ export function calculateMarginInterest(
   if (typeof ratioCandidate === 'number') {
     if (!Number.isFinite(ratioCandidate) || ratioCandidate < 0) return 0;
     marginRatio = ratioCandidate;
-  } else if (options.marginDebt !== undefined || options.totalDebt !== undefined || (typeof options.balance === 'number' && options.balance < 0)) {
+  } else if (options.marginDebt !== undefined || options.totalDebt !== undefined ||
+      (typeof options.balance === 'number' && options.balance < 0)) {
     // marginDebt may be a position's allocated share of portfolio debt. Prefer
     // it over totalDebt so a position-level calculation doesn't charge the
     // entire portfolio debt against every position.
@@ -300,40 +352,44 @@ export function calculateMarginInterest(
             ? Number(passedOpts.holdingDays)
             : null;
 
-  const now = options.now ? new Date(options.now) : new Date();
+  const now = options.now instanceof Date
+    ? options.now
+    : options.now !== undefined
+      ? new Date(options.now)
+      : new Date();
+  if (!Number.isFinite(now.getTime())) return 0;
 
   let totalInterest = 0;
-  for (const tr of tranches) {
-    const q = Number(tr.qty ?? tr.shares ?? 0) || 0;
-    const p = Number(tr.price ?? tr.entryPrice ?? 0) || 0;
-    const trancheCost = q * p;
+  for (const tranche of tranches) {
+    const quantity = Number(tranche.qty ?? tranche.shares ?? 0) || 0;
+    const price = Number(tranche.price ?? tranche.entryPrice ?? 0) || 0;
+    const trancheCost = quantity * price;
     if (trancheCost <= 0) continue;
 
     let days = 0;
     if (explicitDays !== null && Number.isFinite(explicitDays)) {
       days = Math.max(0, explicitDays);
-    } else if (typeof tr.days === 'number') {
-      days = Math.max(0, tr.days);
-    } else if (typeof tr.daysHeld === 'number') {
-      days = Math.max(0, tr.daysHeld);
-    } else if (typeof tr.holdingDays === 'number') {
-      days = Math.max(0, tr.holdingDays);
+    } else if (typeof tranche.days === 'number') {
+      days = Math.max(0, tranche.days);
+    } else if (typeof tranche.daysHeld === 'number') {
+      days = Math.max(0, tranche.daysHeld);
+    } else if (typeof tranche.holdingDays === 'number') {
+      days = Math.max(0, tranche.holdingDays);
     } else {
-      const rawDate = tr.date ?? tr.purchaseDate ?? tr.entryDate;
-      let trancheTs: number;
-      if (typeof resolveTradeDateTimestamp === 'function') {
-        trancheTs = resolveTradeDateTimestamp(rawDate, now.getTime());
-      } else if (rawDate instanceof Date) {
-        trancheTs = rawDate.getTime();
+      const rawDate = tranche.date ?? tranche.purchaseDate ?? tranche.entryDate;
+      let trancheTimestamp: number;
+      if (rawDate instanceof Date) {
+        trancheTimestamp = rawDate.getTime();
       } else if (typeof rawDate === 'number') {
-        trancheTs = rawDate;
+        trancheTimestamp = rawDate;
       } else {
-        trancheTs = Date.parse(String(rawDate)) || now.getTime();
+        trancheTimestamp = resolveTradeDateTimestamp(rawDate, now.getTime());
       }
+      if (!Number.isFinite(trancheTimestamp)) trancheTimestamp = now.getTime();
 
       // Shift timestamps by four hours, then compare calendar dates in Asia/Yerevan.
       const offsetMs = 4 * 60 * 60 * 1000;
-      const localTranche = new Date(trancheTs + offsetMs);
+      const localTranche = new Date(trancheTimestamp + offsetMs);
       const localNow = new Date(now.getTime() + offsetMs);
       const trancheDay = Date.UTC(localTranche.getUTCFullYear(), localTranche.getUTCMonth(), localTranche.getUTCDate());
       const nowDay = Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate());
@@ -579,8 +635,8 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
  * Creates a backup snapshot without mutating the live application state.
  * Secrets and legacy derived fields must never be included in exported backups.
  */
-export function createPortfolioBackupSnapshot<T extends Record<string, any>>(state: T): Partial<T> {
-  const snapshot: Record<string, any> = { ...state };
+export function createPortfolioBackupSnapshot<T extends object>(state: T): Partial<T> {
+  const snapshot = { ...state } as Record<string, unknown>;
   delete snapshot.gatewaySecret;
   delete snapshot.marginBalance;
   return snapshot as Partial<T>;
@@ -873,7 +929,22 @@ export function realizeClosedTrade(
   };
 }
 
-export function processRollovers(state: any): boolean {
+export interface RolloverState {
+  balance: number;
+  lastRolloverTimestamp?: number;
+  brokerAssumptions?: {
+    annualRate?: number | string;
+    annualBorrowRate?: number | string;
+    dayCountBasis?: number | string;
+    rolloverHour?: number;
+    rolloverMinute?: number;
+  };
+  settings?: {
+    marginRate?: number | string;
+  };
+}
+
+export function processRollovers(state: RolloverState | null | undefined): boolean {
   if (!state || typeof state !== 'object') return false;
 
   if (!state.lastRolloverTimestamp) {
@@ -895,10 +966,12 @@ export function processRollovers(state: any): boolean {
   const dailyRate = annualRate / dayCountBasis;
   const configuredHour = rules.rolloverHour;
   const configuredMinute = rules.rolloverMinute;
-  const rolloverHour = Number.isInteger(configuredHour) && configuredHour >= 0 && configuredHour <= 23
+  const rolloverHour = typeof configuredHour === 'number' &&
+    Number.isInteger(configuredHour) && configuredHour >= 0 && configuredHour <= 23
     ? configuredHour
     : 4;
-  const rolloverMinute = Number.isInteger(configuredMinute) && configuredMinute >= 0 && configuredMinute <= 59
+  const rolloverMinute = typeof configuredMinute === 'number' &&
+    Number.isInteger(configuredMinute) && configuredMinute >= 0 && configuredMinute <= 59
     ? configuredMinute
     : 0;
   const now = new Date();

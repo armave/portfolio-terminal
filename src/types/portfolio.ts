@@ -10,6 +10,9 @@ export interface Tranche {
 export interface TrancheItem {
   qty: number;
   price: number;
+  /** Legacy aliases retained for normalization and compatibility with older snapshots. */
+  shares?: number;
+  entryPrice?: number;
   date?: string;
   acquiredAt?: number;
   buyCommission?: number;
@@ -37,6 +40,8 @@ export interface PositionRecord {
   currentPrice: number;
   pt: number;
   commBuy: number;
+  /** Unallocated one-shot financing charge retained until the next realized sale. */
+  marginCharged?: number;
   startDate?: string;
   tranches?: TrancheItem[];
   quoteUpdatedAt?: number;
