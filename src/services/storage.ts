@@ -416,41 +416,63 @@ export function saveSavedHistory(history: { brokerExecutedTrades?: any[]; cashfl
 export function loadSavedHistory(): { brokerExecutedTrades: any[]; cashflows: any[] } {
   const storage = getBrowserStorage();
   if (!storage) return { brokerExecutedTrades: [], cashflows: [] };
+
+  let raw: string | null;
   try {
-    let raw = storage.getItem(STORAGE_KEY_CLOSED_HISTORY);
-    // One-time migration from older snapshots that stored history inline.
-    if (!raw) {
-      for (const key of [STORAGE_KEY_STATE, STORAGE_KEY_LEGACY_STATE]) {
-        try {
-          const legacyRaw = storage.getItem(key);
-          if (!legacyRaw) continue;
-          const legacy = JSON.parse(legacyRaw);
-          if (Array.isArray(legacy?.brokerExecutedTrades) || Array.isArray(legacy?.cashflows)) {
-            const migrated = {
-              brokerExecutedTrades: Array.isArray(legacy.brokerExecutedTrades) ? legacy.brokerExecutedTrades : [],
-              cashflows: Array.isArray(legacy.cashflows) ? legacy.cashflows : []
-            };
-            raw = JSON.stringify(migrated);
-            storage.setItem(STORAGE_KEY_CLOSED_HISTORY, raw);
-            break;
-          }
-        } catch {
-          // Continue to the next legacy snapshot if one is malformed.
-        }
-      }
-    }
-    if (!raw) return { brokerExecutedTrades: [], cashflows: [] };
-    const parsed = JSON.parse(raw);
-    const history = {
-      brokerExecutedTrades: Array.isArray(parsed?.brokerExecutedTrades) ? parsed.brokerExecutedTrades : [],
-      cashflows: Array.isArray(parsed?.cashflows) ? parsed.cashflows : []
-    };
-    lastPersistedHistory = history;
-    return history;
+    raw = storage.getItem(STORAGE_KEY_CLOSED_HISTORY);
   } catch (err) {
-    console.warn('Failed to parse saved closed history:', err);
+    console.warn('Failed to read saved closed history:', err);
     return { brokerExecutedTrades: [], cashflows: [] };
   }
+
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Saved closed history must be an object.');
+      }
+      const history = {
+        brokerExecutedTrades: Array.isArray(parsed.brokerExecutedTrades) ? parsed.brokerExecutedTrades : [],
+        cashflows: Array.isArray(parsed.cashflows) ? parsed.cashflows : []
+      };
+      lastPersistedHistory = history;
+      return history;
+    } catch (err) {
+      // Keep the damaged record intact. A legacy snapshot may still provide a
+      // recoverable copy, and overwriting this entry would destroy evidence.
+      console.warn('Failed to parse saved closed history:', err);
+    }
+  }
+
+  // Recover older snapshots that stored history inline. Persist the migration
+  // only when the separate record is absent; never overwrite a damaged record.
+  for (const key of [STORAGE_KEY_STATE, STORAGE_KEY_LEGACY_STATE]) {
+    try {
+      const legacyRaw = storage.getItem(key);
+      if (!legacyRaw) continue;
+      const legacy = JSON.parse(legacyRaw);
+      if (legacy && typeof legacy === 'object' && !Array.isArray(legacy) &&
+          (Array.isArray(legacy.brokerExecutedTrades) || Array.isArray(legacy.cashflows))) {
+        const migrated = {
+          brokerExecutedTrades: Array.isArray(legacy.brokerExecutedTrades) ? legacy.brokerExecutedTrades : [],
+          cashflows: Array.isArray(legacy.cashflows) ? legacy.cashflows : []
+        };
+        if (!raw) {
+          try {
+            storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify(migrated));
+          } catch (err) {
+            console.warn('Could not persist recovered closed history:', err);
+          }
+        }
+        lastPersistedHistory = migrated;
+        return migrated;
+      }
+    } catch {
+      // Continue to the next legacy snapshot if one is malformed.
+    }
+  }
+
+  return { brokerExecutedTrades: [], cashflows: [] };
 }
 
 /**

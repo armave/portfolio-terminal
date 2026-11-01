@@ -454,6 +454,44 @@ describe('portfolio domain', () => {
     expect(result.position.tranches[0]).toMatchObject({ qty: 4, price: 20, buyCommission: 1.6 });
   });
 
+  it('reconciles staged FIFO sales, fee allocation, and final liquidation to the original ledger', () => {
+    const initial: MarginPosition = {
+      ticker: 'TEST',
+      shares: 10,
+      tranches: [
+        { qty: 5, price: 10, acquiredAt: 1_000, buyCommission: 1 },
+        { qty: 5, price: 20, acquiredAt: 86_401_000, buyCommission: 2 }
+      ],
+      commBuy: 3,
+      marginCharged: 30
+    };
+    const original = structuredClone(initial);
+
+    const firstSale = realizeClosedTrade(initial, 'TEST', 6, 25, 1.5, 172_801_000);
+    expect(firstSale.trade).toMatchObject({ shares: 6, feesAndCommissions: 20.9, netProfit: 59.1 });
+    expect(firstSale.position).toMatchObject({
+      shares: 4,
+      commBuy: 1.6,
+      marginCharged: 12,
+      tranches: [{ qty: 4, price: 20, buyCommission: 1.6 }]
+    });
+
+    const finalSale = realizeClosedTrade(firstSale.position, 'TEST', 4, 30, 1.5, 259_201_000);
+    expect(finalSale.trade).toMatchObject({ shares: 4, feesAndCommissions: 15.1, netProfit: 24.9 });
+    expect(finalSale.position.shares).toBe(0);
+    expect(finalSale.position.tranches).toEqual([]);
+    expect(finalSale.position.commBuy).toBeCloseTo(0, 8);
+    expect(finalSale.position.marginCharged).toBeCloseTo(0, 8);
+
+    const realizedNet = Number(firstSale.trade!.netProfit) + Number(finalSale.trade!.netProfit);
+    const grossProceeds = 6 * 25 + 4 * 30;
+    const originalCostBasis = 5 * 10 + 5 * 20;
+    const totalFees = 3 + 3 + 30; // buy commissions + sell commissions + financing
+    expect(realizedNet).toBeCloseTo(grossProceeds - originalCostBasis - totalFees, 8);
+    expect(firstSale.trade!.shares + finalSale.trade!.shares).toBe(initial.shares);
+    expect(initial).toEqual(original);
+  });
+
   it('rejects invalid closed quantities and prices without mutating the input position', () => {
     const original = structuredClone(basePosition);
     expect(() => realizeClosedTrade(basePosition, 'TEST', 0, 12, 1, 10_000)).toThrow();
