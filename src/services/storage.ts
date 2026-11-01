@@ -1,6 +1,7 @@
 const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
 const STORAGE_KEY_CLOSED_HISTORY = 'portfolio_closed_history_v1';
-let lastPersistedHistory: { brokerExecutedTrades: any[]; cashflows: any[] } | null = null;
+let lastPersistedHistory: ClosedHistorySnapshot | null = null;
+
 const STORAGE_KEY_LEGACY_STATE = 'portfolio_state';
 const STORAGE_KEY_GW_AUTH = '_gw_auth';
 const STORAGE_KEY_GW_AUTH_ENCRYPTED = 'gateway_secret_encrypted_v1';
@@ -13,6 +14,16 @@ const STORAGE_KEY_REFRESH_INTERVAL = 'quote_refresh_interval';
 const STORAGE_KEY_GUEST_REFRESH_INTERVAL = 'quote_refresh_interval_guest_v1';
 
 let inMemoryGatewaySecret = '';
+
+export interface ClosedHistorySnapshot {
+  brokerExecutedTrades: unknown[];
+  cashflows: unknown[];
+}
+
+export interface PortfolioSnapshotOptions {
+  /** Keep the device-local desk preference consistent with the committed snapshot. */
+  deviceActiveView?: string;
+}
 
 /** Returns browser storage only when it is available to the current runtime. */
 function getBrowserStorage(): Storage | null {
@@ -276,7 +287,136 @@ export async function saveApiKeys(options: SaveApiKeysOptions): Promise<boolean>
 }
 
 /**
+ * Persists the portfolio state and any changed closed-history sidecar as one
+ * best-effort local transaction. If a later key fails, already-written keys
+ * are restored to their previous values before the call reports failure.
+ */
+function persistPortfolioSnapshot(
+  state: Record<string, any>,
+  history: ClosedHistorySnapshot | null,
+  options: PortfolioSnapshotOptions = {}
+): boolean {
+  const storage = getBrowserStorage();
+  if (!storage) return false;
+
+  const savedAt = Date.now();
+  let persistedStateJson: string;
+  let historyJson: string | null = null;
+  let nextComparable: string;
+  try {
+    const persistedState: Record<string, unknown> = { ...state, lastUpdated: savedAt };
+    delete persistedState.gatewaySecret;
+    delete persistedState.brokerExecutedTrades;
+    delete persistedState.cashflows;
+    persistedStateJson = JSON.stringify(persistedState);
+    nextComparable = JSON.stringify(persistedState, (key, value) =>
+      key === 'lastUpdated' ? undefined : value
+    );
+    if (history) {
+      historyJson = JSON.stringify({
+        brokerExecutedTrades: history.brokerExecutedTrades,
+        cashflows: history.cashflows
+      });
+    }
+  } catch (err) {
+    console.error('Failed to serialize portfolio snapshot:', err);
+    return false;
+  }
+
+  const writes: Array<{ key: string; value: string }> = [
+    { key: STORAGE_KEY_STATE, value: persistedStateJson }
+  ];
+  if (historyJson !== null) {
+    writes.push({ key: STORAGE_KEY_CLOSED_HISTORY, value: historyJson });
+  }
+  if (typeof options.deviceActiveView === 'string') {
+    writes.push({ key: 'portfolio_active_view', value: options.deviceActiveView });
+  }
+
+  const previousValues = new Map<string, string | null>();
+  try {
+    for (const { key } of writes) {
+      if (!previousValues.has(key)) previousValues.set(key, storage.getItem(key));
+    }
+  } catch (err) {
+    console.error('Failed to inspect existing portfolio snapshot before saving:', err);
+    return false;
+  }
+
+  let previousComparable = '';
+  const previousRaw = previousValues.get(STORAGE_KEY_STATE);
+  if (previousRaw) {
+    try {
+      const previous = JSON.parse(previousRaw);
+      if (previous && typeof previous === 'object' && !Array.isArray(previous)) {
+        const comparable = { ...previous };
+        delete comparable.lastUpdated;
+        delete comparable.gatewaySecret;
+        previousComparable = JSON.stringify(comparable);
+      }
+    } catch {
+      // Corrupt/legacy storage is repaired by this save and counts as a change.
+    }
+  }
+  const stateChanged = previousComparable !== nextComparable;
+
+  const attemptedKeys: string[] = [];
+  try {
+    for (const { key, value } of writes) {
+      attemptedKeys.push(key);
+      storage.setItem(key, value);
+    }
+  } catch (err) {
+    // localStorage has no multi-key transaction. Restore all attempted keys in
+    // reverse order so a failed history/preference write cannot leave the new
+    // portfolio state looking like a fully committed snapshot.
+    for (const key of attemptedKeys.reverse()) {
+      try {
+        const previous = previousValues.get(key) ?? null;
+        if (previous === null) storage.removeItem(key);
+        else storage.setItem(key, previous);
+      } catch (rollbackError) {
+        console.error(`Failed to restore local storage key "${key}" after an incomplete portfolio save:`, rollbackError);
+      }
+    }
+    console.error('Failed to save portfolio snapshot; attempted local changes were rolled back:', err);
+    return false;
+  }
+
+  state.lastUpdated = savedAt;
+  if (history) lastPersistedHistory = history;
+
+  // Opening a section or re-saving an identical state must not trigger a full
+  // cloud write. Sync only when persisted portfolio data actually changed.
+  // Closed-history synchronization is owned by its dedicated service.
+  if (stateChanged) {
+    return true;
+  }
+  return true;
+}
+
+/**
+ * Persists the portfolio and its closed-history snapshot together. This is
+ * used for destructive operations such as a full reset where empty history is
+ * meaningful and must not be treated as an ordinary no-op.
+ */
+export function savePortfolioSnapshot(
+  state: Record<string, any>,
+  history: ClosedHistorySnapshot,
+  options: PortfolioSnapshotOptions = {}
+): boolean {
+  if (!state || typeof state !== 'object' || Array.isArray(state) ||
+      !history || !Array.isArray(history.brokerExecutedTrades) ||
+      !Array.isArray(history.cashflows)) {
+    return false;
+  }
+  return persistPortfolioSnapshot(state, history, options);
+}
+
+/**
  * Persists application state to localStorage and updates `state.lastUpdated`.
+ * Changed non-empty history is committed before the method reports success;
+ * a failed sidecar write rolls back the accompanying portfolio-state write.
  */
 export function saveState(
   state?: Record<string, any> | null,
@@ -285,58 +425,57 @@ export function saveState(
   if (!state || typeof state !== 'object' || Array.isArray(state)) {
     return false;
   }
-  const storage = getBrowserStorage();
-  if (!storage) return false;
 
-  // Keep large history in a separate localStorage entry. Avoid serializing it
-  // during unrelated quote/portfolio updates.
   const brokerExecutedTrades = Array.isArray(state.brokerExecutedTrades) ? state.brokerExecutedTrades : [];
   const cashflows = Array.isArray(state.cashflows) ? state.cashflows : [];
-  if (brokerExecutedTrades.length || cashflows.length) {
-    if (!lastPersistedHistory ||
-        lastPersistedHistory.brokerExecutedTrades !== brokerExecutedTrades ||
-        lastPersistedHistory.cashflows !== cashflows) {
-      try {
-        storage.setItem(STORAGE_KEY_CLOSED_HISTORY, JSON.stringify({ brokerExecutedTrades, cashflows }));
-        lastPersistedHistory = { brokerExecutedTrades, cashflows };
-      } catch (err) {
-        console.error('Failed to save closed history:', err);
-      }
-    }
-  }
+  const hasHistory = brokerExecutedTrades.length > 0 || cashflows.length > 0;
+  const historyChanged = hasHistory && (
+    !lastPersistedHistory ||
+    lastPersistedHistory.brokerExecutedTrades !== brokerExecutedTrades ||
+    lastPersistedHistory.cashflows !== cashflows
+  );
 
-  let stateChanged = true;
+  const previousUpdatedAt = state.lastUpdated;
+  const stateForComparison = { ...state };
+  const storage = getBrowserStorage();
+  if (!storage) return false;
+  let previousComparable = '';
   try {
     const previousRaw = storage.getItem(STORAGE_KEY_STATE);
-    let previousComparable = '';
     if (previousRaw) {
-      try {
-        const previous = JSON.parse(previousRaw);
-        delete previous.lastUpdated;
-        delete previous.gatewaySecret;
-        previousComparable = JSON.stringify(previous);
-      } catch {
-        // Corrupt/legacy storage should be repaired and synced by this save.
+      const previous = JSON.parse(previousRaw);
+      if (previous && typeof previous === 'object' && !Array.isArray(previous)) {
+        const comparable = { ...previous };
+        delete comparable.lastUpdated;
+        delete comparable.gatewaySecret;
+        previousComparable = JSON.stringify(comparable);
       }
     }
-
-    state.lastUpdated = Date.now();
-    const persistedState = { ...state };
-    delete persistedState.gatewaySecret;
-    delete persistedState.brokerExecutedTrades;
-    delete persistedState.cashflows;
-    const nextComparable = JSON.stringify(persistedState, (key, value) =>
-      key === 'lastUpdated' ? undefined : value
-    );
-    stateChanged = previousComparable !== nextComparable;
-    storage.setItem(STORAGE_KEY_STATE, JSON.stringify(persistedState));
   } catch (err) {
-    console.error('Failed to save state:', err);
+    console.error('Failed to inspect existing portfolio state:', err);
     return false;
   }
 
-  // Opening a section or re-saving an identical state must not trigger a full
-  // cloud write. Sync only when persisted portfolio data actually changed.
+  const persistedHistory = historyChanged
+    ? { brokerExecutedTrades, cashflows }
+    : null;
+  if (!persistPortfolioSnapshot(stateForComparison, persistedHistory)) {
+    // The caller's in-memory state must not claim it was persisted successfully.
+    state.lastUpdated = previousUpdatedAt;
+    return false;
+  }
+
+  // persistPortfolioSnapshot updates its supplied object; mirror that timestamp
+  // onto the canonical caller object only after every local write succeeded.
+  state.lastUpdated = stateForComparison.lastUpdated;
+  const persistedForComparison: Record<string, unknown> = { ...state };
+  delete persistedForComparison.gatewaySecret;
+  delete persistedForComparison.brokerExecutedTrades;
+  delete persistedForComparison.cashflows;
+  delete persistedForComparison.lastUpdated;
+  const nextComparable = JSON.stringify(persistedForComparison);
+  const stateChanged = previousComparable !== nextComparable;
+
   if (stateChanged && typeof onPushToGist === 'function') {
     try {
       onPushToGist(false);
@@ -346,7 +485,6 @@ export function saveState(
   }
   return true;
 }
-
 /**
  * Loads application state from localStorage, merging it with the supplied
  * fallback. This service is deliberately UI-agnostic: it never reads or mutates
