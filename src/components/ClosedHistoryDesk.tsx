@@ -621,27 +621,27 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
         </div>
       )}
       <div class="grid grid-cols-2 gap-2 lg:grid-cols-4 text-center" aria-label="Closed trade performance summary">
-        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{hasUnknownProfit ? 'Known net P&L' : 'Realized net P&L'}</div>
           <div class={`mt-1 font-mono text-lg font-bold ${realizedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
             {realizedNet >= 0 ? '+' : '−'}${formatUSD(Math.abs(realizedNet))}
           </div>
         </div>
-        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Win rate</div>
           <div class="mt-1 font-mono text-lg font-bold text-white">{winRate.toFixed(1)}%</div>
           <div class="text-[10px] text-slate-500">{winningTrades} of {profitKnownTrades.length} records with known profit profitable</div>
         </div>
-        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees &amp; commissions</div>
           <div class="mt-1 font-mono text-lg font-bold text-slate-200">{hasIncompleteCommissions ? '≥' : ''}${formatUSD(totalFees)}</div>
         </div>
-        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Avg. holding time</div>
           <div class="mt-1 font-mono text-lg font-bold text-slate-200">{averageHoldingDays === null ? '—' : averageHoldingDays.toFixed(1) + ' days'}</div>
         </div>
       </div>
-
+      
       <TableScrollRegion label="Closed trade history" className="border border-slate-800 bg-slate-950/60">
         <table class="w-full min-w-[900px] text-left text-xs font-mono">
           <caption class="sr-only">Closed trade history with funding type, guest assignment, ticker, closing date, quantity, duration, fees, commissions, and net profit.</caption>
