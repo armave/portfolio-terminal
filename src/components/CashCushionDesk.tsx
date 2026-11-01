@@ -358,25 +358,21 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
       {(brokerExecutionHistory.status === 'stale' || brokerExecutionHistory.status === 'error') && (
         <div
-          role={brokerExecutionHistory.status === 'refreshing' ? 'status' : 'alert'}
+          role="alert"
           aria-live="polite"
           class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between"
         >
           <span>
-            {brokerExecutionHistory.status === 'refreshing'
-              ? 'Refreshing TradeNet history…'
-              : brokerExecutionHistory.status === 'stale'
-                ? 'TradeNet refresh failed. Showing saved history, which may be out of date.'
-                : 'Unable to load TradeNet history. Please retry.'}
+            {brokerExecutionHistory.status === 'stale'
+              ? 'TradeNet refresh failed. Showing saved history, which may be out of date.'
+              : 'Unable to load TradeNet history. Please retry.'}
           </span>
-          {brokerExecutionHistory.status !== 'refreshing' && (
-            <button
-              type="button"
-              onClick={retryExecutedTrades}
-              aria-label="Retry TradeNet history"
-              class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto"
-            >Retry</button>
-          )}
+          <button
+            type="button"
+            onClick={retryExecutedTrades}
+            aria-label="Retry TradeNet history"
+            class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 sm:self-auto"
+          >Retry</button>
         </div>
       )}
 
