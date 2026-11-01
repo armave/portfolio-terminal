@@ -636,7 +636,7 @@ export function normalizePortfolioState(candidate: unknown, now = Date.now()): P
  * Secrets and legacy derived fields must never be included in exported backups.
  */
 export function createPortfolioBackupSnapshot<T extends object>(state: T): Partial<T> {
-  const snapshot: Record<string, unknown> = { ...state };
+  const snapshot = { ...state } as Record<string, unknown>;
   delete snapshot.gatewaySecret;
   delete snapshot.marginBalance;
   return snapshot as Partial<T>;
