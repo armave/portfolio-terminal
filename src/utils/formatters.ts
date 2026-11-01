@@ -76,7 +76,7 @@ export function getQuoteFreshness(
   if (holding.quoteSource === 'Manual' || holding.quoteSource === 'Trade input') return 'unavailable';
   const sourceTimestamp = Number(holding.sourceTimestamp ?? holding.quoteDetails?.sourceTimestamp);
   if (!Number.isFinite(sourceTimestamp) || sourceTimestamp <= 0) {
-    return holding.quoteUpdatedAt ? 'unknown' : 'unavailable';
+    return holding.quoteUpdatedAt || holding.quoteSource ? 'unknown' : 'unavailable';
   }
 
   const staleAfterMs = Math.max(5 * 60 * 1000, refreshIntervalMs * 2);

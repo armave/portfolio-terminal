@@ -50,6 +50,7 @@ describe('display formatters', () => {
     expect(getQuoteFreshness({ quoteUpdatedAt: now, quoteDetails: { sourceTimestamp: now - 300_001 } }, now, 60_000)).toBe('stale');
     expect(getQuoteFreshness({ quoteUpdatedAt: now, quoteDetails: { sourceTimestamp: now + 1 } }, now, 60_000)).toBe('stale');
     expect(getQuoteFreshness({ quoteUpdatedAt: now }, now, 60_000)).toBe('unknown');
+    expect(getQuoteFreshness({ quoteSource: 'Yahoo' }, now, 60_000)).toBe('unknown');
     expect(getQuoteFreshness({ quoteUpdatedAt: now, quoteDetails: { sourceTimestamp: now - 86_400_000, marketState: 'CLOSED' } }, now, 60_000)).toBe('delayed');
     expect(getQuoteFreshness({}, now, 60_000)).toBe('unavailable');
   });
