@@ -5,6 +5,7 @@ import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus,
 import {
   calculateBreakevenDays,
   calculateCommission,
+  resolveCommissionConfig,
   calculateProjectedDebt,
   calculateMarginInterest,
   collectOpenPositionTranches,
@@ -51,7 +52,6 @@ import {
   loadSavedHistory,
   savePortfolioSnapshot,
   saveApiKeys,
-  saveBrokerRules,
   saveGatewaySecret,
   saveQuoteRefreshInterval,
   saveState,
@@ -65,6 +65,7 @@ import {
   renderBoard as renderBoardUI,
 } from './src/ui/renderBoard';
 import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
+import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from './src/domain/brokerAssumptions';
 import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
@@ -74,7 +75,7 @@ import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTranc
 import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/commandDispatcher';
-import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, GuestTrancheLedgerRecord, QuoteDetails } from './src/types/portfolio';
+import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, BrokerAssumptions, GuestTrancheLedgerRecord, QuoteDetails } from './src/types/portfolio';
 import { buildClosedTradeGuestLedgerUpserts, resolveClosedTradeOperationDate } from './src/domain/closedTradeGuestAssignments';
 import { attributeClosedTradeExecutions } from './src/domain/closedTradeAttribution';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from './src/domain/brokerExecutionMetrics';
@@ -82,21 +83,8 @@ import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from './src
 // ==========================================
 // USER-CONFIGURABLE BROKER DEFAULT ASSUMPTIONS
 // ==========================================
-const DEFAULT_TRADERNET_RULES = {
-  broker: "Freedom Broker Armenia (Tradernet)",
-  annualRate: 0.1500,                  // Default: 15.00% annual margin interest
-  dayCountBasis: 365,
-  rolloverHour: 4,                     // Default: 4:00 AM in Asia/Yerevan
-  rolloverMinute: 0,
-  rolloverTimeZone: "Asia/Yerevan",
-  maintenanceMarginRatio: 0.10,        // Default maintenance equity ratio
-  stopOutRatio: 0.00,                  // Default stop-out equity ratio
-  commPerShare: 0.012,                 // Default: $0.012 per share
-  commVolumePct: 0.0012,               // Default: 0.12% trade value
-  minCommOrder: 1.20                   // Default: $1.20 minimum per execution
-};
-
-const TRADERNET_RULES = { ...DEFAULT_TRADERNET_RULES };
+const DEFAULT_TRADERNET_RULES: BrokerAssumptions = DEFAULT_BROKER_ASSUMPTIONS;
+const TRADERNET_RULES: BrokerAssumptions = { ...DEFAULT_TRADERNET_RULES };
 
 let state: any = createBlankState();
 // Guest sessions may read the shared snapshot, but must never enqueue cloud writes.
@@ -1115,68 +1103,43 @@ async function resetToBlankState(): Promise<void> {
 }
 
 function calcCommission(shares: number, totalVal: number) {
-  return calculateCommission(shares, totalVal, TRADERNET_RULES as any);
+  return calculateCommission(shares, totalVal, resolveCommissionConfig(TRADERNET_RULES));
 }
 
 function getDailyRate() {
-  return TRADERNET_RULES.annualRate / TRADERNET_RULES.dayCountBasis;
+  return TRADERNET_RULES.annualBorrowRate / TRADERNET_RULES.dayCountBasis;
 }
 
 function loadTradernetRules() {
-  const savedRules = loadBrokerRules<any>({});
-  if (!savedRules || Object.keys(savedRules).length === 0) return;
-
-  try {
-    const candidates = {
-      annualRate: Number(savedRules.annualRate),
-      dayCountBasis: savedRules.dayCountBasis === undefined ? DEFAULT_TRADERNET_RULES.dayCountBasis : Number(savedRules.dayCountBasis),
-      maintenanceMarginRatio: Number(savedRules.maintenanceMarginRatio),
-      stopOutRatio: Number(savedRules.stopOutRatio),
-      rolloverHour: Number(savedRules.rolloverHour),
-      rolloverMinute: Number(savedRules.rolloverMinute),
-      commPerShare: Number(savedRules.commPerShare),
-      commVolumePct: Number(savedRules.commVolumePct),
-      minCommOrder: Number(savedRules.minCommOrder)
-    };
-    const valid = Number.isFinite(candidates.annualRate) && candidates.annualRate >= 0 && candidates.annualRate <= 1 &&
-      [360, 365].includes(candidates.dayCountBasis) &&
-      Number.isFinite(candidates.maintenanceMarginRatio) && candidates.maintenanceMarginRatio >= 0 && candidates.maintenanceMarginRatio < 1 &&
-      Number.isFinite(candidates.stopOutRatio) && candidates.stopOutRatio >= 0 && candidates.stopOutRatio <= candidates.maintenanceMarginRatio &&
-      Number.isInteger(candidates.rolloverHour) && candidates.rolloverHour >= 0 && candidates.rolloverHour <= 23 &&
-      Number.isInteger(candidates.rolloverMinute) && candidates.rolloverMinute >= 0 && candidates.rolloverMinute <= 59 &&
-      Number.isFinite(candidates.commPerShare) && candidates.commPerShare >= 0 &&
-      Number.isFinite(candidates.commVolumePct) && candidates.commVolumePct >= 0 && candidates.commVolumePct <= 1 &&
-      Number.isFinite(candidates.minCommOrder) && candidates.minCommOrder >= 0;
-    if (!valid) throw new Error('Saved broker assumptions are outside the supported range.');
-    Object.assign(TRADERNET_RULES, candidates);
-    portfolioStore.updateAssumptions(TRADERNET_RULES as any);
-  } catch (error: any) {
-    logTerminal(`[Settings Error]: Could not load saved broker assumptions (${error.message}). Using defaults.`);
-  }
+  const savedRules = loadBrokerRules();
+  const normalized = normalizeBrokerAssumptions(savedRules, portfolioStore.getState().brokerAssumptions);
+  Object.assign(TRADERNET_RULES, normalized);
+  if (savedRules !== null) portfolioStore.updateAssumptions(normalized);
 }
 
 function saveBrokerRuleInputs(values: import('./src/components/SettingsDesk').BrokerRulesFormValues) {
   const [rolloverHour, rolloverMinute] = values.rolloverTime.split(':').map(Number);
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
-  const updatedRules = {
-    ...TRADERNET_RULES,
-    annualRate: Number(values.annualRate) / 100,
-    dayCountBasis: Number(values.dayCountBasis),
-    maintenanceMarginRatio: Number(values.maintenanceMargin) / 100,
-    stopOutRatio: Number(values.stopOutRatio) / 100,
-    rolloverHour,
-    rolloverMinute,
-    commPerShare: Number(values.commPerShare),
-    commVolumePct: Number(values.commVolumePct) / 100,
-    minCommOrder: Number(values.minCommOrder)
-  };
-  if (updatedRules.stopOutRatio > updatedRules.maintenanceMarginRatio) {
+  const requestedMaintenance = Number(values.maintenanceMargin) / 100;
+  const requestedStopOut = Number(values.stopOutRatio) / 100;
+  if (requestedStopOut > requestedMaintenance) {
     showToast('Stop-out equity must not exceed maintenance equity.', 'error');
     return;
   }
+  const updatedRules = normalizeBrokerAssumptions({
+    ...TRADERNET_RULES,
+    annualBorrowRate: Number(values.annualRate) / 100,
+    dayCountBasis: Number(values.dayCountBasis),
+    maintenanceEquityRatio: requestedMaintenance,
+    stopOutRatio: requestedStopOut,
+    rolloverHour,
+    rolloverMinute,
+    commissionPerShare: Number(values.commPerShare),
+    commissionRatePct: Number(values.commVolumePct) / 100,
+    commissionMin: Number(values.minCommOrder)
+  }, TRADERNET_RULES);
   Object.assign(TRADERNET_RULES, updatedRules);
-  portfolioStore.updateAssumptions(updatedRules as any);
-  saveBrokerRules(updatedRules);
+  portfolioStore.updateAssumptions(updatedRules);
   const nextRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   if (previousRollover !== nextRollover) {
     portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
@@ -1188,7 +1151,7 @@ function saveBrokerRuleInputs(values: import('./src/components/SettingsDesk').Br
 function resetBrokerRules() {
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   Object.assign(TRADERNET_RULES, DEFAULT_TRADERNET_RULES);
-  portfolioStore.updateAssumptions(DEFAULT_TRADERNET_RULES as any);
+  portfolioStore.updateAssumptions(DEFAULT_TRADERNET_RULES);
   clearBrokerRules();
   if (previousRollover !== `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`) {
     portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
@@ -1199,9 +1162,9 @@ function resetBrokerRules() {
 }
 
 function verifyTradernetRulesOnload() {
-  const ratePct = (TRADERNET_RULES.annualRate * 100).toFixed(2);
+  const ratePct = (TRADERNET_RULES.annualBorrowRate * 100).toFixed(2);
   const dailyPct = (getDailyRate() * 100).toFixed(4);
-  const maintenancePct = (TRADERNET_RULES.maintenanceMarginRatio * 100).toFixed(2);
+  const maintenancePct = (TRADERNET_RULES.maintenanceEquityRatio * 100).toFixed(2);
   const rolloverTime = `${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')}`;
   const saveMsg =
     `Broker model: ${ratePct}% p.a. (${dailyPct}%/d, /${TRADERNET_RULES.dayCountBasis}) | ${rolloverTime} Armenia time compounding | Maintenance equity ${maintenancePct}%`;
@@ -1328,7 +1291,7 @@ function updateCombinedBreakeven() {
 
 function renderBoard() {
   renderBoardUI(state, {
-    rules: TRADERNET_RULES as any,
+    rules: TRADERNET_RULES,
     onRenderAnalystConsensus: renderBoardAnalystConsensus,
     onUpdateCombinedBreakeven: updateCombinedBreakeven,
     lastDeskView: lastRenderedDeskView,
@@ -1692,7 +1655,7 @@ async function applyPortfolioActions(action: any) {
     const priorFreeCash = Math.max(0, Number(priorState.cashCushion?.freeCash) || 0);
     const priorDebt = Math.abs(Number(priorState.balance) || 0);
     const rules = priorState.brokerAssumptions || TRADERNET_RULES;
-    const buyComm = calculateCommission(shares, shares * price, rules as any);
+    const buyComm = calculateCommission(shares, shares * price, resolveCommissionConfig(rules));
     const totalOutlay = shares * price + buyComm;
     const cashUsed = Math.min(priorFreeCash, totalOutlay);
     const debtAdded = totalOutlay - cashUsed;
@@ -1917,7 +1880,7 @@ function confirmAiPortfolioAction(action: any) {
     const shares = Number(action.shares);
     const price = Number(action.price);
     const gross = shares * price;
-    const commission = calculateCommission(shares, gross, rules as any);
+    const commission = calculateCommission(shares, gross, resolveCommissionConfig(rules));
     const totalOutlay = gross + commission;
     const availableCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
     const cashUsed = Math.min(availableCash, totalOutlay);
@@ -1935,7 +1898,7 @@ function confirmAiPortfolioAction(action: any) {
     const shares = action.shares == null ? currentShares : Number(action.shares);
     const price = Number(action.price);
     const gross = shares * price;
-    const commission = calculateCommission(shares, gross, rules as any);
+    const commission = calculateCommission(shares, gross, resolveCommissionConfig(rules));
     confirmationLines.push(
       '',
       `Tracked shares available: ${currentShares}`,
