@@ -66,6 +66,12 @@ function isOptionalTicker(value: unknown): value is string | null {
   return value === null || isTicker(value);
 }
 
+function isIsoCalendarDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new IntentValidationError(message);
 }
@@ -76,8 +82,9 @@ function parseAction(value: Record<string, unknown>): PortfolioActionIntent {
       assert(isTicker(value.ticker), 'Buy intent requires a valid ticker.');
       assert(isPositiveNumber(value.shares), 'Buy intent requires a positive share quantity.');
       assert(isPositiveNumber(value.price), 'Buy intent requires a positive price.');
+      assert(Number.isFinite(value.shares * value.price), 'Buy order value must be finite.');
       assert(value.pt === null || isPositiveNumber(value.pt), 'Buy target must be null or a positive number.');
-      assert(value.date === null || typeof value.date === 'string', 'Buy date must be a string or null.');
+      assert(value.date === null || isIsoCalendarDate(value.date), 'Buy date must be a valid YYYY-MM-DD date or null.');
       return {
         intent: 'action',
         action: 'buy',
@@ -91,6 +98,7 @@ function parseAction(value: Record<string, unknown>): PortfolioActionIntent {
       assert(isTicker(value.ticker), 'Sell intent requires a valid ticker.');
       assert(value.shares === null || isPositiveNumber(value.shares), 'Sell quantity must be null or positive.');
       assert(isPositiveNumber(value.price), 'Sell intent requires a positive price.');
+      assert(value.shares === null || Number.isFinite(value.shares * value.price), 'Sell order value must be finite.');
       return { intent: 'action', action: 'sell', ticker: value.ticker, shares: value.shares, price: value.price };
     case 'set_pt':
       assert(isOptionalTicker(value.ticker), 'Target-price intent requires a valid ticker or null.');
@@ -110,6 +118,7 @@ function parseAction(value: Record<string, unknown>): PortfolioActionIntent {
       assert(isTicker(value.ticker), 'Cash holding intent requires a valid ticker.');
       assert(isPositiveNumber(value.shares), 'Cash holding intent requires a positive share quantity.');
       assert(value.price === null || (isFiniteNumber(value.price) && value.price >= 0), 'Cash holding price must be null or non-negative.');
+      assert(value.price === null || Number.isFinite(value.shares * value.price), 'Cash holding value must be finite.');
       return { intent: 'action', action: 'add_cash_stock', ticker: value.ticker, shares: value.shares, price: value.price };
     case 'remove_cash_stock':
       assert(isTicker(value.ticker), 'Remove cash holding intent requires a valid ticker.');
