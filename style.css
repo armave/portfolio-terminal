@@ -1,0 +1,3157 @@
+@import "tailwindcss";
+
+:root {
+  --bg-app: #121212;
+  --bg-card: rgba(24, 24, 27, 0.82);
+  --bg-surface-subtle: rgba(15, 23, 42, 0.45);
+  --bg-input: #18181b;
+  --bg-table-head: rgba(15, 23, 42, 0.75);
+  --bg-table-zebra: rgba(255, 255, 255, 0.025);
+
+  --text-primary: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+
+  --border-card: rgba(148, 163, 184, 0.14);
+  --border-subtle: rgba(148, 163, 184, 0.1);
+  --border-focus: rgba(34, 211, 238, 0.8);
+
+  --color-profit: #34d399;
+  --color-loss: #fb7185;
+  --color-warning: #fbbf24;
+  --color-accent: #22d3ee;
+
+  /* Standardized Section Themes */
+  --theme-combined: #3b82f6;
+  --theme-cash: #06b6d4;
+  --theme-closed: #a855f7;
+  --theme-settings: #94a3b8;
+
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  position: relative;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(16, 185, 129, 0.06), transparent 30rem),
+    var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+body::before {
+  content: none;
+}
+
+.border-card {
+  position: relative;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transition: border-color 180ms ease;
+}
+
+.border-card::before {
+  content: none;
+}
+
+#root {
+  padding-top: 1.5%;
+}
+
+#terminalLog,
+#tickerTabs,
+input,
+select,
+button {
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+#settings,
+#closedHistoryContainer {
+  margin-top: 10px;
+}
+
+.portfolio-risk-summary {
+  padding-top: 10px !important;
+  justify-content: center;
+}
+
+#terminalLog {
+  height: 16rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  word-break: break-word;
+  background: #090c13;
+  border: 1px solid rgba(30, 41, 59, 0.85);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(71, 85, 105, 0.6) rgba(15, 23, 42, 0.7);
+}
+
+#terminalLog::-webkit-scrollbar {
+  width: 8px;
+}
+
+#terminalLog::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.7);
+  border-radius: 4px;
+}
+
+#terminalLog::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.6);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+#terminalLog::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.85);
+}
+
+#tickerTabs {
+  font-family: var(--font-mono);
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-dim) transparent;
+}
+
+#tickerTabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+#tickerTabs::-webkit-scrollbar-thumb {
+  background: var(--text-dim);
+  border-radius: 999px;
+}
+
+button {
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease,
+    filter 0.2s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+}
+
+button:active:not(:disabled) {
+  filter: brightness(0.92);
+  transform: translateY(1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  filter: none;
+}
+
+input,
+select {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+input::placeholder {
+  color: var(--text-dim);
+}
+
+input[type="number"],
+.number-input {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="number"]:focus-visible,
+input[type="text"]:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+input[type="number"]:user-invalid {
+  border-color: var(--color-loss);
+}
+
+input,
+select {
+  min-height: 2.5rem;
+}
+
+.terminal-toolbar input,
+.terminal-toolbar select,
+.terminal-toolbar button,
+.terminal-toolbar label.cursor-pointer {
+  min-height: 0;
+}
+
+table thead {
+  text-align: center;
+  background: var(--bg-table-head);
+}
+
+.text-profit,
+.text-emerald-400 {
+  color: var(--color-profit);
+}
+
+.text-loss,
+.text-rose-400 {
+  color: var(--color-loss);
+}
+
+.text-warning,
+.text-amber-400 {
+  color: var(--color-warning);
+}
+
+table th {
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+table tbody tr:nth-child(even) {
+  background: var(--bg-table-zebra);
+}
+
+tbody tr {
+  text-align: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+tbody tr:hover {
+  background-color: rgba(30, 41, 59, 0.42) !important;
+}
+
+summary {
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+summary:hover {
+  color: var(--color-accent);
+}
+
+.insight-tab {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.portfolio-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+@media (max-width: 1024px) {
+  .portfolio-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .portfolio-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.portfolio-metric {
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.625rem;
+  background: var(--bg-surface-subtle);
+  padding: 0.375rem 0.75rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.portfolio-metric-label {
+  display: block;
+  margin-bottom: 0.15rem;
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.portfolio-metric-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-risk-summary {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 0.5rem;
+}
+
+#boardQuoteMeta {
+  color: var(--text-muted);
+}
+
+.board-header-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.board-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.stock-external-link,
+#boardExternalLinks a {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  line-height: 1;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+#finvizLink,
+.stock-link-finviz {
+  background: rgba(59, 130, 246, 0.18);
+  border: 1px solid #3b82f6;
+  color: #60a5fa;
+}
+
+#finvizLink:hover,
+.stock-link-finviz:hover {
+  background: rgba(59, 130, 246, 0.35);
+}
+
+#stocktwitsLink,
+.stock-link-stocktwits {
+  background: rgba(6, 182, 212, 0.18);
+  border: 1px solid #06b6d4;
+  color: #22d3ee;
+}
+
+#stocktwitsLink:hover,
+.stock-link-stocktwits:hover {
+  background: rgba(6, 182, 212, 0.32);
+  color: #a5f3fc;
+}
+
+#tvChartLink,
+.stock-link-tv-chart {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid #e4e4e7;
+  color: #ffffff;
+}
+
+#tvChartLink:hover,
+.stock-link-tv-chart:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid #ffffff;
+  color: #ffffff;
+}
+
+#tvIdeasLink,
+.stock-link-tv-ideas {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #71717a;
+  color: #a1a1aa;
+}
+
+#tvIdeasLink:hover,
+.stock-link-tv-ideas:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid #d4d4d8;
+  color: #f4f4f5;
+}
+
+#boardTitle {
+  min-width: 0;
+  word-break: normal;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+#tickerTabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  padding-bottom: 0.25rem;
+}
+
+#marketInsightsContent,
+#terminalLog,
+#cmdInput {
+  font-family: var(--font-mono);
+}
+
+.ui-view-enter {
+  animation: ui-view-enter 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ui-toast {
+  pointer-events: auto;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+}
+
+.ui-toast-enter {
+  animation: ui-toast-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.ui-toast-exit {
+  animation: ui-toast-exit 0.2s ease-in forwards;
+}
+
+@keyframes ui-view-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ui-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateX(1.25rem) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes ui-toast-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(1.25rem) scale(0.96);
+  }
+}
+
+#auth-container {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(6px);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 26rem;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+}
+
+#auth-container input[type="password"] {
+  background: #090c13;
+  color: var(--text-primary);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  letter-spacing: 0.08em;
+}
+
+#mainDeskContainer,
+#cashCushionContainer,
+#closedHistoryContainer,
+#settings {
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * Keep the active desk and trading terminal side by side only when both columns
+ * have enough room. auto-fit naturally moves the terminal below the desk on
+ * narrower viewports, including intermediate widths and zoomed layouts.
+ */
+.trading-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.trading-workspace-grid>* {
+  min-width: 0;
+}
+
+.trading-workspace-grid .trading-console-card {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+@media (min-width: 48rem) {
+  .trading-workspace-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
+    gap: 1rem;
+  }
+}
+
+.desktop-workspace-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.desktop-workspace-grid>* {
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .desktop-workspace-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  .desktop-workspace-grid #projectionTableContainer {
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .desktop-workspace-grid #projectionTableContainer table {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .desktop-workspace-grid .trading-console-card {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+.table-scroll-wrapper,
+#projectionTableContainer {
+  margin-inline: auto;
+  text-align: center;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-subtle);
+}
+
+.table-scroll-wrapper table {
+  min-width: max-content;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* The projection table has five financial columns; allow the wrapper to scroll
+   rather than clipping columns to the old 550px table cap. */
+#projectionTableContainer {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+#projectionTableContainer table {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  table-layout: fixed;
+  font-size: 11px;
+}
+
+#projectionTableContainer table th,
+#projectionTableContainer table td {
+  padding: 0.25rem 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+#projectionTableContainer table th:nth-child(2),
+#projectionTableContainer table td:nth-child(2) {
+  width: 17%;
+}
+
+#projectionTableContainer table th:nth-child(3),
+#projectionTableContainer table td:nth-child(3) {
+  width: 16%;
+}
+
+#projectionTableContainer table th:nth-child(4),
+#projectionTableContainer table td:nth-child(4) {
+  width: 23%;
+}
+
+#projectionTableContainer table th:nth-child(5),
+#projectionTableContainer table td:nth-child(5) {
+  width: 20%;
+}
+
+#projectionTableContainer tbody td[colspan="5"] {
+  white-space: normal;
+  min-width: 0;
+  max-width: 620px;
+  line-height: 1.4;
+}
+
+.table-scroll-wrapper th,
+.table-scroll-wrapper td {
+  white-space: nowrap;
+}
+
+.projection-date-cell {
+  white-space: normal;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  max-width: fit-content;
+}
+
+@media (max-width: 768px) {
+
+  input,
+  input[type="text"],
+  input[type="number"],
+  input[type="password"],
+  input[type="time"],
+  select {
+    /* 16px prevents iOS Safari from zooming the page on form focus. */
+    font-size: 16px !important;
+  }
+
+  body {
+    padding-top: max(0.5rem, env(safe-area-inset-top)) !important;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
+    padding-left: max(0.5rem, env(safe-area-inset-left)) !important;
+    padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
+    line-height: 1.45;
+  }
+
+  td,
+  th {
+    padding: 6px 8px;
+  }
+
+  #summary-cards {
+    grid-template-columns: 1fr !important;
+  }
+
+  .border-card {
+    border-radius: 0.875rem;
+  }
+
+  .portfolio-metric {
+    padding: 0.375rem 0.625rem;
+  }
+
+  .board-header-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  #tickerTabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    width: 100%;
+    overflow: visible;
+  }
+
+  #tickerTabs button,
+  #tickerTabs > * {
+    flex-shrink: 0;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.85rem;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 0.375rem;
+  }
+
+  #daysToBreakeven {
+    display: block;
+    width: 100%;
+    margin-top: 0.25rem;
+  }
+
+  .board-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  #boardTitle {
+    min-width: 0;
+    width: 100%;
+    word-break: normal;
+    font-size: 1.25rem;
+  }
+
+  .board-title-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  #terminalLogs,
+  #terminalLog {
+    height: 14rem;
+    font-size: 0.7rem;
+    overflow-y: auto;
+  }
+
+  #cashCushionContainer>.bg-slate-900\/60 {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  #cashCushionContainer>.bg-slate-900\/60>div:last-child {
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+}
+
+/* Touch controls stay comfortable without inflating desktop controls. */
+@media (pointer: coarse) {
+
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+  }
+
+  button,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 420px) {
+  #mainTerminalView {
+    padding-inline: 0.5rem;
+  }
+
+  .table-scroll-wrapper,
+  #projectionTableContainer {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+  }
+
+  #terminalLog {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+
+
+/* Market Insights and terminal form one grid item so they always stack together. */
+.trading-workspace-grid>.trading-terminal-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.trading-terminal-column>.market-insights-workspace {
+  width: 100%;
+  min-width: 0;
+}
+
+
+/* Compact, information-dense portfolio workspace */
+#mainTerminalView {
+  padding: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  #mainTerminalView {
+    padding: 1rem;
+  }
+}
+
+#boardHeaderBanner {
+  padding-bottom: 0.5rem;
+}
+
+#portfolioMetricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  align-items: stretch;
+}
+
+#portfolioMetricsGrid>* {
+  min-width: 0;
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+}
+
+#mainDeskContainer {
+  gap: 0.75rem;
+}
+
+#boardTitle {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+#projectionTableContainer {
+  padding-top: 0.25rem;
+}
+
+#projectionTableContainer table th,
+#projectionTableContainer table td {
+  padding: 0.25rem 0.375rem;
+}
+
+#projectionTableContainer table th:not(:first-child),
+#projectionTableContainer table td:not(:first-child) {
+  white-space: nowrap;
+}
+
+#projectionTableContainer table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-table-head);
+}
+
+#projectionTableContainer table tbody tr {
+  height: auto;
+}
+
+#tradingTerminalColumn {
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+#tradingTerminalColumn>* {
+  min-width: 0;
+}
+
+@media (max-width: 639px) {
+  #mainTerminalView {
+    padding: 0.625rem;
+  }
+
+  #portfolioMetricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #projectionTableContainer table th,
+  #projectionTableContainer table td {
+    padding: 0.25rem 0.3rem;
+  }
+
+  #projectionTableContainer table {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+
+/* Center the projection table wrapper within the desktop workspace grid. */
+.desktop-workspace-grid {
+  justify-items: center;
+}
+
+.desktop-workspace-grid>#projectionTableContainer {
+  justify-self: center;
+  width: 100%;
+  max-width: 100%;
+}
+
+.desktop-workspace-grid #projectionTableContainer table {
+  margin-inline: auto;
+}
+
+
+/* Shared keyboard focus treatment and compact settings controls (UI/UX PR 4). */
+:where(button, input, select, textarea, summary, a, [tabindex]):focus-visible {
+  outline: 2px solid rgb(34 211 238 / 0.95);
+  outline-offset: 2px;
+}
+
+#settings .terminal-toolbar {
+  align-items: stretch;
+}
+
+#settings .terminal-toolbar>div {
+  min-width: 0;
+}
+
+#settings details>summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgb(51 65 85 / 0.8);
+  border-radius: 0.5rem;
+  background: rgb(15 23 42 / 0.45);
+}
+
+#settings details>summary:focus-visible {
+  outline-offset: 3px;
+}
+
+#settings #brokerRulesForm input,
+#settings #brokerRulesForm select {
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 639px) {
+  #settings .terminal-toolbar {
+    gap: 0.75rem;
+  }
+
+  #settings #brokerRulesForm .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+
+/* Keep projection columns readable on narrow screens; scroll rather than crush cells. */
+@media (max-width: 639px) {
+  #projectionTableContainer {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #projectionTableContainer table {
+    min-width: 520px;
+    width: 520px;
+    table-layout: fixed;
+  }
+
+  #projectionTableContainer table th,
+  #projectionTableContainer table td {
+    padding: 0.45rem 0.5rem;
+  }
+}
+
+.scenario-report-content {
+  text-wrap: pretty;
+}
+
+/* Modal polish: shared motion, safer viewport sizing, and consistent keyboard focus. */
+#scenarioComparisonModal {
+  padding:
+    max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+  overscroll-behavior: contain;
+  animation: modal-overlay-enter 160ms ease-out both;
+}
+
+#scenarioComparisonModal>[role="dialog"] {
+  width: min(100%, 72rem);
+  max-height: min(90dvh, 56rem);
+  min-height: 0;
+  border-radius: 1rem;
+  overflow: hidden;
+  isolation: isolate;
+  animation: modal-dialog-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+#scenarioComparisonModal [role="dialog"]>div:nth-child(3) {
+  min-height: 0;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.7) transparent;
+}
+
+#scenarioComparisonModal [role="dialog"] button:focus-visible,
+#auth-container button:focus-visible,
+#auth-container input:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+#scenarioComparisonModal h2,
+#scenarioComparisonModal p {
+  overflow-wrap: anywhere;
+}
+
+#auth-container {
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.auth-card {
+  width: min(100%, 28rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: clamp(1rem, 4vw, 1.5rem);
+  border-radius: 1rem;
+  backdrop-filter: blur(16px);
+}
+
+.auth-card form {
+  align-items: stretch;
+}
+
+.auth-card input {
+  min-width: 0;
+  min-height: 2.75rem;
+}
+
+.auth-card button {
+  min-height: 2.75rem;
+  margin-top: 0.75rem;
+}
+
+@keyframes modal-overlay-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  #scenarioComparisonModal>[role="dialog"] {
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem);
+    border-radius: 0.875rem;
+  }
+
+  #scenarioComparisonModal [role="dialog"]>div:first-child {
+    padding: 0.875rem;
+  }
+
+  #scenarioComparisonModal [role="dialog"]>div:nth-child(2) {
+    padding: 0.625rem 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  #scenarioComparisonModal,
+  #scenarioComparisonModal>[role="dialog"] {
+    animation: none;
+  }
+}
+
+/* Smoothly reveal content as modal data arrives, not just when the dialog opens. */
+.margin-intelligence-overlay {
+  animation: modal-overlay-enter 180ms ease-out both;
+}
+
+.margin-intelligence-dialog {
+  animation: modal-dialog-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+[role="dialog"] [data-animate-content],
+[role="dialog"] [aria-live="polite"]>*,
+[role="dialog"] article,
+[role="dialog"] .news-feed-item,
+[role="dialog"] .stocktwits-feed-item,
+[role="dialog"] .digest-content,
+[role="dialog"] .digest-article {
+  animation: modal-data-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes modal-data-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .margin-intelligence-overlay,
+  .margin-intelligence-dialog,
+  [role="dialog"] [data-animate-content],
+  [role="dialog"] [aria-live="polite"]>*,
+  [role="dialog"] article,
+  [role="dialog"] .news-feed-item,
+  [role="dialog"] .stocktwits-feed-item,
+  [role="dialog"] .digest-content,
+  [role="dialog"] .digest-article {
+    animation: none !important;
+  }
+}
+
+/* Modal financial figures: prioritize legibility over compact density. */
+#scenarioComparisonModal table {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+#scenarioComparisonModal table th {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  letter-spacing: 0.025em;
+  color: #cbd5e1;
+}
+
+#scenarioComparisonModal table td {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  font-weight: 550;
+  color: #e2e8f0;
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+#scenarioComparisonModal table tbody th {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #cbd5e1;
+  white-space: normal;
+  min-width: 7.5rem;
+}
+
+#scenarioComparisonModal table tbody tr {
+  border-bottom-color: rgb(71 85 105 / 0.65);
+}
+
+#scenarioComparisonModal table tbody tr:nth-child(even) {
+  background-color: rgb(30 41 59 / 0.28);
+}
+
+#scenarioComparisonModal table tbody tr:has(td span) td span:first-child {
+  letter-spacing: -0.015em;
+}
+
+#scenarioComparisonModal .font-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+#scenarioComparisonModal .text-emerald-300,
+#scenarioComparisonModal .text-emerald-200 {
+  color: #6ee7b7;
+}
+
+#scenarioComparisonModal .text-cyan-200 {
+  color: #a5f3fc;
+}
+
+#scenarioComparisonModal .text-rose-300 {
+  color: #fda4af;
+}
+
+#scenarioComparisonModal .text-slate-400 {
+  color: #cbd5e1;
+}
+
+#scenarioComparisonModal .text-\[9px\] {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 767px) {
+  #scenarioComparisonModal table {
+    min-width: 38rem;
+  }
+
+  #scenarioComparisonModal table th,
+  #scenarioComparisonModal table td {
+    padding: 0.65rem 0.75rem;
+  }
+
+  #scenarioComparisonModal .text-right.font-mono.text-xs {
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
+
+  #scenarioComparisonModal .text-\[11px\] {
+    font-size: 0.75rem;
+    line-height: 1.45;
+  }
+}
+
+
+
+/* Responsive terminal workspace refinements */
+.trading-workspace-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.trading-workspace-grid>*,
+.trading-terminal-column,
+.trading-console-card {
+  min-width: 0;
+}
+
+@media (min-width: 48rem) {
+  .trading-workspace-grid {
+    grid-template-columns: minmax(0, 1.85fr) minmax(18rem, 1fr);
+    align-items: start;
+  }
+
+  .trading-terminal-column {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+}
+
+/* Keep quick actions in a touch-friendly horizontal rail on small screens. */
+@media (max-width: 767px) {
+  #mainTerminalView {
+    padding: 0.75rem;
+  }
+
+  #tradingConsoleCard {
+    padding: 0.875rem;
+  }
+
+  #tradingConsoleCard button,
+  #tradingConsoleCard input,
+  #tradingConsoleCard textarea,
+  #tradingConsoleCard select {
+    min-height: 44px;
+  }
+
+  #tradingConsoleCard textarea,
+  #tradingConsoleCard input {
+    font-size: 13px !important;
+  }
+
+  #tradingConsoleCard #consoleQuickActions,
+  #tradingConsoleCard .console-quick-actions,
+  #tradingConsoleCard [data-console-quick-actions] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.25rem 0.125rem 0.625rem;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  #tradingConsoleCard #consoleQuickActions>*,
+  #tradingConsoleCard .console-quick-actions>*,
+  #tradingConsoleCard [data-console-quick-actions]>* {
+    flex: 0 0 auto;
+  }
+
+  #projectionTableContainer,
+  .table-scroll-wrapper {
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
+/* Prefer sticky positioning over fixed positioning so the console never covers
+   portfolio content or the mobile keyboard. */
+@media (min-width: 64rem) {
+  #tradingConsoleCard {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+
+/* Margin risk visual gauges */
+.margin-risk-gauge-card {
+  grid-column: 1/-1;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 10px;
+  background: #0b0f17;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .22);
+  color: #e2e8f0
+}
+
+.margin-risk-gauge-heading,
+.margin-risk-gauge-row,
+.margin-risk-detail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0
+}
+
+.margin-risk-gauge-heading {
+  margin-bottom: 12px
+}
+
+.margin-risk-gauge-heading>div {
+  display: grid;
+  gap: 3px
+}
+
+.margin-risk-label {
+  font-size: 11px;
+  letter-spacing: .08em;
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 650
+}
+
+.margin-risk-equity,
+.margin-risk-gauge-row strong,
+.margin-risk-detail strong {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  font-size: 12px
+}
+
+.margin-risk-equity {
+  color: #f8fafc
+}
+
+.margin-risk-status {
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap
+}
+
+.margin-risk-status.healthy {
+  background: rgba(34, 197, 94, .15);
+  color: #4ade80
+}
+
+.margin-risk-status.elevated {
+  background: rgba(245, 158, 11, .15);
+  color: #fbbf24
+}
+
+.margin-risk-status.danger {
+  background: rgba(239, 68, 68, .16);
+  color: #f87171
+}
+
+.margin-risk-meter {
+  height: 12px;
+  position: relative;
+  display: flex;
+  overflow: visible;
+  border-radius: 999px;
+  background: #1e293b
+}
+
+.margin-risk-segment-floor {
+  width: 10%;
+  background: #ef4444;
+  border-radius: 999px 0 0 999px
+}
+
+.margin-risk-segment-buffer {
+  width: 30%;
+  background: #f59e0b
+}
+
+.margin-risk-segment-capacity {
+  flex: 1;
+  background: #22c55e;
+  border-radius: 0 999px 999px 0
+}
+
+.margin-risk-marker {
+  position: absolute;
+  top: -3px;
+  height: 18px;
+  width: 3px;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 0 0 2px #0b0f17;
+  transform: translateX(-50%)
+}
+
+.margin-risk-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 5px;
+  color: #94a3b8;
+  font-size: 9px
+}
+
+.margin-risk-gauge-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px
+}
+
+.margin-risk-gauge-item {
+  min-width: 0
+}
+
+.margin-risk-gauge-row {
+  margin-bottom: 7px
+}
+
+.margin-risk-gauge-row strong {
+  color: #fbbf24
+}
+
+.margin-risk-buffer-track {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #273244
+}
+
+.margin-risk-buffer-track>span {
+  display: block;
+  height: 100%;
+  border-radius: 999px
+}
+
+.margin-risk-buffer-track .warning {
+  background: #f59e0b
+}
+
+.margin-risk-buffer-track .danger {
+  background: #ef4444
+}
+
+.margin-risk-buffer-track .safe {
+  background: #22c55e
+}
+
+.margin-risk-detail {
+  margin-top: 6px;
+  color: #94a3b8;
+  font-size: 10px
+}
+
+.margin-risk-detail strong {
+  color: #cbd5e1;
+  text-align: right;
+  overflow-wrap: anywhere
+}
+
+.margin-risk-mobile-details {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, .1)
+}
+
+.margin-risk-mobile-details summary {
+  font-size: 11px;
+  color: #94a3b8
+}
+
+.margin-risk-disclaimer {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 10px
+}
+
+@media(max-width:767px) {
+  .margin-risk-gauge-card {
+    padding: 12px
+  }
+
+  .margin-risk-gauge-grid {
+    grid-template-columns: 1fr;
+    gap: 12px
+  }
+
+  .margin-risk-mobile-details {
+    display: block
+  }
+
+  .margin-risk-gauge-row {
+    align-items: flex-start;
+    flex-wrap: wrap
+  }
+}
+
+@media(min-width:768px) {
+  .margin-risk-mobile-details {
+    display: none
+  }
+}
+
+/* Animated company-news article dialog */
+.news-article-modal {
+  animation: news-modal-overlay-in 180ms ease-out both;
+  overscroll-behavior: contain;
+}
+
+.news-article-dialog {
+  max-height: min(88dvh, 52rem);
+  animation: news-modal-dialog-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: center;
+}
+
+@keyframes news-modal-overlay-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes news-modal-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  .news-article-dialog {
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .news-article-modal,
+  .news-article-dialog {
+    animation: none;
+  }
+}
+
+
+/* Portfolio micro-summary: one compact surface above account equity health. */
+.portfolio-metrics-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0.625rem;
+  align-items: stretch;
+}
+
+.portfolio-metrics-grid>.portfolio-micro-summary {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: #0b0f17;
+  color: #e2e8f0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.portfolio-micro-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.625rem 0.75rem;
+}
+
+.portfolio-micro-column+.portfolio-micro-column {
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.portfolio-micro-heading {
+  display: block;
+  margin-bottom: 0.125rem;
+  color: #94a3b8;
+  font-size: 0.625rem;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.075em;
+}
+
+.portfolio-micro-row {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.portfolio-micro-row .portfolio-metric-label {
+  flex: 0 1 auto;
+  margin: 0;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.portfolio-micro-row .portfolio-metric-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  font-family: var(--font-mono, "JetBrains Mono", "Fira Code", "SFMono-Regular", monospace);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-micro-market-primary {
+  align-items: flex-start;
+}
+
+.portfolio-micro-quote-meta {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-micro-summary .text-rose-300,
+.portfolio-micro-summary .text-rose-400 {
+  color: #ef4444;
+}
+
+.portfolio-micro-summary .text-emerald-400 {
+  color: #22c55e;
+}
+
+@media (max-width: 767px) {
+  .portfolio-metrics-grid>.portfolio-micro-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0.125rem 0.25rem;
+  }
+
+  .portfolio-micro-column {
+    gap: 0.45rem;
+    padding: 0.625rem 0.5rem;
+  }
+
+  .portfolio-micro-column+.portfolio-micro-column {
+    border-left: 0;
+  }
+
+  .portfolio-micro-market {
+    border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .portfolio-micro-costs {
+    grid-column: 1 / -1;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding-top: 0.75rem;
+  }
+
+  .portfolio-micro-row {
+    gap: 0.5rem;
+  }
+
+  .portfolio-micro-row .portfolio-metric-label {
+    white-space: normal;
+    font-size: 0.625rem;
+  }
+
+  .portfolio-micro-row .portfolio-metric-value {
+    font-size: 0.6875rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .portfolio-metrics-grid>.portfolio-micro-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portfolio-micro-market {
+    border-left: 0 !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .portfolio-micro-costs {
+    grid-column: auto;
+  }
+
+  .portfolio-micro-column {
+    padding-inline: 0.5rem;
+  }
+}
+
+
+/* Keep financial values readable in the desktop three-column micro-summary.
+   Long unbroken values may wrap at word boundaries, but never one character per line. */
+.portfolio-micro-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: start;
+  gap: 0.5rem;
+}
+
+.portfolio-micro-row .portfolio-metric-label {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+
+.portfolio-micro-row .portfolio-metric-value {
+  min-width: 0;
+  width: 100%;
+  flex: initial;
+  overflow-wrap: break-word;
+  word-break: normal;
+  white-space: normal;
+}
+
+.portfolio-micro-market-primary .portfolio-metric-value {
+  overflow-wrap: anywhere;
+}
+
+.portfolio-micro-quote-meta {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+@media (max-width: 767px) {
+  .portfolio-micro-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+
+/* UX refinement pass: predictable page rhythm, accessible focus, and safer narrow layouts. */
+#root {
+  padding: clamp(0.75rem, 1.5vw, 1.5rem) clamp(0.5rem, 1.25vw, 1.25rem) 1.5rem;
+}
+
+#mainTerminalView {
+  width: 100%;
+  max-width: 90rem;
+  margin-inline: auto;
+  border-color: rgba(148, 163, 184, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+#boardHeaderBanner {
+  row-gap: 0.75rem;
+}
+
+#tickerTabs {
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 0.125rem 0.125rem 0.5rem;
+}
+
+#tickerTabs>* {
+  flex: 0 0 auto;
+}
+
+#boardTitleActions {
+  min-width: 0;
+  row-gap: 0.5rem;
+}
+
+#portfolioMetricsGrid {
+  gap: 0.625rem;
+}
+
+#portfolioMetricsGrid>* {
+  min-width: 0;
+  border-color: rgba(148, 163, 184, 0.16);
+  box-shadow: none;
+}
+
+.portfolio-metric-label,
+.portfolio-micro-heading {
+  line-height: 1.45;
+}
+
+.portfolio-metric-value,
+.portfolio-micro-row .portfolio-metric-value,
+table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.table-scroll-wrapper,
+#projectionTableContainer {
+  width: 100%;
+  max-width: 100%;
+  text-align: left;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.7) transparent;
+}
+
+#projectionTableContainer table {
+  min-width: 28rem;
+}
+
+#projectionTableContainer table th,
+#projectionTableContainer table td {
+  padding: 0.5rem 0.625rem;
+  white-space: nowrap;
+}
+
+#projectionTableContainer table th {
+  font-size: 0.6875rem;
+}
+
+#tradingConsoleCard,
+#marketInsightsPanel {
+  min-width: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+#terminalLog {
+  overscroll-behavior: contain;
+  line-height: 1.65;
+}
+
+#cmdInput {
+  line-height: 1.5;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+button,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+@media (max-width: 640px) {
+  #root {
+    padding-inline: 0.5rem;
+  }
+
+  #mainTerminalView {
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+  }
+
+  #boardHeaderBanner {
+    align-items: flex-start;
+  }
+
+  #daysToBreakeven {
+    white-space: normal;
+    font-size: 0.75rem;
+  }
+
+  #boardTitleActions {
+    align-items: flex-start;
+  }
+
+  #projectionTableContainer table {
+    min-width: 30rem;
+    table-layout: auto;
+  }
+
+  #projectionTableContainer table th,
+  #projectionTableContainer table td {
+    padding: 0.5rem;
+  }
+
+  #terminalLog {
+    height: 14rem;
+    font-size: 0.75rem;
+  }
+
+  #tradingConsoleCard {
+    padding: 0.875rem;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --border-card: rgba(203, 213, 225, 0.38);
+    --border-subtle: rgba(203, 213, 225, 0.28);
+    --text-muted: #cbd5e1;
+    --text-dim: #a8b4c5;
+  }
+}
+
+/* UX refinement follow-up — readable density, predictable controls, and mobile navigation. */
+:root {
+  --control-height: 2.75rem;
+  --surface-hover: rgba(148, 163, 184, 0.08);
+}
+
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 3px;
+}
+
+:where(button, input, select, textarea) {
+  accent-color: var(--color-accent);
+}
+
+:where(input, select, textarea) {
+  max-width: 100%;
+}
+
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  min-height: var(--control-height);
+}
+
+:where(button) {
+  min-height: 2.5rem;
+}
+
+:where(button:disabled, input:disabled, select:disabled, textarea:disabled) {
+  cursor: not-allowed;
+}
+
+:where(table) {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+:where(table th) {
+  line-height: 1.35;
+  white-space: normal;
+}
+
+:where(table td) {
+  vertical-align: middle;
+}
+
+:where(table tbody tr:focus-within) {
+  outline: 1px solid var(--border-focus);
+  outline-offset: -1px;
+}
+
+#tickerTabs {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+#tickerTabs>* {
+  flex: 0 0 auto;
+}
+
+#mainTerminalView {
+  width: min(100%, 88rem);
+  box-sizing: border-box;
+}
+
+#mainTerminalView,
+#mainDeskContainer,
+#tradingWorkspaceGrid,
+.trading-terminal-column,
+#projectionTableContainer,
+.table-scroll-wrapper {
+  min-width: 0;
+}
+
+#projectionTableContainer table {
+  min-width: 34rem;
+}
+
+#projectionTableContainer table th,
+#projectionTableContainer table td {
+  padding: 0.5rem 0.625rem;
+  line-height: 1.4;
+}
+
+.portfolio-metric-value,
+#boardMarginRisk,
+#boardStopOut,
+#daysToBreakeven {
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-toast {
+  max-width: min(28rem, calc(100vw - 2rem));
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+
+  /* Prevent iOS from zooming into small form fields and keep tap targets usable. */
+  :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    font-size: 16px !important;
+  }
+
+  :where(button, input[type="checkbox"], input[type="radio"], select) {
+    touch-action: manipulation;
+  }
+
+  #tickerTabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0.25rem 0 0.625rem;
+    scroll-snap-type: x proximity;
+  }
+
+  #tickerTabs>* {
+    scroll-snap-align: start;
+  }
+
+  #mainTerminalView {
+    padding: 0.625rem;
+    border-radius: 0.75rem;
+  }
+
+  #projectionTableContainer table th,
+  #projectionTableContainer table td {
+    padding: 0.5rem;
+  }
+
+  .ui-toast {
+    width: calc(100vw - 2rem);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --text-muted: #cbd5e1;
+    --text-dim: #a8b5c7;
+    --border-card: rgba(203, 213, 225, 0.5);
+    --border-subtle: rgba(203, 213, 225, 0.35);
+    --border-focus: #67e8f9;
+  }
+
+  .border-card,
+  .portfolio-metric,
+  #projectionTableContainer,
+  .table-scroll-wrapper {
+    border-color: var(--border-card);
+  }
+
+  :where(button, a, input, select, textarea):focus-visible {
+    outline-width: 3px;
+  }
+}
+
+@media (forced-colors: active) {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  .border-card,
+  .portfolio-metric,
+  #projectionTableContainer,
+  .table-scroll-wrapper {
+    border: 1px solid CanvasText;
+  }
+}
+
+
+/* Shared expand/collapse motion: native disclosures and app-controlled panels. */
+:where(details) {
+  interpolate-size: allow-keywords;
+}
+
+:where(details)::details-content {
+  height: 0;
+  opacity: 0;
+  overflow: clip;
+  transition: height 180ms ease, opacity 160ms ease;
+  transition-behavior: allow-discrete;
+}
+
+:where(details[open])::details-content {
+  height: auto;
+  opacity: 1;
+}
+
+.expandable-motion {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: grid-template-rows 200ms ease, opacity 160ms ease, transform 200ms ease;
+  will-change: grid-template-rows, opacity;
+}
+
+.expandable-motion.is-expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.expandable-motion__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.credentials-motion {
+  max-width: 0;
+  opacity: 0;
+  overflow: clip;
+  flex-shrink: 1;
+  transition: max-width 200ms ease, opacity 160ms ease;
+}
+
+.credentials-motion.is-expanded {
+  max-width: 32rem;
+  opacity: 1;
+}
+
+.credentials-motion>* {
+  flex-shrink: 0;
+}
+
+/* Native motion polish: keep animated work to compositor-friendly properties. */
+:where(a, button, [role="tab"], .insight-tab) {
+  transition-property: opacity, transform, color, background-color, border-color;
+  transition-duration: 160ms;
+  transition-timing-function: ease-out;
+}
+
+:where(button, [role="tab"]):active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+:where(tbody tr) {
+  transition: opacity 140ms ease-out;
+}
+
+#marketInsightsContent {
+  animation: insights-panel-enter 180ms ease-out both;
+}
+
+@keyframes insights-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#auth-container {
+  animation: auth-backdrop-enter 180ms ease-out both;
+}
+
+#auth-container .auth-card {
+  animation: auth-dialog-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes auth-backdrop-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes auth-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Opt-in hooks for quote renderers to signal direction without changing layout. */
+.quote-flash-up {
+  animation: quote-flash-up 240ms ease-out;
+}
+
+.quote-flash-down {
+  animation: quote-flash-down 240ms ease-out;
+}
+
+@keyframes quote-flash-up {
+  0% {
+    opacity: 0.72;
+    transform: translateY(1px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes quote-flash-down {
+  0% {
+    opacity: 0.72;
+    transform: translateY(-1px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .ui-view-enter,
+  .ui-toast-enter,
+  .ui-toast-exit,
+  #marketInsightsContent,
+  #auth-container,
+  #auth-container .auth-card,
+  .quote-flash-up,
+  .quote-flash-down {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+
+/* Keep the auth overlay mounted so its exit transition can finish cleanly. */
+#auth-container.auth-overlay {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease-out, visibility 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay .auth-card {
+  opacity: 0;
+  transform: translateY(4px) scale(0.985);
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay.auth-overlay-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#auth-container.auth-overlay.auth-overlay-open .auth-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+
+/* Navigation: animate only visible, newly selected sections. */
+.desk-view-transition:not(.hidden) {
+  animation: insights-panel-enter 180ms ease-out both;
+}
+
+/* Table hover feedback remains compositor-friendly and does not affect row sizing. */
+table tbody tr {
+  transition: opacity 140ms ease-out, transform 140ms ease-out, background-color 140ms ease-out;
+}
+
+table tbody tr:hover {
+  transform: translateY(-1px);
+}
+
+/* Ensure auth modal closing fades both layers before becoming non-interactive. */
+#auth-container.auth-overlay {
+  display: flex;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 180ms ease-out, visibility 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay .auth-card {
+  opacity: 0;
+  transform: translateY(4px) scale(0.985);
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+  animation: none;
+}
+
+#auth-container.auth-overlay.auth-overlay-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#auth-container.auth-overlay.auth-overlay-open .auth-card {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .desk-view-transition:not(.hidden),
+  table tbody tr,
+  #auth-container.auth-overlay,
+  #auth-container.auth-overlay .auth-card {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+
+/* Scenario comparison modal: preserve the closing frame until the exit finishes. */
+.scenario-modal-backdrop {
+  animation: auth-backdrop-enter 180ms ease-out both;
+  transition: opacity 180ms ease-out;
+}
+
+.scenario-modal-dialog {
+  animation: auth-dialog-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+}
+
+.scenario-modal-backdrop.scenario-modal-closing {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scenario-modal-closing .scenario-modal-dialog {
+  opacity: 0;
+  transform: translateY(4px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .scenario-modal-backdrop,
+  .scenario-modal-dialog {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+
+/* News and Stocktwits: animate feed entry and item hover without affecting layout. */
+.news-feed-enter,
+.stocktwits-feed-enter {
+  animation: insights-panel-enter 180ms ease-out both;
+}
+
+.news-feed-item,
+.stocktwits-feed-item {
+  transition: opacity 160ms ease-out, transform 160ms ease-out, border-color 160ms ease-out, background-color 160ms ease-out;
+}
+
+.news-feed-item:hover,
+.stocktwits-feed-item:hover {
+  transform: translateY(-1px);
+}
+
+.news-feed-list,
+.stocktwits-feed-list {
+  overscroll-behavior: contain;
+}
+
+.news-modal-enter {
+  animation: auth-backdrop-enter 180ms ease-out both;
+}
+
+.news-dialog-enter {
+  animation: auth-dialog-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .news-feed-enter,
+  .stocktwits-feed-enter,
+  .news-feed-item,
+  .stocktwits-feed-item,
+  .news-modal-enter,
+  .news-dialog-enter {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+#activeTranches,
+#cloudStatus {
+  margin-top: 10px;
+}
+
+/* Portfolio usability: readable tables and keyboard focus. */
+/* Portfolio usability: visible quote confidence, readable tables, and keyboard focus. */
+.table-scroll-wrapper {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.65) transparent;
+}
+
+.table-scroll-wrapper table thead th,
+#projectionTableContainer table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #111827;
+  box-shadow: inset 0 -1px 0 rgba(148, 163, 184, 0.16);
+}
+
+table th,
+table td {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+#cmdInput {
+  scroll-margin-block: 1rem;
+}
+
+@media (max-width: 640px) {
+  .portfolio-micro-summary {
+    gap: 8px;
+  }
+
+  .portfolio-micro-column {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .table-scroll-wrapper {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .expandable-motion,
+  .expandable-motion__inner,
+  .credentials-motion,
+  table tbody tr {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* Responsive portfolio desk: give the data area priority without crowding the console. */
+#tradingWorkspaceGrid.trading-workspace-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+#tradingWorkspaceGrid>#cashCushionContainer,
+#tradingWorkspaceGrid>#tradingTerminalColumn {
+  min-width: 0;
+}
+
+#tradingConsoleCard {
+  width: 100%;
+  max-width: none;
+}
+
+@media (min-width: 65rem) {
+  #tradingWorkspaceGrid.trading-workspace-grid {
+    grid-template-columns: minmax(0, 1.72fr) minmax(20rem, 0.88fr);
+    gap: 1rem;
+  }
+}
+
+/* Tables keep their full desktop detail; on phones each holding becomes a compact card. */
+.cash-holdings-table {
+  min-width: 60rem;
+}
+
+.active-tranches-table {
+  min-width: 56.25rem;
+}
+
+@media (max-width: 767px) {
+  #mainTerminalView {
+    padding: 0.875rem;
+  }
+
+  #tradingWorkspaceGrid.trading-workspace-grid {
+    gap: 1rem;
+  }
+
+  #cashCushionContainer {
+    gap: 1rem;
+  }
+
+  .cash-holdings-table,
+  .active-tranches-table {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+    table-layout: auto;
+  }
+
+  .cash-holdings-table>thead,
+  .active-tranches-table>thead {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .cash-holdings-table .cash-holdings-body,
+  .active-tranches-table .active-tranches-body {
+    display: grid;
+    gap: 0.7rem;
+    padding: 0.625rem;
+  }
+
+  .cash-holdings-table .cash-holding-row,
+  .active-tranches-table .active-tranche-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid rgba(100, 116, 139, 0.24);
+    border-radius: 0.75rem;
+    background: rgba(15, 23, 42, 0.72);
+    box-shadow: 0 5px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .cash-holdings-table .cash-holding-row td,
+  .active-tranches-table .active-tranche-row td {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    min-width: 0;
+    gap: 0.25rem;
+    padding: 0.7rem 0.75rem !important;
+    border: 0;
+    text-align: left !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+
+  .cash-holdings-table .cash-holding-row td::before,
+  .active-tranches-table .active-tranche-row td::before {
+    content: attr(data-label);
+    color: #94a3b8;
+    font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+    font-size: 0.625rem;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0.075em;
+    text-transform: uppercase;
+  }
+
+  .cash-holdings-table .cash-holding-row td:first-child,
+  .active-tranches-table .active-tranche-row td:first-child {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(100, 116, 139, 0.2);
+    padding-block: 0.8rem !important;
+  }
+
+  .cash-holdings-table .cash-holding-row td:first-child::before,
+  .active-tranches-table .active-tranche-row td:first-child::before {
+    margin-right: 0.75rem;
+  }
+
+  .cash-holdings-table .cash-holding-row td:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .cash-holdings-table .cash-holding-row td:nth-child(3)>.block {
+    font-size: 0.625rem;
+  }
+
+  .cash-holdings-table .cash-holding-group-row,
+  .cash-holdings-table .cash-holding-empty-row,
+  .active-tranches-table .active-tranche-empty-row {
+    display: block;
+  }
+
+  .cash-holdings-table .cash-holding-group-row td,
+  .cash-holdings-table .cash-holding-empty-row td,
+  .active-tranches-table .active-tranche-empty-row td {
+    display: block;
+    width: 100%;
+    padding: 0.75rem !important;
+  }
+
+  .cash-holdings-table .cash-holdings-footer {
+    display: block;
+    padding: 0 0.625rem 0.625rem;
+  }
+
+  .cash-holdings-table .cash-holdings-footer tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid rgba(100, 116, 139, 0.24);
+    border-radius: 0.75rem;
+    background: rgba(15, 23, 42, 0.72);
+  }
+
+  .cash-holdings-table .cash-holdings-footer td {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+    padding: 0.75rem !important;
+    text-align: left !important;
+    border: 0;
+  }
+
+  .cash-holdings-table .cash-holdings-footer td::before {
+    content: attr(data-label);
+    color: #94a3b8;
+    font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.075em;
+    text-transform: uppercase;
+  }
+
+  .cash-holdings-table .cash-holdings-footer td:first-child {
+    grid-column: 1 / -1;
+    border-bottom: 1px solid rgba(100, 116, 139, 0.2);
+  }
+
+  .active-tranches-table .active-tranche-row td:nth-child(2),
+  .active-tranches-table .active-tranche-row td:nth-child(6),
+  .active-tranches-table .active-tranche-row td:nth-child(7) {
+    grid-column: 1 / -1;
+  }
+
+  .active-tranches-table .active-tranche-row td:nth-child(6)>.inline-flex {
+    width: 100%;
+    align-self: stretch;
+    justify-content: center;
+  }
+
+  .active-tranches-table .active-tranche-row td:nth-child(6)>.inline-flex button {
+    flex: 1 1 0;
+    min-height: 40px;
+  }
+
+  .active-tranches-table .active-tranche-row td:nth-child(7) select {
+    width: 100%;
+    max-width: none;
+    min-height: 44px;
+  }
+
+  #activeTranches {
+    padding: 0.875rem;
+  }
+
+  #activeTranches .table-scroll-wrapper,
+  #cashCushionContainer .table-scroll-wrapper {
+    overflow-x: visible;
+  }
+}
+
+@media (max-width: 767px) {
+  .active-tranches-table .active-tranche-row td:nth-child(5) {
+    grid-column: 1 / -1;
+  }
+}
+
+
+/* Smooth desk loading while each section restores its required data. */
+.desk-section-loading {
+  animation: desk-section-loading-enter 220ms ease-out both;
+}
+
+.desk-section-loading__bar {
+  animation: desk-section-loading-sweep 1.55s cubic-bezier(0.3, 0.65, 0.25, 1) infinite;
+}
+
+@keyframes desk-section-loading-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes desk-section-loading-sweep {
+  from {
+    transform: translateX(-130%);
+  }
+
+  to {
+    transform: translateX(260%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .desk-section-loading,
+  .desk-section-loading__bar {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+/* Mobile workspace navigation wraps without hiding destinations. */
+/*
+ * Keep every workspace destination reachable without a horizontal gesture on
+ * phones and compact tablets. The desktop tab strip retains its horizontal
+ * scrolling behavior above this breakpoint.
+ */
+@media (max-width: 768px) {
+  #tickerTabs {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    overflow-y: visible;
+    scroll-snap-type: none;
+  }
+
+  #tickerTabs>* {
+    max-width: 100%;
+    scroll-snap-align: unset;
+  }
+}
+
+/* Compact destination captions for phone-sized navigation. */
+.workspace-nav-label--mobile {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .workspace-nav-label--desktop {
+    display: none;
+  }
+
+  .workspace-nav-label--mobile {
+    display: inline;
+  }
+}
+
+/* Keep the live equity figure guest-only in the compact mobile Balance destination. */
+@media (max-width: 480px) {
+  .workspace-nav-equity-badge--admin {
+    display: none;
+  }
+}
+
+/* Fluid workspace system: adapt to the space each desk actually receives. */
+:root {
+  --layout-gutter: clamp(0.75rem, 1.6vw, 1.5rem);
+  --layout-stack-gap: clamp(0.75rem, 1.35vw, 1.25rem);
+  --surface-radius: clamp(0.75rem, 1vw, 1rem);
+  --surface-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.2);
+  --surface-shadow-hover: 0 1rem 2.5rem rgba(0, 0, 0, 0.26);
+  --motion-fluid: cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+#root {
+  width: 100%;
+  min-width: 0;
+  padding: clamp(0.5rem, 1.15vw, 1.125rem)
+    clamp(0.5rem, 1.4vw, 1.5rem)
+    calc(1.25rem + env(safe-area-inset-bottom));
+}
+
+#mainTerminalView {
+  width: min(100%, 96rem);
+  max-width: 96rem;
+  min-width: 0;
+  padding: clamp(0.875rem, 1.65vw, 1.75rem);
+  border-radius: clamp(0.875rem, 1.1vw, 1.25rem);
+  container-name: portfolio-workspace;
+  container-type: inline-size;
+}
+
+#mainTerminalView > *,
+#mainDeskContainer,
+#tradingWorkspaceGrid,
+#tradingWorkspaceGrid > *,
+#tradingTerminalColumn,
+#cashCushionContainer {
+  min-width: 0;
+}
+
+.border-card {
+  border-radius: calc(var(--surface-radius) + 0.125rem);
+  border-color: var(--border-card);
+  background:
+    linear-gradient(145deg, rgba(30, 41, 59, 0.28), transparent 58%),
+    var(--bg-card);
+  box-shadow: var(--surface-shadow);
+  transition:
+    border-color 180ms var(--motion-fluid),
+    box-shadow 220ms var(--motion-fluid),
+    background-color 180ms var(--motion-fluid);
+}
+
+.border-card:hover {
+  border-color: rgba(148, 163, 184, 0.24);
+  box-shadow: var(--surface-shadow-hover);
+}
+
+#boardHeaderBanner,
+#boardTitleActions {
+  min-width: 0;
+  gap: var(--layout-stack-gap);
+}
+
+#boardTitle {
+  font-size: clamp(1rem, 1.2vw, 1.35rem);
+  text-wrap: balance;
+}
+
+#daysToBreakeven {
+  max-width: 100%;
+  font-size: clamp(0.7rem, 0.85vw, 0.875rem);
+  overflow-wrap: anywhere;
+}
+
+#tickerTabs {
+  min-width: 0;
+  column-gap: clamp(0.375rem, 0.65vw, 0.625rem);
+  row-gap: 0.5rem;
+}
+
+#tradingWorkspaceGrid.trading-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--layout-stack-gap);
+}
+
+#tradingWorkspaceGrid.trading-workspace-grid > * {
+  min-width: 0;
+  width: 100%;
+}
+
+@container portfolio-workspace (min-width: 72rem) {
+  #tradingWorkspaceGrid.trading-workspace-grid {
+    grid-template-columns: minmax(0, 1.72fr) minmax(20rem, 0.88fr);
+    gap: clamp(1rem, 1.5cqw, 1.5rem);
+  }
+}
+
+#portfolioMetricsGrid {
+  min-width: 0;
+  container-name: portfolio-metrics;
+  container-type: inline-size;
+}
+
+#portfolioMetricsGrid > * {
+  min-width: 0;
+}
+
+.portfolio-micro-summary,
+.margin-risk-gauge-card,
+.portfolio-metric {
+  border-radius: var(--surface-radius);
+  border-color: var(--border-subtle);
+  box-shadow: 0 0.45rem 1.35rem rgba(0, 0, 0, 0.16);
+  transition:
+    border-color 180ms var(--motion-fluid),
+    background-color 180ms var(--motion-fluid),
+    box-shadow 200ms var(--motion-fluid);
+}
+
+.portfolio-micro-summary,
+.margin-risk-gauge-card {
+  background:
+    linear-gradient(145deg, rgba(30, 41, 59, 0.24), transparent 62%),
+    #0b0f17;
+}
+
+.portfolio-micro-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(0.25rem, 0.6vw, 0.625rem);
+  padding: clamp(0.375rem, 0.8vw, 0.75rem);
+}
+
+.portfolio-micro-column {
+  min-width: 0;
+  padding: clamp(0.5rem, 0.85vw, 0.875rem);
+}
+
+.portfolio-micro-heading,
+.portfolio-metric-label {
+  font-size: clamp(0.625rem, 0.72vw, 0.75rem);
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+.portfolio-micro-row {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: clamp(0.375rem, 0.7vw, 0.75rem);
+}
+
+.portfolio-micro-row .portfolio-metric-value,
+.portfolio-metric-value {
+  min-width: 0;
+  font-size: clamp(0.7rem, 0.82vw, 0.875rem);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums lining-nums;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+@container portfolio-metrics (max-width: 52rem) {
+  .portfolio-micro-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portfolio-micro-column + .portfolio-micro-column {
+    border-left: 0;
+  }
+
+  .portfolio-micro-market {
+    border-left: 1px solid rgba(148, 163, 184, 0.12);
+  }
+
+  .portfolio-micro-costs {
+    grid-column: 1 / -1;
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+    padding-top: 0.75rem;
+  }
+}
+
+@container portfolio-metrics (max-width: 36rem) {
+  .portfolio-micro-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portfolio-micro-column + .portfolio-micro-column,
+  .portfolio-micro-market {
+    border-left: 0;
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+  }
+
+  .portfolio-micro-costs {
+    grid-column: auto;
+  }
+
+  .portfolio-micro-row {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  }
+}
+
+.table-scroll-wrapper,
+#projectionTableContainer {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.7) transparent;
+  scroll-padding-inline: var(--layout-gutter);
+}
+
+.table-scroll-wrapper table,
+#projectionTableContainer table {
+  max-width: none;
+}
+
+#projectionTableContainer table {
+  min-width: max(100%, 34rem);
+  table-layout: auto;
+}
+
+#projectionTableContainer th,
+#projectionTableContainer td {
+  line-height: 1.45;
+}
+
+table tbody tr:hover {
+  transform: none;
+}
+
+#terminalLog {
+  height: clamp(12rem, 28vh, 20rem);
+  max-height: min(60vh, 32rem);
+  border-radius: var(--surface-radius);
+  line-height: 1.6;
+}
+
+#tradingConsoleCard,
+#marketInsightsPanel {
+  min-width: 0;
+  border-radius: var(--surface-radius);
+  transition:
+    border-color 180ms var(--motion-fluid),
+    box-shadow 200ms var(--motion-fluid);
+}
+
+@media (max-width: 640px) {
+  #mainTerminalView {
+    padding: clamp(0.75rem, 3vw, 1rem);
+  }
+
+  #boardHeaderBanner {
+    row-gap: 0.75rem;
+  }
+
+  #portfolioMetricsGrid {
+    gap: 0.75rem;
+  }
+
+  #terminalLog {
+    height: clamp(12rem, 32vh, 16rem);
+    max-height: 45vh;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .portfolio-metric:hover,
+  .portfolio-micro-summary:hover,
+  .margin-risk-gauge-card:hover {
+    border-color: rgba(148, 163, 184, 0.22);
+    box-shadow: var(--surface-shadow-hover);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .border-card,
+  .portfolio-micro-summary,
+  .margin-risk-gauge-card,
+  .portfolio-metric,
+  #tradingConsoleCard,
+  #marketInsightsPanel {
+    transition: none !important;
+  }
+}
