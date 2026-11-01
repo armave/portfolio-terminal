@@ -26,8 +26,8 @@ describe('commitPortfolioBackupImport', () => {
 
   it('normalizes and commits a legacy holdings backup as canonical positions', () => {
     const previous = { activeView: 'COMBINED', balance: 0 };
-    let active: Record<string, any> = previous;
-    let persisted: Record<string, any> | null = null;
+    let active: unknown = previous;
+    let persisted: unknown = null;
     const imported = normalizePortfolioBackup({
       balance: -250,
       holdings: [{
@@ -45,7 +45,7 @@ describe('commitPortfolioBackupImport', () => {
       () => { persisted = structuredClone(active); return true; }
     );
 
-    expect(active.positions.WDC).toMatchObject({
+    expect((active as ReturnType<typeof normalizePortfolioBackup>).positions.WDC).toMatchObject({
       ticker: 'WDC',
       shares: 30,
       tranches: [{ qty: 30, price: 11.5, date: '2026-10-15' }]
