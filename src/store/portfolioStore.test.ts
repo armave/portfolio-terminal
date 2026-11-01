@@ -482,13 +482,38 @@ describe('canonical trade lifecycle and persistence', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
     expect(store.getState().brokerAssumptions).toMatchObject({
-      annualRate: 0.15,
       annualBorrowRate: 0.15,
+      dayCountBasis: 365,
       rolloverHour: 4,
       rolloverMinute: 0,
-      commPerShare: 0.012,
-      commVolumePct: 0.0012,
-      minCommOrder: 1.2
+      commissionPerShare: 0.012,
+      commissionRatePct: 0.0012,
+      commissionMin: 1.2
+    });
+  });
+
+  it('normalizes legacy broker settings and gives the saved rules record precedence over the portfolio snapshot', () => {
+    stored.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+      brokerAssumptions: {
+        annualBorrowRate: 0.2, dayCountBasis: 365, maintenanceEquityRatio: 0.3,
+        rolloverHour: 4, rolloverMinute: 0, rolloverTimeZone: 'Asia/Yerevan',
+        commissionPerShare: 0.04, commissionRatePct: 0.004, commissionMin: 4, stopOutRatio: 0
+      }
+    }));
+    stored.set('tradernet_rules_v1', JSON.stringify({
+      annualBorrowRate: 0.3, annualRate: '0.12', dayCountBasis: '360',
+      dailyRolloverCutoffArmenia: '05:45', maintenanceEquityRatio: 0.4,
+      maintenanceMarginRatio: '0.2', stopOutRatio: '0.01', commissionPerShare: 0.04,
+      commPerShare: '0.02', commissionRatePct: 0.004, commVolumePct: '0.002',
+      commissionMin: 4, minCommOrder: '2'
+    }));
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    expect(store.getState().brokerAssumptions).toEqual({
+      broker: 'Freedom Broker Armenia (Tradernet)', annualBorrowRate: 0.12, dayCountBasis: 360,
+      rolloverHour: 5, rolloverMinute: 45, rolloverTimeZone: 'Asia/Yerevan',
+      maintenanceEquityRatio: 0.2, stopOutRatio: 0.01, commissionMin: 2,
+      commissionPerShare: 0.02, commissionRatePct: 0.002
     });
   });
 
@@ -554,16 +579,12 @@ describe('canonical trade lifecycle and persistence', () => {
     const store = new PortfolioStore();
 
     store.updateAssumptions({
-      annualRate: 0,
       annualBorrowRate: 0,
-      maintenanceMarginRatio: 0,
       maintenanceEquityRatio: 0
     });
 
     expect(store.getState().brokerAssumptions).toMatchObject({
-      annualRate: 0,
       annualBorrowRate: 0,
-      maintenanceMarginRatio: 0,
       maintenanceEquityRatio: 0
     });
   });
@@ -1179,7 +1200,7 @@ describe('canonical trade lifecycle and persistence', () => {
     stored.set('portfolio_active_view', 'AAPL');
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
-    const originalRules = { ...store.getState().brokerAssumptions, annualRate: 0.12 };
+    const originalRules = { ...store.getState().brokerAssumptions, annualBorrowRate: 0.12 };
     store.importState({
       positions: {
         AAPL: {
@@ -1237,7 +1258,7 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(state.tranches).toEqual([]);
     expect(state.selectedTicker).toBeNull();
     expect(state.apiKeys).toEqual({ finnhub: 'keep-provider-setting' });
-    expect(state.brokerAssumptions.annualRate).toBe(0.12);
+    expect(state.brokerAssumptions.annualBorrowRate).toBe(0.12);
     expect(state.gatewaySecret).toBe('keep-active-session-secret');
   });
 });

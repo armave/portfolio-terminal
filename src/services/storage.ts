@@ -1,3 +1,5 @@
+import type { BrokerAssumptions } from '../types/portfolio';
+
 const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
 const STORAGE_KEY_CLOSED_HISTORY = 'portfolio_closed_history_v1';
 let lastPersistedHistory: ClosedHistorySnapshot | null = null;
@@ -577,26 +579,25 @@ export function loadSavedHistory(): ClosedHistorySnapshot {
 }
 
 /**
- * Loads broker rules with fallback on corrupted JSON or missing data.
+ * Loads untrusted saved broker settings; missing or malformed JSON returns null.
  */
-export function loadBrokerRules<T = unknown>(defaultRules: T): T {
+export function loadBrokerRules(): unknown {
   const storage = getBrowserStorage();
-  if (!storage) return defaultRules;
+  if (!storage) return null;
   try {
     const raw = storage.getItem(STORAGE_KEY_RULES);
-    if (!raw) return defaultRules;
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : defaultRules;
+    if (!raw) return null;
+    return JSON.parse(raw) as unknown;
   } catch (err) {
     console.warn('Failed to parse saved broker rules:', err);
-    return defaultRules;
+    return null;
   }
 }
 
 /**
- * Saves broker rules configuration to localStorage.
+ * Saves normalized canonical broker assumptions to localStorage.
  */
-export function saveBrokerRules(rules: unknown): void {
+export function saveBrokerRules(rules: BrokerAssumptions): void {
   const storage = getBrowserStorage();
   if (!storage) return;
   try {

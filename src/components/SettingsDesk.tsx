@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { getQuoteRefreshInterval } from '../services/storage';
-import { BrokerRules } from '../types/portfolio';
+import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
@@ -22,19 +22,19 @@ export interface BrokerRulesFormValues {
 }
 
 /** Converts persisted numeric rules into the strings controlled form inputs require. */
-export function toBrokerRulesFormValues(rules: BrokerRules): BrokerRulesFormValues {
+export function toBrokerRulesFormValues(rules: BrokerAssumptions): BrokerRulesFormValues {
   const hours = String(rules.rolloverHour ?? 4).padStart(2, '0');
   const minutes = String(rules.rolloverMinute ?? 0).padStart(2, '0');
 
   return {
-    annualRate: ((rules.annualRate ?? 0.15) * 100).toFixed(2),
-    dayCountBasis: String(rules.dayCountBasis ?? 365),
-    maintenanceMargin: ((rules.maintenanceMarginRatio ?? 0.1) * 100).toFixed(2),
-    stopOutRatio: ((rules.stopOutRatio ?? 0) * 100).toFixed(2),
+    annualRate: (rules.annualBorrowRate * 100).toFixed(2),
+    dayCountBasis: String(rules.dayCountBasis),
+    maintenanceMargin: (rules.maintenanceEquityRatio * 100).toFixed(2),
+    stopOutRatio: (rules.stopOutRatio * 100).toFixed(2),
     rolloverTime: `${hours}:${minutes}`,
-    commPerShare: String(rules.commPerShare ?? 0.012),
-    commVolumePct: ((rules.commVolumePct ?? 0.0012) * 100).toFixed(2),
-    minCommOrder: (rules.minCommOrder ?? 1.2).toFixed(2)
+    commPerShare: String(rules.commissionPerShare),
+    commVolumePct: (rules.commissionRatePct * 100).toFixed(2),
+    minCommOrder: rules.commissionMin.toFixed(2)
   };
 }
 
@@ -186,15 +186,15 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     setRuleValues(toBrokerRulesFormValues(rules));
     stopOutInputRef.current?.setCustomValidity('');
   }, [
-    rules.annualRate,
+    rules.annualBorrowRate,
     rules.dayCountBasis,
-    rules.maintenanceMarginRatio,
+    rules.maintenanceEquityRatio,
     rules.stopOutRatio,
     rules.rolloverHour,
     rules.rolloverMinute,
-    rules.commPerShare,
-    rules.commVolumePct,
-    rules.minCommOrder
+    rules.commissionPerShare,
+    rules.commissionRatePct,
+    rules.commissionMin
   ]);
 
   const updateRuleValue = (field: keyof BrokerRulesFormValues, value: string) => {

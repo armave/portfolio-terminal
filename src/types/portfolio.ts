@@ -127,40 +127,38 @@ export interface ClosedTrade {
 }
 
 export interface BrokerAssumptions {
+  broker: string;
   annualBorrowRate: number;
   dayCountBasis: 360 | 365;
-  dailyRolloverCutoffArmenia: string;
+  rolloverHour: number;
+  rolloverMinute: number;
+  rolloverTimeZone: string;
   maintenanceEquityRatio: number;
   stopOutRatio: number;
   commissionMin: number;
   commissionPerShare: number;
   commissionRatePct: number;
-  annualRate?: number;
-  maintenanceMarginRatio?: number;
-  commPerShare?: number;
-  commVolumePct?: number;
-  minCommOrder?: number;
 }
 
+/** Explicit legacy settings keys accepted only by the broker-assumption normalizer. */
 export interface BrokerRules {
   broker?: string;
-  annualRate: number;
-  dayCountBasis: number;
-  rolloverHour?: number;
-  rolloverMinute?: number;
-  rolloverTimeZone?: string;
-  maintenanceMarginRatio: number;
-  stopOutRatio: number;
-  commPerShare?: number;
-  commVolumePct?: number;
-  minCommOrder?: number;
-  annualBorrowRate?: number;
+  annualRate?: number | string;
+  annualBorrowRate?: number | string;
+  dayCountBasis?: number | string;
   dailyRolloverCutoffArmenia?: string;
-  maintenanceEquityRatio?: number;
-  commissionMin?: number;
-  commissionPerShare?: number;
-  commissionRatePct?: number;
-  [key: string]: any;
+  rolloverHour?: number | string;
+  rolloverMinute?: number | string;
+  rolloverTimeZone?: string;
+  maintenanceMarginRatio?: number | string;
+  maintenanceEquityRatio?: number | string;
+  stopOutRatio?: number | string;
+  commissionMin?: number | string;
+  commissionPerShare?: number | string;
+  commissionRatePct?: number | string;
+  commPerShare?: number | string;
+  commVolumePct?: number | string;
+  minCommOrder?: number | string;
 }
 
 interface ApiKeys {
@@ -301,7 +299,7 @@ export interface PortfolioState {
   closedHistory?: ClosedTrade[];
   /** Normalized broker-reported cashflows, stored separately from closed trade P&L. */
   cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw?: Record<string, string> }>;
-  brokerAssumptions: BrokerRules;
+  brokerAssumptions: BrokerAssumptions;
   lastRolloverTimestamp?: number;
   lastUpdated?: number;
   gatewaySecret?: string;

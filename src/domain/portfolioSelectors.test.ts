@@ -91,13 +91,17 @@ describe('portfolio selectors', () => {
 
 describe('portfolio projection selectors', () => {
   const rules = {
-    annualRate: 0,
-    dayCountBasis: 365,
-    maintenanceMarginRatio: 0.1,
+    broker: 'Freedom Broker Armenia (Tradernet)',
+    annualBorrowRate: 0,
+    dayCountBasis: 365 as const,
+    rolloverHour: 4,
+    rolloverMinute: 0,
+    rolloverTimeZone: 'Asia/Yerevan',
+    maintenanceEquityRatio: 0.1,
     stopOutRatio: 0,
-    commPerShare: 0,
-    commVolumePct: 0,
-    minCommOrder: 0
+    commissionMin: 0,
+    commissionPerShare: 0,
+    commissionRatePct: 0
   };
 
   it('derives a single-position projection from the active position and allocated debt', () => {

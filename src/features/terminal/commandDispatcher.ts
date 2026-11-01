@@ -1,5 +1,5 @@
 import { portfolioStore } from '../../store/portfolioStore';
-import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedDebt } from '../../domain/portfolio';
+import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedDebt, resolveCommissionConfig } from '../../domain/portfolio';
 import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
 
 type SideEffectAction =
@@ -288,7 +288,7 @@ export class CommandDispatcher {
           throw new Error('Usage: sold <shares|all> <ticker> for <price>');
         }
 
-        const state: any = portfolioStore.getState();
+        const state = portfolioStore.getState();
         const pos = state.positions?.[sym];
         const availableShares =
           Number(pos?.shares) ||
@@ -478,7 +478,7 @@ export class CommandDispatcher {
   // --- LOCAL MATH & STATE HELPERS ---
 
   private static resolveActivePosition(tickerArg?: string) {
-    const state: any = portfolioStore.getState();
+    const state = portfolioStore.getState();
     const sym = (tickerArg || state.activeView || '').toUpperCase();
     const pos = state.positions?.[sym];
     if (!pos || !(Number(pos.shares) > 0)) {
@@ -491,17 +491,11 @@ export class CommandDispatcher {
     return { sym, pos, state };
   }
 
-  private static getRules(state: any) {
-    const a = state.brokerAssumptions || {};
-    const annualRate = Number(a.annualRate ?? a.annualBorrowRate ?? 0.15);
-    const dayCountBasis = Number(a.dayCountBasis ?? 365);
+  private static getRules(state: ReturnType<typeof portfolioStore.getState>) {
+    const assumptions = state.brokerAssumptions;
     return {
-      annualRate,
-      dayCountBasis,
-      dailyRate: annualRate / dayCountBasis,
-      commPerShare: Number(a.commPerShare ?? a.commissionPerShare ?? 0.012),
-      commVolumePct: Number(a.commVolumePct ?? a.commissionRatePct ?? 0.0012),
-      minCommOrder: Number(a.minCommOrder ?? a.commissionMin ?? 1.2)
+      ...resolveCommissionConfig(assumptions),
+      dailyRate: assumptions.annualBorrowRate / assumptions.dayCountBasis
     };
   }
 
@@ -513,7 +507,7 @@ export class CommandDispatcher {
     const shares = Number(pos.shares);
     const costBasis = (pos.tranches || []).reduce((s: number, tr: any) => s + tr.qty * tr.price, 0);
     const grossSell = shares * simPrice;
-    const commSell = calculateCommission(shares, grossSell, rules as any);
+    const commSell = calculateCommission(shares, grossSell, rules);
     const totalComms = (Number(pos.commBuy) || 0) + commSell;
 
     const totalDebt = Math.abs(Number(state.balance) || 0);
@@ -547,7 +541,7 @@ export class CommandDispatcher {
     const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     const rows = scenarios.map(s => {
       const gross = shares * s.price;
-      const sellFee = calculateCommission(shares, gross, rules as any);
+      const sellFee = calculateCommission(shares, gross, rules);
       const carry = debt * rules.dailyRate * s.days;
       const marginFee = currentMargin + carry;
       const net = gross - costBasis - buyCommission - sellFee - marginFee;
@@ -621,7 +615,7 @@ export class CommandDispatcher {
     );
     const oldBuyFee = Math.max(0, Number(pos.commBuy) || 0);
     const purchaseValue = qty * price;
-    const purchaseFee = calculateCommission(qty, purchaseValue, rules as any);
+    const purchaseFee = calculateCommission(qty, purchaseValue, rules);
     const totalOutlay = purchaseValue + purchaseFee;
     const balance = Number(state.balance) || 0;
     const freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
@@ -647,7 +641,7 @@ export class CommandDispatcher {
     const signed = (n: number) => (n > 0 ? '+$' : n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
     const scenarioPnl = (shares: number, cost: number, buyFee: number, exitPrice: number) =>
       shares * exitPrice - cost - buyFee -
-      calculateCommission(shares, shares * exitPrice, rules as any) - currentMargin;
+      calculateCommission(shares, shares * exitPrice, rules) - currentMargin;
     const modal: ScenarioModalData = {
       kind: 'buy-more',
       title: 'Buy More Projection · ' + ticker,
@@ -656,8 +650,8 @@ export class CommandDispatcher {
       rows: (() => {
         const projectionPrice = hasTarget ? target : quote;
         const dates = getUsEquityProjectionDates(new Date(), pos.startDate || state.startDate);
-        const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules as any);
-        const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules as any);
+        const currentComms = oldBuyFee + calculateCommission(oldShares, oldShares * projectionPrice, rules);
+        const projectedComms = newBuyFee + calculateCommission(newShares, newShares * projectionPrice, rules);
         const currentDebt = Math.max(0, -balance);
         const projectedDebt = Math.max(0, -balanceAfter);
         return dates.map(item => {
