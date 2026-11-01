@@ -178,10 +178,16 @@ export function ClosedHistoryDesk() {
       if (Object.keys(nextState).length) portfolioStore.setState(nextState);
       // Persist computed fee allocations immediately; navigation to Balance may
       // trigger unrelated portfolio saves and a fresh broker-history hydration.
-      saveSavedHistory({
+      const historyPersisted = saveSavedHistory({
         brokerExecutedTrades: brokerExecutions.length ? updatedExecutions : (portfolioStore.getState().brokerExecutedTrades || []),
         cashflows: cashflowRows
       });
+      if (!historyPersisted) {
+        const message = 'Closed history was recalculated but could not be saved on this device. Cloud synchronization was skipped.';
+        setCashflowSyncMessage(message);
+        console.error(message);
+        return false;
+      }
       // The closed-history collection lives in its own cloud record; saving the
       // portfolio snapshot alone does not upload updated fee allocations. Without
       // this write, the next section mount reloads stale cloud executions over the
