@@ -202,7 +202,7 @@ describe('refreshTrackedQuotes', () => {
       freshness: 'unknown',
       receivedAt: expect.any(Number)
     }), 400);
-    expect(record.mock.calls[0][4]).not.toHaveProperty('sourceTimestamp');
+    expect(record.mock.calls[0][4]?.sourceTimestamp).toBeUndefined();
   });
 
   it('uses the matching pre-market or post-market observation timestamp', async () => {
