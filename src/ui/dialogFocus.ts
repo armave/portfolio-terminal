@@ -56,16 +56,24 @@ interface DialogElementRef {
   current: HTMLElement | null;
 }
 
+export function resolveDialogRestoreTarget(
+  explicitTarget: HTMLElement | null | undefined,
+  activeElement: HTMLElement | null
+): HTMLElement | null {
+  return explicitTarget?.isConnected ? explicitTarget : activeElement;
+}
+
 interface UseDialogFocusOptions {
   active?: boolean;
   initialFocusRef?: DialogElementRef;
+  restoreFocusRef?: DialogElementRef;
   onEscape?: () => void;
 }
 
 /** Shared focus containment, initial focus, scroll locking, and focus restoration for modal dialogs. */
 export function useDialogFocus(
   dialogRef: DialogElementRef,
-  { active = true, initialFocusRef, onEscape }: UseDialogFocusOptions = {}
+  { active = true, initialFocusRef, restoreFocusRef, onEscape }: UseDialogFocusOptions = {}
 ): void {
   const onEscapeRef = useRef(onEscape);
   onEscapeRef.current = onEscape;
@@ -75,7 +83,8 @@ export function useDialogFocus(
     const dialog = dialogRef.current;
     if (!dialog) return;
 
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousFocus = resolveDialogRestoreTarget(restoreFocusRef?.current, activeElement);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
@@ -96,5 +105,5 @@ export function useDialogFocus(
       document.body.style.overflow = previousOverflow;
       if (previousFocus?.isConnected) previousFocus.focus();
     };
-  }, [active, dialogRef, initialFocusRef]);
+  }, [active, dialogRef, initialFocusRef, restoreFocusRef]);
 }
