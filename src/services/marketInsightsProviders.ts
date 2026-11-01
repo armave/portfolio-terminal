@@ -6,7 +6,20 @@
  * the shared transport while another consumer still needs the result.
  */
 
-export type MarketNewsItem = Record<string, unknown>;
+export interface MarketNewsItem {
+  id?: number | string;
+  url?: string;
+  link?: string;
+  headline?: string;
+  title?: string;
+  datetime?: number | string;
+  publishedAt?: number | string;
+  source?: string;
+  publisher?: string;
+  summary?: string;
+  description?: string;
+  content?: string;
+}
 
 export interface StocktwitsMessage {
   id: number | string;
@@ -192,7 +205,21 @@ function createSymbolResource<T>(options: SymbolResourceOptions<T>): SymbolResou
 
 function normalizeNews(value: unknown): MarketNewsItem[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(isRecord);
+  return value.filter(isRecord).map(record => {
+    const item: MarketNewsItem = {};
+    if (typeof record.id === 'string' || (typeof record.id === 'number' && Number.isFinite(record.id))) {
+      item.id = record.id;
+    }
+    for (const key of ['url', 'link', 'headline', 'title', 'source', 'publisher', 'summary', 'description', 'content'] as const) {
+      if (typeof record[key] === 'string') item[key] = record[key];
+    }
+    for (const key of ['datetime', 'publishedAt'] as const) {
+      if (typeof record[key] === 'string' || (typeof record[key] === 'number' && Number.isFinite(record[key]))) {
+        item[key] = record[key];
+      }
+    }
+    return item;
+  });
 }
 
 function normalizeStocktwitsSentiment(value: unknown): StocktwitsMessage['sentiment'] | undefined {
