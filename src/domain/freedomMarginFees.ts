@@ -3,19 +3,33 @@ import type { ClosedTrade } from '../types/portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
 type CashflowInput = Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> };
-type BrokerExecutionFeeInput = Pick<
-  FreedomExecutedTrade,
-  'executedAt' | 'ticker' | 'side' | 'quantity' | 'price' | 'tradeValue' | 'currency'
-> & { date?: string | number | null; shares?: number | null; executionPrice?: number | null };
-type AppClosedTradeFeeInput = Pick<
-  ClosedTrade,
-  'buyDate' | 'purchaseDate' | 'sellDate' | 'exitDate' | 'closedAt' | 'date' | 'shares' | 'entryPrice' | 'avgBuyPrice'
-> & {
+type BrokerExecutionFeeInput = {
+  executedAt?: string | null;
+  date?: string | number | null;
+  ticker?: string | null;
+  side?: string | null;
+  quantity?: number | null;
+  shares?: number | null;
+  price?: number | null;
+  executionPrice?: number | null;
+  tradeValue?: number | null;
+  currency?: string | null;
+};
+type AppClosedTradeFeeInput = {
+  buyDate?: string | number | null;
+  purchaseDate?: string | number | null;
   entryDate?: string | number | null;
   openDate?: string | number | null;
-  buyPrice?: number | null;
+  sellDate?: string | number | null;
+  exitDate?: string | number | null;
+  closedAt?: string | number | null;
+  date?: string | number | null;
+  shares?: number | null;
   quantity?: number | null;
-  currency?: string;
+  entryPrice?: number | null;
+  avgBuyPrice?: number | null;
+  buyPrice?: number | null;
+  currency?: string | null;
 };
 
 export interface FreedomMarginFeeAllocations {
