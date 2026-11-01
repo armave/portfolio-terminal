@@ -8,7 +8,7 @@ import { normalizeYahooBatchResults } from './yahooQuoteContracts';
 import type { YahooBatchQuoteResult } from './yahooQuoteContracts';
 import { createYahooDeepDataCache } from './yahooDeepDataCache';
 import { createMarketInsightsProviderClient } from './marketInsightsProviders';
-import type { MarketNewsItem } from './marketInsightsProviders';
+import type { MarketNewsItem, StocktwitsStream } from './marketInsightsProviders';
 export type { MarketNewsItem, StocktwitsMessage, StocktwitsStream } from './marketInsightsProviders';
 
 export interface SyncedMarginDigest {
@@ -241,7 +241,7 @@ function dispatchProxyFetch(
   const isMarketData = MARKET_DATA_ACTIONS.has(action) &&
     (action !== '' || Boolean(queryParams.symbol));
   const request = () => performProxyFetch(action, queryParams, fetchOptions);
-  return isMarketData
+  return isMarketData && !fetchOptions.signal
     ? runMarketDataRequest(createMarketRequestIdentity(action, queryParams, fetchOptions), request)
     : request();
 }
