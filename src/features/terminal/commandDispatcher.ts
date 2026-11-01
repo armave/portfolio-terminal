@@ -478,7 +478,7 @@ export class CommandDispatcher {
   // --- LOCAL MATH & STATE HELPERS ---
 
   private static resolveActivePosition(tickerArg?: string) {
-    const state: any = portfolioStore.getState();
+    const state = portfolioStore.getState();
     const sym = (tickerArg || state.activeView || '').toUpperCase();
     const pos = state.positions?.[sym];
     if (!pos || !(Number(pos.shares) > 0)) {
