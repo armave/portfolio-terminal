@@ -579,7 +579,7 @@ export function loadSavedHistory(): ClosedHistorySnapshot {
 }
 
 /**
- * Loads broker rules with fallback on corrupted JSON or missing data.
+ * Loads untrusted saved broker settings; missing or malformed JSON returns null.
  */
 export function loadBrokerRules(): unknown {
   const storage = getBrowserStorage();
@@ -595,7 +595,7 @@ export function loadBrokerRules(): unknown {
 }
 
 /**
- * Saves broker rules configuration to localStorage.
+ * Saves normalized canonical broker assumptions to localStorage.
  */
 export function saveBrokerRules(rules: BrokerAssumptions): void {
   const storage = getBrowserStorage();
