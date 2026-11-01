@@ -17,7 +17,7 @@ import { BoardExternalLinks } from './components/BoardExternalLinks';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
 import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
 import { MarginIntelligenceModal, type MarginIntelligenceState, type MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
-import type { ScenarioModalData } from './features/terminal/commandDispatcher';
+import type { ScenarioModalData } from './features/terminal/scenarioContracts';
 import { ensureFreedomTradeNetSession, fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
 import { portfolioStore, usePortfolio, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
@@ -337,7 +337,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const handleAuthVisibility = (event: UiEvent<{ isOpen: boolean }>) => {
       setAuthOpen(event.detail.isOpen);
     };
-    const handleScenarioModal = (event: UiEvent<unknown>) => setScenarioModalData((event.detail as ScenarioModalData | null) ?? null);
+    const handleScenarioModal = (event: UiEvent<ScenarioModalData>) => setScenarioModalData(event.detail);
     const handleBackupImportRequest = () => {
       if (permissions.canManageBackups) backupImportInputRef.current?.click();
     };
