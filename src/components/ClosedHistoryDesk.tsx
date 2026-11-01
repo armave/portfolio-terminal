@@ -555,7 +555,22 @@ export function ClosedHistoryDesk() {
                 title={translateText('Updating saved trade calculations in the background…')}
                 class="inline-flex h-4 w-4 items-center justify-center text-purple-300"
               >
-                <span class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-purple-400/30 border-t-purple-300 motion-reduce:animate-none" aria-hidden="true" />
+                <svg
+                  viewBox="0 0 16 16"
+                  class="h-4 w-4 flex-none animate-spin text-purple-300 motion-reduce:animate-none"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <circle
+                    cx="8"
+                    cy="8"
+                    r="6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeDasharray="24 14"
+                  />
+                </svg>
               </span>
             )}
           </h2>
