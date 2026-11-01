@@ -9,7 +9,7 @@ interface TradeNetWorkerEnv {
 
 export type TradeNetReadCommand = "getPositionJson" | "getTradesHistory" | "getStockQuotesJson" | "getNews" | "getHloc" | "getUserCashFlows" | "getNotifyOrderJson";
 
-export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetReadCommand = "getPositionJson", paramsOverride?: Record<string, string | number | boolean | string[]>): Promise<Record<string, unknown>> {
+export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetReadCommand = "getPositionJson", paramsOverride?: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (!env.FREEDOM_PUBLIC_KEY || !env.FREEDOM_PRIVATE_KEY) {
         throw new Error("Freedom API secrets are missing from this Worker environment.");
     }
@@ -22,7 +22,7 @@ export async function requestTradeNet(env: TradeNetWorkerEnv, command: TradeNetR
     // then sign those exact body bytes concatenated with the Unix timestamp. For trade
     // history, sort=0 with no max asks TradeNet for the full history so FIFO opening
     // executions are not dropped by the API-key endpoint latest-100 default.
-    const params: Record<string, string | number | boolean | string[]> = paramsOverride ?? (command === "getTradesHistory" ? { sort: 0 } : {});
+    const params: Record<string, unknown> = paramsOverride ?? (command === "getTradesHistory" ? { sort: 0 } : {});
     const body = JSON.stringify(params);
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const key = await crypto.subtle.importKey(
