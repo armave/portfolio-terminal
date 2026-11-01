@@ -18,7 +18,7 @@ describe('latest closed trade date for incremental TradeNet synchronization', ()
   });
 
   it('handles Excel serial dates and returns no cursor for an empty trade cache', () => {
-    expect(getLatestClosedTradeDate([], [{ date: 46300 }])).toBe('2026-09-26');
+    expect(getLatestClosedTradeDate([], [{ date: 46300 }])).toBe('2026-10-05');
     expect(getLatestClosedTradeDate()).toBeUndefined();
   });
 });
