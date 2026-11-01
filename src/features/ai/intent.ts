@@ -17,7 +17,7 @@ interface FetchQuoteIntent {
   ticker: string | null;
 }
 
-type PortfolioActionIntent =
+export type PortfolioActionIntent =
   | { intent: 'action'; action: 'buy'; ticker: string; shares: number; price: number; pt: number | null; date: string | null }
   | { intent: 'action'; action: 'sell'; ticker: string; shares: number | null; price: number }
   | { intent: 'action'; action: 'set_pt'; ticker: string | null; pt: number }
@@ -119,10 +119,25 @@ function parseAction(value: Record<string, unknown>): PortfolioActionIntent {
   }
 }
 
-export function evaluateIntent<T extends AiIntent>(
-  intent: T,
-): T {
-  return intent;
+export function extractGeminiResponseText(response: unknown): string {
+  assert(isRecord(response), 'Gemini response must be an object.');
+
+  const candidates = response.candidates;
+  assert(Array.isArray(candidates) && candidates.length > 0, 'Gemini response must contain a candidate.');
+  const candidate = candidates[0];
+  assert(isRecord(candidate), 'Gemini candidate must be an object.');
+
+  const content = candidate.content;
+  assert(isRecord(content), 'Gemini candidate must contain content.');
+  const parts = content.parts;
+  assert(Array.isArray(parts) && parts.length > 0, 'Gemini content must contain a text part.');
+
+  const firstPart = parts[0];
+  assert(
+    isRecord(firstPart) && typeof firstPart.text === 'string' && firstPart.text.trim().length > 0,
+    'Gemini content must contain non-empty text.'
+  );
+  return firstPart.text;
 }
 
 export function parseAiIntent(
