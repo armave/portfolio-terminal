@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { calculatePortfolioValuation } from './portfolioValuation';
+import { calculatePortfolioValuation, getPositiveMarketPrice } from './portfolioValuation';
+
+describe('getPositiveMarketPrice', () => {
+  it('uses the first finite positive price and falls back past zero or invalid values', () => {
+    expect(getPositiveMarketPrice(125, 100)).toBe(125);
+    expect(getPositiveMarketPrice(0, 100)).toBe(100);
+    expect(getPositiveMarketPrice('invalid', '100')).toBe(100);
+    expect(getPositiveMarketPrice(null, undefined, 75)).toBe(75);
+    expect(getPositiveMarketPrice(-1, Number.NaN, 0)).toBeNull();
+  });
+});
 
 describe('calculatePortfolioValuation', () => {
   it('calculates cash and total equity separately using current extended-hours prices', () => {
