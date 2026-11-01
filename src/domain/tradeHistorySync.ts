@@ -8,7 +8,7 @@ function asRecord(value: unknown): UnknownRecord | null {
 
 function parseTradeTimestamp(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
-  if (typeof value === 'number' || (typeof value === 'string' && /^\\d+(\\.\\d+)?$/.test(value))) {
+  if (typeof value === 'number' || (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)))) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return null;
     if (numeric > 1e12) return numeric;
