@@ -5,7 +5,7 @@ import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
-import { getAppLanguage } from '../services/i18n';
+import { getAppLanguage, translateText } from '../services/i18n';
 import { formatPortfolioEquityBadge } from '../ui/portfolioEquityBadge';
 
 export function TickerTabs({
@@ -101,11 +101,14 @@ export function TickerTabs({
     empty: !isAdmin && Boolean(userId) && guestHoldings.length === 0
   });
   const hasPartialEquity = isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings;
-  const equityBadgeTitle = hasPartialEquity
-    ? 'Partial value: holdings without a valid market quote are excluded.'
-    : isAdmin
-      ? 'Current portfolio equity from available market quotes and broker cash balance.'
-      : 'Current market value of your assigned cash-funded stocks.';
+  const equityBadgeTitle = translateText(
+    hasPartialEquity
+      ? 'Partial value: holdings without a valid market quote are excluded.'
+      : isAdmin
+        ? 'Current portfolio equity from available market quotes and broker cash balance.'
+        : 'Current market value of your assigned cash-funded stocks.',
+    getAppLanguage()
+  );
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     const currentButton = event.currentTarget as HTMLButtonElement;
