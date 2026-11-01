@@ -383,7 +383,7 @@ Only the broader UX/accessibility sign-off remains as a manual release gate; the
 - [x] Add explicit column-header scope to Cash & Balance, Guest LOTS, Closed History, and Settings tables.
 - [x] Add accessible names to the Settings new-user name and password fields using existing English/Russian dictionary entries.
 - [x] Add regression coverage for focus restoration and the Stage 10 modal/table/form accessibility wiring.
-- [ ] Complete real-browser responsive checks for Cash/Balance, Margin, Closed History, Guest LOTS, Settings, and News on phone, tablet, and desktop viewports.
-- [ ] Complete manual keyboard-only and assistive-technology review, including focus order, visible focus, dialogs, table scrolling, and screen-reader table navigation.
+- [x] Complete real-browser responsive checks for Cash/Balance, Margin, Closed History, Guest LOTS, Settings, and News on phone, tablet, and desktop viewports (user confirmed complete, 2026-11-01).
+- [x] Complete manual keyboard-only and assistive-technology review, including focus order, visible focus, dialogs, table scrolling, and screen-reader table navigation (user confirmed complete, 2026-11-01).
 
-The implementation is client-side presentation and accessibility work only. It does not change portfolio calculations, broker requests or orders, account permissions, persisted data formats, Worker routes, or server authorization. Automated validation and the manual cross-device/assistive-technology sign-off are tracked separately; no physical-device or screen-reader run is claimed by this change.
+The implementation is client-side presentation and accessibility work only. It does not change portfolio calculations, broker requests or orders, account permissions, persisted data formats, Worker routes, or server authorization. User confirmed the real-browser cross-device, keyboard-only, and assistive-technology release checks complete on 2026-11-01.
