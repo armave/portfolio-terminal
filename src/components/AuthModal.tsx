@@ -78,7 +78,7 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
             : "Sign in with the account created by an administrator."}
         </p>
       </div>
-      {statusLoading ? <p class="text-xs text-slate-400" class="auth-feedback auth-feedback--status" role="status">Checking account setup…</p> : (
+      {statusLoading ? <p class="auth-feedback auth-feedback--status text-xs text-slate-400" role="status">Checking account setup…</p> : (
         <form onSubmit={handleSubmit} class="auth-form flex flex-col gap-2 pt-2">
           <label class="flex flex-col gap-1 text-xs text-slate-400">
             Name
