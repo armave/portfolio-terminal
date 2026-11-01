@@ -10,6 +10,7 @@ import { createYahooDeepDataCache } from './yahooDeepDataCache';
 import { createMarketInsightsProviderClient } from './marketInsightsProviders';
 import { normalizeYahooDeepStockData } from './yahooDeepDataContracts';
 import type { YahooDeepStockData } from './yahooDeepDataContracts';
+import { normalizeFreedomTrades } from './freedomTradeContracts';
 export { normalizeFreedomTrades } from './freedomTradeContracts';
 export type { FreedomExecutedTrade } from '../types/freedomTrade';
 import type { MarketNewsItem, StocktwitsStream } from './marketInsightsProviders';
@@ -764,20 +765,22 @@ export async function pullCloudState(
     // source has data; the dedicated record is written before the main snapshot
     // is compacted, so a failed history write cannot silently discard records.
     const localHistory = loadSavedHistory();
-    const legacyCloudExecutions = Array.isArray(parsedState.brokerExecutedTrades) ? parsedState.brokerExecutedTrades : [];
-    const localExecutionsById = new Map<string, any>(localHistory.brokerExecutedTrades
-      .filter((trade: any) => trade?.id != null && String(trade.id) !== '')
-      .map((trade: any) => [String(trade.id), trade] as [string, any]));
+    const legacyCloudExecutions = normalizeFreedomTrades(parsedState.brokerExecutedTrades);
+    const localExecutions = normalizeFreedomTrades(localHistory.brokerExecutedTrades);
+    const localExecutionsById = new Map(localExecutions
+      .filter((trade) => Boolean(trade.id))
+      .map((trade) => [trade.id, trade]));
     // Legacy portfolio snapshots may predate fee allocation. Keep the cloud's
     // execution fields but restore locally calculated fee metadata by stable ID,
     // so opening Balance cannot migrate an older snapshot over allocated fees.
-    const migratedExecutions = legacyCloudExecutions.map((trade: any) => {
-      const local = trade?.id == null ? undefined : localExecutionsById.get(String(trade.id));
+    const migratedExecutions = legacyCloudExecutions.map((trade) => {
+      const local = localExecutionsById.get(trade.id);
       if (!local) return trade;
       const preserved = { ...trade };
-      for (const field of ['marginFeeAllocations', 'marginFee', 'feesAndCommissions', 'netProfit']) {
-        if (local[field] !== undefined && local[field] !== null) preserved[field] = local[field];
-      }
+      preserved.marginFeeAllocations = local.marginFeeAllocations ?? trade.marginFeeAllocations;
+      preserved.marginFee = local.marginFee ?? trade.marginFee;
+      preserved.feesAndCommissions = local.feesAndCommissions ?? trade.feesAndCommissions;
+      preserved.netProfit = local.netProfit ?? trade.netProfit;
       return preserved;
     });
     const legacyHistory = {
@@ -856,7 +859,7 @@ const CLOSED_HISTORY_MIGRATION_KEY = 'closed_history_cloud_migrated_v1';
 
 // History has an independent Durable Object revision from portfolio state. Share
 // concurrent reads and serialize writes, coalescing structurally identical snapshots.
-type CloudHistory = { brokerExecutedTrades: any[]; cashflows: any[] };
+type CloudHistory = { brokerExecutedTrades: unknown[]; cashflows: unknown[] };
 type CloudHistorySnapshot = { history: CloudHistory | null; revision: number };
 let lastSyncedHistoryFingerprint: string | undefined;
 let cloudHistoryPushQueue: Promise<void> = Promise.resolve();
@@ -869,7 +872,7 @@ function rememberCloudHistorySnapshot(secret: string, snapshot: CloudHistorySnap
 }
 
 function enqueueCloudHistoryWrite(
-  history: { brokerExecutedTrades?: any[]; cashflows?: any[] },
+  history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] },
   secret: string,
   knownRevision: number | undefined,
   force: boolean
@@ -882,7 +885,7 @@ function enqueueCloudHistoryWrite(
 }
 
 export function pushCloudHistory(
-  history: { brokerExecutedTrades?: any[]; cashflows?: any[] },
+  history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] },
   secret = getActiveGatewaySecret(),
   knownRevision?: number
 ): Promise<boolean> {
