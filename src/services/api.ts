@@ -419,30 +419,25 @@ export async function fetchYahooQuoteData(ticker: string, force = false): Promis
   return request;
 }
 
-export async function fetchYahooStockData(ticker: string): Promise<any> {
+export async function fetchYahooStockData(ticker: string): Promise<unknown | null> {
   if (!ticker) return null;
   const cleanTicker = ticker.trim().toUpperCase();
 
   try {
-    const data = await proxyFetch('', { symbol: cleanTicker });
-    if (Array.isArray(data)) data.forEach(rememberYahooDeepStockData);
-    else rememberYahooDeepStockData(data);
+    const data: unknown = await proxyFetch('', { symbol: cleanTicker });
+    rememberYahooDeepStockData(data);
     return data;
-  } catch (err: any) {
-    console.warn(`[Yahoo Data Error for ${cleanTicker}]:`, err?.message || err);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[Yahoo Data Error for ${cleanTicker}]:`, message);
     return null;
   }
 }
 
-/**
- * Preserve per-symbol fallback handling when a Yahoo batch request fails
- * before returning individual quote results.
- */
-export function normalizeYahooBatchResults(responseData: any, tickers: string[]): any[] {
-  if (Array.isArray(responseData)) return responseData;
-  if (responseData && typeof responseData === 'object') return [responseData];
-  return tickers.map(symbol => ({ symbol, error: 'Yahoo batch request failed' }));
-}
+// Backward-compatible export; the contract and normalization live separately
+// from the API transport so the provider boundary can be tested in isolation.
+export { normalizeYahooBatchResults } from './yahooQuoteContracts';
+export type { YahooBatchQuoteResult, YahooQuotePricePayload } from './yahooQuoteContracts';
 
 export type FallbackQuoteProvider = 'finnhub' | 'twelvedata';
 
