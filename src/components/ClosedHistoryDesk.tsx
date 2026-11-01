@@ -4,7 +4,12 @@ import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { fetchFreedomCashflows, listUsers, normalizeFreedomTrades, pullCloudHistory, pushCloudHistory, type AuthUser } from '../services/api';
-import { loadSavedHistory, savePortfolioSnapshot } from '../services/storage';
+import {
+  hasFreedomCashflowHistoryBaseline,
+  loadSavedHistory,
+  markFreedomCashflowHistoryBaseline,
+  savePortfolioSnapshot
+} from '../services/storage';
 import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToClosedTrades, deduplicateClosedHistoryRows, mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations, resolveClosedTradeFeeBreakdown, resolveClosedTradeNetProfit } from '../domain/closedHistoryFees';
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, normalizeSavedFreedomCashflows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
@@ -28,7 +33,7 @@ function loadInitialBrokerExecutions(): FreedomExecutedTrade[] {
   );
 }
 
-export function ClosedHistoryDesk() {
+export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
   const state = usePortfolio();
   const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
     brokerExecutionHistoryReducer<FreedomExecutedTrade>,
@@ -85,7 +90,7 @@ export function ClosedHistoryDesk() {
       // cloud-history read completed. Enrich it from persisted calculated rows by
       // execution ID before deciding which copy is safe to restore.
       const localExecutions = mergeBrokerExecutionHistory(
-        savedExecutions,
+        [...savedExecutions, ...brokerTrades],
         preservePersistedBrokerFeeAllocations(currentExecutions, savedExecutions)
       );
       const cloud = history || { brokerExecutedTrades: [], cashflows: [] };
@@ -113,6 +118,13 @@ export function ClosedHistoryDesk() {
         cashflows: localCashflows
       };
       portfolioStore.setState(resolved);
+      // Calculate the next incremental cursor only after cloud history has been
+      // reconciled with the device snapshot, so a stale one-row local cache does
+      // not narrow the next cashflow request prematurely.
+      cashflowSyncStartDate.current = getLatestClosedTradeDate(
+        resolved.brokerExecutedTrades,
+        current.closedTrades || []
+      );
       if (JSON.stringify(resolved) !== JSON.stringify(cloud) && (resolved.brokerExecutedTrades.length || resolved.cashflows.length)) {
         try { await pushCloudHistory(resolved); }
         catch (error) { console.error('Unable to sync closed history:', error); }
@@ -262,15 +274,18 @@ export function ClosedHistoryDesk() {
     if (cashflowSyncStarted.current) return;
     cashflowSyncStarted.current = true;
     try {
-      const response = await fetchFreedomCashflows(cashflowSyncStartDate.current);
+      const hasCompleteBaseline = hasFreedomCashflowHistoryBaseline(accountId);
+      const fromDate = hasCompleteBaseline ? cashflowSyncStartDate.current : undefined;
+      const response = await fetchFreedomCashflows(fromDate);
       const fetchedRows = normalizeFreedomCashflowRows(response);
       const existingRows = portfolioStore.getState().cashflows || [];
       const mergedRows = mergeFreedomCashflowRows(existingRows, fetchedRows);
 
-      if (mergedRows.length > 0) {
-        const saved = await processCashflowRows(mergedRows, true);
-        if (!saved) return;
-      }
+      // On the first upgraded session, backfill the complete ledger before
+      // switching to date-bounded requests. Process empty snapshots as well.
+      const saved = await processCashflowRows(mergedRows, true);
+      if (!saved) return;
+      if (!hasCompleteBaseline) markFreedomCashflowHistoryBaseline(accountId);
 
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unknown broker API error.';
@@ -322,10 +337,9 @@ export function ClosedHistoryDesk() {
         [...savedFeeRows, ...stored]
       );
       latestBrokerFetch.current = normalizedPage;
-      // TradeNet now requests the complete execution history, including older
-      // opening buys needed for FIFO duration and buy-commission matching. Retain
-      // already-persisted rows as a compatibility safeguard during reconciliation.
-      const normalized = mergeBrokerExecutionHistory([...savedFeeRows, ...stored], normalizedPage);
+      // The API may return only the requested date range. Retain the complete
+      // pre-refresh cache, including opening buys needed for FIFO matching.
+      const normalized = mergeBrokerExecutionHistory([...savedFeeRows, ...stored, ...brokerTrades], normalizedPage);
       dispatchBrokerExecutionHistory({ type: 'success', trades: normalized });
       // Persist the normalized source rows in canonical state so they survive
       // refresh and can be reapplied after broker history has hydrated.
