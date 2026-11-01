@@ -900,6 +900,30 @@ describe('Yahoo deep-data request deduplication', () => {
 });
 
 
+describe('abortable market-data transport', () => {
+  it('does not coalesce signal-scoped requests during closed market sessions', async () => {
+    setMarketRequestSessionForTests('CLOSED');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'Content-Type': 'application/json' }),
+      json: async () => [{ headline: 'News' }]
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+
+    await Promise.all([
+      proxyFetch('news', { symbol: 'AAPL' }, { signal: firstController.signal }),
+      proxyFetch('news', { symbol: 'AAPL' }, { signal: secondController.signal })
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1]?.signal).toBe(firstController.signal);
+    expect(fetchMock.mock.calls[1][1]?.signal).toBe(secondController.signal);
+  });
+});
+
+
 describe('market news request deduplication', () => {
   afterEach(() => {
     clearYahooDeepStockDataCache();
@@ -910,7 +934,7 @@ describe('market news request deduplication', () => {
   it('caches news by ticker and refreshes only when explicitly requested', async () => {
     clearYahooDeepStockDataCache();
     let newsRequestCount = 0;
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => ({
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _options?: RequestInit) => ({
       ok: true,
       headers: new Headers({ 'Content-Type': 'application/json' }),
       json: async () => [{ headline: newsRequestCount++ === 0 ? 'First result' : 'Fresh result' }]
@@ -923,6 +947,7 @@ describe('market news request deduplication', () => {
 
     await expect(fetchMarketNews('AAPL', true)).resolves.toEqual([{ headline: 'Fresh result' }]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ cache: 'no-store' });
   });
 });
 
@@ -964,6 +989,7 @@ describe('Stocktwits stream cache and refresh', () => {
       messages: [{ id: 2, body: 'Fresh stream' }]
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ cache: 'no-store' });
   });
 });
 
