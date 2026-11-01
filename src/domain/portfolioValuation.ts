@@ -35,15 +35,23 @@ function finiteNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function getPositiveMarketPrice(...values: unknown[]): number | null {
+  for (const value of values) {
+    const price = finiteNumber(value);
+    if (price !== null && price > 0) return price;
+  }
+  return null;
+}
+
 function marketValue(
   holding: ValuationPositionLike | ValuationCashHoldingLike,
   isCashHolding = false
 ): { value: number; priced: boolean; hasShares: boolean } {
   const shares = finiteNumber(holding?.shares);
   if (shares === null || shares <= 0) return { value: 0, priced: true, hasShares: false };
-  const current = finiteNumber(holding.currentPrice);
-  const fallback = isCashHolding ? finiteNumber((holding as ValuationCashHoldingLike).price) : null;
-  const price = current !== null && current > 0 ? current : fallback !== null && fallback > 0 ? fallback : null;
+  const price = isCashHolding
+    ? getPositiveMarketPrice(holding.currentPrice, (holding as ValuationCashHoldingLike).price)
+    : getPositiveMarketPrice(holding.currentPrice);
   return {
     value: price === null ? 0 : shares * price,
     priced: price !== null,

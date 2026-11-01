@@ -1,4 +1,5 @@
 import type { BoardState, BrokerAssumptions, PositionRecord } from '../types/portfolio';
+import { getPositiveMarketPrice } from './portfolioValuation';
 import {
   calculateCommission,
   calculateMarginInterest,
@@ -18,9 +19,10 @@ export function getTotalPortfolioInvested(state?: BoardState | null): number {
 export function getCashCushionTotal(state?: BoardState | null): number {
   if (!state?.cashCushion) return 0;
   const cashVal = Number(state.cashCushion.freeCash) || 0;
-  const stocksVal = (state.cashCushion.holdings || []).reduce((sum, h) => {
-    const price = Number(h.currentPrice ?? h.price) || 0;
-    return sum + (Number(h.shares) || 0) * price;
+  const stocksVal = (state.cashCushion.holdings || []).reduce((sum, holding) => {
+    const price = getPositiveMarketPrice(holding.currentPrice, holding.price) ?? 0;
+    const shares = Number(holding.shares);
+    return sum + (Number.isFinite(shares) && shares > 0 ? shares * price : 0);
   }, 0);
   return cashVal + stocksVal;
 }

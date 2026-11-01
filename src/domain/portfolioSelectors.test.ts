@@ -72,19 +72,36 @@ describe('portfolio selectors', () => {
     expect(getTotalPortfolioInvested(state)).toBe(730);
   });
 
-  it('uses current quote before fallback price for cash holdings', () => {
+  it('prefers positive current quotes and falls back to positive stored prices', () => {
     const state = {
       cashCushion: {
         freeCash: '2500',
         holdings: [
           { ticker: 'MSFT', shares: 10, price: 400, currentPrice: 420 },
           { ticker: 'AAPL', shares: '2', price: '150' },
-          { ticker: 'TSLA', shares: 3, price: 100, currentPrice: 'invalid' }
+          { ticker: 'TSLA', shares: 3, price: 100, currentPrice: 'invalid' },
+          { ticker: 'NVDA', shares: 2, price: 200, currentPrice: 0 },
+          { ticker: 'AMD', shares: 4, price: -1, currentPrice: null },
+          { ticker: 'META', shares: 5, price: 0, currentPrice: Number.NaN }
         ]
       }
     } as unknown as BoardState;
 
-    expect(getCashCushionTotal(state)).toBe(2500 + 4200 + 300 + 0);
+    expect(getCashCushionTotal(state)).toBe(2500 + 4200 + 300 + 300 + 400 + 0 + 0);
+  });
+
+  it('does not let invalid share quantities affect collateral value', () => {
+    const state = {
+      cashCushion: {
+        freeCash: 100,
+        holdings: [
+          { ticker: 'AAPL', shares: 'invalid', price: 100, currentPrice: 100 },
+          { ticker: 'MSFT', shares: -3, price: 100, currentPrice: 100 }
+        ]
+      }
+    } as unknown as BoardState;
+
+    expect(getCashCushionTotal(state)).toBe(100);
   });
 });
 

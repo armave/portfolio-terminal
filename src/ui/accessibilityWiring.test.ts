@@ -140,6 +140,15 @@ describe('Stage 10 accessibility wiring', () => {
     }
   });
 
+  it('uses the same positive-price fallback across broker cash refresh and tranche valuation', () => {
+    const app = readSource('../../app.ts');
+    const cash = readSource('../components/CashCushionDesk.tsx');
+    expect(app).toContain('getPositiveMarketPrice(holding.currentPrice, holding.price)');
+    expect(app.split('const brokerCashHoldings = classified.cashStocks.map((holding: any) => {').length - 1).toBe(3);
+    expect(cash).toContain('getCashHoldingMarketPrice(cashHolding || {}) ??');
+    expect(cash).toContain('getCashHoldingMarketPrice({ currentPrice: tranche.marketPrice })');
+  });
+
   it('warns before a manual cloud pull can replace local portfolio changes', () => {
     const settings = readSource('../components/SettingsDesk.tsx');
     const app = readSource('../../app.ts');
