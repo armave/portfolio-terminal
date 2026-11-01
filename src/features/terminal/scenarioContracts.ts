@@ -1,4 +1,4 @@
-export interface ScenarioExitPoint {
+interface ScenarioExitPoint {
   label: string;
   days: number;
   price: number;
@@ -23,14 +23,14 @@ export type ScenarioInput =
       price: number;
     };
 
-export interface ScenarioModalRow {
+interface ScenarioModalRow {
   label: string;
   values: string[];
   kind?: 'section' | 'fee' | 'result' | 'risk' | 'balance';
   deltas?: Array<string | undefined>;
 }
 
-export interface ScenarioModalBase {
+interface ScenarioModalBase {
   title: string;
   subtitle: string;
   columns: string[];
@@ -41,16 +41,6 @@ export interface ScenarioModalBase {
   note: string;
 }
 
-export interface BuyMoreScenarioModalData extends ScenarioModalBase {
-  kind: 'buy-more';
-}
-
-export interface ExitComparisonScenarioModalData extends ScenarioModalBase {
-  kind: 'exit-comparison';
-}
-
-export type ScenarioModalData = BuyMoreScenarioModalData | ExitComparisonScenarioModalData;
-
-export type SingleProjectionScenarioInput = Extract<ScenarioInput, { kind: 'single-projection' }>;
-export type ExitComparisonScenarioInput = Extract<ScenarioInput, { kind: 'exit-comparison' }>;
-export type BuyMoreScenarioInput = Extract<ScenarioInput, { kind: 'buy-more' }>;
+export type ScenarioModalData =
+  | (ScenarioModalBase & { kind: 'buy-more' })
+  | (ScenarioModalBase & { kind: 'exit-comparison' });
