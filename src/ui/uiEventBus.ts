@@ -1,3 +1,5 @@
+import type { ScenarioModalData } from '../features/terminal/scenarioContracts';
+
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
   'auth:logout': undefined;
@@ -7,7 +9,7 @@ export interface UiEventPayloads {
   'terminal:backup-import-file': { file: File };
   'terminal:command-prefill': { command: string; selectText?: string | null; cursorAtEnd?: boolean };
   'terminal:margin-intelligence-request': { ticker?: string; refresh?: boolean };
-  'terminal:scenario-modal': unknown;
+  'terminal:scenario-modal': ScenarioModalData;
   'terminal:startup-offline': undefined;
   'terminal:startup-retry': undefined;
   'terminal:startup-state': { visible: boolean; failed: boolean };
