@@ -127,40 +127,38 @@ export interface ClosedTrade {
 }
 
 export interface BrokerAssumptions {
+  broker: string;
   annualBorrowRate: number;
   dayCountBasis: 360 | 365;
-  dailyRolloverCutoffArmenia: string;
+  rolloverHour: number;
+  rolloverMinute: number;
+  rolloverTimeZone: string;
   maintenanceEquityRatio: number;
   stopOutRatio: number;
   commissionMin: number;
   commissionPerShare: number;
   commissionRatePct: number;
-  annualRate?: number;
-  maintenanceMarginRatio?: number;
-  commPerShare?: number;
-  commVolumePct?: number;
-  minCommOrder?: number;
 }
 
+/** Explicit legacy settings keys accepted only by the broker-assumption normalizer. */
 export interface BrokerRules {
   broker?: string;
-  annualRate: number;
-  dayCountBasis: number;
+  annualRate?: number;
+  annualBorrowRate?: number;
+  dayCountBasis?: number;
+  dailyRolloverCutoffArmenia?: string;
   rolloverHour?: number;
   rolloverMinute?: number;
   rolloverTimeZone?: string;
-  maintenanceMarginRatio: number;
-  stopOutRatio: number;
-  commPerShare?: number;
-  commVolumePct?: number;
-  minCommOrder?: number;
-  annualBorrowRate?: number;
-  dailyRolloverCutoffArmenia?: string;
+  maintenanceMarginRatio?: number;
   maintenanceEquityRatio?: number;
+  stopOutRatio?: number;
   commissionMin?: number;
   commissionPerShare?: number;
   commissionRatePct?: number;
-  [key: string]: any;
+  commPerShare?: number;
+  commVolumePct?: number;
+  minCommOrder?: number;
 }
 
 interface ApiKeys {
@@ -301,7 +299,7 @@ export interface PortfolioState {
   closedHistory?: ClosedTrade[];
   /** Normalized broker-reported cashflows, stored separately from closed trade P&L. */
   cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw?: Record<string, string> }>;
-  brokerAssumptions: BrokerRules;
+  brokerAssumptions: BrokerAssumptions;
   lastRolloverTimestamp?: number;
   lastUpdated?: number;
   gatewaySecret?: string;
