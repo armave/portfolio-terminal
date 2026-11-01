@@ -3711,3 +3711,34 @@ table tbody tr:hover {
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
 }
+
+
+/* Keep Market Depth anchored to the phone viewport with a keyboard/touch scroll region. */
+.market-depth-modal {
+  box-sizing: border-box;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding:
+    max(0.75rem, env(safe-area-inset-top))
+    max(0.75rem, env(safe-area-inset-right))
+    max(0.75rem, env(safe-area-inset-bottom))
+    max(0.75rem, env(safe-area-inset-left));
+}
+
+.market-depth-dialog {
+  box-sizing: border-box;
+  max-height: min(88vh, 52rem);
+  max-height: min(calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem), 52rem);
+}
+
+.market-depth-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}

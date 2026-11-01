@@ -146,7 +146,7 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
             <button ref={closeButtonRef} type="button" onClick={onClose} class="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800">Close</button>
           </div>
         </header>
-        <div class="min-h-0 overflow-y-auto p-4">
+        <div class="min-h-0 flex-1 overflow-y-auto p-4" role="region" aria-labelledby="marginIntelligenceTitle" tabIndex={0}>
           {data.loading && <div class="flex items-center gap-3 rounded-lg border border-cyan-900/40 bg-cyan-950/20 p-4 text-sm text-cyan-100" role="status"><span class="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />Syncing fresh news and regenerating the review…</div>}
           {data.error && <div class="rounded-lg border border-rose-900/60 bg-rose-950/30 p-3 text-sm text-rose-200">{data.error}</div>}
           {data.analysis && <div data-animate-content class="break-words text-sm leading-6 text-slate-200">{renderAnalysisMarkdown(data.analysis)}</div>}

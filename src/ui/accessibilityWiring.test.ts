@@ -35,6 +35,58 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('ref={closeButtonRef}');
   });
 
+  it('keeps the terminal log keyboard-scrollable and avoids forcing readers back to the latest line', () => {
+    const source = readSource('../components/TerminalLog.tsx');
+
+    expect(source).toContain('shouldFollowLatestRef.current) viewport.scrollTop = viewport.scrollHeight');
+    expect(source).toContain('shouldFollowLatestRef.current = isTerminalLogAtBottom(viewport)');
+    expect(source).toContain('role="region" aria-label="Terminal activity log" tabIndex={0}');
+    expect(source).toContain('onScroll={handleViewportScroll}');
+  });
+
+  it('makes News and Stocktwits feeds keyboard-scrollable named regions', () => {
+    const source = readSource('../components/MarketInsightsPanel.tsx');
+
+    expect(source).toContain('role="region" aria-label="Company news articles" tabIndex={0}');
+    expect(source).toContain('role="region" aria-label="Stocktwits messages" tabIndex={0}');
+  });
+
+  it('makes long modal content keyboard-scrollable and labelled by its dialog title', () => {
+    const news = readSource('../components/MarketInsightsPanel.tsx');
+    const report = readSource('../components/ScenarioReportModal.tsx');
+    const comparison = readSource('../components/ScenarioComparisonModal.tsx');
+    const intelligence = readSource('../components/MarginIntelligenceModal.tsx');
+
+    expect(news).toContain('role="region" aria-labelledby="newsArticleModalTitle" tabIndex={0}');
+    expect(report).toContain('role="region" aria-labelledby="scenarioReportTitle" tabIndex={0}');
+    expect(comparison).toContain('role="region" aria-labelledby="scenarioComparisonTitle" tabIndex={0}');
+    expect(intelligence).toContain('role="region" aria-labelledby="marginIntelligenceTitle" tabIndex={0}');
+  });
+
+  it('provides scoped row and column headings for scenario comparison tables', () => {
+    const source = readSource('../components/ScenarioComparisonModal.tsx');
+
+    expect(source).toContain('<caption class="sr-only">{data.title}</caption>');
+    expect(source).toContain('<th scope="col"');
+    expect(source).toContain('<th scope="row"');
+  });
+
+  it('uses a body portal and viewport-sized scrolling for Market Depth on mobile', () => {
+    const source = readSource('../components/MarketDepthButton.tsx');
+    const stylesheet = readSource('../../style.css');
+
+    expect(source).toContain("import { createPortal } from 'preact/compat'");
+    expect(source).toContain('isOpen && createPortal(');
+    expect(source).toContain('document.body');
+    expect(source).toContain('market-depth-dialog flex min-h-0');
+    expect(source).toContain('market-depth-content min-h-0 flex-1');
+    expect(source).toContain('role="region" aria-label={`Market depth order book for ${ticker}`} tabIndex={0}');
+    expect(stylesheet).toContain('.market-depth-modal');
+    expect(stylesheet).toContain('height: 100dvh;');
+    expect(stylesheet).toContain('.market-depth-content');
+    expect(stylesheet).toContain('max-height: min(calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem), 52rem);');
+  });
+
   it('renders order-book levels with semantic table headings and localized captions', () => {
     const source = readSource('../components/MarketDepthButton.tsx');
     expect(source).toContain('<caption class="sr-only">{caption}</caption>');
