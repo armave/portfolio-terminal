@@ -6,7 +6,7 @@ import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
 import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
-import { listUsers, type AuthUser } from '../services/api';
+import { listUsers, normalizeFreedomTrades, type AuthUser } from '../services/api';
 import { loadSavedHistory } from '../services/storage';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
 import { createGuestDirectoryState, guestDirectoryReducer } from '../domain/guestDirectoryState';
@@ -69,8 +69,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     brokerExecutionHistoryReducer<FreedomExecutedTradeLike>,
     undefined,
     () => createBrokerExecutionHistoryState(
-      guestUserId ? [] : state.brokerExecutedTrades as FreedomExecutedTradeLike[] | undefined,
-      shouldReadBrokerHistory ? loadSavedHistory().brokerExecutedTrades as FreedomExecutedTradeLike[] : [],
+      guestUserId ? [] : state.brokerExecutedTrades,
+      shouldReadBrokerHistory ? normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades) : [],
       shouldReadBrokerHistory
     )
   );
@@ -122,7 +122,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     // account-wide broker execution events or restore the administrator's history.
     if (!shouldReadBrokerHistory) return;
     const removeTradesListener = addBrokerEventListener('broker:executed-trades', (trades) => {
-      dispatchBrokerExecutionHistory({ type: 'success', trades: trades as unknown as FreedomExecutedTradeLike[] });
+      dispatchBrokerExecutionHistory({ type: 'success', trades });
     });
     const removeErrorListener = addBrokerEventListener('broker:executed-trades-error', () => {
       // Preserve the last good in-memory or saved snapshot; only mark it stale.
@@ -145,7 +145,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     if (Array.isArray(currentTrades) && currentTrades.length > 0) {
       dispatchBrokerExecutionHistory({
         type: 'success',
-        trades: currentTrades as FreedomExecutedTradeLike[]
+        trades: currentTrades
       });
     }
   }, [state.brokerExecutedTrades, shouldReadBrokerHistory]);
