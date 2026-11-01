@@ -36,6 +36,21 @@ describe('market insights provider client', () => {
     expect(fetchNews).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps symbol caches independent and reuses a prior symbol result on revisit', async () => {
+    const fetchNews = vi.fn(async (symbol: string) => [{ headline: `News for ${symbol}` }]);
+    const client = createMarketInsightsProviderClient({
+      fetchNews,
+      fetchStocktwits: vi.fn().mockResolvedValue({ messages: [] })
+    });
+
+    await expect(client.fetchMarketNews('AAPL')).resolves.toEqual([{ headline: 'News for AAPL' }]);
+    await expect(client.fetchMarketNews('MSFT')).resolves.toEqual([{ headline: 'News for MSFT' }]);
+    await expect(client.fetchMarketNews(' aapl ')).resolves.toEqual([{ headline: 'News for AAPL' }]);
+
+    expect(fetchNews.mock.calls.map(([symbol]) => symbol)).toEqual(['AAPL', 'MSFT']);
+    expect(fetchNews).toHaveBeenCalledTimes(2);
+  });
+
   it('normalizes Stocktwits messages and supplies a safe fallback stream URL', async () => {
     const client = createMarketInsightsProviderClient({
       fetchNews: vi.fn().mockResolvedValue([]),
