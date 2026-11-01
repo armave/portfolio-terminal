@@ -650,7 +650,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 message="Refreshing live quotes and preparing the latest portfolio view…"
                 accent="cyan"
               />
-            ) : <>
+            ) : <div class="desk-content-reveal">
+
               <div
                 id="emptyStatePanel"
                 class={"border border-dashed border-slate-700 bg-slate-900/40 rounded-lg p-4 " + (emptyStateVisible ? "" : "hidden")}
@@ -715,13 +716,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   aria-label="Market insights"
                 >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? <MarketInsightsPanel /> : null}</section>
               </div>
-            </>}
+            </div>}
           </div>}
 
           {/* Cash Cushion Management Panel */}
           <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>
             {hasOpenedCashCushion
-              ? <CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} />
+              ? <div class="desk-content-reveal"><CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
               : <DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}
           </div>
 
@@ -731,10 +732,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             class={`desk-view-transition min-w-0 ${activeDeskView === 'GUEST_HISTORY' ? '' : 'hidden'}`}
           >
             {hasOpenedGuestHistory
-              ? <GuestTrancheHistory
+              ? <div class="desk-content-reveal"><GuestTrancheHistory
                 records={portfolioSnapshot.guestTrancheLedger || []}
                 activeTranches={portfolioSnapshot.guestPortfolioSnapshot?.tranches || []}
-              />
+              /></div>
               : <DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}
           </div>}
 
@@ -757,14 +758,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         class={"desk-view-transition rounded-lg " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
       >
         {permissions.canViewClosedHistory && (hasOpenedClosedHistory
-          ? <ClosedHistoryDesk accountId={currentUser?.id || ''} />
+          ? <div class="desk-content-reveal"><ClosedHistoryDesk accountId={currentUser?.id || ''} /></div>
           : <DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />)}
       </div>
 
       {/* Settings */}
       <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">
         {hasOpenedSettings
-          ? <SettingsDesk currentUser={currentUser} />
+          ? <div class="desk-content-reveal"><SettingsDesk currentUser={currentUser} /></div>
           : <DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}
       </div>
 
