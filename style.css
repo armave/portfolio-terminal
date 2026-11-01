@@ -3155,3 +3155,48 @@ table tbody tr:hover {
     transition: none !important;
   }
 }
+
+
+/* Margin desk: align the projection table and market insights as a single data row. */
+#tradingWorkspaceGrid.margin-workspace-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#mainDeskContainer {
+  min-width: 0;
+  container-name: margin-desk;
+  container-type: inline-size;
+}
+
+.margin-data-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--layout-stack-gap, 1rem);
+  min-width: 0;
+  width: 100%;
+}
+
+#projectionTableContainer,
+#marketInsightsPanel {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+#marketInsightsPanel {
+  align-self: stretch;
+}
+
+@container margin-desk (min-width: 56rem) {
+  .margin-data-workspace {
+    grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.85fr);
+    gap: clamp(1rem, 1.5cqw, 1.5rem);
+  }
+}
+
+@media (max-width: 767px) {
+  .margin-data-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -39,3 +39,28 @@ describe('fluid workspace styles', () => {
     expect(fluidStyles).toMatch(/transition:\s*none\s*!important;/);
   });
 });
+
+
+describe('Margin projection and insights layout', () => {
+  const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+
+  it('places the projection table and market insights in the same responsive workspace row', () => {
+    const workspaceStart = appSource.indexOf('id="marginDataWorkspace"');
+    const projection = appSource.indexOf('<ProjectionsTable />', workspaceStart);
+    const insights = appSource.indexOf('<MarketInsightsPanel />', workspaceStart);
+    const workspaceEnd = appSource.indexOf('</div>', insights);
+    expect(workspaceStart).toBeGreaterThan(-1);
+    expect(projection).toBeGreaterThan(workspaceStart);
+    expect(insights).toBeGreaterThan(projection);
+    expect(workspaceEnd).toBeGreaterThan(insights);
+    expect(appSource).toContain('margin-workspace-layout');
+  });
+
+  it('uses two columns only when the Margin desk has enough room and stacks on smaller screens', () => {
+    expect(fluidStyles).toMatch(/#tradingWorkspaceGrid\\.margin-workspace-layout\\s*\\{[^}]*grid-template-columns:\\s*minmax\\(0,\\s*1fr\\)/s);
+    expect(fluidStyles).toMatch(/container-name:\\s*margin-desk;/);
+    expect(fluidStyles).toMatch(/@container\\s+margin-desk\\s*\\(min-width:\\s*56rem\\)/);
+    expect(fluidStyles).toMatch(/\\.margin-data-workspace\\s*\\{[^}]*grid-template-columns:\\s*minmax\\(0,\\s*1\\.25fr\\)\\s+minmax\\(18rem,\\s*0\\.85fr\\)/s);
+    expect(fluidStyles).toMatch(/@media\\s*\\(max-width:\\s*767px\\)\\s*\\{\\s*\\.margin-data-workspace\\s*\\{[^}]*grid-template-columns:\\s*minmax\\(0,\\s*1fr\\)/s);
+  });
+});

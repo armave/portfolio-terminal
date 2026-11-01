@@ -641,7 +641,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         {/* Desk content and terminal share a responsive grid. It creates two columns only when both can fit. */}
         <div id="tradingWorkspaceGrid" class={["BALANCE", "GUEST_HISTORY"].includes(activeDeskView)
           ? ""
-          : "trading-workspace-grid " + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
+          : "trading-workspace-grid " + (permissions.canViewMarginDesk && !["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "margin-workspace-layout " : "") + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
           {permissions.canViewMarginDesk && <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
             {deskLoadingView === activeDeskView ? (
@@ -685,6 +685,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateVisible ? "hidden" : "")}
             ><SummaryMetricsGrid /></div>
 
+            <div id="marginDataWorkspace" class="margin-data-workspace">
             {/* Projection Table */}
             <TableScrollRegion
               label="Portfolio projection by date"
@@ -708,6 +709,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 ><ProjectionsTable /></tbody>
               </table>
             </TableScrollRegion>
+            </div>
             </>}
           </div>}
 
