@@ -1,6 +1,7 @@
 import { fetchYahooQuoteData, fetchFallbackQuote } from './api';
 import { fetchFreedomQuote } from './freedomMarketData';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
+import type { QuoteDetails } from '../types/portfolio';
 
 // Time-anchored and monotonic, including requests started in the same millisecond.
 // Anchoring to epoch time keeps persisted ordering comparable after ordinary reloads.
@@ -71,7 +72,7 @@ export async function fetchLivePriceFromProviders(symbol: string) {
   symbol = symbol.toUpperCase();
   let price: number | null = null;
   let sourceName = "";
-  let quoteDetails: any = null;
+  let quoteDetails: QuoteDetails | null = null;
 
   // Start both providers together; selection below is based on source timestamps,
   // not request completion order or a hard-coded vendor preference.
