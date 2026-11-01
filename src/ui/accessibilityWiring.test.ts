@@ -118,6 +118,19 @@ describe('Stage 10 accessibility wiring', () => {
     }
   });
 
+  it('warns before a manual cloud pull can replace local portfolio changes', () => {
+    const settings = readSource('../components/SettingsDesk.tsx');
+    const app = readSource('../../app.ts');
+
+    expect(settings).toContain("aria-label={translateText('Replace local portfolio from KV cloud')}");
+    expect(settings).toContain("aria-label={translateText('Reset local and cloud portfolio data')}");
+    expect(settings).toContain("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.");
+    expect(settings).toContain("Reset deletes saved portfolio and history data from this device and KV cloud. TradeNet records held by the broker are not deleted.");
+    expect(settings).toContain("Export a JSON backup before pulling cloud state or resetting the portfolio.");
+    expect(app).toContain("if (!window.confirm(translateText(\"Pulling cloud will replace this device's local portfolio with the shared KV cloud snapshot. Any changes that have not synced can be lost. Export a JSON backup first if you may need them. Continue?\"))) return;");
+    expect(app).toContain("void syncCloudState('pull');");
+  });
+
   it('gives new user credentials explicit accessible names', () => {
     const source = readSource('../components/SettingsDesk.tsx');
     expect(source).toContain('aria-label="User name"');

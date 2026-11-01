@@ -2315,7 +2315,10 @@ function bindStartupActions() {
       }
     })();
   });
-  addUiEventListener('settings:pull-cloud-state', () => { void syncCloudState('pull'); });
+  addUiEventListener('settings:pull-cloud-state', () => {
+    if (!window.confirm(translateText("Pulling cloud will replace this device's local portfolio with the shared KV cloud snapshot. Any changes that have not synced can be lost. Export a JSON backup first if you may need them. Continue?"))) return;
+    void syncCloudState('pull');
+  });
   addUiEventListener('settings:change-refresh-interval', (event) => {
     const intervalMs = Number(event.detail.intervalMs);
     setQuoteRefreshInterval(event.detail.intervalMs);
