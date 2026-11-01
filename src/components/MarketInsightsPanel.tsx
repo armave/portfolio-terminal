@@ -11,6 +11,17 @@ import { useDialogFocus } from '../ui/dialogFocus';
 
 export type InsightSection = MarketInsightsSection;
 
+export function formatNewsRelativeTime(datetime: unknown, now = Date.now()): string {
+  if ((typeof datetime !== 'number' && typeof datetime !== 'string') ||
+      (typeof datetime === 'string' && !datetime.trim())) {
+    return formatRelativeTime(Number.NaN, now);
+  }
+
+  const seconds = Number(datetime);
+  if (!Number.isFinite(seconds) || seconds <= 0) return formatRelativeTime(Number.NaN, now);
+  return formatRelativeTime(seconds * 1000, now);
+}
+
 const INSIGHT_TABS: Array<{ id: InsightSection; domId: string; label: string }> = [
   { id: 'news', domId: 'insightTabNews', label: 'News' },
   { id: 'fundamentals', domId: 'insightTabFundamentals', label: 'Fundamentals' },
@@ -328,7 +339,7 @@ export function MarketInsightsPanel() {
                 class="news-feed-item block w-full text-left bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
               >
                 <div class="text-[10px] text-cyan-400 mb-1">
-                  {formatRelativeTime(Number(n.datetime) * 1000)} · {n.source || 'News'}
+                  {formatNewsRelativeTime(n.datetime)} · {n.source || 'News'}
                 </div>
                 <div class="text-slate-200 text-xs font-semibold leading-snug">
                   {n.headline || 'Untitled article'}
@@ -675,7 +686,7 @@ export function MarketInsightsPanel() {
             <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 p-4 sm:p-5">
               <div class="min-w-0">
                 <p class="mb-1 text-[10px] font-bold uppercase tracking-widest text-cyan-400">
-                  {selectedNews.source || 'Company news'}{selectedNews.datetime ? ` · ${formatRelativeTime(Number(selectedNews.datetime) * 1000)}` : ''}
+                  {selectedNews.source || 'Company news'} · {formatNewsRelativeTime(selectedNews.datetime)}
                 </p>
                 <h2 id="newsArticleModalTitle" class="text-base font-bold leading-snug text-slate-100 sm:text-lg">
                   {selectedNews.headline || 'Untitled article'}
