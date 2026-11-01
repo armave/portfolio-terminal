@@ -93,7 +93,7 @@ describe('Yahoo deep-data cache', () => {
   it('lets one consumer abort without cancelling another subscriber', async () => {
     let resolveResponse!: (value: unknown) => void;
     let transportSignal: AbortSignal | undefined;
-    const fetchData = vi.fn((_symbol: string, _force: boolean, signal: AbortSignal) => {
+    const fetchData = vi.fn((_symbol: string, _force: boolean, signal?: AbortSignal) => {
       transportSignal = signal;
       return new Promise<unknown>((resolve) => { resolveResponse = resolve; });
     });
@@ -121,7 +121,8 @@ describe('Yahoo deep-data cache', () => {
   it('aborts transport when the last subscriber cancels and allows an immediate retry', async () => {
     let transportSignal: AbortSignal | undefined;
     const fetchData = vi.fn()
-      .mockImplementationOnce((_symbol: string, _force: boolean, signal: AbortSignal) => {
+      .mockImplementationOnce((_symbol: string, _force: boolean, signal?: AbortSignal) => {
+        if (!signal) throw new Error('Expected an abort signal for this subscriber.');
         transportSignal = signal;
         return new Promise<unknown>((_resolve, reject) => {
           signal.addEventListener('abort', () => {
