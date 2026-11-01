@@ -61,9 +61,11 @@ describe('Margin projection and insights layout', () => {
     expect(projectionSource).toContain('projection-page-row');
     expect(projectionSource).toContain('projection-pagination-controls');
     expect(projectionSource).toContain('aria-live="polite"');
-    expect(fluidStyles).toMatch(/\.projection-page-row\\s*\\{[^}]*animation:\\s*projection-page-swap\\s+260ms/s);
-    expect(fluidStyles).toMatch(/@keyframes projection-page-swap/);
-    expect(fluidStyles).toMatch(/\.projection-pagination-controls\\s*\\{[^}]*flex-wrap:\\s*wrap;/s);
+    expect(fluidStyles).toContain('#projectionTableContainer .projection-page-row');
+    expect(fluidStyles).toContain('animation: projection-page-swap 260ms');
+    expect(fluidStyles).toContain('@keyframes projection-page-swap');
+    expect(fluidStyles).toContain('#projectionTableContainer .projection-pagination-controls');
+    expect(fluidStyles).toContain('flex-wrap: wrap;');
   });
 
   it('uses two columns only when the Margin desk has enough room and stacks on smaller screens', () => {
