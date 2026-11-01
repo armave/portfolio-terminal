@@ -30,6 +30,28 @@ describe('cache-first Balance synchronization state', () => {
     )).toEqual({ hasSnapshot: true, status: 'ready' });
   });
 
+  it('accepts a legacy cached snapshot with no status metadata', () => {
+    expect(balanceSyncReducer(
+      createBalanceSyncState(false, true),
+      { type: 'snapshot', loaded: true }
+    )).toEqual({ hasSnapshot: true, status: 'ready' });
+  });
+
+  it('shows a cached snapshot as stale instead of blocking when its saved status is stale', () => {
+    expect(balanceSyncReducer(
+      createBalanceSyncState(false, true),
+      { type: 'snapshot', loaded: true, status: 'stale' }
+    )).toEqual({ hasSnapshot: true, status: 'stale' });
+  });
+
+  it('does not mark an incomplete account payload as a usable snapshot', () => {
+    const initial = createBalanceSyncState(false, true);
+    expect(balanceSyncReducer(
+      initial,
+      { type: 'snapshot', loaded: false }
+    )).toEqual(initial);
+  });
+
   it('starts a new full refresh without clearing cached data', () => {
     const stale = balanceSyncReducer(
       createBalanceSyncState(true, true),
