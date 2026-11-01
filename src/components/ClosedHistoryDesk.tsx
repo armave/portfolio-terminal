@@ -530,6 +530,7 @@ export function ClosedHistoryDesk() {
   const averageHoldingDays = knownDurations.length ? knownDurations.reduce((total, days) => total + days, 0) / knownDurations.length : null;
   const winRate = profitKnownTrades.length ? (winningTrades / profitKnownTrades.length) * 100 : 0;
   const backgroundSyncPending = !cashflowHistoryReady || !cashflowSyncReady || !cashflowAllocationReady;
+  const isBackgroundUpdating = backgroundSyncPending || brokerTradesRefreshing;
 
   // Only block the desk when there is nothing cached or app-owned to display.
   // Cloud reconciliation and fee refreshes continue independently in the background.
@@ -545,8 +546,18 @@ export function ClosedHistoryDesk() {
     <section class="rounded-xl border-card p-4 space-y-4" aria-label="Trades">
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
         <div>
-          <h2 class="text-base font-black uppercase tracking-wider text-purple-300">
+          <h2 class="flex items-center gap-2 text-base font-black uppercase tracking-wider text-purple-300">
             Trades
+            {isBackgroundUpdating && (
+              <span
+                role="status"
+                aria-label={translateText('Updating saved trade calculations in the background…')}
+                title={translateText('Updating saved trade calculations in the background…')}
+                class="inline-flex h-4 w-4 items-center justify-center text-purple-300"
+              >
+                <span class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-purple-400/30 border-t-purple-300 motion-reduce:animate-none" aria-hidden="true" />
+              </span>
+            )}
           </h2>
           <p class="text-xs text-slate-400">
             Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.
@@ -560,12 +571,7 @@ export function ClosedHistoryDesk() {
       </div>
 
       {cashflowSyncMessage && <p role="alert" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-200 transition-all">{cashflowSyncMessage}</p>}
-      {backgroundSyncPending && trades.length > 0 && (
-        <p role="status" aria-live="polite" class="rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-xs text-slate-400">
-          {translateText('Updating saved trade calculations in the background…')}
-        </p>
-      )}
-      {brokerTradesRefreshing && <p role="status" aria-live="polite" class="rounded-lg border border-cyan-900/60 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-200">Refreshing TradeNet history…</p>}
+
       {brokerTradesError && trades.length > 0 && (
         <div role="alert" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
           <span>TradeNet refresh failed. Showing saved history, which may be out of date.</span>
