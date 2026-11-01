@@ -83,11 +83,11 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
         <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
           Status
           <select value={statusFilter} onChange={(event) => setStatusFilter((event.currentTarget as HTMLSelectElement).value as typeof statusFilter)}
-            class="h-8 rounded border border-slate-700 bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200">
-            <option value="all">All statuses</option>
-            <option value="active">Active</option>
-            <option value="closed">Closed</option>
-            <option value="unassigned">Unassigned</option>
+            class="h-8 rounded border border-slate-700 text-center bg-slate-950 px-2 text-xs font-normal normal-case text-slate-200">
+            <option value="all" class="text-center">All statuses</option>
+            <option value="active" class="text-center">Active</option>
+            <option value="closed" class="text-center">Closed</option>
+            <option value="unassigned" class="text-center">Unassigned</option>
           </select>
         </label>
         <label class="flex min-w-[8rem] flex-1 flex-col gap-1 text-[9px] font-semibold uppercase tracking-wide text-slate-500">

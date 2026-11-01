@@ -732,10 +732,10 @@ export function ClosedHistoryDesk() {
                           </div>
                         )}
                         {row.cashQuantity > 0 ? (
-                          <select aria-label={'Guest for ' + String((trade as any).ticker || 'trade') + ' cash shares'} value={selectedGuestId} onChange={(event) => persistAllocation(allocationType, row.cashQuantity, (event.currentTarget as HTMLSelectElement).value)} class="max-w-[11rem] rounded border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] text-slate-200">
+                          <select aria-label={'Guest for ' + String((trade as any).ticker || 'trade') + ' cash shares'} value={selectedGuestId} onChange={(event) => persistAllocation(allocationType, row.cashQuantity, (event.currentTarget as HTMLSelectElement).value)} class="max-w-[11rem] rounded border border-slate-700 text-center bg-slate-950 px-2 py-1 text-[10px] text-slate-200">
                             <option value="">Unassigned</option>
-                            {selectedGuestId && !guestUsers.some((user) => user.id === selectedGuestId) && <option value={selectedGuestId}>Guest unavailable</option>}
-                            {guestUsers.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+                            {selectedGuestId && !guestUsers.some((user) => user.id === selectedGuestId) && <option value={selectedGuestId} class="text-center">Guest unavailable</option>}
+                            {guestUsers.map((user) => <option key={user.id} class="text-center" value={user.id}>{user.name}</option>)}
                           </select>
                         ) : <span class="text-[9px] text-slate-600">No cash allocation</span>}
                         {assignedGuests.length > 0 && !savedAllocation && assignedGuests.map((assignment) => (

@@ -235,9 +235,9 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </div>
           {account && <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
             Language
-            <select aria-label="Account language" value={account.language ?? "en"} disabled={savingLanguage} onChange={(event) => void handleLanguageChange(event)} class="h-8 rounded border border-slate-700 bg-slate-900 px-2 text-xs text-slate-300">
-              <option value="en">English</option>
-              <option value="ru">Russian</option>
+            <select aria-label="Account language" value={account.language ?? "en"} disabled={savingLanguage} onChange={(event) => void handleLanguageChange(event)} class="h-8 rounded border border-slate-700 bg-slate-900 text-center px-2 text-xs text-slate-300">
+              <option value="en" class="text-center">English</option>
+              <option value="ru" class="text-center">Russian</option>
             </select>
           </label>}
           {languageError && <span role="alert" class="text-[10px] text-rose-300">{languageError}</span>}
@@ -264,33 +264,33 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             </select>
           </label>
           {permissions.canManageBackups && <>
-          <button
-            type="button"
-            onClick={() => emitUiEvent('settings:export-backup')}
-            aria-label="Export portfolio backup as JSON"
-            title="Export portfolio state to JSON file"
-            class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
-          >
-            Export
-          </button>
-          <button
-            type="button"
-            onClick={() => emitUiEvent('terminal:backup-import-request')}
-            title="Validate and confirm a portfolio backup import; cloud sync depends on KV configuration"
-            aria-label="Import portfolio backup from JSON"
-            class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"
-          >
-            Import
-          </button>
-          <button
-            type="button"
-            onClick={() => emitUiEvent('settings:reset-to-blank-state')}
-            title="Clear all local data and return to blank slate. Export a backup first if you may need this portfolio again."
-            aria-label="Reset all local portfolio data"
-            class="h-8 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
-          >
-            Reset
-          </button>
+            <button
+              type="button"
+              onClick={() => emitUiEvent('settings:export-backup')}
+              aria-label="Export portfolio backup as JSON"
+              title="Export portfolio state to JSON file"
+              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
+            >
+              Export
+            </button>
+            <button
+              type="button"
+              onClick={() => emitUiEvent('terminal:backup-import-request')}
+              title="Validate and confirm a portfolio backup import; cloud sync depends on KV configuration"
+              aria-label="Import portfolio backup from JSON"
+              class="h-8 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-purple-300 text-xs font-bold px-2.5 py-1 rounded transition cursor-pointer flex items-center justify-center text-center"
+            >
+              Import
+            </button>
+            <button
+              type="button"
+              onClick={() => emitUiEvent('settings:reset-to-blank-state')}
+              title="Clear all local data and return to blank slate. Export a backup first if you may need this portfolio again."
+              aria-label="Reset all local portfolio data"
+              class="h-8 bg-rose-950/60 hover:bg-rose-900 border border-rose-800 text-rose-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center"
+            >
+              Reset
+            </button>
           </>}
         </div>
       </div>
@@ -309,8 +309,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <form onSubmit={handleCreateUser} class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_110px_120px_auto]">
             <input type="text" aria-label="User name" minLength={2} maxLength={60} required value={newName} onInput={(event) => setNewName((event.target as HTMLInputElement).value)} placeholder="User name" class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
             <input type="password" aria-label="Password (6+ characters)" minLength={6} maxLength={128} required value={newPassword} onInput={(event) => setNewPassword((event.target as HTMLInputElement).value)} placeholder="Password (6+ characters)" autoComplete="new-password" class="min-w-0 rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white" />
-            <select value={newRole} onChange={(event) => setNewRole((event.target as HTMLSelectElement).value as "guest" | "admin")} aria-label="New user role" class="rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white"><option value="guest">Guest</option><option value="admin">Admin</option></select>
-            <select value={newLanguage} onChange={(event) => setNewLanguage((event.target as HTMLSelectElement).value as AppLanguage)} aria-label="New user language" class="rounded border border-slate-700 bg-slate-900 px-2 py-2 text-xs text-white"><option value="en">English</option><option value="ru">Russian</option></select>
+            <select value={newRole} onChange={(event) => setNewRole((event.target as HTMLSelectElement).value as "guest" | "admin")} aria-label="New user role" class="rounded border border-slate-700 bg-slate-900 px-2 py-2 text-center text-xs text-white"><option class="text-center" value="guest">Guest</option><option class="text-center" value="admin">Admin</option></select>
+            <select value={newLanguage} onChange={(event) => setNewLanguage((event.target as HTMLSelectElement).value as AppLanguage)} aria-label="New user language" class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-2 text-xs text-white"><option class="text-center" value="en">English</option><option class="text-center" value="ru">Russian</option></select>
             <button type="submit" disabled={savingUser} class="rounded bg-cyan-800 px-3 py-2 text-xs font-bold text-cyan-100 hover:bg-cyan-700 disabled:opacity-50">Add user</button>
           </form>
           <TableScrollRegion label="User management table" className="table-scroll-wrapper"><table class="w-full min-w-[790px] text-left text-xs">
@@ -318,8 +318,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             <thead class="text-[10px] uppercase tracking-wider text-slate-500"><tr><th scope="col" class="p-2">Name</th><th scope="col" class="p-2">Role</th><th scope="col" class="p-2">Language</th><th scope="col" class="p-2">New password</th><th scope="col" class="p-2">Actions</th></tr></thead>
             <tbody>{users.map((user) => <tr key={user.id} class="border-t border-slate-800">
               <td class="p-2"><input aria-label={`Name for ${user.name}`} value={editValues[user.id]?.name ?? user.name} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], name: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
-              <td class="p-2"><select aria-label={`Role for ${user.name}`} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white"><option value="guest">Guest</option><option value="admin">Admin</option></select></td>
-              <td class="p-2"><select aria-label={`Language for ${user.name}`} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white"><option value="en">English</option><option value="ru">Russian</option></select></td>
+              <td class="p-2"><select aria-label={`Role for ${user.name}`} value={editValues[user.id]?.role ?? user.role} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], role: (event.target as HTMLSelectElement).value as "guest" | "admin" } }))} class="rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-center text-white"><option class="text-center" value="guest">Guest</option><option class="text-center" value="admin">Admin</option></select></td>
+              <td class="p-2"><select aria-label={`Language for ${user.name}`} value={editValues[user.id]?.language ?? user.language ?? "en"} onChange={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], language: (event.target as HTMLSelectElement).value as AppLanguage } }))} class="rounded border border-slate-700 bg-slate-900 text-center px-2 py-1.5 text-white"><option class="text-center" value="en">English</option><option class="text-center" value="ru">Russian</option></select></td>
               <td class="p-2"><input aria-label={`New password for ${user.name}`} type="password" minLength={6} maxLength={128} autoComplete="new-password" placeholder="Leave blank to keep" value={editValues[user.id]?.password ?? ""} onInput={(event) => setEditValues((current) => ({ ...current, [user.id]: { ...current[user.id], password: (event.target as HTMLInputElement).value } }))} class="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1.5 text-white" /></td>
               <td class="whitespace-nowrap p-2"><button type="button" disabled={savingUser} onClick={() => void handleUpdateUser(user.id)} class="mr-2 rounded bg-slate-800 px-2 py-1.5 text-cyan-300 disabled:opacity-50">Save</button>
                 {user.id !== account.id && <button type="button" disabled={savingUser} onClick={() => void handleDeleteUser(user)} class="rounded bg-rose-950 px-2 py-1.5 text-rose-300 disabled:opacity-50">Delete</button>}</td>
