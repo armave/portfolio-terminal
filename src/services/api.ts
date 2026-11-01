@@ -6,6 +6,7 @@ import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '.
 import type { AppLanguage } from './i18n';
 import { normalizeYahooBatchResults } from './yahooQuoteContracts';
 import type { YahooBatchQuoteResult } from './yahooQuoteContracts';
+import { createYahooDeepDataCache } from './yahooDeepDataCache';
 
 export interface SyncedMarginDigest {
   key: string;
@@ -501,77 +502,34 @@ export async function fetchFallbackQuote(
   };
 }
 
-const YAHOO_DEEP_DATA_CACHE_TTL_MS = 5 * 60 * 1000;
-const yahooDeepDataCache = new Map<string, { expiresAt: number; data: any }>();
-const yahooDeepDataRequests = new Map<string, Promise<any>>();
-
 function normalizeYahooSymbol(symbol: unknown): string {
   return typeof symbol === 'string' ? symbol.trim().toUpperCase() : '';
 }
 
+const yahooDeepDataCache = createYahooDeepDataCache({
+  fetchData: (symbol, force) => proxyFetch('', { symbol }, {
+    method: 'POST',
+    ...(force ? { cache: 'no-store' as RequestCache } : {})
+  }),
+  recordMetric: recordApiMetric
+});
+
 /** Seed the shared deep-data cache with a successful item from a batch quote response. */
 export function rememberYahooDeepStockData(value: unknown): void {
-  if (Array.isArray(value)) {
-    value.forEach(rememberYahooDeepStockData);
-    return;
-  }
-  const data = value && typeof value === 'object' ? value as Record<string, any> : null;
-  const symbol = normalizeYahooSymbol(data?.symbol);
-  if (!data || !symbol || data.error) return;
-  setBoundedCache(yahooDeepDataCache, symbol, {
-    expiresAt: Date.now() + YAHOO_DEEP_DATA_CACHE_TTL_MS,
-    data
-  });
+  yahooDeepDataCache.remember(value);
 }
 
 /**
  * Fetches the full Yahoo payload once per ticker and shares it between board
  * analyst targets and all Market Insights tabs. Explicit refreshes bypass cache.
  */
-export async function fetchYahooDeepStockData(ticker: string, force = false): Promise<any> {
-  const symbol = normalizeYahooSymbol(ticker);
-  if (!symbol) return null;
-
-  if (!force) {
-    const cached = yahooDeepDataCache.get(symbol);
-    if (cached && cached.expiresAt > Date.now()) return cached.data;
-    if (cached) yahooDeepDataCache.delete(symbol);
-  }
-
-  const existing = yahooDeepDataRequests.get(symbol);
-  if (!force && existing) return existing;
-
-  const startedAt = Date.now();
-  const request = proxyFetch('', { symbol }, { method: 'POST', ...(force ? { cache: 'no-store' as RequestCache } : {}) })
-    .then((data) => {
-      const durationMs = Date.now() - startedAt;
-      if (data?.error) {
-        recordApiMetric('provider_failure', { provider: 'yahoo', operation: 'deep_data', durationMs });
-      } else {
-        recordApiMetric('provider_request', { provider: 'yahoo', operation: 'deep_data', durationMs, success: true });
-      }
-      if (yahooDeepDataRequests.get(symbol) === request && data && typeof data === 'object' && !data.error) {
-        // A superseded request must not overwrite a newer forced refresh in cache.
-        rememberYahooDeepStockData(data);
-      }
-      return data;
-    }, (error) => {
-      recordApiMetric('provider_failure', { provider: 'yahoo', operation: 'deep_data', durationMs: Date.now() - startedAt });
-      throw error;
-    })
-    .finally(() => {
-      if (yahooDeepDataRequests.get(symbol) === request) {
-        yahooDeepDataRequests.delete(symbol);
-      }
-    });
-  yahooDeepDataRequests.set(symbol, request);
-  return request;
+export function fetchYahooDeepStockData(ticker: string, force = false): Promise<any> {
+  return yahooDeepDataCache.fetch(ticker, force);
 }
 
 /** Clears shared deep-data cache state, primarily for isolated tests. */
 export function clearYahooDeepStockDataCache(): void {
   yahooDeepDataCache.clear();
-  yahooDeepDataRequests.clear();
   yahooQuoteCache.clear();
   yahooQuoteRequests.clear();
   yahooQuoteQueue.clear();
