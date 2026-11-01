@@ -6,6 +6,16 @@ interface TerminalLogProps {
   entries: TerminalLogEntry[];
 }
 
+export const TERMINAL_LOG_FOLLOW_THRESHOLD_PX = 24;
+
+export function isTerminalLogAtBottom(
+  viewport: Pick<HTMLElement, 'scrollTop' | 'scrollHeight' | 'clientHeight'>,
+  threshold = TERMINAL_LOG_FOLLOW_THRESHOLD_PX
+): boolean {
+  const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+  return distanceFromBottom <= Math.max(0, threshold);
+}
+
 function parseTagAndStyle(rawMessage: string, isError: boolean) {
   const tagMatch = rawMessage.match(/^\[([^\]]+)\]:?\s*([\s\S]*)$/);
   const rawTag = tagMatch ? tagMatch[1].trim() : isError ? 'ERROR' : 'INFO';
@@ -54,13 +64,22 @@ function renderFinancialTokens(line: string) {
 
 export function TerminalLog({ entries }: TerminalLogProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const shouldFollowLatestRef = useRef(true);
+
+  const handleViewportScroll = () => {
+    const viewport = viewportRef.current;
+    if (viewport) shouldFollowLatestRef.current = isTerminalLogAtBottom(viewport);
+  };
+
   useEffect(() => {
     const viewport = viewportRef.current;
-    if (viewport) viewport.scrollTop = viewport.scrollHeight;
+    // Follow new output only while the reader is already at the latest entries.
+    // Scrolling back to review history pauses auto-follow until the reader returns.
+    if (viewport && shouldFollowLatestRef.current) viewport.scrollTop = viewport.scrollHeight;
   }, [entries]);
 
   return (
-    <div ref={viewportRef} id="terminalLog" class="h-64 overflow-y-auto rounded-lg bg-slate-950/95 p-3 font-mono text-xs space-y-1.5 border border-slate-800/90 shadow-inner leading-relaxed">
+    <div ref={viewportRef} id="terminalLog" class="h-64 overflow-y-auto rounded-lg bg-slate-950/95 p-3 font-mono text-xs space-y-1.5 border border-slate-800/90 shadow-inner leading-relaxed" role="region" aria-label="Terminal activity log" tabIndex={0} onScroll={handleViewportScroll}>
       {entries.map((entry) => {
         if (entry.kind === 'system') {
           return <div key={entry.id} class="flex items-start gap-2 text-slate-400 py-0.5">

@@ -315,7 +315,7 @@ export function MarketInsightsPanel() {
         <div class="news-feed-enter space-y-2 mt-2">
           {currentNewsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded news.</p>}
           <p class="text-[10px] text-slate-500">{currentNewsUpdatedAt ? `Updated ${formatRelativeTime(Math.floor(currentNewsUpdatedAt / 1000) * 1000)}` : ''}{currentNewsLoading ? ' · Refreshing…' : ''}</p>
-          <div class="news-feed-list h-[240px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Company news articles">
+          <div class="news-feed-list h-[240px] overflow-y-auto overscroll-contain pr-1 space-y-2" role="region" aria-label="Company news articles" tabIndex={0}>
             {currentNewsData.map((n, idx) => (
               <button
                 key={n.id || n.url || idx}
@@ -629,7 +629,7 @@ export function MarketInsightsPanel() {
           <div class="stocktwits-feed-enter space-y-2">
             <p class="text-[10px] text-slate-500">{currentStocktwitsUpdatedAt ? `Updated ${formatRelativeTime(currentStocktwitsUpdatedAt)}` : ''}{currentStocktwitsLoading ? ' · Refreshing…' : ''}</p>
             {currentStocktwitsError && <p class="text-[10px] text-amber-400">Refresh failed; showing previously loaded messages.</p>}
-            <div class="stocktwits-feed-list h-[306px] overflow-y-auto overscroll-contain pr-1 space-y-2" aria-label="Stocktwits messages">
+            <div class="stocktwits-feed-list h-[306px] overflow-y-auto overscroll-contain pr-1 space-y-2" role="region" aria-label="Stocktwits messages" tabIndex={0}>
               {filteredStocktwitsMessages.length === 0 ? (
                 <p class="rounded border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">No single-ticker messages found.</p>
               ) : filteredStocktwitsMessages.map((message, idx) => {
