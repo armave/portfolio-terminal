@@ -453,11 +453,11 @@ export function MarketInsightsPanel() {
                 let fromToGrade = '';
 
                 if (u.fromGrade === u.toGrade) {
-                  fromToGrade = u.toGrade;
+                  fromToGrade = u.toGrade ?? '';
                 } else if (u.fromGrade) {
-                  fromToGrade = u.fromGrade + ' ➝ ' + u.toGrade || '';
+                  fromToGrade = u.fromGrade + ' ➝ ' + (u.toGrade ?? '');
                 } else {
-                  fromToGrade = u.toGrade;
+                  fromToGrade = u.toGrade ?? '';
                 }
 
                 return (
@@ -511,7 +511,7 @@ export function MarketInsightsPanel() {
                   <span class="text-[10px]">
                     Est: {e.epsEstimate} | Act:{' '}
                     <span
-                      class={`${e.epsDifference >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                      class={`${(e.epsDifference ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
                         } font-bold`}
                     >
                       {e.epsActual}
