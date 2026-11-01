@@ -12,10 +12,12 @@ describe('TableScrollRegion', () => {
       label: 'Guest assignment history table',
       children: table,
       className: 'table-scroll-wrapper',
-      focusClassName: 'focus-visible:outline-indigo-400'
+      focusClassName: 'focus-visible:outline-indigo-400',
+      id: 'test-scroll-region'
     });
 
     expect(region.type).toBe('div');
+    expect(region.props.id).toBe('test-scroll-region');
     expect(region.props.role).toBe('region');
     expect(region.props['aria-label']).toBe('Guest assignment history table');
     expect(region.props.tabIndex).toBe(0);
