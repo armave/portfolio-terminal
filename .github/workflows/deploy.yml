@@ -41,8 +41,8 @@ jobs:
       - name: Validate dead code
         run: npm run validate:dead-code
 
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+      - name: Audit all dependencies, including build and test tooling
+        run: npm run audit:dependencies
 
       - name: Build production site
         run: npm run build
