@@ -1513,7 +1513,7 @@ describe('Freedom cashflow request cache', () => {
 
   it('does not reuse a cashflow cache entry for a different date range', async () => {
     clearFreedomCashflowCache();
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { cashflows: [] } }), {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => new Response(JSON.stringify({ data: { cashflows: [] } }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     }));
@@ -1529,7 +1529,7 @@ describe('Freedom cashflow request cache', () => {
   });
 
   it('passes an incremental TradeNet execution date to the authenticated Worker route', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { trades: { trade: [] } } }), {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) => new Response(JSON.stringify({ data: { trades: { trade: [] } } }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     }));
