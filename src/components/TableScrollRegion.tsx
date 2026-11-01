@@ -5,6 +5,7 @@ interface TableScrollRegionProps {
   children: ComponentChildren;
   className?: string;
   focusClassName?: string;
+  id?: string;
   tabIndex?: 0 | -1;
 }
 
@@ -14,10 +15,12 @@ export function TableScrollRegion({
   children,
   className = '',
   focusClassName = 'focus-visible:outline-cyan-500',
+  id,
   tabIndex = 0
 }: TableScrollRegionProps) {
   return (
     <div
+      id={id}
       role="region"
       aria-label={label}
       tabIndex={tabIndex}
