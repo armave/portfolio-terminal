@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getDialogFocusableElements, resolveDialogRestoreTarget, trapDialogTabKey } from './dialogFocus';
+import { focusElementWithoutScrolling, getDialogFocusableElements, resolveDialogRestoreTarget, trapDialogTabKey } from './dialogFocus';
 
 interface FocusableOptions {
   rendered?: boolean;
@@ -41,6 +41,17 @@ function makeEvent(shiftKey = false) {
 }
 
 describe('dialog focus management', () => {
+  it('focuses dialog controls without allowing the browser to scroll the page', () => {
+    let options: FocusOptions | undefined;
+    const element = {
+      focus: (nextOptions?: FocusOptions) => { options = nextOptions; }
+    } as HTMLElement;
+
+    focusElementWithoutScrolling(element);
+    expect(options).toEqual({ preventScroll: true });
+    expect(() => focusElementWithoutScrolling(null)).not.toThrow();
+  });
+
   it('prefers a connected invoking control when restoring focus', () => {
     const trigger = { isConnected: true } as HTMLElement;
     const previouslyFocused = { isConnected: true } as HTMLElement;

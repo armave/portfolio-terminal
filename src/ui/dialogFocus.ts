@@ -63,6 +63,10 @@ export function resolveDialogRestoreTarget(
   return explicitTarget?.isConnected ? explicitTarget : activeElement;
 }
 
+export function focusElementWithoutScrolling(element: HTMLElement | null | undefined): void {
+  element?.focus({ preventScroll: true });
+}
+
 interface UseDialogFocusOptions {
   active?: boolean;
   initialFocusRef?: DialogElementRef;
@@ -85,8 +89,28 @@ export function useDialogFocus(
 
     const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousFocus = resolveDialogRestoreTarget(restoreFocusRef?.current, activeElement);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const body = document.body;
+    const documentElement = document.documentElement;
+    const previousBodyStyles = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width
+    };
+    const previousDocumentOverflow = documentElement.style.overflow;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+
+    // A fixed body prevents touch scrolling behind the dialog on mobile Safari.
+    documentElement.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = `-${scrollX}px`;
+    body.style.right = '0';
+    body.style.width = '100%';
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && onEscapeRef.current) {
@@ -98,12 +122,19 @@ export function useDialogFocus(
     };
 
     document.addEventListener('keydown', onKeyDown);
-    (initialFocusRef?.current ?? getDialogFocusableElements(dialog)[0] ?? dialog).focus();
+    focusElementWithoutScrolling(initialFocusRef?.current ?? getDialogFocusableElements(dialog)[0] ?? dialog);
 
     return () => {
       document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
-      if (previousFocus?.isConnected) previousFocus.focus();
+      body.style.overflow = previousBodyStyles.overflow;
+      body.style.position = previousBodyStyles.position;
+      body.style.top = previousBodyStyles.top;
+      body.style.left = previousBodyStyles.left;
+      body.style.right = previousBodyStyles.right;
+      body.style.width = previousBodyStyles.width;
+      documentElement.style.overflow = previousDocumentOverflow;
+      window.scrollTo(scrollX, scrollY);
+      if (previousFocus?.isConnected) focusElementWithoutScrolling(previousFocus);
     };
   }, [active, dialogRef, initialFocusRef, restoreFocusRef]);
 }
