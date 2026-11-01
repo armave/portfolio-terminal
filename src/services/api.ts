@@ -4,6 +4,8 @@ import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '../types/portfolio';
 import type { AppLanguage } from './i18n';
+import { normalizeYahooBatchResults } from './yahooQuoteContracts';
+import type { YahooBatchQuoteResult } from './yahooQuoteContracts';
 
 export interface SyncedMarginDigest {
   key: string;
@@ -337,9 +339,13 @@ function setBoundedCache<T>(cache: Map<string, T>, key: string, value: T): void 
 }
 
 const YAHOO_QUOTE_CACHE_TTL_MS = 8 * 1000;
-const yahooQuoteCache = new Map<string, { expiresAt: number; data: any }>();
-const yahooQuoteRequests = new Map<string, Promise<any>>();
-const yahooQuoteQueue = new Map<string, { request: Promise<any>; resolvers: Array<(value: any) => void>; rejecters: Array<(error: unknown) => void> }>();
+const yahooQuoteCache = new Map<string, { expiresAt: number; data: YahooBatchQuoteResult }>();
+const yahooQuoteRequests = new Map<string, Promise<YahooBatchQuoteResult>>();
+const yahooQuoteQueue = new Map<string, {
+  request: Promise<YahooBatchQuoteResult>;
+  resolvers: Array<(value: YahooBatchQuoteResult) => void>;
+  rejecters: Array<(error: unknown) => void>;
+}>();
 let yahooQuoteFlushScheduled = false;
 
 function recordApiMetric(metric: string, details: Record<string, unknown> = {}): void {
@@ -357,9 +363,9 @@ async function flushYahooQuoteQueue(): Promise<void> {
   try {
     const response = await proxyFetch('quote', { symbol: symbols.join(',') });
     const results = normalizeYahooBatchResults(response, symbols);
-    const bySymbol = new Map<string, any>();
-    results.forEach((item: any, index: number) => {
-      const symbol = normalizeYahooSymbol(item?.symbol || symbols[index]);
+    const bySymbol = new Map<string, YahooBatchQuoteResult>();
+    results.forEach((item) => {
+      const symbol = normalizeYahooSymbol(item.symbol);
       if (symbol) bySymbol.set(symbol, item);
     });
     recordApiMetric('provider_request', { provider: 'yahoo', operation: 'quote_batch', count: symbols.length, durationMs: Date.now() - startedAt, success: true });
@@ -381,7 +387,7 @@ async function flushYahooQuoteQueue(): Promise<void> {
 }
 
 /** Lightweight quote path. Calls queued in the same turn are batched by the Worker. */
-export async function fetchYahooQuoteData(ticker: string, force = false): Promise<any> {
+export async function fetchYahooQuoteData(ticker: string, force = false): Promise<YahooBatchQuoteResult | null> {
   const symbol = normalizeYahooSymbol(ticker);
   if (!symbol) return null;
   const cached = yahooQuoteCache.get(symbol);
@@ -396,9 +402,9 @@ export async function fetchYahooQuoteData(ticker: string, force = false): Promis
     return existing;
   }
 
-  let resolveRequest!: (value: any) => void;
+  let resolveRequest!: (value: YahooBatchQuoteResult) => void;
   let rejectRequest!: (error: unknown) => void;
-  const request = new Promise<any>((resolve, reject) => {
+  const request = new Promise<YahooBatchQuoteResult>((resolve, reject) => {
     resolveRequest = resolve;
     rejectRequest = reject;
   });
@@ -436,7 +442,7 @@ export async function fetchYahooStockData(ticker: string): Promise<unknown | nul
 
 // Backward-compatible export; the contract and normalization live separately
 // from the API transport so the provider boundary can be tested in isolation.
-export { normalizeYahooBatchResults } from './yahooQuoteContracts';
+export { normalizeYahooBatchResults };
 export type { YahooBatchQuoteResult, YahooQuotePricePayload } from './yahooQuoteContracts';
 
 export type FallbackQuoteProvider = 'finnhub' | 'twelvedata';
