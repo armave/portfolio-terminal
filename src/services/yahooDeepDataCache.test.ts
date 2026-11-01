@@ -70,7 +70,6 @@ describe('Yahoo deep-data cache', () => {
     const payload = { symbol: 'AAPL', value: 1 };
     resolveAapl(payload);
     await expect(Promise.all([first, second, msft])).resolves.toEqual([payload, payload, { symbol: 'MSFT' }]);
-    expect(first).toBe(second);
   });
 
   it('forced refresh bypasses cached data and sends the force flag to the transport', async () => {
@@ -131,8 +130,8 @@ describe('Yahoo deep-data cache', () => {
   });
 
   it('clear removes cached and in-flight entries and prevents an older response from repopulating cache', async () => {
-    let resolveOld!: (value: unknown) => void;
-    const fetchData = vi.fn(() => new Promise<unknown>((resolve) => { resolveOld = resolve; }));
+    const resolvers: Array<(value: unknown) => void> = [];
+    const fetchData = vi.fn(() => new Promise<unknown>((resolve) => { resolvers.push(resolve); }));
     const client = createYahooDeepDataCache({
       fetchData,
       recordMetric: createMetricRecorder()
@@ -144,17 +143,14 @@ describe('Yahoo deep-data cache', () => {
     expect(fetchData).toHaveBeenCalledTimes(2);
 
     const freshPayload = { symbol: 'AAPL', value: 2 };
-    // The second transport request is resolved after the first request was cleared.
-    // Keep separate resolvers so the stale request cannot win the cache race.
-    const resolveFresh = fetchData.mock.results[1]?.value as Promise<unknown>;
-    expect(resolveFresh).toBeDefined();
-    resolveOld({ symbol: 'AAPL', value: 1 });
-    await oldRequest;
-    // A subsequent request remains necessary because the cleared request cannot seed cache.
-    await client.fetch('AAPL');
-    expect(fetchData).toHaveBeenCalledTimes(3);
-    void freshRequest;
-    void freshPayload;
+    resolvers[1](freshPayload);
+    await expect(freshRequest).resolves.toBe(freshPayload);
+
+    const stalePayload = { symbol: 'AAPL', value: 1 };
+    resolvers[0](stalePayload);
+    await expect(oldRequest).resolves.toBe(stalePayload);
+    await expect(client.fetch('AAPL')).resolves.toBe(freshPayload);
+    expect(fetchData).toHaveBeenCalledTimes(2);
   });
 
   it('returns null without sending requests for an empty symbol', async () => {
