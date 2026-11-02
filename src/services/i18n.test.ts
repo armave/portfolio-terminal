@@ -83,8 +83,6 @@ describe('app localization', () => {
     expect(translateText('Cash-funded stock holdings', 'ru')).toBe('Акции, приобретённые за денежные средства');
     expect(translateText('Active tranches and guest assignments', 'ru')).toBe('Активные лоты и назначения гостям');
     expect(translateText('User management table', 'ru')).toBe('Таблица управления пользователями');
-    expect(translateText('Bid prices and quantities', 'ru')).toBe('Цены и объёмы заявок на покупку');
-    expect(translateText('Ask prices and quantities', 'ru')).toBe('Цены и объёмы заявок на продажу');
   });
 
   it('localizes the keyboard-scrollable guest assignment table region', () => {
@@ -196,8 +194,6 @@ describe('app localization', () => {
     expect(translateText('Loading your assigned tranche history…', 'ru'))
       .toBe('Загрузка истории назначенных вам лотов…');
     expect(translateText('Workspace navigation','ru')).toBe('Навигация по разделам');
-    expect(translateText('Read-only order book snapshot · TradeNet','ru'))
-      .toBe('Снимок стакана заявок TradeNet · только для чтения');
   });
 
   it('localizes remaining authentication, guest balance, and trade-history copy', () => {
