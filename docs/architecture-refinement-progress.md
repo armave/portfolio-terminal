@@ -2,7 +2,7 @@
 
 **Repository:** `armave/portfolio-terminal`  
 **Current work:** Startup lifecycle runtime extraction  
-**Base:** `0ebb5937c13b725f9887273d3055adb12f5300c7`
+**Base:** `6aa70eafb05ed5627072aae0a6d5d36f2f6f4988`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
