@@ -75,6 +75,7 @@ import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistor
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
+import { isCurrentGuestPortfolioSession } from './src/services/guestPortfolioSession';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
 import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, BrokerAssumptions, GuestTrancheLedgerRecord, QuoteDetails } from './src/types/portfolio';
@@ -870,14 +871,30 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
 
 /** Hydrate a guest from their server-scoped projection, never from the shared portfolio. */
 async function pullGuestPortfolioSnapshot(): Promise<void> {
-  if (currentAccountRole !== 'guest' || !currentAccountId) {
+  const requestedSession = {
+    role: currentAccountRole,
+    accountId: currentAccountId,
+    secret: getGatewaySecret()
+  };
+  if (requestedSession.role !== 'guest' || !requestedSession.accountId) {
     throw new Error('A guest session is required to load assigned holdings.');
   }
+
   const snapshot = await getGuestPortfolioSnapshot();
-  const assignments = Object.fromEntries(snapshot.tranches.map((tranche) => [tranche.id, currentAccountId!]));
+  const currentSession = {
+    role: currentAccountRole,
+    accountId: currentAccountId,
+    secret: getGatewaySecret()
+  };
+  // A response authorized by the previous guest must never hydrate the next
+  // account's local workspace after an account or credential switch.
+  if (!isCurrentGuestPortfolioSession(requestedSession, currentSession)) return;
+
+  const guestId = requestedSession.accountId;
+  const assignments = Object.fromEntries(snapshot.tranches.map((tranche) => [tranche.id, guestId]));
   const types = Object.fromEntries(snapshot.tranches.map((tranche) => [tranche.id, 'cash' as const]));
   const holdings = getGuestAssignedCashHoldings({
-    guestId: currentAccountId,
+    guestId,
     activeTranches: snapshot.tranches,
     assignments,
     types,
