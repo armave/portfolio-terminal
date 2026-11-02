@@ -4,6 +4,7 @@ import {
   getTotalPortfolioInvested,
   getPortfolioProjectionInputs,
   getMarketInsightsTicker,
+  isCurrentMarketInsightsTicker,
   resolvePositionEntryDate
 } from './portfolioSelectors';
 import type { BoardState } from '../types/portfolio';
@@ -33,6 +34,19 @@ describe('market insights ticker selector', () => {
     } as unknown as BoardState;
 
     expect(getMarketInsightsTicker(state)).toBe('MSFT');
+  });
+
+  it('accepts an async result only while its ticker is still selected', () => {
+    const state = {
+      activeView: 'MSFT',
+      positions: {
+        AAPL: { ticker: 'AAPL' },
+        MSFT: { ticker: 'MSFT' }
+      }
+    } as unknown as BoardState;
+
+    expect(isCurrentMarketInsightsTicker(state, 'MSFT')).toBe(true);
+    expect(isCurrentMarketInsightsTicker(state, 'AAPL')).toBe(false);
   });
 });
 
