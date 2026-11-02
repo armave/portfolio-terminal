@@ -9,6 +9,12 @@ function describeProviderError(error: unknown): string {
   return String(error);
 }
 
+function usableQuoteNumber(value: unknown): number | null {
+  if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 // Time-anchored and monotonic, including requests started in the same millisecond.
 // Anchoring to epoch time keeps persisted ordering comparable after ordinary reloads.
 let lastQuoteRequestSequence = 0;
@@ -33,8 +39,12 @@ async function fetchFallbackPrice(symbol: string, force = false) {
           freshness: 'unknown' as const,
           receivedAt: Date.now(),
           price: fallback.price,
-          change: fallback.change ?? 0,
-          changePercent: fallback.changePercent ?? 0
+          ...(typeof fallback.change === 'number' && Number.isFinite(fallback.change)
+            ? { change: fallback.change }
+            : {}),
+          ...(typeof fallback.changePercent === 'number' && Number.isFinite(fallback.changePercent)
+            ? { changePercent: fallback.changePercent }
+            : {})
         }
       };
     } catch (error: unknown) {
@@ -103,8 +113,10 @@ export async function fetchLivePriceFromProviders(
     const data = yahooResult.value;
 
     if (data?.price && typeof data.price === 'object') {
-      const regularPrice = data.price.current ?? data.regularMarketPrice;
-      const prevClose = data.price.previousClose ?? data.price.regularMarketPreviousClose;
+      const regularPrice = data.price.current ?? data.price.regularMarketPrice ?? data.regularMarketPrice;
+      const prevClose = data.price.previousClose ??
+        data.price.regularMarketPreviousClose ??
+        data.regularMarketPreviousClose;
       const marketState = data.price.marketState;
       const current = resolveMarketSessionPrice({
         regularPrice,
@@ -118,14 +130,21 @@ export async function fetchLivePriceFromProviders(
         sourceName = "Yahoo";
         const change = resolveMarketSessionChange({
           currentPrice: current,
-          regularPrice,
           previousClose: prevClose,
-          suppliedChange: data.price.change ?? data.price.regularMarketChange,
+          suppliedChange: data.price.change ?? data.price.regularMarketChange ?? data.regularMarketChange,
           marketState
         });
 
-        const previousClose = Number(prevClose);
-        const hasPreviousClose = Number.isFinite(previousClose) && previousClose > 0;
+        const previousClose = usableQuoteNumber(prevClose);
+        const hasPreviousClose = previousClose !== null && previousClose > 0;
+        const suppliedChangePercent = usableQuoteNumber(
+          data.price.changePercent ??
+          data.price.regularMarketChangePercent ??
+          data.regularMarketChangePercent
+        );
+        const changePercent = hasPreviousClose && change !== null
+          ? (change / previousClose) * 100
+          : suppliedChangePercent;
         const sourceTime = marketState === 'PRE'
           ? (data.price.preMarketTime ?? data.price.regularMarketTime)
           : marketState === 'POST'
@@ -139,8 +158,8 @@ export async function fetchLivePriceFromProviders(
           requestSequence,
           requestStartedAt,
           price: current,
-          change,
-          changePercent: hasPreviousClose ? (change / previousClose) * 100 : 0
+          ...(change !== null ? { change } : {}),
+          ...(changePercent !== null ? { changePercent } : {})
         };
       }
     }
@@ -180,8 +199,12 @@ export async function fetchLivePriceFromProviders(
         requestSequence,
         requestStartedAt,
         price: freedomQuote.price,
-        change: freedomQuote.change ?? 0,
-        changePercent: freedomQuote.changePercent ?? 0
+        ...(typeof freedomQuote.change === 'number' && Number.isFinite(freedomQuote.change)
+          ? { change: freedomQuote.change }
+          : {}),
+        ...(typeof freedomQuote.changePercent === 'number' && Number.isFinite(freedomQuote.changePercent)
+          ? { changePercent: freedomQuote.changePercent }
+          : {})
       };
     }
   }

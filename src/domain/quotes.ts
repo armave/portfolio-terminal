@@ -37,14 +37,18 @@ export function resolveMarketSessionPrice(input: MarketSessionPriceInput): numbe
 
 export interface MarketSessionChangeInput {
   currentPrice: number;
-  regularPrice?: unknown;
   previousClose?: unknown;
   suppliedChange?: unknown;
   marketState?: MarketState;
 }
 
-/** Returns a finite session change, falling back to a known baseline when needed. */
-export function resolveMarketSessionChange(input: MarketSessionChangeInput): number {
+/**
+ * Returns the daily move for the selected session price. Extended and closed
+ * sessions must compare against the previous close, not the regular price:
+ * when no extended-hours price exists those prices are identical and would
+ * incorrectly report a zero daily move.
+ */
+export function resolveMarketSessionChange(input: MarketSessionChangeInput): number | null {
   const usableNumber = (value: unknown): number | null => {
     if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) return null;
     const number = Number(value);
@@ -52,20 +56,16 @@ export function resolveMarketSessionChange(input: MarketSessionChangeInput): num
   };
 
   const current = usableNumber(input.currentPrice);
-  if (current === null) return 0;
+  if (current === null) return null;
 
-  const regular = usableNumber(input.regularPrice);
   const previous = usableNumber(input.previousClose);
-  const hasRegular = regular !== null && regular > 0;
   const hasPrevious = previous !== null && previous > 0;
-
-  if (input.marketState === 'PRE' || input.marketState === 'POST' || input.marketState === 'CLOSED') {
-    if (hasRegular) return current - regular;
-    if (hasPrevious) return current - previous;
-    return 0;
-  }
-
   const supplied = usableNumber(input.suppliedChange);
+  const isExtendedOrClosed = input.marketState === 'PRE' ||
+    input.marketState === 'POST' ||
+    input.marketState === 'CLOSED';
+
+  if (isExtendedOrClosed && hasPrevious) return current - previous;
   if (supplied !== null) return supplied;
-  return hasPrevious ? current - previous : 0;
+  return hasPrevious ? current - previous : null;
 }
