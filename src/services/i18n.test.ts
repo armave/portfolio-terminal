@@ -33,6 +33,9 @@ describe('app localization', () => {
 
   it('localizes Market Depth labels and refresh recovery copy', () => {
     expect(translateText('Retry depth', 'ru')).toBe('Повторить загрузку стакана');
+    expect(translateText('Open market depth for GOOGL', 'ru')).toBe('Открыть стакан заявок для GOOGL');
+    expect(translateText('Market depth · GOOGL', 'ru')).toBe('Стакан заявок · GOOGL');
+    expect(translateText('Levels', 'ru')).toBe('Уровни');
     expect(translateText('Refresh depth', 'ru')).toBe('Обновить стакан');
     expect(translateText('Refreshing order book; previous snapshot remains visible.', 'ru'))
       .toBe('Обновление стакана заявок; предыдущий снимок остаётся доступным.');
@@ -40,7 +43,6 @@ describe('app localization', () => {
       .toBe('Не удалось обновить данные; показан последний успешно полученный снимок стакана заявок.');
     expect(translateText('Read-only order book snapshot · TradeNet', 'ru'))
       .toBe('Снимок стакана заявок только для чтения · TradeNet');
-    expect(translateText('Market depth order book for', 'ru')).toBe('Стакан заявок для');
     expect(translateText('Close market depth', 'ru')).toBe('Закрыть стакан заявок');
     expect(translateText('Best bid', 'ru')).toBe('Лучшая цена покупки');
     expect(translateText('Best ask', 'ru')).toBe('Лучшая цена продажи');
