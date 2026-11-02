@@ -34,7 +34,7 @@ function loadInitialBrokerExecutions(): FreedomExecutedTrade[] {
   );
 }
 
-export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
+export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: { accountId: string; isSessionCurrent?: () => boolean }) {
   const state = usePortfolio();
   const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
     brokerExecutionHistoryReducer<FreedomExecutedTrade>,
@@ -69,7 +69,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
   useEffect(() => {
     let active = true;
     void listUsers().then((users) => {
-      if (active) setGuestUsers(users.filter((user) => user.role === 'guest'));
+      if (active && isSessionCurrent()) setGuestUsers(users.filter((user) => user.role === 'guest'));
     }).catch((error) => {
       console.warn('Unable to load guest names for closed-trade attribution:', error);
     });
@@ -80,7 +80,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
   useEffect(() => {
     let active = true;
     void pullCloudHistory().then(async history => {
-      if (!active) return;
+      if (!active || !isSessionCurrent()) return;
       const current = portfolioStore.getState();
       const saved = loadSavedHistory();
       const savedExecutions = normalizeFreedomTrades(saved.brokerExecutedTrades);
@@ -127,13 +127,18 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
         current.closedTrades || []
       );
       if (JSON.stringify(resolved) !== JSON.stringify(cloud) && (resolved.brokerExecutedTrades.length || resolved.cashflows.length)) {
-        try { await pushCloudHistory(resolved); }
-        catch (error) { console.error('Unable to sync closed history:', error); }
+        if (!isSessionCurrent()) return;
+        try { await pushCloudHistory(resolved, undefined, undefined, { isCurrentSession: isSessionCurrent }); }
+        catch (error) {
+          if (isSessionCurrent()) console.error('Unable to sync closed history:', error);
+        }
+        if (!active || !isSessionCurrent()) return;
       }
-      if (active) setCashflowHistoryReady(true);
+      if (active && isSessionCurrent()) setCashflowHistoryReady(true);
     }).catch(error => {
+      if (!active || !isSessionCurrent()) return;
       console.error('Unable to load closed history from cloud:', error);
-      if (active) {
+      if (active && isSessionCurrent()) {
         const current = portfolioStore.getState();
         const saved = loadSavedHistory();
         const savedExecutions = normalizeFreedomTrades(saved.brokerExecutedTrades);
@@ -154,7 +159,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
   // calculated metadata prevents the allocation effect from re-entering.
   useEffect(() => {
     const cashflows = state.cashflows || [];
-    if (!cashflowHistoryReady || !cashflowSyncReady || brokerTradesLoading) return;
+    if (!isSessionCurrent() || !cashflowHistoryReady || !cashflowSyncReady || brokerTradesLoading) return;
     const storedExecutions = portfolioStore.getState().brokerExecutedTrades || [];
     const executions = storedExecutions.length ? storedExecutions : brokerTrades;
     // Exclude calculated metadata from the input fingerprint; otherwise a
@@ -175,6 +180,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
     }
     setCashflowAllocationReady(false);
     void processCashflowRows(cashflows).then((success) => {
+      if (!isSessionCurrent()) return;
       if (success) lastRecalculationKey.current = key;
       setCashflowAllocationReady(true);
     });
@@ -183,6 +189,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
     cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
     requireCloudSync = false
   ): Promise<boolean> => {
+    if (!isSessionCurrent()) return false;
     try {
       // An empty confirmed snapshot is still a calculation input: it must clear
       // any stale allocations left by older imports or a previously saved broker row.
@@ -218,6 +225,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
       if (changedAppRows && JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
         nextState.closedTrades = updatedTrades;
       }
+      if (!isSessionCurrent()) return false;
       const previousPortfolioState = portfolioStore.getState();
       if (Object.keys(nextState).length) portfolioStore.setState(nextState, false);
       // Keep canonical portfolio fields and the independently stored history
@@ -249,9 +257,11 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
           const synced = await pushCloudHistory({
             brokerExecutedTrades: brokerExecutionsChanged ? updatedExecutions : brokerExecutions,
             cashflows: cashflowRows
-          });
+          }, undefined, undefined, { isCurrentSession: isSessionCurrent });
+          if (!isSessionCurrent()) return false;
           if (!synced) throw new Error('Cloud history did not confirm the update.');
         } catch (error) {
+          if (!isSessionCurrent()) return false;
           console.error('Failed to sync closed-history cashflows and fees:', error);
           if (requireCloudSync) {
             setCashflowSyncMessage(`History was updated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}.`);
@@ -264,6 +274,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
       }
       return true;
     } catch (error) {
+      if (!isSessionCurrent()) return false;
       const detail = error instanceof Error ? error.message : 'Unknown cashflow processing error.';
       console.error('Unable to process saved closed-history cashflows:', detail);
       if (requireCloudSync) setCashflowSyncMessage(`Freedom cashflow processing failed: ${detail}`);
@@ -272,12 +283,13 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
   };
 
   const syncCashflowsFromFreedom = async () => {
-    if (cashflowSyncStarted.current) return;
+    if (!isSessionCurrent() || cashflowSyncStarted.current) return;
     cashflowSyncStarted.current = true;
     try {
       const hasCompleteBaseline = hasFreedomCashflowHistoryBaseline(accountId);
       const fromDate = hasCompleteBaseline ? cashflowSyncStartDate.current : undefined;
       const response = await fetchFreedomCashflows(fromDate);
+      if (!isSessionCurrent()) return;
       const fetchedRows = normalizeFreedomCashflowRows(response);
       const existingRows = portfolioStore.getState().cashflows || [];
       const mergedRows = mergeFreedomCashflowRows(existingRows, fetchedRows);
@@ -285,15 +297,16 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
       // On the first upgraded session, backfill the complete ledger before
       // switching to date-bounded requests. Process empty snapshots as well.
       const saved = await processCashflowRows(mergedRows, true);
-      if (!saved) return;
+      if (!saved || !isSessionCurrent()) return;
       if (!hasCompleteBaseline) markFreedomCashflowHistoryBaseline(accountId);
 
     } catch (error) {
+      if (!isSessionCurrent()) return;
       const detail = error instanceof Error ? error.message : 'Unknown broker API error.';
       setCashflowSyncMessage(`Automatic Freedom cashflow sync failed: ${detail}`);
       console.warn('Automatic Freedom cashflow sync failed:', detail);
     } finally {
-      setCashflowSyncReady(true);
+      if (isSessionCurrent()) setCashflowSyncReady(true);
     }
   };
 
@@ -304,6 +317,7 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
 
   useEffect(() => {
     const persistBrokerTrades = (trades: FreedomExecutedTrade[]) => {
+      if (!isSessionCurrent()) return;
       const stored = portfolioStore.getState().brokerExecutedTrades || [];
       const storedById = new Map<string, FreedomExecutedTrade>(stored.map((trade) => [String(trade.id ?? ''), trade]));
       const normalizedRaw: FreedomExecutedTrade[] = trades.map((trade) => {
@@ -357,7 +371,9 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
           void pushCloudHistory({
             brokerExecutedTrades: normalized,
             cashflows: portfolioStore.getState().cashflows || []
-          }).catch(error => console.error('Unable to sync updated broker history:', error));
+          }, undefined, undefined, { isCurrentSession: isSessionCurrent }).catch(error => {
+            if (isSessionCurrent()) console.error('Unable to sync updated broker history:', error);
+          });
         }
       }
     };

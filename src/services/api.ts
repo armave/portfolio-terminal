@@ -891,10 +891,11 @@ function enqueueCloudHistoryWrite(
   history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] },
   secret: string,
   knownRevision: number | undefined,
-  force: boolean
+  force: boolean,
+  isCurrentSession: () => boolean = () => true
 ): Promise<boolean> {
   const operation = cloudHistoryPushQueue.then(() =>
-    performPushCloudHistory(history, secret, knownRevision, force)
+    performPushCloudHistory(history, secret, knownRevision, force, isCurrentSession)
   );
   cloudHistoryPushQueue = operation.then(() => undefined, () => undefined);
   return operation;
@@ -903,9 +904,10 @@ function enqueueCloudHistoryWrite(
 export function pushCloudHistory(
   history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] },
   secret = getActiveGatewaySecret(),
-  knownRevision?: number
+  knownRevision?: number,
+  options: Pick<SyncOptions, 'isCurrentSession'> = {}
 ): Promise<boolean> {
-  return enqueueCloudHistoryWrite(history, secret, knownRevision, false);
+  return enqueueCloudHistoryWrite(history, secret, knownRevision, false, options.isCurrentSession);
 }
 
 /**
@@ -924,11 +926,12 @@ async function performPushCloudHistory(
   history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] },
   secret: string,
   knownRevision: number | undefined,
-  force: boolean
+  force: boolean,
+  isCurrentSession: () => boolean = () => true
 ): Promise<boolean> {
   const brokerExecutedTrades = Array.isArray(history.brokerExecutedTrades) ? history.brokerExecutedTrades : [];
   const cashflows = Array.isArray(history.cashflows) ? history.cashflows : [];
-  if (!secret || (!force && !brokerExecutedTrades.length && !cashflows.length)) return false;
+  if (!isCurrentSession() || !secret || (!force && !brokerExecutedTrades.length && !cashflows.length)) return false;
   const plaintext = JSON.stringify({ brokerExecutedTrades, cashflows });
   const fingerprint = JSON.stringify([secret, plaintext]);
   // Compare serialized content, not object identity: stores often rebuild arrays
@@ -939,15 +942,18 @@ async function performPushCloudHistory(
   if (!Number.isSafeInteger(revision) || (revision as number) < 0) {
     const url = new URL('/api/history', WORKER_PROXY_URL).toString();
     const current = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}` } });
+    if (!isCurrentSession()) return false;
     revision = readCloudRevision(current.headers) ?? 0;
     if (!current.ok && current.status !== 404) throw new Error(`Closed history revision check failed (HTTP ${current.status}).`);
   }
   const encryptedPayload = await encryptCloudPayload(plaintext, secret);
+  if (!isCurrentSession()) return false;
   const res = await fetch(new URL('/api/history', WORKER_PROXY_URL).toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}`, 'If-Match': `"${revision}"` },
     body: JSON.stringify({ encryptedPayload })
   });
+  if (!isCurrentSession()) return false;
   if (!res.ok) throw new Error(`Closed history sync failed (HTTP ${res.status}).`);
   const savedRevision = readCloudRevision(res.headers) ?? (revision as number) + 1;
   rememberCloudHistorySnapshot(secret, {
