@@ -118,6 +118,19 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Keep the extracted transport boundary out of the initial application
+        // entry chunk. The browser loads this shared chunk when api.ts imports
+        // its adapters, and it remains independently cacheable across UI edits.
+        manualChunks(id) {
+          if (/\/src\/services\/(authTransportRuntime|freedomBrokerTransportRuntime|marketDataTransportRuntime)\.ts$/.test(id)) {
+            return 'transport-runtime';
+          }
+          return undefined;
+        }
+      }
+    }
   }
 });
