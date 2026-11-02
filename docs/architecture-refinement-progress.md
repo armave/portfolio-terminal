@@ -2,7 +2,7 @@
 
 **Repository:** `armave/portfolio-terminal`  
 **Current work:** Cloud state sync runtime extraction  
-**Base:** `3b16d36cec87a02db31a45630c4751dde34b310b`
+**Base:** `5b55f0a3c883e2333e533fbada04dbd803353dc6`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
@@ -139,7 +139,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Validation on PR head `52ca8cd824ce7618a935cf11ca7208a9144b902a`: 1,023 tests across 96 files; typecheck, production build, dead-code validation, both dependency audits, and production browser smoke passed. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41427655823) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41427655797).
 - [x] Squash-merged to `main` as `3b16d36cec87a02db31a45630c4751dde34b310b`.
 
-## Current PR #255 — cloud state security and revision runtimes
+## Merged PR #255 — cloud state security and revision runtimes
 
 - [x] Extract AES-GCM encryption/decryption, legacy CryptoJS decryption, shared cloud-key retrieval, and active Gateway Secret lookup into `cloudStateSecurity.ts`.
 - [x] Preserve the `api.ts` compatibility exports for `setSecretGetter` and `clearCloudEncryptionSecretCache`.
@@ -157,8 +157,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Exercise administrator sign-out and account switching to a guest in the same browser context.
 - [x] Verify failed sign-in remains recoverable and does not preserve the previous administrator session.
 - [x] Verify guests fetch only the server-scoped guest projection and do not request the administrator cloud workspace.
-- [ ] Run exact-head typecheck, Vitest, build, audits, dead-code validation, and production browser smoke.
-- [x] Squash-merged to `main` as `5b55f0a3c883e2333e533fbada04dbd803353dc6`.
+- [x] Exact-head validation: 1,036 tests across 98 files; typecheck/build, dead-code validation, both audits and production browser smoke passed. Squash-merged to `main` as `5b55f0a3c883e2333e533fbada04dbd803353dc6`.
 
 ## Current PR #257 — cloud state sync runtime
 
@@ -182,7 +181,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 
 - [x] Extract cloud-state encryption and Gateway Secret resolution into `cloudStateSecurity.ts`, retaining `api.ts` compatibility exports.
 - [x] Extract cloud revision persistence, pull-generation tracking, and serialized snapshot-write ordering into `cloudRevisionCoordinator.ts`.
-- [ ] Extract cloud-state pull/push operations and closed-history synchronization while preserving session-bound caches, request coalescing, cloud revision checks, and serialized writes.
+- [x] Extract cloud-state pull/push operations and closed-history synchronization in PR #257, preserving session-bound caches, request coalescing, cloud revision checks, and serialized writes.
 - [ ] Separate authentication/session transport from the compatibility facade.
 - [ ] Separate broker transport and market-data transport from the compatibility facade.
 
