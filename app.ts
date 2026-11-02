@@ -87,7 +87,7 @@ import { isCurrentGuestPortfolioSession, resolveGuestPortfolioRefreshView } from
 import { createSessionIdentityGuard } from './src/utils/sessionIdentityGuard';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
-import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, BrokerAssumptions, GuestTrancheLedgerRecord, PortfolioState, PositionRecord, QuoteDetails } from './src/types/portfolio';
+import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, BrokerAssumptions, GuestTrancheLedgerRecord, PortfolioState, QuoteDetails } from './src/types/portfolio';
 import { buildClosedTradeGuestLedgerUpserts, resolveClosedTradeOperationDate } from './src/domain/closedTradeGuestAssignments';
 import { attributeClosedTradeExecutions } from './src/domain/closedTradeAttribution';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from './src/domain/brokerExecutionMetrics';
@@ -1747,7 +1747,7 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
   }
   else if (action.action === "sell") {
     const ticker = action.ticker.toUpperCase();
-    let pos: (Partial<PositionRecord> & { ticker: string; shares: number | string }) | undefined = state.positions[ticker];
+    let pos: { ticker: string; shares: number | string } | undefined = state.positions[ticker];
     let isCashHolding = false;
     let cashHoldingIdx = -1;
 
