@@ -35,7 +35,7 @@ describe('cloud state security runtime', () => {
   });
 
   it('uses the server-owned shared key and caches it until the session cache is cleared', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ key: 'shared-workspace-key' }), {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ key: 'shared-workspace-key' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     })) as unknown as typeof fetch;
