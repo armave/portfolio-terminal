@@ -51,7 +51,7 @@ function createFixture(overrides: Partial<GuestPortfolioAssignmentRuntimeDepende
 }
 
 function preparePublisher(fixture: ReturnType<typeof createFixture>, tranche = activeTranche()): void {
-  fixture.state.brokerAccountInfo = { loaded: true, balances: [], positions: [] };
+  fixture.state.brokerAccountInfo = { loaded: true, receivedAt: 1_000, balances: [], positions: [] };
   fixture.state.brokerExecutedTrades = [];
   fixture.state.activeTrancheGuestAssignments = { [tranche.id]: 'guest-1' };
   fixture.state.activeTrancheGuestAssignmentDetails = {
