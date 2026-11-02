@@ -527,9 +527,11 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     const storage = {
       get: async (key) => values.get(key),
       put: async (key, value) => values.set(key, value),
+      delete: async (key) => values.delete(key),
       transaction: async (callback) => callback({
         get: async (key) => values.get(key),
-        put: async (key, value) => values.set(key, value)
+        put: async (key, value) => values.set(key, value),
+        delete: async (key) => values.delete(key)
       })
     };
     const ctx = { storage };
@@ -817,9 +819,11 @@ describe('PortfolioStateDO payload validation', () => {
     const storage = {
       get: async (key) => values.get(key),
       put: async (key, value) => values.set(key, value),
+      delete: async (key) => values.delete(key),
       transaction: async (callback) => callback({
         get: async (key) => values.get(key),
-        put: async (key, value) => values.set(key, value)
+        put: async (key, value) => values.set(key, value),
+        delete: async (key) => values.delete(key)
       })
     };
     return new PortfolioStateDO({ storage }, {});
