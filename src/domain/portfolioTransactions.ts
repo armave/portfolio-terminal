@@ -1,5 +1,6 @@
 import type { BrokerAssumptions, ClosedTrade, PositionRecord, TrancheItem } from '../types/portfolio';
 import { calculateCommission, calculateMarginInterest, resolveCommissionConfig } from './portfolio';
+import { validateSaleCostBasisTranches } from './saleCostBasis';
 
 export interface FifoSaleAllocation {
   soldCostBasis: number;
@@ -8,9 +9,10 @@ export interface FifoSaleAllocation {
 }
 
 /**
- * Allocate a partial or full sale across purchase lots in FIFO order.
- * This preserves per-execution buy fees when available and the historical
- * proportional aggregate-fee fallback for legacy positions.
+ * Allocate a partial or full sale across a validated acquisition ledger in FIFO
+ * order. Invalid/missing lots fail closed before any caller can mutate state.
+ * Per-lot fees are retained when complete; otherwise the validated aggregate
+ * fee is allocated proportionally for legacy records.
  */
 export function allocateFifoSaleTranches(
   tranches: readonly TrancheItem[],
@@ -18,17 +20,29 @@ export function allocateFifoSaleTranches(
   positionShares: number,
   aggregateBuyCommission: number
 ): FifoSaleAllocation {
-  let remainingToSell = sharesToSell;
+  if (!Number.isFinite(sharesToSell) || sharesToSell <= 0) {
+    throw new Error('Sale quantity must be a finite positive number.');
+  }
+
+  const validated = validateSaleCostBasisTranches(
+    tranches,
+    positionShares,
+    aggregateBuyCommission
+  );
+  const shareTolerance = Math.max(1e-8, Math.abs(positionShares) * 1e-8);
+  if (sharesToSell - positionShares > shareTolerance) {
+    throw new Error('Sale quantity cannot exceed the validated open position.');
+  }
+  const normalizedSharesToSell = Math.min(sharesToSell, positionShares);
+  let remainingToSell = normalizedSharesToSell;
   let soldCostBasis = 0;
   let buyCommissionAllocated = 0;
   const remainingTranches: TrancheItem[] = [];
-  const hasPerTrancheCommissions = tranches.length > 0 && tranches.every(
-    (tranche) => Number.isFinite(Number(tranche.buyCommission))
-  );
+  const hasPerTrancheCommissions = validated.hasPerTrancheCommissions;
 
-  for (const tranche of tranches) {
-    const trancheShares = Number(tranche.qty ?? tranche.shares) || 0;
-    const tranchePrice = Number(tranche.price ?? tranche.entryPrice) || 0;
+  for (const tranche of validated.tranches) {
+    const trancheShares = tranche.qty;
+    const tranchePrice = tranche.price;
 
     if (remainingToSell <= 0) {
       remainingTranches.push({ ...tranche });
@@ -40,7 +54,7 @@ export function allocateFifoSaleTranches(
     remainingToSell -= take;
 
     const trancheBuyCommission = hasPerTrancheCommissions
-      ? Math.max(0, Number(tranche.buyCommission) || 0)
+      ? Number(tranche.buyCommission)
       : 0;
     const commissionForTake = hasPerTrancheCommissions && trancheShares > 0
       ? Number((trancheBuyCommission * take / trancheShares).toFixed(2))
@@ -58,13 +72,21 @@ export function allocateFifoSaleTranches(
     }
   }
 
-  const sellRatio = positionShares > 0 ? sharesToSell / positionShares : 1;
+  if (remainingToSell > shareTolerance || !Number.isFinite(soldCostBasis) || soldCostBasis <= 0) {
+    throw new Error('Sale quantity could not be fully allocated to valid acquisition lots; reconcile the cost basis before selling.');
+  }
+
+  const sellRatio = normalizedSharesToSell / positionShares;
+  const unassignedBuyCommission = Math.max(
+    0,
+    aggregateBuyCommission - validated.explicitBuyCommissionTotal
+  );
   const allocatedCommission = hasPerTrancheCommissions
-    ? Number(buyCommissionAllocated.toFixed(2))
+    ? Number((buyCommissionAllocated + unassignedBuyCommission * sellRatio).toFixed(2))
     : Number((aggregateBuyCommission * sellRatio).toFixed(2));
 
   return {
-    soldCostBasis,
+    soldCostBasis: Number(soldCostBasis.toFixed(8)),
     buyCommissionAllocated: allocatedCommission,
     remainingTranches
   };
