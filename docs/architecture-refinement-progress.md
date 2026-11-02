@@ -193,16 +193,21 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41457467471) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41457467610) passed.
 - [x] Squash-merged to `main` as `59b3ce8a1d606624d0a36c81096d1479793e77fc`.
 
-## Current PR #261 — portfolio transaction calculation boundary
+## Merged PR #261 — portfolio transaction calculation boundary
 
 - [x] Extract pure FIFO sale-lot allocation, sale commission calculation, and debt-first sale-proceeds settlement into `portfolioTransactions.ts`.
 - [x] Keep portfolio state ownership, position mutation, rollover, and realized-trade persistence in `PortfolioStore`.
 - [x] Add direct tests for FIFO partial allocation, legacy fee fallback, tranche aliases, commission normalization, and debt/cash settlement.
-- [x] Exact-head validation on `482b98b3901117f907032ce12ddcab09343c5f02`: typecheck, 1,067 tests across 102 files, production build, dead-code validation, both dependency audits, and production Chromium smoke passed.
+- [x] Exact-head validation on `41ef4e3f03cabbbe218fd1b9419ea57f2cd366d8`: typecheck, 1,067 tests across 102 files, production build, dead-code validation, both dependency audits, and production Chromium smoke passed.
 - [x] Production build bundle: 482,981 / 500,000 bytes; gzip: 154,907 / 165,000 bytes.
 - [x] Production dependency audit: 0 vulnerabilities; full dependency tree retains 9 low/moderate advisories (2 low, 7 moderate).
-- [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41460196876) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41460196906) passed.
-- [ ] Review and merge.
+- [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41460523660) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41460523688) passed.
+- [x] Squash-merged to `main` as `13ff76f843259bdc37937e85060cbf52af7548e2`.
+
+## Next architecture step
+
+- [ ] Add explicit characterization tests for margin-interest allocation, realized-sale P&L construction, and partial-exit financing allocation before moving those calculations out of `PortfolioStore`.
+- [ ] Preserve one-shot margin charge behavior, accrued rollover treatment, fractional-share cent rounding, and staged partial-sale reconciliation.
 
 ## Remaining architecture work
 
