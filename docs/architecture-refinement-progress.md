@@ -71,7 +71,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Reuse the same waitable request methods for manual portfolio sync.
 - [x] Keep broker response listeners, account classification, active-order target resolution, and financial calculations in the app unchanged.
 - [x] Add Vitest coverage for scheduled order, individual events, and waitable success/failure results.
-- [ ] Run exact-head typecheck, Vitest, build, dead-code validation, dependency audits, and production browser smoke.
+- [x] Validation on implementation head `399bfe4a0eab23fa39bac2a23e67f713ac454d7d`: 985 tests across 89 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41416763228) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41416763350).
 - [ ] Review and merge.
 
 ## Remaining architecture work
