@@ -1043,7 +1043,8 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     : currentAccountRole === 'admin'
       ? Array.from(new Set<string>([
         ...Object.keys(current.positions || {}),
-        ...(cashHoldings || []).map((holding: any) => holding.ticker)
+        ...(cashHoldings || []).map((holding: any) => holding.ticker),
+        ...(current.cashStocks || []).map((holding: any) => holding.ticker)
       ]))
       : [];
   if (tickersArray.length === 0) return true;
