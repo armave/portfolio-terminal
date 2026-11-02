@@ -21,6 +21,8 @@ const adminUser: AuthUser = {
   createdAt: '2026-01-01T00:00:00.000Z'
 };
 
+type AuthRole = AuthUser['role'];
+
 function createFixture(options: {
   initialized?: boolean;
   user?: AuthUser;
@@ -32,7 +34,7 @@ function createFixture(options: {
   let initialized = options.initialized ?? false;
   const calls: string[] = [];
   const user = options.user ?? guestUser;
-  const dependencies: PortfolioAuthenticationRuntimeDependencies = {
+  const dependencies = {
     validateGatewaySecret: vi.fn(async (secret: string) => {
       calls.push(`validate:${secret}`);
       return options.valid ?? true;
@@ -70,7 +72,7 @@ function createFixture(options: {
       if (options.startApp) await options.startApp();
     }),
     hideAuthContainer: vi.fn(() => calls.push('hide-auth'))
-  };
+  } satisfies PortfolioAuthenticationRuntimeDependencies;
 
   return {
     dependencies,
@@ -78,8 +80,6 @@ function createFixture(options: {
     getState: () => ({ role, initialized })
   };
 }
-
-type AuthRole = AuthUser['role'];
 
 describe('portfolio authentication runtime', () => {
   it('rejects an empty credential before making validation or persistence requests', async () => {
