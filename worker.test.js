@@ -1069,7 +1069,6 @@ describe('Cloudflare authentication edge rate limiting', () => {
     expect(await response.json()).toEqual({
       error: 'Authentication protection is temporarily unavailable.'
     });
-    expect(JSON.stringify(await response.clone().json())).not.toContain('internal binding detail');
     expect(env.doFetch).not.toHaveBeenCalled();
   });
 

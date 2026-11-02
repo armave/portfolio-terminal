@@ -28,6 +28,8 @@
       ]
     }
   ],
+  // Stable namespace for this Worker. The binding is approximate and location-local;
+  // route-qualified keys keep authentication counters separate from other resources.
   "ratelimits": [
     {
       "name": "AUTH_EDGE_RATE_LIMITER",
