@@ -175,6 +175,9 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Move login, bootstrap, token validation, identity reads, user directory reads/mutations, language updates, and logout into the injected runtime.
 - [x] Preserve API compatibility exports and reuse the validated identity during startup.
 - [x] Preserve token-scoped user cache TTL, directory invalidation, in-flight generation guards, no-store requests, and logout-wide cache invalidation.
+- [x] Extract Freedom TradeNet endpoints and the token/date-scoped cashflow cache into `freedomBrokerTransportRuntime.ts`.
+- [x] Preserve read-only/no-store endpoint options, symbol/date normalization, five-minute cache TTL, request coalescing, retry-after-failure, and explicit cache clearing.
+- [x] Add 8 focused Vitest cases covering route contracts, validation, session creation, cache keying/expiry, in-flight coalescing, failure retry, and reset.
 - [x] Add focused Vitest coverage for GET coalescing, identity reuse, invalid tokens, normalization, mutation invalidation, stale in-flight directory reads, logout cleanup, and error retry.
 - [ ] Run exact-head typecheck, Vitest, build, dead-code validation, audits, and production browser smoke.
 - [ ] Review and merge.

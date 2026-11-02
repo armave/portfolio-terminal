@@ -3,6 +3,7 @@ import { createCloudStateSecurity } from './cloudStateSecurity';
 import { createCloudRevisionCoordinator } from './cloudRevisionCoordinator';
 import { createCloudStateSyncRuntime } from './cloudStateSyncRuntime';
 import { createAuthTransportRuntime } from './authTransportRuntime';
+import { createFreedomBrokerTransportRuntime } from './freedomBrokerTransportRuntime';
 export type { AuthUser, AuthSession } from './authTransportRuntime';
 export type { SyncOptions } from './cloudStateSyncRuntime';
 import { processRollovers } from '../domain/portfolio';
@@ -519,96 +520,20 @@ export function clearYahooDeepStockDataCache(): void {
 
 export const validateGatewaySecret = authTransportRuntime.validateGatewaySecret;
 
-/** Read-only connectivity test for Freedom Broker Armenia TradeNet. */
-export async function testFreedomTradeNetConnection(): Promise<unknown> {
-  return proxyFetch('freedom-test');
-}
+const freedomBrokerTransportRuntime = createFreedomBrokerTransportRuntime({
+  proxyFetch: (action, queryParams, options) => proxyFetch(action, queryParams, options),
+  getActiveGatewaySecret,
+  recordMetric: recordApiMetric
+});
 
-/** Fetch raw read-only TradeNet positions so the actual broker schema can be verified. */
-export async function fetchFreedomTradeNetPositions(): Promise<unknown> {
-  return proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
-}
-
-/** Fetch read-only TradeNet executions, optionally bounded from the latest locally closed trade date. */
-export async function fetchFreedomTradeNetTrades(fromDate?: string): Promise<unknown> {
-  const startDate = typeof fromDate === 'string' && fromDate.trim() ? fromDate.trim() : undefined;
-  return proxyFetch('freedom-trades', startDate ? { fromDate: startDate } : undefined, { cache: 'no-store' });
-}
-
-/** Fetch current active TradeNet orders without reusing a cached response. */
-export async function fetchFreedomTradeNetActiveOrders(): Promise<unknown> {
-  return proxyFetch('freedom-orders', { active_only: 1 }, { cache: 'no-store' });
-}
-
-/** Fetch one read-only TradeNet order-book snapshot without response caching. */
-export async function fetchFreedomTradeNetMarketDepth(ticker: string): Promise<unknown> {
-  const symbol = String(ticker || '').trim().toUpperCase();
-  if (!/^[A-Z0-9.^=-]{1,20}$/.test(symbol)) throw new Error('A valid ticker is required to load market depth.');
-  return proxyFetch('freedom-market-depth', { symbol }, { cache: 'no-store' });
-}
-
-/** Ensure the administrator's live TradeNet SID is present in server-side storage. */
-export async function ensureFreedomTradeNetSession(): Promise<unknown> {
-  return proxyFetch('freedom-session', {}, {
-    method: 'POST',
-    body: JSON.stringify({}),
-    cache: 'no-store'
-  });
-}
-
-/** Cache each broker cashflow date range briefly to avoid repeat reads on quick Trades navigation. */
-const FREEDOM_CASHFLOW_CACHE_TTL_MS = 5 * 60 * 1000;
-let freedomCashflowCache: { secret: string; fromDate?: string; expiresAt: number; data: unknown } | null = null;
-let freedomCashflowRequest: { secret: string; fromDate?: string; promise: Promise<unknown> } | null = null;
-
-export async function fetchFreedomCashflows(fromDate?: string): Promise<unknown> {
-  const secret = getActiveGatewaySecret().trim();
-  const startDate = typeof fromDate === 'string' && fromDate.trim() ? fromDate.trim() : undefined;
-  if (
-    freedomCashflowCache &&
-    freedomCashflowCache.secret === secret &&
-    freedomCashflowCache.fromDate === startDate &&
-    freedomCashflowCache.expiresAt > Date.now()
-  ) {
-    recordApiMetric('cache_hit', { cache: 'freedom_cashflows' });
-    return freedomCashflowCache.data;
-  }
-  if (freedomCashflowRequest?.secret === secret && freedomCashflowRequest.fromDate === startDate) {
-    recordApiMetric('inflight_dedup', { operation: 'freedom_cashflows' });
-    return freedomCashflowRequest.promise;
-  }
-
-  const request: Promise<unknown> = proxyFetch(
-    'freedom-cashflows',
-    startDate ? { fromDate: startDate } : {},
-    { cache: 'no-store' }
-  )
-    .then((data: unknown) => {
-      freedomCashflowCache = {
-        secret,
-        fromDate: startDate,
-        expiresAt: Date.now() + FREEDOM_CASHFLOW_CACHE_TTL_MS,
-        data
-      };
-      return data;
-    })
-    .catch((error) => {
-      if (error instanceof Error) throw error;
-      throw new Error('Failed to fetch Freedom Broker cashflows due to a network error.');
-    })
-    .finally(() => {
-      if (freedomCashflowRequest?.promise === request) freedomCashflowRequest = null;
-    });
-  freedomCashflowRequest = { secret, fromDate: startDate, promise: request };
-  return request;
-}
-
-/** Clear the in-memory snapshot between isolated tests or account changes. */
-export function clearFreedomCashflowCache(): void {
-  freedomCashflowCache = null;
-  freedomCashflowRequest = null;
-}
-
+export const testFreedomTradeNetConnection = freedomBrokerTransportRuntime.testFreedomTradeNetConnection;
+export const fetchFreedomTradeNetPositions = freedomBrokerTransportRuntime.fetchFreedomTradeNetPositions;
+export const fetchFreedomTradeNetTrades = freedomBrokerTransportRuntime.fetchFreedomTradeNetTrades;
+export const fetchFreedomTradeNetActiveOrders = freedomBrokerTransportRuntime.fetchFreedomTradeNetActiveOrders;
+export const fetchFreedomTradeNetMarketDepth = freedomBrokerTransportRuntime.fetchFreedomTradeNetMarketDepth;
+export const ensureFreedomTradeNetSession = freedomBrokerTransportRuntime.ensureFreedomTradeNetSession;
+export const fetchFreedomCashflows = freedomBrokerTransportRuntime.fetchFreedomCashflows;
+export const clearFreedomCashflowCache = freedomBrokerTransportRuntime.clearFreedomCashflowCache;
 
 const guestPortfolioPublicationFingerprints = new Map<string, string>();
 const guestPortfolioPublicationRequests = new Map<string, Promise<void>>();
