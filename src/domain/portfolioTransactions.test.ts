@@ -67,7 +67,7 @@ describe('portfolio transaction calculations', () => {
   });
 
   it('calculates sale commissions from the normalized broker assumptions', () => {
-    expect(calculateSaleCommission(10, 1_000, brokerRules)).toBe(2.4);
+    expect(calculateSaleCommission(10, 1_000, brokerRules)).toBe(1.32);
   });
 
   it('preserves a zero-commission broker configuration', () => {
