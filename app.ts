@@ -23,6 +23,7 @@ import {
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
+import { createPortfolioSessionRuntime } from './src/services/portfolioSessionRuntime';
 import {
   createPortfolioAutoRefreshScheduler,
   DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
@@ -2133,45 +2134,32 @@ function hideStartupLoading() {
 
 setSecretGetter(() => getGatewaySecret());
 
-async function publishCurrentUser() {
-  try {
-    const user = await getCurrentUser();
-    const identityChanged = currentAccountRole !== user.role || currentAccountId !== user.id;
-    if (identityChanged) {
-      clearCloudEncryptionSecretCache();
-      currentAccountSessionGuard.setIdentity(`${user.role}:${user.id}`);
-    }
-    // Flip permissions before mutating the store so a pending admin subscription
-    // can never turn guest-state clearing into a shared-workspace write.
-    currentAccountRole = user.role;
-    currentAccountId = user.id;
-    canWriteCloudState = user.role === 'admin';
-    if (identityChanged && user.role === 'guest') {
-      // Clear any previously hydrated administrator workspace before the UI
-      // receives the guest identity event or renders the Balance screen.
-      if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
-      gistSyncTimeout = null;
-      portfolioStore.importState(createCleanWorkspaceState());
-      state = portfolioStore.getState();
-    }
-    emitUiEvent('auth:user-changed', { user });
-    return user;
-  } catch {
-    currentAccountRole = null;
-    currentAccountId = null;
-    canWriteCloudState = false;
-    currentAccountSessionGuard.setIdentity(null);
-    emitUiEvent('auth:user-changed', { user: null });
-    return null;
-  }
-}
-
-async function requireAdmin(action: string): Promise<boolean> {
-  const user = await publishCurrentUser();
-  if (user?.role === 'admin') return true;
-  showToast(`Only administrators can ${action}.`, 'error');
-  return false;
-}
+const portfolioSessionRuntime = createPortfolioSessionRuntime({
+  getCurrentUser,
+  getAccountRole: () => currentAccountRole,
+  getAccountId: () => currentAccountId,
+  setAccountRole: (role) => { currentAccountRole = role; },
+  setAccountId: (accountId) => { currentAccountId = accountId; },
+  setCloudWritePermission: (allowed) => { canWriteCloudState = allowed; },
+  setSessionIdentity: (identity) => currentAccountSessionGuard.setIdentity(identity),
+  clearCloudEncryptionSecretCache,
+  clearPendingCloudWrite: () => {
+    if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
+    gistSyncTimeout = null;
+  },
+  clearGuestWorkspace: () => {
+    portfolioStore.importState(createCleanWorkspaceState());
+    state = portfolioStore.getState();
+  },
+  emitUserChanged: (user) => emitUiEvent('auth:user-changed', { user }),
+  showToast,
+  logoutAccount,
+  clearSavedGatewaySecret: () => saveGatewaySecret(''),
+  persistGatewaySecret,
+  clearStoreGatewaySecret: () => portfolioStore.setState({ gatewaySecret: '' }),
+  reloadPage: () => window.location.reload()
+});
+const { publishCurrentUser, requireAdmin } = portfolioSessionRuntime;
 
 export async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
   const submittedSecret = secret.trim();
@@ -2403,20 +2391,7 @@ function bindStartupActions() {
     })();
   });
 
-  addUiEventListener('auth:logout', () => {
-    void (async () => {
-      try {
-        await logoutAccount();
-      } catch (error) {
-        showToast(error instanceof Error ? error.message : 'Could not sign out cleanly.', 'error');
-      } finally {
-        saveGatewaySecret('');
-        await persistGatewaySecret();
-        portfolioStore.setState({ gatewaySecret: '' });
-        window.location.reload();
-      }
-    })();
-  });
+  portfolioSessionRuntime.bindLogout();
   addUiEventListener('settings:pull-cloud-state', () => {
     if (!window.confirm(translateText("Pulling cloud will replace this device's local portfolio with the shared KV cloud snapshot. Any changes that have not synced can be lost. Export a JSON backup first if you may need them. Continue?"))) return;
     void syncCloudState('pull');

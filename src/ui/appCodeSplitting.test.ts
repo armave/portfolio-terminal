@@ -44,10 +44,12 @@ describe('on-demand application code splitting', () => {
     expect(app.match(/<Suspense fallback=\{null\}>/g)?.length ?? 0).toBe(3);
   });
 
-  it('does not dynamically import the API module for logout after it is already statically loaded', () => {
-    const runtime = readSource('../../app.ts');
-    expect(runtime).toContain('  logoutAccount,');
-    expect(runtime).toContain('await logoutAccount();');
-    expect(runtime).not.toContain("await import('./src/services/api')");
+  it('keeps logout on the statically injected API dependency behind the session runtime', () => {
+    const appRuntime = readSource('../../app.ts');
+    const sessionRuntime = readSource('../services/portfolioSessionRuntime.ts');
+    expect(appRuntime).toContain('  listUsers,\n  logoutAccount,\n  normalizeFreedomTrades,');
+    expect(sessionRuntime).toContain('await dependencies.logoutAccount();');
+    expect(sessionRuntime).toContain('dependencies.clearSavedGatewaySecret();');
+    expect(appRuntime).not.toContain("await import('./src/services/api')");
   });
 });
