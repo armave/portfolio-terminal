@@ -183,6 +183,72 @@ describe('active broker tranches', () => {
     });
   });
 
+  it('keeps timestamped live quotes when an untimestamped broker snapshot arrives', () => {
+    const observedAt = Date.now();
+    const sourceTimestamp = observedAt - 30_000;
+    const result = classifyFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [
+        { ticker: 'AAPL', quantity: 5, marketPrice: 120 },
+        { ticker: 'MSFT', quantity: 5, marketPrice: 220 }
+      ]
+    }, {
+      MSFT: {
+        ticker: 'MSFT',
+        shares: 5,
+        currentPrice: 225,
+        quoteUpdatedAt: observedAt,
+        quoteSource: 'Yahoo',
+        quoteDetails: { price: 225, freshness: 'fresh', sourceTimestamp }
+      }
+    }, [{
+      ticker: 'AAPL',
+      shares: 5,
+      currentPrice: 125,
+      price: 125,
+      quoteUpdatedAt: observedAt,
+      quoteSource: 'Yahoo',
+      quoteDetails: { price: 125, freshness: 'fresh', sourceTimestamp }
+    }], { MSFT: 'margin' }, observedAt);
+
+    expect(result.cashStocks[0]).toMatchObject({
+      ticker: 'AAPL',
+      currentPrice: 125,
+      price: 125,
+      quoteSource: 'Yahoo',
+      quoteDetails: { price: 125, freshness: 'fresh', sourceTimestamp }
+    });
+    expect(result.positions.MSFT).toMatchObject({
+      ticker: 'MSFT',
+      currentPrice: 225,
+      quoteSource: 'Yahoo',
+      quoteDetails: { price: 225, freshness: 'fresh', sourceTimestamp }
+    });
+  });
+
+  it('allows a broker snapshot to replace a cached price without source-timestamp provenance', () => {
+    const result = classifyFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [{ ticker: 'AAPL', quantity: 5, marketPrice: 120 }]
+    }, {}, [{
+      ticker: 'AAPL',
+      shares: 5,
+      currentPrice: 110,
+      price: 110,
+      quoteDetails: { price: 110, freshness: 'unknown' }
+    }]);
+
+    expect(result.cashStocks[0]).toMatchObject({
+      ticker: 'AAPL',
+      currentPrice: 120,
+      price: 120,
+      quoteSource: 'Freedom TradeNet',
+      quoteDetails: { price: 120, freshness: 'unknown' }
+    });
+  });
+
   it('splits one active purchase operation between cash holdings and margin lots', () => {
     const trades = [
       { id: 'mixed-buy', ticker: 'AAPL.US', side: 'BUY', quantity: 10, price: 100, buyCommission: 5, executedAt: '2026-01-01T10:00:00Z' }
