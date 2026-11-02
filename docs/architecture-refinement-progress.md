@@ -139,13 +139,15 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Validation on PR head `52ca8cd824ce7618a935cf11ca7208a9144b902a`: 1,023 tests across 96 files; typecheck, production build, dead-code validation, both dependency audits, and production browser smoke passed. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41427655823) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41427655797).
 - [x] Squash-merged to `main` as `3b16d36cec87a02db31a45630c4751dde34b310b`.
 
-## Current PR #255 — cloud state security runtime
+## Current PR #255 — cloud state security and revision runtimes
 
-- [x] Extract AES-GCM encryption, legacy CryptoJS decryption, shared cloud-key retrieval, and active Gateway Secret lookup into a focused runtime.
+- [x] Extract AES-GCM encryption/decryption, legacy CryptoJS decryption, shared cloud-key retrieval, and active Gateway Secret lookup into `cloudStateSecurity.ts`.
 - [x] Preserve the `api.ts` compatibility exports for `setSecretGetter` and `clearCloudEncryptionSecretCache`.
 - [x] Preserve the existing Worker route, request headers, cache invalidation, AES-GCM envelope format, legacy ciphertext compatibility, and retry behavior after shared-key failures.
-- [x] Add focused Vitest coverage for round trips, server-owned-key caching, failure retry, legacy decryption, tamper rejection, and credential getter precedence.
-- [ ] Run exact-head typecheck, Vitest, build, audits, dead-code validation, and production browser smoke.
+- [x] Extract cloud revision persistence, pull-generation tracking, and serialized snapshot-write ordering into `cloudRevisionCoordinator.ts`.
+- [x] Preserve the distinction between writes queued before a concurrent pull and writes that follow prior queued writes in the same tab.
+- [x] Add 12 focused Vitest cases covering security round trips, key cache invalidation/retry, legacy decryption, tamper rejection, credential precedence, revision restoration, storage failures, write serialization, stale-pull protection, and recovery.
+- [x] Validation on final PR head `74831217256bd1b0337b702754e26ae5511dfd72`: 1,036 tests across 98 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. Full dependency tree still has 9 low/moderate advisories (2 low, 7 moderate); production audit reports 0 vulnerabilities. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41430277038) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41430277303).
 - [ ] Review and merge.
 
 ## Remaining architecture work
