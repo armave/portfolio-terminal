@@ -1,29 +1,23 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener, type UiEvent } from './ui/uiEventBus';
 import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { lazy, Suspense } from 'preact/compat';
 import { AuthModal } from './components/AuthModal';
-import { ClosedHistoryDesk } from './components/ClosedHistoryDesk';
-import { GuestTrancheHistory } from './components/GuestTrancheHistory';
 import { DeskLoading } from './components/DeskLoading';
-import { CashCushionDesk } from './components/CashCushionDesk';
-import { SettingsDesk } from './components/SettingsDesk';
 import { TickerTabs } from './components/TickerTab';
 import { SummaryMetricsGrid } from './components/SummaryMetricsGrid';
 import { ProjectionsTable } from './components/ProjectionsTable';
-import { MarketInsightsPanel } from './components/MarketInsightsPanel';
 import { MarketDepthButton } from './components/MarketDepthButton';
 import { TableScrollRegion } from './components/TableScrollRegion';
 import { TradingConsole } from './components/TradingConsole';
 import { BoardExternalLinks } from './components/BoardExternalLinks';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
-import { ScenarioComparisonModal } from './components/ScenarioComparisonModal';
-import { MarginIntelligenceModal, type MarginIntelligenceState, type MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
+import type { MarginIntelligenceState, MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/scenarioContracts';
 import { ensureFreedomTradeNetSession, fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
 import { portfolioStore, usePortfolio, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { resolveActiveView } from './ui/renderBoard';
-import { ScenarioReportModal } from './components/ScenarioReportModal';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import {
   hasFreedomTradeHistoryBaseline,
@@ -39,6 +33,32 @@ import { refreshActiveOrders } from './services/activeOrdersRefresh';
 import { createLatestRequestGuard } from './utils/requestGeneration';
 import { getMatchingMarginIntelligenceState } from './features/ai/marginIntelligenceState';
 import { createSessionIdentityGuard, getSessionIdentityRequestKey, type SessionIdentityToken } from './utils/sessionIdentityGuard';
+
+
+const ClosedHistoryDesk = lazy(() =>
+  import('./components/ClosedHistoryDesk').then(({ ClosedHistoryDesk }) => ({ default: ClosedHistoryDesk }))
+);
+const GuestTrancheHistory = lazy(() =>
+  import('./components/GuestTrancheHistory').then(({ GuestTrancheHistory }) => ({ default: GuestTrancheHistory }))
+);
+const CashCushionDesk = lazy(() =>
+  import('./components/CashCushionDesk').then(({ CashCushionDesk }) => ({ default: CashCushionDesk }))
+);
+const SettingsDesk = lazy(() =>
+  import('./components/SettingsDesk').then(({ SettingsDesk }) => ({ default: SettingsDesk }))
+);
+const MarketInsightsPanel = lazy(() =>
+  import('./components/MarketInsightsPanel').then(({ MarketInsightsPanel }) => ({ default: MarketInsightsPanel }))
+);
+const ScenarioComparisonModal = lazy(() =>
+  import('./components/ScenarioComparisonModal').then(({ ScenarioComparisonModal }) => ({ default: ScenarioComparisonModal }))
+);
+const ScenarioReportModal = lazy(() =>
+  import('./components/ScenarioReportModal').then(({ ScenarioReportModal }) => ({ default: ScenarioReportModal }))
+);
+const MarginIntelligenceModal = lazy(() =>
+  import('./components/MarginIntelligenceModal').then(({ MarginIntelligenceModal }) => ({ default: MarginIntelligenceModal }))
+);
 
 // In-flight broker reads are isolated by authenticated session generation.
 const tradesRequests = new Map<string, Promise<void>>();
@@ -717,7 +737,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   id="marketInsightsPanel"
                   class={"market-insights-workspace space-y-4 rounded-lg border border-cyan-900/50 bg-gradient-to-br from-slate-900/80 to-slate-950/90 p-4 shadow-lg shadow-black/10 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
                   aria-label="Market insights"
-                >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? <MarketInsightsPanel /> : null}</section>
+                >{activeDeskView === 'COMBINED' || !['CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'].includes(activeDeskView) ? (
+                  <Suspense fallback={<DeskLoading title="Preparing market insights" message="Loading market data panels…" accent="cyan" />}>
+                    <MarketInsightsPanel />
+                  </Suspense>
+                ) : null}</section>
               </div>
             </div>}
           </div>}
@@ -725,12 +749,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           {/* Cash Cushion Management Panel */}
           <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>
             {hasOpenedCashCushion
-              ? <div class="desk-content-reveal"><CashCushionDesk
-                  key={`balance-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
-                  showActiveTranches={permissions.canViewActiveTranches}
-                  isAdmin={permissions.isAdmin}
-                  guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined}
-                /></div>
+              ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}>
+                  <CashCushionDesk
+                    key={`balance-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
+                    showActiveTranches={permissions.canViewActiveTranches}
+                    isAdmin={permissions.isAdmin}
+                    guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined}
+                  />
+                </Suspense></div>
               : <DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}
           </div>
 
@@ -740,10 +766,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             class={`desk-view-transition min-w-0 ${activeDeskView === 'GUEST_HISTORY' ? '' : 'hidden'}`}
           >
             {hasOpenedGuestHistory
-              ? <div class="desk-content-reveal"><GuestTrancheHistory
-                records={portfolioSnapshot.guestTrancheLedger || []}
-                activeTranches={portfolioSnapshot.guestPortfolioSnapshot?.tranches || []}
-              /></div>
+              ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}>
+                  <GuestTrancheHistory
+                    records={portfolioSnapshot.guestTrancheLedger || []}
+                    activeTranches={portfolioSnapshot.guestPortfolioSnapshot?.tranches || []}
+                  />
+                </Suspense></div>
               : <DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}
           </div>}
 
@@ -766,18 +794,22 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         class={"desk-view-transition rounded-lg " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
       >
         {permissions.canViewClosedHistory && (hasOpenedClosedHistory
-          ? <div class="desk-content-reveal"><ClosedHistoryDesk
-              key={`closed-history-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
-              accountId={currentUser?.id || ''}
-              isSessionCurrent={isAccountSessionCurrent}
-            /></div>
+          ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />}>
+              <ClosedHistoryDesk
+                key={`closed-history-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
+                accountId={currentUser?.id || ''}
+                isSessionCurrent={isAccountSessionCurrent}
+              />
+            </Suspense></div>
           : <DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />)}
       </div>
 
       {/* Settings */}
       <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">
         {hasOpenedSettings
-          ? <div class="desk-content-reveal"><SettingsDesk currentUser={currentUser} /></div>
+          ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}>
+              <SettingsDesk currentUser={currentUser} />
+            </Suspense></div>
           : <DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}
       </div>
 
@@ -785,9 +817,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       <div id="auth-container" class={"auth-overlay " + (authOpen ? "auth-overlay-open" : "")}>
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
-      {scenarioModalData && <ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} />}
-      {scenarioReport !== null && <ScenarioReportModal key={scenarioReport} report={scenarioReport} onClose={dismissScenarioReport} />}
-      {permissions.canViewMarginDesk && marginIntelligence && <MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} />}
+      {scenarioModalData && <Suspense fallback={null}><ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} /></Suspense>}
+      {scenarioReport !== null && <Suspense fallback={null}><ScenarioReportModal key={scenarioReport} report={scenarioReport} onClose={dismissScenarioReport} /></Suspense>}
+      {permissions.canViewMarginDesk && marginIntelligence && <Suspense fallback={null}><MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} /></Suspense>}
       <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="assertive">
         {errorToasts.map((toast) => <div key={toast.id} role="alert" class={'pointer-events-auto rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all ' + (toast.isClosing ? 'opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
       </div>
