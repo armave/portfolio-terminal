@@ -39,6 +39,45 @@ export function getCashHoldingMarketPrice(holding: { currentPrice?: unknown; pri
   return positivePrice(holding.currentPrice) ?? positivePrice(holding.price);
 }
 
+type ActiveTrancheQuoteRecord = {
+  currentPrice?: unknown;
+  price?: unknown;
+  quoteDetails?: { sourceTimestamp?: unknown };
+};
+
+export function getActiveTrancheMarketPrice(
+  tranche: { ticker: string; marketPrice?: unknown },
+  cashHoldings: Array<{ ticker: string } & ActiveTrancheQuoteRecord>,
+  positions: Record<string, ActiveTrancheQuoteRecord>
+): number | null {
+  const ticker = tranche.ticker.trim().toUpperCase();
+  const cashHolding = cashHoldings.find((holding) => holding.ticker.trim().toUpperCase() === ticker);
+  const position = positions[ticker];
+
+  // Prefer the newest verifiable observation across cash and margin ledgers.
+  // The broker tranche snapshot has no observation timestamp and is last resort.
+  let latestTimestamp = 0;
+  let latestPrice: number | null = null;
+  for (const candidate of [cashHolding, position]) {
+    if (!candidate) continue;
+    const price = getCashHoldingMarketPrice(candidate);
+    const sourceTimestamp = Number(candidate.quoteDetails?.sourceTimestamp);
+    if (
+      price !== null &&
+      Number.isFinite(sourceTimestamp) &&
+      sourceTimestamp > latestTimestamp
+    ) {
+      latestTimestamp = sourceTimestamp;
+      latestPrice = price;
+    }
+  }
+  if (latestPrice !== null) return latestPrice;
+
+  return getCashHoldingMarketPrice(cashHolding || {}) ??
+    getCashHoldingMarketPrice(position || {}) ??
+    getCashHoldingMarketPrice({ currentPrice: tranche.marketPrice });
+}
+
 function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
   if (!details || typeof details !== 'object') return null;
   const hasChange = Number.isFinite(details.change) && Number.isFinite(details.changePercent);
@@ -244,11 +283,11 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     : state.activeTrancheTypes;
   const activeTrancheMixes = guestUserId ? {} : state.activeTrancheMixes;
   const activeTranches = activeTrancheSource.map((tranche) => {
-    const cashHolding = (state.cashCushion?.holdings || []).find(
-      (holding) => String(holding.ticker || '').trim().toUpperCase() === tranche.ticker
+    const latestPrice = getActiveTrancheMarketPrice(
+      tranche,
+      state.cashCushion?.holdings || [],
+      state.positions || {}
     );
-    const latestPrice = getCashHoldingMarketPrice(cashHolding || {}) ??
-      getCashHoldingMarketPrice({ currentPrice: tranche.marketPrice });
     if (latestPrice === null || latestPrice === tranche.marketPrice) return tranche;
     return { ...tranche, marketPrice: latestPrice, marketValue: latestPrice * tranche.quantity };
   });
