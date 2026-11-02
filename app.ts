@@ -1195,7 +1195,7 @@ async function importBackupFile(file: File) {
 // PORTFOLIO ACTIONS (CASH-FIRST ORDER FLOW)
 // ==========================================
 async function applyPortfolioActions(action: PortfolioActionIntent) {
-  if (!applyOvernightRollover()) {
+  if ((action.action === 'buy' || action.action === 'sell') && !applyOvernightRollover()) {
     logTerminal('[Error]: Could not save the margin rollover. The portfolio action was not applied.');
     return;
   }
@@ -1527,10 +1527,10 @@ async function executeCommand(commandText: string) {
 
   logTerminal(text, true);
 
-  // Do not run a trade command against stale debt when its rollover could not be saved.
-  if (!applyOvernightRollover()) {
-    logTerminal('[CLI Error]: Could not save the margin rollover. The command was not applied.');
-    showToast(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, 'error');
+  // Apply due margin interest before a trade, but do not block read-only commands
+  // or independent settings/quote updates when a rollover snapshot cannot be saved.
+  if (/^(?:buy|bought|sell|sold)\b/i.test(text) && !/\bvs\b/i.test(text) && !applyOvernightRollover()) {
+    logTerminal('[CLI Error]: Could not save the margin rollover. The trade was not applied.');
     return;
   }
 
