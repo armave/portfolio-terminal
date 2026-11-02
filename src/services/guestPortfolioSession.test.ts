@@ -1,5 +1,10 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { isCurrentGuestPortfolioSession, type GuestPortfolioSessionIdentity } from './guestPortfolioSession';
+
+function readAppSource(): string {
+  return readFileSync(new URL('../../app.ts', import.meta.url), 'utf8');
+}
 
 const session = (overrides: Partial<GuestPortfolioSessionIdentity> = {}): GuestPortfolioSessionIdentity => ({
   role: 'guest',
@@ -10,6 +15,14 @@ const session = (overrides: Partial<GuestPortfolioSessionIdentity> = {}): GuestP
 });
 
 describe('isCurrentGuestPortfolioSession', () => {
+  it('checks the captured account session before importing a guest snapshot', () => {
+    const source = readAppSource();
+    expect(source).toContain('const requestedIdentity = currentAccountSessionGuard.capture()');
+    expect(source).toContain('const currentIdentity = currentAccountSessionGuard.capture()');
+    expect(source).toContain('if (!isCurrentGuestPortfolioSession(requestedSession, currentSession)) return');
+    expect(source).toContain('const guestId = requestedSession.accountId');
+  });
+
   it('accepts a snapshot response for the same active guest and credential', () => {
     expect(isCurrentGuestPortfolioSession(session(), session())).toBe(true);
   });
