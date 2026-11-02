@@ -166,7 +166,8 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Preserve stale-session guards, read-only guest pulls, durable history-before-compaction ordering, separate history revisions, force-clear semantics, duplicate read/write coordination, encryption upgrades, and conflict-safe `If-Match` behavior.
 - [x] Port the missing explanatory Settings warnings from the older cloud-data-loss branch; retain current Russian translations and add accessibility assertions.
 - [x] Retain the already-merged reset/session binding and stale-pull guards; do not merge stale branch histories.
-- [ ] Run exact-head typecheck, Vitest, build, audits, dead-code validation, and production browser smoke.
+- [x] Validation on implementation head `4ff1cda902242df4821b345a71e30febafa436ed`: typecheck, 1,036 tests across 98 files, dead-code validation, both audits, production build, and Chromium browser smoke passed. Entry bundle: 499,837 / 500,000 bytes; gzip: 159,744 / 165,000 bytes. Full dependency audit: 9 low/moderate advisories (2 low, 7 moderate); production audit: 0 vulnerabilities. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41436822379) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41436822446).
+- [ ] Re-run exact-head checks after this tracker-only update.
 - [ ] Review and merge.
 
 ## Remaining architecture work
