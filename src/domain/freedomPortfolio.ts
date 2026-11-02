@@ -3,6 +3,34 @@ import { calculateCommission, type CommissionConfig } from './portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { getPositiveMarketPrice } from './portfolioValuation';
 
+/**
+ * Parse one edited side of a cash/margin split. Empty or invalid input keeps the
+ * last valid value; valid input is clamped so the opposite side remains non-negative.
+ */
+export function resolveActiveTrancheMixInput(
+  value: unknown,
+  totalQuantity: number,
+  previousValue: number
+): number {
+  const total = Number(totalQuantity);
+  if (!Number.isFinite(total) || total <= 0) return 0;
+
+  const previous = Number(previousValue);
+  const fallback = Number.isFinite(previous)
+    ? Math.min(total, Math.max(0, previous))
+    : 0;
+
+  if (value === null || value === undefined ||
+      (typeof value === 'string' && value.trim() === '')) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed)
+    ? Math.min(total, Math.max(0, parsed))
+    : fallback;
+}
+
 /** Preserve the cash/margin ratio when an open operation's quantity changes. */
 export function normalizeActiveTrancheMix(
   quantity: number,

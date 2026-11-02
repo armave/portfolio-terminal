@@ -10,6 +10,13 @@ function readAppSource(): string {
 }
 
 describe('Trades cache-first rendering', () => {
+  it('preserves the last valid Mix quantity when a closed-trade input is blank or invalid', () => {
+    const source = readSource();
+    expect(source).toContain('resolveActiveTrancheMixInput(value, rowQuantity, row.cashQuantity)');
+    expect(source).toContain('resolveActiveTrancheMixInput(value, rowQuantity, row.marginQuantity)');
+    expect(source).not.toContain('Number(value) || 0');
+  });
+
   it('hydrates saved executions synchronously before the first component effect', () => {
     const source = readSource();
     expect(source).toContain('function loadInitialBrokerExecutions(): FreedomExecutedTrade[]');

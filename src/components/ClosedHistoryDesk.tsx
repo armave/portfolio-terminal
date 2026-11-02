@@ -14,6 +14,7 @@ import { applyCashflowAllocationsToBrokerExecutions, applyCashflowAllocationsToC
 import { mergeFreedomCashflowRows, normalizeFreedomCashflowRows, normalizeSavedFreedomCashflows, type NormalizedFreedomCashflow } from '../domain/freedomCashflows';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { attributeClosedTradeExecutions } from '../domain/closedTradeAttribution';
+import { resolveActiveTrancheMixInput } from '../domain/freedomPortfolio';
 import { resolveClosedTradeAllocation } from '../domain/closedTradeAllocation';
 import { calculateFreedomMarginFeeAllocations } from '../domain/freedomMarginFees';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from '../domain/brokerExecutionMetrics';
@@ -707,8 +708,14 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
                     }
                   });
                 };
-                const updateMixCash = (value: string) => persistAllocation('mix', Math.min(rowQuantity, Math.max(0, Number(value) || 0)));
-                const updateMixMargin = (value: string) => persistAllocation('mix', rowQuantity - Math.min(rowQuantity, Math.max(0, Number(value) || 0)));
+                const updateMixCash = (value: string) => persistAllocation(
+                  'mix',
+                  resolveActiveTrancheMixInput(value, rowQuantity, row.cashQuantity)
+                );
+                const updateMixMargin = (value: string) => persistAllocation(
+                  'mix',
+                  rowQuantity - resolveActiveTrancheMixInput(value, rowQuantity, row.marginQuantity)
+                );
                 // 1. Resolve Exit Date
                 const rawDate =
                   (trade as any).exitDate ||
