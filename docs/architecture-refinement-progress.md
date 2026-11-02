@@ -1,8 +1,8 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Consolidated broker request, startup bootstrap, and guest assignment ID boundaries  
-**Base:** `72663e0fca6b665eed823350b7f938a064b15e76`
+**Current work:** Broker data runtime extraction and guest assignment lifecycle  
+**Base:** `91a03a29395f944cfbc2c07623ba886536bc09f3`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
@@ -25,6 +25,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Extract account-scoped broker request event coordination and waitable request disposal.
 - [x] Extract first-load credential restoration, validation, auth fallback, and startup failure sequencing.
 - [x] Extract fresh and deterministic legacy guest tranche assignment ID generation.
+- [x] Merge consolidated broker/startup/guest-ID runtimes in [PR #252](https://github.com/armave/portfolio-terminal/pull/252).
 
 ## Merged PR #246 — portfolio sync runtime
 
@@ -89,7 +90,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Validation on final PR head `b2727bbe7cb14f056b65725298f67c6240f32872`: 991 tests across 90 files; typecheck, build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41418140232) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41418140126).
 - [x] Squash-merged to `main` as `abe430d91482b25666bba01bc622268a79ba6feb`. The full dependency tree still reports low/moderate advisories; the production-only audit reports zero vulnerabilities.
 
-## Current PR #252 — consolidated broker and startup runtimes
+## Merged PR #252 — consolidated broker and startup runtimes
 
 [PR #252](https://github.com/armave/portfolio-terminal/pull/252)
 
@@ -111,13 +112,28 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Exact-head validation on implementation commit `7f56f493ad1cbd5c4195b372c35dae9ad7b637a1`: 1,007 tests across 94 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed.
 - [x] [Validate run 41420700536](https://github.com/armave/portfolio-terminal/actions/runs/41420700536) and [Pull Request CI run 41420700654](https://github.com/armave/portfolio-terminal/actions/runs/41420700654) both passed all steps.
 - [x] Production-only dependency audit: 0 vulnerabilities. Full dependency tree: 9 low/moderate advisories (2 low, 7 moderate), unresolved and not represented as fixed.
+- [x] Validation on final PR head `c76705379c7a60db2573ce292bdcd601ccd9394a`: 1,007 tests across 94 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41420921896) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41420921853).
+- [x] Production-only dependency audit: 0 vulnerabilities. Full dependency tree: 9 low/moderate advisories (2 low, 7 moderate), unresolved.
+- [x] Squash-merged to `main` as `91a03a29395f944cfbc2c07623ba886536bc09f3`.
+
+## Current PR #253 — broker data runtime
+
+- [x] Move administrator account-info, executed-trade, and active-order provider reads into `portfolioBrokerDataRuntime.ts`.
+- [x] Keep the app as the single portfolio-store owner and inject current account/session boundaries.
+- [x] Preserve in-flight request coalescing by account identity and session generation.
+- [x] Preserve incremental execution-history baselines, fee-allocation recovery, and bounded-page merging.
+- [x] Preserve stale-session rejection and broker refresh/error events.
+- [x] Add focused Vitest coverage for account, trade-history, and active-order reads.
+- [x] Validation on final PR head `4e173d2c7c4f0ad449f724d4a5eea4d69317195e`: 1,015 tests across 95 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41422557776) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41422557677).
+- [x] Production-only dependency audit: 0 vulnerabilities. Full dependency tree: 9 low/moderate advisories (2 low, 7 moderate), unresolved.
 - [ ] Review and merge.
 
 ## Remaining architecture work
 
 ### P1 — application runtime boundaries
 
-- [ ] Complete the broker runtime by moving account/trade/order provider reads and app-owned response publication out of `App.tsx`, preserving session-generation guards, incremental history merging, fee allocations, account classification, and error events.
+- [ ] Extract guest assignment commands and serialized snapshot/ledger publication from `app.ts`; preserve durable server ledger behavior, legacy backfill, reassignment history, and stale-data gating.
+- [x] Complete broker provider-read runtime extraction in PR #253 while keeping account classification and financial calculations app-owned.
 - [ ] Extract guest assignment commands and serialized snapshot/ledger publication from `app.ts`; preserve durable server ledger behavior, legacy backfill, reassignment history, and stale-data gating.
 - [x] Extract `startApp` orchestration: role-aware workspace hydration, shared-cloud pull, quote bootstrap, rollover ordering, and startup cloud-write recovery.
 

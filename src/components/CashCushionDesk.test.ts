@@ -64,6 +64,7 @@ describe('Balance cache-first history retention', () => {
 describe('Balance cache-first rendering wiring', () => {
   const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
   const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+  const brokerDataSource = readFileSync(new URL('../services/portfolioBrokerDataRuntime.ts', import.meta.url), 'utf8');
 
   it('uses the saved broker snapshot before showing a blocking first-load state', () => {
     expect(deskSource).toContain('createBalanceSyncState(Boolean(state.brokerAccountInfo?.loaded), isAdmin)');
@@ -97,10 +98,10 @@ describe('Balance cache-first rendering wiring', () => {
   });
 
   it('refreshes the full Balance snapshot without a date cursor', () => {
-    const accountLoaderStart = appSource.indexOf('const loadFreedomAccount');
-    const tradesLoaderStart = appSource.indexOf('const loadExecutedTrades', accountLoaderStart);
-    const accountLoader = appSource.slice(accountLoaderStart, tradesLoaderStart);
-    expect(accountLoader).toContain('fetchFreedomTradeNetPositions()');
+    const accountLoaderStart = brokerDataSource.indexOf('const loadFreedomAccount');
+    const tradesLoaderStart = brokerDataSource.indexOf('const refreshAccountInfo', accountLoaderStart);
+    const accountLoader = brokerDataSource.slice(accountLoaderStart, tradesLoaderStart);
+    expect(accountLoader).toContain('fetchAccountInfo()');
     expect(accountLoader).not.toContain('fromDate');
     expect(accountLoader).not.toContain('beginDate');
     expect(accountLoader).not.toContain('endDate');
