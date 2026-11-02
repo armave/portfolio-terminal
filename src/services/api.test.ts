@@ -1721,7 +1721,7 @@ describe('closed-session market request cache integration', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('reuses one successful deep-data request per symbol without blocking other symbols', async () => {
+  it('bypasses the closed-session cache for forced deep-data requests, async () => {
     setMarketRequestSessionForTests('CLOSED');
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
@@ -1742,7 +1742,7 @@ describe('closed-session market request cache integration', () => {
     await expect(fetchYahooDeepStockData('MSFT', true)).resolves.toMatchObject({
       symbol: 'MSFT', analystTargets: { median: 450 }
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('does not retain provider error payloads, allowing a later retry', async () => {
