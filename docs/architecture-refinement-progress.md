@@ -204,10 +204,22 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41460523660) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41460523688) passed.
 - [x] Squash-merged to `main` as `13ff76f843259bdc37937e85060cbf52af7548e2`.
 
+## Merged PR #262 — staged sale accounting characterization
+
+- [x] Characterize proportional allocation and one-time consumption of a position-level margin charge across staged partial exits.
+- [x] Characterize fractional-share partial exits, FIFO lot balance, and existing per-record cent rounding.
+- [x] Characterize debt-first proceeds settlement across multiple partial exits.
+- [x] Keep production financial code unchanged; this PR adds tests only.
+- [x] Exact-head validation on `77929c0e28207112916c983c6f3d367e3a8f1880`: typecheck, 1,070 tests across 102 files, production build, dead-code validation, both dependency audits, and production Chromium smoke passed.
+- [x] Production build bundle: 482,981 / 500,000 bytes; gzip: 154,907 / 165,000 bytes.
+- [x] Production dependency audit: 0 vulnerabilities; full dependency tree retains 9 low/moderate advisories (2 low, 7 moderate).
+- [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41461251079) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41461251288) passed.
+- [x] Squash-merged to `main` as `057f7a0b0ad3975e8960dc9195e4b7b4d88f2e7b`.
+
 ## Next architecture step
 
-- [ ] Add explicit characterization tests for margin-interest allocation, realized-sale P&L construction, and partial-exit financing allocation before moving those calculations out of `PortfolioStore`.
-- [ ] Preserve one-shot margin charge behavior, accrued rollover treatment, fractional-share cent rounding, and staged partial-sale reconciliation.
+- [ ] Extract margin-interest allocation and realized-sale P&L construction into pure domain functions, preserving current behavior and keeping all state mutation in `PortfolioStore`.
+- [ ] Add parity tests for accrued rollover treatment, financing allocation across partial exits, and realized closed-trade record fields before moving those calculations.
 
 ## Remaining architecture work
 
