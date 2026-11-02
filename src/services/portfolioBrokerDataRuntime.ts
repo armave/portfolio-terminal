@@ -174,7 +174,7 @@ export function createPortfolioBrokerDataRuntime(
         dependencies.setBrokerExecutions(mergedTrades);
 
         if (!hasCompleteBaseline) {
-          const persistedCount = dependencies.loadSavedBrokerExecutions().length;
+          const persistedCount = loadSavedBrokerExecutions().length;
           if (mergedTrades.length === 0 || persistedCount >= mergedTrades.length) {
             markHistoryBaseline(accountId);
           }
@@ -209,10 +209,10 @@ export function createPortfolioBrokerDataRuntime(
     let succeeded = false;
     const request = (async () => {
       await refreshOrders({
-        restoreGatewaySecret: dependencies.restoreGatewaySecret,
+        restoreGatewaySecret: restoreSecret,
         isCurrent: () => dependencies.isSessionCurrent(session),
-        fetchActiveOrders: dependencies.fetchActiveOrders,
-        normalizeActiveOrders: dependencies.normalizeActiveOrders,
+        fetchActiveOrders,
+        normalizeActiveOrders,
         onSuccess: (orders) => {
           if (!dependencies.isSessionCurrent(session)) return;
           succeeded = true;
