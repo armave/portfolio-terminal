@@ -49,6 +49,15 @@ describe('Market Insights request lifecycle wiring', () => {
     expect(panel).toContain('currentStocktwitsData?.messages');
   });
 
+  it('closes and clears an open News article when the active ticker changes', () => {
+    const panel = readSource('../../components/MarketInsightsPanel.tsx');
+    expect(panel).toContain('const currentSelectedNews = selectedNews?.ticker === ticker ? selectedNews.article : null;');
+    expect(panel).toContain('active: currentSelectedNews !== null');
+    expect(panel).toContain('if (selectedNews && selectedNews.ticker !== ticker) setSelectedNews(null);');
+    expect(panel).toContain('setSelectedNews({ ticker, article: n });');
+    expect(panel).toContain('{currentSelectedNews && createPortal(');
+  });
+
   it('cancels and invalidates older deep-data requests on effect cleanup', () => {
     const panel = readSource('../../components/MarketInsightsPanel.tsx');
     expect(panel).toContain('const controller = new AbortController();');
