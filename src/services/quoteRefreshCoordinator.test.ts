@@ -48,7 +48,7 @@ describe('quote refresh coordinator', () => {
     expect(executeRefresh).toHaveBeenNthCalledWith(2, true);
   });
 
-  it('coalesces ordinary polling with the active request and lets a queued force request upgrade', async () => {
+  it('upgrades a queued refresh to forced when an explicit trigger arrives before it starts', async () => {
     let releaseFirst: ((success: boolean) => void) | undefined;
     const executeRefresh = vi.fn()
       .mockImplementationOnce(() => new Promise<boolean>((resolve) => { releaseFirst = resolve; }))
@@ -57,9 +57,6 @@ describe('quote refresh coordinator', () => {
 
     const first = coordinator.refresh();
     await Promise.resolve();
-    const ordinary = coordinator.refresh();
-    expect(ordinary).toBe(first);
-
     const queued = coordinator.refreshAfterCurrent(false);
     const upgraded = coordinator.refresh(true);
     expect(upgraded).toBe(queued);
@@ -68,5 +65,35 @@ describe('quote refresh coordinator', () => {
     await expect(Promise.all([first, queued])).resolves.toEqual([true, true]);
     expect(executeRefresh).toHaveBeenCalledTimes(2);
     expect(executeRefresh).toHaveBeenLastCalledWith(true);
+  });
+
+  it('queues another latest-state batch when an explicit trigger arrives during a forced refresh', async () => {
+    let tickers = ['AAPL'];
+    let releaseForced: ((success: boolean) => void) | undefined;
+    const executeRefresh = vi.fn(async (force: boolean) => {
+      const snapshot = [...tickers];
+      if (executeRefresh.mock.calls.length === 2) {
+        expect(force).toBe(true);
+        expect(snapshot).toEqual(['AAPL']);
+        return new Promise<boolean>((resolve) => { releaseForced = resolve; });
+      }
+      if (executeRefresh.mock.calls.length === 3) {
+        expect(force).toBe(true);
+        expect(snapshot).toEqual(['AAPL', 'MSFT']);
+      }
+      return true;
+    });
+    const coordinator = createQuoteRefreshCoordinator(executeRefresh);
+
+    await coordinator.refresh();
+    const forced = coordinator.refresh(true);
+    await vi.waitFor(() => expect(executeRefresh).toHaveBeenCalledTimes(2));
+    tickers = ['AAPL', 'MSFT'];
+    const latest = coordinator.refresh(true);
+    expect(latest).not.toBe(forced);
+
+    releaseForced?.(true);
+    await expect(Promise.all([forced, latest])).resolves.toEqual([true, true]);
+    expect(executeRefresh).toHaveBeenCalledTimes(3);
   });
 });
