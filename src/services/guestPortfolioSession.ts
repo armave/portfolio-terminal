@@ -1,4 +1,4 @@
-export type PortfolioAccountRole = 'admin' | 'guest' | null;
+type PortfolioAccountRole = 'admin' | 'guest' | null;
 
 export interface GuestPortfolioSessionIdentity {
   role: PortfolioAccountRole;
