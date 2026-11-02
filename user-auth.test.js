@@ -337,7 +337,7 @@ describe("Durable Object account authentication", () => {
     expect([...storage.values.keys()].filter((key) => key.startsWith("auth:session:"))).toHaveLength(105);
     expect(await storage.get("maintenance:auth-session-cleanup-cursor:v1")).toBe("auth:session:0099");
 
-    expect(await store.cleanupExpiredSessions()).toBe(100);
+    expect(await store.cleanupExpiredSessions({ force: true })).toBe(100);
     expect([...storage.values.keys()].filter((key) => key.startsWith("auth:session:"))).toHaveLength(5);
     expect(await store.cleanupExpiredSessions({ force: true })).toBe(5);
     expect([...storage.values.keys()].filter((key) => key.startsWith("auth:session:"))).toHaveLength(0);
