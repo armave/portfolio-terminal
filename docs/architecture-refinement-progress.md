@@ -2,7 +2,7 @@
 
 **Repository:** `armave/portfolio-terminal`  
 **Current work:** Broker refresh request runtime extraction  
-**Base:** `e05a8c910195fddcdc9318083c90f066706d70e6`
+**Base:** `0ebb5937c13b725f9887273d3055adb12f5300c7`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
