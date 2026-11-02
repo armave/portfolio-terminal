@@ -91,6 +91,19 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   );
   const activeDeskView = useActiveView();
   const hasMarginPositions = usePortfolioSelector((state) => Object.keys(state.positions || {}).length > 0);
+  const guestHistorySnapshot = usePortfolioSelector(
+    (state) => ({
+      guestTrancheLedger: state.guestTrancheLedger || [],
+      guestPortfolioSnapshot: state.guestPortfolioSnapshot
+    }),
+    (previous, next) =>
+      previous.guestTrancheLedger === next.guestTrancheLedger &&
+      previous.guestPortfolioSnapshot === next.guestPortfolioSnapshot
+  );
+  // The active desk subscription above rerenders on route changes, so a direct
+  // read supplies Market Depth with the newly selected ticker without subscribing
+  // the whole app shell to every quote tick.
+  const activePositionTicker = portfolioStore.getState().positions?.[activeDeskView]?.ticker;
   const emptyStateVisible = !hasMarginPositions && activeDeskView === 'COMBINED';
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedGuestHistory, setHasOpenedGuestHistory] = useState(false);
@@ -714,8 +727,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 class="board-title-actions flex flex-wrap items-center gap-2"
               >
                 <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
-                {permissions.isAdmin && portfolioSnapshot.positions?.[activeDeskView]?.ticker && (
-                  <MarketDepthButton ticker={portfolioSnapshot.positions[activeDeskView].ticker} />
+                {permissions.isAdmin && activePositionTicker && (
+                  <MarketDepthButton ticker={activePositionTicker} />
                 )}
                 <div id="boardAnalystConsensus" class={analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
                 <div id="boardExternalLinks" class="flex items-center gap-2"><MemoBoardExternalLinks /></div>
@@ -786,8 +799,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             {hasOpenedGuestHistory
               ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}>
                   <GuestTrancheHistory
-                    records={portfolioSnapshot.guestTrancheLedger || []}
-                    activeTranches={portfolioSnapshot.guestPortfolioSnapshot?.tranches || []}
+                    records={guestHistorySnapshot.guestTrancheLedger}
+                    activeTranches={guestHistorySnapshot.guestPortfolioSnapshot?.tranches || []}
                   />
                 </Suspense></div>
               : <DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}
