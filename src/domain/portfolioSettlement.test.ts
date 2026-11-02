@@ -9,7 +9,7 @@ describe('portfolio sale commission boundary', () => {
     expect(calculateSaleCommission(100, 10_000, { commPerShare: 0.02, commVolumePct: 0.003, minCommOrder: 1 })).toBe(32);
   });
   it('rounds the calculated sale commission to cents', () => {
-    expect(calculateSaleCommission(3, 101.11, { commPerShare: 0.012, commVolumePct: 0.0012, minCommOrder: 0 })).toBe(0.48);
+    expect(calculateSaleCommission(3, 101.11, { commPerShare: 0.012, commVolumePct: 0.0012, minCommOrder: 0 })).toBe(0.16);
   });
   it('retains the legacy fallback when broker commission assumptions are invalid', () => {
     expect(calculateSaleCommission(10, 100, { commPerShare: -1, commVolumePct: 0, minCommOrder: 1.2 })).toBe(1.2);
