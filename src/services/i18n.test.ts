@@ -16,6 +16,13 @@ describe('app localization', () => {
     expect(translateText('Retry balance refresh', 'ru')).toBe('Повторить обновление баланса');
   });
 
+  it('localizes Market Insights refresh and recovery actions', () => {
+    expect(translateText('Refresh market data', 'ru')).toBe('Обновить рыночные данные');
+    expect(translateText('Retry market data refresh', 'ru')).toBe('Повторить обновление рыночных данных');
+    expect(translateText('Refresh failed; showing previously loaded market data.', 'ru'))
+      .toBe('Не удалось обновить данные; показаны ранее загруженные рыночные данные.');
+  });
+
   it('localizes unpriced cash holding guidance', () => {
     expect(translateText('Unpriced holdings', 'ru')).toBe('Позиции без котировки');
     expect(translateText('Their market value and allocation are unavailable until a valid quote is received.', 'ru'))
