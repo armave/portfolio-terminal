@@ -1,7 +1,7 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Cloud state security runtime extraction  
+**Current work:** Authenticated browser journey coverage  
 **Base:** `3b16d36cec87a02db31a45630c4751dde34b310b`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
@@ -148,6 +148,16 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Preserve the distinction between writes queued before a concurrent pull and writes that follow prior queued writes in the same tab.
 - [x] Add 12 focused Vitest cases covering security round trips, key cache invalidation/retry, legacy decryption, tamper rejection, credential precedence, revision restoration, storage failures, write serialization, stale-pull protection, and recovery.
 - [x] Validation on final PR head `74831217256bd1b0337b702754e26ae5511dfd72`: 1,036 tests across 98 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. Full dependency tree still has 9 low/moderate advisories (2 low, 7 moderate); production audit reports 0 vulnerabilities. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41430277038) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41430277303).
+- [x] Squash-merged to `main` as `da9f9e747e44a1eebc132fab8fc8bcca9abf4785`.
+
+## Current PR #256 — authenticated browser journeys
+
+- [x] Extend the existing Playwright smoke harness rather than adding a second browser-test stack.
+- [x] Exercise first-run administrator bootstrap through the real AuthModal form.
+- [x] Exercise administrator sign-out and account switching to a guest in the same browser context.
+- [x] Verify failed sign-in remains recoverable and does not preserve the previous administrator session.
+- [x] Verify guests fetch only the server-scoped guest projection and do not request the administrator cloud workspace.
+- [ ] Run exact-head typecheck, Vitest, build, audits, dead-code validation, and production browser smoke.
 - [ ] Review and merge.
 
 ## Remaining architecture work
@@ -168,8 +178,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 
 ### P1 — authenticated browser coverage
 
-- [ ] Admin and guest login journeys.
-- [ ] Account switching and stale-session/data-isolation journeys.
+- [x] Admin bootstrap, guest sign-in, admin-to-guest sign-out/switch, failed-login recovery, and role-scoped workspace isolation in PR #256.
 - [ ] Broker refresh and partial-source-failure journeys.
 - [ ] Backup import and portfolio reset journeys.
 - [ ] Cloud sync and revision-conflict journeys.
