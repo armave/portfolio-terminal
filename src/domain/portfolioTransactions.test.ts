@@ -4,6 +4,8 @@ import {
   allocateFifoSaleTranches,
   calculateSaleAccounting,
   calculateSaleCommission,
+  createClosedTradeRecord,
+  resolveClosedTradeTimestamp,
   settleSaleProceeds
 } from './portfolioTransactions';
 
@@ -173,6 +175,74 @@ describe('portfolio transaction calculations', () => {
       debtRepaid: 35,
       cashSurplus: 0
     });
+  });
+
+  it('builds the complete legacy-compatible closed-trade record and rounds holding days', () => {
+    const record = createClosedTradeRecord({
+      id: 'AAPL-12345',
+      ticker: 'AAPL',
+      shares: 1.25,
+      soldCostBasis: 125,
+      sellPrice: 110,
+      buyDate: '2026-10-15T00:00:00.000Z',
+      sellDate: '2026-10-16T12:00:00.000Z',
+      closedTimestamp: Date.parse('2026-10-16T12:30:00.000Z'),
+      grossProfit: 12.5,
+      commissions: 2.4,
+      marginInterest: 0.5,
+      netProfit: 9.6
+    });
+
+    expect(record).toEqual({
+      id: 'AAPL-12345',
+      ticker: 'AAPL',
+      shares: 1.25,
+      avgBuyPrice: 100,
+      entryPrice: 100,
+      sellPrice: 110,
+      exitPrice: 110,
+      buyDate: '2026-10-15T00:00:00.000Z',
+      purchaseDate: '2026-10-15T00:00:00.000Z',
+      sellDate: '2026-10-16T12:00:00.000Z',
+      exitDate: '2026-10-16T12:00:00.000Z',
+      date: Date.parse('2026-10-16T12:30:00.000Z'),
+      closedAt: '2026-10-16T12:30:00.000Z',
+      grossProfit: 12.5,
+      commissions: 2.4,
+      feesAndCommissions: 2.4,
+      totalCommissions: 2.4,
+      marginInterest: 0.5,
+      netProfit: 9.6,
+      netRealizedGain: 9.6,
+      holdingDays: 2
+    });
+  });
+
+  it('preserves invalid-date holding-day behavior in the closed-trade record', () => {
+    const record = createClosedTradeRecord({
+      id: 'AAPL-invalid-date',
+      ticker: 'AAPL',
+      shares: 1,
+      soldCostBasis: 100,
+      sellPrice: 110,
+      buyDate: 'not-a-date',
+      sellDate: '2026-10-16',
+      closedTimestamp: 0,
+      grossProfit: 10,
+      commissions: 0,
+      marginInterest: 0,
+      netProfit: 10
+    });
+
+    expect(Number.isNaN(record.holdingDays)).toBe(true);
+    expect(record.closedAt).toBe('1970-01-01T00:00:00.000Z');
+  });
+
+  it('resolves requested close timestamps before exit-date and fallback timestamps', () => {
+    expect(resolveClosedTradeTimestamp(1_234, 5_678, 9_012)).toBe(1_234);
+    expect(resolveClosedTradeTimestamp(0, 5_678, 9_012)).toBe(5_678);
+    expect(resolveClosedTradeTimestamp(Number.NaN, Number.NaN, 9_012)).toBe(9_012);
+    expect(resolveClosedTradeTimestamp(-1, 0, 9_012)).toBe(0);
   });
 
   it('clamps invalid negative debt, cash, and proceeds to zero', () => {

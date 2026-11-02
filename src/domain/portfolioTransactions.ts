@@ -1,4 +1,4 @@
-import type { BrokerAssumptions, PositionRecord, TrancheItem } from '../types/portfolio';
+import type { BrokerAssumptions, ClosedTrade, PositionRecord, TrancheItem } from '../types/portfolio';
 import { calculateCommission, calculateMarginInterest, resolveCommissionConfig } from './portfolio';
 
 export interface FifoSaleAllocation {
@@ -216,5 +216,66 @@ export function calculateSaleAccounting(input: SaleAccountingInput): SaleAccount
     grossProfit,
     netProfit,
     netCashProceeds
+  };
+}
+
+
+/** Resolve the persisted close timestamp using the existing request/date/fallback precedence. */
+export function resolveClosedTradeTimestamp(
+  requestedClosedAt: number,
+  exitTimestamp: number,
+  fallbackTimestamp: number
+): number {
+  return Number.isFinite(requestedClosedAt) && requestedClosedAt > 0
+    ? requestedClosedAt
+    : Number.isFinite(exitTimestamp) ? exitTimestamp : fallbackTimestamp;
+}
+
+export interface ClosedTradeRecordInput {
+  id: string;
+  ticker: string;
+  shares: number;
+  soldCostBasis: number;
+  sellPrice: number;
+  buyDate: string;
+  sellDate: string;
+  closedTimestamp: number;
+  grossProfit: number;
+  commissions: number;
+  marginInterest: number;
+  netProfit: number;
+}
+
+/** Build the legacy-compatible closed-trade record without mutating portfolio state. */
+export function createClosedTradeRecord(input: ClosedTradeRecordInput): ClosedTrade {
+  const buyTimestamp = new Date(input.buyDate).getTime();
+  const exitTimestamp = new Date(input.sellDate).getTime();
+  const holdingDays = Math.max(
+    0,
+    Math.round(Math.abs(exitTimestamp - buyTimestamp) / 86400000)
+  );
+
+  return {
+    id: input.id,
+    ticker: input.ticker,
+    shares: input.shares,
+    avgBuyPrice: input.soldCostBasis / input.shares,
+    entryPrice: input.soldCostBasis / input.shares,
+    sellPrice: input.sellPrice,
+    exitPrice: input.sellPrice,
+    buyDate: input.buyDate,
+    purchaseDate: input.buyDate,
+    sellDate: input.sellDate,
+    exitDate: input.sellDate,
+    date: input.closedTimestamp,
+    closedAt: new Date(input.closedTimestamp).toISOString(),
+    grossProfit: input.grossProfit,
+    commissions: input.commissions,
+    feesAndCommissions: input.commissions,
+    totalCommissions: input.commissions,
+    marginInterest: input.marginInterest,
+    netProfit: input.netProfit,
+    netRealizedGain: input.netProfit,
+    holdingDays
   };
 }
