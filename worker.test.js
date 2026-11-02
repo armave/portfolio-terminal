@@ -1859,6 +1859,23 @@ describe('sanitizeFreedomMarketDepth', () => {
       asks: [{ price: 100.7, quantity: 9, position: 0 }]
     });
   });
+  it('matches the US exchange suffix without changing the requested symbol contract', () => {
+    const result = sanitizeFreedomMarketDepth({
+      i: 'AAPL.US', n: 22, cnt: 1,
+      ins: [{ p: 100.5, s: 'B', q: 12, k: 0 }]
+    }, 'AAPL');
+    expect(result).toMatchObject({
+      symbol: 'AAPL',
+      sequence: 22,
+      bids: [{ price: 100.5, quantity: 12, position: 0 }]
+    });
+  });
+  it('does not treat another exchange suffix as a US symbol alias', () => {
+    expect(() => sanitizeFreedomMarketDepth({
+      i: 'AAPL.TO', n: 23, cnt: 1,
+      ins: [{ p: 100.5, s: 'B', q: 12, k: 0 }]
+    }, 'AAPL')).toThrow();
+  });
 });
 
 
@@ -1912,7 +1929,7 @@ describe('Freedom market-depth proxy', () => {
     });
     socket.emit('message', { data: JSON.stringify(['markets', { m: [] }]) });
     socket.emit('message', { data: JSON.stringify(['q', { c: 'GOOGL', l: 100 }]) });
-    socket.emit('message', { data: JSON.stringify(['b', { i: 'GOOGL.US', n: 1, cnt: 0, ins: [] }]) });
+    socket.emit('message', { data: JSON.stringify(['b', { i: 'MSFT.US', n: 1, cnt: 0, ins: [] }]) });
     socket.emit('message', { data: 'not-json' });
 
     const rejected = expect(pending).rejects.toMatchObject({
@@ -1934,7 +1951,7 @@ describe('Freedom market-depth proxy', () => {
         quoteEventsReceived: 1,
         quoteSymbolsReceived: ['GOOGL'],
         orderBookEventsReceived: 1,
-        orderBookSymbolsReceived: ['GOOGL.US'],
+        orderBookSymbolsReceived: ['MSFT.US'],
         unmatchedOrderBooks: 1
       })
     });
@@ -1947,11 +1964,11 @@ describe('Freedom market-depth proxy', () => {
     expect(logged).not.toContain('private-login@example.test');
   });
 
-  it('returns a matching production order-book snapshot and diagnostics', async () => {
+  it('matches a US-suffixed production order-book snapshot to an unsuffixed request', async () => {
     const MockWebSocket = createMockWebSocket();
     vi.stubGlobal('WebSocket', MockWebSocket);
     vi.spyOn(console, 'info').mockImplementation(() => {});
-    const pending = fetchFreedomMarketDepthWithSid('GOOGL.US', { sid: 'sensitive-sid-value-123456' });
+    const pending = fetchFreedomMarketDepthWithSid('GOOGL', { sid: 'sensitive-sid-value-123456' });
     const socket = MockWebSocket.instances[0];
 
     socket.emit('open');
@@ -1970,12 +1987,13 @@ describe('Freedom market-depth proxy', () => {
 
     const result = await pending;
     expect(result.data).toMatchObject({
-      symbol: 'GOOGL.US',
+      symbol: 'GOOGL',
       sequence: 7,
       bids: [{ price: 200, quantity: 10 }],
       asks: [{ price: 200.1, quantity: 8 }]
     });
     expect(result.diagnostics).toMatchObject({
+      requestedSymbol: 'GOOGL',
       phase: 'snapshot_received',
       connectionOpened: true,
       subscriptionSent: true,
@@ -1985,7 +2003,8 @@ describe('Freedom market-depth proxy', () => {
       sessionMode: 'prod',
       eventsReceived: ['userData', 'b'],
       orderBookEventsReceived: 1,
-      orderBookSymbolsReceived: ['GOOGL.US']
+      orderBookSymbolsReceived: ['GOOGL.US'],
+      unmatchedOrderBooks: 0
     });
   });
 
