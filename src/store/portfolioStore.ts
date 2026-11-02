@@ -22,7 +22,7 @@ import {
   saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
-import { calculateMarginInterest, normalizePortfolioTranche } from '../domain/portfolio';
+import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
 import { allocateFifoSaleTranches, calculateSaleCommission, settleSaleProceeds } from '../domain/portfolioTransactions';
 import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
