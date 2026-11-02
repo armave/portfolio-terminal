@@ -23,7 +23,7 @@ import {
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
-import { runManualPortfolioSync, type ManualPortfolioSyncResult } from './src/services/manualPortfolioSync';
+import { runManualPortfolioSync } from './src/services/manualPortfolioSync';
 import { getMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
