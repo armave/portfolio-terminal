@@ -1,4 +1,4 @@
-import { portfolioStore } from '../../store/portfolioStore';
+import { PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from '../../store/portfolioStore';
 import { getAppLanguage, translateText } from '../../services/i18n';
 import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedDebt, resolveCommissionConfig } from '../../domain/portfolio';
 import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
@@ -288,7 +288,10 @@ export class CommandDispatcher {
         }
 
         const qty = qtyRaw === 'all' ? availableShares : cleanNumber(qtyRaw);
-        portfolioStore.sellStock(sym, qty, price, new Date().toISOString().split('T')[0]);
+        if (!Number.isFinite(qty) || qty <= 0) throw new Error('Enter a valid positive share quantity.');
+        if (!portfolioStore.sellStock(sym, qty, price, new Date().toISOString().split('T')[0])) {
+          throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
+        }
 
         return {
           text: `Sold ${qty} ${sym} @ $${price.toFixed(2)}`,
@@ -304,7 +307,9 @@ export class CommandDispatcher {
         const manualPrice = cleanNumber(quoteMatch[2]);
 
         if (!isNaN(manualPrice) && manualPrice > 0) {
-          portfolioStore.updatePrice(sym, manualPrice);
+          if (!portfolioStore.updatePrice(sym, manualPrice)) {
+            throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
+          }
           return {
             text: `${sym} manually marked at $${manualPrice.toFixed(2)}`,
             type: 'res',
@@ -328,7 +333,9 @@ export class CommandDispatcher {
         const sym = cashAddMatch[2].toUpperCase();
         const price = cleanNumber(cashAddMatch[3]) || 0;
         if (isNaN(qty) || qty <= 0) throw new Error('Usage: add cash stock <shares> <ticker> [price]');
-        portfolioStore.addCashStock(sym, qty, price);
+        if (!portfolioStore.addCashHolding(sym, qty, price)) {
+          throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
+        }
         return {
           text: `Added ${qty} ${sym} to cash holdings${price > 0 ? ` @ $${price.toFixed(2)}` : ''}.`,
           type: 'res',
@@ -341,7 +348,7 @@ export class CommandDispatcher {
       );
       if (cashRemMatch) {
         const sym = cashRemMatch[1].toUpperCase();
-        portfolioStore.removeCashStock(sym);
+        if (!portfolioStore.removeCashStock(sym)) throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
         return { text: `Removed ${sym} from cash holdings.`, type: 'res', sideEffect: { type: 'SYNC_CLOUD' } };
       }
 
@@ -353,7 +360,7 @@ export class CommandDispatcher {
         if (!Number.isFinite(rawAmt)) throw new Error('Enter a valid finite amount.');
         if (kind === 'cash' || kind === 'free cash') {
           if (rawAmt < 0) throw new Error('Free cash cannot be negative. Use "debt <amount>" to set margin debt.');
-          portfolioStore.setFreeCash(rawAmt);
+          if (!portfolioStore.setFreeCash(rawAmt)) throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
           const debt = Math.abs(Number(portfolioStore.getState().balance) || 0);
           return {
             text: `Free cash set to $${rawAmt.toFixed(2)} | Margin Debt unchanged: $${debt.toFixed(2)}`,
@@ -362,7 +369,7 @@ export class CommandDispatcher {
           };
         }
         const signed = kind.includes('debt') ? -Math.abs(rawAmt) : rawAmt;
-        portfolioStore.setCashBalance(signed);
+        if (!portfolioStore.setCashBalance(signed)) throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
         return {
           text: signed >= 0
             ? `Free cash set to $${signed.toFixed(2)} | Margin Debt: $0.00`
@@ -406,20 +413,20 @@ export class CommandDispatcher {
         }
 
         if (typeof (portfolioStore as any).buyStock === 'function') {
-          portfolioStore.buyStock(
+          if (!portfolioStore.buyStock(
             sym,
             qty,
             price,
             dateStr,
             Number.isFinite(pt) && pt > 0 ? pt : undefined
-          );
+          )) throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
         } else if (typeof (portfolioStore as any).addTranche === 'function') {
-          (portfolioStore as any).addTranche(sym, {
+          if (!(portfolioStore as any).addTranche(sym, {
             shares: qty,
             entryPrice: price,
             purchaseDate: dateStr,
             ...(Number.isFinite(pt) && pt > 0 ? { targetPrice: pt } : {})
-          });
+          })) throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
         }
 
         const isToday = dateStr === toLocalIsoDate(new Date());
@@ -444,7 +451,7 @@ export class CommandDispatcher {
           throw new Error('Usage: target <ticker> <price> (for an open margin position)');
         }
 
-        portfolioStore.updateTargetPrice(sym, pt);
+        if (!portfolioStore.updateTargetPrice(sym, pt)) throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
         return {
           text: `${sym} price target updated → $${pt.toFixed(2)}`,
           type: 'res',

@@ -28,6 +28,9 @@ import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './por
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
 
+export const PORTFOLIO_PERSISTENCE_ERROR_MESSAGE =
+  'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.';
+
 function todayIso(): string {
   const d = new Date();
   const y = d.getFullYear();
@@ -40,6 +43,7 @@ export class PortfolioStore {
   private state: PortfolioState;
   private listeners: Set<(state: PortfolioState) => void> = new Set();
   private activeViewListeners: Set<(view: string) => void> = new Set();
+  private persistenceErrorListeners: Set<(message: string) => void> = new Set();
 
   constructor() {
     this.state = this.initializeState();
@@ -235,37 +239,62 @@ export class PortfolioStore {
     this.activeViewListeners.forEach((listener) => listener(activeView));
   }
 
-  private notify(persist = true): void {
-    if (persist) saveState(this.state);
+  public subscribePersistenceErrors(listener: (message: string) => void): () => void {
+    this.persistenceErrorListeners.add(listener);
+    return () => this.persistenceErrorListeners.delete(listener);
+  }
+
+  private notify(): void {
     this.listeners.forEach((listener) => listener(this.state));
   }
 
-  public update(updater: (state: PortfolioState) => PortfolioState, persist = true): void {
+  private notifyPersistenceFailure(): void {
+    this.persistenceErrorListeners.forEach((listener) => {
+      try {
+        listener(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
+      } catch (error) {
+        console.error('Failed to notify the UI about a portfolio persistence error:', error);
+      }
+    });
+  }
+
+  /**
+   * Commit a candidate snapshot before making it visible to subscribers.
+   * saveState mutates candidate.lastUpdated only after its storage transaction
+   * succeeds, so a failed write leaves the current in-memory snapshot intact.
+   */
+  public update(updater: (state: PortfolioState) => PortfolioState, persist = true): boolean {
     const next = updater(this.state);
 
-    // Treat a returned current-state reference as an explicit no-op. Besides
-    // avoiding unnecessary storage writes, this prevents rejected stale quote
-    // responses and invalid commands from notifying every subscriber.
-    if (next === this.state) return;
+    // A returned current-state reference is an intentional no-op, not a failed save.
+    if (next === this.state) return true;
 
-    const previousActiveView = this.state.activeView;
-    this.state = this.normalizeState({
+    const previousState = this.state;
+    const candidate = this.normalizeState({
       ...next,
       lastUpdated: Date.now()
     });
-    this.notify(persist);
-    if (this.state.activeView !== previousActiveView) this.notifyActiveView();
+
+    if (persist && !saveState(candidate)) {
+      this.notifyPersistenceFailure();
+      return false;
+    }
+
+    this.state = candidate;
+    this.notify();
+    if (this.state.activeView !== previousState.activeView) this.notifyActiveView();
+    return true;
   }
 
-  public setState(partial: Partial<PortfolioState>, persist = true): void {
-    this.update((state) => ({
+  public setState(partial: Partial<PortfolioState>, persist = true): boolean {
+    return this.update((state) => ({
       ...state,
       ...partial
     }), persist);
   }
 
-  public importState(newState: Partial<PortfolioState>): void {
-    this.update((state) => ({
+  public importState(newState: Partial<PortfolioState>): boolean {
+    return this.update((state) => ({
       ...state,
       ...newState
     }));
@@ -276,16 +305,17 @@ export class PortfolioStore {
    * Broker rules, provider keys, the signed-in Gateway Secret, and refresh preferences
    * are settings rather than portfolio content and intentionally remain in place.
    */
-  public resetToBlankState(now = Date.now(), persist = true): void {
+  public resetToBlankState(now = Date.now(), persist = true): boolean {
     // The selected desk is device-local and also participates in normalization.
-    // Update it before normalization; a caller using persist=false can roll it back
-    // if the subsequent multi-record snapshot transaction fails.
+    // Restore it when the persistent portfolio write fails so navigation cannot
+    // advertise a reset while the previous portfolio is still active.
+    const previousDeviceView = this.readDeviceActiveView();
     try {
       if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', 'COMBINED');
     } catch {
       // Continue resetting portfolio data when browser preference storage is unavailable.
     }
-    this.update((state) => ({
+    const committed = this.update((state) => ({
       ...state,
       ...createBlankPortfolioState(now),
       // Reset portfolio-owned data while retaining device/account configuration.
@@ -315,6 +345,18 @@ export class PortfolioStore {
       selectedTicker: null,
       pendingMutation: null
     }), persist);
+
+    if (!committed) {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          if (previousDeviceView === null) localStorage.removeItem('portfolio_active_view');
+          else localStorage.setItem('portfolio_active_view', previousDeviceView);
+        }
+      } catch (error) {
+        console.error('Could not restore the previous device desk after a failed portfolio reset:', error);
+      }
+    }
+    return committed;
   }
 
   private readDeviceActiveView(): string | null {
@@ -351,18 +393,21 @@ export class PortfolioStore {
     });
   }
 
-  public updateAssumptions(rules: unknown): void {
-    this.update((state) => {
-      const merged = normalizeBrokerAssumptions(rules, state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS);
-      saveBrokerRules(merged);
-      return { ...state, brokerAssumptions: merged };
+  public updateAssumptions(rules: unknown): boolean {
+    let mergedRules: ReturnType<typeof normalizeBrokerAssumptions> | null = null;
+    const committed = this.update((state) => {
+      mergedRules = normalizeBrokerAssumptions(rules, state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS);
+      return { ...state, brokerAssumptions: mergedRules };
     });
+    if (!committed || !mergedRules) return false;
+    saveBrokerRules(mergedRules);
+    return true;
   }
 
   /** Persist a rollover boundary through the canonical store. */
-  public setLastRolloverTimestamp(timestamp: number): void {
-    if (!Number.isFinite(timestamp) || timestamp <= 0) return;
-    this.update((state) => ({
+  public setLastRolloverTimestamp(timestamp: number): boolean {
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return false;
+    return this.update((state) => ({
       ...state,
       lastRolloverTimestamp: timestamp
     }));
@@ -378,11 +423,11 @@ export class PortfolioStore {
     interestAccrued: number,
     timestamp: number,
     recordAsRealized: boolean
-  ): void {
+  ): boolean {
     if (![compoundedDebt, interestAccrued, timestamp].every(Number.isFinite) ||
-      compoundedDebt < 0 || interestAccrued < 0 || timestamp <= 0) return;
+      compoundedDebt < 0 || interestAccrued < 0 || timestamp <= 0) return false;
 
-    this.update((state) => ({
+    return this.update((state) => ({
       ...state,
       balance: compoundedDebt > 0 ? -compoundedDebt : 0,
       lastRolloverTimestamp: timestamp,
@@ -392,13 +437,13 @@ export class PortfolioStore {
   }
 
   /** Set the cash-cushion balance without changing margin debt. */
-  public setFreeCash(amount: number): void {
+  public setFreeCash(amount: number): boolean {
     const num = Number(amount);
     if (!Number.isFinite(num) || num < 0) {
       throw new Error('Free cash must be a finite non-negative amount.');
     }
 
-    this.update((state) => ({
+    return this.update((state) => ({
       ...state,
       cashBalance: num,
       cashCushion: {
@@ -408,9 +453,9 @@ export class PortfolioStore {
     }));
   }
 
-  public setCashBalance(amount: number): void {
+  public setCashBalance(amount: number): boolean {
     const num = Number(amount) || 0;
-    this.update((state) => {
+    return this.update((state) => {
       const freeCash = Math.max(0, num);
       // A positive balance entry represents available cash and clears any old margin debt.
       const balance = num < 0 ? num : 0;
@@ -426,9 +471,11 @@ export class PortfolioStore {
     });
   }
 
-  public setMarginDebt(debtAmount: number): void {
-    const debt = Math.abs(Number(debtAmount) || 0);
-    this.update((state) => ({
+  public setMarginDebt(debtAmount: number): boolean {
+    const amount = Number(debtAmount);
+    if (!Number.isFinite(amount)) return false;
+    const debt = Math.abs(amount);
+    return this.update((state) => ({
       ...state,
       balance: -debt
     }));
@@ -440,13 +487,13 @@ export class PortfolioStore {
     price: number,
     date?: string,
     pt?: number
-  ): void {
+  ): boolean {
     const clean = ticker.trim().toUpperCase();
-    if (!clean || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0) return;
+    if (!clean || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0 ) return false;
 
     const purchaseDate = date || todayIso();
 
-    this.update((state) => {
+    return this.update((state) => {
 
       const totalVal = shares * price;
 
@@ -534,8 +581,8 @@ export class PortfolioStore {
   public addTranche(
     ticker: string,
     tranche: { shares: number; entryPrice: number; purchaseDate?: string; targetPrice?: number }
-  ): void {
-    this.buyStock(
+  ): boolean {
+    return this.buyStock(
       ticker,
       Number(tranche.shares) || 0,
       Number(tranche.entryPrice) || 0,
@@ -578,8 +625,10 @@ export class PortfolioStore {
     sharesToSell: number | 'ALL',
     sellPrice: number,
     date?: string
-  ): void {
+  ): boolean {
+    const previousState = this.state;
     this.applyMarginSale(ticker, sharesToSell, sellPrice, date);
+    return this.state !== previousState;
   }
 
   private applyMarginSale(
@@ -747,7 +796,7 @@ export class PortfolioStore {
     if (!clean || !Number.isFinite(price) || price <= 0) return false;
 
     let accepted = false;
-    this.update((latestState) => {
+    const committed = this.update((latestState) => {
       const positions = { ...(latestState.positions || {}) };
       const position = positions[clean];
       const cashHoldings = [...(latestState.cashCushion?.holdings || [])];
@@ -881,18 +930,18 @@ export class PortfolioStore {
         }
       };
     });
-    return accepted;
+    return accepted && committed;
   }
 
-  public updatePrice(ticker: string, price: number): void {
-    this.updateLiveQuote(ticker, { price, quoteSource: 'Manual' });
+  public updatePrice(ticker: string, price: number): boolean {
+    return this.updateLiveQuote(ticker, { price, quoteSource: 'Manual' });
   }
 
-  public updateTargetPrice(ticker: string, pt: number): void {
+  public updateTargetPrice(ticker: string, pt: number): boolean {
     const clean = ticker.trim().toUpperCase();
-    if (!clean || !Number.isFinite(pt) || pt <= 0) return;
+    if (!clean || !Number.isFinite(pt) || pt <= 0 ) return false;
 
-    this.update((state) => {
+    return this.update((state) => {
       const positions = { ...(state.positions || {}) };
       if (!positions[clean]) return state;
       positions[clean] = {
@@ -925,7 +974,7 @@ export class PortfolioStore {
     const existing = currentHoldings.find((holding) => holding.ticker.trim().toUpperCase() === clean);
     const resolvedPrice = hasManualPrice ? manualPrice : Number(existing?.price) || 0;
 
-    this.update((state) => {
+    const committed = this.update((state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
       const existingIndex = holdings.findIndex(
         (holding) => holding.ticker.trim().toUpperCase() === clean
@@ -956,17 +1005,17 @@ export class PortfolioStore {
       };
     });
 
-    return { ticker: clean, shares, price: resolvedPrice };
+    return committed ? { ticker: clean, shares, price: resolvedPrice } : null;
   }
 
   /** Legacy compatibility wrapper; the canonical mutation is addCashHolding. */
-  public addCashStock(ticker: string, shares: number, price: number): void {
-    if (!Number.isFinite(price) || price <= 0) return;
-    this.addCashHolding(ticker, shares, price);
+  public addCashStock(ticker: string, shares: number, price: number): boolean {
+    if (!Number.isFinite(price) || price <= 0 ) return false;
+    return this.addCashHolding(ticker, shares, price) !== null;
   }
 
-  public removeCashStock(indexOrTicker: number | string): void {
-    this.update((state) => {
+  public removeCashStock(indexOrTicker: number | string): boolean {
+    return this.update((state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
       const nextHoldings =
         typeof indexOrTicker === 'number'
@@ -998,7 +1047,7 @@ export class PortfolioStore {
 
     let result: { ticker: string; sharesSold: number; remainingShares: number; netProceeds: number; debtRepaid: number; cashSurplus: number } | null = null;
 
-    this.update((state) => {
+    const committed = this.update((state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
       const holdingIndex = holdings.findIndex(
         (holding) => holding.ticker.trim().toUpperCase() === clean
@@ -1052,7 +1101,7 @@ export class PortfolioStore {
       };
     });
 
-    return result;
+    return committed ? result : null;
   }
 
   /**
@@ -1072,7 +1121,9 @@ export class PortfolioStore {
       !Number.isFinite(closedAt) || closedAt <= 0) return null;
 
     const date = new Date(closedAt).toISOString().slice(0, 10);
-    return this.applyMarginSale(clean, sharesToSell, sellPrice, date, { closedAt });
+    const previousState = this.state;
+    const result = this.applyMarginSale(clean, sharesToSell, sellPrice, date, { closedAt });
+    return this.state !== previousState ? result : null;
   }
 
   public deleteClosedTrade(index: number): void {

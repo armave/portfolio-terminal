@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildHoldingsProjection,
   migrateLegacyHoldingsToPositions,
@@ -9,6 +9,23 @@ import {
   subscribeToActiveView
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
+
+const sharedTestStorage = new Map<string, string>();
+const sharedLocalStorage = {
+  getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+  setItem: (key: string, value: string) => { sharedTestStorage.set(key, String(value)); },
+  removeItem: (key: string) => { sharedTestStorage.delete(key); }
+};
+
+beforeEach(() => {
+  sharedTestStorage.clear();
+  vi.stubGlobal('localStorage', sharedLocalStorage);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 
 describe('portfolio selector subscriptions', () => {
   it('replays selected values and ignores unrelated portfolio and quote updates', () => {
@@ -1858,5 +1875,125 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(state.apiKeys).toEqual({ finnhub: 'keep-provider-setting' });
     expect(state.brokerAssumptions.annualBorrowRate).toBe(0.12);
     expect(state.gatewaySecret).toBe('keep-active-session-secret');
+  });
+});
+
+
+describe('atomic portfolio-store persistence', () => {
+  const values = new Map<string, string>();
+  const storageMock = {
+    getItem: vi.fn((key: string) => values.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => { values.set(key, String(value)); }),
+    removeItem: vi.fn((key: string) => { values.delete(key); })
+  };
+
+  beforeEach(() => {
+    values.clear();
+    storageMock.getItem.mockClear();
+    storageMock.setItem.mockClear();
+    storageMock.removeItem.mockClear();
+    storageMock.setItem.mockImplementation((key, value) => { values.set(key, String(value)); });
+    vi.stubGlobal('localStorage', storageMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('retains the previous snapshot and suppresses subscribers when the state write fails', () => {
+    const store = new PortfolioStore();
+    store.setState({ balance: -100 }, false);
+    const previous = store.getState();
+    const portfolioListener = vi.fn();
+    const activeViewListener = vi.fn();
+    const persistenceErrorListener = vi.fn();
+    store.subscribe(portfolioListener);
+    store.subscribeActiveView(activeViewListener);
+    store.subscribePersistenceErrors(persistenceErrorListener);
+
+    storageMock.setItem.mockImplementation(() => { throw new Error('quota exceeded'); });
+
+    expect(store.setState({ balance: -500, activeView: 'AAPL' })).toBe(false);
+    expect(store.getState()).toBe(previous);
+    expect(store.getState().balance).toBe(-100);
+    expect(store.getState().activeView).not.toBe('AAPL');
+    expect(portfolioListener).not.toHaveBeenCalled();
+    expect(activeViewListener).not.toHaveBeenCalled();
+    expect(persistenceErrorListener).toHaveBeenCalledTimes(1);
+    expect(persistenceErrorListener).toHaveBeenCalledWith(
+      'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.'
+    );
+  });
+
+  it('writes the candidate snapshot before publishing it to subscribers', () => {
+    const store = new PortfolioStore();
+    const listener = vi.fn((state) => {
+      const saved = JSON.parse(values.get('margin_portfolio_state_dynamic_v2') || '{}');
+      expect(saved.balance).toBe(state.balance);
+    });
+    store.subscribe(listener);
+
+    expect(store.setState({ balance: -725 })).toBe(true);
+    expect(store.getState().balance).toBe(-725);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(values.has('margin_portfolio_state_dynamic_v2')).toBe(true);
+  });
+
+  it('continues to publish explicitly non-persistent updates without touching storage', () => {
+    const store = new PortfolioStore();
+    const listener = vi.fn();
+    store.subscribe(listener);
+    storageMock.setItem.mockClear();
+
+    expect(store.setState({ balance: -250 }, false)).toBe(true);
+    expect(store.getState().balance).toBe(-250);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(storageMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it('returns failed commits for debt, rollover, and broker-assumption mutations', () => {
+    const store = new PortfolioStore();
+    store.setState({
+      balance: -100,
+      lastRolloverTimestamp: Date.parse('2026-11-02T00:00:00.000Z')
+    }, false);
+    const previous = store.getState();
+    storageMock.setItem.mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+
+    expect(store.setMarginDebt(500)).toBe(false);
+    expect(store.setLastRolloverTimestamp(Date.now())).toBe(false);
+    expect(store.applyRollover(550, 50, Date.now(), true)).toBe(false);
+    expect(store.updateAssumptions({ annualBorrowRate: 0.2 })).toBe(false);
+    expect(store.getState()).toBe(previous);
+    expect(store.getState().balance).toBe(-100);
+  });
+
+  it('does not publish a portfolio update when the closed-history sidecar write fails', () => {
+    const store = new PortfolioStore();
+    store.setState({ balance: -100 }, false);
+    const previous = store.getState();
+    const listener = vi.fn();
+    const persistenceErrorListener = vi.fn();
+    store.subscribe(listener);
+    store.subscribePersistenceErrors(persistenceErrorListener);
+
+    storageMock.setItem.mockImplementation((key, value) => {
+      if (key === 'portfolio_closed_history_v1') throw new Error('history quota exceeded');
+      values.set(key, String(value));
+    });
+
+    expect(store.setState({
+      balance: -300,
+      brokerExecutedTrades: [{ id: 'new-execution', ticker: 'AAPL', side: 'BUY' }] as any
+    })).toBe(false);
+
+    expect(store.getState()).toBe(previous);
+    expect(store.getState().balance).toBe(-100);
+    expect(listener).not.toHaveBeenCalled();
+    expect(persistenceErrorListener).toHaveBeenCalledTimes(1);
+    expect(values.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+    expect(values.has('portfolio_closed_history_v1')).toBe(false);
   });
 });

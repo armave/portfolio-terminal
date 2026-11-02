@@ -1,10 +1,27 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PortfolioStore } from './portfolioStore';
 import {
   subscribeToActiveView,
   subscribeToPortfolioSelector,
   subscribeToPortfolioState
 } from './portfolioSubscriptions';
+
+
+const testStorage = new Map<string, string>();
+const localStorageMock = {
+  getItem: (key: string) => testStorage.get(key) ?? null,
+  setItem: (key: string, value: string) => { testStorage.set(key, String(value)); },
+  removeItem: (key: string) => { testStorage.delete(key); }
+};
+
+beforeEach(() => {
+  testStorage.clear();
+  vi.stubGlobal('localStorage', localStorageMock);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('portfolio subscription adapters', () => {
   it('replays the current snapshot and streams updates until unsubscribed', () => {

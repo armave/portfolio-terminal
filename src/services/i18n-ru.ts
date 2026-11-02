@@ -7,6 +7,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Syncing…': 'Синхронизация…',
   'Migrating…': 'Выполняется миграция…',
   'Retry encryption migration': 'Повторить миграцию шифрования',
+  'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.': 'Не удалось сохранить изменения портфеля. Текущий портфель остаётся открытым; экспортируйте резервную копию перед перезагрузкой.',
   'Cloud encryption upgrade could not be verified. Your local portfolio is safe; retry cloud sync.': 'Не удалось проверить переход на новое шифрование облака. Локальный портфель сохранён; повторите облачную синхронизацию.',
   'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.': 'Не удалось проверить переход на новое шифрование истории сделок. Сохранённая история доступна; повторите миграцию.',
   'Sale blocked because purchase lots are missing or inconsistent. Reconcile the cost basis before selling.': 'Продажа заблокирована: данные о покупках отсутствуют или противоречат друг другу. Восстановите себестоимость позиции перед продажей.',

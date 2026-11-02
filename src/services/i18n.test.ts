@@ -85,6 +85,11 @@ describe('app localization', () => {
       .toBe('Не удалось проверить переход на новое шифрование истории сделок. Сохранённая история доступна; повторите миграцию.');
   });
 
+  it('localizes portfolio persistence failures', () => {
+    expect(translateText('Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.', 'ru'))
+      .toBe('Не удалось сохранить изменения портфеля. Текущий портфель остаётся открытым; экспортируйте резервную копию перед перезагрузкой.');
+  });
+
   it('localizes cost-basis sale rejection messaging into Russian', () => {
     expect(translateText(
       'Sale blocked because purchase lots are missing or inconsistent. Reconcile the cost basis before selling.',
