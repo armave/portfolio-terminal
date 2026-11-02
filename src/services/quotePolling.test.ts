@@ -84,7 +84,7 @@ describe('refreshTrackedQuotes', () => {
   });
 
   it('passes force through to every provider comparison for an explicit refresh', async () => {
-    vi.mocked(fetchLivePriceFromProviders).mockImplementation(async (ticker, requestStartedAt = 0, force = false) =>
+    vi.mocked(fetchLivePriceFromProviders).mockImplementation(async (ticker, requestStartedAt = 0, _force = false) =>
       quoteResult(150, requestStartedAt, ticker) as never
     );
     const record = vi.fn().mockReturnValue(true);
