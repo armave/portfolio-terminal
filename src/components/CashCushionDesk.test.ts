@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { formatDailyQuoteRange, getCashHoldingMarketPrice } from './CashCushionDesk';
+import { formatDailyQuoteRange, getActiveTrancheMarketPrice, getCashHoldingMarketPrice } from './CashCushionDesk';
 import { mergeBrokerExecutionHistory } from '../domain/closedHistoryFees';
 
 describe('cash/margin mix inputs', () => {
@@ -28,6 +28,33 @@ describe('cash holding market price', () => {
     expect(getCashHoldingMarketPrice({ currentPrice: '', price: undefined })).toBeNull();
     expect(getCashHoldingMarketPrice({ currentPrice: 'not-a-price', price: Number.NaN })).toBeNull();
     expect(getCashHoldingMarketPrice({ currentPrice: -1, price: 0 })).toBeNull();
+  });
+});
+
+describe('active tranche market price', () => {
+  it('uses the newest timestamped quote across cash and margin records', () => {
+    expect(getActiveTrancheMarketPrice({
+      ticker: 'AAPL',
+      marketPrice: 110
+    }, [{
+      ticker: 'AAPL',
+      currentPrice: 120,
+      quoteDetails: { sourceTimestamp: 1_000 }
+    }], {
+      AAPL: {
+        currentPrice: 130,
+        quoteDetails: { sourceTimestamp: 2_000 }
+      }
+    })).toBe(130);
+  });
+
+  it('uses the stored margin position price before the untimestamped broker fallback', () => {
+    expect(getActiveTrancheMarketPrice({
+      ticker: 'MSFT',
+      marketPrice: 400
+    }, [], {
+      MSFT: { currentPrice: 410 }
+    })).toBe(410);
   });
 });
 
