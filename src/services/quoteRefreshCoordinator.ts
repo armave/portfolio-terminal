@@ -35,7 +35,7 @@ export function createQuoteRefreshCoordinator(
     if (!pending) return start(force);
 
     queuedForce = force;
-    let request: Promise<boolean>;
+    let request!: Promise<boolean>;
     request = (async () => {
       await pending.catch(() => false);
       // Also wait for any ordinary poll that starts while this request is
