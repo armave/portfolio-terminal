@@ -4,15 +4,26 @@ import {
   type PortfolioStartupRuntimeDependencies
 } from './portfolioStartupRuntime';
 
-function createFixture(overrides: Partial<PortfolioStartupRuntimeDependencies> = {}) {
+interface FixtureOptions {
+  initialized?: boolean;
+  secret?: string;
+  credentialValid?: boolean;
+  setupRequired?: boolean;
+  startupError?: Error;
+}
+
+function createFixture(options: FixtureOptions = {}) {
   const calls: string[] = [];
-  let initialized = false;
-  const baseDependencies: PortfolioStartupRuntimeDependencies = {
+  let initialized = options.initialized ?? false;
+  const dependencies: PortfolioStartupRuntimeDependencies = {
     isInitialized: () => initialized,
     setInitialized: (value) => { initialized = value; calls.push(`initialized:${value}`); },
-    restoreGatewaySecret: vi.fn(async () => { calls.push('restore'); return ''; }),
-    validateGatewaySecret: vi.fn(async () => false),
-    getAuthStatus: vi.fn(async () => ({ setupRequired: false })),
+    restoreGatewaySecret: vi.fn(async () => {
+      calls.push('restore');
+      return options.secret ?? '';
+    }),
+    validateGatewaySecret: vi.fn(async () => options.credentialValid ?? false),
+    getAuthStatus: vi.fn(async () => ({ setupRequired: options.setupRequired ?? false })),
     clearSavedGatewaySecret: vi.fn(() => calls.push('clear-secret')),
     persistGatewaySecret: vi.fn(async () => { calls.push('persist-secret'); return true; }),
     loadBrokerRules: vi.fn(() => calls.push('load-rules')),
@@ -21,24 +32,20 @@ function createFixture(overrides: Partial<PortfolioStartupRuntimeDependencies> =
     hideStartupLoading: vi.fn(() => calls.push('hide-loading')),
     showAuthContainer: vi.fn(() => calls.push('show-auth')),
     hideAuthContainer: vi.fn(() => calls.push('hide-auth')),
-    startApp: vi.fn(async () => { calls.push('start-app'); }),
+    startApp: vi.fn(async () => {
+      calls.push('start-app');
+      if (options.startupError) throw options.startupError;
+    }),
     onStartupFailure: vi.fn((error) => calls.push(`failure:${String(error)}`))
   };
-  const dependencies = { ...baseDependencies, ...overrides };
-  const runtime = createPortfolioStartupRuntime({
-    ...dependencies,
-    setInitialized: (value) => {
-      initialized = value;
-      dependencies.setInitialized(value);
-    }
-  });
+  const runtime = createPortfolioStartupRuntime(dependencies);
 
   return { calls, dependencies, runtime, isInitialized: () => initialized };
 }
 
 describe('portfolio startup runtime', () => {
   it('does nothing when initialization has already completed', async () => {
-    const fixture = createFixture({ isInitialized: () => true });
+    const fixture = createFixture({ initialized: true });
 
     await fixture.runtime.initApp();
 
@@ -47,10 +54,7 @@ describe('portfolio startup runtime', () => {
   });
 
   it('validates a restored credential before starting the authenticated app', async () => {
-    const fixture = createFixture({
-      restoreGatewaySecret: vi.fn(async () => { calls.push('restore'); return 'valid-secret'; }),
-      validateGatewaySecret: vi.fn(async () => true)
-    });
+    const fixture = createFixture({ secret: 'valid-secret', credentialValid: true });
 
     await fixture.runtime.initApp();
 
@@ -60,9 +64,7 @@ describe('portfolio startup runtime', () => {
   });
 
   it('clears an invalid saved credential after auth setup is complete', async () => {
-    const fixture = createFixture({
-      restoreGatewaySecret: vi.fn(async () => { calls.push('restore'); return 'expired-secret'; })
-    });
+    const fixture = createFixture({ secret: 'expired-secret' });
 
     await fixture.runtime.initApp();
 
@@ -73,10 +75,7 @@ describe('portfolio startup runtime', () => {
   });
 
   it('retains the previous credential while first-account setup is required', async () => {
-    const fixture = createFixture({
-      restoreGatewaySecret: vi.fn(async () => { calls.push('restore'); return 'legacy-secret'; }),
-      getAuthStatus: vi.fn(async () => ({ setupRequired: true }))
-    });
+    const fixture = createFixture({ secret: 'legacy-secret', setupRequired: true });
 
     await fixture.runtime.initApp();
 
@@ -89,9 +88,9 @@ describe('portfolio startup runtime', () => {
 
   it('shows startup failure and resets initialization when authenticated startup rejects', async () => {
     const fixture = createFixture({
-      restoreGatewaySecret: vi.fn(async () => 'valid-secret'),
-      validateGatewaySecret: vi.fn(async () => true),
-      startApp: vi.fn(async () => { throw new Error('startup failed'); })
+      secret: 'valid-secret',
+      credentialValid: true,
+      startupError: new Error('startup failed')
     });
 
     await fixture.runtime.initApp();
