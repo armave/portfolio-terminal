@@ -778,7 +778,7 @@ export class PortfolioStore {
         ...cashHoldings.filter((holding) => holding.ticker.toUpperCase() === clean)
           .map((holding) => Number(holding.quoteDetails?.sourceTimestamp) || 0),
         ...cashStocks.filter((holding) => holding.ticker.toUpperCase() === clean)
-          .map((holding) => Number(holding.quoteDetails?.sourceTimestamp) || 0),
+          .map((holding) => Number((holding as any).quoteDetails?.sourceTimestamp) || 0),
         ...(guestPortfolioSnapshot?.tranches || [])
           .filter((tranche) => tranche.ticker.trim().toUpperCase() === clean)
           .map((tranche) => Number((tranche as any).quoteDetails?.sourceTimestamp) || 0)
