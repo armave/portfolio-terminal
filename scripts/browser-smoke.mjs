@@ -231,10 +231,11 @@ try {
   }
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.waitForSelector('#authModalTitle', { state: 'visible', timeout: 20_000 });
-  if (!(await page.locator('#authModalTitle').innerText()).includes('Create administrator account')) {
-    throw new Error('First-run setup did not present the administrator bootstrap form.');
-  }
+  await page.waitForFunction(
+    () => document.querySelector('#authModalTitle')?.textContent?.includes('Create administrator account'),
+    null,
+    { timeout: 20_000 }
+  );
 
   await submitAuth(page, {
     name: 'Smoke Admin',
@@ -256,10 +257,11 @@ try {
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   await page.getByRole('button', { name: 'Sign out' }).click();
   await waitForAuthOverlay(page, true);
-  await page.waitForSelector('#authModalTitle', { state: 'visible', timeout: 20_000 });
-  if (!(await page.locator('#authModalTitle').innerText()).includes('Portfolio Terminal sign in')) {
-    throw new Error('Administrator sign-out did not return to the account sign-in form.');
-  }
+  await page.waitForFunction(
+    () => document.querySelector('#authModalTitle')?.textContent?.includes('Portfolio Terminal sign in'),
+    null,
+    { timeout: 20_000 }
+  );
 
   await submitAuth(page, { name: 'Unknown User', password: 'invalid-smoke-password' });
   await page.locator('.auth-feedback--error').waitFor({ state: 'visible', timeout: 10_000 });
