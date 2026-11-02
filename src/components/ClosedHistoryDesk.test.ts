@@ -27,7 +27,9 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('if (!isSessionCurrent()) return;\n      const fetchedRows = normalizeFreedomCashflowRows(response)');
     expect(source).toContain('if (!saved || !isSessionCurrent()) return');
     expect(source).toContain('if (!isSessionCurrent()) return false;');
-    expect(source).toContain('if (isSessionCurrent()) setCashflowSyncReady(true)');
+    expect(source).toContain('if (!completed) cashflowSyncStarted.current = false');
+    expect(source).toContain('if (isSessionCurrent()) {');
+    expect(source).toContain('setCashflowSyncReady(true)');
   });
 
   it('allows retrying a failed automatic cashflow refresh without remounting Trades', () => {
