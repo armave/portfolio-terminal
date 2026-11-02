@@ -1085,7 +1085,7 @@ function refreshSupplementalPortfolioData(): Promise<void> | void {
     // Wait for an older quote batch before fetching prices for the latest assignment set.
     if (guestCloudRefreshInFlight) return guestCloudRefreshInFlight.then(() => undefined);
     const request = pullGuestPortfolioSnapshot()
-      .then(() => refreshAllLivePricesAfterCurrent())
+      .then(() => refreshAllLivePricesAfterCurrent(true))
       .then(() => undefined)
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
