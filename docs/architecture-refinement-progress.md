@@ -1,8 +1,8 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Credential verification and authenticated account-switch runtime extraction  
-**Base:** `fe8de28506809f39f65122aabbdc2fb3af142cdc`
+**Current work:** Guest portfolio snapshot hydration runtime extraction  
+**Base:** `e05a8c910195fddcdc9318083c90f066706d70e6`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
@@ -19,6 +19,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Extract authenticated identity publication, role/write-permission transitions, administrator authorization, and logout handling.
 - [x] Merge the sync-runtime extraction in [PR #246](https://github.com/armave/portfolio-terminal/pull/246).
 - [x] Merge the authenticated session-runtime extraction in [PR #247](https://github.com/armave/portfolio-terminal/pull/247).
+- [x] Merge the credential and account-switch runtime extraction in [PR #248](https://github.com/armave/portfolio-terminal/pull/248).
 
 ## Merged PR #246 — portfolio sync runtime
 
@@ -41,22 +42,33 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] CI on final PR head: 969 tests across 86 files; typecheck, build, dead-code, both dependency audits, and desktop/tablet/phone browser smoke passed.
 - [x] Squash-merged to `main` as `fe8de28506809f39f65122aabbdc2fb3af142cdc`.
 
-## Current PR — credential and account-switch runtime
+## Merged PR #248 — credential and account-switch runtime
 
 - [x] Extract credential validation, save/persist sequencing, and the authenticated-user identity publication boundary.
 - [x] Keep app initialization and portfolio storage behind typed injected callbacks.
 - [x] Preserve guest immediate Balance navigation, guest-only snapshot hydration, admin shared-cloud pull, and quote refresh ordering.
 - [x] Keep `handleSaveGatewaySecret` as an exported compatibility wrapper.
 - [x] Add Vitest coverage for empty/invalid credentials, initial guest startup, guest/admin account switching, persistence failure, and startup failure.
-- [x] Validation on implementation head `646a7da02c443673b3cfa7158c8fbba2acfe27cc`: 976 tests across 87 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke completed successfully. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41414716519) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41414716286).
-- [ ] Review feedback and merge.
+- [x] Validation on final PR head `77356836d17d4fb2ffb2505d6cdc3ae7b8bf002d`: 976 tests across 87 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41414975296) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41414975300).
+- [x] Squash-merged to `main` as `e05a8c910195fddcdc9318083c90f066706d70e6`.
+
+## Current PR — guest portfolio hydration runtime
+
+- [x] Move guest snapshot fetching and account-generation checks behind a typed hydration service.
+- [x] Preserve server-scoped guest-only projection loading and reject responses for changed account, credential, role, or login generation.
+- [x] Preserve the current guest-accessible desk while refreshing the snapshot.
+- [x] Build a clean guest workspace without carrying administrator holdings, broker rows, cashflows, credentials, or API keys.
+- [x] Keep portfolio import, persistence, and rendering injected through the existing single app store owner.
+- [x] Add Vitest coverage for guest-role gating, desk preservation/fallback, successful hydration, and stale-session rejection.
+- [x] Validation on implementation head `560a2727664e950e5bb9838ddfb21dd13946ac12`: 982 tests across 88 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone browser smoke all passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41415633570) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41415633535).
+- [ ] Review and merge.
 
 ## Remaining architecture work
 
 ### P1 — application runtime boundaries
 
 - [ ] Extract broker runtime: broker event coordination, account refresh, executed-trade refresh, and active-order refresh.
-- [ ] Extract guest portfolio synchronization: publication, hydration, assignment lifecycle, and session guards.
+- [ ] Extract guest portfolio publication and assignment lifecycle while preserving server-side ledger behavior.
 - [ ] Extract startup lifecycle: initialization, retry, offline startup, rollover timer, and visibility handling.
 
 ### P1 — API compatibility facade

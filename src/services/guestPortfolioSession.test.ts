@@ -6,8 +6,8 @@ import {
   type GuestPortfolioSessionIdentity
 } from './guestPortfolioSession';
 
-function readAppSource(): string {
-  return readFileSync(new URL('../../app.ts', import.meta.url), 'utf8');
+function readSource(path: string): string {
+  return readFileSync(new URL(path, import.meta.url), 'utf8');
 }
 
 const session = (overrides: Partial<GuestPortfolioSessionIdentity> = {}): GuestPortfolioSessionIdentity => ({
@@ -20,19 +20,22 @@ const session = (overrides: Partial<GuestPortfolioSessionIdentity> = {}): GuestP
 
 describe('isCurrentGuestPortfolioSession', () => {
   it('preserves the active desk while applying a refreshed guest snapshot', () => {
-    const source = readAppSource();
-    expect(source).toContain('const refreshActiveView = resolveGuestPortfolioRefreshView(portfolioStore.getState().activeView)');
-    expect(source).toContain('activeView: refreshActiveView');
-    expect(source).not.toContain("switchView('CASH_CUSHION')");
+    const runtime = readSource('./guestPortfolioHydrationRuntime.ts');
+    expect(runtime).toContain('resolveGuestPortfolioRefreshView(dependencies.getActiveView())');
+    expect(runtime).toContain('activeView: refreshActiveView');
+    expect(runtime).not.toContain("switchView('CASH_CUSHION')");
   });
 
 
   it('checks the captured account session before importing a guest snapshot', () => {
-    const source = readAppSource();
-    expect(source).toContain('const requestedIdentity = currentAccountSessionGuard.capture()');
-    expect(source).toContain('const currentIdentity = currentAccountSessionGuard.capture()');
-    expect(source).toContain('if (!isCurrentGuestPortfolioSession(requestedSession, currentSession)) return');
-    expect(source).toContain('const guestId = requestedSession.accountId');
+    const app = readSource('../../app.ts');
+    const runtime = readSource('./guestPortfolioHydrationRuntime.ts');
+    expect(app).toContain('createGuestPortfolioHydrationRuntime({');
+    expect(app).toContain('currentAccountSessionGuard.capture()');
+    expect(runtime).toContain('const requestedSession = dependencies.getSessionIdentity(-1)');
+    expect(runtime).toContain('const currentSession = dependencies.getSessionIdentity(-2)');
+    expect(runtime).toContain('if (!isCurrentGuestPortfolioSession(requestedSession, currentSession)) return');
+    expect(runtime).toContain('const guestId = requestedSession.accountId');
   });
 
   it('accepts a snapshot response for the same active guest and credential', () => {
