@@ -1,5 +1,4 @@
 import { PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from '../../store/portfolioStore';
-import { portfolioStore } from '../../store/portfolioStore';
 import { getAppLanguage, translateText } from '../../services/i18n';
 import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedDebt, resolveCommissionConfig } from '../../domain/portfolio';
 import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
