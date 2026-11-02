@@ -31,7 +31,7 @@ function createFixture(role: AuthenticatedStartupRole = 'admin', secret = 'valid
     refreshLivePrices: vi.fn(async () => calls.push('refresh-quotes')),
     finishInitialQuoteRefresh: vi.fn(() => calls.push('quote-refresh-finish')),
     renderBoardAnalystConsensus: vi.fn(() => calls.push('analyst-consensus')),
-    recoverPendingCloudWrites: vi.fn(async () => calls.push('recover-cloud-writes')),
+    recoverPendingCloudWrites: vi.fn(async () => { calls.push('recover-cloud-writes'); }),
     hideStartupLoading: vi.fn(() => calls.push('hide-loading'))
   };
   return {
