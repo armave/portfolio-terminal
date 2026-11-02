@@ -3,7 +3,7 @@ import { usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
-import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
+import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixInput, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
 import { listUsers, normalizeFreedomTrades, type AuthUser } from '../services/api';
@@ -708,17 +708,11 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       const cashQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
                       const assignedGuestId = state.activeTrancheGuestAssignments?.[tranche.id] || '';
                       const updateMixCash = (value: string) => {
-                        const requestedCash = Number(value);
-                        const cash = Number.isFinite(requestedCash)
-                          ? Math.min(tranche.quantity, Math.max(0, requestedCash))
-                          : 0;
+                        const cash = resolveActiveTrancheMixInput(value, tranche.quantity, mix.cash);
                         setActiveTrancheType(tranche.id, 'mix', { cash, margin: tranche.quantity - cash });
                       };
                       const updateMixMargin = (value: string) => {
-                        const requestedMargin = Number(value);
-                        const margin = Number.isFinite(requestedMargin)
-                          ? Math.min(tranche.quantity, Math.max(0, requestedMargin))
-                          : 0;
+                        const margin = resolveActiveTrancheMixInput(value, tranche.quantity, mix.margin);
                         setActiveTrancheType(tranche.id, 'mix', { cash: tranche.quantity - margin, margin });
                       };
                       const mixExpanded = expandedMixTranches.has(tranche.id);
@@ -778,7 +772,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                         min="0"
                                         max={tranche.quantity}
                                         step="any"
-                                        defaultValue={mix.cash}
+                                        value={mix.cash}
                                         onBlur={(event) => updateMixCash((event.currentTarget as HTMLInputElement).value)}
                                         class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
                                       />
@@ -791,7 +785,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                                         min="0"
                                         max={tranche.quantity}
                                         step="any"
-                                        defaultValue={mix.margin}
+                                        value={mix.margin}
                                         onBlur={(event) => updateMixMargin((event.currentTarget as HTMLInputElement).value)}
                                         class="w-[4.25rem] rounded border border-slate-700 bg-slate-950 px-1 py-1 text-right text-[10px] text-slate-100"
                                       />

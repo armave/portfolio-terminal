@@ -1,5 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio } from './freedomPortfolio';
+import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
+
+describe('resolveActiveTrancheMixInput', () => {
+  it('keeps the previous split when an input is cleared or invalid', () => {
+    expect(resolveActiveTrancheMixInput('', 10, 4)).toBe(4);
+    expect(resolveActiveTrancheMixInput('   ', 10, 4)).toBe(4);
+    expect(resolveActiveTrancheMixInput('not-a-number', 10, 4)).toBe(4);
+    expect(resolveActiveTrancheMixInput(undefined, 10, 4)).toBe(4);
+  });
+
+  it('clamps valid values to the total quantity', () => {
+    expect(resolveActiveTrancheMixInput('3.5', 10, 4)).toBe(3.5);
+    expect(resolveActiveTrancheMixInput('-2', 10, 4)).toBe(0);
+    expect(resolveActiveTrancheMixInput('12', 10, 4)).toBe(10);
+  });
+
+  it('returns zero for invalid total quantities and clamps the fallback', () => {
+    expect(resolveActiveTrancheMixInput('5', 0, 4)).toBe(0);
+    expect(resolveActiveTrancheMixInput('', 10, 12)).toBe(10);
+    expect(resolveActiveTrancheMixInput('', 10, -2)).toBe(0);
+  });
+});
 
 describe('reconcileFreedomPortfolio', () => {
   it('prefers Freedom USD cash and derives cash shares after app margin lots', () => {

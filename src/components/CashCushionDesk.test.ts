@@ -3,6 +3,19 @@ import { describe, expect, it } from 'vitest';
 import { formatDailyQuoteRange, getCashHoldingMarketPrice } from './CashCushionDesk';
 import { mergeBrokerExecutionHistory } from '../domain/closedHistoryFees';
 
+describe('cash/margin mix inputs', () => {
+  const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+  it('keeps both visible split fields synchronized with the saved normalized mix', () => {
+    expect(deskSource).toContain('value={mix.cash}');
+    expect(deskSource).toContain('value={mix.margin}');
+    expect(deskSource).toContain('resolveActiveTrancheMixInput(value, tranche.quantity, mix.cash)');
+    expect(deskSource).toContain('resolveActiveTrancheMixInput(value, tranche.quantity, mix.margin)');
+    expect(deskSource).not.toContain('defaultValue={mix.cash}');
+    expect(deskSource).not.toContain('defaultValue={mix.margin}');
+  });
+});
+
 describe('cash holding market price', () => {
   it('prefers a valid current quote and falls back to the stored price', () => {
     expect(getCashHoldingMarketPrice({ currentPrice: 125, price: 120 })).toBe(125);
