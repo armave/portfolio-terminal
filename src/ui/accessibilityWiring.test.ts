@@ -67,9 +67,11 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain("translateText('Unrealized return unavailable', getAppLanguage())");
     expect(source).toContain('unpricedMarginPositionCount > 0');
     expect(source).toContain("translateText('Unpriced positions', getAppLanguage())");
-    expect(source).toContain('valuationAvailable={valuation.unpricedHoldings === 0}');
-    expect(source).toContain('valuationAvailable={valuationAvailable}');
-    expect(source).toContain("translateText('Margin risk estimate unavailable until every holding has a valid market quote.', getAppLanguage())");
+    expect(source).toContain('valuationStatus={valuationStatus}');
+    expect(source).toContain('valuationStatus={positionValuationStatus}');
+    expect(source).toContain('cashHoldingsForQuotes');
+    expect(source).toContain('accountBalanceStale: brokerBalanceIsStale');
+    expect(source).toContain("translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', getAppLanguage())");
   });
 
   it('marks the compact admin Balance equity badge as partial when holdings are unpriced', () => {
