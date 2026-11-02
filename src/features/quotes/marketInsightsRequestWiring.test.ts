@@ -20,11 +20,24 @@ describe('Market Insights request lifecycle wiring', () => {
     expect(panel).toContain('getMarketInsightsRequestPlan(ticker, activeSection, stocktwitsRequested)');
     expect(panel).toContain('if (!requestPlan.news) return;');
     expect(panel).toContain('if (!requestPlan.deepData)');
-    expect(panel).toContain('}, [ticker, requestPlan.deepData]);');
+    expect(panel).toContain('const forceOnStart = deepDataRefreshRequest !== lastDeepDataManualRefreshRef.current;');
+    expect(panel).toContain('fetchYahooDeepStockData(ticker, forceOnStart, controller.signal)');
+    expect(panel).toContain('}, [ticker, deepDataRefreshRequest, requestPlan.deepData]);');
     expect(panel).not.toContain('}, [ticker, activeSection, requestPlan.deepData]);');
+    expect(panel).toContain('onClick={() => setDeepDataRefreshRequest((value) => value + 1)}');
+    expect(panel).toContain('disabled={deepDataRequest.ticker === ticker && deepDataRequest.loading}');
     expect(panel).toContain('if (!requestPlan.stocktwits) return;');
     expect(panel).toContain('if (stocktwitsRequested) setStocktwitsRefreshRequest((value) => value + 1);');
     expect(panel).toContain('else setStocktwitsRequested(true);');
+  });
+
+  it('keeps same-ticker data visible during refresh and exposes retry after a failed request', () => {
+    const panel = readSource('../../components/MarketInsightsPanel.tsx');
+    expect(panel).toContain('const loading = requestPlan.deepData && !currentStockData');
+    expect(panel).toContain('if (error && !currentStockData)');
+    expect(panel).toContain('{error && currentStockData && (');
+    expect(panel).toContain('aria-label="Refresh market data"');
+    expect(panel).toContain('aria-label="Retry market data refresh"');
   });
 
   it('does not display previous-ticker News, Stocktwits, or deep-data state', () => {
