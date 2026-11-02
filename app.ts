@@ -99,6 +99,18 @@ const DEFAULT_TRADERNET_RULES: BrokerAssumptions = DEFAULT_BROKER_ASSUMPTIONS;
 const TRADERNET_RULES: BrokerAssumptions = { ...DEFAULT_TRADERNET_RULES };
 
 let state: PortfolioState = portfolioStore.getState();
+
+/** Clear workspace data without resetting device/account settings. */
+function createCleanWorkspaceState(now = Date.now()): PortfolioState {
+  const current = portfolioStore.getState();
+  return {
+    ...createBlankPortfolioState(now),
+    brokerAssumptions: current.brokerAssumptions,
+    apiKeys: current.apiKeys,
+    gatewaySecret: current.gatewaySecret,
+    autoRefreshInterval: current.autoRefreshInterval
+  };
+}
 // Guest sessions may read the shared snapshot, but must never enqueue cloud writes.
 let canWriteCloudState = false;
 let currentAccountRole: 'admin' | 'guest' | null = null;
@@ -914,7 +926,7 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
   // A snapshot refresh updates guest data, not the user's current desk.
   // Keep the selected guest-accessible route (Balance, LOTS or Settings).
   const refreshActiveView = resolveGuestPortfolioRefreshView(portfolioStore.getState().activeView);
-  const blank = createBlankPortfolioState();
+  const blank = createCleanWorkspaceState();
   portfolioStore.importState({
     ...blank,
     activeView: refreshActiveView,
@@ -2139,7 +2151,7 @@ async function publishCurrentUser() {
       // receives the guest identity event or renders the Balance screen.
       if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
       gistSyncTimeout = null;
-      portfolioStore.importState(createBlankPortfolioState());
+      portfolioStore.importState(createCleanWorkspaceState());
       state = portfolioStore.getState();
     }
     emitUiEvent('auth:user-changed', { user });
