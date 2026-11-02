@@ -911,10 +911,13 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
     mixes: {},
     cashHoldings: []
   });
+  // A snapshot refresh updates guest data, not the user's current desk.
+  // Keep the selected guest-accessible route (Balance, LOTS or Settings).
+  const refreshActiveView = resolveGuestPortfolioRefreshView(portfolioStore.getState().activeView);
   const blank = createBlankState();
   portfolioStore.importState({
     ...blank,
-    activeView: 'CASH_CUSHION',
+    activeView: refreshActiveView,
     selectedTicker: null,
     positions: {},
     activeTrancheGuestAssignments: assignments,
@@ -938,7 +941,6 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
   } as any);
   state = portfolioStore.getState();
   saveState(state);
-  switchView('CASH_CUSHION');
   renderBoard();
 }
 

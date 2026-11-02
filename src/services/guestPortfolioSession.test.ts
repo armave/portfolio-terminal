@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { isCurrentGuestPortfolioSession, type GuestPortfolioSessionIdentity } from './guestPortfolioSession';
+import {
+  isCurrentGuestPortfolioSession,
+  resolveGuestPortfolioRefreshView,
+  type GuestPortfolioSessionIdentity
+} from './guestPortfolioSession';
 
 function readAppSource(): string {
   return readFileSync(new URL('../../app.ts', import.meta.url), 'utf8');
@@ -15,6 +19,14 @@ const session = (overrides: Partial<GuestPortfolioSessionIdentity> = {}): GuestP
 });
 
 describe('isCurrentGuestPortfolioSession', () => {
+  it('preserves the active desk while applying a refreshed guest snapshot', () => {
+    const source = readAppSource();
+    expect(source).toContain('const refreshActiveView = resolveGuestPortfolioRefreshView(portfolioStore.getState().activeView)');
+    expect(source).toContain('activeView: refreshActiveView');
+    expect(source).not.toContain("switchView('CASH_CUSHION')");
+  });
+
+
   it('checks the captured account session before importing a guest snapshot', () => {
     const source = readAppSource();
     expect(source).toContain('const requestedIdentity = currentAccountSessionGuard.capture()');
@@ -48,5 +60,22 @@ describe('isCurrentGuestPortfolioSession', () => {
     expect(isCurrentGuestPortfolioSession(session({ accountId: null }), session({ accountId: null }))).toBe(false);
     expect(isCurrentGuestPortfolioSession(session({ secret: '' }), session({ secret: '' }))).toBe(false);
     expect(isCurrentGuestPortfolioSession(session({ role: 'admin' }), session({ role: 'admin' }))).toBe(false);
+  });
+});
+
+
+describe('resolveGuestPortfolioRefreshView', () => {
+  it.each(['BALANCE', 'CASH_CUSHION', 'GUEST_HISTORY', 'SETTINGS'])(
+    'preserves the currently selected guest desk: %s',
+    (view) => {
+      expect(resolveGuestPortfolioRefreshView(view)).toBe(view);
+    }
+  );
+
+  it('uses Balance only when the existing route is inaccessible to a guest', () => {
+    expect(resolveGuestPortfolioRefreshView('COMBINED')).toBe('BALANCE');
+    expect(resolveGuestPortfolioRefreshView('CLOSED_HISTORY')).toBe('BALANCE');
+    expect(resolveGuestPortfolioRefreshView(null)).toBe('BALANCE');
+    expect(resolveGuestPortfolioRefreshView(undefined)).toBe('BALANCE');
   });
 });
