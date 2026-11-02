@@ -79,11 +79,15 @@ export class PortfolioStore {
 
   private initializeState(): PortfolioState {
     const defaults = createBlankPortfolioState();
-    const saved = loadSavedState(defaults) as Partial<PortfolioState> | null;
+    // Keep the persisted snapshot's own property set intact so a truly legacy
+    // holdings-only record remains distinguishable from a canonical empty map.
+    const saved = loadSavedState({}) as Partial<PortfolioState> | null;
     const savedRules = loadBrokerRules();
     const refreshInterval = getQuoteRefreshInterval();
 
     const raw: PortfolioState = {
+      ...defaults,
+      ...saved,
       positions: saved?.positions || {},
       // Operation-level cash/margin choices are canonical portfolio data and must survive reloads/cloud pulls.
       activeTrancheTypes: saved?.activeTrancheTypes && typeof saved.activeTrancheTypes === 'object'
