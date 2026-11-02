@@ -1,7 +1,7 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Broker refresh request runtime extraction  
+**Current work:** Startup lifecycle runtime extraction  
 **Base:** `0ebb5937c13b725f9887273d3055adb12f5300c7`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
@@ -64,7 +64,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Validation on implementation head `560a2727664e950e5bb9838ddfb21dd13946ac12`: 982 tests across 88 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone browser smoke all passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41415633570) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41415633535).
 - [x] Squash-merged to `main` as `0ebb5937c13b725f9887273d3055adb12f5300c7`.
 
-## Current PR — broker refresh request runtime
+## Merged PR #250 — broker refresh request runtime
 
 - [x] Add a typed broker refresh adapter for payload-free scheduled requests and awaitable manual-refresh requests.
 - [x] Preserve scheduled request ordering: account info, executed trades, then active orders.
@@ -72,6 +72,17 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Keep broker response listeners, account classification, active-order target resolution, and financial calculations in the app unchanged.
 - [x] Add Vitest coverage for scheduled order, individual events, and waitable success/failure results.
 - [x] Validation on implementation head `399bfe4a0eab23fa39bac2a23e67f713ac454d7d`: 985 tests across 89 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41416763228) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41416763350).
+- [x] Marked ready for review and squash-merged to `main` as `6aa70eafb05ed5627072aae0a6d5d36f2f6f4988`.
+
+## Current PR — startup lifecycle runtime
+
+- [x] Extract administrator-only rollover timer ownership and cancellation.
+- [x] Preserve the 60-second cadence and visibility guard; recheck the active role before each callback.
+- [x] Extract visibility-return handling while keeping the existing administrator rollover and quote-refresh order.
+- [x] Extract startup retry/offline event bindings with disposer support.
+- [x] Keep session restore, credential verification, portfolio hydration, app initialization, and rollover accounting injected/app-owned.
+- [x] Add Vitest coverage for timer cadence, visibility, role switching, startup retry/offline dispatch, and disposal.
+- [ ] Run exact-head typecheck, Vitest, build, dead-code validation, dependency audits, and production browser smoke.
 - [ ] Review and merge.
 
 ## Remaining architecture work
@@ -80,7 +91,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 
 - [ ] Extract broker runtime: broker event coordination, account refresh, executed-trade refresh, and active-order refresh.
 - [ ] Extract guest portfolio publication and assignment lifecycle while preserving server-side ledger behavior.
-- [ ] Extract startup lifecycle: initialization, retry, offline startup, rollover timer, and visibility handling.
+- [ ] Extract remaining `initApp` / `startApp` orchestration: credential restoration, authentication fallback, workspace hydration, quote bootstrap, and failure/retry sequencing.
 
 ### P1 — API compatibility facade
 

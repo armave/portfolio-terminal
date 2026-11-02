@@ -24,6 +24,7 @@ import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
 import { createPortfolioBrokerRefreshRuntime } from './src/services/portfolioBrokerRefreshRuntime';
+import { createPortfolioStartupLifecycleRuntime } from './src/services/portfolioStartupLifecycleRuntime';
 import { createPortfolioSessionRuntime } from './src/services/portfolioSessionRuntime';
 import { createPortfolioAuthenticationRuntime } from './src/services/portfolioAuthenticationRuntime';
 import {
@@ -120,7 +121,6 @@ let currentAccountId: string | null = null;
 const currentAccountSessionGuard = createSessionIdentityGuard(null);
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let guestCloudRefreshInFlight: Promise<unknown> | null = null;
-let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
 const livePriceRequests = new Map<string, Promise<any>>();
 let initialQuoteRefreshPending = false;
@@ -1612,6 +1612,22 @@ const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
   }
 });
 
+const portfolioStartupLifecycleRuntime = createPortfolioStartupLifecycleRuntime({
+  getAccountRole: () => currentAccountRole,
+  isDocumentVisible: () => !document.hidden,
+  applyOvernightRollover,
+  refreshOnVisibilityChange: () => portfolioAutoRefresh.onVisibilityChange(),
+  setStartupState: (visible, failed) => emitUiEvent('terminal:startup-state', { visible, failed }),
+  retryStartup: () => initApp(),
+  continueStartupOffline: () => continueStartupOffline(),
+  addVisibilityChangeListener: (listener) => {
+    document.addEventListener('visibilitychange', listener);
+    return () => document.removeEventListener('visibilitychange', listener);
+  },
+  scheduleInterval: (callback, delayMs) => setInterval(callback, delayMs),
+  clearScheduledInterval: (handle) => clearInterval(handle)
+});
+
 function setQuoteRefreshInterval(interval: number | string): number {
   const role = currentAccountRole;
   const fallback = role === 'guest'
@@ -2193,14 +2209,8 @@ async function startApp(secret: string) {
   );
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
 
-  if (rolloverTimer !== null) clearInterval(rolloverTimer);
-  rolloverTimer = currentAccountRole === 'admin'
-    ? setInterval(() => {
-      if (!document.hidden) applyOvernightRollover();
-    }, 60 * 1000)
-    : null;
-  // Visibility refresh and the administrator rollover listener are registered
-  // once in bindStartupActions, not once per authentication/startup cycle.
+  portfolioStartupLifecycleRuntime.configureAdminRollover(currentAccountRole === 'admin');
+  // Visibility and startup event handlers are bound once by the lifecycle runtime.
 
 
   // Avoid launching a duplicate per-ticker analyst request while the initial
@@ -2258,17 +2268,7 @@ function showStartupFailure() {
 }
 
 function bindStartupActions() {
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) return;
-    if (currentAccountRole === 'admin') applyOvernightRollover();
-    portfolioAutoRefresh.onVisibilityChange();
-  });
-
-  addUiEventListener('terminal:startup-retry', () => {
-    emitUiEvent('terminal:startup-state', { visible: true, failed: false });
-    void initApp();
-  });
-  addUiEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
+  portfolioStartupLifecycleRuntime.bind();
   bindPortfolioNavigationRuntime({
     getAccountRole: () => currentAccountRole,
     setActiveView,
