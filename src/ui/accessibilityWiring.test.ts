@@ -102,7 +102,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('document.body');
     expect(source).toContain('market-depth-dialog flex min-h-0');
     expect(source).toContain('market-depth-content min-h-0 flex-1');
-    expect(source).toContain('role="region" aria-label={`Market depth order book for ${ticker}`} tabIndex={0}');
+    expect(source).toContain('role="region" aria-label={regionLabel} tabIndex={0}');
     expect(stylesheet).toContain('.market-depth-modal');
     expect(stylesheet).toContain('height: 100dvh;');
     expect(stylesheet).toContain('.market-depth-content');
@@ -114,8 +114,15 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('const currentSnapshot = snapshot?.symbol === ticker.trim().toUpperCase() ? snapshot : null;');
     expect(source).not.toContain('setSnapshot(null)');
     expect(source).toContain('currentSnapshot && isLoading');
-    expect(source).toContain('Refresh failed; showing the last successful order-book snapshot.');
-    expect(source).toContain("error ? 'Retry depth' : 'Refresh depth'");
+    expect(source).toContain("translateText('Refreshing order book; previous snapshot remains visible.', language)");
+    expect(source).toContain("translateText('Refresh failed; showing the last successful order-book snapshot.', language)");
+    expect(source).toContain("const refreshLabel = translateText(error ? 'Retry depth' : 'Refresh depth', language);");
+    expect(source).toContain('aria-label={isLoading ? loadingLabel : refreshLabel}');
+    expect(source).toContain("aria-label={translateText('Open market depth for ' + ticker, language)}");
+    expect(source).toContain("translateText('Depth', language)");
+    expect(source).toContain("translateText('Levels', language)");
+    expect(source).toContain("translateText('Best bid', language)");
+    expect(source).toContain("translateText('Best ask', language)");
     expect(source).toContain('aria-busy={isLoading}');
   });
 

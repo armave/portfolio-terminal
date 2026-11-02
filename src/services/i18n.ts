@@ -171,6 +171,8 @@ const RU: Record<string, string> = {
   'Read-only · No broker orders are changed': 'Только просмотр · заявки брокеру не изменяются',
   'Close': 'Закрыть',
   'Market depth': 'Стакан заявок',
+  'Tick': 'Шаг цены',
+  'Levels': 'Уровни',
   'Depth': 'Стакан',
   'Bid': 'Покупка',
   'Ask': 'Продажа',
