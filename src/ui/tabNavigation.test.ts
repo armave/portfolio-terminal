@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isMarginDeskView, resolveTabNavigationIndex, shouldRefreshQuotesOnNavigation } from './tabNavigation';
+import { isBalanceDeskView, isMarginDeskView, resolveTabNavigationIndex, shouldRefreshQuotesOnNavigation, shouldRefreshQuotesWhenEnteringBalance } from './tabNavigation';
 
 describe('resolveTabNavigationIndex', () => {
   it('wraps left and right navigation across the tab list', () => {
@@ -31,12 +31,16 @@ describe('workspace navigation quote refresh triggers', () => {
     expect(shouldRefreshQuotesOnNavigation('AAPL', 'AAPL', true)).toBe(false);
   });
 
-  it('refreshes quotes when opening Balance from Margin, Settings, or guest history', () => {
-    expect(shouldRefreshQuotesOnNavigation('AAPL', 'BALANCE', true)).toBe(true);
-    expect(shouldRefreshQuotesOnNavigation('SETTINGS', 'BALANCE', true)).toBe(true);
-    expect(shouldRefreshQuotesOnNavigation('GUEST_HISTORY', 'BALANCE', false)).toBe(true);
-    expect(shouldRefreshQuotesOnNavigation('BALANCE', 'BALANCE', true)).toBe(false);
-    expect(shouldRefreshQuotesOnNavigation('BALANCE', 'BALANCE', false)).toBe(false);
+  it('refreshes only when the normalized active view transitions into Balance', () => {
+    expect(isBalanceDeskView('BALANCE')).toBe(true);
+    expect(isBalanceDeskView('CASH_CUSHION')).toBe(true);
+    expect(isBalanceDeskView('AAPL')).toBe(false);
+    expect(shouldRefreshQuotesWhenEnteringBalance('AAPL', 'CASH_CUSHION')).toBe(true);
+    expect(shouldRefreshQuotesWhenEnteringBalance('SETTINGS', 'BALANCE')).toBe(true);
+    expect(shouldRefreshQuotesWhenEnteringBalance('GUEST_HISTORY', 'CASH_CUSHION')).toBe(true);
+    expect(shouldRefreshQuotesWhenEnteringBalance('CASH_CUSHION', 'CASH_CUSHION')).toBe(false);
+    expect(shouldRefreshQuotesWhenEnteringBalance('BALANCE', 'CASH_CUSHION')).toBe(false);
+    expect(shouldRefreshQuotesWhenEnteringBalance('CASH_CUSHION', 'SETTINGS')).toBe(false);
   });
 
   it('does not start Margin requests for guest or unknown roles', () => {

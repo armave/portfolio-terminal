@@ -35,17 +35,24 @@ export function isMarginDeskView(view: string, isAdmin: boolean): boolean {
   return isAdmin && !NON_MARGIN_DESK_VIEWS.has(view);
 }
 
-/**
- * Refresh quotes when entering Balance or a different administrator Margin section.
- * Balance displays the same live position/holding prices, so returning to it must
- * not leave the user looking at quotes fetched only during the previous app load.
- */
+/** Balance is stored as CASH_CUSHION after the navigation event is normalized. */
+export function isBalanceDeskView(view: string): boolean {
+  return view === 'BALANCE' || view === 'CASH_CUSHION';
+}
+
+/** Refresh only on an actual transition into Balance, not on same-page clicks. */
+export function shouldRefreshQuotesWhenEnteringBalance(
+  currentView: string,
+  nextView: string
+): boolean {
+  return !isBalanceDeskView(currentView) && isBalanceDeskView(nextView);
+}
+
+/** Refresh quotes when an administrator selects a different Margin section. */
 export function shouldRefreshQuotesOnNavigation(
   currentView: string,
   nextView: string,
   isAdmin: boolean
 ): boolean {
-  return currentView !== nextView && (
-    nextView === 'BALANCE' || isMarginDeskView(nextView, isAdmin)
-  );
+  return currentView !== nextView && isMarginDeskView(nextView, isAdmin);
 }
