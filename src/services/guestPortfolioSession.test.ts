@@ -5,12 +5,17 @@ const session = (overrides: Partial<GuestPortfolioSessionIdentity> = {}): GuestP
   role: 'guest',
   accountId: 'guest-a',
   secret: 'session-token-a',
+  generation: 1,
   ...overrides
 });
 
 describe('isCurrentGuestPortfolioSession', () => {
   it('accepts a snapshot response for the same active guest and credential', () => {
     expect(isCurrentGuestPortfolioSession(session(), session())).toBe(true);
+  });
+
+  it('rejects an earlier login generation when the same guest returns with the same credential', () => {
+    expect(isCurrentGuestPortfolioSession(session(), session({ generation: 3 }))).toBe(false);
   });
 
   it('rejects a response after switching to a different guest account', () => {

@@ -76,6 +76,7 @@ import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSe
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
 import { isCurrentGuestPortfolioSession } from './src/services/guestPortfolioSession';
+import { createSessionIdentityGuard } from './src/utils/sessionIdentityGuard';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
 import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, BrokerAssumptions, GuestTrancheLedgerRecord, QuoteDetails } from './src/types/portfolio';
@@ -94,6 +95,7 @@ let state: any = createBlankState();
 let canWriteCloudState = false;
 let currentAccountRole: 'admin' | 'guest' | null = null;
 let currentAccountId: string | null = null;
+const currentAccountSessionGuard = createSessionIdentityGuard(null);
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
 let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let supplementalRefreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -871,20 +873,24 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
 
 /** Hydrate a guest from their server-scoped projection, never from the shared portfolio. */
 async function pullGuestPortfolioSnapshot(): Promise<void> {
+  const requestedIdentity = currentAccountSessionGuard.capture();
   const requestedSession = {
     role: currentAccountRole,
     accountId: currentAccountId,
-    secret: getGatewaySecret()
+    secret: getGatewaySecret(),
+    generation: requestedIdentity?.generation ?? -1
   };
   if (requestedSession.role !== 'guest' || !requestedSession.accountId) {
     throw new Error('A guest session is required to load assigned holdings.');
   }
 
   const snapshot = await getGuestPortfolioSnapshot();
+  const currentIdentity = currentAccountSessionGuard.capture();
   const currentSession = {
     role: currentAccountRole,
     accountId: currentAccountId,
-    secret: getGatewaySecret()
+    secret: getGatewaySecret(),
+    generation: currentIdentity?.generation ?? -2
   };
   // A response authorized by the previous guest must never hydrate the next
   // account's local workspace after an account or credential switch.
@@ -2071,7 +2077,10 @@ async function publishCurrentUser() {
   try {
     const user = await getCurrentUser();
     const identityChanged = currentAccountRole !== user.role || currentAccountId !== user.id;
-    if (identityChanged) clearCloudEncryptionSecretCache();
+    if (identityChanged) {
+      clearCloudEncryptionSecretCache();
+      currentAccountSessionGuard.setIdentity(`${user.role}:${user.id}`);
+    }
     // Flip permissions before mutating the store so a pending admin subscription
     // can never turn guest-state clearing into a shared-workspace write.
     currentAccountRole = user.role;
@@ -2091,6 +2100,7 @@ async function publishCurrentUser() {
     currentAccountRole = null;
     currentAccountId = null;
     canWriteCloudState = false;
+    currentAccountSessionGuard.setIdentity(null);
     emitUiEvent('auth:user-changed', { user: null });
     return null;
   }

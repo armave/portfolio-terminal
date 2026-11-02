@@ -4,6 +4,7 @@ export interface GuestPortfolioSessionIdentity {
   role: PortfolioAccountRole;
   accountId: string | null;
   secret: string;
+  generation: number;
 }
 
 /**
@@ -19,5 +20,6 @@ export function isCurrentGuestPortfolioSession(
     Boolean(requested.secret.trim()) &&
     current.role === 'guest' &&
     current.accountId === requested.accountId &&
-    current.secret === requested.secret;
+    current.secret === requested.secret &&
+    current.generation === requested.generation;
 }
