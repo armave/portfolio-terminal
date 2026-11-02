@@ -1,4 +1,9 @@
 import type { BrokerAssumptions } from '../types/portfolio';
+import {
+  DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
+  isSupportedQuoteRefreshInterval,
+  normalizeQuoteRefreshInterval
+} from './portfolioAutoRefresh';
 
 const STORAGE_KEY_STATE = 'margin_portfolio_state_dynamic_v2';
 const STORAGE_KEY_CLOSED_HISTORY = 'portfolio_closed_history_v1';
@@ -677,19 +682,20 @@ export type QuoteRefreshIntervalScope = 'admin' | 'guest';
  * guest's 15-second default on a shared browser.
  */
 export function getQuoteRefreshInterval(
-  fallback = 60000,
+  fallback = DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
   scope: QuoteRefreshIntervalScope = 'admin'
 ): number {
+  const safeFallback = normalizeQuoteRefreshInterval(fallback, DEFAULT_ADMIN_REFRESH_INTERVAL_MS);
   const storage = getBrowserStorage();
-  if (!storage) return fallback;
+  if (!storage) return safeFallback;
   try {
     const key = scope === 'guest' ? STORAGE_KEY_GUEST_REFRESH_INTERVAL : STORAGE_KEY_REFRESH_INTERVAL;
     const raw = storage.getItem(key);
-    if (raw === null || raw === undefined) return fallback;
-    const num = Number(raw);
-    return Number.isFinite(num) ? num : fallback;
+    return raw === null || raw === undefined
+      ? safeFallback
+      : normalizeQuoteRefreshInterval(raw, safeFallback);
   } catch {
-    return fallback;
+    return safeFallback;
   }
 }
 
@@ -698,6 +704,7 @@ export function saveQuoteRefreshInterval(
   interval: number,
   scope: QuoteRefreshIntervalScope = 'admin'
 ): void {
+  if (!isSupportedQuoteRefreshInterval(interval)) return;
   const storage = getBrowserStorage();
   if (!storage) return;
   try {

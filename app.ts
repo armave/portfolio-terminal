@@ -24,6 +24,12 @@ import {
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { runManualPortfolioSync } from './src/services/manualPortfolioSync';
+import {
+  createPortfolioAutoRefreshScheduler,
+  DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
+  DEFAULT_GUEST_REFRESH_INTERVAL_MS,
+  normalizeQuoteRefreshInterval
+} from './src/services/portfolioAutoRefresh';
 import { getMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
@@ -99,8 +105,6 @@ let currentAccountRole: 'admin' | 'guest' | null = null;
 let currentAccountId: string | null = null;
 const currentAccountSessionGuard = createSessionIdentityGuard(null);
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
-let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
-let supplementalRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let guestCloudRefreshInFlight: Promise<unknown> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
@@ -112,10 +116,8 @@ const boardAnalystRequests = new Map<string, Promise<void>>();
 const BOARD_ANALYST_CACHE_TTL_MS = 5 * 60 * 1000;
 const BOARD_ANALYST_RETRY_MS = 60 * 1000;
 
-const DEFAULT_QUOTE_REFRESH_INTERVAL_MS = 60 * 1000;
-const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
-// Broker balances, executions, and assignments change more slowly than quotes.
-const SUPPLEMENTAL_REFRESH_INTERVAL_MS = 60 * 1000;
+// Automatic quote and supplemental-data cadence is centralized in the
+// role-aware portfolio auto-refresh scheduler.
 
 // Cached broker limit prices must win over default targets during asynchronous refreshes.
 let activeLimitSellTargets: Record<string, number> = {};
@@ -1588,7 +1590,13 @@ async function performRefreshAllLivePrices(): Promise<boolean> {
   }
 }
 
-function refreshSupplementalPortfolioData() {
+function refreshAllLivePricesAfterCurrent(): Promise<boolean> {
+  const pending = liveQuoteRefreshInFlight;
+  if (!pending) return refreshAllLivePrices();
+  return pending.then(() => refreshAllLivePrices());
+}
+
+function refreshSupplementalPortfolioData(): Promise<void> | void {
   if (document.hidden) return;
 
   if (currentAccountRole === 'admin') {
@@ -1599,35 +1607,47 @@ function refreshSupplementalPortfolioData() {
   }
 
   if (currentAccountRole === 'guest') {
-    // Guest reads are scoped to the authenticated guest's projected lots.
-    if (guestCloudRefreshInFlight) return;
-    const request = pullGuestPortfolioSnapshot().then(() => refreshAllLivePrices()).finally(() => {
-      if (guestCloudRefreshInFlight === request) guestCloudRefreshInFlight = null;
-    });
+    // Refresh only the authenticated guest's assigned holdings and LOTS ledger.
+    // Wait for an older quote batch before fetching prices for the latest assignment set.
+    if (guestCloudRefreshInFlight) return guestCloudRefreshInFlight.then(() => undefined);
+    const request = pullGuestPortfolioSnapshot()
+      .then(() => refreshAllLivePricesAfterCurrent())
+      .then(() => undefined)
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn('[Guest Auto Update Warning]: Unable to refresh assigned holdings and LOTS history.', error);
+        logTerminal(`[Guest Auto Update Warning]: Assigned holdings and LOTS history were not refreshed (${message}).`);
+      })
+      .finally(() => {
+        if (guestCloudRefreshInFlight === request) guestCloudRefreshInFlight = null;
+      });
     guestCloudRefreshInFlight = request;
+    return request;
   }
 }
 
-function setQuoteRefreshInterval(interval: number | string) {
-  const intervalMs = Number(interval);
-  if (!QUOTE_REFRESH_INTERVALS.has(intervalMs)) {
-    throw new Error(`Unsupported quote refresh interval: ${interval}`);
+const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
+  getRole: () => currentAccountRole,
+  isVisible: () => !document.hidden,
+  refreshQuotes: () => refreshAllLivePrices(),
+  refreshSupplemental: () => refreshSupplementalPortfolioData(),
+  onError: (source, error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    logTerminal(`[Auto Update Warning]: ${source} refresh failed (${message}).`);
   }
+});
 
-  if (quoteRefreshTimer !== null) clearInterval(quoteRefreshTimer);
-  if (supplementalRefreshTimer !== null) clearInterval(supplementalRefreshTimer);
-  quoteRefreshTimer = null;
-  supplementalRefreshTimer = null;
-  saveQuoteRefreshInterval(intervalMs, currentAccountRole === 'guest' ? 'guest' : 'admin');
+function setQuoteRefreshInterval(interval: number | string): number {
+  const role = currentAccountRole;
+  const fallback = role === 'guest'
+    ? DEFAULT_GUEST_REFRESH_INTERVAL_MS
+    : DEFAULT_ADMIN_REFRESH_INTERVAL_MS;
+  const intervalMs = normalizeQuoteRefreshInterval(interval, fallback);
 
-  if (intervalMs > 0) {
-    quoteRefreshTimer = setInterval(() => {
-      if (!document.hidden) void refreshAllLivePrices();
-    }, intervalMs);
-    if (currentAccountRole) {
-      supplementalRefreshTimer = setInterval(refreshSupplementalPortfolioData, SUPPLEMENTAL_REFRESH_INTERVAL_MS);
-    }
-  }
+  // An offline/unauthenticated session must not overwrite an administrator's preference.
+  if (role) saveQuoteRefreshInterval(intervalMs, role);
+  portfolioAutoRefresh.configure(intervalMs, role);
+  return intervalMs;
 }
 
 function exportBackupJSON() {
@@ -2169,7 +2189,9 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
   } else {
     await publishCurrentUser();
     const refreshScope = currentAccountRole === 'guest' ? 'guest' : 'admin';
-    const refreshFallback = currentAccountRole === 'guest' ? 15 * 1000 : DEFAULT_QUOTE_REFRESH_INTERVAL_MS;
+    const refreshFallback = currentAccountRole === 'guest'
+      ? DEFAULT_GUEST_REFRESH_INTERVAL_MS
+      : DEFAULT_ADMIN_REFRESH_INTERVAL_MS;
     setQuoteRefreshInterval(getQuoteRefreshInterval(refreshFallback, refreshScope));
     // Guests load only their server-scoped projection; administrators load the shared workspace.
     if (currentAccountRole === 'guest') await pullGuestPortfolioSnapshot();
@@ -2220,7 +2242,7 @@ async function startApp(secret: string) {
 
   const refreshIntervalScope = currentAccountRole === 'guest' ? 'guest' : 'admin';
   const initialQuoteRefreshInterval = getQuoteRefreshInterval(
-    currentAccountRole === 'guest' ? 15 * 1000 : DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
+    currentAccountRole === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     refreshIntervalScope
   );
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
@@ -2231,11 +2253,8 @@ async function startApp(secret: string) {
       if (!document.hidden) applyOvernightRollover();
     }, 60 * 1000)
     : null;
-  if (currentAccountRole === 'admin') {
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) applyOvernightRollover();
-    });
-  }
+  // Visibility refresh and the administrator rollover listener are registered
+  // once in bindStartupActions, not once per authentication/startup cycle.
 
 
   // Avoid launching a duplicate per-ticker analyst request while the initial
@@ -2293,6 +2312,12 @@ function showStartupFailure() {
 }
 
 function bindStartupActions() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (currentAccountRole === 'admin') applyOvernightRollover();
+    portfolioAutoRefresh.onVisibilityChange();
+  });
+
   addUiEventListener('terminal:startup-retry', () => {
     emitUiEvent('terminal:startup-state', { visible: true, failed: false });
     void initApp();
@@ -2419,8 +2444,11 @@ function bindStartupActions() {
   });
   addUiEventListener('settings:change-refresh-interval', (event) => {
     const intervalMs = Number(event.detail.intervalMs);
-    setQuoteRefreshInterval(event.detail.intervalMs);
-    emitUiEvent('settings:refresh-interval-changed', { intervalMs });
+    const normalizedIntervalMs = setQuoteRefreshInterval(event.detail.intervalMs);
+    emitUiEvent('settings:refresh-interval-changed', { intervalMs: normalizedIntervalMs });
+    if (event.detail.refreshNow && normalizedIntervalMs > 0) {
+      void portfolioAutoRefresh.refreshNow();
+    }
   });
   addUiEventListener('settings:export-backup', () => {
     void requireAdmin('export portfolio backups').then((allowed) => {

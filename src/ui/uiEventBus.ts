@@ -24,7 +24,7 @@ export interface UiEventPayloads {
   'settings:reset-broker-rules': undefined;
   'settings:save-api-keys': { secret: string; resolve: (saved: boolean) => void };
   'settings:pull-cloud-state': undefined;
-  'settings:change-refresh-interval': { intervalMs: string };
+  'settings:change-refresh-interval': { intervalMs: string; refreshNow?: boolean };
   'settings:refresh-interval-changed': { intervalMs: number };
   'settings:export-backup': undefined;
   'settings:reset-to-blank-state': undefined;
