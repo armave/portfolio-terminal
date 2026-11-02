@@ -8,8 +8,10 @@ class MemoryDurableStorage {
   async get(key) { return this.values.get(key); }
   async put(key, value) { this.values.set(key, value); }
   async delete(key) { return this.values.delete(key); }
-  async list({ prefix = "" } = {}) {
-    return new Map([...this.values.entries()].filter(([key]) => key.startsWith(prefix)));
+  async list({ prefix = "", limit = Number.POSITIVE_INFINITY } = {}) {
+    return new Map([...this.values.entries()]
+      .filter(([key]) => key.startsWith(prefix))
+      .slice(0, limit));
   }
   async transaction(callback) {
     return callback({
@@ -94,23 +96,85 @@ describe("Durable Object account authentication", () => {
     expect(denied.status).toBe(401);
   });
 
-  it("blocks sign-in while the per-name and per-IP failure window is locked", async () => {
+  it("shares the bounded login throttle across different usernames from the same IP", async () => {
     vi.stubGlobal("crypto", webcrypto);
     const { store, storage } = createStore();
     await bootstrap(store);
-    const identity = new TextEncoder().encode("primary admin|unknown");
-    const digest = await webcrypto.subtle.digest("SHA-256", identity);
-    const digestHex = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, "0")).join("");
-    await storage.put("auth:login-failure:" + digestHex, {
-      count: 10,
-      expiresAt: Date.now() + 15 * 60 * 1000
+    const ipAddress = "198.51.100.24";
+    const digest = await webcrypto.subtle.digest("SHA-256", new TextEncoder().encode(ipAddress));
+    const ipHash = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, "0")).join("");
+    await storage.put("auth:login-rate-limit:v1", {
+      version: 1,
+      buckets: {
+        [ipHash]: { count: 9, expiresAt: Date.now() + 15 * 60 * 1000, lastAttemptAt: Date.now() }
+      }
     });
-    const result = await request(store, "/api/auth/login", {
+
+    const wrongName = await request(store, "/api/auth/login", {
+      name: "random-user-1",
+      password: "incorrect-password"
+    }, undefined, { "CF-Connecting-IP": ipAddress });
+    expect(wrongName.status).toBe(401);
+
+    const validNameSameIp = await request(store, "/api/auth/login", {
       name: "Primary Admin",
       password: "a-long-password-123"
-    });
-    expect(result.status).toBe(429);
-    expect(result.headers.get("Retry-After")).toBe("900");
+    }, undefined, { "CF-Connecting-IP": ipAddress });
+    expect(validNameSameIp.status).toBe(429);
+    expect(validNameSameIp.headers.get("Retry-After")).toBeTruthy();
+
+    const stored = await storage.get("auth:login-rate-limit:v1");
+    expect(Object.keys(stored.buckets)).toEqual([ipHash]);
+    expect([...storage.values.keys()].filter((key) => key.startsWith("auth:login-failure:"))).toHaveLength(0);
+  });
+
+  it("rejects new IP buckets when the fixed login-throttle capacity is full", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const buckets = {};
+    for (let index = 0; index < 1024; index++) {
+      buckets["ip-" + index] = {
+        count: 1,
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        lastAttemptAt: Date.now() - index
+      };
+    }
+    await storage.put("auth:login-rate-limit:v1", { version: 1, buckets });
+
+    const response = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "a-long-password-123"
+    }, undefined, { "CF-Connecting-IP": "203.0.113.250" });
+    expect(response.status).toBe(429);
+    expect(Object.keys((await storage.get("auth:login-rate-limit:v1")).buckets)).toHaveLength(1024);
+  });
+
+  it("cleans old unbounded username/IP lockout keys in bounded batches", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    await bootstrap(store);
+    await storage.put("auth:login-failure:old-1", { count: 10, expiresAt: Date.now() - 1 });
+    await storage.put("auth:login-failure:old-2", { count: 2, expiresAt: Date.now() - 1 });
+
+    const login = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "a-long-password-123"
+    }, undefined, { "CF-Connecting-IP": "192.0.2.10" });
+    expect(login.status).toBe(200);
+    expect(await storage.get("auth:login-failure:old-1")).toBeUndefined();
+    expect(await storage.get("auth:login-failure:old-2")).toBeUndefined();
+    expect(await storage.get("migration:login-failure-records-cleaned-v1")).toBe(true);
+    expect(await storage.get("auth:login-rate-limit:v1")).toBeUndefined();
+  });
+
+  it("rejects malformed account names and passwords before PBKDF2 verification", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    await bootstrap(store);
+    const shortName = await request(store, "/api/auth/login", { name: "x", password: "wrong-password" });
+    expect(shortName.status).toBe(400);
+    const shortPassword = await request(store, "/api/auth/login", { name: "Primary Admin", password: "12345" });
+    expect(shortPassword.status).toBe(400);
   });
 
   it("creates guest users by default and blocks guest account administration", async () => {

@@ -24,8 +24,12 @@ const LEGACY_FREEDOM_TRADE_NET_SESSION_KEY = "freedom:tradenet-session";
 const MARKET_DEPTH_SESSION_CLEANUP_KEY = "migration:market-depth-session-cleanup";
 const AUTH_SESSION_PREFIX = "auth:session:";
 const AUTH_LOGIN_FAILURE_PREFIX = "auth:login-failure:";
-const AUTH_LOGIN_FAILURE_LIMIT = 10;
-const AUTH_LOGIN_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_LOGIN_FAILURE_CLEANUP_KEY = "migration:login-failure-records-cleaned-v1";
+const AUTH_LOGIN_RATE_LIMIT_KEY = "auth:login-rate-limit:v1";
+const AUTH_LOGIN_RATE_LIMIT_LIMIT = 10;
+const AUTH_LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_LOGIN_RATE_LIMIT_MAX_IPS = 1024;
+const AUTH_LOGIN_FAILURE_CLEANUP_BATCH = 128;
 const AUTH_GUEST_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const AUTH_LEGACY_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PASSWORD_HASH_VERSION = 2;
@@ -123,6 +127,62 @@ export class PortfolioStateDO {
     return Array.isArray(users) ? users : [];
   }
 
+  async cleanupLegacyLoginFailureRecords() {
+    if (await this.ctx.storage.get(AUTH_LOGIN_FAILURE_CLEANUP_KEY) === true) return;
+    const legacy = await this.ctx.storage.list({ prefix: AUTH_LOGIN_FAILURE_PREFIX, limit: AUTH_LOGIN_FAILURE_CLEANUP_BATCH });
+    for (const key of legacy.keys()) await this.ctx.storage.delete(key);
+    if (legacy.size < AUTH_LOGIN_FAILURE_CLEANUP_BATCH) {
+      await this.ctx.storage.put(AUTH_LOGIN_FAILURE_CLEANUP_KEY, true);
+    }
+  }
+
+  async consumeLoginRateLimit(ipAddress) {
+    const ipHash = await digestHex(ipAddress);
+    const now = Date.now();
+    return this.ctx.storage.transaction(async (transaction) => {
+      const stored = await transaction.get(AUTH_LOGIN_RATE_LIMIT_KEY);
+      const source = stored && typeof stored === "object" && stored.buckets &&
+        typeof stored.buckets === "object" && !Array.isArray(stored.buckets) ? stored.buckets : {};
+      const activeEntries = Object.entries(source).filter(([, bucket]) =>
+        bucket && Number.isSafeInteger(bucket.count) && bucket.count > 0 &&
+        Number.isFinite(bucket.expiresAt) && bucket.expiresAt > now
+      );
+      activeEntries.sort((left, right) =>
+        (Number(right[1].lastAttemptAt) || 0) - (Number(left[1].lastAttemptAt) || 0)
+      );
+      const buckets = Object.fromEntries(activeEntries.slice(0, AUTH_LOGIN_RATE_LIMIT_MAX_IPS));
+      const current = buckets[ipHash];
+      if (current && current.count >= AUTH_LOGIN_RATE_LIMIT_LIMIT) {
+        await transaction.put(AUTH_LOGIN_RATE_LIMIT_KEY, { version: 1, buckets });
+        return { limited: true, ipHash, retryAfter: Math.max(1, Math.ceil((current.expiresAt - now) / 1000)) };
+      }
+      if (!current && Object.keys(buckets).length >= AUTH_LOGIN_RATE_LIMIT_MAX_IPS) {
+        const earliestExpiry = Math.min(...Object.values(buckets).map((bucket) => bucket.expiresAt));
+        await transaction.put(AUTH_LOGIN_RATE_LIMIT_KEY, { version: 1, buckets });
+        return { limited: true, ipHash, retryAfter: Math.max(1, Math.ceil((earliestExpiry - now) / 1000)) };
+      }
+      buckets[ipHash] = {
+        count: (current?.count || 0) + 1,
+        expiresAt: current?.expiresAt || now + AUTH_LOGIN_RATE_LIMIT_WINDOW_MS,
+        lastAttemptAt: now
+      };
+      await transaction.put(AUTH_LOGIN_RATE_LIMIT_KEY, { version: 1, buckets });
+      return { limited: false, ipHash };
+    });
+  }
+
+  async clearLoginRateLimit(ipHash) {
+    await this.ctx.storage.transaction(async (transaction) => {
+      const stored = await transaction.get(AUTH_LOGIN_RATE_LIMIT_KEY);
+      if (!stored || typeof stored !== "object" || !stored.buckets ||
+          typeof stored.buckets !== "object" || Array.isArray(stored.buckets)) return;
+      const buckets = { ...stored.buckets };
+      delete buckets[ipHash];
+      if (Object.keys(buckets).length) await transaction.put(AUTH_LOGIN_RATE_LIMIT_KEY, { version: 1, buckets });
+      else await transaction.delete(AUTH_LOGIN_RATE_LIMIT_KEY);
+    });
+  }
+
   async resolveSession(request) {
     const authorization = request.headers.get("Authorization") || "";
     const token = request.headers.get("X-App-Auth") ||
@@ -217,32 +277,38 @@ export class PortfolioStateDO {
     }
 
     if (request.method === "POST" && pathname === "/api/auth/login") {
-      const name = normalizeAccountName(body.name);
-      if (!name || typeof body.password !== "string" || body.password.length > 128) return authJson({ error: "Invalid name or password." }, 400);
-      const ipAddress = request.headers.get("CF-Connecting-IP") || "unknown";
-      const failureKey = AUTH_LOGIN_FAILURE_PREFIX + await digestHex(name.toLocaleLowerCase("en-US") + "|" + ipAddress);
-      const previousFailures = await this.ctx.storage.get(failureKey);
-      if (previousFailures && previousFailures.expiresAt > Date.now() && previousFailures.count >= AUTH_LOGIN_FAILURE_LIMIT) {
-        return new Response(JSON.stringify({ error: "Too many failed sign-in attempts. Try again in 15 minutes." }), {
-          status: 429, headers: { ...CORS_HEADERS, "Retry-After": "900" }
+      // Throttle before account lookup and PBKDF2 work. Every attempt from the
+      // same network address shares one bucket, regardless of submitted name.
+      await this.cleanupLegacyLoginFailureRecords();
+      const ipHeader = request.headers.get("CF-Connecting-IP") || "unknown";
+      const ipAddress = String(ipHeader).trim().slice(0, 128) || "unknown";
+      const rateLimit = await this.consumeLoginRateLimit(ipAddress);
+      if (rateLimit.limited) {
+        return new Response(JSON.stringify({ error: "Too many sign-in attempts. Try again later." }), {
+          status: 429,
+          headers: {
+            ...CORS_HEADERS,
+            "Cache-Control": "no-store",
+            "Retry-After": String(rateLimit.retryAfter || 900)
+          }
         });
       }
+
+      const name = normalizeAccountName(body.name);
+      if (!name || name.length < 2 || name.length > 60 ||
+          typeof body.password !== "string" || body.password.length < 6 || body.password.length > 128) {
+        return authJson({ error: "Invalid name or password." }, 400);
+      }
+
       const user = (await this.getAuthUsers()).find((item) => item.normalizedName === name.toLocaleLowerCase("en-US"));
       const salt = user?.salt || "portfolio-terminal-login-validation";
       const expected = user?.passwordHash || await derivePasswordHash("invalid-password", salt);
       const actual = await derivePasswordHash(body.password, salt);
       if (!user || !secureEqual(actual, expected)) {
-        const activeFailures = previousFailures && previousFailures.expiresAt > Date.now() ? previousFailures : { count: 0, expiresAt: Date.now() + AUTH_LOGIN_FAILURE_WINDOW_MS };
-        const count = activeFailures.count + 1;
-        await this.ctx.storage.put(failureKey, { count, expiresAt: activeFailures.expiresAt });
-        if (count >= AUTH_LOGIN_FAILURE_LIMIT) {
-          return new Response(JSON.stringify({ error: "Too many failed sign-in attempts. Try again in 15 minutes." }), {
-            status: 429, headers: { ...CORS_HEADERS, "Retry-After": "900" }
-          });
-        }
         return authJson({ error: "Invalid name or password." }, 401);
       }
-      await this.ctx.storage.delete(failureKey);
+
+      await this.clearLoginRateLimit(rateLimit.ipHash);
       return authJson(await this.issueSession(user));
     }
 
