@@ -128,7 +128,7 @@ describe('auth transport runtime', () => {
     await runtime.validateGatewaySecret('session-token');
     await runtime.logoutAccount();
     expect(clearAllRequestCaches).toHaveBeenCalledTimes(1);
-    await expect(runtime.getCurrentUser()).rejects.toThrow('HTTP 401');
+    await expect(runtime.getCurrentUser()).rejects.toThrow('session expired');
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
