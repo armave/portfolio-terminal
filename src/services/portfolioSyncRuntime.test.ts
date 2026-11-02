@@ -13,7 +13,7 @@ function createDependencies(
     refreshActiveOrders: vi.fn(async () => true),
     pushCloud: vi.fn(async () => true),
     pullGuestSnapshot: vi.fn(async () => true),
-    translateText: (message) => `translated:${message}`,
+    translateText: vi.fn((message: string) => `translated:${message}`),
     showToast: vi.fn(),
     logTerminal: vi.fn(),
     ...overrides
