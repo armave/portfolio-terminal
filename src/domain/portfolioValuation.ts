@@ -70,6 +70,7 @@ export type PortfolioValuationReliability = 'current' | 'provisional' | 'incompl
 
 export interface PortfolioValuationReliabilityInput {
   accountBalanceAvailable: boolean;
+  accountBalanceStale?: boolean;
   unpricedHoldings: number;
   staleQuotes: number;
   delayedQuotes: number;
@@ -82,7 +83,8 @@ export function getPortfolioValuationReliability(
   input: PortfolioValuationReliabilityInput
 ): PortfolioValuationReliability {
   if (!input.accountBalanceAvailable || input.unpricedHoldings > 0) return 'incomplete';
-  if (
+  if (input.accountBalanceStale ||
+
     input.staleQuotes > 0 ||
     input.delayedQuotes > 0 ||
     input.unknownQuotes > 0 ||

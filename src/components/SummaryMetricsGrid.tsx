@@ -80,7 +80,7 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <div class="mt-2 rounded border border-amber-500/30 bg-amber-500/5 px-2.5 py-2 text-xs text-amber-200" role="status">
           <strong>{translateText('Provisional valuation', getAppLanguage())}</strong>
           <p class="mt-1 leading-relaxed">
-            {translateText('Some market quotes are stale, delayed, or have no verifiable observation time. Treat margin-risk figures as provisional and refresh quotes before relying on them.', getAppLanguage())}
+            {translateText('Some market quotes or broker account data are stale, delayed, or lack verifiable observation times. Treat margin-risk figures as provisional and refresh data before relying on them.', getAppLanguage())}
           </p>
           {quoteFreshnessText && <p class="mt-1 text-[10px] text-amber-100/80">{quoteFreshnessText}</p>}
         </div>
@@ -463,13 +463,19 @@ function SummaryMetricsGridView() {
     );
     const valuationStatus = getPortfolioValuationReliability({
       accountBalanceAvailable: valuation.accountBalanceAvailable,
+      accountBalanceStale: state.brokerAccountInfo?.status === 'stale',
       unpricedHoldings: valuation.unpricedHoldings,
       staleQuotes: valuationQuoteSummary.stale,
       delayedQuotes: valuationQuoteSummary.delayed,
       unknownQuotes: valuationQuoteSummary.unknown,
       unavailableQuotes: valuationQuoteSummary.unavailable
     });
-    const valuationQuoteFreshnessText = formatQuoteFreshnessSummary(valuationQuoteSummary);
+    const valuationQuoteFreshnessText = [
+      formatQuoteFreshnessSummary(valuationQuoteSummary),
+      state.brokerAccountInfo?.status === 'stale'
+        ? translateText('Broker account snapshot is stale', getAppLanguage())
+        : ''
+    ].filter(Boolean).join(' · ');
     const totalAccountEquity = valuation.equity;
     const totalAccountAssets = valuation.totalHoldingsValue + valuation.cashBalance;
     const equityPct = valuation.accountBalanceAvailable && totalAccountAssets > 0

@@ -397,8 +397,9 @@ describe('app localization', () => {
       'ru'
     )).toBe('Оценка маржинального риска недоступна, пока не удастся оценить денежный баланс и все активы.');
     expect(translateText(
-      'Some market quotes are stale, delayed, or have no verifiable observation time. Treat margin-risk figures as provisional and refresh quotes before relying on them.',
+      'Some market quotes or broker account data are stale, delayed, or lack verifiable observation times. Treat margin-risk figures as provisional and refresh data before relying on them.',
       'ru'
     )).toContain('Часть котировок устарела, поступила с задержкой или не имеет проверяемого времени наблюдения.');
+    expect(translateText('Broker account snapshot is stale', 'ru')).toBe('Снимок данных брокерского счёта устарел');
   });
 });
