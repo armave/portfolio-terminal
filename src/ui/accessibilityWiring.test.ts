@@ -102,7 +102,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('document.body');
     expect(source).toContain('market-depth-dialog flex min-h-0');
     expect(source).toContain('market-depth-content min-h-0 flex-1');
-    expect(source).toContain('role="region" aria-label={`Market depth order book for ${ticker}`} tabIndex={0}');
+    expect(source).toContain('role="region" aria-label={regionLabel} tabIndex={0}');
     expect(stylesheet).toContain('.market-depth-modal');
     expect(stylesheet).toContain('height: 100dvh;');
     expect(stylesheet).toContain('.market-depth-content');
