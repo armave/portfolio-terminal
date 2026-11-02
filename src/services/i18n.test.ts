@@ -262,6 +262,14 @@ describe('app localization', () => {
       .toBe('Не удалось загрузить активные заявки TradeNet: Timeout');
     expect(translateText('Something went wrong.', 'ru')).toBe('Что-то пошло не так.');
     expect(translateText('Portfolio-wide Margin Review', 'ru')).toBe('Обзор маржинального портфеля');
+    expect(translateText('MARKET TOOLS', 'ru')).toBe('РЫНОЧНЫЕ ИНСТРУМЕНТЫ');
+    expect(translateText('News + Review', 'ru')).toBe('Новости и анализ');
+    expect(translateText('Portfolio Review', 'ru')).toBe('Обзор портфеля');
+    expect(translateText('Review recent news and risk across all margin positions with Gemini', 'ru'))
+      .toBe('Анализ свежих новостей и рисков по всем маржинальным позициям с Gemini');
+    expect(translateText('Review recent news and margin-position risks with Gemini', 'ru'))
+      .toBe('Анализ свежих новостей и рисков маржинальной позиции с Gemini');
+    expect(translateText('External market research links', 'ru')).toBe('Внешние ссылки для анализа рынка');
     expect(translateText('Untitled news item', 'ru')).toBe('Новость без заголовка');
   });
 

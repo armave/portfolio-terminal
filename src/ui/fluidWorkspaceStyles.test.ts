@@ -21,7 +21,12 @@ describe('fluid workspace styles', () => {
   });
 
   it('adapts financial summary columns to their own available width', () => {
+    expect(fluidStyles).toMatch(/\.board-title-row\s*\{[^}]*flex-direction:\s*row;[^}]*flex-wrap:\s*wrap;/s);
+    expect(fluidStyles).toMatch(/#boardTitle\s*\{[^}]*flex:\s*1\s+1\s+0;[^}]*width:\s*auto;/s);
+    expect(fluidStyles).toMatch(/#boardAnalystConsensus\s*\{[^}]*white-space:\s*nowrap;/s);
     expect(fluidStyles).toMatch(/container-name:\s*portfolio-metrics;/);
+    expect(fluidStyles).toMatch(/\.portfolio-micro-summary\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
+    expect(fluidStyles).toMatch(/\.portfolio-micro-costs,\s*\.portfolio-micro-actions\s*\{[^}]*grid-column:\s*auto;/s);
     expect(fluidStyles).toMatch(/@container\s+portfolio-metrics\s*\(max-width:\s*52rem\)/);
     expect(fluidStyles).toMatch(/@container\s+portfolio-metrics\s*\(max-width:\s*36rem\)/);
     expect(fluidStyles).toMatch(/overflow-wrap:\s*anywhere;/);

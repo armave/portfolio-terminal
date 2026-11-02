@@ -7,10 +7,8 @@ import { DeskLoading } from './components/DeskLoading';
 import { TickerTabs } from './components/TickerTab';
 import { SummaryMetricsGrid } from './components/SummaryMetricsGrid';
 import { ProjectionsTable } from './components/ProjectionsTable';
-import { MarketDepthButton } from './components/MarketDepthButton';
 import { TableScrollRegion } from './components/TableScrollRegion';
 import { TradingConsole } from './components/TradingConsole';
-import { BoardExternalLinks } from './components/BoardExternalLinks';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
 import type { MarginIntelligenceState, MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/scenarioContracts';
@@ -38,7 +36,6 @@ const MemoTickerTabs = memo(TickerTabs);
 const MemoSummaryMetricsGrid = memo(SummaryMetricsGrid);
 const MemoProjectionsTable = memo(ProjectionsTable);
 const MemoTradingConsole = memo(TradingConsole);
-const MemoBoardExternalLinks = memo(BoardExternalLinks);
 
 const ClosedHistoryDesk = lazy(() =>
   import('./components/ClosedHistoryDesk').then(({ ClosedHistoryDesk }) => ({ default: memo(ClosedHistoryDesk) }))
@@ -100,10 +97,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       previous.guestTrancheLedger === next.guestTrancheLedger &&
       previous.guestPortfolioSnapshot === next.guestPortfolioSnapshot
   );
-  // The active desk subscription above rerenders on route changes, so a direct
-  // read supplies Market Depth with the newly selected ticker without subscribing
-  // the whole app shell to every quote tick.
-  const activePositionTicker = portfolioStore.getState().positions?.[activeDeskView]?.ticker;
   const emptyStateVisible = !hasMarginPositions && activeDeskView === 'COMBINED';
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedGuestHistory, setHasOpenedGuestHistory] = useState(false);
@@ -715,9 +708,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 id="boardTitleRow"
                 class={"board-title-row flex flex-wrap items-center justify-between gap-2 " + (emptyStateVisible ? "hidden" : "")}
               >
-                <div class="min-w-0 flex-1 text-lg font-bold text-white" id="boardTitle">
+                <div class="board-title-text min-w-0 text-lg font-bold text-white" id="boardTitle">
                   {boardTitle}
                 </div>
+                <div id="boardAnalystConsensus" class={"board-analyst-consensus " + analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
               </div>
 
 
@@ -727,11 +721,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 class="board-title-actions flex flex-wrap items-center gap-2"
               >
                 <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
-                {permissions.isAdmin && activePositionTicker && (
-                  <MarketDepthButton ticker={activePositionTicker} />
-                )}
-                <div id="boardAnalystConsensus" class={analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
-                <div id="boardExternalLinks" class="flex items-center gap-2"><MemoBoardExternalLinks /></div>
               </div>
 
               <div

@@ -1620,7 +1620,7 @@ summary:hover {
   min-width: 0;
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
   padding: 0.25rem 0.375rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1712,12 +1712,14 @@ summary:hover {
     border-left: 0;
   }
 
-  .portfolio-micro-market {
+  .portfolio-micro-market,
+  .portfolio-micro-actions {
     border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
   }
 
-  .portfolio-micro-costs {
-    grid-column: 1 / -1;
+  .portfolio-micro-costs,
+  .portfolio-micro-actions {
+    grid-column: auto;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     padding-top: 0.75rem;
   }
@@ -1741,12 +1743,17 @@ summary:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .portfolio-micro-market {
+  .portfolio-micro-market,
+  .portfolio-micro-actions {
     border-left: 0 !important;
+  }
+
+  .portfolio-micro-market {
     border-top: 1px solid rgba(255, 255, 255, 0.1);
   }
 
-  .portfolio-micro-costs {
+  .portfolio-micro-costs,
+  .portfolio-micro-actions {
     grid-column: auto;
   }
 
@@ -1756,7 +1763,7 @@ summary:hover {
 }
 
 
-/* Keep financial values readable in the desktop three-column micro-summary.
+/* Keep financial values readable in the desktop four-column micro-summary.
    Long unbroken values may wrap at word boundaries, but never one character per line. */
 .portfolio-micro-row {
   display: grid;
@@ -2895,6 +2902,30 @@ summary:focus-visible {
   text-wrap: balance;
 }
 
+/* Keep the ticker title and analyst target together until the row runs out of room. */
+.board-title-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  column-gap: 0.75rem;
+  row-gap: 0.5rem;
+}
+
+#boardTitle {
+  flex: 1 1 0;
+  min-width: min(100%, 16rem);
+  width: auto;
+  overflow-wrap: anywhere;
+}
+
+#boardAnalystConsensus {
+  flex: 0 0 auto;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
 #daysToBreakeven {
   max-width: 100%;
   font-size: clamp(0.7rem, 0.85vw, 0.875rem);
@@ -2950,7 +2981,7 @@ summary:focus-visible {
 }
 
 .portfolio-micro-summary {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: clamp(0.25rem, 0.6vw, 0.625rem);
   padding: clamp(0.375rem, 0.8vw, 0.75rem);
 }
@@ -2991,12 +3022,14 @@ summary:focus-visible {
     border-left: 0;
   }
 
-  .portfolio-micro-market {
+  .portfolio-micro-column.portfolio-micro-market,
+  .portfolio-micro-column.portfolio-micro-actions {
     border-left: 1px solid rgba(148, 163, 184, 0.12);
   }
 
-  .portfolio-micro-costs {
-    grid-column: 1 / -1;
+  .portfolio-micro-costs,
+  .portfolio-micro-actions {
+    grid-column: auto;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
     padding-top: 0.75rem;
   }
@@ -3013,7 +3046,8 @@ summary:focus-visible {
     border-top: 1px solid rgba(148, 163, 184, 0.12);
   }
 
-  .portfolio-micro-costs {
+  .portfolio-micro-costs,
+  .portfolio-micro-actions {
     grid-column: auto;
   }
 
