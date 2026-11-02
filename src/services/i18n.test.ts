@@ -388,4 +388,17 @@ describe('app localization', () => {
     unsubscribe();
     expect(changes).toEqual(['ru', 'en']);
   });
+
+  it('localizes provisional and incomplete margin valuation guidance', () => {
+    expect(translateText('Provisional valuation', 'ru')).toBe('Предварительная оценка');
+    expect(translateText('Account balance unavailable', 'ru')).toBe('Баланс счёта недоступен');
+    expect(translateText(
+      'Margin risk estimate unavailable until the account balance and every holding can be valued.',
+      'ru'
+    )).toBe('Оценка маржинального риска недоступна, пока не удастся оценить денежный баланс и все активы.');
+    expect(translateText(
+      'Some market quotes are stale, delayed, or have no verifiable observation time. Treat margin-risk figures as provisional and refresh quotes before relying on them.',
+      'ru'
+    )).toContain('Часть котировок устарела, поступила с задержкой или не имеет проверяемого времени наблюдения.');
+  });
 });

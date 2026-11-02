@@ -19,6 +19,8 @@ export interface PortfolioValuationInput {
 }
 
 export interface PortfolioValuation {
+  /** False when the signed account balance is missing or invalid. */
+  accountBalanceAvailable: boolean;
   cashBalance: number;
   marginDebt: number;
   marginHoldingsValue: number;
@@ -64,8 +66,35 @@ function marketValue(
  * and their selected market-session prices. A signed account balance remains
  * separate from equity because the store uses it as cash/debt input for trades.
  */
+export type PortfolioValuationReliability = 'current' | 'provisional' | 'incomplete';
+
+export interface PortfolioValuationReliabilityInput {
+  accountBalanceAvailable: boolean;
+  unpricedHoldings: number;
+  staleQuotes: number;
+  delayedQuotes: number;
+  unknownQuotes: number;
+  unavailableQuotes: number;
+}
+
+/** Classify valuation confidence separately from its numeric estimate. */
+export function getPortfolioValuationReliability(
+  input: PortfolioValuationReliabilityInput
+): PortfolioValuationReliability {
+  if (!input.accountBalanceAvailable || input.unpricedHoldings > 0) return 'incomplete';
+  if (
+    input.staleQuotes > 0 ||
+    input.delayedQuotes > 0 ||
+    input.unknownQuotes > 0 ||
+    input.unavailableQuotes > 0
+  ) return 'provisional';
+  return 'current';
+}
+
 export function calculatePortfolioValuation(input: PortfolioValuationInput): PortfolioValuation {
-  const signedBalance = finiteNumber(input.signedAccountBalance) ?? 0;
+  const parsedSignedBalance = finiteNumber(input.signedAccountBalance);
+  const accountBalanceAvailable = parsedSignedBalance !== null;
+  const signedBalance = parsedSignedBalance ?? 0;
   const freeCashValue = finiteNumber(input.freeCash) ?? 0;
   const cashBalance = Math.max(0, signedBalance) + Math.max(0, freeCashValue);
   const marginDebt = Math.max(0, -signedBalance);
@@ -88,6 +117,7 @@ export function calculatePortfolioValuation(input: PortfolioValuationInput): Por
 
   const totalHoldingsValue = marginHoldingsValue + cashHoldingsValue;
   return {
+    accountBalanceAvailable,
     cashBalance,
     marginDebt,
     marginHoldingsValue,
