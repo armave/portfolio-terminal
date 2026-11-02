@@ -22,14 +22,20 @@ describe('resolveTabNavigationIndex', () => {
   });
 });
 
-describe('Margin desk navigation request triggers', () => {
+describe('workspace navigation quote refresh triggers', () => {
   it('refreshes when entering or switching between administrator Margin sections', () => {
     expect(shouldRefreshQuotesOnNavigation('BALANCE', 'COMBINED', true)).toBe(true);
     expect(shouldRefreshQuotesOnNavigation('SETTINGS', 'AAPL', true)).toBe(true);
     expect(shouldRefreshQuotesOnNavigation('COMBINED', 'AAPL', true)).toBe(true);
     expect(shouldRefreshQuotesOnNavigation('AAPL', 'MSFT', true)).toBe(true);
     expect(shouldRefreshQuotesOnNavigation('AAPL', 'AAPL', true)).toBe(false);
-    expect(shouldRefreshQuotesOnNavigation('AAPL', 'BALANCE', true)).toBe(false);
+  });
+
+  it('refreshes quotes when opening Balance from Margin, Settings, or guest history', () => {
+    expect(shouldRefreshQuotesOnNavigation('AAPL', 'BALANCE', true)).toBe(true);
+    expect(shouldRefreshQuotesOnNavigation('SETTINGS', 'BALANCE', true)).toBe(true);
+    expect(shouldRefreshQuotesOnNavigation('GUEST_HISTORY', 'BALANCE', false)).toBe(true);
+    expect(shouldRefreshQuotesOnNavigation('BALANCE', 'BALANCE', true)).toBe(false);
   });
 
   it('does not start Margin requests for guest or unknown roles', () => {
