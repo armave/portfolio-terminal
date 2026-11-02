@@ -10,6 +10,15 @@ function readAppSource(): string {
 }
 
 describe('Trades cache-first rendering', () => {
+  it('clamps the rendered Trades page before a shrinking refresh can show an empty range', () => {
+    const source = readSource();
+    expect(source).toContain('const safeTradesPage = Math.max(1, Math.min(tradesPage, tradesPageCount))');
+    expect(source).toContain('trades.slice((safeTradesPage - 1) * tradesPageSize, safeTradesPage * tradesPageSize)');
+    expect(source).toContain('if (tradesPage !== safeTradesPage) setTradesPage(safeTradesPage)');
+    expect(source).toContain('Showing {(safeTradesPage - 1) * tradesPageSize + 1}');
+    expect(source).toContain('Page {safeTradesPage} / {tradesPageCount}');
+  });
+
   it('preserves the last valid Mix quantity when a closed-trade input is blank or invalid', () => {
     const source = readSource();
     expect(source).toContain('resolveActiveTrancheMixInput(value, rowQuantity, row.cashQuantity)');
