@@ -599,6 +599,8 @@ export interface SyncOptions {
   showToast?: (msg: string, type: string) => void;
   logTerminal?: (msg: string) => void;
   onStatusChange?: (status: 'synced' | 'error') => void;
+  /** Prevents a cloud response from hydrating a different authenticated session. */
+  isCurrentSession?: () => boolean;
   /** Guest sessions may pull shared state but must not perform migration/upgrade writes. */
   allowCloudWrites?: boolean;
 }
@@ -681,6 +683,11 @@ export async function pullCloudState(
   } = handlers;
 
   const currentSecret = handlers.secret || getActiveGatewaySecret();
+  const isCurrentSession = handlers.isCurrentSession || (() => true);
+  const stalePullFallback = () => {
+    reportResult?.(false);
+    return loadSavedState(state || {});
+  };
 
   if (!currentSecret) {
     reportResult?.(false);
@@ -693,6 +700,7 @@ export async function pullCloudState(
   try {
     const cachedValidationResponse = consumeValidatedCloudResponse(currentSecret);
     const url = new URL('/api/state', WORKER_PROXY_URL);
+    if (!isCurrentSession()) return stalePullFallback();
     const res = cachedValidationResponse || await fetch(url.toString(), {
       method: 'GET',
       headers: {
@@ -701,6 +709,7 @@ export async function pullCloudState(
         Authorization: `Bearer ${currentSecret}`
       }
     });
+    if (!isCurrentSession()) return stalePullFallback();
 
     const pulledRevision = readCloudRevision(res.headers);
 
@@ -718,6 +727,7 @@ export async function pullCloudState(
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
+      if (!isCurrentSession()) return stalePullFallback();
       const errorMessage = typeof errData === 'object' && errData !== null
         ? (errData.error || errData.message || `HTTP ${res.status}`)
         : `HTTP ${res.status}`;
@@ -725,6 +735,7 @@ export async function pullCloudState(
     }
 
     const data = await res.json();
+    if (!isCurrentSession()) return stalePullFallback();
     if (!data || typeof data !== 'object') {
       throw new Error('Invalid state payload from KV.');
     }
@@ -734,6 +745,7 @@ export async function pullCloudState(
     if (typeof data.encryptedPayload === 'string') {
       try {
         const decrypted = await decryptCloudPayload(data.encryptedPayload, currentSecret);
+        if (!isCurrentSession()) return stalePullFallback();
         requiresEncryptionUpgrade = decrypted.legacy;
         try {
           parsedState = JSON.parse(decrypted.plaintext);
@@ -797,6 +809,7 @@ export async function pullCloudState(
       // it with the legacy copy embedded in an older portfolio snapshot. Only
       // migrate legacy rows when the dedicated record does not exist yet.
       const historySnapshot = await pullCloudHistorySnapshot(currentSecret);
+      if (!isCurrentSession()) return stalePullFallback();
       if (!historySnapshot.history && (legacyHistory.brokerExecutedTrades.length || legacyHistory.cashflows.length)) {
         // Guest sessions are read-only. Do not attempt the legacy-history POST:
         // a 403 here would abort the portfolio pull before the guest UI is updated.
@@ -804,6 +817,7 @@ export async function pullCloudState(
           // Reuse the 404's revision (normally 0) for the migration POST instead of
           // issuing a second GET solely to discover the same ETag.
           await pushCloudHistory(legacyHistory, currentSecret, historySnapshot.revision);
+          if (!isCurrentSession()) return stalePullFallback();
         }
       } else if (historySnapshot.history && handlers.allowCloudWrites !== false) {
         try { localStorage.setItem(CLOSED_HISTORY_MIGRATION_KEY, '1'); } catch { /* migration can be rechecked next session */ }
@@ -813,6 +827,7 @@ export async function pullCloudState(
     delete parsedState.cashflows;
     const mergedLocalData = hasHistory;
 
+    if (!isCurrentSession()) return stalePullFallback();
     const wasUpdated = processRollovers(parsedState);
     if (!saveState(parsedState)) {
       throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
@@ -836,7 +851,7 @@ export async function pullCloudState(
       });
     }
 
-    if (typeof pullCloudAndRewriteLocal === 'function') {
+    if (typeof pullCloudAndRewriteLocal === 'function' && isCurrentSession()) {
       pullCloudAndRewriteLocal(parsedState);
     }
 

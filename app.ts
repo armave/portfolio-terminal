@@ -1043,9 +1043,11 @@ async function syncCloudState(mode = 'push') {
     }
     return false;
   }
+  const requestSession = currentAccountSessionGuard.capture();
   return syncCloudStateService(mode, {
     state,
     getState: () => state,
+    isCurrentSession: () => requestSession !== null && currentAccountSessionGuard.isCurrent(requestSession),
     allowCloudWrites: canWriteCloudState,
     pullCloudAndRewriteLocal,
     showToast: (msg: string, type?: string) => showToast(msg, type as any),

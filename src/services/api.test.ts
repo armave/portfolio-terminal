@@ -238,6 +238,60 @@ describe('cloud state sync', () => {
     expect(payload.encryptedPayload).toMatch(/^aesgcm:v2:[A-Za-z0-9+/]+=*:[A-Za-z0-9+/]+=*$/);
     expect(payload.encryptedPayload).not.toContain('cloud-encryption-secret');
   });
+  it('does not persist a cloud response after the authenticated session changes mid-pull', async () => {
+    let isCurrent = true;
+    let resolveResponse!: (response: Response) => void;
+    const responsePromise = new Promise<Response>((resolve) => { resolveResponse = resolve; });
+    const fetchMock = vi.fn(() => responsePromise);
+    vi.stubGlobal('fetch', fetchMock);
+    const saveSpy = vi.spyOn(storage, 'saveState').mockReturnValue(true);
+    const rewriteLocal = vi.fn();
+    const reportResult = vi.fn();
+
+    const pending = pullCloudState({
+      state: { activeView: 'LOCAL', balance: 1000 },
+      secret: 'cloud-encryption-secret',
+      allowCloudWrites: false,
+      isCurrentSession: () => isCurrent,
+      pullCloudAndRewriteLocal: rewriteLocal,
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    }, reportResult);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    isCurrent = false;
+    resolveResponse(new Response(JSON.stringify({
+      activeView: 'STALE-CLOUD',
+      balance: 9999,
+      lastRolloverTimestamp: Date.now()
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ETag: '"42"' }
+    }));
+
+    await pending;
+
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(rewriteLocal).not.toHaveBeenCalled();
+    expect(reportResult).toHaveBeenCalledWith(false);
+  });
+
+  it('does not start a cloud request for an already-stale account session', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const reportResult = vi.fn();
+
+    await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 1000 },
+      secret: 'cloud-encryption-secret',
+      isCurrentSession: () => false,
+      showToast: vi.fn()
+    }, reportResult);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(reportResult).toHaveBeenCalledWith(false);
+  });
+
   it('imports shared portfolio state for read-only guests without posting legacy cloud history', async () => {
     const secret = 'guest-read-only-history-migration-secret';
     const encryptedPayload = await encryptV2Fixture({
