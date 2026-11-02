@@ -97,11 +97,14 @@
 - **Fix:** each submitted write records its revision and pull-generation. A queued write may follow the revision advanced by an earlier queued write from the same tab, but if a pull advanced the generation after submission, it uses its original revision and safely receives a conflict instead of overwriting.
 - **Regression test:** queue two writes, complete a cloud pull while the second waits, then verify the second write retains its submitted revision and is rejected.
 
-## Security risk retained for a versioned migration
+## Cloud encryption migration — implementation status (2026-11-02)
 
-- **Cloud payload confidentiality/integrity format:** `src/services/api.ts` encrypts and decrypts the Worker cloud-state payload using `CryptoJS.AES.encrypt/decrypt` with a passphrase. CryptoJS's passphrase API defaults to CBC mode and does not authenticate ciphertext, unlike AES-GCM. The device Gateway Secret protects access to the Worker, but it is also the encryption passphrase; a modified ciphertext may not be detected cryptographically before parsing.
-- **Disposition:** do not silently switch formats in this audit patch because all existing cloud state uses the legacy ciphertext format. A safe remediation should introduce an explicit versioned AES-GCM envelope, preserve legacy decryption, validate decrypted state before persistence, and migrate only after a successful pull and revision-checked write. Add compatibility tests for old payloads, wrong keys, modified ciphertext, and interrupted migration.
-- **Severity:** security hardening needed; practical impact depends on the Gateway Secret entropy and the cloud threat model. This audit did not attempt a live cloud-data tampering test.
+- **Original risk:** legacy cloud records used CryptoJS passphrase AES-CBC, which does not authenticate ciphertext. New writes already use the versioned `aesgcm:v2:` AES-GCM envelope.
+- **Implemented in PR:** authenticated administrator reads now validate portfolio container shapes before local persistence. When the main portfolio record is legacy, the client writes an AES-GCM replacement with the existing revision guard, then reads it back, verifies that it is a newer authenticated AES-GCM record, decrypts it, and validates its structure.
+- **Closed History:** its independent encrypted record now follows the same migration lifecycle. Legacy rows remain available if the write or read-back fails; the client reports a retryable warning. Successful migration is verified by decrypting the saved v2 record and comparing its normalized rows with the pre-migration snapshot.
+- **Failure handling:** cloud migration failure does not discard the successfully decrypted local portfolio or Closed History. Closed History migration retries on the next read and has an explicit retry action. Malformed decrypted portfolio/history shapes are rejected rather than being silently converted to empty collections.
+- **Compatibility boundary:** the legacy CryptoJS reader remains temporarily available so another device that has not yet opened the updated app, or a legacy backup, is not made unreadable. Do not remove this fallback until every active cloud record has been observed in v2 and old clients can no longer overwrite it with CBC ciphertext.
+- **Validation:** focused tests cover malformed payload rejection, v2 read-back verification, Closed History retry after a failed write, and Russian migration warnings. Exact-head CI remains the merge gate; no live-cloud migration is claimed by these tests.
 ## Acceptance criteria
 
 - [x] Pull requests run typecheck, tests, dead-code validation, production dependency audit, and production build.

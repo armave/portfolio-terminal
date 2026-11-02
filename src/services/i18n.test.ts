@@ -76,6 +76,15 @@ describe('app localization', () => {
     expect(translateText('No margin positions', 'ru')).toBe('Нет маржинальных позиций');
   });
 
+  it('localizes verified cloud encryption migration warnings and retry controls', () => {
+    expect(translateText('Migrating…', 'ru')).toBe('Выполняется миграция…');
+    expect(translateText('Retry encryption migration', 'ru')).toBe('Повторить миграцию шифрования');
+    expect(translateText('Cloud encryption upgrade could not be verified. Your local portfolio is safe; retry cloud sync.', 'ru'))
+      .toBe('Не удалось проверить переход на новое шифрование облака. Локальный портфель сохранён; повторите облачную синхронизацию.');
+    expect(translateText('Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.', 'ru'))
+      .toBe('Не удалось проверить переход на новое шифрование истории сделок. Сохранённая история доступна; повторите миграцию.');
+  });
+
   it('translates known UI copy into Russian and leaves unknown text unchanged', () => {
     expect(translateText('User management', 'ru')).toBe('Управление пользователями');
     expect(translateText('Settings', 'ru')).toBe('Настройки');

@@ -1,4 +1,6 @@
 import type { CloudRevisionCoordinator } from './cloudRevisionCoordinator';
+import { getAppLanguage, translateText } from './i18n';
+import { assertValidCloudPortfolioPayload, normalizeCloudHistoryPayload } from './cloudPayloadValidation';
 
 export interface SyncOptions {
   state?: any;
@@ -10,6 +12,7 @@ export interface SyncOptions {
   onStatusChange?: (status: 'synced' | 'error') => void;
   isCurrentSession?: () => boolean;
   allowCloudWrites?: boolean;
+  onEncryptionMigrationFailure?: (error: Error) => void;
 }
 export interface CloudStateSyncRuntimeDependencies {
   workerProxyUrl: string;
@@ -33,7 +36,7 @@ export interface CloudStateSyncRuntime {
   syncCloudState: (mode?: string, options?: SyncOptions) => Promise<boolean>;
   pushCloudHistory: (history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] }, secret?: string, knownRevision?: number, options?: Pick<SyncOptions, 'isCurrentSession'>) => Promise<boolean>;
   clearCloudHistory: (secret?: string, options?: Pick<SyncOptions, 'isCurrentSession'>) => Promise<boolean>;
-  pullCloudHistory: (secret?: string) => Promise<{ brokerExecutedTrades: unknown[]; cashflows: unknown[] } | null>;
+  pullCloudHistory: (secret?: string, options?: Pick<SyncOptions, 'isCurrentSession' | 'onEncryptionMigrationFailure'>) => Promise<{ brokerExecutedTrades: unknown[]; cashflows: unknown[] } | null>;
   clearRequestCache: () => void;
 }
 
@@ -74,6 +77,48 @@ export function createCloudStateSyncRuntime({
       : `HTTP ${response.status}`;
   };
   const cloudStatePushFingerprints = new Map<string, string>();
+
+  function hasAesGcmV2Envelope(value: unknown): value is string {
+    if (typeof value !== 'string' || !value.startsWith('aesgcm:v2:')) return false;
+    const parts = value.slice('aesgcm:v2:'.length).split(':');
+    return parts.length === 2 && Boolean(parts[0]) && Boolean(parts[1]);
+  }
+
+  async function verifyEncryptedCloudRecord(
+    path: '/api/state' | '/api/history',
+    secret: string,
+    isCurrentSession: () => boolean,
+    previousRevision: number | null,
+    validate: (value: unknown) => void
+  ): Promise<boolean> {
+    const response = await fetchImpl(apiUrl(path), {
+      method: 'GET',
+      headers: authHeaders(secret)
+    });
+    if (!isCurrentSession()) return false;
+    if (!response.ok) throw new Error(`Cloud encryption verification failed (HTTP ${response.status}).`);
+
+    const savedRevision = readCloudRevision(response.headers);
+    if (previousRevision !== null && savedRevision !== null && savedRevision <= previousRevision) {
+      throw new Error('Cloud encryption verification did not observe a newer record revision.');
+    }
+
+    const envelope = await response.json();
+    if (!envelope || typeof envelope !== 'object' || !hasAesGcmV2Envelope(envelope.encryptedPayload)) {
+      throw new Error('Cloud record is not stored in the authenticated AES-GCM format.');
+    }
+    const decrypted = await decryptCloudPayload(envelope.encryptedPayload, secret);
+    if (!isCurrentSession()) return false;
+    if (decrypted.legacy) throw new Error('Cloud record still uses legacy encryption.');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(decrypted.plaintext);
+    } catch {
+      throw new Error('The saved encrypted cloud record could not be parsed during verification.');
+    }
+    validate(parsed);
+    return true;
+  }
 
 async function pullCloudState(
   options: SyncOptions | ((state: any) => void) = {},
@@ -157,9 +202,7 @@ async function pullCloudState(
       requiresEncryptionUpgrade = true;
     }
 
-    if (!parsedState || typeof parsedState !== 'object') {
-      throw new Error('Invalid state payload from KV.');
-    }
+    assertValidCloudPortfolioPayload(parsedState);
 
     if ('marginBalance' in parsedState) {
       delete parsedState.marginBalance;
@@ -236,13 +279,41 @@ async function pullCloudState(
       revisionCoordinator.recordPulledRevision(pulledRevision);
     }
 
-    if (handlers.allowCloudWrites !== false && (wasUpdated || requiresEncryptionUpgrade || mergedLocalData)) {
+    if (handlers.allowCloudWrites !== false && requiresEncryptionUpgrade) {
+      try {
+        const saved = await pushCloudState(parsedState, {
+          ...handlers,
+          secret: currentSecret,
+          showToast: () => { }
+        });
+        if (!isCurrentSession()) return stalePullFallback();
+        if (!saved) throw new Error('The encrypted cloud replacement was not confirmed.');
+
+        const verified = await verifyEncryptedCloudRecord(
+          '/api/state',
+          currentSecret,
+          isCurrentSession,
+          pulledRevision,
+          assertValidCloudPortfolioPayload
+        );
+        if (!isCurrentSession()) return stalePullFallback();
+        if (!verified) throw new Error('The encrypted cloud replacement could not be verified.');
+      } catch (migrationError) {
+        if (!isCurrentSession()) return stalePullFallback();
+        const notice = translateText(
+          'Cloud encryption upgrade could not be verified. Your local portfolio is safe; retry cloud sync.',
+          getAppLanguage()
+        );
+        showToast(notice, 'error');
+        logTerminal(`[Cloud Security]: Encryption upgrade remains pending: ${migrationError instanceof Error ? migrationError.message : 'unknown error'}`);
+      }
+    } else if (handlers.allowCloudWrites !== false && (wasUpdated || mergedLocalData)) {
       pushCloudState(parsedState, {
         ...handlers,
         secret: currentSecret,
         showToast: () => { }
       }).catch((err) => {
-        console.warn(wasUpdated ? 'Background rollover sync failed:' : 'Background cloud encryption upgrade failed:', err);
+        console.warn('Background cloud-state refresh failed:', err);
       });
     }
 
@@ -271,7 +342,7 @@ const CLOSED_HISTORY_MIGRATION_KEY = 'closed_history_cloud_migrated_v1';
 // History has an independent Durable Object revision from portfolio state. Share
 // concurrent reads and serialize writes, coalescing structurally identical snapshots.
 type CloudHistory = { brokerExecutedTrades: unknown[]; cashflows: unknown[] };
-type CloudHistorySnapshot = { history: CloudHistory | null; revision: number };
+type CloudHistorySnapshot = { history: CloudHistory | null; revision: number; requiresEncryptionUpgrade?: boolean };
 let lastSyncedHistoryFingerprint: string | undefined;
 let cloudHistoryPushQueue: Promise<void> = Promise.resolve();
 let cloudHistoryPulls = new Map<string, Promise<CloudHistorySnapshot>>();
@@ -363,9 +434,12 @@ async function performPushCloudHistory(
   return true;
 }
 
-async function pullCloudHistory(secret = getActiveGatewaySecret()): Promise<CloudHistory | null> {
+async function pullCloudHistory(
+  secret = getActiveGatewaySecret(),
+  options: Pick<SyncOptions, 'isCurrentSession' | 'onEncryptionMigrationFailure'> = {}
+): Promise<CloudHistory | null> {
   if (!secret) return null;
-  const snapshot = await pullCloudHistorySnapshot(secret);
+  const snapshot = await pullCloudHistorySnapshot(secret, options);
   if (snapshot.history) return snapshot.history;
 
   // If this 404 raced a legacy-history migration, wait for its queued write.
@@ -376,13 +450,48 @@ async function pullCloudHistory(secret = getActiveGatewaySecret()): Promise<Clou
   return latest && latest.revision > snapshot.revision ? latest.history : snapshot.history;
 }
 
-function pullCloudHistorySnapshot(secret: string): Promise<CloudHistorySnapshot> {
+function pullCloudHistorySnapshot(
+  secret: string,
+  options: Pick<SyncOptions, 'isCurrentSession' | 'onEncryptionMigrationFailure'> = {}
+): Promise<CloudHistorySnapshot> {
   const existing = cloudHistoryPulls.get(secret);
   if (existing) return existing;
-  const request = performPullCloudHistory(secret).then(snapshot => {
+  const isCurrentSession = options.isCurrentSession || (() => true);
+  const request = (async () => {
+    const snapshot = await performPullCloudHistory(secret, isCurrentSession);
+    if (!isCurrentSession()) return snapshot;
+
+    if (snapshot.history && snapshot.requiresEncryptionUpgrade) {
+      try {
+        const saved = await enqueueCloudHistoryWrite(
+          snapshot.history, secret, snapshot.revision, true, isCurrentSession
+        );
+        if (!isCurrentSession()) return snapshot;
+        if (!saved) throw new Error('The encrypted Closed History replacement was not confirmed.');
+
+        const verified = await performPullCloudHistory(secret, isCurrentSession);
+        if (!isCurrentSession()) return snapshot;
+        if (verified.requiresEncryptionUpgrade || !verified.history ||
+            JSON.stringify(verified.history) !== JSON.stringify(snapshot.history)) {
+          throw new Error('The encrypted Closed History replacement could not be verified.');
+        }
+        rememberCloudHistorySnapshot(secret, verified);
+        return verified;
+      } catch (migrationError) {
+        if (!isCurrentSession()) return snapshot;
+        const error = migrationError instanceof Error ? migrationError : new Error('Unknown Closed History encryption migration error.');
+        if (options.onEncryptionMigrationFailure) options.onEncryptionMigrationFailure(error);
+        else console.warn('Closed History encryption migration remains pending:', error.message);
+        // Keep the successfully decrypted rows available. No migration marker is
+        // written on failure, so a later open retries the migration.
+        rememberCloudHistorySnapshot(secret, snapshot);
+        return snapshot;
+      }
+    }
+
     rememberCloudHistorySnapshot(secret, snapshot);
     return snapshot;
-  });
+  })();
   cloudHistoryPulls.set(secret, request);
   void request.finally(() => {
     if (cloudHistoryPulls.get(secret) === request) cloudHistoryPulls.delete(secret);
@@ -392,24 +501,28 @@ function pullCloudHistorySnapshot(secret: string): Promise<CloudHistorySnapshot>
   return request;
 }
 
-async function performPullCloudHistory(secret: string): Promise<CloudHistorySnapshot> {
+async function performPullCloudHistory(
+  secret: string,
+  isCurrentSession: () => boolean = () => true
+): Promise<CloudHistorySnapshot> {
   const res = await fetchImpl(apiUrl('/api/history'), {
     method: 'GET',
     headers: authHeaders(secret)
   });
+  if (!isCurrentSession()) return { history: null, revision: 0 };
   const revision = readCloudRevision(res.headers) ?? 0;
   if (res.status === 404) return { history: null, revision };
   if (!res.ok) throw new Error(`Closed history load failed (HTTP ${res.status}).`);
   const envelope = await res.json();
+  if (!isCurrentSession()) return { history: null, revision };
   if (typeof envelope?.encryptedPayload !== 'string') throw new Error('Invalid closed history payload.');
   const decrypted = await decryptCloudPayload(envelope.encryptedPayload, secret);
+  if (!isCurrentSession()) return { history: null, revision };
   const parsed = JSON.parse(decrypted.plaintext);
   return {
-    history: {
-      brokerExecutedTrades: Array.isArray(parsed.brokerExecutedTrades) ? parsed.brokerExecutedTrades : [],
-      cashflows: Array.isArray(parsed.cashflows) ? parsed.cashflows : []
-    },
-    revision
+    history: normalizeCloudHistoryPayload(parsed),
+    revision,
+    requiresEncryptionUpgrade: decrypted.legacy
   };
 }
 

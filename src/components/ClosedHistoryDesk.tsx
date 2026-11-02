@@ -53,6 +53,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     getLatestClosedTradeDate(brokerExecutionHistory.trades, state.closedTrades || [])
   );
   const [cashflowSyncMessage, setCashflowSyncMessage] = useState('');
+  const [cloudHistoryWarning, setCloudHistoryWarning] = useState('');
+  const [cloudHistoryRetrying, setCloudHistoryRetrying] = useState(false);
   const [cashflowHistoryReady, setCashflowHistoryReady] = useState(false);
   const [cashflowSyncReady, setCashflowSyncReady] = useState(false);
   const [cashflowAllocationReady, setCashflowAllocationReady] = useState(false);
@@ -79,7 +81,17 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   // local history is used only when no cloud record exists.
   useEffect(() => {
     let active = true;
-    void pullCloudHistory().then(async history => {
+    void pullCloudHistory(undefined, {
+      isCurrentSession: isSessionCurrent,
+      onEncryptionMigrationFailure: (error) => {
+        if (!active || !isSessionCurrent()) return;
+        setCloudHistoryWarning(translateText(
+          'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
+          getAppLanguage()
+        ));
+        console.warn('Closed History encryption migration remains pending:', error.message);
+      }
+    }).then(async history => {
       if (!active || !isSessionCurrent()) return;
       const current = portfolioStore.getState();
       const saved = loadSavedHistory();
@@ -322,6 +334,31 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     setCashflowSyncMessage('');
     setCashflowSyncReady(false);
     void syncCashflowsFromFreedom();
+  };
+
+  const retryCloudHistoryMigration = async () => {
+    if (!isSessionCurrent() || cloudHistoryRetrying) return;
+    setCloudHistoryRetrying(true);
+    setCloudHistoryWarning('');
+    try {
+      await pullCloudHistory(undefined, {
+        isCurrentSession: isSessionCurrent,
+        onEncryptionMigrationFailure: (error) => {
+          if (!isSessionCurrent()) return;
+          setCloudHistoryWarning(translateText(
+            'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.',
+            getAppLanguage()
+          ));
+          console.warn('Closed History encryption migration remains pending:', error.message);
+        }
+      });
+    } catch (error) {
+      if (isSessionCurrent()) {
+        setCloudHistoryWarning(error instanceof Error ? error.message : 'Could not verify the cloud history encryption upgrade.');
+      }
+    } finally {
+      if (isSessionCurrent()) setCloudHistoryRetrying(false);
+    }
   };
 
   useEffect(() => {
@@ -638,6 +675,15 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           </div>
         </div>
       </div>
+
+      {cloudHistoryWarning && (
+        <div role="alert" class="flex flex-col gap-2 rounded border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+          <span>{cloudHistoryWarning}</span>
+          <button type="button" onClick={() => void retryCloudHistoryMigration()} disabled={cloudHistoryRetrying} class="self-start rounded border border-amber-700/70 px-2.5 py-1.5 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto">
+            {cloudHistoryRetrying ? translateText('Migrating…', getAppLanguage()) : translateText('Retry encryption migration', getAppLanguage())}
+          </button>
+        </div>
+      )}
 
       {cashflowSyncMessage && (
         <div role="alert" class="flex flex-col gap-2 rounded border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-200 sm:flex-row sm:items-center sm:justify-between">
