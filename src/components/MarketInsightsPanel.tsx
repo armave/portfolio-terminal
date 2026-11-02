@@ -105,7 +105,8 @@ export function MarketInsightsPanel() {
   const [stockData, setStockData] = useState<YahooDeepStockData | null>(null);
   const [stockDataTicker, setStockDataTicker] = useState<string | null>(null);
   const [newsData, setNewsData] = useState<MarketNewsItem[]>([]);
-  const [selectedNews, setSelectedNews] = useState<MarketNewsItem | null>(null);
+  const [selectedNews, setSelectedNews] = useState<{ ticker: string; article: MarketNewsItem } | null>(null);
+  const currentSelectedNews = selectedNews?.ticker === ticker ? selectedNews.article : null;
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsError, setNewsError] = useState<string | null>(null);
   const [newsUpdatedAt, setNewsUpdatedAt] = useState<number | null>(null);
@@ -114,8 +115,11 @@ export function MarketInsightsPanel() {
   const newsCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const newsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const closeNewsDialog = () => setSelectedNews(null);
+  useEffect(() => {
+    if (selectedNews && selectedNews.ticker !== ticker) setSelectedNews(null);
+  }, [ticker, selectedNews]);
   useDialogFocus(newsDialogRef, {
-    active: selectedNews !== null,
+    active: currentSelectedNews !== null,
     initialFocusRef: newsCloseButtonRef,
     restoreFocusRef: newsTriggerRef,
     onEscape: closeNewsDialog
@@ -347,7 +351,7 @@ export function MarketInsightsPanel() {
                 type="button"
                 onClick={(event) => {
                   newsTriggerRef.current = event.currentTarget;
-                  setSelectedNews(n);
+                  setSelectedNews({ ticker, article: n });
                 }}
                 aria-label={`Read news: ${n.headline || 'Untitled article'}`}
                 class="news-feed-item block w-full text-left bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
@@ -707,7 +711,7 @@ export function MarketInsightsPanel() {
         )}
       </section>
 
-      {selectedNews && createPortal(
+      {currentSelectedNews && createPortal(
         <div
           class="news-article-modal news-modal-enter fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-950/80 backdrop-blur-sm"
           role="presentation"
@@ -725,19 +729,19 @@ export function MarketInsightsPanel() {
             <header class="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 p-4 sm:p-5">
               <div class="min-w-0">
                 <p class="mb-1 text-[10px] font-bold uppercase tracking-widest text-cyan-400">
-                  {selectedNews.source || 'Company news'} · {formatNewsRelativeTime(selectedNews.datetime)}
+                  {currentSelectedNews.source || 'Company news'} · {formatNewsRelativeTime(currentSelectedNews.datetime)}
                 </p>
                 <h2 id="newsArticleModalTitle" class="text-base font-bold leading-snug text-slate-100 sm:text-lg">
-                  {selectedNews.headline || 'Untitled article'}
+                  {currentSelectedNews.headline || 'Untitled article'}
                 </h2>
               </div>
               <button ref={newsCloseButtonRef} type="button" class="shrink-0 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white" onClick={closeNewsDialog} aria-label="Close news article" data-news-dialog-close>✕</button>
             </header>
             <div class="news-article-content min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5" role="region" aria-labelledby="newsArticleModalTitle" tabIndex={0}>
               <div class="whitespace-pre-wrap break-words leading-relaxed text-slate-300">
-                {selectedNews.summary || selectedNews.description || selectedNews.content || 'A summary is not available from the news provider. Open the original article for the full story.'}
+                {currentSelectedNews.summary || currentSelectedNews.description || currentSelectedNews.content || 'A summary is not available from the news provider. Open the original article for the full story.'}
               </div>
-              {selectedNews.url && <a href={selectedNews.url} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded border border-cyan-800/80 bg-cyan-950/40 px-3 py-2 text-xs font-semibold text-cyan-300 transition hover:bg-cyan-900/50">Read full article ↗</a>}
+              {currentSelectedNews.url && <a href={currentSelectedNews.url} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded border border-cyan-800/80 bg-cyan-950/40 px-3 py-2 text-xs font-semibold text-cyan-300 transition hover:bg-cyan-900/50">Read full article ↗</a>}
             </div>
           </section>
         </div>,
