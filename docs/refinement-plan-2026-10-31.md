@@ -441,3 +441,26 @@ Client-side Market Depth presentation and localization only. No broker order beh
 
 - [x] Implementation head `c626475e7c50fc0ed6dbfedc01ca43ee562c5826` passed both [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41388314307) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41388314318): typecheck, full tests, production build, dead-code validation, and dependency security audit.
 - [ ] Browser verification of successful initial load, refresh failure with a retained snapshot, retry recovery, and ticker changes.
+
+
+## Stage 13 — Market Depth Russian UI localization (2026-11-02)
+
+**Finding**
+
+The Market Depth dictionary and localization tests already contained Russian entries for the new retry and stale-refresh messages, but the component rendered several of those strings directly. The dictionary tests therefore passed even though Russian users could still see English controls and status text. Other visible Market Depth labels were also bypassing existing translations.
+
+**Implementation**
+
+- [x] Route the retry, refresh, loading, stale-refresh and failed-refresh copy through the active application language.
+- [x] Localize the dialog title/subtitle, trigger and close accessible names, order-book region name, bid/ask/spread/depth labels, tick, table headings, empty states and update timestamp.
+- [x] Add the missing Russian entries for Market Depth labels and API-key setup guidance.
+- [x] Extend dictionary and component-wiring regression tests to verify UI translation call sites, not only dictionary entries.
+
+**Scope**
+
+Client-side Market Depth presentation, accessibility labels and Russian localization only. No provider requests, broker order behavior, Worker routes, financial calculations, permissions, persisted schemas or dependencies changed.
+
+**Validation**
+
+- [ ] Exact-head Pull Request CI and Validate workflows pass typecheck, full tests, production build, dead-code validation and production dependency audit.
+- [ ] Verify English and Russian dialog text, accessible names, loading, retry and stale-warning states in a real browser.
