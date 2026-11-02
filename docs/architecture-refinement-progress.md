@@ -102,6 +102,8 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Preserve the first-account setup rule that retains the legacy Gateway Secret until administrator bootstrap.
 - [x] Preserve the rule that an unresolved identity never renders a cached administrator workspace.
 - [x] Extract fresh guest assignment IDs and deterministic legacy assignment IDs into a tested domain helper.
+- [x] Move authenticated `startApp` orchestration behind a typed adapter while keeping account identity, storage, cloud sync, quote providers, and portfolio state operations injected.
+- [x] Add Vitest coverage for admin, guest, unauthenticated startup ordering and quote-refresh/cloud-write completion sequencing.
 - [x] Exact-head validation on `4ac5200e594b5d980b58fe211f595677fa7ddc9b`: 1,003 tests across 93 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed.
 - [x] [Validate run 41420114028](https://github.com/armave/portfolio-terminal/actions/runs/41420114028) and [Pull Request CI run 41420113643](https://github.com/armave/portfolio-terminal/actions/runs/41420113643) both passed all steps.
 - [x] Production-only dependency audit: 0 vulnerabilities. Full dependency tree: 9 low/moderate advisories (2 low, 7 moderate), unresolved and not represented as fixed.
@@ -113,7 +115,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 
 - [ ] Complete the broker runtime by moving account/trade/order provider reads and app-owned response publication out of `App.tsx`, preserving session-generation guards, incremental history merging, fee allocations, account classification, and error events.
 - [ ] Extract guest assignment commands and serialized snapshot/ledger publication from `app.ts`; preserve durable server ledger behavior, legacy backfill, reassignment history, and stale-data gating.
-- [ ] Extract remaining `startApp` orchestration: role-aware workspace hydration, shared-cloud pull, quote bootstrap, rollover ordering, and startup cloud-write recovery.
+- [x] Extract `startApp` orchestration: role-aware workspace hydration, shared-cloud pull, quote bootstrap, rollover ordering, and startup cloud-write recovery.
 
 ### P1 — API compatibility facade
 

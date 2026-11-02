@@ -26,6 +26,7 @@ import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
 import { createPortfolioBrokerRefreshRuntime } from './src/services/portfolioBrokerRefreshRuntime';
 import { createPortfolioStartupLifecycleRuntime } from './src/services/portfolioStartupLifecycleRuntime';
 import { createPortfolioStartupRuntime } from './src/services/portfolioStartupRuntime';
+import { createPortfolioAuthenticatedStartupRuntime } from './src/services/portfolioAuthenticatedStartupRuntime';
 import { createPortfolioSessionRuntime } from './src/services/portfolioSessionRuntime';
 import { createPortfolioAuthenticationRuntime } from './src/services/portfolioAuthenticationRuntime';
 import {
@@ -2162,54 +2163,48 @@ function hideAuthContainer() {
   renderAuthModal(false);
 }
 
-async function startApp(secret: string) {
-  loadTradernetRules();
-  // Establish read/write permissions before importing state or refreshing quotes.
-  if (secret) await publishCurrentUser();
-  else {
+const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartupRuntime({
+  loadBrokerRules: loadTradernetRules,
+  publishCurrentUser,
+  clearAccountIdentity: () => {
     currentAccountRole = null;
     currentAccountId = null;
     canWriteCloudState = false;
-  }
-  portfolioStore.setState({ gatewaySecret: secret });
-  if (currentAccountRole === 'guest') {
-    // Overwrite any administrator snapshot left in this browser profile before
-    // rendering guest UI; the guest receives only the owner-bound server projection.
-    await pullGuestPortfolioSnapshot();
-  } else {
+  },
+  setGatewaySecret: (secret) => { portfolioStore.setState({ gatewaySecret: secret }); },
+  getAccountRole: () => currentAccountRole,
+  pullGuestPortfolioSnapshot,
+  importSavedAdminWorkspace: () => {
     portfolioStore.importState(loadSavedState(portfolioStore.getState()));
     state = portfolioStore.getState();
-    applyOvernightRollover();
-    if (secret) await syncCloudState('pull');
-  }
+  },
+  applyOvernightRollover,
+  pullSharedCloudState: () => syncCloudState('pull'),
+  getInitialQuoteRefreshInterval: (role) => getQuoteRefreshInterval(
+    role === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
+    role === 'guest' ? 'guest' : 'admin'
+  ),
+  setQuoteRefreshInterval,
+  configureAdminRollover: (enabled) => portfolioStartupLifecycleRuntime.configureAdminRollover(enabled),
+  beginInitialQuoteRefresh: () => { initialQuoteRefreshPending = true; },
+  showGuestBalanceView: () => setActiveView('BALANCE'),
+  showSavedAdminView: () => switchView(state.activeView),
+  scrollWorkspace: () => emitUiEvent('terminal:scroll-workspace'),
+  refreshLivePrices: () => refreshAllLivePrices(),
+  finishInitialQuoteRefresh: () => { initialQuoteRefreshPending = false; },
+  renderBoardAnalystConsensus: () => renderBoardAnalystConsensus(getMarketInsightsTicker(state)),
+  recoverPendingCloudWrites: async () => {
+    startupCloudWritesSuppressed = false;
+    if (startupCloudWritePending) {
+      startupCloudWritePending = false;
+      await pushStateToCloud();
+    }
+  },
+  hideStartupLoading
+});
 
-  const refreshIntervalScope = currentAccountRole === 'guest' ? 'guest' : 'admin';
-  const initialQuoteRefreshInterval = getQuoteRefreshInterval(
-    currentAccountRole === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
-    refreshIntervalScope
-  );
-  setQuoteRefreshInterval(initialQuoteRefreshInterval);
-
-  portfolioStartupLifecycleRuntime.configureAdminRollover(currentAccountRole === 'admin');
-  // Visibility and startup event handlers are bound once by the lifecycle runtime.
-
-
-  // Avoid launching a duplicate per-ticker analyst request while the initial
-  // batch already contains the same deep Yahoo data for all tracked symbols.
-  initialQuoteRefreshPending = true;
-  if (currentAccountRole === 'guest') setActiveView('BALANCE');
-  else switchView(state.activeView);
-  emitUiEvent('terminal:scroll-workspace');
-  await refreshAllLivePrices();
-  initialQuoteRefreshPending = false;
-  if (currentAccountRole === 'guest') setActiveView('BALANCE');
-  renderBoardAnalystConsensus(getMarketInsightsTicker(state));
-  startupCloudWritesSuppressed = false;
-  if (startupCloudWritePending) {
-    startupCloudWritePending = false;
-    await pushStateToCloud();
-  }
-  hideStartupLoading();
+async function startApp(secret: string) {
+  await portfolioAuthenticatedStartupRuntime.startApp(secret);
 }
 
 const portfolioStartupRuntime = createPortfolioStartupRuntime({
