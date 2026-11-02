@@ -13,6 +13,11 @@
     "audit:dependencies": "npm audit --audit-level=high",
     "audit:production": "npm audit --omit=dev --audit-level=high"
   },
+  "overrides": {
+    "@trickfilm400/rollup-plugin-off-main-thread": "4.0.0",
+    "glob": "14.0.2",
+    "minimatch": "11.0.1"
+  },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",
     "@types/crypto-js": "^4.2.2",
