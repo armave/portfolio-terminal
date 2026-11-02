@@ -1470,7 +1470,11 @@ describe('Durable Object guest portfolio ownership', () => {
       get: async (key) => values.get(key),
       put: async (key, value) => values.set(key, value),
       delete: async (key) => values.delete(key),
-      list: async ({ prefix }) => new Map([...values.entries()].filter(([key]) => key.startsWith(prefix))),
+      list: async ({ prefix = "", limit = Number.POSITIVE_INFINITY, startAfter } = {}) =>
+        new Map([...values.entries()]
+          .filter(([key]) => key.startsWith(prefix) && (typeof startAfter !== "string" || key > startAfter))
+          .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+          .slice(0, limit)),
       transaction: async (callback) => callback({
         get: async (key) => values.get(key),
         put: async (key, value) => values.set(key, value),
@@ -1487,7 +1491,12 @@ describe('Durable Object guest portfolio ownership', () => {
     const issueTestSession = async (token, userId) => {
       const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)));
       const hex = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
-      values.set('auth:session:' + hex, { userId, expiresAt: Date.now() + 60_000 });
+      const issuedAt = Date.now();
+      values.set('auth:session:' + hex, {
+        userId,
+        issuedAt,
+        expiresAt: issuedAt + 60_000
+      });
     };
     await issueTestSession('admin-token', 'admin-1');
     await issueTestSession('guest-one-token', 'guest-1');

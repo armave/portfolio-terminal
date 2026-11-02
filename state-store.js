@@ -31,7 +31,18 @@ const AUTH_LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_LOGIN_RATE_LIMIT_MAX_IPS = 1024;
 const AUTH_LOGIN_FAILURE_CLEANUP_BATCH = 128;
 const AUTH_GUEST_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const AUTH_ADMIN_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const AUTH_LEGACY_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const AUTH_SESSION_MAX_PER_USER = 5;
+const AUTH_SESSION_CLEANUP_BATCH_SIZE = 100;
+const AUTH_SESSION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+const AUTH_SESSION_CLEANUP_CURSOR_KEY = "maintenance:auth-session-cleanup-cursor:v1";
+const AUTH_SESSION_CLEANUP_LAST_RUN_KEY = "maintenance:auth-session-cleanup-last-run:v1";
+const AUTH_USER_SESSION_INDEX_PREFIX = "auth:user-sessions:";
+
+function userSessionIndexKey(userId) {
+  return AUTH_USER_SESSION_INDEX_PREFIX + userId;
+}
 const PASSWORD_HASH_VERSION = 2;
 const PASSWORD_ITERATIONS_PER_STAGE = 100_000;
 const PASSWORD_HASH_STAGES = 6;
@@ -183,7 +194,128 @@ export class PortfolioStateDO {
     });
   }
 
+  async removeSessionFromIndex(userId, sessionKey) {
+    if (!userId || !sessionKey) return;
+    await this.ctx.storage.transaction(async (transaction) => {
+      const key = userSessionIndexKey(userId);
+      const index = await transaction.get(key);
+      if (!index || !Array.isArray(index.sessions)) return;
+      const source = index.sessions.length <= AUTH_SESSION_MAX_PER_USER
+        ? index.sessions : [];
+      const sessions = source.filter((entry) => entry?.key !== sessionKey);
+      await transaction.put(key, { ...index, sessions });
+    });
+  }
+
+  async cleanupExpiredSessions({ force = false } = {}) {
+    const now = Date.now();
+    if (!force) {
+      const claimed = await this.ctx.storage.transaction(async (transaction) => {
+        const lastRun = await transaction.get(AUTH_SESSION_CLEANUP_LAST_RUN_KEY);
+        if (Number.isFinite(lastRun) && now - lastRun < AUTH_SESSION_CLEANUP_INTERVAL_MS) return false;
+        await transaction.put(AUTH_SESSION_CLEANUP_LAST_RUN_KEY, now);
+        return true;
+      });
+      if (!claimed) return 0;
+    } else {
+      await this.ctx.storage.put(AUTH_SESSION_CLEANUP_LAST_RUN_KEY, now);
+    }
+
+    const cursor = await this.ctx.storage.get(AUTH_SESSION_CLEANUP_CURSOR_KEY);
+    const options = {
+      prefix: AUTH_SESSION_PREFIX,
+      limit: AUTH_SESSION_CLEANUP_BATCH_SIZE
+    };
+    if (typeof cursor === "string" && cursor.startsWith(AUTH_SESSION_PREFIX)) {
+      options.startAfter = cursor;
+    }
+
+    let batch;
+    try {
+      batch = await this.ctx.storage.list(options);
+    } catch (error) {
+      await this.ctx.storage.delete(AUTH_SESSION_CLEANUP_LAST_RUN_KEY);
+      throw error;
+    }
+    if (batch.size === 0) {
+      if (cursor !== undefined) await this.ctx.storage.delete(AUTH_SESSION_CLEANUP_CURSOR_KEY);
+      return 0;
+    }
+
+    const users = await this.getAuthUsers();
+    const usersById = new Map(users.map((user) => [user.id, user]));
+
+    for (const [key, session] of batch.entries()) {
+      const user = session && usersById.get(session.userId);
+      let invalid = !user;
+      let index = null;
+      if (user) {
+        index = await this.ctx.storage.get(userSessionIndexKey(user.id));
+        if (index) {
+          const indexed = Array.isArray(index.sessions) &&
+            index.sessions.length <= AUTH_SESSION_MAX_PER_USER &&
+            index.sessions.some((entry) => entry?.key === key);
+          if (!Number.isSafeInteger(index.generation) ||
+              session.sessionVersion !== index.generation || !indexed) {
+            invalid = true;
+          }
+        } else if (session.sessionVersion !== undefined && session.sessionVersion !== 0) {
+          invalid = true;
+        }
+      }
+
+      if (!invalid) {
+        const issuedAt = Number.isFinite(session.issuedAt)
+          ? session.issuedAt
+          : user.role === "guest" && Number.isFinite(session.expiresAt)
+            ? session.expiresAt - AUTH_LEGACY_SESSION_TTL_MS
+            : NaN;
+        const ttl = user.role === "guest" ? AUTH_GUEST_SESSION_TTL_MS : AUTH_ADMIN_SESSION_TTL_MS;
+        const policyExpiry = issuedAt + ttl;
+        const expiresAt = user.role === "guest"
+          ? policyExpiry
+          : Number.isFinite(session.expiresAt)
+            ? Math.min(session.expiresAt, policyExpiry)
+            : policyExpiry;
+
+        if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt) || expiresAt <= now) {
+          invalid = true;
+        } else if (session.issuedAt !== issuedAt || session.expiresAt !== expiresAt ||
+            session.sessionVersion === undefined) {
+          await this.ctx.storage.put(key, {
+            ...session,
+            issuedAt,
+            expiresAt,
+            sessionVersion: session.sessionVersion ?? 0
+          });
+        }
+      }
+
+      if (invalid) {
+        await this.ctx.storage.delete(key);
+        if (user) await this.removeSessionFromIndex(user.id, key);
+      }
+    }
+
+    const batchKeys = Array.from(batch.keys());
+    const lastKey = batchKeys[batchKeys.length - 1];
+    if (batch.size < AUTH_SESSION_CLEANUP_BATCH_SIZE) {
+      await this.ctx.storage.delete(AUTH_SESSION_CLEANUP_CURSOR_KEY);
+    } else {
+      await this.ctx.storage.put(AUTH_SESSION_CLEANUP_CURSOR_KEY, lastKey);
+    }
+    return batch.size;
+  }
+
   async resolveSession(request) {
+    // Session cleanup is deliberately bounded and best-effort. A storage-list
+    // hiccup must not make an otherwise valid account session unavailable.
+    try {
+      await this.cleanupExpiredSessions();
+    } catch (error) {
+      console.warn("Session cleanup deferred:", error instanceof Error ? error.message : "unknown error");
+    }
+
     const authorization = request.headers.get("Authorization") || "";
     const token = request.headers.get("X-App-Auth") ||
       (authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : authorization.trim());
@@ -198,46 +330,169 @@ export class PortfolioStateDO {
       return null;
     }
 
+    const index = await this.ctx.storage.get(userSessionIndexKey(user.id));
+    if (index) {
+      const indexed = Array.isArray(index.sessions) &&
+        index.sessions.length <= AUTH_SESSION_MAX_PER_USER &&
+        index.sessions.some((entry) => entry?.key === sessionKey);
+      if (!Number.isSafeInteger(index.generation) ||
+          session.sessionVersion !== index.generation || !indexed) {
+        await this.ctx.storage.delete(sessionKey);
+        await this.removeSessionFromIndex(user.id, sessionKey);
+        return null;
+      }
+    } else if (session.sessionVersion !== undefined && session.sessionVersion !== 0) {
+      // A session issued under an index cannot remain valid if its index is lost.
+      await this.ctx.storage.delete(sessionKey);
+      return null;
+    }
+
+    let issuedAt;
+    let expiresAt;
     if (user.role === "guest") {
-      // Existing sessions predate issuedAt and carry a seven-day expiresAt.
-      // Reconstruct their original issue time so active legacy guest tokens
-      // receive the full 30-day policy without restarting the session clock.
-      const issuedAt = Number.isFinite(session.issuedAt)
+      // Existing guest sessions stored a seven-day expiry. Reconstruct their
+      // original issue time and preserve the existing 30-day lifetime policy.
+      issuedAt = Number.isFinite(session.issuedAt)
         ? session.issuedAt
         : Number.isFinite(session.expiresAt)
           ? session.expiresAt - AUTH_LEGACY_SESSION_TTL_MS
           : NaN;
-      const expiresAt = issuedAt + AUTH_GUEST_SESSION_TTL_MS;
-      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-        await this.ctx.storage.delete(sessionKey);
-        return null;
-      }
-      if (session.issuedAt !== issuedAt || session.expiresAt !== expiresAt) {
-        await this.ctx.storage.put(sessionKey, { ...session, issuedAt, expiresAt });
-      }
+      expiresAt = issuedAt + AUTH_GUEST_SESSION_TTL_MS;
+    } else {
+      // Legacy administrator records always stored issuedAt, even though their
+      // expiresAt was null. Missing/untrustworthy issue times fail closed.
+      issuedAt = Number.isFinite(session.issuedAt) ? session.issuedAt : NaN;
+      const policyExpiry = issuedAt + AUTH_ADMIN_SESSION_TTL_MS;
+      expiresAt = Number.isFinite(session.expiresAt)
+        ? Math.min(session.expiresAt, policyExpiry)
+        : policyExpiry;
     }
 
-    // Administrator sessions are intentionally non-expiring. Logout,
-    // password changes, and account deletion still revoke them explicitly.
+    if (!Number.isFinite(issuedAt) || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      await this.ctx.storage.delete(sessionKey);
+      await this.removeSessionFromIndex(user.id, sessionKey);
+      return null;
+    }
+
+    const sessionVersion = session.sessionVersion ?? 0;
+    if (session.issuedAt !== issuedAt || session.expiresAt !== expiresAt ||
+        session.sessionVersion !== sessionVersion) {
+      await this.ctx.storage.put(sessionKey, {
+        ...session,
+        issuedAt,
+        expiresAt,
+        sessionVersion
+      });
+    }
+
     return { user, sessionKey };
   }
 
   async issueSession(user) {
+    try {
+      await this.cleanupExpiredSessions();
+    } catch (error) {
+      console.warn("Session cleanup deferred during issuance:", error instanceof Error ? error.message : "unknown error");
+    }
+
     const token = toHex(crypto.getRandomValues(new Uint8Array(32)));
     const issuedAt = Date.now();
-    const expiresAt = user.role === "guest"
-      ? issuedAt + AUTH_GUEST_SESSION_TTL_MS
-      : null;
+    const expiresAt = issuedAt + (user.role === "guest"
+      ? AUTH_GUEST_SESSION_TTL_MS
+      : AUTH_ADMIN_SESSION_TTL_MS);
     const sessionKey = AUTH_SESSION_PREFIX + await digestHex(token);
-    await this.ctx.storage.put(sessionKey, { userId: user.id, issuedAt, expiresAt });
+    const indexKey = userSessionIndexKey(user.id);
+
+    await this.ctx.storage.transaction(async (transaction) => {
+      const storedIndex = await transaction.get(indexKey);
+      // Creating the index moves this account to the indexed-session generation.
+      // Legacy unindexed tokens remain usable until this first new login, after
+      // which the account must use the newly issued token on each device.
+      const generation = Number.isSafeInteger(storedIndex?.generation) &&
+        storedIndex.generation > 0 ? storedIndex.generation : 1;
+      const indexedSessions = Array.isArray(storedIndex?.sessions)
+        ? storedIndex.sessions.slice(-AUTH_SESSION_MAX_PER_USER) : [];
+      const activeSessions = [];
+
+      for (const entry of indexedSessions) {
+        if (!entry || typeof entry.key !== "string" || entry.key === sessionKey) continue;
+        const existing = await transaction.get(entry.key);
+        if (!existing || existing.userId !== user.id ||
+            existing.sessionVersion !== generation ||
+            !Number.isFinite(existing.issuedAt) ||
+            !Number.isFinite(existing.expiresAt) || existing.expiresAt <= issuedAt) {
+          if (existing?.userId === user.id) await transaction.delete(entry.key);
+          continue;
+        }
+        activeSessions.push({
+          key: entry.key,
+          issuedAt: existing.issuedAt,
+          expiresAt: existing.expiresAt
+        });
+      }
+
+      activeSessions.push({ key: sessionKey, issuedAt, expiresAt });
+      activeSessions.sort((left, right) => left.issuedAt - right.issuedAt);
+      while (activeSessions.length > AUTH_SESSION_MAX_PER_USER) {
+        const evicted = activeSessions.shift();
+        await transaction.delete(evicted.key);
+      }
+
+      await transaction.put(sessionKey, {
+        userId: user.id,
+        issuedAt,
+        expiresAt,
+        sessionVersion: generation
+      });
+      await transaction.put(indexKey, {
+        version: 1,
+        generation,
+        sessions: activeSessions
+      });
+    });
+
     return { token, user: publicUser(user), expiresAt };
   }
 
   async revokeUserSessions(userId, exceptSessionKey = "") {
-    const sessions = await this.ctx.storage.list({ prefix: AUTH_SESSION_PREFIX });
-    for (const [key, session] of sessions.entries()) {
-      if (key !== exceptSessionKey && session?.userId === userId) await this.ctx.storage.delete(key);
-    }
+    await this.ctx.storage.transaction(async (transaction) => {
+      const indexKey = userSessionIndexKey(userId);
+      const storedIndex = await transaction.get(indexKey);
+      const generation = Number.isSafeInteger(storedIndex?.generation) &&
+        storedIndex.generation > 0 && storedIndex.generation < Number.MAX_SAFE_INTEGER
+        ? storedIndex.generation + 1 : 1;
+      const retainedSessions = [];
+
+      if (exceptSessionKey) {
+        const current = await transaction.get(exceptSessionKey);
+        if (current?.userId === userId && Number.isFinite(current.expiresAt) &&
+            current.expiresAt > Date.now()) {
+          const updated = { ...current, sessionVersion: generation };
+          await transaction.put(exceptSessionKey, updated);
+          retainedSessions.push({
+            key: exceptSessionKey,
+            issuedAt: updated.issuedAt,
+            expiresAt: updated.expiresAt
+          });
+        }
+      }
+
+      const indexedSessions = Array.isArray(storedIndex?.sessions)
+        ? storedIndex.sessions.slice(-AUTH_SESSION_MAX_PER_USER) : [];
+      for (const entry of indexedSessions) {
+        if (entry?.key && entry.key !== exceptSessionKey) {
+          await transaction.delete(entry.key);
+        }
+      }
+
+      // Incrementing the generation also invalidates all legacy unindexed
+      // tokens without requiring an unbounded scan of every session record.
+      await transaction.put(indexKey, {
+        version: 1,
+        generation,
+        sessions: retainedSessions
+      });
+    });
   }
 
   async handleAuth(request) {
@@ -349,6 +604,7 @@ export class PortfolioStateDO {
     }
     if (request.method === "POST" && pathname === "/api/auth/logout") {
       await this.ctx.storage.delete(session.sessionKey);
+      await this.removeSessionFromIndex(session.user.id, session.sessionKey);
       return authJson({ success: true });
     }
 
@@ -414,13 +670,21 @@ export class PortfolioStateDO {
           const nextUsers = [...users];
           nextUsers[index] = next;
           await this.ctx.storage.put(AUTH_USERS_KEY, nextUsers);
-          return { user: next, passwordChanged: Boolean(passwordSalt) };
+          return {
+            user: next,
+            passwordChanged: Boolean(passwordSalt),
+            roleChanged: nextRole !== current.role
+          };
         });
         if (updated.error) return authJson({ error: updated.error }, updated.status);
         // A role/name/password change invalidates any previously published
         // guest projection until the administrator republishes the current assignment.
         await this.ctx.storage.delete("guest-portfolio:" + id);
-        if (updated.passwordChanged) await this.revokeUserSessions(id, session.sessionKey);
+        if (updated.roleChanged) {
+          await this.revokeUserSessions(id);
+        } else if (updated.passwordChanged) {
+          await this.revokeUserSessions(id, session.sessionKey);
+        }
         return authJson({ user: publicUser(updated.user) });
       }
 
