@@ -11,7 +11,6 @@ import {
   PositionRecord,
   Holding,
   TrancheItem,
-  BrokerAssumptions,
   PendingMutation,
   ClosedTrade
 } from '../types/portfolio';
@@ -22,7 +21,7 @@ import {
   saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
-import { calculateMarginInterest, normalizePortfolioTranche } from '../domain/portfolio';
+import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
 import { calculateSaleCommission, settleSaleProceeds } from '../domain/portfolioSettlement';
 import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
