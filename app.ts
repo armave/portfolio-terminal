@@ -24,6 +24,7 @@ import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
 import { createPortfolioSessionRuntime } from './src/services/portfolioSessionRuntime';
+import { createPortfolioAuthenticationRuntime } from './src/services/portfolioAuthenticationRuntime';
 import {
   createPortfolioAutoRefreshScheduler,
   DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
@@ -2161,50 +2162,34 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
 });
 const { publishCurrentUser, requireAdmin } = portfolioSessionRuntime;
 
+const portfolioAuthenticationRuntime = createPortfolioAuthenticationRuntime({
+  validateGatewaySecret,
+  saveGatewaySecret,
+  publishCurrentUser,
+  getAccountRole: () => currentAccountRole,
+  isAppInitialized: () => appInitialized,
+  setAppInitialized: (initialized) => { appInitialized = initialized; },
+  persistGatewaySecret,
+  setPortfolioGatewaySecret: (secret) => portfolioStore.setState({ gatewaySecret: secret }),
+  showToast,
+  emitGatewaySecretAuthenticated: (secret) => {
+    emitUiEvent('settings:gateway-secret-authenticated', { secret });
+  },
+  setActiveView,
+  resolveRefreshInterval: (role) => getQuoteRefreshInterval(
+    role === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
+    role
+  ),
+  setQuoteRefreshInterval,
+  pullGuestPortfolioSnapshot,
+  pullAdminPortfolioSnapshot: () => syncCloudState('pull'),
+  refreshAllLivePrices,
+  startApp,
+  hideAuthContainer
+});
+
 export async function handleSaveGatewaySecret(secret: string): Promise<boolean> {
-  const submittedSecret = secret.trim();
-  if (!submittedSecret) {
-    showToast('Please sign in with your account.', 'error');
-    return false;
-  }
-
-  // Validate first so a wrong or unverified secret is never written to device storage.
-  const authenticated = await validateGatewaySecret(submittedSecret);
-  if (!authenticated) return false;
-
-  saveGatewaySecret(submittedSecret);
-  // Resolve the account role before any store update can trigger the cloud-write subscriber.
-  const authenticatedUser = await publishCurrentUser();
-  // Move a guest into their own Balance view immediately. The startup/pull path
-  // below may take time or fail transiently; navigation must not depend on it.
-  if (authenticatedUser?.role === 'guest') setActiveView('BALANCE');
-  const persisted = await persistGatewaySecret();
-  portfolioStore.setState({ gatewaySecret: submittedSecret });
-  if (!persisted) {
-    showToast('Secure session storage failed. Sign in again after refresh.', 'error');
-  }
-
-  emitUiEvent('settings:gateway-secret-authenticated', { secret: submittedSecret });
-  if (!appInitialized) {
-    await startApp(submittedSecret);
-    appInitialized = true;
-  } else {
-    await publishCurrentUser();
-    const refreshScope = currentAccountRole === 'guest' ? 'guest' : 'admin';
-    const refreshFallback = currentAccountRole === 'guest'
-      ? DEFAULT_GUEST_REFRESH_INTERVAL_MS
-      : DEFAULT_ADMIN_REFRESH_INTERVAL_MS;
-    setQuoteRefreshInterval(getQuoteRefreshInterval(refreshFallback, refreshScope));
-    // Guests load only their server-scoped projection; administrators load the shared workspace.
-    if (currentAccountRole === 'guest') await pullGuestPortfolioSnapshot();
-    else await syncCloudState('pull');
-    await refreshAllLivePrices();
-  }
-  // Guests always land on their own Balance view, but only after data is ready.
-  if (currentAccountRole === 'guest') setActiveView('BALANCE');
-  // Keep the modal visible until startup, cloud data, and initial quotes finish.
-  hideAuthContainer();
-  return true;
+  return portfolioAuthenticationRuntime.handleSaveGatewaySecret(secret);
 }
 
 function renderAuthModal(isOpen: boolean) {
