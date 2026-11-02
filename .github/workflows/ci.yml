@@ -37,6 +37,9 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Build production site
+        run: npm run build
+
       - name: Install browser smoke-test runner
         run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
 
@@ -60,5 +63,3 @@ jobs:
       - name: Audit production dependency surface
         run: npm run audit:production
 
-      - name: Build production site
-        run: npm run build
