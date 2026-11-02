@@ -30,6 +30,26 @@ describe('Yahoo quote response contracts', () => {
     ]);
   });
 
+  it('preserves Yahoo daily change percentage fields for the quote domain layer', () => {
+    expect(normalizeYahooBatchResults([{
+      symbol: 'aapl',
+      price: {
+        current: 100,
+        change: 5,
+        changePercent: 5.26,
+        regularMarketChangePercent: 5.26
+      }
+    }], ['AAPL'])).toEqual([{
+      symbol: 'AAPL',
+      price: {
+        current: 100,
+        change: 5,
+        changePercent: 5.26,
+        regularMarketChangePercent: 5.26
+      }
+    }]);
+  });
+
   it('wraps a single symbol response and normalizes its symbol', () => {
     expect(normalizeYahooBatchResults({
       symbol: 'aapl',
