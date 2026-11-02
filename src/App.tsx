@@ -25,7 +25,8 @@ import {
 import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from './domain/closedHistoryFees';
 import { getLatestClosedTradeDate } from './domain/tradeHistorySync';
 import { setAppLanguage, subscribeAppLanguage } from './services/i18n';
-import { addBrokerEventListener, emitBrokerEvent } from './services/brokerEventBus';
+import { emitBrokerEvent } from './services/brokerEventBus';
+import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
 import { refreshActiveOrders } from './services/activeOrdersRefresh';
 import { createLatestRequestGuard } from './utils/requestGeneration';
 import { getMatchingMarginIntelligenceState } from './features/ai/marginIntelligenceState';
@@ -461,25 +462,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     if (activeDeskView === 'SETTINGS') setHasOpenedSettings(true);
   }, [activeDeskView, currentUser?.role, permissions.canViewClosedHistory, permissions.canViewGuestTrancheHistory]);
 
-  // Broker execution history is account-wide administrator data. A session change
-  // rebinds the listener and starts a fresh request for that account identity.
-  useEffect(() => {
-    if (currentUser?.role !== 'admin') return;
-    const session = brokerSessionIdentityRef.current.capture();
-    if (!session) return;
-    const removeRequestListener = addBrokerEventListener('broker:request-executed-trades', () => {
-      void loadExecutedTrades(session);
-    });
-    const removeAwaitableRequestListener = addBrokerEventListener('broker:request-executed-trades-and-wait', (request) => {
-      void loadExecutedTrades(session).then(request.resolve).catch(() => request.resolve(false));
-    });
-    void loadExecutedTrades(session);
-    return () => {
-      removeRequestListener();
-      removeAwaitableRequestListener();
-    };
-  }, [currentUser?.id, currentUser?.role]);
-
   const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
     if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
     const requestKey = getSessionIdentityRequestKey(session);
@@ -582,10 +564,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     }
   };
 
+  // Bind broker request channels once per authenticated administrator session.
+  // Provider reads keep their existing session-generation guards and normalization.
   useEffect(() => {
     if (currentUser?.role !== 'admin') return;
     const session = brokerSessionIdentityRef.current.capture();
     if (!session) return;
+
     const loadActiveOrders = async (): Promise<boolean> => {
       if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
       const requestKey = getSessionIdentityRequestKey(session);
@@ -626,44 +611,26 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         if (activeOrdersRequests.get(requestKey) === request) activeOrdersRequests.delete(requestKey);
       }
     };
-    const removeRequestListener = addBrokerEventListener('broker:request-active-orders', () => {
-      void loadActiveOrders();
-    });
-    const removeAwaitableRequestListener = addBrokerEventListener('broker:request-active-orders-and-wait', (request) => {
-      void loadActiveOrders().then(request.resolve).catch(() => request.resolve(false));
-    });
-    // Refresh for each authenticated administrator identity, not just at mount.
-    void loadActiveOrders();
-    return () => {
-      removeRequestListener();
-      removeAwaitableRequestListener();
-    };
-  }, [currentUser?.id, currentUser?.role]);
 
-  // Broker-wide balances and positions are administrator data. Guests refresh
-  // assigned symbols and assignment state through the scoped quote/cloud flows.
-  useEffect(() => {
-    if (currentUser?.role !== 'admin') return;
-    const session = brokerSessionIdentityRef.current.capture();
-    if (!session) return;
-    const refreshAccountInfo = () => {
-      void loadFreedomAccount(session).catch(() => {
+    const refreshAccountInfo = async (): Promise<boolean> => {
+      try {
+        return await loadFreedomAccount(session);
+      } catch {
         // Ignore completion from a prior identity; it must not mark the next
         // account's broker snapshot stale or display an unrelated error.
-        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
-        emitBrokerEvent('broker:account-info-error');
-      });
+        if (brokerSessionIdentityRef.current.isCurrent(session)) {
+          emitBrokerEvent('broker:account-info-error');
+        }
+        return false;
+      }
     };
-    const refreshAccountInfoAndWait = (request: { resolve: (success: boolean) => void }) => {
-      void loadFreedomAccount(session).then(request.resolve).catch(() => request.resolve(false));
-    };
-    const removeRequestListener = addBrokerEventListener('broker:request-account-info', refreshAccountInfo);
-    const removeAwaitableRequestListener = addBrokerEventListener('broker:request-account-info-and-wait', refreshAccountInfoAndWait);
-    refreshAccountInfo();
-    return () => {
-      removeRequestListener();
-      removeAwaitableRequestListener();
-    };
+
+    return bindPortfolioBrokerRequestRuntime({
+      refreshAccountInfo,
+      refreshAccountInfoForWait: () => loadFreedomAccount(session),
+      refreshExecutedTrades: () => loadExecutedTrades(session),
+      refreshActiveOrders: loadActiveOrders
+    });
   }, [currentUser?.id, currentUser?.role]);
 
 
