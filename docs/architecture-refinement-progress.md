@@ -1,8 +1,8 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Guest assignment runtime extraction  
-**Base:** `01f1545b2a1e3103be39d44c274dac9a8773dfa4`
+**Current work:** Cloud state security runtime extraction  
+**Base:** `3b16d36cec87a02db31a45630c4751dde34b310b`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
@@ -128,7 +128,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Production-only dependency audit: 0 vulnerabilities. Full dependency tree: 9 low/moderate advisories (2 low, 7 moderate), unresolved.
 - [x] Merged to `main` as `01f1545b2a1e3103be39d44c274dac9a8773dfa4`.
 
-## Current PR #254 — guest assignment runtime
+## Merged PR #254 — guest assignment runtime
 
 - [x] Move the closed-trade allocation command behind a typed runtime boundary.
 - [x] Move active-tranche guest assignment and unassignment behind the same boundary.
@@ -137,6 +137,15 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Keep all portfolio state ownership in the app store; inject state, persistence, authorization, and API operations.
 - [x] Add focused Vitest coverage for commands, readiness gates, publication payloads, queue serialization, and recovery after publication failure.
 - [x] Validation on PR head `52ca8cd824ce7618a935cf11ca7208a9144b902a`: 1,023 tests across 96 files; typecheck, production build, dead-code validation, both dependency audits, and production browser smoke passed. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41427655823) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41427655797).
+- [x] Squash-merged to `main` as `3b16d36cec87a02db31a45630c4751dde34b310b`.
+
+## Current PR #255 — cloud state security runtime
+
+- [x] Extract AES-GCM encryption, legacy CryptoJS decryption, shared cloud-key retrieval, and active Gateway Secret lookup into a focused runtime.
+- [x] Preserve the `api.ts` compatibility exports for `setSecretGetter` and `clearCloudEncryptionSecretCache`.
+- [x] Preserve the existing Worker route, request headers, cache invalidation, AES-GCM envelope format, legacy ciphertext compatibility, and retry behavior after shared-key failures.
+- [x] Add focused Vitest coverage for round trips, server-owned-key caching, failure retry, legacy decryption, tamper rejection, and credential getter precedence.
+- [ ] Run exact-head typecheck, Vitest, build, audits, dead-code validation, and production browser smoke.
 - [ ] Review and merge.
 
 ## Remaining architecture work
@@ -149,8 +158,10 @@ This is the continuing checklist for the architecture-refinement program. A chec
 
 ### P1 — API compatibility facade
 
-- [ ] Decompose `src/services/api.ts` into cloud-state/encryption, revision coordination, authentication/session, broker transport, and market-data responsibilities.
-- [ ] Preserve Gateway Secret resolution, encryption compatibility, session-bound caches, request coalescing, cloud revision checks, and serialized cloud writes.
+- [x] Extract cloud-state encryption and Gateway Secret resolution into `cloudStateSecurity.ts`, retaining `api.ts` compatibility exports.
+- [ ] Extract cloud-state revision coordination and pull/push queues while preserving session-bound caches, request coalescing, cloud revision checks, and serialized writes.
+- [ ] Separate authentication/session transport from the compatibility facade.
+- [ ] Separate broker transport and market-data transport from the compatibility facade.
 
 ### P1 — authenticated browser coverage
 
