@@ -66,8 +66,8 @@ export function usePortfolioSelectorFromStore<T>(
   useEffect(() => subscribeToPortfolioSelector(
     (state) => selectorRef.current(state),
     setSelection,
-    (previous, next) => equalityRef.current(previous, next),
-    store
+    store,
+    (previous, next) => equalityRef.current(previous, next)
   ), [store]);
 
   return selection;
