@@ -8,7 +8,8 @@ export interface PortfolioSubscriptionSource {
 }
 
 /** Store contract for the device-local active-desk subscription. */
-export interface ActiveViewSubscriptionSource extends PortfolioSubscriptionSource {
+export interface ActiveViewSubscriptionSource {
+  getState(): PortfolioState;
   subscribeActiveView(listener: (view: string) => void): () => void;
 }
 
