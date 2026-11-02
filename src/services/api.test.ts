@@ -1721,7 +1721,7 @@ describe('closed-session market request cache integration', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('bypasses the closed-session cache for forced deep-data requests, async () => {
+  it('bypasses the closed-session cache for forced deep-data requests', async () => {
     setMarketRequestSessionForTests('CLOSED');
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
