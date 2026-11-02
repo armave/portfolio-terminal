@@ -31,12 +31,24 @@ describe('app localization', () => {
     expect(translateText('Priced market value', 'ru')).toBe('Рыночная стоимость позиций с котировкой');
   });
 
-  it('localizes Market Depth refresh recovery copy', () => {
+  it('localizes Market Depth labels and refresh recovery copy', () => {
     expect(translateText('Retry depth', 'ru')).toBe('Повторить загрузку стакана');
+    expect(translateText('Refresh depth', 'ru')).toBe('Обновить стакан');
     expect(translateText('Refreshing order book; previous snapshot remains visible.', 'ru'))
       .toBe('Обновление стакана заявок; предыдущий снимок остаётся доступным.');
     expect(translateText('Refresh failed; showing the last successful order-book snapshot.', 'ru'))
       .toBe('Не удалось обновить данные; показан последний успешно полученный снимок стакана заявок.');
+    expect(translateText('Read-only order book snapshot · TradeNet', 'ru'))
+      .toBe('Снимок стакана заявок только для чтения · TradeNet');
+    expect(translateText('Market depth order book for', 'ru')).toBe('Стакан заявок для');
+    expect(translateText('Close market depth', 'ru')).toBe('Закрыть стакан заявок');
+    expect(translateText('Best bid', 'ru')).toBe('Лучшая цена покупки');
+    expect(translateText('Best ask', 'ru')).toBe('Лучшая цена продажи');
+    expect(translateText('Tick', 'ru')).toBe('Шаг цены');
+    expect(translateText('Bids · buyers', 'ru')).toBe('Заявки на покупку');
+    expect(translateText('Asks · sellers', 'ru')).toBe('Заявки на продажу');
+    expect(translateText('Check that FREEDOM_PUBLIC_KEY and FREEDOM_PRIVATE_KEY are configured as Cloudflare Worker secrets. Never expose the private key in browser code.', 'ru'))
+      .toBe('Проверьте, что FREEDOM_PUBLIC_KEY и FREEDOM_PRIVATE_KEY настроены как секреты Cloudflare Worker. Никогда не раскрывайте приватный ключ в коде браузера.');
   });
 
   it('localizes the administrator equity badge description', () => {
