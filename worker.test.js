@@ -1889,14 +1889,11 @@ describe('Freedom market-depth proxy', () => {
 
   function createMockWebSocket() {
     return class MockWebSocket extends EventTarget {
-      static instances = [];
-      constructor(url) {
+      constructor() {
         super();
-        this.url = url;
         this.sent = [];
         this.closed = false;
         this.accepted = false;
-        MockWebSocket.instances.push(this);
       }
       accept() {
         this.accepted = true;
@@ -1921,7 +1918,7 @@ describe('Freedom market-depth proxy', () => {
     const MockWebSocket = createMockWebSocket();
     let fetchSocket = null;
     const fetchMock = vi.fn(async () => {
-      fetchSocket = new MockWebSocket('fetch-handshake');
+      fetchSocket = new MockWebSocket();
       return {
         status: 101,
         statusText: 'Switching Protocols',
@@ -1929,13 +1926,10 @@ describe('Freedom market-depth proxy', () => {
         webSocket: fetchSocket
       };
     });
-    vi.stubGlobal('WebSocket', MockWebSocket);
     vi.stubGlobal('fetch', fetchMock);
     const pending = fetchFreedomMarketDepthWithSid('GOOGL', { sid });
     await Promise.resolve();
-    const socket = fetchSocket || MockWebSocket.instances[0];
-    if (!fetchSocket) socket?.emit('open');
-    return { pending, socket, fetchMock, MockWebSocket };
+    return { pending, socket: fetchSocket, fetchMock };
   }
 
   it('reports connection, session, event and timeout diagnostics without exposing the SID', async () => {
@@ -1957,6 +1951,9 @@ describe('Freedom market-depth proxy', () => {
       diagnostics: expect.objectContaining({
         requestedSymbol: 'GOOGL',
         phase: 'snapshot_timeout',
+        handshakeResponseReceived: true,
+        handshakeStatus: 101,
+        handshakeErrorCategory: null,
         connectionOpened: true,
         subscriptionSent: true,
         subscriptionConfirmed: false,
@@ -1978,6 +1975,13 @@ describe('Freedom market-depth proxy', () => {
     await vi.advanceTimersByTimeAsync(10001);
     await rejected;
 
+    expect(socket.accepted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [handshakeUrl, handshakeInit] = fetchMock.mock.calls[0];
+    expect(new URL(String(handshakeUrl)).protocol).toBe('https:');
+    expect(new URL(String(handshakeUrl)).hostname).toBe('wss.tradernet.com');
+    expect(new URL(String(handshakeUrl)).searchParams.get('SID')).toBe('sensitive-sid-value-123456');
+    expect(handshakeInit.headers).toEqual({ Upgrade: 'websocket' });
     expect(JSON.parse(socket.sent[0])).toEqual(['orderBook', ['GOOGL']]);
     const logged = log.mock.calls.map(([value]) => String(value)).join('\n');
     expect(logged).not.toContain('sensitive-sid-value');
@@ -2010,6 +2014,8 @@ describe('Freedom market-depth proxy', () => {
     expect(result.diagnostics).toMatchObject({
       requestedSymbol: 'GOOGL',
       phase: 'snapshot_received',
+      handshakeResponseReceived: true,
+      handshakeStatus: 101,
       connectionOpened: true,
       subscriptionSent: true,
       subscriptionConfirmed: true,
@@ -2023,10 +2029,79 @@ describe('Freedom market-depth proxy', () => {
     });
   });
 
+  it('returns the upstream HTTP status when TradeNet rejects the WebSocket upgrade', async () => {
+    const fetchMock = vi.fn(async () => new Response('origin denied', {
+      status: 403,
+      headers: { 'Content-Type': 'text/plain' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchFreedomMarketDepthWithSid('GOOGL', {
+      sid: 'sensitive-sid-value-123456'
+    })).rejects.toMatchObject({
+      status: 403,
+      diagnostics: expect.objectContaining({
+        phase: 'handshake_rejected',
+        handshakeResponseReceived: true,
+        handshakeStatus: 403,
+        handshakeContentType: 'text/plain',
+        handshakeErrorCategory: 'upstream_rejected_upgrade',
+        connectionOpened: false
+      })
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('https://wss.tradernet.com/');
+  });
+
+  it('classifies a failed upstream handshake without exposing the raw fetch error', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('private network failure details'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchFreedomMarketDepthWithSid('GOOGL', {
+      sid: 'sensitive-sid-value-123456'
+    })).rejects.toMatchObject({
+      status: 502,
+      message: 'TradeNet WebSocket handshake failed before a connection was opened.',
+      diagnostics: expect.objectContaining({
+        phase: 'websocket_handshake_failed',
+        handshakeResponseReceived: false,
+        handshakeErrorCategory: 'network_or_tls_failure',
+        connectionOpened: false
+      })
+    });
+  });
+
+  it('aborts a WebSocket handshake that does not return a response', async () => {
+    vi.useFakeTimers();
+    let requestSignal;
+    const fetchMock = vi.fn((_url, init) => {
+      requestSignal = init.signal;
+      return new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pending = fetchFreedomMarketDepthWithSid('GOOGL', {
+      sid: 'sensitive-sid-value-123456'
+    });
+    const rejected = expect(pending).rejects.toMatchObject({
+      status: 504,
+      diagnostics: expect.objectContaining({
+        phase: 'connection_timeout',
+        handshakeResponseReceived: false,
+        handshakeErrorCategory: 'timeout',
+        connectionOpened: false
+      })
+    });
+    await vi.advanceTimersByTimeAsync(10001);
+    await rejected;
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(requestSignal.aborted).toBe(true);
+  });
+
   it('does not open a WebSocket when TradeNet session storage is missing', async () => {
-    const WebSocketMock = vi.fn();
     const fetchMock = vi.fn();
-    vi.stubGlobal('WebSocket', WebSocketMock);
     vi.stubGlobal('fetch', fetchMock);
     const response = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=AAPL.US', {
       headers: { 'X-App-Auth': 'test-secret' }
@@ -2034,7 +2109,6 @@ describe('Freedom market-depth proxy', () => {
 
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ error: expect.stringContaining('session storage') });
-    expect(WebSocketMock).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
