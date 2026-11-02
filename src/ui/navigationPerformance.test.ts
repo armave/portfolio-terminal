@@ -8,10 +8,13 @@ function readSource(path: string): string {
 describe('navigation performance wiring', () => {
   it('uses an active-view channel in the app shell rather than a full portfolio selector', () => {
     const app = readSource('../App.tsx');
+    const runtime = readSource('../services/portfolioNavigationRuntime.ts');
+    const rootRuntime = readSource('../../app.ts');
     const store = readSource('../store/portfolioStore.ts');
     expect(app).toContain('const activeDeskView = useActiveView();');
-    expect(app).toContain('shouldRefreshQuotesWhenEnteringBalance(previousDeskView, activeDeskView)');
-    expect(app).toContain("emitUiEvent('portfolio:refresh-live-prices'");
+    expect(runtime).toContain('shouldRefreshQuotesWhenEnteringBalance');
+    expect(runtime).toContain('dependencies.refreshLivePrices().catch(() => undefined)');
+    expect(rootRuntime).toContain('getActiveView: () => portfolioStore.getState().activeView');
     expect(app).toContain('const hasMarginPositions = usePortfolioSelector((state) => Object.keys(state.positions || {}).length > 0);');
     expect(app).not.toContain('const portfolioSnapshot = usePortfolio();');
     expect(app).not.toContain('deskLoadingView');

@@ -1761,6 +1761,7 @@ function bindStartupActions() {
   portfolioStartupLifecycleRuntime.bind();
   bindPortfolioNavigationRuntime({
     getAccountRole: () => currentAccountRole,
+    getActiveView: () => portfolioStore.getState().activeView,
     setActiveView,
     refreshLivePrices: () => refreshAllLivePrices(true)
   });

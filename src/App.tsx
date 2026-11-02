@@ -23,7 +23,6 @@ import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerData
 import { createLatestRequestGuard } from './utils/requestGeneration';
 import { getMatchingMarginIntelligenceState } from './features/ai/marginIntelligenceState';
 import { createSessionIdentityGuard } from './utils/sessionIdentityGuard';
-import { shouldRefreshQuotesWhenEnteringBalance } from './ui/tabNavigation';
 
 
 const MemoTickerTabs = memo(TickerTabs);
@@ -76,7 +75,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     [accountSession?.identity, accountSession?.generation]
   );
   const activeDeskView = useActiveView();
-  const previousDeskViewRef = useRef(activeDeskView);
   const hasMarginPositions = usePortfolioSelector((state) => Object.keys(state.positions || {}).length > 0);
   const guestHistorySnapshot = usePortfolioSelector(
     (state) => ({
@@ -415,15 +413,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   }, [currentUser?.id, currentUser?.role]);
 
   useEffect(() => {
-    const previousDeskView = previousDeskViewRef.current;
-    previousDeskViewRef.current = activeDeskView;
-
-    // Start refreshes from the normalized app route, not just a particular nav button.
-    // This covers every path into Balance while avoiding duplicate work during startup.
-    if (!startupState.visible && shouldRefreshQuotesWhenEnteringBalance(previousDeskView, activeDeskView)) {
-      emitUiEvent('portfolio:refresh-live-prices', { resolve: () => {} });
-    }
-
     if (currentUser && activeDeskView === 'GUEST_HISTORY' && !permissions.canViewGuestTrancheHistory) {
       emitUiEvent('portfolio:set-active-view', { view: currentUser?.role === 'admin' ? 'COMBINED' : 'BALANCE' });
       return;
@@ -436,7 +425,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     if (activeDeskView === 'GUEST_HISTORY' && permissions.canViewGuestTrancheHistory) setHasOpenedGuestHistory(true);
     if (activeDeskView === 'CASH_CUSHION' || activeDeskView === 'BALANCE') setHasOpenedCashCushion(true);
     if (activeDeskView === 'SETTINGS') setHasOpenedSettings(true);
-  }, [activeDeskView, startupState.visible, currentUser?.role, permissions.canViewClosedHistory, permissions.canViewGuestTrancheHistory]);
+  }, [activeDeskView, currentUser?.role, permissions.canViewClosedHistory, permissions.canViewGuestTrancheHistory]);
 
   // Broker data reads are session-bound in the broker data runtime. App remains
   // the single owner of portfolio state and injects its account/session boundary.
