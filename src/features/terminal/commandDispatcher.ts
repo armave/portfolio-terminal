@@ -306,7 +306,9 @@ export class CommandDispatcher {
         const manualPrice = cleanNumber(quoteMatch[2]);
 
         if (!isNaN(manualPrice) && manualPrice > 0) {
-          portfolioStore.updatePrice(sym, manualPrice);
+          if (!portfolioStore.updatePrice(sym, manualPrice)) {
+            throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
+          }
           return {
             text: `${sym} manually marked at $${manualPrice.toFixed(2)}`,
             type: 'res',

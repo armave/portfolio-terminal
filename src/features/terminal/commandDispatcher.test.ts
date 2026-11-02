@@ -130,6 +130,14 @@ describe('terminal command validation and cash routing', () => {
     expect(result.sideEffect).toEqual({ type: 'SYNC_CLOUD' });
   });
 
+  it('does not report a manual quote update when persistence fails', () => {
+    vi.spyOn(portfolioStore, 'updatePrice').mockReturnValue(false);
+    const result = CommandDispatcher.execute('quote AAPL 195.50');
+    expect(result.type).toBe('err');
+    expect(result.text).toBe(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
+    expect(result.sideEffect).toBeUndefined();
+  });
+
   it('does not report buy success or request a quote when persistence fails', () => {
     vi.spyOn(portfolioStore, 'buyStock').mockReturnValue(false);
     const result = CommandDispatcher.execute('bought 2 AAPL for 100');

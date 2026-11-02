@@ -1802,7 +1802,7 @@ describe('atomic portfolio-store persistence', () => {
     expect(activeViewListener).not.toHaveBeenCalled();
     expect(persistenceErrorListener).toHaveBeenCalledTimes(1);
     expect(persistenceErrorListener).toHaveBeenCalledWith(
-      'Could not save portfolio changes. Previous saved data is unchanged.'
+      'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.'
     );
   });
 
@@ -1830,6 +1830,25 @@ describe('atomic portfolio-store persistence', () => {
     expect(store.getState().balance).toBe(-250);
     expect(listener).toHaveBeenCalledTimes(1);
     expect(storageMock.setItem).not.toHaveBeenCalled();
+  });
+
+  it('returns failed commits for debt, rollover, and broker-assumption mutations', () => {
+    const store = new PortfolioStore();
+    store.setState({
+      balance: -100,
+      lastRolloverTimestamp: Date.parse('2026-11-02T00:00:00.000Z')
+    }, false);
+    const previous = store.getState();
+    storageMock.setItem.mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+
+    expect(store.setMarginDebt(500)).toBe(false);
+    expect(store.setLastRolloverTimestamp(Date.now())).toBe(false);
+    expect(store.applyRollover(550, 50, Date.now(), true)).toBe(false);
+    expect(store.updateAssumptions({ annualBorrowRate: 0.2 })).toBe(false);
+    expect(store.getState()).toBe(previous);
+    expect(store.getState().balance).toBe(-100);
   });
 
   it('does not publish a portfolio update when the closed-history sidecar write fails', () => {

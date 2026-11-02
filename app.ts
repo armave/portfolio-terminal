@@ -85,7 +85,7 @@ import { getTotalPortfolioInvested } from './src/domain/portfolioSelectors';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from './src/domain/brokerAssumptions';
 import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
-import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
+import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';
 import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
@@ -666,11 +666,11 @@ function saveBrokerRuleInputs(values: import('./src/components/SettingsDesk').Br
     commissionRatePct: Number(values.commVolumePct) / 100,
     commissionMin: Number(values.minCommOrder)
   }, TRADERNET_RULES);
+  if (!portfolioStore.updateAssumptions(updatedRules)) return;
   Object.assign(TRADERNET_RULES, updatedRules);
-  portfolioStore.updateAssumptions(updatedRules);
   const nextRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
   if (previousRollover !== nextRollover) {
-    portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
+    if (!portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone))) return;
     saveState(state, pushStateToGist);
   }
   verifyTradernetRulesOnload();
@@ -678,11 +678,11 @@ function saveBrokerRuleInputs(values: import('./src/components/SettingsDesk').Br
 }
 function resetBrokerRules() {
   const previousRollover = `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`;
+  if (!portfolioStore.updateAssumptions(DEFAULT_TRADERNET_RULES)) return;
   Object.assign(TRADERNET_RULES, DEFAULT_TRADERNET_RULES);
-  portfolioStore.updateAssumptions(DEFAULT_TRADERNET_RULES);
   clearBrokerRules();
   if (previousRollover !== `${TRADERNET_RULES.rolloverHour}:${TRADERNET_RULES.rolloverMinute}`) {
-    portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
+    if (!portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(new Date(), TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone))) return;
     saveState(state, pushStateToGist);
   }
   verifyTradernetRulesOnload();
@@ -700,12 +700,12 @@ function verifyTradernetRulesOnload() {
   logTerminal(saveMsg);
 }
 
-function applyOvernightRollover() {
+function applyOvernightRollover(): boolean {
   const now = new Date();
   if (!Number.isFinite(Number(state.lastRolloverTimestamp)) || Number(state.lastRolloverTimestamp) <= 0) {
-    portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(now, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
-    saveState(state, pushStateToGist);
-    return;
+    const initialized = portfolioStore.setLastRolloverTimestamp(getLatestRolloverTimestamp(now, TRADERNET_RULES.rolloverHour, TRADERNET_RULES.rolloverMinute, TRADERNET_RULES.rolloverTimeZone));
+    if (initialized) saveState(state, pushStateToGist);
+    return initialized;
   }
 
   let elapsedCycles = 0;
@@ -732,13 +732,14 @@ function applyOvernightRollover() {
     const totalInvested = getTotalPortfolioInvested(state);
     const recordAsRealized = tickers.length === 0 || totalInvested === 0;
 
-    portfolioStore.applyRollover(compoundedDebt, interestAccrued, now.getTime(), recordAsRealized);
+    if (!portfolioStore.applyRollover(compoundedDebt, interestAccrued, now.getTime(), recordAsRealized)) return false;
     saveState(state, pushStateToGist);
     logTerminal(`[Broker ${String(TRADERNET_RULES.rolloverHour).padStart(2, '0')}:${String(TRADERNET_RULES.rolloverMinute).padStart(2, '0')} Armenia rollover]: Processed ${elapsedCycles} cycle(s). Accrued interest: +${formatUSD(interestAccrued)}. Margin Debt: -${formatUSD(compoundedDebt)}.`);
   } else if (elapsedCycles > 0) {
-    portfolioStore.setLastRolloverTimestamp(now.getTime());
+    if (!portfolioStore.setLastRolloverTimestamp(now.getTime())) return false;
     saveState(state, pushStateToGist);
   }
+  return true;
 }
 
 function setActiveView(view: string) {
@@ -954,7 +955,7 @@ function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
 
   const added = portfolioStore.addCashHolding(symbol, quantity, manualPrice);
   if (!added) {
-    throw new Error('Ticker and a positive share quantity are required.');
+    throw new Error(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
   }
 
   if (Number.isFinite(manualPrice) && manualPrice > 0) {
@@ -973,17 +974,17 @@ function removeCashHolding(ticker: string) {
 
   // Let the store own this state transition; its subscriber updates the runtime
   // state reference after the canonical mutation has been committed.
-  portfolioStore.removeCashStock(symbol);
+  if (!portfolioStore.removeCashStock(symbol)) return null;
   return removed;
 }
 
-function setCurrentBalance(value: number) {
-  portfolioStore.setCashBalance(value);
+function setCurrentBalance(value: number): { balance: number; debt: number } | null {
+  if (!portfolioStore.setCashBalance(value)) return null;
 
-  const state: any = portfolioStore.getState();
+  const current: any = portfolioStore.getState();
   return {
-    balance: state.cashCushion?.freeCash || 0,
-    debt: Math.abs(state.balance || 0)
+    balance: current.cashCushion?.freeCash || 0,
+    debt: Math.abs(current.balance || 0)
   };
 }
 
@@ -1194,7 +1195,10 @@ async function importBackupFile(file: File) {
 // PORTFOLIO ACTIONS (CASH-FIRST ORDER FLOW)
 // ==========================================
 async function applyPortfolioActions(action: PortfolioActionIntent) {
-  applyOvernightRollover();
+  if (!applyOvernightRollover()) {
+    logTerminal('[Error]: Could not save the margin rollover. The portfolio action was not applied.');
+    return;
+  }
   if (action.action === "buy") {
     const ticker = String(action.ticker || '').trim().toUpperCase();
     const shares = Number(action.shares);
@@ -1309,7 +1313,10 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
   else if (action.action === "set_pt") {
     const ticker = (action.ticker ? action.ticker.toUpperCase() : null) || (state.activeView !== "COMBINED" && state.activeView !== "CASH_CUSHION" && state.activeView !== "CLOSED_HISTORY" ? state.activeView : Object.keys(state.positions)[0]);
     if (state.positions[ticker] && Number(action.pt) > 0) {
-      portfolioStore.updateTargetPrice(ticker, Number(action.pt));
+      if (!portfolioStore.updateTargetPrice(ticker, Number(action.pt))) {
+        logTerminal(`[Error]: ${PORTFOLIO_PERSISTENCE_ERROR_MESSAGE}`);
+        return;
+      }
       saveState(state, pushStateToGist);
       logTerminal(`[Target Updated]: ${ticker} PT updated to ${formatUSD(action.pt)}.`);
     }
@@ -1336,12 +1343,20 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
       showToast('Invalid margin debt amount.', 'error');
       return;
     }
-    portfolioStore.setMarginDebt(debt);
+    if (!portfolioStore.setMarginDebt(debt)) {
+      logTerminal(`[Error]: ${PORTFOLIO_PERSISTENCE_ERROR_MESSAGE}`);
+      return;
+    }
     saveState(state, pushStateToGist);
     logTerminal(`[Margin Synced]: Total margin balance explicitly set to -${formatUSD(Math.abs(state.balance))}.`);
   }
   else if (action.action === "set_free_cash") {
-    const { balance, debt } = setCurrentBalance(action.amount);
+    const committedBalance = setCurrentBalance(action.amount);
+    if (!committedBalance) {
+      logTerminal(`[Error]: ${PORTFOLIO_PERSISTENCE_ERROR_MESSAGE}`);
+      return;
+    }
+    const { balance, debt } = committedBalance;
     saveState(state, pushStateToGist);
     logTerminal(`[Balance]: Current balance/debt updated. Balance: ${formatUSD(balance)} | Margin debt: -${formatUSD(debt)}.`);
   }
@@ -1350,7 +1365,12 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
     const shares = Number(action.shares);
     const givenPrice = Number(action.price) || 0;
 
-    addCashHolding(ticker, shares, givenPrice);
+    try {
+      addCashHolding(ticker, shares, givenPrice);
+    } catch (error) {
+      logTerminal(`[Error]: ${error instanceof Error ? error.message : PORTFOLIO_PERSISTENCE_ERROR_MESSAGE}`);
+      return;
+    }
     saveState(state, pushStateToGist);
     logTerminal(`[Balance]: Added ${shares} ${ticker} to balance holdings. Syncing online quote...`);
     renderBoard();
@@ -1507,8 +1527,12 @@ async function executeCommand(commandText: string) {
 
   logTerminal(text, true);
 
-  // Ensure any due rollover is reflected in debt before a buy/sell command mutates it.
-  applyOvernightRollover();
+  // Do not run a trade command against stale debt when its rollover could not be saved.
+  if (!applyOvernightRollover()) {
+    logTerminal('[CLI Error]: Could not save the margin rollover. The command was not applied.');
+    showToast(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, 'error');
+    return;
+  }
 
   // 1. Execute via the deterministic dispatcher
   const localResult = CommandDispatcher.execute(text);

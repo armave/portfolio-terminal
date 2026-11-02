@@ -28,7 +28,7 @@ export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
 
 export const PORTFOLIO_PERSISTENCE_ERROR_MESSAGE =
-  'Could not save portfolio changes. Previous saved data is unchanged.';
+  'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.';
 
 function todayIso(): string {
   const d = new Date();
@@ -392,18 +392,21 @@ export class PortfolioStore {
     });
   }
 
-  public updateAssumptions(rules: unknown): void {
-    this.update((state) => {
-      const merged = normalizeBrokerAssumptions(rules, state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS);
-      saveBrokerRules(merged);
-      return { ...state, brokerAssumptions: merged };
+  public updateAssumptions(rules: unknown): boolean {
+    let mergedRules: ReturnType<typeof normalizeBrokerAssumptions> | null = null;
+    const committed = this.update((state) => {
+      mergedRules = normalizeBrokerAssumptions(rules, state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS);
+      return { ...state, brokerAssumptions: mergedRules };
     });
+    if (!committed || !mergedRules) return false;
+    saveBrokerRules(mergedRules);
+    return true;
   }
 
   /** Persist a rollover boundary through the canonical store. */
-  public setLastRolloverTimestamp(timestamp: number): void {
-    if (!Number.isFinite(timestamp) || timestamp <= 0) return;
-    this.update((state) => ({
+  public setLastRolloverTimestamp(timestamp: number): boolean {
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return false;
+    return this.update((state) => ({
       ...state,
       lastRolloverTimestamp: timestamp
     }));
@@ -419,11 +422,11 @@ export class PortfolioStore {
     interestAccrued: number,
     timestamp: number,
     recordAsRealized: boolean
-  ): void {
+  ): boolean {
     if (![compoundedDebt, interestAccrued, timestamp].every(Number.isFinite) ||
-      compoundedDebt < 0 || interestAccrued < 0 || timestamp <= 0) return;
+      compoundedDebt < 0 || interestAccrued < 0 || timestamp <= 0) return false;
 
-    this.update((state) => ({
+    return this.update((state) => ({
       ...state,
       balance: compoundedDebt > 0 ? -compoundedDebt : 0,
       lastRolloverTimestamp: timestamp,
@@ -467,9 +470,11 @@ export class PortfolioStore {
     });
   }
 
-  public setMarginDebt(debtAmount: number): void {
-    const debt = Math.abs(Number(debtAmount) || 0);
-    this.update((state) => ({
+  public setMarginDebt(debtAmount: number): boolean {
+    const amount = Number(debtAmount);
+    if (!Number.isFinite(amount)) return false;
+    const debt = Math.abs(amount);
+    return this.update((state) => ({
       ...state,
       balance: -debt
     }));
