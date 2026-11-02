@@ -581,7 +581,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Untitled news item": "Новость без заголовка",
   "Gemini returned an empty analysis.": "Gemini вернул пустой анализ.",
   "Could not load or save the synced Gemini margin review.": "Не удалось загрузить или сохранить синхронизированный анализ маржинального портфеля Gemini.",
-  "TradeNet live-data session initialization failed": "Не удалось инициализировать сессию получения данных TradeNet в реальном времени",
   "Unable to load TradeNet executed trades": "Не удалось загрузить исполненные сделки TradeNet",
   "Unable to load active TradeNet orders": "Не удалось загрузить активные заявки TradeNet",
   "Something went wrong.": "Что-то пошло не так.",
