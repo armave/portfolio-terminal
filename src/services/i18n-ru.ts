@@ -165,6 +165,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Close news article': 'Закрыть новость',
   'Gemini · Margin Intelligence': 'Gemini · Аналитика маржи',
   'Close': 'Закрыть',
+  'Read-only · No broker orders are changed': 'Только просмотр · заявки брокеру не изменяются',
   'Tick': 'Шаг цены',
   'Bid': 'Покупка',
   'Ask': 'Продажа',
