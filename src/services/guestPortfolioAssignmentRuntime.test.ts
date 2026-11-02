@@ -161,14 +161,34 @@ describe('guest portfolio assignment runtime', () => {
     expect(fixture.dependencies.requireAdmin).toHaveBeenCalledTimes(1);
   });
 
-  it('does not publish while the broker snapshot is absent, stale, or trade history is not ready', async () => {
+  it('does not read guest records or publish outside an administrator session', async () => {
+    const fixture = createFixture();
+    preparePublisher(fixture);
+    fixture.setAccountRole('guest');
+
+    await fixture.runtime.publishGuestPortfolioSnapshots();
+
+    expect(fixture.dependencies.listUsers).not.toHaveBeenCalled();
+    expect(fixture.dependencies.publishBatch).not.toHaveBeenCalled();
+  });
+
+  it('waits for ready broker history and skips missing, stale, or unavailable snapshots', async () => {
     const fixture = createFixture();
     fixture.runtime.setBrokerTradeHistoryLoaded(true);
     await fixture.runtime.publishGuestPortfolioSnapshots();
     expect(fixture.dependencies.listUsers).not.toHaveBeenCalled();
 
     preparePublisher(fixture);
+    fixture.runtime.setBrokerTradeHistoryLoaded(false);
+    await fixture.runtime.publishGuestPortfolioSnapshots();
+    expect(fixture.dependencies.listUsers).not.toHaveBeenCalled();
+
+    fixture.runtime.setBrokerTradeHistoryLoaded(true);
     fixture.state.brokerAccountInfo = { ...fixture.state.brokerAccountInfo!, status: 'stale' };
+    await fixture.runtime.publishGuestPortfolioSnapshots();
+    expect(fixture.dependencies.listUsers).not.toHaveBeenCalled();
+
+    fixture.state.brokerAccountInfo = { ...fixture.state.brokerAccountInfo!, status: 'unavailable' };
     await fixture.runtime.publishGuestPortfolioSnapshots();
     expect(fixture.dependencies.listUsers).not.toHaveBeenCalled();
     expect(fixture.dependencies.publishBatch).not.toHaveBeenCalled();
