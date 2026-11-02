@@ -1419,6 +1419,33 @@ describe('closed-history cloud write serialization', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('does not clear cloud history when a queued full reset becomes stale after an account switch', async () => {
+    let resolveFirstResponse!: (response: Response) => void;
+    const firstResponse = new Promise<Response>((resolve) => { resolveFirstResponse = resolve; });
+    const fetchMock = vi.fn(() => firstResponse);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const secret = 'queued-reset-history-secret';
+    const first = pushCloudHistory({
+      brokerExecutedTrades: [{ id: 'prior-history-trade' }],
+      cashflows: [{ id: 'prior-history-fee' }]
+    }, secret, 0);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    let isCurrent = true;
+    const reset = clearCloudHistory(secret, { isCurrentSession: () => isCurrent });
+    isCurrent = false;
+    resolveFirstResponse(new Response('{}', {
+      status: 200,
+      headers: new Headers({ ETag: '"1"' })
+    }));
+
+    await expect(first).resolves.toBe(true);
+    await expect(reset).resolves.toBe(false);
+    // The queued forced-empty write must stop before its revision GET or POST.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('serializes concurrent history pushes so each reads the revision after the previous write', async () => {
     let revision = 4;
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {

@@ -915,11 +915,14 @@ export function pushCloudHistory(
  * The forced write bypasses the ordinary no-change fingerprint so a previous
  * empty snapshot cannot hide cloud history added by another device later.
  */
-export function clearCloudHistory(secret = getActiveGatewaySecret()): Promise<boolean> {
+export function clearCloudHistory(
+  secret = getActiveGatewaySecret(),
+  options: Pick<SyncOptions, 'isCurrentSession'> = {}
+): Promise<boolean> {
   return enqueueCloudHistoryWrite({
     brokerExecutedTrades: [],
     cashflows: []
-  }, secret, undefined, true);
+  }, secret, undefined, true, options.isCurrentSession);
 }
 
 async function performPushCloudHistory(
