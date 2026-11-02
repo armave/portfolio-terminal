@@ -870,7 +870,7 @@ describe('proxyFetch gateway authentication', () => {
   });
 
   it('rejects empty credentials before making a network request', async () => {
-    vi.spyOn(storage, 'getGatewaySecret').mockReturnValue('');
+    storage.setGatewaySecret('');
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
