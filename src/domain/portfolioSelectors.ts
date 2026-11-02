@@ -44,6 +44,15 @@ export function getMarketInsightsTicker(state?: BoardState | null): string {
   return tickers[0] || '';
 }
 
+/** Guard async analyst-target completions against a changed or missing active ticker. */
+export function isCurrentMarketInsightsTicker(
+  state: BoardState | null | undefined,
+  requestedTicker: string
+): boolean {
+  const normalizedTicker = requestedTicker.trim().toUpperCase();
+  return normalizedTicker.length > 0 && getMarketInsightsTicker(state) === normalizedTicker;
+}
+
 
 export interface PortfolioProjectionInputs {
   gross: number;
