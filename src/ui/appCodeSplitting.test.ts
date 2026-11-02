@@ -16,7 +16,7 @@ describe('on-demand application code splitting', () => {
       ['MarketInsightsPanel', 'MarketInsightsPanel']
     ] as const;
 
-    expect(app).toContain("import { lazy, Suspense } from 'preact/compat';");
+    expect(app).toContain("import { lazy, memo, Suspense } from 'preact/compat';");
     for (const [component, moduleName] of components) {
       expect(app, component).toContain(`const ${component} = lazy(() =>`);
       expect(app, component).toContain(`import('./components/${moduleName}')`);

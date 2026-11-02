@@ -1,10 +1,10 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { decodeHtmlEntities } from '../utils/formatters';
-import { createPortal } from 'preact/compat';
+import { createPortal, memo } from 'preact/compat';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { fetchMarketNews, fetchStocktwitsStream, fetchYahooDeepStockData, type MarketNewsItem, type StocktwitsStream, type YahooDeepStockData } from '../services/api';
 import { normalizeYahooDeepStockData } from '../services/yahooDeepDataContracts';
-import { usePortfolio } from '../store/portfolioStore';
+import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
 import { getMarketInsightsRequestPlan, type MarketInsightsSection } from '../features/quotes/marketInsightsRequestPolicy';
 import { useDialogFocus } from '../ui/dialogFocus';
@@ -92,9 +92,14 @@ function renderStocktwitsBody(body: string) {
   );
 }
 
-export function MarketInsightsPanel() {
+function MarketInsightsPanelView() {
   const portfolio = usePortfolio();
-  const ticker = getMarketInsightsTicker(portfolio);
+  const activeView = useActiveView();
+  const ticker = getMarketInsightsTicker({
+    ...portfolio,
+    activeView,
+    selectedTicker: activeView
+  });
   const [activeSection, setActiveSection] = useState<InsightSection>('news');
   const [deepDataRequest, setDeepDataRequest] = useState<{
     ticker: string;
@@ -750,3 +755,5 @@ export function MarketInsightsPanel() {
     </>
   );
 }
+
+export const MarketInsightsPanel = memo(MarketInsightsPanelView);

@@ -1251,7 +1251,8 @@ function setActiveView(view: string) {
   const normalizedView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED');
   // Desk selection is a per-browser preference. The store persists it locally;
   // a tab switch should not POST the entire shared portfolio to KV.
-  portfolioStore.setState({ activeView: normalizedView });
+  portfolioStore.setActiveView(normalizedView);
+  state = portfolioStore.getState();
   renderBoard();
 }
 

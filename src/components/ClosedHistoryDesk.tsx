@@ -597,7 +597,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   }
 
   return (
-    <section class="desk-content-reveal rounded-xl border-card p-4 space-y-4" aria-label="Trades">
+    <section class="rounded-xl border-card p-4 space-y-4" aria-label="Trades">
       <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
         <div>
           <h2 class="flex items-center gap-2 text-base font-black uppercase tracking-wider text-purple-300">
