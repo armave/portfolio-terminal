@@ -740,11 +740,12 @@ export class PortfolioStore {
   public updateLiveQuote(
     ticker: string,
     quote: { price?: number; currentPrice?: number; quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: Record<string, unknown>; requestStartedAt?: number; requestSequence?: number }
-  ): void {
+  ): boolean {
     const clean = ticker.trim().toUpperCase();
     const price = Number(quote.currentPrice ?? quote.price);
-    if (!clean || !Number.isFinite(price) || price <= 0) return;
+    if (!clean || !Number.isFinite(price) || price <= 0) return false;
 
+    let accepted = false;
     this.update((latestState) => {
       const positions = { ...(latestState.positions || {}) };
       const position = positions[clean];
@@ -772,6 +773,17 @@ export class PortfolioStore {
         ...cashStocks.filter((holding) => holding.ticker.toUpperCase() === clean)
           .map((holding) => Number(holding.quoteRequestSequence) || 0)
       );
+      const latestSourceTimestamp = Math.max(
+        Number(position?.quoteDetails?.sourceTimestamp) || 0,
+        ...cashHoldings.filter((holding) => holding.ticker.toUpperCase() === clean)
+          .map((holding) => Number(holding.quoteDetails?.sourceTimestamp) || 0),
+        ...cashStocks.filter((holding) => holding.ticker.toUpperCase() === clean)
+          .map((holding) => Number(holding.quoteDetails?.sourceTimestamp) || 0),
+        ...(guestPortfolioSnapshot?.tranches || [])
+          .filter((tranche) => tranche.ticker.trim().toUpperCase() === clean)
+          .map((tranche) => Number((tranche as any).quoteDetails?.sourceTimestamp) || 0)
+      );
+      const incomingSourceTimestamp = Number(quote.quoteDetails?.sourceTimestamp) || 0;
 
       // Request start time is the primary ordering signal. The sequence only
       // breaks ties for requests started in the same millisecond; it can reset
@@ -787,6 +799,15 @@ export class PortfolioStore {
           requestSequence < latestRequestSequence;
 
       if (isOlderRequest) {
+        return latestState;
+      }
+      // Request order protects against async races; source time separately
+      // protects against a later response carrying an older market observation.
+      if (
+        incomingSourceTimestamp > 0 &&
+        latestSourceTimestamp > 0 &&
+        incomingSourceTimestamp < latestSourceTimestamp
+      ) {
         return latestState;
       }
       if (
@@ -823,8 +844,11 @@ export class PortfolioStore {
       );
       const updatedCashStocks = cashStocks.map((holding) =>
         holding.ticker.toUpperCase() === clean
-          ? { ...holding, currentPrice: price, quoteRequestStartedAt: requestStartedAt,
-              ...(requestSequence !== undefined ? { quoteRequestSequence: requestSequence } : {}) }
+          ? { ...holding, currentPrice: price, quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
+              quoteRequestStartedAt: requestStartedAt,
+              ...(requestSequence !== undefined ? { quoteRequestSequence: requestSequence } : {}),
+              quoteSource: quote.quoteSource ?? 'Live quote',
+              ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {}) }
           : holding
       );
       // Guest Balance cards read cashCushion.holdings, while the standalone LOTS
@@ -835,7 +859,8 @@ export class PortfolioStore {
           ...guestPortfolioSnapshot,
           tranches: guestPortfolioSnapshot.tranches.map((tranche) =>
             tranche.ticker.trim().toUpperCase() === clean
-              ? { ...tranche, marketPrice: price, marketValue: price * tranche.quantity }
+              ? { ...tranche, marketPrice: price, marketValue: price * tranche.quantity,
+                  ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {}) }
               : tranche
           )
         }
@@ -843,6 +868,7 @@ export class PortfolioStore {
 
       if (!position && !hasMatchingCashHolding && !hasMatchingCashStock && !hasMatchingGuestTranche) return latestState;
 
+      accepted = true;
       return {
         ...latestState,
         positions,
@@ -854,6 +880,7 @@ export class PortfolioStore {
         }
       };
     });
+    return accepted;
   }
 
   public updatePrice(ticker: string, price: number): void {
