@@ -77,45 +77,66 @@ describe('resolveMarketSessionPrice', () => {
 });
 
 describe('resolveMarketSessionChange', () => {
-  it('calculates session change from the regular price or previous close fallback', () => {
+  it('calculates the daily move against previous close during pre-market and after-hours sessions', () => {
     expect(resolveMarketSessionChange({
       currentPrice: 102,
-      regularPrice: 100,
       previousClose: 95,
       suppliedChange: 7,
       marketState: 'PRE'
-    })).toBe(2);
+    })).toBe(7);
 
     expect(resolveMarketSessionChange({
-      currentPrice: 102,
-      regularPrice: undefined,
-      previousClose: 95,
+      currentPrice: 99,
+      previousClose: 100,
+      suppliedChange: -1,
       marketState: 'POST'
-    })).toBe(7);
+    })).toBe(-1);
   });
 
-  it('never returns NaN or Infinity when provider change fields are missing or malformed', () => {
+  it('preserves the regular-session daily move after the market closes without an extended-hours quote', () => {
+    expect(resolveMarketSessionChange({
+      currentPrice: 100,
+      previousClose: 95,
+      suppliedChange: 5,
+      marketState: 'CLOSED'
+    })).toBe(5);
+  });
+
+  it('uses the provider daily change when the previous close is unavailable', () => {
     expect(resolveMarketSessionChange({
       currentPrice: 102,
-      regularPrice: undefined,
+      previousClose: null,
+      suppliedChange: 2,
+      marketState: 'CLOSED'
+    })).toBe(2);
+  });
+
+  it('returns null instead of inventing a zero when change inputs are missing or malformed', () => {
+    expect(resolveMarketSessionChange({
+      currentPrice: 102,
       previousClose: undefined,
       suppliedChange: Number.NaN,
       marketState: 'CLOSED'
-    })).toBe(0);
+    })).toBeNull();
 
     expect(resolveMarketSessionChange({
       currentPrice: 102,
-      regularPrice: Number.POSITIVE_INFINITY,
       previousClose: Number.NaN,
       suppliedChange: Number.POSITIVE_INFINITY,
       marketState: 'REGULAR'
-    })).toBe(0);
+    })).toBeNull();
+
+    expect(resolveMarketSessionChange({
+      currentPrice: Number.POSITIVE_INFINITY,
+      previousClose: 100,
+      suppliedChange: 2,
+      marketState: 'REGULAR'
+    })).toBeNull();
   });
 
   it('preserves a valid provider-supplied regular-session change', () => {
     expect(resolveMarketSessionChange({
       currentPrice: 102,
-      regularPrice: 100,
       previousClose: 95,
       suppliedChange: 3,
       marketState: 'REGULAR'
