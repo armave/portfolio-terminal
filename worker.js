@@ -441,12 +441,17 @@ export function fetchFreedomMarketDepthWithSid(symbol, session) {
         let settled = false;
         let socket;
         let timeout;
+        const abortController = new AbortController();
         const startedAt = Date.now();
         const requestedSymbol = String(symbol || "").trim().toUpperCase();
         const diagnostics = {
             endpoint: "wss.tradernet.com",
             requestedSymbol,
             phase: "connecting",
+            handshakeResponseReceived: false,
+            handshakeStatus: null,
+            handshakeContentType: null,
+            handshakeErrorCategory: null,
             connectionOpened: false,
             subscriptionSent: false,
             subscriptionConfirmed: false,
@@ -476,6 +481,7 @@ export function fetchFreedomMarketDepthWithSid(symbol, session) {
             eventsReceived: [...diagnostics.eventsReceived],
             eventCounts: { ...diagnostics.eventCounts },
             orderBookSymbolsReceived: [...diagnostics.orderBookSymbolsReceived],
+            quoteSymbolsReceived: [...diagnostics.quoteSymbolsReceived],
             elapsedMs: Date.now() - startedAt
         });
 
@@ -521,42 +527,15 @@ export function fetchFreedomMarketDepthWithSid(symbol, session) {
             resolve({ data: result, diagnostics: details });
         };
 
-        timeout = setTimeout(() => {
-            diagnostics.phase = diagnostics.socketErrorObserved
-                ? "websocket_error_timeout"
-                : !diagnostics.connectionOpened
-                    ? "connection_timeout"
-                    : !diagnostics.subscriptionSent
-                        ? "subscription_send_timeout"
-                        : "snapshot_timeout";
-            const error = new Error("TradeNet market-depth request timed out before returning an order book.");
-            error.status = 504;
+        const failHandshake = (message, status, category, phase) => {
+            diagnostics.phase = phase;
+            diagnostics.handshakeErrorCategory = category;
+            const error = new Error(message);
+            error.status = status;
             finish(error);
-        }, 10000);
+        };
 
-        try {
-            const url = new URL("wss://wss.tradernet.com/");
-            url.searchParams.set("SID", session.sid);
-            socket = new WebSocket(url.toString());
-            socket.addEventListener("open", () => {
-                if (settled) return;
-                diagnostics.connectionOpened = true;
-                diagnostics.phase = "sending_subscription";
-                try {
-                    socket.send(JSON.stringify(["orderBook", [requestedSymbol]]));
-                    diagnostics.subscriptionSent = true;
-                    // Quotes are a read-only control probe: they help distinguish an
-                    // unsupported ticker from an order-book-specific feed/permission issue.
-                    socket.send(JSON.stringify(["quotes", [requestedSymbol]]));
-                    diagnostics.quoteSubscriptionSent = true;
-                    diagnostics.phase = "awaiting_order_book";
-                } catch {
-                    diagnostics.phase = "subscription_send_failed";
-                    const error = new Error("TradeNet market-depth subscription could not be sent.");
-                    error.status = 502;
-                    finish(error);
-                }
-            });
+        const attachSocketHandlers = () => {
             socket.addEventListener("message", message => {
                 if (settled) return;
                 diagnostics.messageCount += 1;
@@ -633,11 +612,12 @@ export function fetchFreedomMarketDepthWithSid(symbol, session) {
                     finish(failure);
                 }
             });
+
             socket.addEventListener("error", () => {
-                // Wait for the close event when possible so its code is included in diagnostics.
                 diagnostics.socketErrorObserved = true;
-                if (diagnostics.phase === "awaiting_order_book") diagnostics.phase = "websocket_error";
+                if (diagnostics.phase !== "snapshot_received") diagnostics.phase = "websocket_error";
             });
+
             socket.addEventListener("close", event => {
                 if (settled) return;
                 diagnostics.phase = "connection_closed";
@@ -647,15 +627,110 @@ export function fetchFreedomMarketDepthWithSid(symbol, session) {
                 error.status = event?.code === 1008 ? 401 : 502;
                 finish(error);
             });
-        } catch {
-            diagnostics.phase = "connection_initialization_failed";
-            const error = new Error("Could not initialize the TradeNet production market-depth connection.");
-            error.status = 502;
+        };
+
+        const sendSubscriptions = () => {
+            diagnostics.connectionOpened = true;
+            diagnostics.phase = "sending_subscription";
+            try {
+                socket.send(JSON.stringify(["orderBook", [requestedSymbol]]));
+                diagnostics.subscriptionSent = true;
+                // Quotes are a read-only control probe to distinguish an unsupported
+                // ticker from an order-book-specific feed or permission issue.
+                socket.send(JSON.stringify(["quotes", [requestedSymbol]]));
+                diagnostics.quoteSubscriptionSent = true;
+                diagnostics.phase = "awaiting_order_book";
+            } catch {
+                diagnostics.phase = "subscription_send_failed";
+                const error = new Error("TradeNet market-depth subscription could not be sent.");
+                error.status = 502;
+                finish(error);
+            }
+        };
+
+        timeout = setTimeout(() => {
+            diagnostics.phase = !diagnostics.connectionOpened
+                ? "connection_timeout"
+                : !diagnostics.subscriptionSent
+                    ? "subscription_send_timeout"
+                    : "snapshot_timeout";
+            if (!diagnostics.connectionOpened) {
+                diagnostics.handshakeErrorCategory = "timeout";
+                abortController.abort();
+            }
+            const error = new Error("TradeNet market-depth request timed out before returning an order book.");
+            error.status = 504;
             finish(error);
-        }
+        }, 10000);
+
+        // Cloudflare's fetch-based WebSocket client exposes the HTTP upgrade
+        // response and its status when the upstream rejects the handshake.
+        // Fetch requires an https: URL; the Workers runtime performs the
+        // WebSocket upgrade because the request carries Upgrade: websocket.
+        const url = new URL("https://wss.tradernet.com/");
+        url.searchParams.set("SID", session.sid);
+
+        (async () => {
+            const response = await fetch(url.toString(), {
+                headers: { Upgrade: "websocket" },
+                signal: abortController.signal
+            });
+
+            if (settled) {
+                try { response.webSocket?.close(1000, "Market-depth request already finished"); } catch { /* ignore close races */ }
+                return;
+            }
+
+            diagnostics.handshakeResponseReceived = true;
+            diagnostics.handshakeStatus = Number.isFinite(Number(response.status)) ? Number(response.status) : null;
+            const contentType = response.headers?.get?.("content-type");
+            diagnostics.handshakeContentType = typeof contentType === "string" ? contentType.slice(0, 80) : null;
+            socket = response.webSocket || null;
+
+            if (!socket) {
+                try {
+                    const cancellation = response.body?.cancel();
+                    cancellation?.catch?.(() => {});
+                } catch { /* ignore response cleanup failures */ }
+                const status = diagnostics.handshakeStatus;
+                const isClientRejection = status === 401 || status === 403;
+                failHandshake(
+                    status
+                        ? `TradeNet did not upgrade the WebSocket connection (HTTP ${status}).`
+                        : "TradeNet did not accept the WebSocket upgrade.",
+                    isClientRejection ? status : 502,
+                    "upstream_rejected_upgrade",
+                    "handshake_rejected"
+                );
+                return;
+            }
+
+            attachSocketHandlers();
+            try {
+                socket.accept();
+                sendSubscriptions();
+            } catch {
+                failHandshake(
+                    "TradeNet accepted the upgrade response, but the Worker could not accept the WebSocket.",
+                    502,
+                    "socket_accept_failure",
+                    "websocket_accept_failed"
+                );
+            }
+        })().catch(() => {
+            if (settled) return;
+            const timedOut = abortController.signal.aborted;
+            failHandshake(
+                timedOut
+                    ? "TradeNet WebSocket handshake timed out."
+                    : "TradeNet WebSocket handshake failed before a connection was opened.",
+                timedOut ? 504 : 502,
+                timedOut ? "timeout" : "network_or_tls_failure",
+                timedOut ? "connection_timeout" : "websocket_handshake_failed"
+            );
+        });
     });
 }
-
 /** Fetch one live order-book snapshot from Tradernet's production WebSocket endpoint. */
 async function fetchFreedomMarketDepth(env, symbol) {
     let session = await readFreedomTradeNetSession(env);
