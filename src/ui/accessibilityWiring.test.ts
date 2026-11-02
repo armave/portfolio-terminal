@@ -118,6 +118,9 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain("translateText('Refresh failed; showing the last successful order-book snapshot.', language)");
     expect(source).toContain("const refreshLabel = translateText(error ? 'Retry depth' : 'Refresh depth', language);");
     expect(source).toContain('aria-label={isLoading ? loadingLabel : refreshLabel}');
+    expect(source).toContain("aria-label={translateText('Open market depth for ' + ticker, language)}");
+    expect(source).toContain("translateText('Depth', language)");
+    expect(source).toContain("translateText('Levels', language)");
     expect(source).toContain("translateText('Best bid', language)");
     expect(source).toContain("translateText('Best ask', language)");
     expect(source).toContain('aria-busy={isLoading}');
