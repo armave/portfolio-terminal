@@ -55,13 +55,13 @@ describe('portfolio transaction calculations', () => {
 
   it('normalizes legacy tranche aliases while allocating FIFO quantities', () => {
     const result = allocateFifoSaleTranches([
-      { qty: 0, shares: 2, price: 0, entryPrice: 90, date: '2026-10-01' },
+      { shares: 2, entryPrice: 90, date: '2026-10-01' },
       { qty: 3, price: 110, date: '2026-10-02' }
-    ], 1, 5, 0);
+    ] as unknown as TrancheItem[], 1, 5, 0);
 
     expect(result.soldCostBasis).toBe(90);
     expect(result.remainingTranches).toEqual([
-      { qty: 1, shares: 2, price: 0, entryPrice: 90, date: '2026-10-01' },
+      { shares: 2, entryPrice: 90, date: '2026-10-01', qty: 1 },
       { qty: 3, price: 110, date: '2026-10-02' }
     ]);
   });
