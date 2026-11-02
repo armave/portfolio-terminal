@@ -128,7 +128,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       );
       if (JSON.stringify(resolved) !== JSON.stringify(cloud) && (resolved.brokerExecutedTrades.length || resolved.cashflows.length)) {
         if (!isSessionCurrent()) return;
-        try { await pushCloudHistory(resolved, undefined, undefined, { isCurrentSession }); }
+        try { await pushCloudHistory(resolved, undefined, undefined, { isCurrentSession: isSessionCurrent }); }
         catch (error) {
           if (isSessionCurrent()) console.error('Unable to sync closed history:', error);
         }
@@ -257,10 +257,11 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           const synced = await pushCloudHistory({
             brokerExecutedTrades: brokerExecutionsChanged ? updatedExecutions : brokerExecutions,
             cashflows: cashflowRows
-          }, undefined, undefined, { isCurrentSession });
+          }, undefined, undefined, { isCurrentSession: isSessionCurrent });
           if (!isSessionCurrent()) return false;
           if (!synced) throw new Error('Cloud history did not confirm the update.');
         } catch (error) {
+          if (!isSessionCurrent()) return false;
           console.error('Failed to sync closed-history cashflows and fees:', error);
           if (requireCloudSync) {
             setCashflowSyncMessage(`History was updated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}.`);
@@ -370,7 +371,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           void pushCloudHistory({
             brokerExecutedTrades: normalized,
             cashflows: portfolioStore.getState().cashflows || []
-          }, undefined, undefined, { isCurrentSession }).catch(error => {
+          }, undefined, undefined, { isCurrentSession: isSessionCurrent }).catch(error => {
             if (isSessionCurrent()) console.error('Unable to sync updated broker history:', error);
           });
         }

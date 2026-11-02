@@ -18,6 +18,7 @@ describe('Trades cache-first rendering', () => {
     expect(app).toContain('key={`closed-history-${closedHistorySession?.identity ?? \'none\'}-${closedHistorySession?.generation ?? -1}`}');
     expect(source).toContain('isSessionCurrent = () => true');
     expect(source).toContain('if (!isSessionCurrent() || cashflowSyncStarted.current) return');
+    expect(source).toContain('{ isCurrentSession: isSessionCurrent }');
   });
 
   it('discards delayed cloud-history and cashflow responses after the account session changes', () => {
