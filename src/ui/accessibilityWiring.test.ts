@@ -72,6 +72,8 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('cashHoldingsForQuotes');
     expect(source).toContain('accountBalanceStale: brokerBalanceIsStale');
     expect(source).toContain("translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', getAppLanguage())");
+    expect(source).not.toContain('Provisional valuation');
+    expect(source).not.toContain('Some market quotes or broker account data are stale, delayed, or lack verifiable observation times.');
   });
 
   it('marks the compact admin Balance equity badge as partial when holdings are unpriced', () => {

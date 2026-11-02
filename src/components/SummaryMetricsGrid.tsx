@@ -28,7 +28,7 @@ export function getUsableMarketPrice(value: unknown): number | null {
   return Number.isFinite(price) && price > 0 ? price : null;
 }
 
-function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0, quoteFreshnessText = '' }: {
+function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rules, valuationStatus = 'current', accountBalanceAvailable = true, unpricedHoldings = 0 }: {
   equityPct: number;
   risk: ReturnType<typeof computeMarginRiskDisplay>;
   equityText: string;
@@ -37,7 +37,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
   valuationStatus?: 'current' | 'provisional' | 'incomplete';
   accountBalanceAvailable?: boolean;
   unpricedHoldings?: number;
-  quoteFreshnessText?: string;
 }) {
   if (valuationStatus === 'incomplete') {
     return (
@@ -76,15 +75,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <div><span class="margin-risk-label">ACCOUNT EQUITY HEALTH</span><strong class="margin-risk-equity">{equityText}</strong></div>
         <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
       </div>
-      {valuationStatus === 'provisional' && (
-        <div class="mt-2 rounded border border-amber-500/30 bg-amber-500/5 px-2.5 py-2 text-xs text-amber-200" role="status">
-          <strong>{translateText('Provisional valuation', getAppLanguage())}</strong>
-          <p class="mt-1 leading-relaxed">
-            {translateText('Some market quotes or broker account data are stale, delayed, or lack verifiable observation times. Treat margin-risk figures as provisional and refresh data before relying on them.', getAppLanguage())}
-          </p>
-          {quoteFreshnessText && <p class="mt-1 text-[10px] text-amber-100/80">{quoteFreshnessText}</p>}
-        </div>
-      )}
       <div class="margin-risk-meter" role="progressbar" aria-label="Account equity percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth}>
         <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, 40 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
         <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
@@ -469,11 +459,6 @@ function SummaryMetricsGridView() {
       );
     const brokerBalanceIsStale = state.brokerAccountInfo?.status === 'stale' ||
       (state.brokerAccountInfo?.loaded === true && !hasCurrentBrokerUsdBalance);
-    const brokerBalanceStatusText = state.brokerAccountInfo?.status === 'stale'
-      ? translateText('Broker account snapshot is stale', getAppLanguage())
-      : state.brokerAccountInfo?.loaded === true && !hasCurrentBrokerUsdBalance
-        ? translateText('Broker USD balance is unavailable in the latest snapshot', getAppLanguage())
-        : '';
     const valuationStatus = getPortfolioValuationReliability({
       accountBalanceAvailable: valuation.accountBalanceAvailable,
       accountBalanceStale: brokerBalanceIsStale,
@@ -483,10 +468,6 @@ function SummaryMetricsGridView() {
       unknownQuotes: valuationQuoteSummary.unknown,
       unavailableQuotes: valuationQuoteSummary.unavailable
     });
-    const valuationQuoteFreshnessText = [
-      formatQuoteFreshnessSummary(valuationQuoteSummary),
-      brokerBalanceStatusText
-    ].filter(Boolean).join(' · ');
     const totalAccountEquity = valuation.equity;
     const totalAccountAssets = valuation.totalHoldingsValue + valuation.cashBalance;
     const equityPct = valuation.accountBalanceAvailable && totalAccountAssets > 0
@@ -566,7 +547,6 @@ function SummaryMetricsGridView() {
         valuationStatus={valuationStatus}
         accountBalanceAvailable={valuation.accountBalanceAvailable}
         unpricedHoldings={valuation.unpricedHoldings}
-        quoteFreshnessText={valuationQuoteFreshnessText}
       />
       </>
     );
@@ -685,11 +665,6 @@ function SummaryMetricsGridView() {
     );
   const brokerBalanceIsStale = state.brokerAccountInfo?.status === 'stale' ||
     (state.brokerAccountInfo?.loaded === true && !hasCurrentBrokerUsdBalance);
-  const brokerBalanceStatusText = state.brokerAccountInfo?.status === 'stale'
-    ? translateText('Broker account snapshot is stale', getAppLanguage())
-    : state.brokerAccountInfo?.loaded === true && !hasCurrentBrokerUsdBalance
-      ? translateText('Broker USD balance is unavailable in the latest snapshot', getAppLanguage())
-      : '';
   const positionValuationStatus = getPortfolioValuationReliability({
     accountBalanceAvailable,
     accountBalanceStale: brokerBalanceIsStale,
@@ -699,10 +674,6 @@ function SummaryMetricsGridView() {
     unknownQuotes: positionQuoteSummary.unknown,
     unavailableQuotes: positionQuoteSummary.unavailable
   });
-  const positionQuoteFreshnessText = [
-    formatQuoteFreshnessSummary(positionQuoteSummary),
-    brokerBalanceStatusText
-  ].filter(Boolean).join(' · ');
   const positionAssets = currentMktVal + allocatedCushion;
   const positionEquity = positionAssets - allocatedDebt;
   const equityPct = accountBalanceAvailable && positionAssets > 0
@@ -806,7 +777,6 @@ function SummaryMetricsGridView() {
         valuationStatus={positionValuationStatus}
         accountBalanceAvailable={accountBalanceAvailable}
         unpricedHoldings={positionUnpricedHoldingCount}
-        quoteFreshnessText={positionQuoteFreshnessText}
       />
     </>
   );
