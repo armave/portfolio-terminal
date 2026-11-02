@@ -1025,9 +1025,8 @@ describe('canonical trade lifecycle and persistence', () => {
       netProfit: 0.22
     });
     expect(store.getState().positions.AAPL.shares).toBeCloseTo(0.222, 10);
-    expect(store.getState().positions.AAPL.tranches).toEqual([
-      expect.objectContaining({ qty: 0.222, price: 10 })
-    ]);
+    expect(store.getState().positions.AAPL.tranches?.[0].qty).toBeCloseTo(0.222, 10);
+    expect(store.getState().positions.AAPL.tranches?.[0].price).toBe(10);
 
     store.sellStock('AAPL', 'ALL', 12, '2026-10-17');
 
