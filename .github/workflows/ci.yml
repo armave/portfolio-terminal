@@ -17,13 +17,13 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -37,6 +37,24 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Build production site
+        run: npm run build
+
+      - name: Install browser smoke-test runner
+        run: npm install --no-save --package-lock=false --no-audit --no-fund playwright@1.56.1
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-1.56.1-chromium
+
+      - name: Install Chromium for browser smoke test
+        run: npx playwright install --with-deps chromium
+
+      - name: Smoke-test the production app in a browser
+        run: node scripts/browser-smoke.mjs
+
       - name: Validate dead code
         run: npm run validate:dead-code
 
@@ -45,5 +63,3 @@ jobs:
       - name: Audit production dependency surface
         run: npm run audit:production
 
-      - name: Build production site
-        run: npm run build
