@@ -43,7 +43,7 @@ export function createFreedomBrokerTransportRuntime(
   const fetchFreedomTradeNetActiveOrders = (): Promise<unknown> =>
     dependencies.proxyFetch('freedom-orders', { active_only: 1 }, { cache: 'no-store' });
 
-  const fetchFreedomTradeNetMarketDepth = (ticker: string): Promise<unknown> => {
+  const fetchFreedomTradeNetMarketDepth = async (ticker: string): Promise<unknown> => {
     const symbol = String(ticker || '').trim().toUpperCase();
     if (!/^[A-Z0-9.^=-]{1,20}$/.test(symbol)) throw new Error('A valid ticker is required to load market depth.');
     return dependencies.proxyFetch('freedom-market-depth', { symbol }, { cache: 'no-store' });
