@@ -191,7 +191,7 @@ export function calculateSaleAccounting(input: SaleAccountingInput): SaleAccount
 
   let positionMarginInterest = 0;
   try {
-    positionMarginInterest = calculateMarginInterest(tranches, {
+    positionMarginInterest = calculateMarginInterest([...tranches], {
       dailyRate,
       marginDebt: allocatedDebt,
       totalDebt,
