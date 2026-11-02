@@ -22,7 +22,6 @@ The Worker still requires the existing `GATEWAY_SECRET` for all app requests. Af
 - `freedom-quote`: requests a quote for one symbol.
 - `freedom-news`: requests company news for one symbol.
 - `freedom-history`: requests daily historical data for one symbol.
-- `freedom-market-depth`: opens a read-only TradeNet WebSocket subscription and returns the first full order-book snapshot for one symbol.
 
 The browser cannot supply an arbitrary TradeNet command. The Worker chooses from a fixed allowlist and signs requests server-side. No order-placement command is exposed.
 
@@ -35,13 +34,6 @@ Symbols without an explicit exchange suffix are mapped to `.US`; symbols already
 The Worker regression test verifies the API-key v2 request URL, parameter-only JSON body, and HMAC signature; the frontend unit test covers the documented quote fields. The Worker deployment workflow also watches the shared TradeNet adapter file so changes to the imported signing/request helper are deployed. A successful response against the configured, authorized Freedom Broker Armenia account is still required to validate account entitlement and live symbol coverage. If Freedom quote retrieval fails, Yahoo remains a concurrent quote source and Finnhub/Twelve Data remain the fallback path. If Freedom news is unavailable or returns no recognized stories, the existing Finnhub news path is used.
 
 The target-price, analyst-consensus, detailed fundamentals, and earnings-estimate integrations are intentionally unchanged; this change does not claim those fields are available through Tradernet.
-
-
-## Market depth
-
-The modal is available from a selected margin-position page and Balance holdings. The Worker authenticates the TradeNet Socket.IO session with the existing `FREEDOM_PUBLIC_KEY` and `FREEDOM_PRIVATE_KEY` using the API-key `getAuthInfo` challenge described in TradeNet's official SDK example. The private key and signature stay server-side. Demo or unverified account modes are rejected before order-book data is returned.
-
-The app requests a fresh snapshot when the modal opens or the user presses Refresh. It displays the first full order-book frame, with bids and asks sorted best-price first. No order placement, cancellation, or other trading command is exposed. This is a snapshot, not a permanently connected streaming widget.
 
 
 ## Market-depth diagnostics
