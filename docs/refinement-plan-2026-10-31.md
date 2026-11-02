@@ -464,3 +464,26 @@ Client-side Market Depth presentation, accessibility labels and Russian localiza
 
 - [ ] Exact-head Pull Request CI and Validate workflows pass typecheck, full tests, production build, dead-code validation and production dependency audit.
 - [ ] Verify English and Russian dialog text, accessible names, loading, retry and stale-warning states in a real browser.
+
+
+## Stage 14 — Ticker-scope the open News article dialog (2026-11-02)
+
+**Finding**
+
+The News, Stocktwits, and Yahoo deep-data results are scoped to the selected ticker, but the selected article dialog stored only the article object. If the active portfolio ticker changed while an article dialog was open, the modal could continue showing an article belonging to the previous symbol.
+
+**Implementation**
+
+- [x] Store the ticker with the selected article and render the dialog only when it matches the active ticker.
+- [x] Deactivate the dialog immediately on a ticker mismatch and clear the retained article selection when the ticker changes.
+- [x] Preserve the existing dialog focus trap, Escape handling, close behavior, and focus-restoration hook.
+- [x] Add a regression source-wiring test for ticker-scoped article rendering and selection cleanup.
+
+**Scope**
+
+Client-side Market Insights dialog state only. No News provider requests, Stocktwits/Yahoo requests, broker behavior, portfolio state, financial calculations, persisted schemas, authorization, or dependencies changed.
+
+**Validation**
+
+- [ ] Exact-head Pull Request CI and Validate workflows pass typecheck, all tests, production build, dead-code validation and dependency security audit.
+- [ ] Verify the open article dialog closes and focus is restored safely after a ticker change in a real browser.

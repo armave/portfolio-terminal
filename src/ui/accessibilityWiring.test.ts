@@ -16,7 +16,7 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('document.body');
     expect(source).toContain('news-article-content min-h-0 flex-1');
     expect(source).toContain('useDialogFocus(newsDialogRef, {');
-    expect(source).toContain('active: selectedNews !== null');
+    expect(source).toContain('active: currentSelectedNews !== null');
     expect(source).toContain('initialFocusRef: newsCloseButtonRef');
     expect(source).toContain('restoreFocusRef: newsTriggerRef');
     expect(source).toContain('onEscape: closeNewsDialog');
