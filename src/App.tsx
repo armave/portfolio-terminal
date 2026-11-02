@@ -796,7 +796,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           </div>}
 
           {/* Keep the command console available on both Margin and Cash desks. */}
-          {permissions.canUseTerminal && !["BALANCE", "GUEST_HISTORY"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
+          {permissions.canUseTerminal && !["CASH_CUSHION", "BALANCE", "GUEST_HISTORY"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
             <div
               id="tradingConsoleCard"
               class={"desk-view-transition trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
