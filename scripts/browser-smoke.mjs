@@ -433,7 +433,10 @@ try {
   // Fail the broker account snapshot once; executions, active orders, quotes
   // and cloud sync should still complete and report a partial-success warning.
   worker.failNextBrokerAccount();
+  worker.failNextStateConflict();
   const previousBrokerFailures = worker.brokerAccountFailures();
+  const previousConflicts = worker.stateConflictCount();
+  const previousStateWrites = worker.count('POST', '/api/state');
   const syncButton = page.locator('#syncPortfolioButton');
   await syncButton.waitFor({ state: 'visible', timeout: 20_000 });
   await syncButton.click();
@@ -441,25 +444,18 @@ try {
     () => worker.brokerAccountFailures() > previousBrokerFailures,
     'one-shot TradeNet account-info failure'
   );
-  await page.getByText('Portfolio sync completed with issues. Check the activity log.', { exact: true })
-    .waitFor({ state: 'visible', timeout: 20_000 });
+  await waitForCondition(
+    () => worker.count('POST', '/api/state') > previousStateWrites,
+    'manual sync cloud push despite broker account failure'
+  );
   if (worker.countAction('freedom-trades') < 2 || worker.countAction('freedom-orders') < 2) {
     throw new Error('Partial broker failure prevented other TradeNet sources from refreshing.');
   }
-
-  // A single 412 response proves the manual sync preserves cloud revision safety.
-  worker.failNextStateConflict();
-  const previousConflicts = worker.stateConflictCount();
-  await page.waitForFunction(() => {
-    const button = document.querySelector('#syncPortfolioButton');
-    return Boolean(button && !button.disabled);
-  }, null, { timeout: 20_000 });
-  await syncButton.click();
   await waitForCondition(
     () => worker.stateConflictCount() > previousConflicts,
     'cloud state revision conflict response'
   );
-  await page.getByText(/Cloud push failed: Cloud revision conflict/i)
+  await page.getByRole('alert').filter({ hasText: 'Cloud push failed: Cloud revision conflict.' })
     .waitFor({ state: 'visible', timeout: 20_000 });
 
   // Export the actual browser snapshot, reject malformed JSON, restore the valid
