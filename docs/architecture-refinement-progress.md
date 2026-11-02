@@ -124,7 +124,8 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Preserve incremental execution-history baselines, fee-allocation recovery, and bounded-page merging.
 - [x] Preserve stale-session rejection and broker refresh/error events.
 - [x] Add focused Vitest coverage for account, trade-history, and active-order reads.
-- [ ] Validate current PR head with typecheck, Vitest, build, dead-code validation, dependency audits, and production browser smoke.
+- [x] Validation on final PR head `4e173d2c7c4f0ad449f724d4a5eea4d69317195e`: 1,015 tests across 95 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41422557776) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41422557677).
+- [x] Production-only dependency audit: 0 vulnerabilities. Full dependency tree: 9 low/moderate advisories (2 low, 7 moderate), unresolved.
 - [ ] Review and merge.
 
 ## Remaining architecture work
