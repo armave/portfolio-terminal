@@ -102,10 +102,14 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Preserve the first-account setup rule that retains the legacy Gateway Secret until administrator bootstrap.
 - [x] Preserve the rule that an unresolved identity never renders a cached administrator workspace.
 - [x] Extract fresh guest assignment IDs and deterministic legacy assignment IDs into a tested domain helper.
+- [x] Extract authenticated `startApp` orchestration into `portfolioAuthenticatedStartupRuntime.ts`, preserving admin/guest workspace selection, cloud-pull and rollover order, and role-specific refresh settings.
+- [x] Preserve guest Balance navigation before and after initial quote refresh.
+- [x] Preserve initial quote refresh gating, analyst-consensus refresh, and pending startup cloud-write recovery.
+- [x] Add Vitest coverage for administrator, guest, and unauthenticated startup sequences and delayed quote completion.
 - [x] Move authenticated `startApp` orchestration behind a typed adapter while keeping account identity, storage, cloud sync, quote providers, and portfolio state operations injected.
 - [x] Add Vitest coverage for admin, guest, unauthenticated startup ordering and quote-refresh/cloud-write completion sequencing.
-- [x] Exact-head validation on `4ac5200e594b5d980b58fe211f595677fa7ddc9b`: 1,003 tests across 93 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed.
-- [x] [Validate run 41420114028](https://github.com/armave/portfolio-terminal/actions/runs/41420114028) and [Pull Request CI run 41420113643](https://github.com/armave/portfolio-terminal/actions/runs/41420113643) both passed all steps.
+- [x] Exact-head validation on implementation commit `7f56f493ad1cbd5c4195b372c35dae9ad7b637a1`: 1,007 tests across 94 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed.
+- [x] [Validate run 41420700536](https://github.com/armave/portfolio-terminal/actions/runs/41420700536) and [Pull Request CI run 41420700654](https://github.com/armave/portfolio-terminal/actions/runs/41420700654) both passed all steps.
 - [x] Production-only dependency audit: 0 vulnerabilities. Full dependency tree: 9 low/moderate advisories (2 low, 7 moderate), unresolved and not represented as fixed.
 - [ ] Review and merge.
 
