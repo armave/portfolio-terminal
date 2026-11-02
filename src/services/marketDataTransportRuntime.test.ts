@@ -43,6 +43,7 @@ describe('market data transport runtime', () => {
     await expect(runtime.fetchYahooQuoteData('AAPL')).resolves.toMatchObject({ price: { current: 1 } });
     await expect(runtime.fetchYahooQuoteData('AAPL', true)).resolves.toMatchObject({ price: { current: 2 } });
     expect(proxyFetch).toHaveBeenCalledTimes(2);
+    expect(proxyFetch).toHaveBeenNthCalledWith(2, 'quote', { symbol: 'AAPL' }, { cache: 'no-store' });
   });
 
   it('returns an explicit symbol error for partial batch responses', async () => {
