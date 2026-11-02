@@ -2766,7 +2766,7 @@ summary:focus-visible {
   }
 }
 
-/* Workspace navigation: scroll on wide screens and wrap every destination on compact screens. */
+/* Mobile workspace navigation wraps without hiding destinations. */
 #tickerTabs {
   display: flex;
   flex-wrap: nowrap;
