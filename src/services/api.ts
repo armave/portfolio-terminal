@@ -109,11 +109,11 @@ const cloudStateSyncRuntime = createCloudStateSyncRuntime({
   decryptCloudPayload,
   readCloudRevision,
   revisionCoordinator: cloudRevisionCoordinator,
-  processRollovers,
-  loadSavedState,
-  loadSavedHistory,
-  saveState,
-  normalizeFreedomTrades
+  processRollovers: (state) => processRollovers(state),
+  loadSavedState: (fallback) => loadSavedState(fallback),
+  loadSavedHistory: () => loadSavedHistory(),
+  saveState: (state) => saveState(state),
+  normalizeFreedomTrades: (trades) => normalizeFreedomTrades(trades)
 });
 
 export const pullCloudState = cloudStateSyncRuntime.pullCloudState;
