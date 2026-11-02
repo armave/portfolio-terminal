@@ -88,6 +88,14 @@ describe('Balance cache-first rendering wiring', () => {
     expect(deskSource).toContain('brokerExecutionHistoryRef.current.trades');
   });
 
+  it('isolates Balance reducer and warning state to the authenticated account session', () => {
+    expect(appSource).toContain('const accountSession = brokerSessionIdentityRef.current.capture()');
+    expect(appSource).toContain('key={`balance-${accountSession?.identity ?? \'none\'}-${accountSession?.generation ?? -1}`}');
+    expect(deskSource).toContain('}, [shouldReadBrokerHistory]);');
+    expect(deskSource).toContain('isAdmin && (balanceSync.status === \'stale\' || balanceSync.status === \'error\')');
+    expect(deskSource).toContain('shouldReadBrokerHistory && (brokerExecutionHistory.status === \'stale\' || brokerExecutionHistory.status === \'error\')');
+  });
+
   it('refreshes the full Balance snapshot without a date cursor', () => {
     const accountLoaderStart = appSource.indexOf('const loadFreedomAccount');
     const tradesLoaderStart = appSource.indexOf('const loadExecutedTrades', accountLoaderStart);

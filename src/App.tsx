@@ -59,9 +59,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const previousCurrentUserRef = useRef<AuthUser | null>(null);
   const brokerSessionIdentityRef = useRef(createSessionIdentityGuard(null));
   brokerSessionIdentityRef.current.setIdentity(currentUser ? `${currentUser.role}:${currentUser.id}` : null);
-  const closedHistorySession = brokerSessionIdentityRef.current.capture();
-  const isClosedHistorySessionCurrent = () =>
-    closedHistorySession !== null && brokerSessionIdentityRef.current.isCurrent(closedHistorySession);
+  const accountSession = brokerSessionIdentityRef.current.capture();
+  const isAccountSessionCurrent = () =>
+    accountSession !== null && brokerSessionIdentityRef.current.isCurrent(accountSession);
   const activeDeskView = usePortfolioSelector(resolveActiveView);
   const portfolioSnapshot = usePortfolio();
   const emptyStateVisible = Object.keys(portfolioSnapshot.positions || {}).length === 0 && activeDeskView === 'COMBINED';
@@ -725,7 +725,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           {/* Cash Cushion Management Panel */}
           <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>
             {hasOpenedCashCushion
-              ? <div class="desk-content-reveal"><CashCushionDesk showActiveTranches={permissions.canViewActiveTranches} isAdmin={permissions.isAdmin} guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
+              ? <div class="desk-content-reveal"><CashCushionDesk
+                  key={`balance-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
+                  showActiveTranches={permissions.canViewActiveTranches}
+                  isAdmin={permissions.isAdmin}
+                  guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined}
+                /></div>
               : <DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}
           </div>
 
@@ -762,9 +767,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       >
         {permissions.canViewClosedHistory && (hasOpenedClosedHistory
           ? <div class="desk-content-reveal"><ClosedHistoryDesk
-              key={`closed-history-${closedHistorySession?.identity ?? 'none'}-${closedHistorySession?.generation ?? -1}`}
+              key={`closed-history-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
               accountId={currentUser?.id || ''}
-              isSessionCurrent={isClosedHistorySessionCurrent}
+              isSessionCurrent={isAccountSessionCurrent}
             /></div>
           : <DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />)}
       </div>
