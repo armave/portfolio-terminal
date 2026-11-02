@@ -285,6 +285,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   const syncCashflowsFromFreedom = async () => {
     if (!isSessionCurrent() || cashflowSyncStarted.current) return;
     cashflowSyncStarted.current = true;
+    let completed = false;
     try {
       const hasCompleteBaseline = hasFreedomCashflowHistoryBaseline(accountId);
       const fromDate = hasCompleteBaseline ? cashflowSyncStartDate.current : undefined;
@@ -299,6 +300,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       const saved = await processCashflowRows(mergedRows, true);
       if (!saved || !isSessionCurrent()) return;
       if (!hasCompleteBaseline) markFreedomCashflowHistoryBaseline(accountId);
+      completed = true;
 
     } catch (error) {
       if (!isSessionCurrent()) return;
@@ -306,8 +308,20 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       setCashflowSyncMessage(`Automatic Freedom cashflow sync failed: ${detail}`);
       console.warn('Automatic Freedom cashflow sync failed:', detail);
     } finally {
-      if (isSessionCurrent()) setCashflowSyncReady(true);
+      if (isSessionCurrent()) {
+        // A failed request or local/cloud persistence failure must be retryable
+        // without leaving Trades or signing out and back in.
+        if (!completed) cashflowSyncStarted.current = false;
+        setCashflowSyncReady(true);
+      }
     }
+  };
+
+  const retryCashflowSync = () => {
+    if (!isSessionCurrent() || cashflowSyncStarted.current) return;
+    setCashflowSyncMessage('');
+    setCashflowSyncReady(false);
+    void syncCashflowsFromFreedom();
   };
 
   useEffect(() => {
@@ -625,7 +639,14 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         </div>
       </div>
 
-      {cashflowSyncMessage && <p role="alert" class="animate-in fade-in slide-in-from-top-2 duration-200 rounded border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-200 transition-all">{cashflowSyncMessage}</p>}
+      {cashflowSyncMessage && (
+        <div role="alert" class="flex flex-col gap-2 rounded border border-rose-900/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-200 sm:flex-row sm:items-center sm:justify-between">
+          <span>{cashflowSyncMessage}</span>
+          <button type="button" onClick={retryCashflowSync} disabled={cashflowSyncStarted.current} class="self-start rounded border border-rose-700/70 px-2.5 py-1.5 font-semibold text-rose-100 transition hover:bg-rose-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-300 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto">
+            {cashflowSyncStarted.current ? translateText('Retrying…') : translateText('Retry cashflow sync')}
+          </button>
+        </div>
+      )}
 
       {brokerTradesError && trades.length > 0 && (
         <div role="alert" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
