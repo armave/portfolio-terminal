@@ -1061,9 +1061,19 @@ async function syncCloudState(mode = 'push') {
 }
 
 async function resetToBlankState(): Promise<void> {
+  const resetSession = currentAccountSessionGuard.capture();
+  const resetSecret = getGatewaySecret();
+  const isResetSessionCurrent = () =>
+    currentAccountRole === 'admin' &&
+    resetSession !== null &&
+    currentAccountSessionGuard.isCurrent(resetSession) &&
+    getGatewaySecret() === resetSecret;
+  if (!isResetSessionCurrent()) return;
+
   if (!confirm(translateText("Reset the terminal to a blank slate? This clears saved portfolio and history data locally and in KV cloud. It does not delete TradeNet records held by the broker; those read-only records may reappear when broker history is refreshed."))) {
     return;
   }
+  if (!isResetSessionCurrent()) return;
 
   const previousState = portfolioStore.getState();
   let previousDeviceActiveView: string | null = null;
@@ -1107,12 +1117,14 @@ async function resetToBlankState(): Promise<void> {
   logTerminal("[System]: Portfolio reset to a clean blank slate.");
 
   try {
-    const historyCleared = await clearCloudHistory();
+    const historyCleared = await clearCloudHistory(resetSecret, { isCurrentSession: isResetSessionCurrent });
+    if (!isResetSessionCurrent()) return;
     if (!historyCleared) {
       throw new Error("The cloud history reset was not confirmed. Verify cloud access and retry.");
     }
     logTerminal("[System]: Closed trade history cleared from KV cloud.");
   } catch (error) {
+    if (!isResetSessionCurrent()) return;
     const detail = error instanceof Error ? error.message : "Unknown cloud history error.";
     console.error("Unable to clear closed history from KV cloud:", error);
     showToast(
