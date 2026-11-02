@@ -2443,7 +2443,6 @@ function bindStartupActions() {
     void syncCloudState('pull');
   });
   addUiEventListener('settings:change-refresh-interval', (event) => {
-    const intervalMs = Number(event.detail.intervalMs);
     const normalizedIntervalMs = setQuoteRefreshInterval(event.detail.intervalMs);
     emitUiEvent('settings:refresh-interval-changed', { intervalMs: normalizedIntervalMs });
     if (event.detail.refreshNow && normalizedIntervalMs > 0) {
