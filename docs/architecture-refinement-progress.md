@@ -1,8 +1,8 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Startup lifecycle runtime extraction  
-**Base:** `6aa70eafb05ed5627072aae0a6d5d36f2f6f4988`
+**Current work:** Remaining application startup orchestration and API facade decomposition  
+**Base:** `abe430d91482b25666bba01bc622268a79ba6feb`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
@@ -21,6 +21,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Merge the authenticated session-runtime extraction in [PR #247](https://github.com/armave/portfolio-terminal/pull/247).
 - [x] Merge the credential and account-switch runtime extraction in [PR #248](https://github.com/armave/portfolio-terminal/pull/248).
 - [x] Merge session-bound guest snapshot hydration in [PR #249](https://github.com/armave/portfolio-terminal/pull/249).
+- [x] Merge browser lifecycle wiring and administrator rollover timer extraction in [PR #251](https://github.com/armave/portfolio-terminal/pull/251).
 
 ## Merged PR #246 — portfolio sync runtime
 
@@ -74,16 +75,16 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Validation on implementation head `399bfe4a0eab23fa39bac2a23e67f713ac454d7d`: 985 tests across 89 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41416763228) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41416763350).
 - [x] Marked ready for review and squash-merged to `main` as `6aa70eafb05ed5627072aae0a6d5d36f2f6f4988`.
 
-## Current PR — startup lifecycle runtime
+## Merged PR #251 — startup lifecycle runtime
 
 - [x] Extract administrator-only rollover timer ownership and cancellation.
 - [x] Preserve the 60-second cadence and visibility guard; recheck the active role before each callback.
 - [x] Extract visibility-return handling while keeping the existing administrator rollover and quote-refresh order.
 - [x] Extract startup retry/offline event bindings with disposer support.
-- [x] Keep session restore, credential verification, portfolio hydration, app initialization, and rollover accounting injected/app-owned.
+- [x] Keep session restore, credential verification, portfolio hydration, app initialization, and rollover accounting app-owned.
 - [x] Add Vitest coverage for timer cadence, visibility, role switching, startup retry/offline dispatch, and disposal.
-- [ ] Run exact-head typecheck, Vitest, build, dead-code validation, dependency audits, and production browser smoke.
-- [ ] Review and merge.
+- [x] Validation on final PR head `b2727bbe7cb14f056b65725298f67c6240f32872`: 991 tests across 90 files; typecheck, build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41418140232) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41418140126).
+- [x] Squash-merged to `main` as `abe430d91482b25666bba01bc622268a79ba6feb`. The full dependency tree still reports low/moderate advisories; the production-only audit reports zero vulnerabilities.
 
 ## Remaining architecture work
 
