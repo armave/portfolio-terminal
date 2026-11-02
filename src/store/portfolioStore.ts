@@ -1191,7 +1191,7 @@ export function subscribeToPortfolioSelector<T>(
   isEqual: (previous: T, next: T) => boolean = Object.is,
   store: Pick<PortfolioStore, 'getState' | 'subscribe'> = portfolioStore
 ): () => void {
-  return subscribePortfolioSelectorFromStore(selector, listener, isEqual, store);
+  return subscribePortfolioSelectorFromStore(selector, listener, store, isEqual);
 }
 
 export function usePortfolioSelector<T>(
