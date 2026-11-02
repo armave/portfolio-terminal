@@ -1,6 +1,6 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import { getAppLanguage, translateText } from './src/services/i18n';
-import { addBrokerEventListener, emitBrokerEvent } from './src/services/brokerEventBus';
+import { addBrokerEventListener } from './src/services/brokerEventBus';
 import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
@@ -23,6 +23,7 @@ import {
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
+import { createPortfolioBrokerRefreshRuntime } from './src/services/portfolioBrokerRefreshRuntime';
 import { createPortfolioSessionRuntime } from './src/services/portfolioSessionRuntime';
 import { createPortfolioAuthenticationRuntime } from './src/services/portfolioAuthenticationRuntime';
 import {
@@ -128,6 +129,10 @@ const boardAnalystErrors = new Map<string, any>();
 const boardAnalystRequests = new Map<string, Promise<void>>();
 const BOARD_ANALYST_CACHE_TTL_MS = 5 * 60 * 1000;
 const BOARD_ANALYST_RETRY_MS = 60 * 1000;
+
+// Broker requests are coordinated through a typed adapter shared by manual sync
+// and scheduled account refreshes. Broker response handlers remain app-owned.
+const portfolioBrokerRefreshRuntime = createPortfolioBrokerRefreshRuntime();
 
 // Automatic quote and supplemental-data cadence is centralized in the
 // role-aware portfolio auto-refresh scheduler.
@@ -1572,9 +1577,7 @@ function refreshSupplementalPortfolioData(): Promise<void> | void {
   if (document.hidden) return;
 
   if (currentAccountRole === 'admin') {
-    emitBrokerEvent('broker:request-account-info');
-    emitBrokerEvent('broker:request-executed-trades');
-    emitBrokerEvent('broker:request-active-orders');
+    portfolioBrokerRefreshRuntime.requestAll();
     return;
   }
 
@@ -2273,15 +2276,9 @@ function bindStartupActions() {
   });
   bindPortfolioSyncRuntime({
     getAccountRole: () => currentAccountRole,
-    refreshBrokerAccount: () => new Promise<boolean>((resolve) => {
-      emitBrokerEvent('broker:request-account-info-and-wait', { resolve });
-    }),
-    refreshExecutedTrades: () => new Promise<boolean>((resolve) => {
-      emitBrokerEvent('broker:request-executed-trades-and-wait', { resolve });
-    }),
-    refreshActiveOrders: () => new Promise<boolean>((resolve) => {
-      emitBrokerEvent('broker:request-active-orders-and-wait', { resolve });
-    }),
+    refreshBrokerAccount: portfolioBrokerRefreshRuntime.refreshAccountInfo,
+    refreshExecutedTrades: portfolioBrokerRefreshRuntime.refreshExecutedTrades,
+    refreshActiveOrders: portfolioBrokerRefreshRuntime.refreshActiveOrders,
     refreshQuotes: refreshAllLivePrices,
     pushCloud: async () => {
       state = portfolioStore.getState();
