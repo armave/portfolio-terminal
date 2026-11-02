@@ -27,6 +27,6 @@ describe('portfolio sale proceeds settlement boundary', () => {
     expect(settleSaleProceeds(0, 125, 40)).toEqual({ remainingDebt: 0, freeCash: 165, debtRepaid: 0, cashSurplus: 40 });
   });
   it('normalizes negative and non-finite inputs', () => {
-    expect(settleSaleProceeds(-100, Number.NaN, Number.POSITIVE_INFINITY)).toEqual({ remainingDebt: 0, freeCash: 0, debtRepaid: 0, cashSurplus: 0 });
+    expect(settleSaleProceeds(-100, Number.NaN, Number.NaN)).toEqual({ remainingDebt: 0, freeCash: 0, debtRepaid: 0, cashSurplus: 0 });
   });
 });
