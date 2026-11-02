@@ -416,3 +416,28 @@ Client-side request lifecycle and presentation state only. No provider endpoints
 - [ ] Verify News/Stocktwits opt-in, cached revisit, explicit refresh, and rapid ticker switching with delayed responses in a real browser.
 
 No live browser network trace or manual request-count measurement is claimed by this implementation. Automated request-count/policy regression tests are included; the browser network review remains a separate release check.
+
+
+## Stage 12 — Market Depth snapshot recovery (2026-11-02)
+
+**Finding**
+
+The Market Depth modal cleared its last successful order-book snapshot whenever it opened or refreshed. A transient TradeNet failure therefore removed the last usable book and replaced it with an error, even when the failed request was only a refresh of already displayed data.
+
+**Implementation**
+
+- [x] Retain the last successfully normalized order-book snapshot when a refresh fails.
+- [x] Scope a retained snapshot to its normalized ticker so data from a previous ticker is never rendered under a new symbol.
+- [x] Show a clear refreshing status while keeping a same-ticker snapshot visible.
+- [x] Show a stale-data warning on refresh failure and keep the header retry action available.
+- [x] Make a failed first load actionable by changing the header control to Retry.
+- [x] Add regression wiring and English/Russian localization tests.
+
+**Scope**
+
+Client-side Market Depth presentation and localization only. No broker order behavior, API/Worker route, financial calculation, account permission, provider contract, or persisted schema changes.
+
+**Validation**
+
+- [ ] Exact-head GitHub Actions typecheck, full test suite, production build, dead-code validation, and dependency security audit.
+- [ ] Browser verification of successful initial load, refresh failure with a retained snapshot, retry recovery, and ticker changes.
