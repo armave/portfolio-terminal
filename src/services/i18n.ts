@@ -128,6 +128,7 @@ const RU: Record<string, string> = {
   'Total shares': 'Всего акций',
   'Select a margin position to load its market insights.': 'Выберите маржинальную позицию, чтобы загрузить аналитику рынка.',
   'Loading live data...': 'Загрузка актуальных данных…',
+  'Failed to load insights:': 'Не удалось загрузить рыночную аналитику:',
   'Refresh market data': 'Обновить рыночные данные',
   'Retry market data refresh': 'Повторить обновление рыночных данных',
   'Refresh failed; showing previously loaded market data.': 'Не удалось обновить данные; показаны ранее загруженные рыночные данные.',
