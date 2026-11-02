@@ -11,7 +11,6 @@ import {
   PositionRecord,
   Holding,
   TrancheItem,
-  BrokerAssumptions,
   PendingMutation,
   ClosedTrade
 } from '../types/portfolio';
@@ -623,7 +622,7 @@ export class PortfolioStore {
         Number(pos.commBuy) || 0
       );
       let { soldCostBasis } = allocation;
-      const { buyCommissionAllocated, remainingTranches: updatedTranches } = allocation;
+      const { buyCommissionAllocated: buyCommAllocated, remainingTranches: updatedTranches } = allocation;
 
       if (soldCostBasis <= 0 && pos.currentPrice > 0) {
         // Preserve the historical fallback for positions with missing/zero cost basis.
