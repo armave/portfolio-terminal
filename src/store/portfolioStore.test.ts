@@ -10,6 +10,23 @@ import {
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
 
+const sharedTestStorage = new Map<string, string>();
+const sharedLocalStorage = {
+  getItem: (key: string) => sharedTestStorage.get(key) ?? null,
+  setItem: (key: string, value: string) => { sharedTestStorage.set(key, String(value)); },
+  removeItem: (key: string) => { sharedTestStorage.delete(key); }
+};
+
+beforeEach(() => {
+  sharedTestStorage.clear();
+  vi.stubGlobal('localStorage', sharedLocalStorage);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+
 describe('portfolio selector subscriptions', () => {
   it('replays selected values and ignores unrelated portfolio and quote updates', () => {
     const store = new PortfolioStore();
