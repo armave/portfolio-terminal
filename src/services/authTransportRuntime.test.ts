@@ -122,12 +122,14 @@ describe('auth transport runtime', () => {
   it('clears cached identity and invokes application-wide cache clearing after logout', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ user: admin }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 })) as unknown as typeof fetch;
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'session expired' }), { status: 401 })) as unknown as typeof fetch;
     const { runtime, clearAllRequestCaches } = createRuntime(fetchImpl);
     await runtime.validateGatewaySecret('session-token');
     await runtime.logoutAccount();
     expect(clearAllRequestCaches).toHaveBeenCalledTimes(1);
-    await expect(runtime.getCurrentUser()).rejects.toThrow('Not signed in');
+    await expect(runtime.getCurrentUser()).rejects.toThrow('HTTP 401');
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it('propagates authentication errors while clearing rejected in-flight GET entries', async () => {
