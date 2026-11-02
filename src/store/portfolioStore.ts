@@ -211,6 +211,7 @@ function settleSaleProceeds(
 export class PortfolioStore {
   private state: PortfolioState;
   private listeners: Set<(state: PortfolioState) => void> = new Set();
+  private activeViewListeners: Set<(view: string) => void> = new Set();
 
   constructor() {
     this.state = this.initializeState();
@@ -389,6 +390,18 @@ export class PortfolioStore {
     };
   }
 
+  public subscribeActiveView(listener: (view: string) => void): () => void {
+    this.activeViewListeners.add(listener);
+    return () => {
+      this.activeViewListeners.delete(listener);
+    };
+  }
+
+  private notifyActiveView(): void {
+    const activeView = this.state.activeView;
+    this.activeViewListeners.forEach((listener) => listener(activeView));
+  }
+
   private notify(persist = true): void {
     if (persist) saveState(this.state);
     this.listeners.forEach((listener) => listener(this.state));
@@ -402,11 +415,13 @@ export class PortfolioStore {
     // responses and invalid commands from notifying every subscriber.
     if (next === this.state) return;
 
+    const previousActiveView = this.state.activeView;
     this.state = this.normalizeState({
       ...next,
       lastUpdated: Date.now()
     });
     this.notify(persist);
+    if (this.state.activeView !== previousActiveView) this.notifyActiveView();
   }
 
   public setState(partial: Partial<PortfolioState>, persist = true): void {
@@ -474,17 +489,22 @@ export class PortfolioStore {
   }
 
   public setActiveView(view: string): void {
-    // Keep the preference on this device for immediate restoration, and also
-    // persist it in canonical portfolio state so the existing Worker sync saves it.
+    const supportedViews = ['COMBINED', 'CASH_CUSHION', 'BALANCE', 'CLOSED_HISTORY', 'GUEST_HISTORY', 'SETTINGS'];
+    const nextView = supportedViews.includes(view) || this.state.positions?.[view] ? view : 'COMBINED';
+    const previousActiveView = this.state.activeView;
+
+    // A desk selection is a device-local UI preference, not a portfolio mutation.
+    // Preserve portfolio collection references and avoid normalization, full-state
+    // serialization, and notifications to unrelated portfolio subscribers.
     try {
-      if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', view);
+      if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', nextView);
     } catch {
       // Navigation still works if browser storage is unavailable.
     }
-    this.update((state) => {
-      if (state.activeView === view && state.selectedTicker === view) return state;
-      return { ...state, activeView: view, selectedTicker: view };
-    });
+
+    if (previousActiveView === nextView && this.state.selectedTicker === nextView) return;
+    this.state = { ...this.state, activeView: nextView, selectedTicker: nextView };
+    if (previousActiveView !== nextView) this.notifyActiveView();
   }
 
   public selectTicker(ticker: string | null): void {
@@ -1290,20 +1310,22 @@ export function usePortfolio(): PortfolioState {
   return state;
 }
 
-/** Subscribe to a derived slice and re-render only when that selection changes. */
-export function usePortfolioSelector<T>(selector: (state: PortfolioState) => T): T {
-  const [selected, setSelected] = useState<T>(() => selector(portfolioStore.getState()));
+/**
+ * Subscribe to the device-local active desk independently from portfolio data.
+ * Registering before replaying the value prevents a render-to-effect race.
+ */
+export function subscribeToActiveView(
+  listener: (view: string) => void,
+  store: Pick<PortfolioStore, 'getState' | 'subscribeActiveView'> = portfolioStore
+): () => void {
+  const unsubscribe = store.subscribeActiveView(listener);
+  listener(store.getState().activeView);
+  return unsubscribe;
+}
 
-  useEffect(() => {
-    let current = selector(portfolioStore.getState());
-    setSelected(current);
-    return portfolioStore.subscribe((nextState) => {
-      const next = selector(nextState);
-      if (Object.is(current, next)) return;
-      current = next;
-      setSelected(next);
-    });
-  }, [selector]);
+export function useActiveView(): string {
+  const [activeView, setActiveView] = useState<string>(() => portfolioStore.getState().activeView);
 
-  return selected;
+  useEffect(() => subscribeToActiveView(setActiveView), []);
+  return activeView;
 }

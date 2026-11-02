@@ -1,7 +1,7 @@
 import { emitUiEvent, addUiEventListener, removeUiEventListener, type UiEvent } from './ui/uiEventBus';
 import { useBreakevenText, useCloudStatus, useCloudSyncStatus, useAnalystConsensus, useBoardTitle } from './ui/uiStateStore';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { lazy, Suspense } from 'preact/compat';
+import { lazy, memo, Suspense } from 'preact/compat';
 import { AuthModal } from './components/AuthModal';
 import { DeskLoading } from './components/DeskLoading';
 import { TickerTabs } from './components/TickerTab';
@@ -15,9 +15,8 @@ import { EmptyStatePanel } from './components/EmptyStatePanel';
 import type { MarginIntelligenceState, MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/scenarioContracts';
 import { ensureFreedomTradeNetSession, fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
-import { portfolioStore, usePortfolio, usePortfolioSelector } from './store/portfolioStore';
+import { portfolioStore, useActiveView, usePortfolio } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
-import { resolveActiveView } from './ui/renderBoard';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import {
   hasFreedomTradeHistoryBaseline,
@@ -35,20 +34,26 @@ import { getMatchingMarginIntelligenceState } from './features/ai/marginIntellig
 import { createSessionIdentityGuard, getSessionIdentityRequestKey, type SessionIdentityToken } from './utils/sessionIdentityGuard';
 
 
+const MemoTickerTabs = memo(TickerTabs);
+const MemoSummaryMetricsGrid = memo(SummaryMetricsGrid);
+const MemoProjectionsTable = memo(ProjectionsTable);
+const MemoTradingConsole = memo(TradingConsole);
+const MemoBoardExternalLinks = memo(BoardExternalLinks);
+
 const ClosedHistoryDesk = lazy(() =>
-  import('./components/ClosedHistoryDesk').then(({ ClosedHistoryDesk }) => ({ default: ClosedHistoryDesk }))
+  import('./components/ClosedHistoryDesk').then(({ ClosedHistoryDesk }) => ({ default: memo(ClosedHistoryDesk) }))
 );
 const GuestTrancheHistory = lazy(() =>
-  import('./components/GuestTrancheHistory').then(({ GuestTrancheHistory }) => ({ default: GuestTrancheHistory }))
+  import('./components/GuestTrancheHistory').then(({ GuestTrancheHistory }) => ({ default: memo(GuestTrancheHistory) }))
 );
 const CashCushionDesk = lazy(() =>
-  import('./components/CashCushionDesk').then(({ CashCushionDesk }) => ({ default: CashCushionDesk }))
+  import('./components/CashCushionDesk').then(({ CashCushionDesk }) => ({ default: memo(CashCushionDesk) }))
 );
 const SettingsDesk = lazy(() =>
-  import('./components/SettingsDesk').then(({ SettingsDesk }) => ({ default: SettingsDesk }))
+  import('./components/SettingsDesk').then(({ SettingsDesk }) => ({ default: memo(SettingsDesk) }))
 );
 const MarketInsightsPanel = lazy(() =>
-  import('./components/MarketInsightsPanel').then(({ MarketInsightsPanel }) => ({ default: MarketInsightsPanel }))
+  import('./components/MarketInsightsPanel').then(({ MarketInsightsPanel }) => ({ default: memo(MarketInsightsPanel) }))
 );
 const ScenarioComparisonModal = lazy(() =>
   import('./components/ScenarioComparisonModal').then(({ ScenarioComparisonModal }) => ({ default: ScenarioComparisonModal }))
@@ -80,20 +85,17 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const brokerSessionIdentityRef = useRef(createSessionIdentityGuard(null));
   brokerSessionIdentityRef.current.setIdentity(currentUser ? `${currentUser.role}:${currentUser.id}` : null);
   const accountSession = brokerSessionIdentityRef.current.capture();
-  const isAccountSessionCurrent = () =>
-    accountSession !== null && brokerSessionIdentityRef.current.isCurrent(accountSession);
-  const activeDeskView = usePortfolioSelector(resolveActiveView);
+  const isAccountSessionCurrent = useCallback(
+    () => accountSession !== null && brokerSessionIdentityRef.current.isCurrent(accountSession),
+    [accountSession?.identity, accountSession?.generation]
+  );
+  const activeDeskView = useActiveView();
   const portfolioSnapshot = usePortfolio();
   const emptyStateVisible = Object.keys(portfolioSnapshot.positions || {}).length === 0 && activeDeskView === 'COMBINED';
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedGuestHistory, setHasOpenedGuestHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
-  const [deskLoadingView, setDeskLoadingView] = useState<string | null>(null);
-  const handleDeskLoadingChange = useCallback((view: string, isLoading: boolean) => {
-    setDeskLoadingView((current) => isLoading ? view : current === view ? null : current);
-  }, []);
-
 
 
 
@@ -384,7 +386,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     });
     const handleScrollWorkspace = () => {
       requestAnimationFrame(() => {
-        mainWorkspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        mainWorkspaceRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
       });
     };
     addUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
@@ -652,7 +654,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Workspace navigation"><TickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} onDeskLoadingChange={handleDeskLoadingChange} /></div>
+          <div class="flex flex-wrap items-center gap-2" id="tickerTabs" role="group" aria-label="Workspace navigation"><MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
           {permissions.isAdmin && <div
             class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
             id="daysToBreakeven"
@@ -667,13 +669,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           : "trading-workspace-grid " + (permissions.canViewMarginDesk && !["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "margin-workspace-layout " : "") + (emptyStateVisible ? "lg:grid-cols-1" : "lg:grid-cols-[3fr_7fr]")}>
           {/* Main Board Content */}
           {permissions.canViewMarginDesk && <div id="mainDeskContainer" class={"space-y-4 " + (!permissions.canViewMarginDesk || ["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}>
-            {deskLoadingView === activeDeskView ? (
-              <DeskLoading
-                title="Preparing margin desk"
-                message="Refreshing live quotes and preparing the latest portfolio view…"
-                accent="cyan"
-              />
-            ) : <div class="desk-content-reveal">
+            <div class="desk-content-reveal">
 
               <div
                 id="emptyStatePanel"
@@ -700,14 +696,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   <MarketDepthButton ticker={portfolioSnapshot.positions[activeDeskView].ticker} />
                 )}
                 <div id="boardAnalystConsensus" class={analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
-                <div id="boardExternalLinks" class="flex items-center gap-2"><BoardExternalLinks /></div>
+                <div id="boardExternalLinks" class="flex items-center gap-2"><MemoBoardExternalLinks /></div>
               </div>
 
               <div
                 id="portfolioMetricsGrid"
                 aria-label="Portfolio summary metrics"
                 class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateVisible ? "hidden" : "")}
-              ><SummaryMetricsGrid /></div>
+              ><MemoSummaryMetricsGrid /></div>
 
               <div id="marginDataWorkspace" class="margin-data-workspace">
                 {/* Projection Table */}
@@ -730,7 +726,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                     <tbody
                       id="projectionTableBody"
                       class="divide-y divide-slate-800/60 font-mono"
-                    ><ProjectionsTable /></tbody>
+                    ><MemoProjectionsTable /></tbody>
                   </table>
                 </TableScrollRegion>
                 <section
@@ -743,7 +739,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                   </Suspense>
                 ) : null}</section>
               </div>
-            </div>}
+            </div>
           </div>}
 
           {/* Cash Cushion Management Panel */}
@@ -779,9 +775,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           {permissions.canUseTerminal && !["BALANCE", "GUEST_HISTORY"].includes(activeDeskView) && <div id="tradingTerminalColumn" class="trading-terminal-column">
             <div
               id="tradingConsoleCard"
-              key={`trading-console-${activeDeskView}`}
               class={"desk-view-transition trading-console-card border-card p-4 sm:p-5 rounded-xl space-y-3 w-full " + (["CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
-            ><TradingConsole /></div>
+            ><MemoTradingConsole /></div>
           </div>}
 
         </div>

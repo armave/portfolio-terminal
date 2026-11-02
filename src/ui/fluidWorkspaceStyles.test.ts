@@ -47,7 +47,7 @@ describe('Margin projection and insights layout', () => {
 
   it('places the projection table and market insights in the same responsive workspace row', () => {
     const workspaceStart = appSource.indexOf('id="marginDataWorkspace"');
-    const projection = appSource.indexOf('<ProjectionsTable />', workspaceStart);
+    const projection = appSource.indexOf('<MemoProjectionsTable />', workspaceStart);
     const insights = appSource.indexOf('<MarketInsightsPanel />', workspaceStart);
     const workspaceEnd = appSource.indexOf('</div>', insights);
     expect(workspaceStart).toBeGreaterThan(-1);
@@ -62,7 +62,7 @@ describe('Margin projection and insights layout', () => {
     expect(projectionSource).toContain('projection-pagination-controls');
     expect(projectionSource).toContain('aria-live="polite"');
     expect(fluidStyles).toContain('#projectionTableContainer .projection-page-row');
-    expect(fluidStyles).toContain('animation: projection-page-swap 260ms');
+    expect(fluidStyles).toContain('animation: projection-page-swap 160ms');
     expect(fluidStyles).toContain('@keyframes projection-page-swap');
     expect(fluidStyles).toContain('#projectionTableContainer .projection-pagination-controls');
     expect(fluidStyles).toContain('flex-wrap: wrap;');
@@ -135,19 +135,42 @@ describe('table page swaps and shared desk loading reveals', () => {
     expect(closedSource).not.toContain('<tbody key={tradesPage}');
     expect(fluidStyles).toMatch(/\.closed-history-page-transition\s*\{[^}]*display:\s*flow-root/s);
     expect(fluidStyles).toMatch(/@keyframes trades-page-swap/);
-    expect(fluidStyles).toMatch(/animation:\s*trades-page-swap\s+340ms/);
+    expect(fluidStyles).toMatch(/animation:\s*trades-page-swap\s+180ms/);
   });
 
   it('reveals ready content after the shell-level loading screens for each desk', () => {
     expect(appSource).toContain('desk-content-reveal');
-    expect(cashSource).toContain('<div class="desk-content-reveal">');
-    expect(closedSource).toContain('desk-content-reveal rounded-xl');
-    expect(settingsSource).toContain('settings-desk desk-content-reveal');
+    expect(cashSource).not.toContain('desk-content-reveal');
+    expect(closedSource).not.toContain('desk-content-reveal rounded-xl');
+    expect(settingsSource).not.toContain('settings-desk desk-content-reveal');
+    expect(appSource).toContain('<div class="desk-content-reveal">');
     expect(fluidStyles).toMatch(/@keyframes desk-content-reveal/);
-    expect(fluidStyles).toMatch(/animation:\s*desk-content-reveal\s+420ms/);
+    expect(fluidStyles).toMatch(/animation:\s*desk-content-reveal\s+180ms/);
   });
 
   it('uses one reduced-motion rule for page swaps and all desk reveals', () => {
     expect(fluidStyles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*\.desk-content-reveal,[\s\S]*\.closed-history-page-transition/);
+  });
+});
+
+
+describe('cross-platform navigation and motion performance', () => {
+  it('keeps global scrolling immediate and reserves hover transforms for fine pointers', () => {
+    expect(stylesheet).toMatch(/html\s*\{\s*scroll-behavior:\s*auto;/);
+    expect(stylesheet).toMatch(/@media\s*\(hover:\s*hover\)\s*and\s*\(pointer:\s*fine\)/);
+    const hoverRuleIndex = stylesheet.indexOf('button:hover:not(:disabled)');
+    const hoverMediaIndex = stylesheet.lastIndexOf('@media (hover: hover) and (pointer: fine)', hoverRuleIndex);
+    expect(hoverRuleIndex).toBeGreaterThan(-1);
+    expect(hoverMediaIndex).toBeGreaterThan(-1);
+    expect(hoverMediaIndex).toBeLessThan(hoverRuleIndex);
+  });
+
+  it('uses blur-free, short desk and pagination animations', () => {
+    const motionStart = stylesheet.indexOf('/* Page changes animate a normal block wrapper');
+    const motionStyles = stylesheet.slice(motionStart);
+    expect(motionStyles).toContain('animation: desk-content-reveal 180ms');
+    expect(motionStyles).toContain('animation: trades-page-swap 180ms');
+    expect(motionStyles).toContain('animation: projection-page-swap 160ms');
+    expect(motionStyles).not.toMatch(/filter:\s*blur/);
   });
 });
