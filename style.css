@@ -1620,7 +1620,7 @@ summary:hover {
   min-width: 0;
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
   padding: 0.25rem 0.375rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1716,7 +1716,8 @@ summary:hover {
     border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
   }
 
-  .portfolio-micro-costs {
+  .portfolio-micro-costs,
+  .portfolio-micro-actions {
     grid-column: 1 / -1;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     padding-top: 0.75rem;
@@ -1746,7 +1747,8 @@ summary:hover {
     border-top: 1px solid rgba(255, 255, 255, 0.1);
   }
 
-  .portfolio-micro-costs {
+  .portfolio-micro-costs,
+  .portfolio-micro-actions {
     grid-column: auto;
   }
 
@@ -1756,7 +1758,7 @@ summary:hover {
 }
 
 
-/* Keep financial values readable in the desktop three-column micro-summary.
+/* Keep financial values readable in the desktop four-column micro-summary.
    Long unbroken values may wrap at word boundaries, but never one character per line. */
 .portfolio-micro-row {
   display: grid;
@@ -2950,7 +2952,7 @@ summary:focus-visible {
 }
 
 .portfolio-micro-summary {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: clamp(0.25rem, 0.6vw, 0.625rem);
   padding: clamp(0.375rem, 0.8vw, 0.75rem);
 }
@@ -2995,7 +2997,8 @@ summary:focus-visible {
     border-left: 1px solid rgba(148, 163, 184, 0.12);
   }
 
-  .portfolio-micro-costs {
+  .portfolio-micro-costs,
+  .portfolio-micro-actions {
     grid-column: 1 / -1;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
     padding-top: 0.75rem;
@@ -3013,7 +3016,8 @@ summary:focus-visible {
     border-top: 1px solid rgba(148, 163, 184, 0.12);
   }
 
-  .portfolio-micro-costs {
+  .portfolio-micro-costs,
+  .portfolio-micro-actions {
     grid-column: auto;
   }
 
