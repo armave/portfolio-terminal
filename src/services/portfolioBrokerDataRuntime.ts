@@ -72,7 +72,7 @@ export function createPortfolioBrokerDataRuntime(
   const activeOrdersRequests = new Map<string, Promise<boolean>>();
   const emit = dependencies.emit || emitBrokerEvent;
   const refreshOrders = dependencies.refreshOrders || refreshActiveOrders;
-  const restoreSecret = restoreSecret || restoreGatewaySecretFromStorage;
+  const restoreSecret = dependencies.restoreGatewaySecret || restoreGatewaySecret;
   const fetchAccountInfo = dependencies.fetchAccountInfo || fetchFreedomTradeNetPositions;
   const normalizeAccountInfo = dependencies.normalizeAccountInfo || normalizeFreedomPortfolio;
   const fetchExecutedTrades = dependencies.fetchExecutedTrades || fetchFreedomTradeNetTrades;
@@ -81,8 +81,8 @@ export function createPortfolioBrokerDataRuntime(
     (() => normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades));
   const hasHistoryBaseline = dependencies.hasHistoryBaseline || hasFreedomTradeHistoryBaseline;
   const markHistoryBaseline = dependencies.markHistoryBaseline || markFreedomTradeHistoryBaseline;
-  const fetchActiveOrders = fetchActiveOrders || fetchFreedomTradeNetActiveOrders;
-  const normalizeActiveOrders = normalizeActiveOrders || normalizeFreedomActiveOrders;
+  const fetchActiveOrders = dependencies.fetchActiveOrders || fetchFreedomTradeNetActiveOrders;
+  const normalizeActiveOrders = dependencies.normalizeActiveOrders || normalizeFreedomActiveOrders;
   const logError = dependencies.logError || ((message, error) => console.error(message, error));
 
   const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
@@ -134,7 +134,7 @@ export function createPortfolioBrokerDataRuntime(
     const request = (async (): Promise<boolean> => {
       try {
         // Restore the encrypted Gateway Secret before any provider request.
-        const secret = await dependencies.restoreGatewaySecret();
+        const secret = await restoreSecret();
         if (!dependencies.isSessionCurrent(session)) return false;
         if (!secret.trim()) {
           emit('broker:executed-trades-error');
@@ -160,7 +160,7 @@ export function createPortfolioBrokerDataRuntime(
 
         // A bounded provider response is never an authoritative replacement for
         // local history. Preserve app-calculated fee allocations before merging.
-        const latestSavedExecutions = dependencies.loadSavedBrokerExecutions();
+        const latestSavedExecutions = loadSavedBrokerExecutions();
         const latestCurrentExecutions = dependencies.getCurrentBrokerExecutions();
         const retainedExecutions = [...latestSavedExecutions, ...latestCurrentExecutions];
         const normalizedPageWithFees = preservePersistedBrokerFeeAllocations(

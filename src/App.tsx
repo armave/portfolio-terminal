@@ -463,8 +463,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       getCurrentBrokerExecutions: () => portfolioStore.getState().brokerExecutedTrades || [],
       getClosedTrades: () => portfolioStore.getState().closedTrades || [],
       setBrokerExecutions: (executions) => portfolioStore.setState({ brokerExecutedTrades: executions }),
-      fetchActiveOrders: fetchFreedomTradeNetActiveOrders,
-      normalizeActiveOrders: normalizeFreedomActiveOrders,
       emit: emitBrokerEvent,
       logError: (message, error) => console.error(message, error)
     });
