@@ -159,7 +159,8 @@ This is the continuing checklist for the architecture-refinement program. A chec
 ### P1 — API compatibility facade
 
 - [x] Extract cloud-state encryption and Gateway Secret resolution into `cloudStateSecurity.ts`, retaining `api.ts` compatibility exports.
-- [ ] Extract cloud-state revision coordination and pull/push queues while preserving session-bound caches, request coalescing, cloud revision checks, and serialized writes.
+- [x] Extract cloud revision persistence, pull-generation tracking, and serialized snapshot-write ordering into `cloudRevisionCoordinator.ts`.
+- [ ] Extract cloud-state pull/push operations and closed-history synchronization while preserving session-bound caches, request coalescing, cloud revision checks, and serialized writes.
 - [ ] Separate authentication/session transport from the compatibility facade.
 - [ ] Separate broker transport and market-data transport from the compatibility facade.
 

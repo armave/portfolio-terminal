@@ -1,5 +1,6 @@
 import { resetMarketRequestGate, runMarketDataRequest } from './marketRequestGate';
 import { createCloudStateSecurity } from './cloudStateSecurity';
+import { createCloudRevisionCoordinator } from './cloudRevisionCoordinator';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '../types/portfolio';
@@ -71,35 +72,7 @@ export async function saveSyncedMarginDigest(digest: SyncedMarginDigest, revisio
 
 const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
-// Persist each browser's last-seen cloud revision so a reload cannot reset it to zero.
-const CLOUD_REVISION_STORAGE_KEY = 'portfolio_cloud_revision_v1';
-
-function loadCloudRevision(): number {
-  try {
-    const raw = typeof localStorage !== 'undefined'
-      ? localStorage.getItem(CLOUD_REVISION_STORAGE_KEY)
-      : null;
-    const revision = raw === null ? 0 : Number(raw);
-    return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
-  } catch {
-    return 0;
-  }
-}
-
-let cloudRevision = loadCloudRevision();
-let cloudPullGeneration = 0;
-let cloudPushQueue: Promise<void> = Promise.resolve();
-
-function setCloudRevision(revision: number): void {
-  cloudRevision = revision;
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(CLOUD_REVISION_STORAGE_KEY, String(revision));
-    }
-  } catch {
-    // The in-memory revision still protects this running app instance.
-  }
-}
+const cloudRevisionCoordinator = createCloudRevisionCoordinator();
 
 const cloudStateSecurity = createCloudStateSecurity({
   workerProxyUrl: WORKER_PROXY_URL,
@@ -629,8 +602,7 @@ export async function pullCloudState(
       cloudStatePushFingerprints.delete(currentSecret);
       // A confirmed empty cloud store is safe to use as the current base revision.
       if (pulledRevision !== null) {
-        cloudPullGeneration += 1;
-        setCloudRevision(pulledRevision);
+        cloudRevisionCoordinator.recordPulledRevision(pulledRevision);
       }
       reportResult?.(false);
       logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
@@ -749,8 +721,7 @@ export async function pullCloudState(
     // Only trust the cloud revision after its payload was decrypted, validated,
     // and persisted locally. A failed pull must not authorize a later overwrite.
     if (pulledRevision !== null) {
-      cloudPullGeneration += 1;
-      setCloudRevision(pulledRevision);
+      cloudRevisionCoordinator.recordPulledRevision(pulledRevision);
     }
 
     if (handlers.allowCloudWrites !== false && (wasUpdated || requiresEncryptionUpgrade || mergedLocalData)) {
@@ -931,23 +902,9 @@ async function performPullCloudHistory(secret: string): Promise<CloudHistorySnap
 }
 
 export function pushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
-  // Bind a queued snapshot to the revision current when the caller submitted it.
-  // If another queued operation or a concurrent pull advances the revision before
-  // this write runs, the stale snapshot must conflict rather than inherit that newer
-  // revision and overwrite newer cloud state.
-  const submittedRevision = cloudRevision;
-  const submittedPullGeneration = cloudPullGeneration;
-  const operation = cloudPushQueue.then(() => {
-    // Let a queued write follow a preceding queued write from this same tab, but
-    // never let it inherit a revision learned from a concurrent pull after its
-    // snapshot was submitted.
-    const expectedRevision = cloudPullGeneration === submittedPullGeneration
-      ? cloudRevision
-      : submittedRevision;
-    return performPushCloudState(state, options, expectedRevision);
-  });
-  cloudPushQueue = operation.then(() => undefined, () => undefined);
-  return operation;
+  return cloudRevisionCoordinator.enqueueWrite((expectedRevision) =>
+    performPushCloudState(state, options, expectedRevision)
+  );
 }
 
 async function performPushCloudState(
@@ -1074,7 +1031,7 @@ async function performPushCloudState(
     }
 
     const savedRevision = readCloudRevision(res.headers);
-    if (savedRevision !== null) setCloudRevision(savedRevision);
+    if (savedRevision !== null) cloudRevisionCoordinator.setRevision(savedRevision);
     cloudStatePushFingerprints.set(currentSecret, stateFingerprint);
 
     handlers.onStatusChange?.('synced');
