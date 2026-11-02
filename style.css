@@ -1712,13 +1712,14 @@ summary:hover {
     border-left: 0;
   }
 
-  .portfolio-micro-market {
+  .portfolio-micro-market,
+  .portfolio-micro-actions {
     border-left: 1px solid rgba(255, 255, 255, 0.1) !important;
   }
 
   .portfolio-micro-costs,
   .portfolio-micro-actions {
-    grid-column: 1 / -1;
+    grid-column: auto;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
     padding-top: 0.75rem;
   }
@@ -1742,8 +1743,12 @@ summary:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .portfolio-micro-market {
+  .portfolio-micro-market,
+  .portfolio-micro-actions {
     border-left: 0 !important;
+  }
+
+  .portfolio-micro-market {
     border-top: 1px solid rgba(255, 255, 255, 0.1);
   }
 
@@ -2993,13 +2998,14 @@ summary:focus-visible {
     border-left: 0;
   }
 
-  .portfolio-micro-market {
+  .portfolio-micro-column.portfolio-micro-market,
+  .portfolio-micro-column.portfolio-micro-actions {
     border-left: 1px solid rgba(148, 163, 184, 0.12);
   }
 
   .portfolio-micro-costs,
   .portfolio-micro-actions {
-    grid-column: 1 / -1;
+    grid-column: auto;
     border-top: 1px solid rgba(148, 163, 184, 0.12);
     padding-top: 0.75rem;
   }
