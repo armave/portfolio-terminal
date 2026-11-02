@@ -29,7 +29,7 @@ export function getCashCushionTotal(state?: BoardState | null): number {
 
 
 /** Resolve the stock symbol whose quote context backs the market-insights panel. */
-export function getMarketInsightsTicker(state?: BoardState | null): string {
+export function getMarketInsightsTicker(state: BoardState | null): string {
   if (!state) return '';
   const currentView = state.activeView;
   const isPositionView = Boolean(
@@ -42,6 +42,14 @@ export function getMarketInsightsTicker(state?: BoardState | null): string {
   const preferredTicker = state.selectedTicker;
   if (preferredTicker && state.positions?.[preferredTicker]) return preferredTicker;
   return tickers[0] || '';
+}
+
+/**
+ * Whether an asynchronous market-insights result still belongs to the selected ticker.
+ * Callers must supply the latest portfolio snapshot when the request completes.
+ */
+export function isCurrentMarketInsightsTicker(state: BoardState | null, ticker: string): boolean {
+  return Boolean(ticker) && getMarketInsightsTicker(state) === ticker;
 }
 
 
