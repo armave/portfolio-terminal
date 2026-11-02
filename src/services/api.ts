@@ -2,11 +2,12 @@ import { resetMarketRequestGate, runMarketDataRequest } from './marketRequestGat
 import { createCloudStateSecurity } from './cloudStateSecurity';
 import { createCloudRevisionCoordinator } from './cloudRevisionCoordinator';
 import { createCloudStateSyncRuntime } from './cloudStateSyncRuntime';
+import { createAuthTransportRuntime } from './authTransportRuntime';
+export type { AuthUser, AuthSession } from './authTransportRuntime';
 export type { SyncOptions } from './cloudStateSyncRuntime';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '../types/portfolio';
-import type { AppLanguage } from './i18n';
 import { normalizeYahooBatchResults } from './yahooQuoteContracts';
 import type { YahooBatchQuoteResult } from './yahooQuoteContracts';
 import { createYahooDeepDataCache } from './yahooDeepDataCache';
@@ -122,6 +123,23 @@ export const syncCloudState = cloudStateSyncRuntime.syncCloudState;
 export const pushCloudHistory = cloudStateSyncRuntime.pushCloudHistory;
 export const clearCloudHistory = cloudStateSyncRuntime.clearCloudHistory;
 export const pullCloudHistory = cloudStateSyncRuntime.pullCloudHistory;
+
+const authTransportRuntime = createAuthTransportRuntime({
+  apiUrl: WORKER_PROXY_URL,
+  getActiveGatewaySecret,
+  clearAllRequestCaches: () => clearApiRequestCaches()
+});
+export const getAuthStatus = authTransportRuntime.getAuthStatus;
+export const loginAccount = authTransportRuntime.loginAccount;
+export const bootstrapAdmin = authTransportRuntime.bootstrapAdmin;
+export const getCurrentUser = authTransportRuntime.getCurrentUser;
+export const listUsers = authTransportRuntime.listUsers;
+export const createUser = authTransportRuntime.createUser;
+export const updateUser = authTransportRuntime.updateUser;
+export const updateMyLanguage = authTransportRuntime.updateMyLanguage;
+export const deleteUser = authTransportRuntime.deleteUser;
+export const logoutAccount = authTransportRuntime.logoutAccount;
+
 
 
 export interface ProxyFetchOptions extends RequestInit {
@@ -499,39 +517,7 @@ export function clearYahooDeepStockDataCache(): void {
   marketInsightsProviders.clear();
 }
 
-export async function validateGatewaySecret(secret: string): Promise<boolean> {
-  const cleanSecret = typeof secret === 'string' ? secret.trim() : '';
-  if (!cleanSecret) return false;
-
-  try {
-    // Validate the session through the identity endpoint. Do not use /api/state:
-    // guests must never download the shared encrypted administrator portfolio.
-    const response = await fetch(new URL('/api/auth/me', WORKER_PROXY_URL), {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-App-Auth': cleanSecret,
-        Authorization: `Bearer ${cleanSecret}`
-      },
-      cache: 'no-store'
-    });
-      if (!response.ok) {
-      currentUserCache = null;
-      return false;
-    }
-    // Reuse the identity returned during validation instead of issuing a second
-    // identical /api/auth/me read during startup.
-    const payload = typeof response.json === 'function'
-      ? await response.json().catch(() => null)
-      : null;
-    const user = normalizeAuthUser(payload?.user);
-    if (user) rememberCurrentUser(cleanSecret, user);
-    return true;
-  } catch (error) {
-      console.warn('Account session validation failed:', error);
-    return false;
-  }
-}
+export const validateGatewaySecret = authTransportRuntime.validateGatewaySecret;
 
 /** Read-only connectivity test for Freedom Broker Armenia TradeNet. */
 export async function testFreedomTradeNetConnection(): Promise<unknown> {
@@ -624,55 +610,8 @@ export function clearFreedomCashflowCache(): void {
 }
 
 
-export interface AuthUser {
-  id: string;
-  name: string;
-  role: "guest" | "admin";
-  language: AppLanguage;
-  createdAt: string;
-}
-export interface AuthSession { token: string; user: AuthUser; expiresAt: number; }
-const AUTH_API_URL = WORKER_PROXY_URL;
-
-const AUTH_READ_TTL_MS = 15_000;
-const CURRENT_USER_READ_TTL_MS = 5_000;
-const authReadRequests = new Map<string, Promise<unknown>>();
 const guestPortfolioPublicationFingerprints = new Map<string, string>();
 const guestPortfolioPublicationRequests = new Map<string, Promise<void>>();
-
-let currentUserCache: { token: string; expiresAt: number; user: AuthUser } | null = null;
-let usersCache: { token: string; expiresAt: number; users: AuthUser[] } | null = null;
-let usersRequest: { token: string; generation: number; promise: Promise<AuthUser[]> } | null = null;
-let usersCacheGeneration = 0;
-
-function normalizeAuthUser(value: unknown): AuthUser | null {
-  if (!value || typeof value !== "object") return null;
-  const user = value as Partial<AuthUser>;
-  if (typeof user.id !== "string" || typeof user.name !== "string" ||
-      (user.role !== "admin" && user.role !== "guest") || typeof user.createdAt !== "string") {
-    return null;
-  }
-  // Accounts created before language preferences were introduced remain English by default.
-  return { ...user, language: user.language === "ru" ? "ru" : "en" } as AuthUser;
-}
-
-function normalizeAuthSession(session: AuthSession): AuthSession {
-  const user = normalizeAuthUser(session?.user);
-  if (!user) throw new Error("The authenticated user response was invalid.");
-  return { ...session, user };
-}
-
-function rememberCurrentUser(token: string, user: AuthUser): void {
-  currentUserCache = { token, user, expiresAt: Date.now() + CURRENT_USER_READ_TTL_MS };
-}
-
-function invalidateUserDirectoryCache(token: string): void {
-  usersCacheGeneration += 1;
-  usersCache = null;
-  usersRequest = null;
-  currentUserCache = null;
-  authReadRequests.delete(JSON.stringify(["/api/auth/users", token]));
-}
 
 export function clearGuestPortfolioPublicationCache(): void {
   guestPortfolioPublicationFingerprints.clear();
@@ -680,157 +619,14 @@ export function clearGuestPortfolioPublicationCache(): void {
 }
 
 export function clearApiRequestCaches(): void {
-  authReadRequests.clear();
-  currentUserCache = null;
-  usersCache = null;
-  usersRequest = null;
-  usersCacheGeneration += 1;
+  authTransportRuntime.clearRequestCaches();
   cloudStateSyncRuntime.clearRequestCache();
   clearGuestPortfolioPublicationCache();
   clearFreedomCashflowCache();
   resetMarketRequestGate();
 }
 
-function authRequest<T>(
-  path: string,
-  options: { method?: "GET" | "POST"; body?: Record<string, unknown>; token?: string } = {}
-): Promise<T> {
-  const method = (options.method || "GET").toUpperCase();
-  if (method === "GET" && !options.body) {
-    const key = JSON.stringify([path, options.token || ""]);
-    const existing = authReadRequests.get(key);
-    if (existing) return existing as Promise<T>;
-    const request = performAuthRequest<T>(path, options);
-    authReadRequests.set(key, request);
-    void request.finally(() => {
-      if (authReadRequests.get(key) === request) authReadRequests.delete(key);
-    }).catch(() => {
-      // The original caller owns error handling; ignore the cleanup chain.
-    });
-    return request;
-  }
-  return performAuthRequest<T>(path, options);
-}
-
-async function performAuthRequest<T>(
-  path: string,
-  options: { method?: "GET" | "POST"; body?: Record<string, unknown>; token?: string } = {}
-): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (options.token) {
-    headers.Authorization = `Bearer ${options.token}`;
-    headers["X-App-Auth"] = options.token;
-  }
-  const response = await fetch(new URL(path, AUTH_API_URL), {
-    method: options.method || "GET", headers,
-    ...(options.body ? { body: JSON.stringify(options.body) } : {}), cache: "no-store"
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(payload?.error || `Authentication request failed (HTTP ${response.status}).`);
-  return payload as T;
-}
-export function getAuthStatus(): Promise<{ setupRequired: boolean; userCount: number }> {
-  return authRequest("/api/auth/status");
-}
-export async function loginAccount(name: string, password: string): Promise<AuthSession> {
-  const session = await authRequest<AuthSession>("/api/auth/login", { method: "POST", body: { name, password } });
-  return normalizeAuthSession(session);
-}
-export async function bootstrapAdmin(name: string, password: string, bootstrapSecret: string): Promise<AuthSession> {
-  const session = await authRequest<AuthSession>("/api/auth/bootstrap", { method: "POST", body: { name, password, bootstrapSecret } });
-  return normalizeAuthSession(session);
-}
-export function getCurrentUser(): Promise<AuthUser> {
-  const token = getActiveGatewaySecret();
-  if (!token) return Promise.reject(new Error("Not signed in."));
-  if (currentUserCache?.token === token && currentUserCache.expiresAt > Date.now()) {
-    return Promise.resolve(currentUserCache.user);
-  }
-  return authRequest<{ user: unknown }>("/api/auth/me", { token }).then((payload) => {
-    const user = normalizeAuthUser(payload?.user);
-    if (!user) throw new Error("The authenticated user response was invalid.");
-    rememberCurrentUser(token, user);
-    return user;
-  });
-}
-
-export function listUsers(): Promise<AuthUser[]> {
-  const token = getActiveGatewaySecret();
-  if (!token) return Promise.reject(new Error("Not signed in."));
-  if (usersCache?.token === token && usersCache.expiresAt > Date.now()) {
-    return Promise.resolve(usersCache.users);
-  }
-  if (usersRequest?.token === token && usersRequest.generation === usersCacheGeneration) {
-    return usersRequest.promise;
-  }
-  const generation = usersCacheGeneration;
-  const request = authRequest<{ users: unknown[] }>("/api/auth/users", { token })
-    .then((payload) => {
-      const users = Array.isArray(payload?.users)
-        ? payload.users.map(normalizeAuthUser).filter((user): user is AuthUser => user !== null)
-        : [];
-      if (generation === usersCacheGeneration) {
-        usersCache = { token, users, expiresAt: Date.now() + AUTH_READ_TTL_MS };
-      }
-      return users;
-    })
-    .finally(() => {
-      if (usersRequest?.promise === request) usersRequest = null;
-    });
-  usersRequest = { token, generation, promise: request };
-  return request;
-}
-export async function createUser(input: { name: string; password: string; role: "guest" | "admin"; language?: AppLanguage }): Promise<AuthUser> {
-  const token = getActiveGatewaySecret();
-  if (!token) throw new Error("Not signed in.");
-  invalidateUserDirectoryCache(token);
-  try {
-    return (await authRequest<{ user: AuthUser }>("/api/auth/users", { method: "POST", token, body: { action: "create", ...input } })).user;
-  } finally {
-    invalidateUserDirectoryCache(token);
-  }
-}
-export async function updateUser(id: string, input: { name: string; role: "guest" | "admin"; language?: AppLanguage; password?: string }): Promise<AuthUser> {
-  const token = getActiveGatewaySecret();
-  if (!token) throw new Error("Not signed in.");
-  invalidateUserDirectoryCache(token);
-  try {
-    return (await authRequest<{ user: AuthUser }>("/api/auth/users", { method: "POST", token, body: { action: "update", id, ...input } })).user;
-  } finally {
-    invalidateUserDirectoryCache(token);
-  }
-}
-
-export async function updateMyLanguage(language: AppLanguage): Promise<AuthUser> {
-  const token = getActiveGatewaySecret();
-  if (!token) throw new Error("Not signed in.");
-  invalidateUserDirectoryCache(token);
-  const payload = await authRequest<{ user: unknown }>("/api/auth/me", {
-    method: "POST",
-    token,
-    body: { language }
-  });
-  const user = normalizeAuthUser(payload?.user);
-  if (!user) throw new Error("The authenticated user response was invalid.");
-  rememberCurrentUser(token, user);
-  return user;
-}
-export async function deleteUser(id: string): Promise<void> {
-  const token = getActiveGatewaySecret();
-  if (!token) throw new Error("Not signed in.");
-  invalidateUserDirectoryCache(token);
-  try {
-    await authRequest<{ success: boolean }>("/api/auth/users", { method: "POST", token, body: { action: "delete", id } });
-  } finally {
-    invalidateUserDirectoryCache(token);
-  }
-}
-export async function logoutAccount(): Promise<void> {
-  const token = getActiveGatewaySecret();
-  if (token) await authRequest<{ success: boolean }>("/api/auth/logout", { method: "POST", token, body: {} });
-  clearApiRequestCaches();
-}
-
+const authRequest = authTransportRuntime.authRequest;
 
 export interface GuestPortfolioSnapshot {
   updatedAt: number;
