@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CryptoJS from 'crypto-js';
 import {
@@ -1444,6 +1445,18 @@ describe('closed-history cloud write serialization', () => {
     await expect(reset).resolves.toBe(false);
     // The queued forced-empty write must stop before its revision GET or POST.
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('binds a full portfolio reset to the confirming admin session and credential', () => {
+    const source = readFileSync(new URL('../../app.ts', import.meta.url), 'utf8');
+    const start = source.indexOf('async function resetToBlankState');
+    const end = source.indexOf('\nfunction calcCommission', start);
+    const reset = source.slice(start, end);
+
+    expect(reset).toContain('const resetSession = currentAccountSessionGuard.capture()');
+    expect(reset).toContain('const resetSecret = getGatewaySecret()');
+    expect(reset).toContain('if (!isResetSessionCurrent()) return');
+    expect(reset).toContain('clearCloudHistory(resetSecret, { isCurrentSession: isResetSessionCurrent })');
   });
 
   it('serializes concurrent history pushes so each reads the revision after the previous write', async () => {
