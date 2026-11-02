@@ -14,8 +14,6 @@ export interface FreedomBrokerTransportRuntime {
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
-  fetchFreedomTradeNetMarketDepth: (ticker: string) => Promise<unknown>;
-  ensureFreedomTradeNetSession: () => Promise<unknown>;
   fetchFreedomCashflows: (fromDate?: string) => Promise<unknown>;
   clearFreedomCashflowCache: () => void;
 }
@@ -42,19 +40,6 @@ export function createFreedomBrokerTransportRuntime(
 
   const fetchFreedomTradeNetActiveOrders = (): Promise<unknown> =>
     dependencies.proxyFetch('freedom-orders', { active_only: 1 }, { cache: 'no-store' });
-
-  const fetchFreedomTradeNetMarketDepth = async (ticker: string): Promise<unknown> => {
-    const symbol = String(ticker || '').trim().toUpperCase();
-    if (!/^[A-Z0-9.^=-]{1,20}$/.test(symbol)) throw new Error('A valid ticker is required to load market depth.');
-    return dependencies.proxyFetch('freedom-market-depth', { symbol }, { cache: 'no-store' });
-  };
-
-  const ensureFreedomTradeNetSession = (): Promise<unknown> =>
-    dependencies.proxyFetch('freedom-session', {}, {
-      method: 'POST',
-      body: JSON.stringify({}),
-      cache: 'no-store'
-    });
 
   const fetchFreedomCashflows = (fromDate?: string): Promise<unknown> => {
     const secret = dependencies.getActiveGatewaySecret().trim();
@@ -108,8 +93,6 @@ export function createFreedomBrokerTransportRuntime(
     fetchFreedomTradeNetPositions,
     fetchFreedomTradeNetTrades,
     fetchFreedomTradeNetActiveOrders,
-    fetchFreedomTradeNetMarketDepth,
-    ensureFreedomTradeNetSession,
     fetchFreedomCashflows,
     clearFreedomCashflowCache
   };
