@@ -50,6 +50,8 @@ The read-only `freedom-market-depth` response now includes a `diagnostics` objec
 
 The production WebSocket uses the documented `[event, data]` protocol at `wss://wss.tradernet.com/`. TradeNet's Node.js client sends `["orderBook", [ticker]]` and listens for event `b`; its order-book payload identifies the instrument with `i`.
 
+Inside Cloudflare Workers, the upstream socket is established with the Workers fetch-based WebSocket client: the Worker sends a request to `https://wss.tradernet.com/?SID=...` with the `Upgrade: websocket` header, then accepts the returned `response.webSocket` before sending protocol events. The `https:` scheme is intentional for this fetch-based upgrade path; use `wss:` only with the `new WebSocket(url)` constructor. When the upstream does not return a WebSocket, diagnostics retain the HTTP status and content type where available, or a sanitized network/TLS/timeout category when the handshake itself fails. The SID is never included in logs or diagnostics.
+
 TradeNet may identify a US instrument in the returned `b` event with a `.US` suffix even when the subscription used the bare ticker (for example, the request `GOOGL` can be echoed as `GOOGL.US`). The Worker treats only this exact `.US` suffix difference as equivalent, then returns the original requested symbol to the browser. Other exchange suffixes are not stripped or treated as aliases. See the [TradeNet WebSocket documentation](https://rc.tradernet.com/tradernet-api/websocket?site_lang=en) and the [official Tradernet WebSocket client](https://github.com/tradernet-api/tn-ws-nodejs).
 
 
