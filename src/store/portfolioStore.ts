@@ -11,8 +11,7 @@ import {
   PositionRecord,
   Holding,
   TrancheItem,
-  PendingMutation,
-  ClosedTrade
+  PendingMutation
 } from '../types/portfolio';
 import {
   loadSavedState,
@@ -22,7 +21,7 @@ import {
   getQuoteRefreshInterval
 } from '../services/storage';
 import { calculateCommission, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
-import { allocateFifoSaleTranches, calculateSaleAccounting, calculateSaleCommission, settleSaleProceeds } from '../domain/portfolioTransactions';
+import { allocateFifoSaleTranches, calculateSaleAccounting, calculateSaleCommission, createClosedTradeRecord, resolveClosedTradeTimestamp, settleSaleProceeds } from '../domain/portfolioTransactions';
 import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
@@ -679,40 +678,31 @@ export class PortfolioStore {
       }
 
       const exitDateStr = date || todayIso();
-      const buyTimestamp = new Date(earliestBuyDate).getTime();
       const exitTimestamp = new Date(exitDateStr).getTime();
-      const holdingDays = Math.max(
-        0,
-        Math.round(Math.abs(exitTimestamp - buyTimestamp) / 86400000)
-      );
       const requestedClosedAt = Number(options.closedAt);
-      const closedTimestamp = Number.isFinite(requestedClosedAt) && requestedClosedAt > 0
-        ? requestedClosedAt
-        : Number.isFinite(exitTimestamp) ? exitTimestamp : Date.now();
+      const fallbackTimestamp = Number.isFinite(requestedClosedAt) && requestedClosedAt > 0
+        ? 0
+        : Number.isFinite(exitTimestamp) ? 0 : Date.now();
+      const closedTimestamp = resolveClosedTradeTimestamp(
+        requestedClosedAt,
+        exitTimestamp,
+        fallbackTimestamp
+      );
 
-      const closedRecord: ClosedTrade = {
+      const closedRecord = createClosedTradeRecord({
         id: `${clean}-${Date.now()}`,
         ticker: clean,
         shares: actualSold,
-        avgBuyPrice: soldCostBasis / actualSold,
-        entryPrice: soldCostBasis / actualSold,
+        soldCostBasis,
         sellPrice,
-        exitPrice: sellPrice,
         buyDate: earliestBuyDate,
-        purchaseDate: earliestBuyDate,
         sellDate: exitDateStr,
-        exitDate: exitDateStr,
-        date: closedTimestamp,
-        closedAt: new Date(closedTimestamp).toISOString(),
+        closedTimestamp,
         grossProfit,
         commissions: totalCommissions,
-        feesAndCommissions: totalCommissions,
-        totalCommissions,
         marginInterest: marginInterestAllocated,
-        netProfit,
-        netRealizedGain: netProfit,
-        holdingDays
-      };
+        netProfit
+      });
 
       const nextActiveView = positions[clean] ? clean : 'COMBINED';
       result = {
