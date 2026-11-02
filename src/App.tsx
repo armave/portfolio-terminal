@@ -12,7 +12,7 @@ import { TradingConsole } from './components/TradingConsole';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
 import type { MarginIntelligenceState, MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/scenarioContracts';
-import { ensureFreedomTradeNetSession, fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
+import { ensureFreedomTradeNetSession, normalizeFreedomTrades, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
 import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
@@ -22,15 +22,13 @@ import {
   markFreedomTradeHistoryBaseline,
   restoreGatewaySecret
 } from './services/storage';
-import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from './domain/closedHistoryFees';
-import { getLatestClosedTradeDate } from './domain/tradeHistorySync';
 import { setAppLanguage, subscribeAppLanguage } from './services/i18n';
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
-import { refreshActiveOrders } from './services/activeOrdersRefresh';
+import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerDataRuntime';
 import { createLatestRequestGuard } from './utils/requestGeneration';
 import { getMatchingMarginIntelligenceState } from './features/ai/marginIntelligenceState';
-import { createSessionIdentityGuard, getSessionIdentityRequestKey, type SessionIdentityToken } from './utils/sessionIdentityGuard';
+import { createSessionIdentityGuard } from './utils/sessionIdentityGuard';
 
 
 const MemoTickerTabs = memo(TickerTabs);
@@ -62,11 +60,6 @@ const ScenarioReportModal = lazy(() =>
 const MarginIntelligenceModal = lazy(() =>
   import('./components/MarginIntelligenceModal').then(({ MarginIntelligenceModal }) => ({ default: MarginIntelligenceModal }))
 );
-
-// In-flight broker reads are isolated by authenticated session generation.
-const tradesRequests = new Map<string, Promise<boolean>>();
-const accountRequests = new Map<string, Promise<boolean>>();
-const activeOrdersRequests = new Map<string, Promise<boolean>>();
 
 interface AppProps {
   onSaveGatewaySecret: (secret: string) => Promise<boolean>;
@@ -462,177 +455,40 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     if (activeDeskView === 'SETTINGS') setHasOpenedSettings(true);
   }, [activeDeskView, currentUser?.role, permissions.canViewClosedHistory, permissions.canViewGuestTrancheHistory]);
 
-  const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
-    if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
-    const requestKey = getSessionIdentityRequestKey(session);
-    const existing = accountRequests.get(requestKey);
-    if (existing) return existing;
-
-    emitBrokerEvent('broker:account-info-refreshing');
-    const request = (async () => {
-      const secret = await restoreGatewaySecret();
-      if (!secret.trim()) throw new Error('Gateway Secret is not available.');
-      if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
-      const response = await fetchFreedomTradeNetPositions();
-      if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
-      const snapshot = normalizeFreedomPortfolio(response);
-      if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
-      emitBrokerEvent('broker:account-info', snapshot);
-      return snapshot.loaded === true;
-    })();
-    accountRequests.set(requestKey, request);
-    try {
-      return await request;
-    } finally {
-      if (accountRequests.get(requestKey) === request) accountRequests.delete(requestKey);
-    }
-  };
-
-  const loadExecutedTrades = async (session: SessionIdentityToken): Promise<boolean> => {
-    if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
-    const requestKey = getSessionIdentityRequestKey(session);
-    const existing = tradesRequests.get(requestKey);
-    if (existing) return existing;
-
-    const request = (async (): Promise<boolean> => {
-      try {
-        // The saved Gateway Secret is encrypted and restored asynchronously from IndexedDB.
-        // Never issue the startup request until restoration has completed.
-        const secret = await restoreGatewaySecret();
-        if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
-        if (!secret.trim()) {
-          emitBrokerEvent('broker:executed-trades-error');
-          return false;
-        }
-        const accountId = currentUser?.id || '';
-        const savedExecutions = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
-        const currentPortfolio = portfolioStore.getState();
-        // Pre-incremental caches have no completeness marker. Perform one full
-        // background baseline before trusting their latest date as an incremental
-        // cursor; otherwise a one-row cache could permanently hide older sales.
-        const hasCompleteBaseline = hasFreedomTradeHistoryBaseline(accountId);
-        const fromDate = hasCompleteBaseline
-          ? getLatestClosedTradeDate(
-            [...savedExecutions, ...(currentPortfolio.brokerExecutedTrades || [])],
-            currentPortfolio.closedTrades || []
-          )
-          : undefined;
-        const response = await fetchFreedomTradeNetTrades(fromDate);
-        if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
-        const normalizedPage = normalizeFreedomTrades(response);
-        if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
-
-        // Merge the returned range into every local source before publishing it.
-        // A bounded response is never an authoritative replacement for history.
-        const latestPortfolio = portfolioStore.getState();
-        const latestSavedExecutions = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
-        const retainedExecutions = [
-          ...latestSavedExecutions,
-          ...(latestPortfolio.brokerExecutedTrades || [])
-        ];
-        const normalizedPageWithFees = preservePersistedBrokerFeeAllocations(
-          normalizedPage,
-          retainedExecutions
-        );
-        const mergedTrades = mergeBrokerExecutionHistory(retainedExecutions, normalizedPageWithFees);
-        portfolioStore.setState({ brokerExecutedTrades: mergedTrades });
-
-        if (!hasCompleteBaseline) {
-          const persistedCount = loadSavedHistory().brokerExecutedTrades.length;
-          if (mergedTrades.length === 0 || persistedCount >= mergedTrades.length) {
-            markFreedomTradeHistoryBaseline(accountId);
-          }
-        }
-
-        if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
-        // Keep broker executions separate from app-owned ClosedTrade records.
-        // ClosedHistoryDesk subscribes to this event and renders the merged cache.
-        emitBrokerEvent('broker:executed-trades', mergedTrades);
-        return true;
-      } catch (error) {
-        if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
-        console.error('Unable to load TradeNet executed trades:', error);
-        emitBrokerEvent('broker:executed-trades-error');
-        return false;
-      }
-    })();
-    tradesRequests.set(requestKey, request);
-    try {
-      return await request;
-    } finally {
-      if (tradesRequests.get(requestKey) === request) tradesRequests.delete(requestKey);
-    }
-  };
-
-  // Bind broker request channels once per authenticated administrator session.
-  // Provider reads keep their existing session-generation guards and normalization.
+  // Broker data reads are session-bound in the broker data runtime. App remains
+  // the single owner of portfolio state and injects its account/session boundary.
   useEffect(() => {
     if (currentUser?.role !== 'admin') return;
     const session = brokerSessionIdentityRef.current.capture();
     if (!session) return;
 
-    const loadActiveOrders = async (): Promise<boolean> => {
-      if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
-      const requestKey = getSessionIdentityRequestKey(session);
-      const existing = activeOrdersRequests.get(requestKey);
-      if (existing) return existing;
-
-      let succeeded = false;
-      const request = (async () => {
-        await refreshActiveOrders({
-          restoreGatewaySecret,
-          isCurrent: () => brokerSessionIdentityRef.current.isCurrent(session),
-          fetchActiveOrders: fetchFreedomTradeNetActiveOrders,
-          normalizeActiveOrders: normalizeFreedomActiveOrders,
-          onSuccess: (orders) => {
-            if (brokerSessionIdentityRef.current.isCurrent(session)) {
-              succeeded = true;
-              emitBrokerEvent('broker:active-orders', orders);
-            }
-          },
-          onError: () => {
-            if (brokerSessionIdentityRef.current.isCurrent(session)) {
-              succeeded = false;
-              emitBrokerEvent('broker:active-orders-error');
-            }
-          },
-          logError: (error) => {
-            if (brokerSessionIdentityRef.current.isCurrent(session)) {
-              console.error('Unable to load active TradeNet orders:', error);
-            }
-          }
-        });
-        return succeeded;
-      })();
-      activeOrdersRequests.set(requestKey, request);
-      try {
-        return await request;
-      } finally {
-        if (activeOrdersRequests.get(requestKey) === request) activeOrdersRequests.delete(requestKey);
-      }
-    };
-
-    const refreshAccountInfo = async (): Promise<boolean> => {
-      try {
-        return await loadFreedomAccount(session);
-      } catch {
-        // Ignore completion from a prior identity; it must not mark the next
-        // account's broker snapshot stale or display an unrelated error.
-        if (brokerSessionIdentityRef.current.isCurrent(session)) {
-          emitBrokerEvent('broker:account-info-error');
-        }
-        return false;
-      }
-    };
+    const brokerDataRuntime = createPortfolioBrokerDataRuntime({
+      getAccountId: () => currentUser?.id || '',
+      isSessionCurrent: (requestedSession) => brokerSessionIdentityRef.current.isCurrent(requestedSession),
+      restoreGatewaySecret,
+      fetchAccountInfo: fetchFreedomTradeNetPositions,
+      normalizeAccountInfo: normalizeFreedomPortfolio,
+      fetchExecutedTrades: fetchFreedomTradeNetTrades,
+      normalizeExecutedTrades: normalizeFreedomTrades,
+      loadSavedBrokerExecutions: () => normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades),
+      getCurrentBrokerExecutions: () => portfolioStore.getState().brokerExecutedTrades || [],
+      getClosedTrades: () => portfolioStore.getState().closedTrades || [],
+      hasHistoryBaseline: hasFreedomTradeHistoryBaseline,
+      markHistoryBaseline: markFreedomTradeHistoryBaseline,
+      setBrokerExecutions: (executions) => portfolioStore.setState({ brokerExecutedTrades: executions }),
+      fetchActiveOrders: fetchFreedomTradeNetActiveOrders,
+      normalizeActiveOrders: normalizeFreedomActiveOrders,
+      emit: emitBrokerEvent,
+      logError: (message, error) => console.error(message, error)
+    });
 
     return bindPortfolioBrokerRequestRuntime({
-      refreshAccountInfo,
-      refreshAccountInfoForWait: () => loadFreedomAccount(session),
-      refreshExecutedTrades: () => loadExecutedTrades(session),
-      refreshActiveOrders: loadActiveOrders
+      refreshAccountInfo: () => brokerDataRuntime.refreshAccountInfo(session),
+      refreshAccountInfoForWait: () => brokerDataRuntime.loadFreedomAccount(session),
+      refreshExecutedTrades: () => brokerDataRuntime.loadExecutedTrades(session),
+      refreshActiveOrders: () => brokerDataRuntime.loadActiveOrders(session)
     });
   }, [currentUser?.id, currentUser?.role]);
-
 
 
   return (
