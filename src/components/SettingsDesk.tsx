@@ -40,9 +40,10 @@ export function toBrokerRulesFormValues(rules: BrokerAssumptions): BrokerRulesFo
 
 interface SettingsDeskProps {
   currentUser: AuthUser | null;
+  isSessionCurrent: () => boolean;
 }
 
-export function SettingsDesk({ currentUser }: SettingsDeskProps) {
+export function SettingsDesk({ currentUser, isSessionCurrent }: SettingsDeskProps) {
   const portfolio = usePortfolio();
   const rules = portfolio.brokerAssumptions;
   const [account, setAccount] = useState<AuthUser | null>(currentUser);
@@ -58,8 +59,11 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [languageError, setLanguageError] = useState("");
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
+  const usersRequestIdRef = useRef(0);
 
   const refreshUsers = async () => {
+    if (!isSessionCurrent()) return;
+    const requestId = ++usersRequestIdRef.current;
     // The application already owns the verified session identity. Refresh only
     // the admin directory here; a transient directory error must not sign out
     // the active user or erase their account details from Settings.
@@ -71,10 +75,12 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     }
     try {
       const records = await listUsers();
+      if (!isSessionCurrent() || requestId !== usersRequestIdRef.current) return;
       setUsers(records);
       setEditValues(Object.fromEntries(records.map((user) => [user.id, { name: user.name, role: user.role, language: user.language ?? "en", password: "" }])));
       setUsersError("");
     } catch (error) {
+      if (!isSessionCurrent() || requestId !== usersRequestIdRef.current) return;
       setUsersError(error instanceof Error ? error.message : "Could not load users.");
     }
   };
@@ -84,31 +90,34 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
 
   useEffect(() => {
     setInitialUsersLoading(currentUser?.role === 'admin');
-    void refreshUsers().finally(() => setInitialUsersLoading(false));
+    void refreshUsers().finally(() => {
+      if (isSessionCurrent()) setInitialUsersLoading(false);
+    });
   }, [currentUser?.id, currentUser?.role]);
 
   const handleCreateUser = async (event: Event) => {
     event.preventDefault();
-    if (savingUser) return;
+    if (!isSessionCurrent() || savingUser) return;
     setSavingUser(true);
     setUsersError("");
     try {
       await createUser({ name: newName.trim(), password: newPassword, role: newRole, language: newLanguage });
+      if (!isSessionCurrent()) return;
       setNewName("");
       setNewPassword("");
       setNewRole("guest");
       setNewLanguage("en");
       await refreshUsers();
     } catch (error) {
-      setUsersError(error instanceof Error ? error.message : "Could not create user.");
+      if (isSessionCurrent()) setUsersError(error instanceof Error ? error.message : "Could not create user.");
     } finally {
-      setSavingUser(false);
+      if (isSessionCurrent()) setSavingUser(false);
     }
   };
 
   const handleUpdateUser = async (userId: string) => {
     const values = editValues[userId];
-    if (!values || savingUser) return;
+    if (!isSessionCurrent() || !values || savingUser) return;
     setSavingUser(true);
     setUsersError("");
     try {
@@ -118,45 +127,48 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         language: values.language,
         ...(values.password ? { password: values.password } : {})
       });
+      if (!isSessionCurrent()) return;
       if (updated.id === account?.id) {
         setAccount(updated);
         emitUiEvent('auth:user-changed', { user: updated });
       }
       await refreshUsers();
     } catch (error) {
-      setUsersError(error instanceof Error ? error.message : "Could not update user.");
+      if (isSessionCurrent()) setUsersError(error instanceof Error ? error.message : "Could not update user.");
     } finally {
-      setSavingUser(false);
+      if (isSessionCurrent()) setSavingUser(false);
     }
   };
 
   const handleLanguageChange = async (event: Event) => {
     const language = (event.currentTarget as HTMLSelectElement).value as AppLanguage;
-    if (!account || savingLanguage || language === account.language) return;
+    if (!isSessionCurrent() || !account || savingLanguage || language === account.language) return;
     setSavingLanguage(true);
     setLanguageError("");
     try {
       const updated = await updateMyLanguage(language);
+      if (!isSessionCurrent()) return;
       setAccount(updated);
       emitUiEvent('auth:user-changed', { user: updated });
     } catch (error) {
-      setLanguageError(error instanceof Error ? error.message : "Could not update language.");
+      if (isSessionCurrent()) setLanguageError(error instanceof Error ? error.message : "Could not update language.");
     } finally {
-      setSavingLanguage(false);
+      if (isSessionCurrent()) setSavingLanguage(false);
     }
   };
 
   const handleDeleteUser = async (user: AuthUser) => {
-    if (savingUser || !window.confirm(`${translateText('Delete account')} "${user.name}"?`)) return;
+    if (!isSessionCurrent() || savingUser || !window.confirm(`${translateText('Delete account')} "${user.name}"?`)) return;
     setSavingUser(true);
     setUsersError("");
     try {
       await deleteUser(user.id);
+      if (!isSessionCurrent()) return;
       await refreshUsers();
     } catch (error) {
-      setUsersError(error instanceof Error ? error.message : "Could not delete user.");
+      if (isSessionCurrent()) setUsersError(error instanceof Error ? error.message : "Could not delete user.");
     } finally {
-      setSavingUser(false);
+      if (isSessionCurrent()) setSavingUser(false);
     }
   };
 

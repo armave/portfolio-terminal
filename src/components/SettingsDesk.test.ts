@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { toBrokerRulesFormValues } from './SettingsDesk';
 
 describe('toBrokerRulesFormValues', () => {
@@ -18,5 +19,26 @@ describe('toBrokerRulesFormValues', () => {
       commVolumePct: '0.15',
       minCommOrder: '1.20'
     });
+  });
+});
+
+
+describe('Settings account-session safety', () => {
+  const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+  const settingsSource = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+
+  it('remounts Settings with the account identity and generation', () => {
+    expect(appSource).toContain('key={`settings-${accountSession?.identity ?? \'none\'}-${accountSession?.generation ?? -1}`}');
+    expect(appSource).toContain('isSessionCurrent={isAccountSessionCurrent}');
+  });
+
+  it('ignores stale user-directory responses and errors after an account switch', () => {
+    expect(settingsSource).toContain('if (!isSessionCurrent()) return;');
+    expect(settingsSource).toContain('if (!isSessionCurrent() || requestId !== usersRequestIdRef.current) return;');
+  });
+
+  it('does not publish a late self-update or language result into a different session', () => {
+    expect(settingsSource).toContain('if (!isSessionCurrent()) return;\n      if (updated.id === account?.id)');
+    expect(settingsSource).toContain('if (!isSessionCurrent()) return;\n      setAccount(updated);\n      emitUiEvent(\'auth:user-changed\', { user: updated });');
   });
 });

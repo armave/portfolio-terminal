@@ -777,7 +777,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       {/* Settings */}
       <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">
         {hasOpenedSettings
-          ? <div class="desk-content-reveal"><SettingsDesk currentUser={currentUser} /></div>
+          ? <div class="desk-content-reveal"><SettingsDesk
+              key={`settings-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
+              currentUser={currentUser}
+              isSessionCurrent={isAccountSessionCurrent}
+            /></div>
           : <DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}
       </div>
 
