@@ -47,11 +47,26 @@ export interface CloudStateSyncRuntime {
 }
 
 /** Coordinates encrypted portfolio/history transfer, legacy migration and per-secret caches. */
-export function createCloudStateSyncRuntime(dependencies: CloudStateSyncRuntimeDependencies): CloudStateSyncRuntime {
-  const fetchImpl = dependencies.fetchImpl ?? ((input, init) => fetch(input, init));
-  const now = dependencies.now || Date.now;
+export function createCloudStateSyncRuntime({
+  workerProxyUrl,
+  getActiveGatewaySecret,
+  encryptCloudPayload,
+  decryptCloudPayload,
+  readCloudRevision,
+  revisionCoordinator,
+  processRollovers,
+  loadSavedState,
+  loadSavedHistory,
+  saveState,
+  normalizeFreedomTrades,
+  fetchImpl: injectedFetch,
+  storage: injectedStorage,
+  now: injectedNow
+}: CloudStateSyncRuntimeDependencies): CloudStateSyncRuntime {
+  const fetchImpl = injectedFetch ?? ((input, init) => fetch(input, init));
+  const now = injectedNow || Date.now;
   const getLocalStorage = (): Pick<Storage, 'getItem' | 'setItem'> | null => {
-    if (dependencies.storage !== undefined) return dependencies.storage;
+    if (injectedStorage !== undefined) return injectedStorage;
     try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch { return null; }
   };
   const cloudStatePushFingerprints = new Map<string, string>();
@@ -79,24 +94,24 @@ async function pullCloudState(
     logTerminal = (msg: string) => console.log(msg)
   } = handlers;
 
-  const currentSecret = handlers.secret || dependencies.getActiveGatewaySecret();
+  const currentSecret = handlers.secret || getActiveGatewaySecret();
   const isCurrentSession = handlers.isCurrentSession || (() => true);
   const stalePullFallback = () => {
     reportResult?.(false);
-    return dependencies.loadSavedState(state || {});
+    return loadSavedState(state || {});
   };
 
   if (!currentSecret) {
     reportResult?.(false);
     showToast('Gateway Secret required to access cloud state.', 'error');
-    return dependencies.loadSavedState(state || {});
+    return loadSavedState(state || {});
   }
 
   // showToast('Pulling portfolio from KV cloud...', 'info');
 
   try {
     const cachedValidationResponse = consumeValidatedCloudResponse(currentSecret);
-    const url = new URL('/api/state', dependencies.workerProxyUrl);
+    const url = new URL('/api/state', workerProxyUrl);
     if (!isCurrentSession()) return stalePullFallback();
     const res = cachedValidationResponse || await fetchImpl(url.toString(), {
       method: 'GET',
@@ -108,17 +123,17 @@ async function pullCloudState(
     });
     if (!isCurrentSession()) return stalePullFallback();
 
-    const pulledRevision = dependencies.readCloudRevision(res.headers);
+    const pulledRevision = readCloudRevision(res.headers);
 
     if (res.status === 404) {
       cloudStatePushFingerprints.delete(currentSecret);
       // A confirmed empty cloud store is safe to use as the current base revision.
       if (pulledRevision !== null) {
-        dependencies.revisionCoordinator.recordPulledRevision(pulledRevision);
+        revisionCoordinator.recordPulledRevision(pulledRevision);
       }
       reportResult?.(false);
       logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
-      return dependencies.loadSavedState(state || {});
+      return loadSavedState(state || {});
     }
 
     if (!res.ok) {
@@ -140,7 +155,7 @@ async function pullCloudState(
     let requiresEncryptionUpgrade = false;
     if (typeof data.encryptedPayload === 'string') {
       try {
-        const decrypted = await dependencies.decryptCloudPayload(data.encryptedPayload, currentSecret);
+        const decrypted = await decryptCloudPayload(data.encryptedPayload, currentSecret);
         if (!isCurrentSession()) return stalePullFallback();
         requiresEncryptionUpgrade = decrypted.legacy;
         try {
@@ -172,9 +187,9 @@ async function pullCloudState(
     // Migrate legacy history out of the main cloud snapshot. Prefer whichever
     // source has data; the dedicated record is written before the main snapshot
     // is compacted, so a failed history write cannot silently discard records.
-    const localHistory = dependencies.loadSavedHistory();
-    const legacyCloudExecutions = dependencies.normalizeFreedomTrades(parsedState.brokerExecutedTrades);
-    const localExecutions = dependencies.normalizeFreedomTrades(localHistory.brokerExecutedTrades);
+    const localHistory = loadSavedHistory();
+    const legacyCloudExecutions = normalizeFreedomTrades(parsedState.brokerExecutedTrades);
+    const localExecutions = normalizeFreedomTrades(localHistory.brokerExecutedTrades);
     const localExecutionsById = new Map(localExecutions
       .filter((trade) => Boolean(trade.id))
       .map((trade) => [trade.id, trade]));
@@ -224,8 +239,8 @@ async function pullCloudState(
     const mergedLocalData = hasHistory;
 
     if (!isCurrentSession()) return stalePullFallback();
-    const wasUpdated = dependencies.processRollovers(parsedState);
-    if (!dependencies.saveState(parsedState)) {
+    const wasUpdated = processRollovers(parsedState);
+    if (!saveState(parsedState)) {
       throw new Error('Cloud state was downloaded but could not be saved to this device. Check browser storage availability and free space, then retry.');
     }
 
@@ -233,7 +248,7 @@ async function pullCloudState(
     // Only trust the cloud revision after its payload was decrypted, validated,
     // and persisted locally. A failed pull must not authorize a later overwrite.
     if (pulledRevision !== null) {
-      dependencies.revisionCoordinator.recordPulledRevision(pulledRevision);
+      revisionCoordinator.recordPulledRevision(pulledRevision);
     }
 
     if (handlers.allowCloudWrites !== false && (wasUpdated || requiresEncryptionUpgrade || mergedLocalData)) {
@@ -258,7 +273,7 @@ async function pullCloudState(
     console.error('Failed to pull KV cloud state:', err);
     showToast(`Cloud pull failed: ${err.message}`, 'error');
     logTerminal(`[KV Cloud Error]: ${err.message}. Retaining local state.`);
-    return dependencies.loadSavedState(state || {});
+    return loadSavedState(state || {});
   }
 }
 
@@ -298,7 +313,7 @@ function enqueueCloudHistoryWrite(
 
 function pushCloudHistory(
   history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] },
-  secret = dependencies.getActiveGatewaySecret(),
+  secret = getActiveGatewaySecret(),
   knownRevision?: number,
   options: Pick<SyncOptions, 'isCurrentSession'> = {}
 ): Promise<boolean> {
@@ -311,7 +326,7 @@ function pushCloudHistory(
  * empty snapshot cannot hide cloud history added by another device later.
  */
 function clearCloudHistory(
-  secret = dependencies.getActiveGatewaySecret(),
+  secret = getActiveGatewaySecret(),
   options: Pick<SyncOptions, 'isCurrentSession'> = {}
 ): Promise<boolean> {
   return enqueueCloudHistoryWrite({
@@ -338,22 +353,22 @@ async function performPushCloudHistory(
 
   let revision = knownRevision;
   if (!Number.isSafeInteger(revision) || (revision as number) < 0) {
-    const url = new URL('/api/history', dependencies.workerProxyUrl).toString();
+    const url = new URL('/api/history', workerProxyUrl).toString();
     const current = await fetchImpl(url, { method: 'GET', headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}` } });
     if (!isCurrentSession()) return false;
-    revision = dependencies.readCloudRevision(current.headers) ?? 0;
+    revision = readCloudRevision(current.headers) ?? 0;
     if (!current.ok && current.status !== 404) throw new Error(`Closed history revision check failed (HTTP ${current.status}).`);
   }
-  const encryptedPayload = await dependencies.encryptCloudPayload(plaintext, secret);
+  const encryptedPayload = await encryptCloudPayload(plaintext, secret);
   if (!isCurrentSession()) return false;
-  const res = await fetchImpl(new URL('/api/history', dependencies.workerProxyUrl).toString(), {
+  const res = await fetchImpl(new URL('/api/history', workerProxyUrl).toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}`, 'If-Match': `"${revision}"` },
     body: JSON.stringify({ encryptedPayload })
   });
   if (!isCurrentSession()) return false;
   if (!res.ok) throw new Error(`Closed history sync failed (HTTP ${res.status}).`);
-  const savedRevision = dependencies.readCloudRevision(res.headers) ?? (revision as number) + 1;
+  const savedRevision = readCloudRevision(res.headers) ?? (revision as number) + 1;
   rememberCloudHistorySnapshot(secret, {
     history: { brokerExecutedTrades, cashflows },
     revision: savedRevision
@@ -363,7 +378,7 @@ async function performPushCloudHistory(
   return true;
 }
 
-async function pullCloudHistory(secret = dependencies.getActiveGatewaySecret()): Promise<CloudHistory | null> {
+async function pullCloudHistory(secret = getActiveGatewaySecret()): Promise<CloudHistory | null> {
   if (!secret) return null;
   const snapshot = await pullCloudHistorySnapshot(secret);
   if (snapshot.history) return snapshot.history;
@@ -393,16 +408,16 @@ function pullCloudHistorySnapshot(secret: string): Promise<CloudHistorySnapshot>
 }
 
 async function performPullCloudHistory(secret: string): Promise<CloudHistorySnapshot> {
-  const res = await fetchImpl(new URL('/api/history', dependencies.workerProxyUrl).toString(), {
+  const res = await fetchImpl(new URL('/api/history', workerProxyUrl).toString(), {
     method: 'GET',
     headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}` }
   });
-  const revision = dependencies.readCloudRevision(res.headers) ?? 0;
+  const revision = readCloudRevision(res.headers) ?? 0;
   if (res.status === 404) return { history: null, revision };
   if (!res.ok) throw new Error(`Closed history load failed (HTTP ${res.status}).`);
   const envelope = await res.json();
   if (typeof envelope?.encryptedPayload !== 'string') throw new Error('Invalid closed history payload.');
-  const decrypted = await dependencies.decryptCloudPayload(envelope.encryptedPayload, secret);
+  const decrypted = await decryptCloudPayload(envelope.encryptedPayload, secret);
   const parsed = JSON.parse(decrypted.plaintext);
   return {
     history: {
@@ -414,7 +429,7 @@ async function performPullCloudHistory(secret: string): Promise<CloudHistorySnap
 }
 
 function pushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
-  return dependencies.revisionCoordinator.enqueueWrite((expectedRevision) =>
+  return revisionCoordinator.enqueueWrite((expectedRevision) =>
     performPushCloudState(state, options, expectedRevision)
   );
 }
@@ -433,7 +448,7 @@ async function performPushCloudState(
   if (!isCurrentSession()) return false;
 
   const currentState = state || (typeof getState === 'function' ? getState() : {});
-  const currentSecret = handlers.secret || dependencies.getActiveGatewaySecret();
+  const currentSecret = handlers.secret || getActiveGatewaySecret();
 
   if (!currentSecret) {
     showToast('Gateway Secret required to access cloud state.', 'error');
@@ -517,11 +532,11 @@ async function performPushCloudState(
     if (serializedBytes > 3500 * 1024) {
       throw new Error(`Cloud state is still too large after compacting (${(serializedBytes / 1024 / 1024).toFixed(2)} MB). Check large state fields before syncing.`);
     }
-    const ciphertext = await dependencies.encryptCloudPayload(serializedState, currentSecret);
+    const ciphertext = await encryptCloudPayload(serializedState, currentSecret);
     if (!isCurrentSession()) return false;
     const payload = { encryptedPayload: ciphertext };
 
-    const url = new URL('/api/state', dependencies.workerProxyUrl);
+    const url = new URL('/api/state', workerProxyUrl);
     const res = await fetchImpl(url.toString(), {
       method: 'POST',
       headers: {
@@ -542,8 +557,8 @@ async function performPushCloudState(
       throw new Error(errorMessage);
     }
 
-    const savedRevision = dependencies.readCloudRevision(res.headers);
-    if (savedRevision !== null) dependencies.revisionCoordinator.setRevision(savedRevision);
+    const savedRevision = readCloudRevision(res.headers);
+    if (savedRevision !== null) revisionCoordinator.setRevision(savedRevision);
     cloudStatePushFingerprints.set(currentSecret, stateFingerprint);
 
     handlers.onStatusChange?.('synced');
