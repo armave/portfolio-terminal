@@ -169,33 +169,36 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Final-head validation on `40e2f04c495125b7b3cbfe2896e5690e85886f79`: typecheck, 1,036 tests across 98 files, dead-code validation, both audits, production build, and Chromium browser smoke passed. Entry bundle: 499,837 / 500,000 bytes; gzip: 159,744 / 165,000 bytes. Full dependency audit: 9 low/moderate advisories (2 low, 7 moderate); production audit: 0 vulnerabilities. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41437200885) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41437200940).
 - [x] Squash-merged to `main` as `fdfa6c63f19fec4e50fd1823f61fc9d632798d86`.
 
-## Current PR #258 — authentication transport runtime
+## Merged PR #258 — authentication and provider transport runtimes
 
 - [x] Extract authenticated Worker request transport and GET request coalescing into `authTransportRuntime.ts`.
-- [x] Move login, bootstrap, token validation, identity reads, user directory reads/mutations, language updates, and logout into the injected runtime.
-- [x] Preserve API compatibility exports and reuse the validated identity during startup.
-- [x] Preserve token-scoped user cache TTL, directory invalidation, in-flight generation guards, no-store requests, and logout-wide cache invalidation.
-- [x] Extract Freedom TradeNet endpoints and the token/date-scoped cashflow cache into `freedomBrokerTransportRuntime.ts`.
-- [x] Preserve read-only/no-store endpoint options, symbol/date normalization, five-minute cache TTL, request coalescing, retry-after-failure, and explicit cache clearing.
-- [x] Add 8 focused Vitest cases covering route contracts, validation, session creation, cache keying/expiry, in-flight coalescing, failure retry, and reset.
-- [x] Extract Yahoo batched quotes, fallback quote normalization, deep-data caching, Market News and Stocktwits transport into `marketDataTransportRuntime.ts`.
-- [x] Preserve quote batching and TTL, explicit force refresh, deep-data cancellation/cache semantics, closed-session market request gating, and feed normalization/cache behavior.
-- [x] Add 7 focused Vitest cases for quote batching, TTL, force refresh, partial batches, fallback quote normalization/validation, and cache clearing.
-- [x] Add focused Vitest coverage for GET coalescing, identity reuse, invalid tokens, normalization, mutation invalidation, stale in-flight directory reads, logout cleanup, and error retry.
-- [ ] Run exact-head typecheck, Vitest, build, dead-code validation, audits, and production browser smoke.
-- [ ] Review and merge.
+- [x] Extract Freedom TradeNet endpoints and token/date-scoped cashflow caching into `freedomBrokerTransportRuntime.ts`.
+- [x] Extract Yahoo quotes, fallback normalization, deep-data, Market News and Stocktwits transport into `marketDataTransportRuntime.ts`.
+- [x] Preserve `api.ts` public compatibility bindings; reduce the facade from 975 to 461 lines.
+- [x] Preserve token-scoped caches, no-store behavior, request coalescing, force refresh, cancellation, retry, and session-generation guards.
+- [x] Add 23 focused Vitest tests across auth, broker, and market-data runtimes.
+- [x] Exact-head validation on `b0af43ae522a3b4f00666536113fa366440157f6`: 1,059 tests across 101 files; typecheck, build, dead-code validation, both dependency audits, and production Chromium smoke passed.
+- [x] Production dependency audit: 0 vulnerabilities; full dependency tree retains 9 low/moderate advisories (2 low, 7 moderate).
+- [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41440860641) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41440860590) passed.
+- [x] Squash-merged to `main` as `8d48af39e9afe52157a1d7489ff9918b9e65bda0`.
 
-## Current PR #259 — production browser recovery and assignment journeys
+## Merged PR #259 — production browser recovery and assignment journeys
 
 - [x] Extend the existing Playwright production smoke using only mocked Worker routes.
 - [x] Model revisioned state/history endpoints with ETags and deterministic 412 conflict injection.
-- [x] Model TradeNet account, execution-history, active-order and Yahoo quote responses.
-- [x] Exercise admin active-tranche guest assignment and assert a guest projection plus active LOTS ledger publication.
-- [x] Exercise manual sync when the broker balance endpoint fails but other sources continue successfully.
-- [x] Exercise cloud revision conflict handling through the manual sync UI.
-- [x] Exercise backup export, invalid JSON rejection, valid backup import and confirmed local/cloud history reset.
-- [x] Verify the published guest snapshot remains available to the authenticated guest without accessing shared admin state.
-- [ ] Run exact-head typecheck, Vitest, production build, browser smoke, dead-code validation, and both dependency audits.
+- [x] Exercise broker partial-source failure, cloud revision conflict, backup export/import/reset, and guest assignment/history publication.
+- [x] Verify the published guest snapshot is readable by the authenticated guest without access to the administrator shared workspace.
+- [x] Exact-head validation on `3073ec1c8c202ea5a75d588b68b9097fba439f01`: 1,059 tests across 101 files; typecheck, build, dead-code validation, both dependency audits, and production Chromium smoke passed.
+- [x] Production dependency audit: 0 vulnerabilities; full dependency tree retains 9 low/moderate advisories (2 low, 7 moderate).
+- [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41457467471) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41457467610) passed.
+- [x] Squash-merged to `main` as `59b3ce8a1d606624d0a36c81096d1479793e77fc`.
+
+## Current PR #260 — portfolio transaction calculation boundary
+
+- [x] Extract pure FIFO sale-lot allocation, sale commission calculation, and debt-first sale-proceeds settlement into `portfolioTransactions.ts`.
+- [x] Keep portfolio state ownership, position mutation, rollover, and realized-trade persistence in `PortfolioStore`.
+- [x] Add direct tests for FIFO partial allocation, legacy fee fallback, tranche aliases, commission normalization, and debt/cash settlement.
+- [ ] Run exact-head typecheck, Vitest, production build, dead-code validation, both dependency audits, and production browser smoke.
 - [ ] Review and merge.
 
 ## Remaining architecture work
