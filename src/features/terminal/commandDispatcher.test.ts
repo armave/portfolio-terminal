@@ -147,6 +147,31 @@ describe('terminal command validation and cash routing', () => {
   });
 
   it('does not report sale success or request cloud sync when persistence fails', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      positions: {
+        ...state.positions,
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 7,
+          currentPrice: 100,
+          pt: 110,
+          commBuy: 0,
+          tranches: [{ qty: 7, price: 100, date: '2026-10-01', buyCommission: 0 }]
+        }
+      }
+    });
+    const sellStock = vi.spyOn(portfolioStore, 'sellStock').mockReturnValue(false);
+
+    const result = CommandDispatcher.execute('sold all AAPL for 120');
+
+    expect(sellStock).toHaveBeenCalledWith('AAPL', 7, 120, expect.any(String));
+    expect(result.type).toBe('err');
+    expect(result.text).toBe(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
+    expect(result.sideEffect).toBeUndefined();
+  });
+
   it('reports blocked cost-basis sales as errors and does not request cloud sync', () => {
     const error = new Error('Position has no cost-basis tranches; reconcile its entry cost before selling.');
     vi.spyOn(portfolioStore, 'sellStock').mockImplementation(() => { throw error; });
@@ -161,15 +186,6 @@ describe('terminal command validation and cash routing', () => {
           currentPrice: 100,
           pt: 110,
           commBuy: 0,
-          tranches: [{ qty: 7, price: 100, date: '2026-10-01' }]
-        }
-      }
-    });
-    vi.spyOn(portfolioStore, 'sellStock').mockReturnValue(false);
-
-    const result = CommandDispatcher.execute('sold all AAPL for 120');
-    expect(result.type).toBe('err');
-    expect(result.text).toBe(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
           tranches: []
         }
       }
