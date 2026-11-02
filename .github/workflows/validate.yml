@@ -27,3 +27,5 @@ jobs:
         run: npm run validate:dead-code
       - name: Full dependency security audit
         run: npm run audit:dependencies
+      - name: Audit production dependency surface
+        run: npm run audit:production

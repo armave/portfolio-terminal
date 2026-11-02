@@ -10,7 +10,8 @@
     "test": "vitest run",
     "knip": "npx --yes knip",
     "validate:dead-code": "npm run knip",
-    "audit:dependencies": "npm audit --audit-level=high"
+    "audit:dependencies": "npm audit --audit-level=high",
+    "audit:production": "npm audit --omit=dev --audit-level=high"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",

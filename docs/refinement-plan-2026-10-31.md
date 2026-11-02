@@ -370,7 +370,7 @@ The previous guest directory error handler cleared the guest list on request fai
 - [x] First-load Balance hydration behavior confirmed resolved by the user.
 - [x] Trades calculation recovery confirmed resolved by the user.
 - [x] Live TradeNet Quote confirmed working by the user.
-- [ ] Complete broader cross-device responsive and assistive-technology QA for Cash/Balance, Margin, Closed History, Guest LOTS, Settings and News, including keyboard navigation, visible focus, dialog focus handling and small-screen table interactions.
+- [x] Complete broader cross-device responsive and assistive-technology QA for Cash/Balance, Margin, Closed History, Guest LOTS, Settings and News, including keyboard navigation, visible focus, dialog focus handling and small-screen table interactions (user confirmed complete, 2026-11-01).
 
 Only the broader UX/accessibility sign-off remains as a manual release gate; the automated code-quality checks are green on the current PR head.
 
@@ -411,7 +411,7 @@ Client-side request lifecycle and presentation state only. No provider endpoints
 
 **Release validation**
 
-- [ ] Exact-PR-head GitHub Actions: typecheck, Vitest, production build, dead-code validation, and production dependency audit.
+- [x] Exact-PR-head GitHub Actions passed on PR #241 implementation head `85ccdbf020d13109cf67908d7ec705a0cebfbe3c`: [Validate run 41391151619](https://github.com/armave/portfolio-terminal/actions/runs/41391151619) and [Pull Request CI run 41391151624](https://github.com/armave/portfolio-terminal/actions/runs/41391151624). Both workflows passed typecheck, 75 test files / 899 tests, production build, dead-code validation, the full dependency audit threshold, and the production-only dependency audit.
 - [ ] Browser network-panel verification that switching ticker tabs while on Fundamentals/Earnings/Analysts does not request News, while the selected deep-data request remains scoped to the new ticker.
 - [ ] Verify News/Stocktwits opt-in, cached revisit, explicit refresh, and rapid ticker switching with delayed responses in a real browser.
 
@@ -462,7 +462,7 @@ Client-side Market Depth presentation, accessibility labels and Russian localiza
 
 **Validation**
 
-- [ ] Exact-head Pull Request CI and Validate workflows pass typecheck, full tests, production build, dead-code validation and production dependency audit.
+- [x] Exact-head Pull Request CI and Validate workflows passed on PR #241 implementation head `85ccdbf020d13109cf67908d7ec705a0cebfbe3c`: [Validate run 41391151619](https://github.com/armave/portfolio-terminal/actions/runs/41391151619) and [Pull Request CI run 41391151624](https://github.com/armave/portfolio-terminal/actions/runs/41391151624); 75 test files / 899 tests passed, and the production-only audit found 0 vulnerabilities.
 - [ ] Verify English and Russian dialog text, accessible names, loading, retry and stale-warning states in a real browser.
 
 
@@ -485,5 +485,45 @@ Client-side Market Insights dialog state only. No News provider requests, Stockt
 
 **Validation**
 
-- [ ] Exact-head Pull Request CI and Validate workflows pass typecheck, all tests, production build, dead-code validation and dependency security audit.
+- [x] Exact-head Pull Request CI and Validate workflows passed on PR #241 implementation head `85ccdbf020d13109cf67908d7ec705a0cebfbe3c`: [Validate run 41391151619](https://github.com/armave/portfolio-terminal/actions/runs/41391151619) and [Pull Request CI run 41391151624](https://github.com/armave/portfolio-terminal/actions/runs/41391151624); 75 test files / 899 tests passed, and the production-only audit found 0 vulnerabilities.
 - [ ] Verify the open article dialog closes and focus is restored safely after a ticker change in a real browser.
+
+
+## Stage 15 — consolidated audit closeout and performance/security validation (2026-11-02)
+
+**Baseline and completed phases already on `main`**
+
+- [x] P0 account/session integrity protections are already merged: stale guest snapshot protection, account-session guards for cloud pulls and queued writes, Closed Trades cashflow isolation, Cash & Balance session isolation, and session-bound cloud-history reset (PRs #230–#235).
+- [x] Broker refresh recovery and market-data retry behavior are already merged (including Trades cashflow retry and Market Insights deep-data retry; PRs #236–#237).
+- [x] Market Depth same-ticker snapshot retention, retry/stale-state handling, Russian UI localization, and ticker-scoped News article dialog behavior are already merged (PRs #238–#240).
+- [x] The Stage 10 cross-device and assistive-technology review was confirmed by the user on 2026-11-01. The older duplicate pending checkbox in the manual-validation section has been reconciled with that confirmation.
+- [x] Latest pre-PR main validation on `4b8787f4d75d335ae5a120a15fccf2e12e750dcd`: [Validate run 41390006428](https://github.com/armave/portfolio-terminal/actions/runs/41390006428), [Pull Request CI run 41390006478](https://github.com/armave/portfolio-terminal/actions/runs/41390006478), and [GitHub Pages deployment 41390006605](https://github.com/armave/portfolio-terminal/actions/runs/41390006605). Validate and Pull Request CI passed typecheck, 74 test files / 896 tests, production build, dead-code validation, and the full dependency audit threshold.
+
+**Implementation in this PR**
+
+- [x] Convert infrequently used Cash & Balance, Guest LOTS, Closed History, Settings, and Market Insights components to on-demand chunks.
+- [x] Convert Scenario Comparison, Scenario Report, and Margin Intelligence dialogs to lazy-loaded chunks with a null fallback until the dialog module is available.
+- [x] Reuse the existing desk loading UI as the Suspense fallback so loading a deferred desk does not briefly leave an empty workspace.
+- [x] Remove the redundant dynamic import of `src/services/api.ts` from logout; the API module was already statically imported by the same runtime entry graph.
+- [x] Add source-wiring regression tests for lazy component loading and the redundant API import.
+- [x] Add a separate `npm run audit:production` script (`npm audit --omit=dev --audit-level=high`) and run it in Pull Request CI, Validate, and Pages build workflows alongside the existing all-dependency audit.
+- [x] Document the lazy-loading and dependency-audit conventions.
+
+**Dependency audit finding**
+
+The latest full audit reported **9 advisories (2 low, 7 moderate)**. The reported paths are in the development/build toolchain: `deepmerge`, `glob`, `minimatch`, `filelist`, `jake`, `ejs`, `@trickfilm400/rollup-plugin-off-main-thread`, `@rollup/plugin-node-resolve`, and `workbox-build`. The affected lockfile entries are development dependencies. The existing full audit command thresholds at high severity, so its green result does not mean the lower-severity advisories have disappeared.
+
+This PR explicitly adds a production-only audit so runtime dependency exposure is measured separately. It does **not** blindly rewrite the lockfile: the local clone/npm environment is unavailable in this session, and no dependency upgrade should be accepted without a generated lockfile, a clean install, all tests, PWA build validation, and review of the resolved transitive tree. The remaining moderate development-tooling advisories are recorded rather than hidden or treated as production vulnerabilities.
+
+**Performance baseline and expected result**
+
+The pre-PR main build emitted a 603.27 kB minified JavaScript entry chunk (184.51 kB gzip), above Vite's 500 kB warning threshold. Vite also warned that the API service was both dynamically and statically imported, so the dynamic import could not split it. This PR moves rarely used desks and modal code behind actual lazy component boundaries and removes the ineffective API dynamic import. On PR #241 implementation head `85ccdbf020d13109cf67908d7ec705a0cebfbe3c`, the main entry chunk fell to **481.00 kB minified / 153.71 kB gzip** (about 20.3% / 16.7% smaller than the 603.27 kB / 184.51 kB baseline). Vite emitted separate chunks for Closed History (34.99 kB), Cash & Balance (27.94 kB), Market Insights (19.28 kB), Settings (17.02 kB), Guest LOTS (8.58 kB), and the modal-only dialogs (5.18–6.75 kB). No chunk exceeded the 500 kB warning threshold, and the redundant `api.ts` dynamic/static import warning no longer appeared. Both exact-head CI workflows passed: [Validate run 41391151619](https://github.com/armave/portfolio-terminal/actions/runs/41391151619) and [Pull Request CI run 41391151624](https://github.com/armave/portfolio-terminal/actions/runs/41391151624). The full audit still reports 9 low/moderate development-tooling advisories; the production-only audit found 0 vulnerabilities.
+
+**Still-open real-browser release checks**
+
+- [ ] Verify Market Insights request counts in DevTools: News only while News is selected; deep data only for Fundamentals/Earnings/Analysts; Stocktwits only after opt-in; cached revisit, explicit refresh, and delayed ticker-switch responses.
+- [ ] Verify Market Depth initial load, same-ticker snapshot retention after refresh failure, retry recovery, ticker invalidation, and English/Russian states.
+- [ ] Verify a News article dialog closes after ticker change and restores focus to the correct live trigger.
+- [ ] Smoke-test on-demand desk/dialog loading and fallback presentation at phone, tablet, and desktop widths.
+
+These require a real browser session and network panel; no manual browser pass is claimed by the repository/API-only execution environment. Automated regression tests and exact PR-head CI remain the validation source for this branch.

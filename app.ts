@@ -37,6 +37,7 @@ import {
   getAuthStatus,
   getCurrentUser,
   listUsers,
+  logoutAccount,
   normalizeFreedomTrades,
   getGuestPortfolioSnapshot,
   publishGuestPortfolioSnapshots as publishGuestPortfolioSnapshotsBatch,
@@ -2339,7 +2340,6 @@ function bindStartupActions() {
   addUiEventListener('auth:logout', () => {
     void (async () => {
       try {
-        const { logoutAccount } = await import('./src/services/api');
         await logoutAccount();
       } catch (error) {
         showToast(error instanceof Error ? error.message : 'Could not sign out cleanly.', 'error');

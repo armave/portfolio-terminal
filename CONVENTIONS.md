@@ -16,7 +16,7 @@ These conventions describe the current Preact, TypeScript, and Cloudflare Worker
 
 7. **Worker and security boundaries:** Keep Worker routes and Durable Object storage in `worker.js` and `state-store.js`. Validate method, authentication, action, input shape, and payload bounds at the server boundary. CORS/origin allowlisting is defense in depth, not authentication. Never expose gateway credentials, broker session identifiers, raw sensitive provider payloads, or secrets to browser logs or UI. Client-side changes should not weaken server-enforced authorization.
 
-8. **UI and accessibility:** Use semantic Preact markup and the existing Tailwind/CSS design system. Keep tables readable on desktop and keyboard-scrollable on narrow screens; provide accessible names, column headers, visible focus, useful loading/error/empty states, and touch-sized actions. Respect reduced-motion preferences. Keep English/Russian static copy in the localization dictionary and test important dynamic translations.
+8. **UI and accessibility:** Use semantic Preact markup and the existing Tailwind/CSS design system. Keep tables readable on desktop and keyboard-scrollable on narrow screens; provide accessible names, column headers, visible focus, useful loading/error/empty states, and touch-sized actions. Respect reduced-motion preferences. Keep English/Russian static copy in the localization dictionary and test important dynamic translations. For rarely used desks and modal-only UI, use `lazy` imports with a lightweight `Suspense` fallback; do not add a dynamic import for a module that is already statically imported in the same entry graph.
 
 9. **Scope and cleanup:** Inspect all connected callers, producers, consumers, tests, styles, and documentation before deleting or replacing a legacy path. Remove code only after proving it is unused or a no-op. Do not delete active runtime/Worker files because they are large or older, and do not add a framework or dependency without a concrete need. Never leave placeholders, truncated code, unused compatibility branches, or incomplete implementations.
 
@@ -27,7 +27,8 @@ These conventions describe the current Preact, TypeScript, and Cloudflare Worker
     - `npm run typecheck`
     - `npm test`
     - `npm run validate:dead-code`
-    - `npm audit --omit=dev --audit-level=high`
+    - `npm run audit:dependencies`
+    - `npm run audit:production`
     - `npm run build`
 
     Inspect the final diff for unintended financial, persisted-data, broker, security, and deployment changes. Report unavailable checks honestly; never claim a test or build passed without evidence. Resolve failures at their source rather than weakening assertions or skipping checks.
