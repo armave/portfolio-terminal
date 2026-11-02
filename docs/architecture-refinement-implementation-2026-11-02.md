@@ -18,6 +18,8 @@ This change is a behavior-preserving architecture slice. It does not change fina
 - [x] Extract legacy holding and cloud-holding migration helpers into `src/store/portfolioMigrations.ts`; re-export the same functions from `portfolioStore.ts` so existing call sites and tests keep their import path.
 - [x] Extract portfolio snapshot, selector, active-desk subscription adapters, and their Preact hook adapters into `src/store/portfolioSubscriptions.ts`; retain the existing `portfolioStore.ts` exports as compatibility wrappers.
 - [x] Add focused Vitest coverage for immediate replay, changed-selection notifications, active-desk updates, and unsubscribe behavior.
+- [x] Extract portfolio navigation and explicit live-quote refresh event bindings from `app.ts` into `src/services/portfolioNavigationRuntime.ts`, with account-role lookup at event time and disposable listeners.
+- [x] Add focused tests for navigation permission changes, quote-refresh completion, and listener cleanup.
 - [x] Extract the 714-entry Russian static-copy dictionary into `src/services/i18n-ru.ts`; retain the existing `translateText`, language state, and dynamic-translation API.
 - [x] Add a production-build browser smoke test at 1440px, 768px, and 390px. The test stubs Worker auth status, verifies the Preact root mounts, and fails on uncaught page errors.
 - [x] Run the browser smoke test from the existing Validate workflow without adding a permanent application dependency or changing the lockfile.
