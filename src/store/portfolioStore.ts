@@ -1,9 +1,15 @@
-import { useState, useEffect, useRef } from 'preact/hooks';
+import {
+  subscribeToActiveView as subscribeActiveViewFromStore,
+  subscribeToPortfolioSelector as subscribePortfolioSelectorFromStore,
+  subscribeToPortfolioState as subscribePortfolioStateFromStore,
+  useActiveViewFromStore,
+  usePortfolioFromStore,
+  usePortfolioSelectorFromStore
+} from './portfolioSubscriptions';
 import {
   PortfolioState,
   PositionRecord,
   Holding,
-  Tranche,
   TrancheItem,
   BrokerAssumptions,
   PendingMutation,
@@ -16,7 +22,10 @@ import {
   saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
-import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, createBlankState, resolveCommissionConfig } from '../domain/portfolio';
+import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
+import { createBlankPortfolioState } from './portfolioDefaults';
+import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
+export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
 
 function todayIso(): string {
@@ -25,148 +34,6 @@ function todayIso(): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
-}
-
-/**
- * Import legacy active holdings only when a canonical position for that ticker
- * does not already exist. Existing canonical records always win.
- */
-export function migrateLegacyHoldingsToPositions(
-  sourcePositions: Record<string, PositionRecord>,
-  legacyHoldings: Holding[],
-  fallbackDate = todayIso()
-): Record<string, PositionRecord> {
-  const positions: Record<string, PositionRecord> = { ...(sourcePositions || {}) };
-
-  for (const holding of Array.isArray(legacyHoldings) ? legacyHoldings : []) {
-    const ticker = String(holding?.ticker || '').trim().toUpperCase();
-    if (!ticker || positions[ticker]) continue;
-
-    const tranches: TrancheItem[] = (Array.isArray(holding.tranches) ? holding.tranches : [])
-      .map((tranche) => ({
-        qty: Number(tranche.shares) || 0,
-        price: Number(tranche.entryPrice) || 0,
-        date: tranche.purchaseDate || fallbackDate
-      }))
-      .filter((tranche) => tranche.qty > 0 && tranche.price > 0);
-
-    const shares = tranches.reduce((sum, tranche) => sum + tranche.qty, 0);
-    if (shares <= 0) continue;
-
-    const averagePrice = tranches.reduce((sum, tranche) => sum + tranche.qty * tranche.price, 0) / shares;
-    const earliestDate = tranches
-      .map((tranche) => tranche.date)
-      .filter((date): date is string => Boolean(date))
-      .sort()[0] || fallbackDate;
-
-    positions[ticker] = {
-      ticker,
-      shares,
-      currentPrice: Number(holding.currentPrice) || averagePrice,
-      pt: Number(holding.analystTarget) || Number((averagePrice * 1.1).toFixed(2)),
-      commBuy: 0,
-      startDate: earliestDate,
-      tranches
-    };
-  }
-
-  return positions;
-}
-
-/** Build the read-only legacy holdings view from canonical positions. */
-export function buildHoldingsProjection(
-  positions: Record<string, PositionRecord>,
-  legacyHoldings: Holding[],
-  fallbackDate = todayIso()
-): Holding[] {
-  // Index compatibility metadata once. The previous per-position find() scanned
-  // the full legacy array for every ticker, which made normalization quadratic.
-  // Keep the first matching row to preserve Array.find() compatibility semantics.
-  const legacyByTicker = new Map<string, Holding>();
-  for (const holding of Array.isArray(legacyHoldings) ? legacyHoldings : []) {
-    const legacyTicker = String(holding?.ticker || '').trim().toUpperCase();
-    if (legacyTicker && !legacyByTicker.has(legacyTicker)) {
-      legacyByTicker.set(legacyTicker, holding);
-    }
-  }
-
-  return Object.keys(positions).map((ticker) => {
-    const position = positions[ticker];
-    const legacy = legacyByTicker.get(ticker);
-    const tranches: Tranche[] = (position.tranches || []).map((tranche, index) => ({
-      id: `${ticker}-${index}`,
-      shares: Number(tranche.qty) || 0,
-      entryPrice: Number(tranche.price) || 0,
-      purchaseDate: tranche.date || position.startDate || fallbackDate,
-      targetPrice: position.pt
-    }));
-
-    return {
-      ...legacy,
-      ticker,
-      isMargin: true,
-      tranches,
-      currentPrice: position.currentPrice,
-      analystTarget: position.pt
-    };
-  });
-}
-
-
-/**
- * Upgrade a legacy-only cloud snapshot without letting stale holdings override
- * canonical local positions or resurrect a ticker closed locally after its
- * latest legacy purchase.
- */
-export function migrateLegacyCloudHoldingsToPositions(
-  cloudState: Partial<PortfolioState>,
-  localState: Partial<PortfolioState>,
-  fallbackDate = todayIso()
-): Partial<PortfolioState> {
-  if (Object.prototype.hasOwnProperty.call(cloudState, 'positions')) return cloudState;
-
-  const localPositions = (localState.positions || {}) as Record<string, PositionRecord>;
-  const localClosedTrades = Array.isArray(localState.closedTrades) ? localState.closedTrades : [];
-  const legacyHoldings = Array.isArray(cloudState.holdings) ? cloudState.holdings : [];
-
-  // Index the latest local exit once instead of scanning the full trade history
-  // for every legacy holding. Keep the same date-field precedence and zero fallback
-  // as the former per-holding filter/map/reduce sequence.
-  const latestCloseByTicker = new Map<string, number>();
-  for (const trade of localClosedTrades) {
-    const ticker = String(trade?.ticker || '').trim().toUpperCase();
-    if (!ticker) continue;
-
-    const value = trade.closedAt ?? trade.exitDate ?? trade.sellDate ?? trade.date;
-    const timestamp = typeof value === 'number' ? value : Date.parse(String(value || ''));
-    const normalizedTimestamp = Number.isFinite(timestamp) ? timestamp : 0;
-    const previousTimestamp = latestCloseByTicker.get(ticker) ?? 0;
-    if (normalizedTimestamp > previousTimestamp) {
-      latestCloseByTicker.set(ticker, normalizedTimestamp);
-    }
-  }
-
-  const safeHoldings = legacyHoldings.filter((holding) => {
-    const ticker = String(holding?.ticker || '').trim().toUpperCase();
-    if (!ticker || localPositions[ticker]) return false;
-
-    const latestClose = latestCloseByTicker.get(ticker) ?? 0;
-    if (!latestClose) return true;
-
-    const latestLegacyPurchase = (Array.isArray(holding.tranches) ? holding.tranches : [])
-      .map((tranche) => Date.parse(String(tranche.purchaseDate || '')))
-      .filter(Number.isFinite)
-      .reduce((latest, timestamp) => Math.max(latest, timestamp), 0);
-
-    // A legacy holding is only considered reopened if it has a purchase date
-    // strictly later than the most recent locally recorded exit.
-    return latestLegacyPurchase > latestClose;
-  });
-
-  return {
-    ...cloudState,
-    positions: migrateLegacyHoldingsToPositions(localPositions, safeHoldings, fallbackDate)
-  };
 }
 
 /** Shared broker commission calculation for all confirmed stock-sale paths. */
@@ -218,11 +85,16 @@ export class PortfolioStore {
   }
 
   private initializeState(): PortfolioState {
-    const saved = loadSavedState(this.state) as Partial<PortfolioState> | null;
+    const defaults = createBlankPortfolioState();
+    // Keep the persisted snapshot's own property set intact so a truly legacy
+    // holdings-only record remains distinguishable from a canonical empty map.
+    const saved = loadSavedState({}) as Partial<PortfolioState> | null;
     const savedRules = loadBrokerRules();
     const refreshInterval = getQuoteRefreshInterval();
 
     const raw: PortfolioState = {
+      ...defaults,
+      ...saved,
       positions: saved?.positions || {},
       // Operation-level cash/margin choices are canonical portfolio data and must survive reloads/cloud pulls.
       activeTrancheTypes: saved?.activeTrancheTypes && typeof saved.activeTrancheTypes === 'object'
@@ -454,9 +326,13 @@ export class PortfolioStore {
     }
     this.update((state) => ({
       ...state,
-      ...createBlankState(now),
-      // The domain factory uses its MarginPosition type; the store boundary keeps PositionRecord.
-      positions: {} as Record<string, PositionRecord>,
+      ...createBlankPortfolioState(now),
+      // Reset portfolio-owned data while retaining device/account configuration.
+      brokerAssumptions: state.brokerAssumptions,
+      apiKeys: state.apiKeys,
+      gatewaySecret: state.gatewaySecret,
+      autoRefreshInterval: state.autoRefreshInterval,
+      positions: {},
       cashCushion: {
         freeCash: 0,
         holdings: [] as PortfolioState['cashCushion']['holdings']
@@ -1302,92 +1178,40 @@ export class PortfolioStore {
 
 export const portfolioStore = new PortfolioStore();
 
-/**
- * Subscribe and immediately replay the current portfolio snapshot.
- * Registering before reading closes the render-to-effect race: a state update
- * between the initial render and effect installation cannot be missed.
- */
 export function subscribeToPortfolioState(
   listener: (state: PortfolioState) => void,
   store: Pick<PortfolioStore, 'getState' | 'subscribe'> = portfolioStore
 ): () => void {
-  const unsubscribe = store.subscribe(listener);
-  listener(store.getState());
-  return unsubscribe;
+  return subscribePortfolioStateFromStore(listener, store);
 }
 
-/**
- * Subscribe to a derived portfolio slice and notify only when that selection
- * changes. This keeps quote-only updates away from components that render
- * navigation structure or other state-independent UI.
- */
 export function subscribeToPortfolioSelector<T>(
   selector: (state: PortfolioState) => T,
   listener: (selection: T) => void,
   isEqual: (previous: T, next: T) => boolean = Object.is,
   store: Pick<PortfolioStore, 'getState' | 'subscribe'> = portfolioStore
 ): () => void {
-  let current = selector(store.getState());
-  const unsubscribe = store.subscribe((state) => {
-    const next = selector(state);
-    if (isEqual(current, next)) return;
-    current = next;
-    listener(next);
-  });
-
-  // Subscribe before replaying so no update can be lost between the initial
-  // selection and effect installation.
-  listener(current);
-  return unsubscribe;
+  return subscribePortfolioSelectorFromStore(selector, listener, store, isEqual);
 }
 
 export function usePortfolioSelector<T>(
   selector: (state: PortfolioState) => T,
   isEqual: (previous: T, next: T) => boolean = Object.is
 ): T {
-  const selectorRef = useRef(selector);
-  const equalityRef = useRef(isEqual);
-  selectorRef.current = selector;
-  equalityRef.current = isEqual;
-
-  const [selection, setSelection] = useState<T>(() => selector(portfolioStore.getState()));
-  useEffect(() => subscribeToPortfolioSelector(
-    (state) => selectorRef.current(state),
-    setSelection,
-    (previous, next) => equalityRef.current(previous, next)
-  ), []);
-
-  return selection;
+  return usePortfolioSelectorFromStore(selector, isEqual, portfolioStore);
 }
 
 export function usePortfolio(): PortfolioState {
-  const [state, setState] = useState<PortfolioState>(() => portfolioStore.getState());
-
-  useEffect(() => {
-    return subscribeToPortfolioState((newState) => {
-      setState({ ...newState });
-    });
-  }, []);
-
-  return state;
+  return usePortfolioFromStore(portfolioStore);
 }
 
-/**
- * Subscribe to the device-local active desk independently from portfolio data.
- * Registering before replaying the value prevents a render-to-effect race.
- */
 export function subscribeToActiveView(
   listener: (view: string) => void,
   store: Pick<PortfolioStore, 'getState' | 'subscribeActiveView'> = portfolioStore
 ): () => void {
-  const unsubscribe = store.subscribeActiveView(listener);
-  listener(store.getState().activeView);
-  return unsubscribe;
+  return subscribeActiveViewFromStore(listener, store);
 }
 
 export function useActiveView(): string {
-  const [activeView, setActiveView] = useState<string>(() => portfolioStore.getState().activeView);
-
-  useEffect(() => subscribeToActiveView(setActiveView), []);
-  return activeView;
+  return useActiveViewFromStore(portfolioStore);
 }

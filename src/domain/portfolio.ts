@@ -36,7 +36,8 @@ interface ClosedTrade {
   netProfit: number;
 }
 
-export interface PortfolioState {
+/** Legacy/backup portfolio shape. The live application contract is defined in src/types/portfolio.ts. */
+export interface LegacyPortfolioState {
   activeView: string;
   balance: number;
   settings?: { marginRate?: number;[key: string]: unknown };
@@ -508,7 +509,7 @@ export function normalizePortfolioTranche(tranche: Record<string, unknown>): Tra
   } as TradeTranche;
 }
 
-export function createBlankState(now = Date.now()): PortfolioState {
+export function createBlankState(now = Date.now()): LegacyPortfolioState {
   return {
     activeView: 'COMBINED',
     balance: 0,
@@ -529,7 +530,7 @@ export function createBlankState(now = Date.now()): PortfolioState {
   };
 }
 
-export function normalizePortfolioState(candidate: unknown, now = Date.now()): PortfolioState {
+export function normalizePortfolioState(candidate: unknown, now = Date.now()): LegacyPortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio state must be an object.');
 
   // Never let imported or legacy state inject runtime credentials. These are
@@ -642,7 +643,7 @@ export function createPortfolioBackupSnapshot<T extends object>(state: T): Parti
   return snapshot as Partial<T>;
 }
 
-export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): PortfolioState {
+export function normalizePortfolioBackup(candidate: unknown, now = Date.now()): LegacyPortfolioState {
   if (!isRecord(candidate)) throw new Error('Portfolio backup must be an object.');
   const recognizedFields = ['positions', 'holdings', 'balance', 'cashCushion', 'closedTrades', 'activeView', 'startDate'];
   if (!recognizedFields.some(field => Object.hasOwn(candidate, field))) {
