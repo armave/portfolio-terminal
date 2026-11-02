@@ -1,5 +1,6 @@
-import CryptoJS from 'crypto-js';
 import { resetMarketRequestGate, runMarketDataRequest } from './marketRequestGate';
+import { createCloudStateSecurity } from './cloudStateSecurity';
+import { createCloudRevisionCoordinator } from './cloudRevisionCoordinator';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '../types/portfolio';
@@ -71,89 +72,25 @@ export async function saveSyncedMarginDigest(digest: SyncedMarginDigest, revisio
 
 const WORKER_PROXY_URL = 'https://trading-proxy.armenavetisyan-sa.workers.dev';
 
-// Persist each browser's last-seen cloud revision so a reload cannot reset it to zero.
-const CLOUD_REVISION_STORAGE_KEY = 'portfolio_cloud_revision_v1';
+const cloudRevisionCoordinator = createCloudRevisionCoordinator();
 
-function loadCloudRevision(): number {
-  try {
-    const raw = typeof localStorage !== 'undefined'
-      ? localStorage.getItem(CLOUD_REVISION_STORAGE_KEY)
-      : null;
-    const revision = raw === null ? 0 : Number(raw);
-    return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
-  } catch {
-    return 0;
-  }
+const cloudStateSecurity = createCloudStateSecurity({
+  workerProxyUrl: WORKER_PROXY_URL,
+  getStoredGatewaySecret: getGatewaySecret
+});
+const {
+  getActiveGatewaySecret,
+  encryptCloudPayload,
+  decryptCloudPayload
+} = cloudStateSecurity;
+
+export function setSecretGetter(getter: () => string): void {
+  cloudStateSecurity.setSecretGetter(getter);
 }
 
-let cloudRevision = loadCloudRevision();
-let cloudPullGeneration = 0;
-let cloudPushQueue: Promise<void> = Promise.resolve();
-
-function setCloudRevision(revision: number): void {
-  cloudRevision = revision;
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(CLOUD_REVISION_STORAGE_KEY, String(revision));
-    }
-  } catch {
-    // The in-memory revision still protects this running app instance.
-  }
-}
-
-const CLOUD_CIPHERTEXT_V2_PREFIX = 'aesgcm:v2:';
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-function base64ToBytes(value: string): Uint8Array {
-  const binary = atob(value);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-}
-
-async function deriveCloudEncryptionKey(secret: string): Promise<CryptoKey> {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) throw new Error('Secure cloud encryption is unavailable in this browser.');
-  const digest = await subtle.digest('SHA-256', new TextEncoder().encode(secret));
-  return subtle.importKey('raw', digest, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-}
-
-async function encryptCloudPayload(plaintext: string, secret: string): Promise<string> {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) throw new Error('Secure cloud encryption is unavailable in this browser.');
-  const encryptionSecret = await resolveCloudEncryptionSecret(secret);
-  const nonce = globalThis.crypto.getRandomValues(new Uint8Array(12));
-  const key = await deriveCloudEncryptionKey(encryptionSecret);
-  const ciphertext = await subtle.encrypt({ name: 'AES-GCM', iv: nonce, tagLength: 128 }, key, new TextEncoder().encode(plaintext));
-  return CLOUD_CIPHERTEXT_V2_PREFIX + bytesToBase64(nonce) + ':' + bytesToBase64(new Uint8Array(ciphertext));
-}
-
-async function decryptCloudPayload(payload: string, secret: string): Promise<{ plaintext: string; legacy: boolean }> {
-  const encryptionSecret = await resolveCloudEncryptionSecret(secret);
-  if (!payload.startsWith(CLOUD_CIPHERTEXT_V2_PREFIX)) {
-    const bytes = CryptoJS.AES.decrypt(payload, encryptionSecret);
-    const plaintext = bytes ? bytes.toString(CryptoJS.enc.Utf8) : '';
-    if (!plaintext) throw new Error('Legacy decryption failed — verify the Gateway Secret.');
-    return { plaintext, legacy: true };
-  }
-
-  const encoded = payload.slice(CLOUD_CIPHERTEXT_V2_PREFIX.length);
-  const separator = encoded.indexOf(':');
-  if (separator <= 0 || separator === encoded.length - 1) throw new Error('Invalid AES-GCM cloud payload envelope.');
-  const nonce = base64ToBytes(encoded.slice(0, separator));
-  const ciphertext = base64ToBytes(encoded.slice(separator + 1));
-  if (nonce.byteLength !== 12 || ciphertext.byteLength < 16) throw new Error('Invalid AES-GCM cloud payload envelope.');
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) throw new Error('Secure cloud decryption is unavailable in this browser.');
-  const key = await deriveCloudEncryptionKey(encryptionSecret);
-  // Copy to standalone ArrayBuffers to satisfy strict DOM BufferSource typing.
-  const iv = nonce.slice().buffer as ArrayBuffer;
-  const encryptedBytes = ciphertext.slice().buffer as ArrayBuffer;
-  const plaintext = await subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, encryptedBytes);
-  return { plaintext: new TextDecoder().decode(plaintext), legacy: false };
+/** Drop the administrator-only workspace key when the signed-in identity changes. */
+export function clearCloudEncryptionSecretCache(): void {
+  cloudStateSecurity.clearCloudEncryptionSecretCache();
 }
 
 function readCloudRevision(headers?: Headers | null): number | null {
@@ -161,58 +98,6 @@ function readCloudRevision(headers?: Headers | null): number | null {
   if (!etag) return null;
   const revision = Number(etag.replace(/^W\//, '').replace(/^"|"$/g, ''));
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
-}
-
-let activeSecretGetter: (() => string) | null = null;
-
-export function setSecretGetter(getter: () => string): void {
-  activeSecretGetter = getter;
-}
-
-let cloudEncryptionSecretPromise: Promise<string> | null = null;
-
-/** Drop the administrator-only workspace key when the signed-in identity changes. */
-export function clearCloudEncryptionSecretCache(): void {
-  cloudEncryptionSecretPromise = null;
-}
-
-async function resolveCloudEncryptionSecret(sessionToken: string): Promise<string> {
-  if (!activeSecretGetter) return sessionToken;
-  if (!cloudEncryptionSecretPromise) {
-    cloudEncryptionSecretPromise = (async () => {
-      const response = await fetch(new URL("/api/auth/cloud-key", WORKER_PROXY_URL), {
-        method: "GET",
-        headers: {
-          "X-App-Auth": sessionToken,
-          Authorization: `Bearer ${sessionToken}`
-        },
-        cache: "no-store"
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || typeof payload?.key !== "string" || !payload.key) {
-        throw new Error(payload?.error || "Could not retrieve the shared cloud encryption key.");
-      }
-      return payload.key;
-    })().catch((error) => {
-      cloudEncryptionSecretPromise = null;
-      throw error;
-    });
-  }
-  return cloudEncryptionSecretPromise;
-}
-
-
-function getActiveGatewaySecret(): string {
-  // Credentials are managed only by the dedicated secret store/input. Portfolio
-  // state may come from an imported backup or cloud payload and is never trusted.
-  const stored = getGatewaySecret();
-  if (stored) return stored;
-  try {
-    const supplied = activeSecretGetter?.();
-    return typeof supplied === 'string' ? supplied.trim() : '';
-  } catch {
-    return '';
-  }
 }
 
 export interface ProxyFetchOptions extends RequestInit {
@@ -717,8 +602,7 @@ export async function pullCloudState(
       cloudStatePushFingerprints.delete(currentSecret);
       // A confirmed empty cloud store is safe to use as the current base revision.
       if (pulledRevision !== null) {
-        cloudPullGeneration += 1;
-        setCloudRevision(pulledRevision);
+        cloudRevisionCoordinator.recordPulledRevision(pulledRevision);
       }
       reportResult?.(false);
       logTerminal('[KV Cloud]: State not found (404). Falling back to local storage.');
@@ -837,8 +721,7 @@ export async function pullCloudState(
     // Only trust the cloud revision after its payload was decrypted, validated,
     // and persisted locally. A failed pull must not authorize a later overwrite.
     if (pulledRevision !== null) {
-      cloudPullGeneration += 1;
-      setCloudRevision(pulledRevision);
+      cloudRevisionCoordinator.recordPulledRevision(pulledRevision);
     }
 
     if (handlers.allowCloudWrites !== false && (wasUpdated || requiresEncryptionUpgrade || mergedLocalData)) {
@@ -1019,23 +902,9 @@ async function performPullCloudHistory(secret: string): Promise<CloudHistorySnap
 }
 
 export function pushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
-  // Bind a queued snapshot to the revision current when the caller submitted it.
-  // If another queued operation or a concurrent pull advances the revision before
-  // this write runs, the stale snapshot must conflict rather than inherit that newer
-  // revision and overwrite newer cloud state.
-  const submittedRevision = cloudRevision;
-  const submittedPullGeneration = cloudPullGeneration;
-  const operation = cloudPushQueue.then(() => {
-    // Let a queued write follow a preceding queued write from this same tab, but
-    // never let it inherit a revision learned from a concurrent pull after its
-    // snapshot was submitted.
-    const expectedRevision = cloudPullGeneration === submittedPullGeneration
-      ? cloudRevision
-      : submittedRevision;
-    return performPushCloudState(state, options, expectedRevision);
-  });
-  cloudPushQueue = operation.then(() => undefined, () => undefined);
-  return operation;
+  return cloudRevisionCoordinator.enqueueWrite((expectedRevision) =>
+    performPushCloudState(state, options, expectedRevision)
+  );
 }
 
 async function performPushCloudState(
@@ -1162,7 +1031,7 @@ async function performPushCloudState(
     }
 
     const savedRevision = readCloudRevision(res.headers);
-    if (savedRevision !== null) setCloudRevision(savedRevision);
+    if (savedRevision !== null) cloudRevisionCoordinator.setRevision(savedRevision);
     cloudStatePushFingerprints.set(currentSecret, stateFingerprint);
 
     handlers.onStatusChange?.('synced');
