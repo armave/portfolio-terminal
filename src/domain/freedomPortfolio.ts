@@ -447,7 +447,14 @@ export function classifyFreedomPortfolio(
   const positions: Record<string, PositionRecord> = {};
   const cashByTicker = new Map<string, any>();
   const cashCostByTicker = new Map<string, { totalCost: number; pricedQuantity: number }>();
-  const marginByTicker = new Map<string, { tranche: ActiveBrokerTranche; prior: PositionRecord | undefined; currentPrice: number; entryTranches: Array<{ qty: number; price: number; date?: string; buyCommission?: number }> }>();
+  const marginByTicker = new Map<string, {
+    tranche: ActiveBrokerTranche;
+    prior: PositionRecord | undefined;
+    currentPrice: number;
+    preservedQuote: ReturnType<typeof getLatestTimestampedQuote>;
+    snapshotPrice: number | null;
+    entryTranches: Array<{ qty: number; price: number; date?: string; buyCommission?: number }>;
+  }>();
   const previousCash = new Map<string, any>();
   for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
     const ticker = tickerKey(holding?.ticker);
@@ -499,6 +506,8 @@ export function classifyFreedomPortfolio(
         tranche: { ...tranche, quantity: combinedQuantity, marketPrice: combinedMarketPrice, marketValue: combinedMarketPrice !== null ? combinedMarketPrice * combinedQuantity : null },
         prior,
         currentPrice,
+        preservedQuote,
+        snapshotPrice,
         entryTranches
       });
     }
@@ -544,6 +553,8 @@ export function classifyFreedomPortfolio(
     const entryPrice = totalEntryQuantity > 0
       ? item.entryTranches.reduce((sum, entry) => sum + entry.qty * entry.price, 0) / totalEntryQuantity
       : (!Array.isArray(executedTrades) ? (Number(prior?.tranches?.[0]?.price) || item.currentPrice) : item.currentPrice);
+    const preservedQuote = item.preservedQuote;
+    const snapshotPrice = item.snapshotPrice;
     const classifiedPosition: PositionRecord = {
       ...(prior || {}),
       ticker,
