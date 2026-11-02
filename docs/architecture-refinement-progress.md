@@ -1,8 +1,8 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Auth transport runtime extraction  
-**Base:** `5b55f0a3c883e2333e533fbada04dbd803353dc6`
+**Current work:** Portfolio sale settlement boundary extraction  
+**Base:** `59b3ce8a1d606624d0a36c81096d1479793e77fc`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
@@ -222,9 +222,19 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Cloud sync and revision-conflict journeys in PR #259.
 - [x] Guest assignment publication and guest-readable LOTS history journeys in PR #259.
 
+## Current PR #260 — pure portfolio sale settlement boundary
+
+- [x] Extract shared sale commission calculation without changing minimum-fee or fallback behavior.
+- [x] Extract shared debt-first sale proceeds settlement without changing the state owner or settlement order.
+- [x] Reuse the pure helpers for margin-position sales and cash-holding sales.
+- [x] Add 8 focused Vitest cases for commission minimums, variable fee components, cent rounding, invalid-rule fallback, debt repayment, surplus cash, and input normalization.
+- [ ] Run exact-head typecheck, Vitest, production build, dead-code validation, dependency audits, and production browser smoke.
+- [ ] Review and merge.
+
 ### P2 — portfolio store modularization
 
-- [ ] Extract transaction calculation/command boundaries from `PortfolioStore` without introducing a second state owner.
+- [x] Extract shared sale-commission and debt-first settlement calculations into pure domain helpers in PR #260; `PortfolioStore` remains the single state owner.
+- [ ] Extract FIFO sale allocation and realized-P&L command boundaries only after exact parity tests demonstrate identical store behavior.
 - [ ] Add parity/regression coverage for FIFO allocation, commissions, margin interest, debt settlement, realized P&L, and rollover accounting before moving those responsibilities.
 
 ### P2 — dependency maintenance

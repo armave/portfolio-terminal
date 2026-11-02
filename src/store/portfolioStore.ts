@@ -22,7 +22,8 @@ import {
   saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
-import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
+import { calculateMarginInterest, normalizePortfolioTranche } from '../domain/portfolio';
+import { calculateSaleCommission, settleSaleProceeds } from '../domain/portfolioSettlement';
 import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
@@ -36,44 +37,6 @@ function todayIso(): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Shared broker commission calculation for all confirmed stock-sale paths. */
-function calculateSaleCommission(shares: number, proceeds: number, rules: BrokerAssumptions): number {
-  const { commPerShare, commVolumePct, minCommOrder } = resolveCommissionConfig(rules);
-  const fallback = Number(Math.max(minCommOrder, shares * commPerShare + proceeds * commVolumePct).toFixed(2));
-
-  try {
-    const calculated = calculateCommission(shares, proceeds, {
-      commPerShare,
-      commVolumePct,
-      minCommOrder
-    });
-    return Number.isFinite(calculated) && calculated > 0
-      ? Number(calculated.toFixed(2))
-      : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-/** Shared debt-first allocation of net sale proceeds. */
-function settleSaleProceeds(
-  debt: number,
-  freeCash: number,
-  netProceeds: number
-): { remainingDebt: number; freeCash: number; debtRepaid: number; cashSurplus: number } {
-  const normalizedDebt = Math.max(0, Number(debt) || 0);
-  const normalizedCash = Math.max(0, Number(freeCash) || 0);
-  const normalizedProceeds = Math.max(0, Number(netProceeds) || 0);
-  const debtRepaid = Math.min(normalizedDebt, normalizedProceeds);
-  const cashSurplus = Math.max(0, normalizedProceeds - debtRepaid);
-
-  return {
-    remainingDebt: Math.max(0, normalizedDebt - debtRepaid),
-    freeCash: normalizedCash + cashSurplus,
-    debtRepaid,
-    cashSurplus
-  };
-}
 
 export class PortfolioStore {
   private state: PortfolioState;
