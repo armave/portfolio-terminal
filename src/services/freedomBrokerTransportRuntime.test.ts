@@ -31,22 +31,6 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch.mock.calls[3][1]).toEqual({ active_only: 1 });
   });
 
-  it('normalizes market depth symbols and rejects malformed tickers before transport', async () => {
-    const { runtime, proxyFetch } = createRuntime();
-    await runtime.fetchFreedomTradeNetMarketDepth(' aapl ');
-    expect(proxyFetch).toHaveBeenCalledWith('freedom-market-depth', { symbol: 'AAPL' }, { cache: 'no-store' });
-    await expect(runtime.fetchFreedomTradeNetMarketDepth('AAPL; DROP')).rejects.toThrow('valid ticker');
-    expect(proxyFetch).toHaveBeenCalledTimes(1);
-  });
-
-  it('creates a no-store POST to ensure the TradeNet session', async () => {
-    const { runtime, proxyFetch } = createRuntime();
-    await runtime.ensureFreedomTradeNetSession();
-    expect(proxyFetch).toHaveBeenCalledWith('freedom-session', {}, {
-      method: 'POST', body: '{}', cache: 'no-store'
-    });
-  });
-
   it('caches cashflows by token and normalized date range for five minutes', async () => {
     let now = 100;
     let version = 0;

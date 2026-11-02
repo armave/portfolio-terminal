@@ -53,28 +53,6 @@ describe('app localization', () => {
     expect(translateText('Priced market value', 'ru')).toBe('Рыночная стоимость позиций с котировкой');
   });
 
-  it('localizes Market Depth labels and refresh recovery copy', () => {
-    expect(translateText('Retry depth', 'ru')).toBe('Повторить загрузку стакана');
-    expect(translateText('Open market depth for GOOGL', 'ru')).toBe('Открыть стакан заявок для GOOGL');
-    expect(translateText('Market depth · GOOGL', 'ru')).toBe('Стакан заявок · GOOGL');
-    expect(translateText('Levels', 'ru')).toBe('Уровни');
-    expect(translateText('Refresh depth', 'ru')).toBe('Обновить стакан');
-    expect(translateText('Refreshing order book; previous snapshot remains visible.', 'ru'))
-      .toBe('Обновление стакана заявок; предыдущий снимок остаётся доступным.');
-    expect(translateText('Refresh failed; showing the last successful order-book snapshot.', 'ru'))
-      .toBe('Не удалось обновить данные; показан последний успешно полученный снимок стакана заявок.');
-    expect(translateText('Read-only order book snapshot · TradeNet', 'ru'))
-      .toBe('Снимок стакана заявок TradeNet · только для чтения');
-    expect(translateText('Close market depth', 'ru')).toBe('Закрыть стакан заявок');
-    expect(translateText('Best bid', 'ru')).toBe('Лучшая цена покупки');
-    expect(translateText('Best ask', 'ru')).toBe('Лучшая цена продажи');
-    expect(translateText('Tick', 'ru')).toBe('Шаг цены');
-    expect(translateText('Bids · buyers', 'ru')).toBe('Заявки на покупку · покупатели');
-    expect(translateText('Asks · sellers', 'ru')).toBe('Заявки на продажу · продавцы');
-    expect(translateText('Check that FREEDOM_PUBLIC_KEY and FREEDOM_PRIVATE_KEY are configured as Cloudflare Worker secrets. Never expose the private key in browser code.', 'ru'))
-      .toBe('Проверьте, что FREEDOM_PUBLIC_KEY и FREEDOM_PRIVATE_KEY заданы как секреты Cloudflare Worker. Никогда не раскрывайте закрытый ключ в клиентском коде.');
-  });
-
   it('localizes the administrator equity badge description', () => {
     expect(translateText('Current portfolio equity from available market quotes and broker cash balance.', 'ru'))
       .toBe('Текущий капитал портфеля по доступным рыночным котировкам и денежному балансу брокера.');
@@ -105,8 +83,6 @@ describe('app localization', () => {
     expect(translateText('Cash-funded stock holdings', 'ru')).toBe('Акции, приобретённые за денежные средства');
     expect(translateText('Active tranches and guest assignments', 'ru')).toBe('Активные лоты и назначения гостям');
     expect(translateText('User management table', 'ru')).toBe('Таблица управления пользователями');
-    expect(translateText('Bid prices and quantities', 'ru')).toBe('Цены и объёмы заявок на покупку');
-    expect(translateText('Ask prices and quantities', 'ru')).toBe('Цены и объёмы заявок на продажу');
   });
 
   it('localizes the keyboard-scrollable guest assignment table region', () => {
@@ -218,8 +194,6 @@ describe('app localization', () => {
     expect(translateText('Loading your assigned tranche history…', 'ru'))
       .toBe('Загрузка истории назначенных вам лотов…');
     expect(translateText('Workspace navigation','ru')).toBe('Навигация по разделам');
-    expect(translateText('Read-only order book snapshot · TradeNet','ru'))
-      .toBe('Снимок стакана заявок TradeNet · только для чтения');
   });
 
   it('localizes remaining authentication, guest balance, and trade-history copy', () => {
@@ -235,9 +209,7 @@ describe('app localization', () => {
     expect(translateText('Known net P&L', 'ru')).toBe('Чистая прибыль/убыток по известным сделкам');
   });
 
-  it('localizes dynamic market-depth, position-review, and scenario-report labels', () => {
-    expect(translateText('Market depth · AAPL', 'ru')).toBe('Стакан заявок · AAPL');
-    expect(translateText('Open market depth for AAPL', 'ru')).toBe('Открыть стакан заявок для AAPL');
+  it('localizes dynamic position-review and scenario-report labels', () => {
     expect(translateText('AAPL · Position Review', 'ru')).toBe('AAPL · Анализ маржинальной позиции');
     expect(translateText('No active margin position was found for NVDA. Select an active margin ticker and try again.', 'ru'))
       .toBe('Не найдена активная маржинальная позиция NVDA. Выберите активный маржинальный тикер и повторите попытку.');

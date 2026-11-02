@@ -24,17 +24,6 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).not.toContain('NEWS_DIALOG_FOCUSABLE_SELECTOR');
   });
 
-  it('uses shared modal focus behavior for Market Depth and restores its trigger', () => {
-    const source = readSource('../components/MarketDepthButton.tsx');
-    expect(source).toContain('useDialogFocus(dialogRef, {');
-    expect(source).toContain('active: isOpen');
-    expect(source).toContain('initialFocusRef: closeButtonRef');
-    expect(source).toContain('restoreFocusRef: triggerRef');
-    expect(source).toContain('onEscape: closeModal');
-    expect(source).toContain('ref={dialogRef} tabIndex={-1}');
-    expect(source).toContain('ref={closeButtonRef}');
-  });
-
   it('keeps the terminal log keyboard-scrollable and avoids forcing readers back to the latest line', () => {
     const source = readSource('../components/TerminalLog.tsx');
 
@@ -91,48 +80,6 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('hasUnpricedHoldings: isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings');
     expect(source).toContain("'Partial value: holdings without a valid market quote are excluded.'");
     expect(source).toContain("aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}");
-  });
-
-  it('uses a body portal and viewport-sized scrolling for Market Depth on mobile', () => {
-    const source = readSource('../components/MarketDepthButton.tsx');
-    const stylesheet = readSource('../../style.css');
-
-    expect(source).toContain("import { createPortal } from 'preact/compat'");
-    expect(source).toContain('isOpen && createPortal(');
-    expect(source).toContain('document.body');
-    expect(source).toContain('market-depth-dialog flex min-h-0');
-    expect(source).toContain('market-depth-content min-h-0 flex-1');
-    expect(source).toContain('role="region" aria-label={regionLabel} tabIndex={0}');
-    expect(stylesheet).toContain('.market-depth-modal');
-    expect(stylesheet).toContain('height: 100dvh;');
-    expect(stylesheet).toContain('.market-depth-content');
-    expect(stylesheet).toContain('max-height: min(calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem), 52rem);');
-  });
-
-  it('retains the latest same-ticker order book during refresh and after a failed refresh', () => {
-    const source = readSource('../components/MarketDepthButton.tsx');
-    expect(source).toContain('const currentSnapshot = snapshot?.symbol === ticker.trim().toUpperCase() ? snapshot : null;');
-    expect(source).not.toContain('setSnapshot(null)');
-    expect(source).toContain('currentSnapshot && isLoading');
-    expect(source).toContain("translateText('Refreshing order book; previous snapshot remains visible.', language)");
-    expect(source).toContain("translateText('Refresh failed; showing the last successful order-book snapshot.', language)");
-    expect(source).toContain("const refreshLabel = translateText(error ? 'Retry depth' : 'Refresh depth', language);");
-    expect(source).toContain('aria-label={isLoading ? loadingLabel : refreshLabel}');
-    expect(source).toContain("aria-label={translateText('Open market depth for ' + ticker, language)}");
-    expect(source).toContain("translateText('Depth', language)");
-    expect(source).toContain("translateText('Levels', language)");
-    expect(source).toContain("translateText('Best bid', language)");
-    expect(source).toContain("translateText('Best ask', language)");
-    expect(source).toContain('aria-busy={isLoading}');
-  });
-
-  it('renders order-book levels with semantic table headings and localized captions', () => {
-    const source = readSource('../components/MarketDepthButton.tsx');
-    expect(source).toContain('<caption class="sr-only">{caption}</caption>');
-    expect(source).toContain("'Bid prices and quantities' : 'Ask prices and quantities'");
-    const headers = getTableHeaderTags(source);
-    expect(headers).toHaveLength(2);
-    expect(headers.every((tag) => tag.includes('scope="col"'))).toBe(true);
   });
 
   it('makes the Margin projection table a named keyboard-scrollable region', () => {

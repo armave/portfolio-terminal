@@ -146,7 +146,7 @@ const proxyReadRequests = new Map<string, Promise<any>>();
 const COALESCED_READ_ACTIONS = new Set(['', 'quote', 'provider-quote', 'news', 'stocktwits', 'freedom-quote']);
 const MARKET_DATA_ACTIONS = new Set([
   '', 'quote', 'provider-quote', 'news', 'stocktwits',
-  'freedom-quote', 'freedom-news', 'freedom-history', 'freedom-market-depth'
+  'freedom-quote', 'freedom-news', 'freedom-history'
 ]);
 
 function createMarketRequestIdentity(
@@ -295,8 +295,6 @@ export const testFreedomTradeNetConnection = freedomBrokerTransportRuntime.testF
 export const fetchFreedomTradeNetPositions = freedomBrokerTransportRuntime.fetchFreedomTradeNetPositions;
 export const fetchFreedomTradeNetTrades = freedomBrokerTransportRuntime.fetchFreedomTradeNetTrades;
 export const fetchFreedomTradeNetActiveOrders = freedomBrokerTransportRuntime.fetchFreedomTradeNetActiveOrders;
-export const fetchFreedomTradeNetMarketDepth = freedomBrokerTransportRuntime.fetchFreedomTradeNetMarketDepth;
-export const ensureFreedomTradeNetSession = freedomBrokerTransportRuntime.ensureFreedomTradeNetSession;
 export const fetchFreedomCashflows = freedomBrokerTransportRuntime.fetchFreedomCashflows;
 export const clearFreedomCashflowCache = freedomBrokerTransportRuntime.clearFreedomCashflowCache;
 

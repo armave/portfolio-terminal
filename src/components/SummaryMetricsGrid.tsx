@@ -17,7 +17,6 @@ import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
 import { normalizeFreedomTrades } from '../services/api';
 import { emitUiEvent } from '../ui/uiEventBus';
-import { MarketDepthButton } from './MarketDepthButton';
 import { BoardExternalLinks } from './BoardExternalLinks';
 
 export function getUsableMarketPrice(value: unknown): number | null {
@@ -303,7 +302,6 @@ function MarginMarketTools({ ticker }: { ticker?: string }) {
     <div class="portfolio-micro-column portfolio-micro-actions" aria-label={translateText('MARKET TOOLS', language)}>
       <span class="portfolio-micro-heading">{translateText('MARKET TOOLS', language)}</span>
       <div class="flex flex-wrap items-center gap-1.5">
-        {ticker && <MarketDepthButton ticker={ticker} compact />}
         <button
           type="button"
           title={translateText(reviewTitle, language)}

@@ -6,9 +6,8 @@ const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 const quickActionsSource = readFileSync(new URL('../components/ConsoleQuickActions.tsx', import.meta.url), 'utf8');
 
 describe('Margin Market Tools placement', () => {
-  it('provides ticker market depth, news review, and external research in the fourth metrics column', () => {
+  it('provides news review and external research in the fourth metrics column', () => {
     expect(summarySource).toContain('class="portfolio-micro-column portfolio-micro-actions"');
-    expect(summarySource).toContain('<MarketDepthButton ticker={ticker} compact />');
     expect(summarySource).toContain('<BoardExternalLinks />');
     expect(summarySource).toContain('<MarginMarketTools />');
     expect(summarySource).toContain('<MarginMarketTools ticker={pos.ticker} />');
@@ -29,8 +28,9 @@ describe('Margin Market Tools placement', () => {
     expect(appSource).toContain('class={"board-analyst-consensus " + analystConsensus.className}');
   });
 
-  it('removes market-depth and review actions from their previous toolbar and console locations', () => {
-    expect(appSource).not.toContain('<MarketDepthButton');
+  it('keeps the remaining review actions out of their previous toolbar and console locations', () => {
+    expect(summarySource).not.toContain('MarketDepthButton');
+    expect(appSource).not.toContain('MarketDepthButton');
     expect(appSource).not.toContain('BoardExternalLinks');
     expect(appSource).toContain('boardAnalystConsensus');
     expect(quickActionsSource).not.toContain('News + Review');
