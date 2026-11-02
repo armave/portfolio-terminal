@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { ensureFreedomTradeNetSession, fetchFreedomMarketDepthWithSid, fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
+import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 
 describe('upstream timeout coverage', () => {
@@ -1270,17 +1270,12 @@ describe('guest data isolation at the Worker boundary', () => {
     const historyResponse = await worker.fetch(new Request('https://worker.test/api/history', { headers }), env);
     const tradesResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-trades', { headers }), env);
     const positionsResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-positions', { headers }), env);
-    const marketDepthResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=GOOGL', { headers }), env);
 
     expect(stateResponse.status).toBe(403);
     expect(historyResponse.status).toBe(403);
     expect(tradesResponse.status).toBe(403);
     expect(positionsResponse.status).toBe(403);
-    expect(marketDepthResponse.status).toBe(403);
-    await expect(marketDepthResponse.json()).resolves.toMatchObject({
-      error: 'This data is restricted to administrator accounts.'
-    });
-    expect(stateStub.fetch).toHaveBeenCalledTimes(5);
+    expect(stateStub.fetch).toHaveBeenCalledTimes(4);
     expect(stateStub.fetch.mock.calls.every(([request]) => new URL(request.url).pathname === '/api/auth/verify')).toBe(true);
   });
 
@@ -1825,401 +1820,26 @@ describe('Durable Object guest portfolio ownership', () => {
 });
 
 
-describe('sanitizeFreedomMarketDepth', () => {
-  it('normalizes and sorts the initial full TradeNet order-book snapshot', () => {
-    const result = sanitizeFreedomMarketDepth({
-      dom: [{ i: 'AAPL.US', min_step: 0.01, cnt: 3, n: 19, ins: [
-        { p: 101.2, s: 'S', q: 5, k: 0 }, { p: 100.9, s: 'B', q: 8, k: 1 },
-        { p: 101.1, s: 'S', q: 7, k: 2 }, { p: 100.8, s: 'B', q: 2, k: 3 },
-        { p: 0, s: 'B', q: 100, k: 4 }, { p: 101, s: 'X', q: 1, k: 5 }
-      ] }]
-    }, 'AAPL.US');
-    expect(result).toMatchObject({
-      symbol: 'AAPL.US', depth: 3, minPriceStep: 0.01, sequence: 19,
-      bids: [{ price: 100.9, quantity: 8, position: 1 }, { price: 100.8, quantity: 2, position: 3 }],
-      asks: [{ price: 101.1, quantity: 7, position: 2 }, { price: 101.2, quantity: 5, position: 0 }]
-    });
-    expect(JSON.stringify(result)).not.toContain('"side"');
-  });
-  it('rejects another ticker and an empty order book', () => {
-    expect(() => sanitizeFreedomMarketDepth({ dom: [{ i: 'MSFT.US', ins: [] }] }, 'AAPL.US')).toThrow();
-    expect(() => sanitizeFreedomMarketDepth({ dom: [{ i: 'AAPL.US', ins: [] }] }, 'AAPL.US')).toThrow();
-  });
-  it('accepts the production WebSocket snapshot shape', () => {
-    const result = sanitizeFreedomMarketDepth({
-      i: 'AAPL.US', n: 21, cnt: 2,
-      ins: [
-        { p: 100.5, s: 'B', q: 12, k: 0 },
-        { p: 100.7, s: 'S', q: 9, k: 0 }
-      ]
-    }, 'AAPL.US');
-    expect(result).toMatchObject({
-      symbol: 'AAPL.US', sequence: 21, depth: 2,
-      bids: [{ price: 100.5, quantity: 12, position: 0 }],
-      asks: [{ price: 100.7, quantity: 9, position: 0 }]
-    });
-  });
-  it('matches the US exchange suffix without changing the requested symbol contract', () => {
-    const result = sanitizeFreedomMarketDepth({
-      i: 'AAPL.US', n: 22, cnt: 1,
-      ins: [{ p: 100.5, s: 'B', q: 12, k: 0 }]
-    }, 'AAPL');
-    expect(result).toMatchObject({
-      symbol: 'AAPL',
-      sequence: 22,
-      bids: [{ price: 100.5, quantity: 12, position: 0 }]
-    });
-  });
-  it('does not treat another exchange suffix as a US symbol alias', () => {
-    expect(() => sanitizeFreedomMarketDepth({
-      i: 'AAPL.TO', n: 23, cnt: 1,
-      ins: [{ p: 100.5, s: 'B', q: 12, k: 0 }]
-    }, 'AAPL')).toThrow();
-  });
-});
-
-
-
-describe('Freedom market-depth proxy', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-  });
-
-  function createMockWebSocket() {
-    return class MockWebSocket extends EventTarget {
-      constructor() {
-        super();
-        this.sent = [];
-        this.closed = false;
-        this.accepted = false;
-      }
-      accept() {
-        this.accepted = true;
-      }
-      send(data) {
-        this.sent.push(data);
-      }
-      close() {
-        this.closed = true;
-      }
-      emit(type, properties = {}) {
-        const event = new Event(type);
-        for (const [key, value] of Object.entries(properties)) {
-          Object.defineProperty(event, key, { configurable: true, value });
-        }
-        this.dispatchEvent(event);
-      }
-    };
-  }
-
-  async function createMockConnection(sid = 'sensitive-sid-value-123456') {
-    const MockWebSocket = createMockWebSocket();
-    let fetchSocket = null;
-    const fetchMock = vi.fn(async () => {
-      fetchSocket = new MockWebSocket();
-      return {
-        status: 101,
-        statusText: 'Switching Protocols',
-        headers: new Headers(),
-        webSocket: fetchSocket
-      };
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    const pending = fetchFreedomMarketDepthWithSid('GOOGL', { sid });
-    await Promise.resolve();
-    return { pending, socket: fetchSocket, fetchMock };
-  }
-
-  it('reports connection, session, event and timeout diagnostics without exposing the SID', async () => {
-    vi.useFakeTimers();
-    const { pending, socket, fetchMock } = await createMockConnection();
-    const log = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    socket.emit('message', {
-      data: JSON.stringify(['userData', {
-        isDemo: false, mode: 'prod', authLogin: 'private-login@example.test'
-      }])
-    });
-    socket.emit('message', { data: JSON.stringify(['markets', { m: [] }]) });
-    socket.emit('message', { data: JSON.stringify(['q', { c: 'GOOGL', l: 100 }]) });
-    socket.emit('message', { data: JSON.stringify(['b', { i: 'MSFT.US', n: 1, cnt: 0, ins: [] }]) });
-    socket.emit('message', { data: 'not-json' });
-
-    const rejected = expect(pending).rejects.toMatchObject({
-      status: 504,
-      diagnostics: expect.objectContaining({
-        requestedSymbol: 'GOOGL',
-        phase: 'snapshot_timeout',
-        handshakeResponseReceived: true,
-        handshakeStatus: 101,
-        handshakeErrorCategory: null,
-        connectionOpened: true,
-        subscriptionSent: true,
-        subscriptionConfirmed: false,
-        userDataReceived: true,
-        isDemo: false,
-        sessionMode: 'prod',
-        messageCount: 5,
-        parseErrorCount: 1,
-        eventsReceived: ['userData', 'markets', 'q', 'b'],
-        eventCounts: { userData: 1, markets: 1, q: 1, b: 1 },
-        quoteSubscriptionSent: true,
-        quoteEventsReceived: 1,
-        quoteSymbolsReceived: ['GOOGL'],
-        orderBookEventsReceived: 1,
-        orderBookSymbolsReceived: ['MSFT.US'],
-        unmatchedOrderBooks: 1
-      })
-    });
-    await vi.advanceTimersByTimeAsync(10001);
-    await rejected;
-
-    expect(socket.accepted).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [handshakeUrl, handshakeInit] = fetchMock.mock.calls[0];
-    expect(new URL(String(handshakeUrl)).protocol).toBe('https:');
-    expect(new URL(String(handshakeUrl)).hostname).toBe('wss.tradernet.com');
-    expect(new URL(String(handshakeUrl)).searchParams.get('SID')).toBe('sensitive-sid-value-123456');
-    expect(handshakeInit.headers).toEqual({ Upgrade: 'websocket' });
-    expect(JSON.parse(socket.sent[0])).toEqual(['orderBook', ['GOOGL']]);
-    const logged = log.mock.calls.map(([value]) => String(value)).join('\n');
-    expect(logged).not.toContain('sensitive-sid-value');
-    expect(logged).not.toContain('private-login@example.test');
-  });
-
-  it('matches a US-suffixed production order-book snapshot to an unsuffixed request', async () => {
-    const { pending, socket } = await createMockConnection();
-    vi.spyOn(console, 'info').mockImplementation(() => {});
-    socket.emit('message', {
-      data: JSON.stringify(['userData', { isDemo: false, mode: 'prod' }])
-    });
-    socket.emit('message', {
-      data: JSON.stringify(['b', {
-        i: 'GOOGL.US', n: 7, cnt: 2,
-        ins: [
-          { p: 200, s: 'B', q: 10, k: 0 },
-          { p: 200.1, s: 'S', q: 8, k: 0 }
-        ]
-      }])
-    });
-
-    const result = await pending;
-    expect(result.data).toMatchObject({
-      symbol: 'GOOGL',
-      sequence: 7,
-      bids: [{ price: 200, quantity: 10 }],
-      asks: [{ price: 200.1, quantity: 8 }]
-    });
-    expect(result.diagnostics).toMatchObject({
-      requestedSymbol: 'GOOGL',
-      phase: 'snapshot_received',
-      handshakeResponseReceived: true,
-      handshakeStatus: 101,
-      connectionOpened: true,
-      subscriptionSent: true,
-      subscriptionConfirmed: true,
-      userDataReceived: true,
-      isDemo: false,
-      sessionMode: 'prod',
-      eventsReceived: ['userData', 'b'],
-      orderBookEventsReceived: 1,
-      orderBookSymbolsReceived: ['GOOGL.US'],
-      unmatchedOrderBooks: 0
-    });
-  });
-
-  it('returns the upstream HTTP status when TradeNet rejects the WebSocket upgrade', async () => {
-    const fetchMock = vi.fn(async () => new Response('origin denied', {
-      status: 403,
-      headers: { 'Content-Type': 'text/plain' }
-    }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    await expect(fetchFreedomMarketDepthWithSid('GOOGL', {
-      sid: 'sensitive-sid-value-123456'
-    })).rejects.toMatchObject({
-      status: 403,
-      diagnostics: expect.objectContaining({
-        phase: 'handshake_rejected',
-        handshakeResponseReceived: true,
-        handshakeStatus: 403,
-        handshakeContentType: 'text/plain',
-        handshakeErrorCategory: 'upstream_rejected_upgrade',
-        connectionOpened: false
-      })
-    });
-    expect(String(fetchMock.mock.calls[0][0])).toContain('https://wss.tradernet.com/');
-  });
-
-  it('classifies a failed upstream handshake without exposing the raw fetch error', async () => {
-    const fetchMock = vi.fn().mockRejectedValue(new TypeError('private network failure details'));
-    vi.stubGlobal('fetch', fetchMock);
-
-    await expect(fetchFreedomMarketDepthWithSid('GOOGL', {
-      sid: 'sensitive-sid-value-123456'
-    })).rejects.toMatchObject({
-      status: 502,
-      message: 'TradeNet WebSocket handshake failed before a connection was opened.',
-      diagnostics: expect.objectContaining({
-        phase: 'websocket_handshake_failed',
-        handshakeResponseReceived: false,
-        handshakeErrorCategory: 'network_or_tls_failure',
-        connectionOpened: false
-      })
-    });
-  });
-
-  it('aborts a WebSocket handshake that does not return a response', async () => {
-    vi.useFakeTimers();
-    let requestSignal;
-    const fetchMock = vi.fn((_url, init) => {
-      requestSignal = init.signal;
-      return new Promise((_resolve, reject) => {
-        init.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true });
-      });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const pending = fetchFreedomMarketDepthWithSid('GOOGL', {
-      sid: 'sensitive-sid-value-123456'
-    });
-    const rejected = expect(pending).rejects.toMatchObject({
-      status: 504,
-      diagnostics: expect.objectContaining({
-        phase: 'connection_timeout',
-        handshakeResponseReceived: false,
-        handshakeErrorCategory: 'timeout',
-        connectionOpened: false
-      })
-    });
-    await vi.advanceTimersByTimeAsync(10001);
-    await rejected;
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(requestSignal.aborted).toBe(true);
-  });
-
-  it('does not open a WebSocket when TradeNet session storage is missing', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=AAPL.US', {
-      headers: { 'X-App-Auth': 'test-secret' }
-    }), { GATEWAY_SECRET: 'test-secret' });
-
-    expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({ error: expect.stringContaining('session storage') });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-});
-
-
-describe('TradeNet SID session storage', () => {
-  it('requires Worker-only authorization and persists the SID inside the Durable Object', async () => {
-    const values = new Map();
+describe('retired TradeNet session cleanup', () => {
+  it('deletes the stored Market Depth SID once and records the migration', async () => {
+    const values = new Map([['freedom:tradenet-session', {
+      sid: 'sensitive-sid-value-123456',
+      expiresAt: Date.now() + 60_000,
+      real: true
+    }]]);
     const storage = {
-      get: async key => values.get(key),
-      put: async (key, value) => { values.set(key, value); },
-      delete: async key => values.delete(key)
+      get: vi.fn(async key => values.get(key)),
+      put: vi.fn(async (key, value) => { values.set(key, value); }),
+      delete: vi.fn(async key => values.delete(key))
     };
-    const store = new PortfolioStateDO({ storage }, { GATEWAY_SECRET: 'worker-internal-secret' });
-    const url = 'https://store.test/internal/freedom-session';
-    const unauthorized = await store.fetch(new Request(url));
-    expect(unauthorized.status).toBe(401);
+    const store = new PortfolioStateDO({ storage }, {});
 
-    const stored = await store.fetch(new Request(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Internal-Worker-Auth': 'worker-internal-secret'
-      },
-      body: JSON.stringify({
-        sid: 'sensitive-sid-value-123456',
-        expiresAt: Date.now() + 60_000,
-        real: true
-      })
-    }));
-    expect(stored.status).toBe(200);
-    const read = await store.fetch(new Request(url, {
-      headers: { 'X-Internal-Worker-Auth': 'worker-internal-secret' }
-    }));
-    expect((await read.json()).session.sid).toBe('sensitive-sid-value-123456');
-    expect(values.size).toBe(1);
-  });
+    await store.clearRetiredTradeNetSession();
+    expect(values.has('freedom:tradenet-session')).toBe(false);
+    expect(values.get('migration:market-depth-session-cleanup')).toBe(true);
 
-  it('authenticates once using authByLogin and reuses a valid persisted real-account SID', async () => {
-    let persisted = null;
-    const internalStub = {
-      fetch: vi.fn(async request => {
-        if (request.method === 'GET') {
-          return persisted
-            ? new Response(JSON.stringify({ session: persisted }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-            : new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
-        }
-        persisted = await request.json();
-        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      })
-    };
-    const env = {
-      GATEWAY_SECRET: 'worker-internal-secret',
-      FREEDOM_LOGIN: 'account@example.test',
-      FREEDOM_PASSWORD: 'test-password',
-      PORTFOLIO_STATE_DO: {
-        idFromName: vi.fn().mockReturnValue('portfolio_state'),
-        get: vi.fn().mockReturnValue(internalStub)
-      }
-    };
-    const fetchMock = vi.fn(async (url, init) => {
-      expect(String(url)).toBe('https://tradernet.am/api/');
-      expect(init.method).toBe('POST');
-      expect(init.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
-      const requestBody = new URLSearchParams(init.body);
-      const query = JSON.parse(requestBody.get('q'));
-      expect(query).toEqual({
-        cmd: 'authByLogin',
-        params: {
-          login: 'account@example.test',
-          password: 'test-password',
-          rememberMe: 1,
-          getAccounts: false
-        }
-      });
-      return new Response(JSON.stringify({
-        success: true, logged: true, SID: 'sensitive-sid-value-123456',
-        real: true, userId: 12345
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const first = await ensureFreedomTradeNetSession(env);
-    const second = await ensureFreedomTradeNetSession(env);
-    expect(first).toMatchObject({ authenticated: true, real: true, refreshed: true });
-    expect(second).toMatchObject({ authenticated: true, real: true, refreshed: false });
-    expect(first).not.toHaveProperty('sid');
-    expect(JSON.stringify(first)).not.toContain('sensitive-sid-value');
-    expect(persisted).toMatchObject({ sid: 'sensitive-sid-value-123456', real: true });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('rejects demo login results and does not persist a demo SID', async () => {
-    let persisted = null;
-    const internalStub = {
-      fetch: vi.fn(async request => {
-        if (request.method === 'GET') return new Response('{}', { status: 404 });
-        persisted = await request.json();
-        return new Response('{}', { status: 200 });
-      })
-    };
-    const env = {
-      GATEWAY_SECRET: 'worker-internal-secret',
-      FREEDOM_LOGIN: 'account@example.test',
-      FREEDOM_PASSWORD: 'test-password',
-      PORTFOLIO_STATE_DO: { idFromName: () => 'portfolio_state', get: () => internalStub }
-    };
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-      success: true, logged: true, SID: 'demo-sid-value-123456', real: false
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
-    await expect(ensureFreedomTradeNetSession(env)).rejects.toThrow('demo or non-production');
-    expect(persisted).toBeNull();
+    await store.clearRetiredTradeNetSession();
+    expect(storage.delete).toHaveBeenCalledTimes(1);
+    expect(storage.put).toHaveBeenCalledTimes(1);
   });
 });
