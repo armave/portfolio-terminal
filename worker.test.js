@@ -1895,7 +1895,11 @@ describe('Freedom market-depth proxy', () => {
         this.url = url;
         this.sent = [];
         this.closed = false;
+        this.accepted = false;
         MockWebSocket.instances.push(this);
+      }
+      accept() {
+        this.accepted = true;
       }
       send(data) {
         this.sent.push(data);
@@ -1913,15 +1917,31 @@ describe('Freedom market-depth proxy', () => {
     };
   }
 
+  async function createMockConnection(sid = 'sensitive-sid-value-123456') {
+    const MockWebSocket = createMockWebSocket();
+    let fetchSocket = null;
+    const fetchMock = vi.fn(async () => {
+      fetchSocket = new MockWebSocket('fetch-handshake');
+      return {
+        status: 101,
+        statusText: 'Switching Protocols',
+        headers: new Headers(),
+        webSocket: fetchSocket
+      };
+    });
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    vi.stubGlobal('fetch', fetchMock);
+    const pending = fetchFreedomMarketDepthWithSid('GOOGL', { sid });
+    await Promise.resolve();
+    const socket = fetchSocket || MockWebSocket.instances[0];
+    if (!fetchSocket) socket?.emit('open');
+    return { pending, socket, fetchMock, MockWebSocket };
+  }
+
   it('reports connection, session, event and timeout diagnostics without exposing the SID', async () => {
     vi.useFakeTimers();
-    const MockWebSocket = createMockWebSocket();
-    vi.stubGlobal('WebSocket', MockWebSocket);
+    const { pending, socket } = await createMockConnection();
     const log = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const pending = fetchFreedomMarketDepthWithSid('GOOGL', { sid: 'sensitive-sid-value-123456' });
-    const socket = MockWebSocket.instances[0];
-
-    socket.emit('open');
     socket.emit('message', {
       data: JSON.stringify(['userData', {
         isDemo: false, mode: 'prod', authLogin: 'private-login@example.test'
@@ -1965,13 +1985,8 @@ describe('Freedom market-depth proxy', () => {
   });
 
   it('matches a US-suffixed production order-book snapshot to an unsuffixed request', async () => {
-    const MockWebSocket = createMockWebSocket();
-    vi.stubGlobal('WebSocket', MockWebSocket);
+    const { pending, socket } = await createMockConnection();
     vi.spyOn(console, 'info').mockImplementation(() => {});
-    const pending = fetchFreedomMarketDepthWithSid('GOOGL', { sid: 'sensitive-sid-value-123456' });
-    const socket = MockWebSocket.instances[0];
-
-    socket.emit('open');
     socket.emit('message', {
       data: JSON.stringify(['userData', { isDemo: false, mode: 'prod' }])
     });
@@ -2010,7 +2025,9 @@ describe('Freedom market-depth proxy', () => {
 
   it('does not open a WebSocket when TradeNet session storage is missing', async () => {
     const WebSocketMock = vi.fn();
+    const fetchMock = vi.fn();
     vi.stubGlobal('WebSocket', WebSocketMock);
+    vi.stubGlobal('fetch', fetchMock);
     const response = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=AAPL.US', {
       headers: { 'X-App-Auth': 'test-secret' }
     }), { GATEWAY_SECRET: 'test-secret' });
@@ -2018,6 +2035,7 @@ describe('Freedom market-depth proxy', () => {
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ error: expect.stringContaining('session storage') });
     expect(WebSocketMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
