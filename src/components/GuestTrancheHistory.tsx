@@ -46,7 +46,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
   return (
     <section id="guestTrancheHistory" class="text-center md:text-left space-y-3 rounded-xl border border-indigo-900/50 bg-slate-950/50 p-3 sm:p-4"
       aria-labelledby="guestTrancheHistoryHeading">
-      <div class="flex flex-wrap items-start justify-between gap-2 border-b border-slate-800 pb-3">
+      <div class="flex flex-wrap items-start justify-center md:justify-between gap-2 border-b border-slate-800 pb-3">
         <div>
           <h2 id="guestTrancheHistoryHeading" class="text-sm font-black uppercase tracking-wide text-indigo-300">LOTS</h2>
           <p class="mt-1 text-[10px] text-slate-500">Your cash-funded purchase allocations, including completed and removed assignments</p>
