@@ -1,5 +1,4 @@
 import { formatUSD, PositionRecord } from '../ui/renderBoard';
-import { emitUiEvent } from '../ui/uiEventBus';
 
 export interface ConsoleQuickActionsProps {
   position?: PositionRecord;
@@ -31,10 +30,6 @@ function prefillTerminalInput(
   if (instant && onExecuteCommand) onExecuteCommand(command);
 }
 
-function requestMarginIntelligence(ticker?: string) {
-  emitUiEvent('terminal:margin-intelligence-request', { ticker });
-}
-
 export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillCommand }: ConsoleQuickActionsProps) {
   const currentPrice =
     position && Number(position.currentPrice) > 0 ? Number(position.currentPrice) : null;
@@ -50,13 +45,6 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
         instant: true,
         color: 'text-amber-300 border-amber-900/70 hover:bg-amber-950/60',
         title: 'Fetch live quotes for all tracked holdings immediately'
-      },
-      {
-        text: '✦ Portfolio Review',
-        command: '',
-        onClick: () => requestMarginIntelligence(),
-        color: 'text-cyan-200 border-cyan-800/70 hover:bg-cyan-950/50',
-        title: 'Use Gemini to review recent news and risk across all margin positions'
       },
       {
         text: '? Help',
@@ -95,13 +83,6 @@ export function ConsoleQuickActions({ position, onExecuteCommand, onPrefillComma
       instant: true,
       color: 'text-amber-300 border-amber-900/70 hover:bg-amber-950/60',
       title: `Immediately pull latest quote for ${position.ticker}`
-    },
-    {
-      text: '✦ News + Review',
-      command: '',
-      onClick: () => requestMarginIntelligence(position.ticker),
-      color: 'text-cyan-200 border-cyan-800/70 hover:bg-cyan-950/50',
-      title: `Review recent news and margin-position risks for ${position.ticker} with Gemini`
     },
     {
       text: '⇄ Compare Exits…',
