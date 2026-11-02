@@ -36,6 +36,7 @@ describe('workspace navigation quote refresh triggers', () => {
     expect(shouldRefreshQuotesOnNavigation('SETTINGS', 'BALANCE', true)).toBe(true);
     expect(shouldRefreshQuotesOnNavigation('GUEST_HISTORY', 'BALANCE', false)).toBe(true);
     expect(shouldRefreshQuotesOnNavigation('BALANCE', 'BALANCE', true)).toBe(false);
+    expect(shouldRefreshQuotesOnNavigation('BALANCE', 'BALANCE', false)).toBe(false);
   });
 
   it('does not start Margin requests for guest or unknown roles', () => {
