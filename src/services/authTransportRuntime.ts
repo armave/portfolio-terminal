@@ -263,8 +263,8 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
   const logoutAccount = async (): Promise<void> => {
     const token = dependencies.getActiveGatewaySecret();
     if (token) await authRequest<{ success: boolean }>("/api/auth/logout", { method: "POST", token, body: {} });
+    clearRequestCaches();
     if (dependencies.clearAllRequestCaches) dependencies.clearAllRequestCaches();
-    else clearRequestCaches();
   };
 
   return {
