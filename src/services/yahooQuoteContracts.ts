@@ -18,6 +18,8 @@ export interface YahooQuotePricePayload {
   postMarketTime?: unknown;
   change?: unknown;
   regularMarketChange?: unknown;
+  changePercent?: unknown;
+  regularMarketChangePercent?: unknown;
 }
 
 export interface YahooBatchQuoteResult {
@@ -26,6 +28,7 @@ export interface YahooBatchQuoteResult {
   regularMarketPrice?: unknown;
   regularMarketPreviousClose?: unknown;
   regularMarketChange?: unknown;
+  regularMarketChangePercent?: unknown;
   error?: string;
 }
 
@@ -54,7 +57,9 @@ function normalizeYahooBatchItem(value: unknown): YahooBatchQuoteResult | null {
       'preMarketTime',
       'postMarketTime',
       'change',
-      'regularMarketChange'
+      'regularMarketChange',
+      'changePercent',
+      'regularMarketChangePercent'
     ] as const) {
       if (key in value.price) price[key] = value.price[key];
     }
@@ -68,7 +73,12 @@ function normalizeYahooBatchItem(value: unknown): YahooBatchQuoteResult | null {
     result.error = 'Yahoo returned a malformed quote payload.';
   }
 
-  for (const key of ['regularMarketPrice', 'regularMarketPreviousClose', 'regularMarketChange'] as const) {
+  for (const key of [
+    'regularMarketPrice',
+    'regularMarketPreviousClose',
+    'regularMarketChange',
+    'regularMarketChangePercent'
+  ] as const) {
     if (key in value) result[key] = value[key];
   }
 
