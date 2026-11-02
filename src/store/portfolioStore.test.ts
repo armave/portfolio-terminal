@@ -4,7 +4,8 @@ import {
   migrateLegacyHoldingsToPositions,
   migrateLegacyCloudHoldingsToPositions,
   PortfolioStore,
-  subscribeToPortfolioState
+  subscribeToPortfolioState,
+  subscribeToActiveView
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
 
@@ -35,6 +36,86 @@ describe('portfolio store snapshot subscriptions', () => {
     unsubscribe();
     store.setState({ balance: 123 });
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('device-local desk navigation', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('updates the selected desk without normalizing or notifying portfolio subscribers', () => {
+    const stored = new Map<string, string>();
+    const setItem = vi.fn((key: string, value: string) => stored.set(key, String(value)));
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem,
+      removeItem: (key: string) => stored.delete(key)
+    });
+
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 2,
+          currentPrice: 190,
+          pt: 210,
+          commBuy: 0,
+          tranches: [{ qty: 2, price: 180, date: '2026-10-01' }]
+        }
+      },
+      activeView: 'COMBINED'
+    });
+
+    const portfolioListener = vi.fn();
+    const activeViewListener = vi.fn();
+    const unsubscribePortfolio = store.subscribe(portfolioListener);
+    const unsubscribeActiveView = store.subscribeActiveView(activeViewListener);
+    const before = store.getState();
+    setItem.mockClear();
+
+    store.setActiveView('AAPL');
+
+    expect(store.getState().activeView).toBe('AAPL');
+    expect(store.getState().selectedTicker).toBe('AAPL');
+    expect(store.getState().positions).toBe(before.positions);
+    expect(store.getState().brokerAssumptions).toBe(before.brokerAssumptions);
+    expect(portfolioListener).not.toHaveBeenCalled();
+    expect(activeViewListener).toHaveBeenCalledTimes(1);
+    expect(activeViewListener).toHaveBeenLastCalledWith('AAPL');
+    expect(setItem.mock.calls).toEqual([['portfolio_active_view', 'AAPL']]);
+
+    unsubscribePortfolio();
+    unsubscribeActiveView();
+  });
+
+  it('replays the current desk and reports later normalized view changes', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        MSFT: {
+          ticker: 'MSFT',
+          shares: 1,
+          currentPrice: 400,
+          pt: 440,
+          commBuy: 0,
+          tranches: [{ qty: 1, price: 400, date: '2026-10-01' }]
+        }
+      },
+      activeView: 'MSFT'
+    });
+
+    const listener = vi.fn();
+    const unsubscribe = subscribeToActiveView(listener, store);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenLastCalledWith('MSFT');
+
+    store.importState({ positions: {}, activeView: 'MSFT' });
+    expect(listener.mock.calls.map(([view]) => view)).toEqual(['MSFT', 'COMBINED']);
+
+    unsubscribe();
   });
 });
 
@@ -808,6 +889,82 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().positions.AAPL).toBeUndefined();
     expect(store.getState().activeView).toBe('COMBINED');
     expect(store.getState().selectedTicker).toBeNull();
+  });
+
+  it('refreshes guest LOTS tranche market values alongside Balance cash-holding quotes', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.importState({
+      guestPortfolioSnapshot: {
+        updatedAt: 1_000,
+        tranches: [
+          {
+            id: 'AAPL:buy-1',
+            ticker: 'AAPL',
+            name: 'Apple',
+            quantity: 2,
+            marketPrice: 100,
+            averagePrice: 90,
+            marketValue: 200,
+            purchasedAt: 100
+          },
+          {
+            id: 'MSFT:buy-2',
+            ticker: 'MSFT',
+            name: 'Microsoft',
+            quantity: 3,
+            marketPrice: 200,
+            averagePrice: 180,
+            marketValue: 600,
+            purchasedAt: 200
+          }
+        ]
+      },
+      cashCushion: {
+        freeCash: 0,
+        holdings: [{
+          ticker: 'AAPL',
+          shares: 2,
+          price: 100,
+          currentPrice: 100,
+          averagePrice: 90,
+          marketValue: 200
+        }]
+      }
+    } as any);
+
+    store.updateLiveQuote('AAPL', {
+      price: 125,
+      quoteSource: 'Yahoo',
+      quoteUpdatedAt: 2_000,
+      quoteDetails: { change: 5, changePercent: 4 },
+      requestStartedAt: 1_900,
+      requestSequence: 12
+    });
+
+    const state = store.getState();
+    expect(state.cashCushion.holdings[0]).toMatchObject({
+      ticker: 'AAPL',
+      currentPrice: 125,
+      price: 125,
+      quoteDetails: { change: 5, changePercent: 4 }
+    });
+    expect(state.guestPortfolioSnapshot).toMatchObject({
+      updatedAt: 1_000,
+      tranches: [
+        expect.objectContaining({
+          id: 'AAPL:buy-1',
+          marketPrice: 125,
+          marketValue: 250,
+          averagePrice: 90
+        }),
+        expect.objectContaining({
+          id: 'MSFT:buy-2',
+          marketPrice: 200,
+          marketValue: 600
+        })
+      ]
+    });
   });
 
   it('makes a new buy execution authoritative over an older live quote', () => {

@@ -23,6 +23,13 @@ import {
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
+import { runManualPortfolioSync } from './src/services/manualPortfolioSync';
+import {
+  createPortfolioAutoRefreshScheduler,
+  DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
+  DEFAULT_GUEST_REFRESH_INTERVAL_MS,
+  normalizeQuoteRefreshInterval
+} from './src/services/portfolioAutoRefresh';
 import { getMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
@@ -76,7 +83,7 @@ import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistor
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
-import { isCurrentGuestPortfolioSession } from './src/services/guestPortfolioSession';
+import { isCurrentGuestPortfolioSession, resolveGuestPortfolioRefreshView } from './src/services/guestPortfolioSession';
 import { createSessionIdentityGuard } from './src/utils/sessionIdentityGuard';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
@@ -98,8 +105,6 @@ let currentAccountRole: 'admin' | 'guest' | null = null;
 let currentAccountId: string | null = null;
 const currentAccountSessionGuard = createSessionIdentityGuard(null);
 let gistSyncTimeout: ReturnType<typeof setTimeout> | null = null;
-let quoteRefreshTimer: ReturnType<typeof setInterval> | null = null;
-let supplementalRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let guestCloudRefreshInFlight: Promise<unknown> | null = null;
 let rolloverTimer: ReturnType<typeof setInterval> | null = null;
 let lastRenderedDeskView: string | null = null;
@@ -111,10 +116,8 @@ const boardAnalystRequests = new Map<string, Promise<void>>();
 const BOARD_ANALYST_CACHE_TTL_MS = 5 * 60 * 1000;
 const BOARD_ANALYST_RETRY_MS = 60 * 1000;
 
-const DEFAULT_QUOTE_REFRESH_INTERVAL_MS = 60 * 1000;
-const QUOTE_REFRESH_INTERVALS = new Set([0, 15 * 1000, 30 * 1000, 60 * 1000]);
-// Broker balances, executions, and assignments change more slowly than quotes.
-const SUPPLEMENTAL_REFRESH_INTERVAL_MS = 60 * 1000;
+// Automatic quote and supplemental-data cadence is centralized in the
+// role-aware portfolio auto-refresh scheduler.
 
 // Cached broker limit prices must win over default targets during asynchronous refreshes.
 let activeLimitSellTargets: Record<string, number> = {};
@@ -908,10 +911,13 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
     mixes: {},
     cashHoldings: []
   });
+  // A snapshot refresh updates guest data, not the user's current desk.
+  // Keep the selected guest-accessible route (Balance, LOTS or Settings).
+  const refreshActiveView = resolveGuestPortfolioRefreshView(portfolioStore.getState().activeView);
   const blank = createBlankState();
   portfolioStore.importState({
     ...blank,
-    activeView: 'CASH_CUSHION',
+    activeView: refreshActiveView,
     selectedTicker: null,
     positions: {},
     activeTrancheGuestAssignments: assignments,
@@ -935,7 +941,6 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
   } as any);
   state = portfolioStore.getState();
   saveState(state);
-  switchView('CASH_CUSHION');
   renderBoard();
 }
 
@@ -971,26 +976,27 @@ portfolioStore.subscribe(syncCalculatedPortfolioEquity);
 // left local-only until the next trade or quote refresh.
 syncCalculatedPortfolioEquity(portfolioStore.getState());
 
-async function pushStateToCloud(forceImmediate = false) {
+async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
   if (!canWriteCloudState) {
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
     gistSyncTimeout = null;
-    return;
+    return false;
   }
 
   if (!areHeaderCredentialsConfigured()) {
     setCloudStatus('idle', 'ADD SECRET');
-    return;
+    return false;
   }
 
   if (startupCloudWritesSuppressed) {
     startupCloudWritePending = true;
-    return;
+    return false;
   }
 
   portfolioStore.setState({ lastUpdated: Date.now() });
+  state = portfolioStore.getState();
 
-  const doPush = async () => {
+  const doPush = async (): Promise<boolean> => {
     setCloudStatus('syncing', 'WRITING...');
     try {
       const ok = await syncCloudState('push');
@@ -998,22 +1004,26 @@ async function pushStateToCloud(forceImmediate = false) {
         try { await publishGuestPortfolioSnapshots(); }
         catch (error) { console.error('Guest portfolio projection sync failed:', error); }
         setCloudStatus('synced', 'UPDATED');
-      } else {
-        setCloudStatus('error', 'FAIL');
+        return true;
       }
+
+      setCloudStatus('error', 'FAIL');
+      return false;
     } catch (err: any) {
       logTerminal(`[KV Cloud Sync Error]: ${err.message}`);
       setCloudStatus('error', 'FAIL');
+      return false;
     }
   };
 
   if (forceImmediate) {
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
-    await doPush();
-  } else {
-    if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
-    gistSyncTimeout = setTimeout(doPush, 600);
+    return doPush();
   }
+
+  if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
+  gistSyncTimeout = setTimeout(() => { void doPush(); }, 600);
+  return true;
 }
 
 const pushStateToGist = pushStateToCloud;
@@ -1251,7 +1261,8 @@ function setActiveView(view: string) {
   const normalizedView = view === 'BALANCE' ? 'CASH_CUSHION' : (view || 'COMBINED');
   // Desk selection is a per-browser preference. The store persists it locally;
   // a tab switch should not POST the entire shared portfolio to KV.
-  portfolioStore.setState({ activeView: normalizedView });
+  portfolioStore.setActiveView(normalizedView);
+  state = portfolioStore.getState();
   renderBoard();
 }
 
@@ -1532,13 +1543,13 @@ async function fetchLivePrice(ticker: string, silent = false, force = false) {
   return null;
 }
 
-let liveQuoteRefreshInFlight: Promise<void> | null = null;
+let liveQuoteRefreshInFlight: Promise<boolean> | null = null;
 
 /**
  * Prevent interval/manual refresh triggers from starting overlapping batch
  * requests when a provider response takes longer than the configured interval.
  */
-function refreshAllLivePrices(): Promise<void> {
+function refreshAllLivePrices(): Promise<boolean> {
   if (liveQuoteRefreshInFlight) return liveQuoteRefreshInFlight;
 
   const request = performRefreshAllLivePrices().finally(() => {
@@ -1548,7 +1559,7 @@ function refreshAllLivePrices(): Promise<void> {
   return request;
 }
 
-async function performRefreshAllLivePrices() {
+async function performRefreshAllLivePrices(): Promise<boolean> {
   const current = portfolioStore.getState();
   const cashHoldings = current.cashCushion && current.cashCushion.holdings;
   const tickersArray = currentAccountRole === 'guest'
@@ -1559,25 +1570,35 @@ async function performRefreshAllLivePrices() {
         ...(cashHoldings || []).map((holding: any) => holding.ticker)
       ]))
       : [];
-  if (tickersArray.length === 0) return;
+  if (tickersArray.length === 0) return true;
 
   try {
     const updatedCount = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice);
     if (updatedCount > 0) {
-      // Live quotes stay local rather than causing a cloud write every poll.
+      // Automatic quote polling remains local; explicit sync pushes the final snapshot.
+      state = portfolioStore.getState();
       saveState(state);
       renderBoard();
       logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
-    } else {
-      logTerminal('[Warning]: No quotes updated during batch fetch.');
+      return true;
     }
+
+    logTerminal('[Warning]: No quotes updated during batch fetch.');
+    return false;
   } catch (err: any) {
     console.error('Batch quote fetch failed:', err);
     logTerminal(`[Error]: Batch fetch failed - ${err.message}`);
+    return false;
   }
 }
 
-function refreshSupplementalPortfolioData() {
+function refreshAllLivePricesAfterCurrent(): Promise<boolean> {
+  const pending = liveQuoteRefreshInFlight;
+  if (!pending) return refreshAllLivePrices();
+  return pending.then(() => refreshAllLivePrices());
+}
+
+function refreshSupplementalPortfolioData(): Promise<void> | void {
   if (document.hidden) return;
 
   if (currentAccountRole === 'admin') {
@@ -1588,35 +1609,47 @@ function refreshSupplementalPortfolioData() {
   }
 
   if (currentAccountRole === 'guest') {
-    // Guest reads are scoped to the authenticated guest's projected lots.
-    if (guestCloudRefreshInFlight) return;
-    const request = pullGuestPortfolioSnapshot().then(() => refreshAllLivePrices()).finally(() => {
-      if (guestCloudRefreshInFlight === request) guestCloudRefreshInFlight = null;
-    });
+    // Refresh only the authenticated guest's assigned holdings and LOTS ledger.
+    // Wait for an older quote batch before fetching prices for the latest assignment set.
+    if (guestCloudRefreshInFlight) return guestCloudRefreshInFlight.then(() => undefined);
+    const request = pullGuestPortfolioSnapshot()
+      .then(() => refreshAllLivePricesAfterCurrent())
+      .then(() => undefined)
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn('[Guest Auto Update Warning]: Unable to refresh assigned holdings and LOTS history.', error);
+        logTerminal(`[Guest Auto Update Warning]: Assigned holdings and LOTS history were not refreshed (${message}).`);
+      })
+      .finally(() => {
+        if (guestCloudRefreshInFlight === request) guestCloudRefreshInFlight = null;
+      });
     guestCloudRefreshInFlight = request;
+    return request;
   }
 }
 
-function setQuoteRefreshInterval(interval: number | string) {
-  const intervalMs = Number(interval);
-  if (!QUOTE_REFRESH_INTERVALS.has(intervalMs)) {
-    throw new Error(`Unsupported quote refresh interval: ${interval}`);
+const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
+  getRole: () => currentAccountRole,
+  isVisible: () => !document.hidden,
+  refreshQuotes: () => refreshAllLivePrices(),
+  refreshSupplemental: () => refreshSupplementalPortfolioData(),
+  onError: (source, error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    logTerminal(`[Auto Update Warning]: ${source} refresh failed (${message}).`);
   }
+});
 
-  if (quoteRefreshTimer !== null) clearInterval(quoteRefreshTimer);
-  if (supplementalRefreshTimer !== null) clearInterval(supplementalRefreshTimer);
-  quoteRefreshTimer = null;
-  supplementalRefreshTimer = null;
-  saveQuoteRefreshInterval(intervalMs, currentAccountRole === 'guest' ? 'guest' : 'admin');
+function setQuoteRefreshInterval(interval: number | string): number {
+  const role = currentAccountRole;
+  const fallback = role === 'guest'
+    ? DEFAULT_GUEST_REFRESH_INTERVAL_MS
+    : DEFAULT_ADMIN_REFRESH_INTERVAL_MS;
+  const intervalMs = normalizeQuoteRefreshInterval(interval, fallback);
 
-  if (intervalMs > 0) {
-    quoteRefreshTimer = setInterval(() => {
-      if (!document.hidden) void refreshAllLivePrices();
-    }, intervalMs);
-    if (currentAccountRole) {
-      supplementalRefreshTimer = setInterval(refreshSupplementalPortfolioData, SUPPLEMENTAL_REFRESH_INTERVAL_MS);
-    }
-  }
+  // An offline/unauthenticated session must not overwrite an administrator's preference.
+  if (role) saveQuoteRefreshInterval(intervalMs, role);
+  portfolioAutoRefresh.configure(intervalMs, role);
+  return intervalMs;
 }
 
 function exportBackupJSON() {
@@ -2158,7 +2191,9 @@ export async function handleSaveGatewaySecret(secret: string): Promise<boolean> 
   } else {
     await publishCurrentUser();
     const refreshScope = currentAccountRole === 'guest' ? 'guest' : 'admin';
-    const refreshFallback = currentAccountRole === 'guest' ? 15 * 1000 : DEFAULT_QUOTE_REFRESH_INTERVAL_MS;
+    const refreshFallback = currentAccountRole === 'guest'
+      ? DEFAULT_GUEST_REFRESH_INTERVAL_MS
+      : DEFAULT_ADMIN_REFRESH_INTERVAL_MS;
     setQuoteRefreshInterval(getQuoteRefreshInterval(refreshFallback, refreshScope));
     // Guests load only their server-scoped projection; administrators load the shared workspace.
     if (currentAccountRole === 'guest') await pullGuestPortfolioSnapshot();
@@ -2209,7 +2244,7 @@ async function startApp(secret: string) {
 
   const refreshIntervalScope = currentAccountRole === 'guest' ? 'guest' : 'admin';
   const initialQuoteRefreshInterval = getQuoteRefreshInterval(
-    currentAccountRole === 'guest' ? 15 * 1000 : DEFAULT_QUOTE_REFRESH_INTERVAL_MS,
+    currentAccountRole === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
     refreshIntervalScope
   );
   setQuoteRefreshInterval(initialQuoteRefreshInterval);
@@ -2220,11 +2255,8 @@ async function startApp(secret: string) {
       if (!document.hidden) applyOvernightRollover();
     }, 60 * 1000)
     : null;
-  if (currentAccountRole === 'admin') {
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) applyOvernightRollover();
-    });
-  }
+  // Visibility refresh and the administrator rollover listener are registered
+  // once in bindStartupActions, not once per authentication/startup cycle.
 
 
   // Avoid launching a duplicate per-ticker analyst request while the initial
@@ -2282,6 +2314,12 @@ function showStartupFailure() {
 }
 
 function bindStartupActions() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (currentAccountRole === 'admin') applyOvernightRollover();
+    portfolioAutoRefresh.onVisibilityChange();
+  });
+
   addUiEventListener('terminal:startup-retry', () => {
     emitUiEvent('terminal:startup-state', { visible: true, failed: false });
     void initApp();
@@ -2299,6 +2337,57 @@ function bindStartupActions() {
   });
   addUiEventListener('portfolio:refresh-live-prices', (event) => {
     void refreshAllLivePrices().finally(event.detail.resolve);
+  });
+  addUiEventListener('portfolio:sync-request', (event) => {
+    void (async () => {
+      try {
+        const result = await runManualPortfolioSync({
+          role: currentAccountRole,
+          refreshBrokerAccount: () => new Promise<boolean>((resolve) => {
+            emitBrokerEvent('broker:request-account-info-and-wait', { resolve });
+          }),
+          refreshExecutedTrades: () => new Promise<boolean>((resolve) => {
+            emitBrokerEvent('broker:request-executed-trades-and-wait', { resolve });
+          }),
+          refreshActiveOrders: () => new Promise<boolean>((resolve) => {
+            emitBrokerEvent('broker:request-active-orders-and-wait', { resolve });
+          }),
+          refreshQuotes: () => refreshAllLivePrices(),
+          pushCloud: async () => {
+            state = portfolioStore.getState();
+            return pushStateToCloud(true);
+          },
+          pullGuestSnapshot: async () => {
+            await pullGuestPortfolioSnapshot();
+            return true;
+          }
+        });
+
+        const anySourceSucceeded = result.role === 'admin'
+          ? Boolean(result.brokerAccount || result.executedTrades || result.activeOrders || result.quotes || result.cloud)
+          : Boolean(result.guestSnapshot || result.quotes);
+        if (result.success) {
+          showToast(translateText('Portfolio sync completed.'), 'success');
+          logTerminal('[Sync]: Broker data, market quotes and cloud snapshot are up to date.');
+        } else if (anySourceSucceeded) {
+          showToast(translateText('Portfolio sync completed with issues. Check the activity log.'), 'warning');
+          logTerminal('[Sync Warning]: One or more portfolio data sources could not be refreshed.');
+        } else {
+          showToast(translateText('Could not sync portfolio. Check your connection and try again.'), 'error');
+          logTerminal('[Sync Error]: No portfolio data source completed successfully.');
+        }
+        event.detail.resolve(result);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logTerminal(`[Sync Error]: ${message}`);
+        showToast(translateText('Could not sync portfolio. Check your connection and try again.'), 'error');
+        event.detail.resolve({
+          role: currentAccountRole,
+          success: false,
+          quotes: false
+        });
+      }
+    })();
   });
   addUiEventListener('terminal:execute-command', (event) => {
     void (async () => {
@@ -2356,9 +2445,11 @@ function bindStartupActions() {
     void syncCloudState('pull');
   });
   addUiEventListener('settings:change-refresh-interval', (event) => {
-    const intervalMs = Number(event.detail.intervalMs);
-    setQuoteRefreshInterval(event.detail.intervalMs);
-    emitUiEvent('settings:refresh-interval-changed', { intervalMs });
+    const normalizedIntervalMs = setQuoteRefreshInterval(event.detail.intervalMs);
+    emitUiEvent('settings:refresh-interval-changed', { intervalMs: normalizedIntervalMs });
+    if (event.detail.refreshNow && normalizedIntervalMs > 0) {
+      void portfolioAutoRefresh.refreshNow();
+    }
   });
   addUiEventListener('settings:export-backup', () => {
     void requireAdmin('export portfolio backups').then((allowed) => {

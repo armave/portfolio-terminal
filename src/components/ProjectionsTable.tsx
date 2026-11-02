@@ -1,3 +1,4 @@
+import { memo } from 'preact/compat';
 import { useEffect, useState } from 'preact/hooks';
 import {
   calculateAccruedFees,
@@ -5,17 +6,19 @@ import {
 } from '../domain/portfolio';
 import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { formatUSD } from '../utils/formatters';
-import { usePortfolio } from '../store/portfolioStore';
+import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { getPortfolioProjectionInputs } from '../domain/portfolioSelectors';
 import { getAppLanguage } from '../services/i18n';
 
 const ROWS_PER_PAGE = 10;
 const MAX_BREAKEVEN_SEARCH_DAYS = 3650;
 
-export function ProjectionsTable() {
+function ProjectionsTableView() {
   const state = usePortfolio();
+  const activeView = useActiveView();
+  const projectionState = state.activeView === activeView ? state : { ...state, activeView };
   const { gross, totalComms, debtToUse, marginChargedToUse, entryDate, dailyRate } =
-    getPortfolioProjectionInputs(state, state.brokerAssumptions);
+    getPortfolioProjectionInputs(projectionState, state.brokerAssumptions);
   const [page, setPage] = useState(0);
 
   useEffect(() => {
@@ -166,3 +169,5 @@ export function ProjectionsTable() {
     </>
   );
 }
+
+export const ProjectionsTable = memo(ProjectionsTableView);

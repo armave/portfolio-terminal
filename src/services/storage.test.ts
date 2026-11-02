@@ -468,6 +468,18 @@ describe('storage service', () => {
       expect(getQuoteRefreshInterval(15000, 'guest')).toBe(30000);
       expect(getQuoteRefreshInterval(60000, 'admin')).toBe(60000);
     });
+
+    it('falls back safely when a saved interval is unsupported or malformed', () => {
+      storageMap.set('quote_refresh_interval', '20000');
+      storageMap.set('quote_refresh_interval_guest_v1', 'not-a-number');
+      expect(getQuoteRefreshInterval(60000, 'admin')).toBe(60000);
+      expect(getQuoteRefreshInterval(15000, 'guest')).toBe(15000);
+    });
+
+    it('does not persist unsupported refresh intervals', () => {
+      saveQuoteRefreshInterval(20000, 'admin');
+      expect(storageMap.has('quote_refresh_interval')).toBe(false);
+    });
   });
 
   describe('separate closed history persistence', () => {

@@ -1,4 +1,5 @@
 import type { ScenarioModalData } from '../features/terminal/scenarioContracts';
+import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 
 /** Typed in-process UI channel. Runtime/UI messages must not leak through window DOM events. */
 export interface UiEventPayloads {
@@ -17,12 +18,13 @@ export interface UiEventPayloads {
   'terminal:execute-command': { command: string };
   'portfolio:set-active-view': { view: string };
   'portfolio:refresh-live-prices': { resolve: () => void };
+  'portfolio:sync-request': { resolve: (result: ManualPortfolioSyncResult) => void };
   'settings:gateway-secret-authenticated': { secret: string };
   'settings:save-broker-rules': { values: { annualRate: string; dayCountBasis: string; maintenanceMargin: string; stopOutRatio: string; rolloverTime: string; commPerShare: string; commVolumePct: string; minCommOrder: string } };
   'settings:reset-broker-rules': undefined;
   'settings:save-api-keys': { secret: string; resolve: (saved: boolean) => void };
   'settings:pull-cloud-state': undefined;
-  'settings:change-refresh-interval': { intervalMs: string };
+  'settings:change-refresh-interval': { intervalMs: string; refreshNow?: boolean };
   'settings:refresh-interval-changed': { intervalMs: number };
   'settings:export-backup': undefined;
   'settings:reset-to-blank-state': undefined;

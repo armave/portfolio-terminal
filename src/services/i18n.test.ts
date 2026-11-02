@@ -10,6 +10,28 @@ describe('app localization', () => {
     expect(translateText('Sign out')).toBe('Sign out');
   });
 
+  it('localizes the role-specific automatic refresh descriptions', () => {
+    expect(translateText(
+      'Live quotes update at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes both.',
+      'ru'
+    )).toContain('Балансы, позиции, сделки и заявки брокера обновляются каждые 60 секунд.');
+    expect(translateText(
+      'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.',
+      'ru'
+    )).toContain('Назначенные вам активы и история ЛОТОВ обновляются каждые 60 секунд.');
+    expect(translateText('Automatic updates are paused. Manual Sync remains available.', 'ru'))
+      .toBe('Автоматические обновления приостановлены. Ручная синхронизация по-прежнему доступна.');
+  });
+
+  it('localizes the full portfolio sync button and outcome messages', () => {
+    expect(translateText('Sync portfolio', 'ru')).toBe('Синхронизировать портфель');
+    expect(translateText('Portfolio sync completed.', 'ru')).toBe('Синхронизация портфеля завершена.');
+    expect(translateText('Portfolio sync completed with issues. Check the activity log.', 'ru'))
+      .toBe('Синхронизация портфеля завершена не полностью. Проверьте журнал действий.');
+    expect(translateText('Could not sync portfolio. Check your connection and try again.', 'ru'))
+      .toBe('Не удалось синхронизировать портфель. Проверьте подключение и повторите попытку.');
+  });
+
   it('translates Balance background sync states into Russian', () => {
     expect(translateText('Refreshing balance…', 'ru')).toBe('Обновление баланса…');
     expect(translateText('Syncing…', 'ru')).toBe('Синхронизация…');

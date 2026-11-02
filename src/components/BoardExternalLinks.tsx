@@ -1,4 +1,5 @@
-import { usePortfolio } from '../store/portfolioStore';
+import { memo } from 'preact/compat';
+import { useActiveView, usePortfolio } from '../store/portfolioStore';
 
 const PROVIDERS = [
   {
@@ -27,9 +28,10 @@ const PROVIDERS = [
   }
 ] as const;
 
-export function BoardExternalLinks() {
+function BoardExternalLinksView() {
   const state = usePortfolio();
-  const ticker = state.positions?.[state.activeView] ? state.activeView : '';
+  const activeView = useActiveView();
+  const ticker = state.positions?.[activeView] ? activeView : '';
   if (!ticker) return null;
 
   const symbol = encodeURIComponent(ticker);
@@ -53,3 +55,5 @@ export function BoardExternalLinks() {
     </>
   );
 }
+
+export const BoardExternalLinks = memo(BoardExternalLinksView);

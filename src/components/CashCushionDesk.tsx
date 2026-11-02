@@ -335,20 +335,20 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   }
 
   return (
-    <div class="desk-content-reveal">
+    <div>
       <style>{`
         @keyframes guest-stock-card-enter {
-          from { opacity: 0; transform: translateY(12px) scale(0.985); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         .guest-stock-card-enter {
-          animation: guest-stock-card-enter 420ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+          animation: guest-stock-card-enter 180ms ease-out both;
         }
         @media (prefers-reduced-motion: reduce) {
           .guest-stock-card-enter { animation: none; }
         }
       `}</style>
-      <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+      <div class="flex text-center md:text-left justify-center md:justify-between items-center border-b border-slate-800 pb-2">
         <div>
           <div class="flex items-center gap-2">
             <h2 class="text-lg font-black text-cyan-400 tracking-wide">
@@ -484,7 +484,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       </div>
                     )}
                   </div>
-                  <p class="mt-3 text-[9px] text-slate-500">{formatQuoteMetadata(holding, refreshIntervalMs)}</p>
                 </article>
               );
             })}

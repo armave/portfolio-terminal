@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { getQuoteRefreshInterval } from '../services/storage';
+import {
+  DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
+  DEFAULT_GUEST_REFRESH_INTERVAL_MS
+} from '../services/portfolioAutoRefresh';
 import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
@@ -160,8 +164,12 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     }
   };
 
+  const initialRefreshScope = currentUser?.role === 'guest' ? 'guest' : 'admin';
+  const initialRefreshFallback = initialRefreshScope === 'guest'
+    ? DEFAULT_GUEST_REFRESH_INTERVAL_MS
+    : DEFAULT_ADMIN_REFRESH_INTERVAL_MS;
   const [refreshInterval, setRefreshInterval] = useState<string>(() =>
-    String(getQuoteRefreshInterval(15_000, 'guest'))
+    String(getQuoteRefreshInterval(initialRefreshFallback, initialRefreshScope))
   );
 
   // Load the current role's own preference. An unset guest preference defaults
@@ -169,7 +177,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   useEffect(() => {
     if (account?.role !== 'admin' && account?.role !== 'guest') return;
     const scope = account.role;
-    const fallback = scope === 'guest' ? 15_000 : 60_000;
+    const fallback = scope === 'guest' ? DEFAULT_GUEST_REFRESH_INTERVAL_MS : DEFAULT_ADMIN_REFRESH_INTERVAL_MS;
     const interval = String(getQuoteRefreshInterval(fallback, scope));
     setRefreshInterval(interval);
     emitUiEvent('settings:change-refresh-interval', { intervalMs: interval });
@@ -204,7 +212,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const handleIntervalChange = (e: Event) => {
     const val = (e.target as HTMLSelectElement).value;
     setRefreshInterval(val);
-    emitUiEvent('settings:change-refresh-interval', { intervalMs: val });
+    emitUiEvent('settings:change-refresh-interval', { intervalMs: val, refreshNow: true });
   };
 
   if (initialUsersLoading) {
@@ -216,7 +224,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   }
 
   return (
-    <div id="settingsDesk" class="settings-desk desk-content-reveal min-w-0 space-y-4">
+    <div id="settingsDesk" class="settings-desk min-w-0 space-y-4">
       <div class="settings-header border-b border-slate-800 pb-3">
         <h2 class="text-lg font-black text-slate-200 tracking-wide">
           TERMINAL SETTINGS &amp; SYNC
@@ -248,21 +256,30 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         {/* Cluster 2: Polling & Backups */}
         <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2" aria-label="Portfolio data refresh and backup controls">
           <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
-            Update Interval
+            {translateText('Update Interval')}
             <select
               id="quoteRefreshInterval"
               value={refreshInterval}
               onChange={handleIntervalChange}
               aria-label="Automatic portfolio data refresh interval"
-              title="Quotes update at this interval. Broker balances, positions, trades and orders sync every 60 seconds. Guests refresh only their assigned stocks and assignment changes."
+              title={translateText(account?.role === 'guest'
+                ? 'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.'
+                : 'Live quotes update at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes both.')}
               class="h-8 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
             >
-              <option value="0">Off</option>
-              <option value="15000">15 sec</option>
-              <option value="30000">30 sec</option>
-              <option value="60000">1 min</option>
+              <option value="0">{translateText('Off')}</option>
+              <option value="15000">{translateText('15 sec')}</option>
+              <option value="30000">{translateText('30 sec')}</option>
+              <option value="60000">{translateText('1 min')}</option>
             </select>
           </label>
+          <p class="basis-full text-center text-[10px] leading-relaxed text-slate-500">
+            {refreshInterval === '0'
+              ? translateText('Automatic updates are paused. Manual Sync remains available.')
+              : translateText(account?.role === 'guest'
+                ? 'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.'
+                : 'Live quotes update at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes both.')}
+          </p>
           {permissions.canManageBackups && <>
             <button
               type="button"

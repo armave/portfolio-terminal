@@ -1,3 +1,4 @@
+import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { addUiEventListener, removeUiEventListener, type UiEvent } from '../ui/uiEventBus';
 import { ConsoleQuickActions } from './ConsoleQuickActions';
@@ -5,13 +6,14 @@ import { clearTerminalLog } from '../ui/notifications';
 import { useTerminalLogEntries } from '../ui/notificationStore';
 import { TerminalLog } from './TerminalLog';
 import { formatUSD } from '../utils/formatters';
-import { usePortfolio } from '../store/portfolioStore';
+import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { useAiStatus } from '../ui/uiStateStore';
 
-export function TradingConsole() {
+function TradingConsoleView() {
   const portfolio = usePortfolio();
-  const position = portfolio.positions?.[portfolio.activeView];
+  const activeView = useActiveView();
+  const position = portfolio.positions?.[activeView];
   const onExecuteCommand = (command?: string) => {
     const value = String(command ?? '').trim();
     if (value) emitUiEvent('terminal:execute-command', { command: value });
@@ -308,3 +310,5 @@ export function TradingConsole() {
     </>
   );
 }
+
+export const TradingConsole = memo(TradingConsoleView);

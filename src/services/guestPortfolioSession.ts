@@ -1,3 +1,5 @@
+import { canAccessPortfolioView } from '../domain/accountPermissions';
+
 type PortfolioAccountRole = 'admin' | 'guest' | null;
 
 export interface GuestPortfolioSessionIdentity {
@@ -22,4 +24,9 @@ export function isCurrentGuestPortfolioSession(
     current.accountId === requested.accountId &&
     current.secret === requested.secret &&
     current.generation === requested.generation;
+}
+
+/** Preserve the signed-in guest's current desk while refreshing its snapshot. */
+export function resolveGuestPortfolioRefreshView(currentView: string | null | undefined): string {
+  return currentView && canAccessPortfolioView('guest', currentView) ? currentView : 'BALANCE';
 }

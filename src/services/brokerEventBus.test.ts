@@ -90,26 +90,38 @@ describe('typed broker event bus', () => {
     const first = vi.fn();
     const second = vi.fn();
     const accountRefresh = vi.fn();
+    const awaitableAccountRefresh = vi.fn();
     const awaitableTradesRefresh = vi.fn();
+    const awaitableOrdersRefresh = vi.fn();
+    const resolveAccountRefresh = vi.fn();
     const resolveTradesRefresh = vi.fn();
+    const resolveOrdersRefresh = vi.fn();
     const removeFirst = addBrokerEventListener('broker:request-active-orders', first);
     const removeSecond = addBrokerEventListener('broker:request-active-orders', second);
     const removeAccount = addBrokerEventListener('broker:request-account-info', accountRefresh);
+    const removeAwaitableAccount = addBrokerEventListener('broker:request-account-info-and-wait', awaitableAccountRefresh);
     const removeAwaitableTrades = addBrokerEventListener('broker:request-executed-trades-and-wait', awaitableTradesRefresh);
+    const removeAwaitableOrders = addBrokerEventListener('broker:request-active-orders-and-wait', awaitableOrdersRefresh);
 
     emitBrokerEvent('broker:request-active-orders');
     emitBrokerEvent('broker:request-account-info');
+    emitBrokerEvent('broker:request-account-info-and-wait', { resolve: resolveAccountRefresh });
     emitBrokerEvent('broker:request-executed-trades-and-wait', { resolve: resolveTradesRefresh });
+    emitBrokerEvent('broker:request-active-orders-and-wait', { resolve: resolveOrdersRefresh });
 
     expect(first).toHaveBeenCalledTimes(1);
     expect(first).toHaveBeenCalledWith(undefined);
     expect(second).toHaveBeenCalledTimes(1);
     expect(accountRefresh).toHaveBeenCalledTimes(1);
     expect(accountRefresh).toHaveBeenCalledWith(undefined);
+    expect(awaitableAccountRefresh).toHaveBeenCalledWith({ resolve: resolveAccountRefresh });
     expect(awaitableTradesRefresh).toHaveBeenCalledWith({ resolve: resolveTradesRefresh });
+    expect(awaitableOrdersRefresh).toHaveBeenCalledWith({ resolve: resolveOrdersRefresh });
     removeFirst();
     removeSecond();
     removeAccount();
+    removeAwaitableAccount();
     removeAwaitableTrades();
+    removeAwaitableOrders();
   });
 });

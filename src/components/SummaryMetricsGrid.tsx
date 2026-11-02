@@ -1,7 +1,8 @@
 import { formatRelativeTime } from '../utils/relativeTime';
+import { memo } from 'preact/compat';
 import { useRef, useState } from 'preact/hooks';
 import type { BrokerAssumptions, QuoteDetails } from '../types/portfolio';
-import { usePortfolio } from '../store/portfolioStore';
+import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { getAppLanguage, translateText } from '../services/i18n';
@@ -287,8 +288,9 @@ export function getMarginTrancheQuantity(
   return getMarginTrancheQuantities([tranche], brokerLots, ticker)[0] ?? null;
 }
 
-export function SummaryMetricsGrid() {
+function SummaryMetricsGridView() {
   const state = usePortfolio();
+  const activeView = useActiveView();
   const rules = state.brokerAssumptions;
   const refreshIntervalMs = useQuoteRefreshInterval();
   const previousPricesRef = useRef<Record<string, number>>({});
@@ -296,8 +298,8 @@ export function SummaryMetricsGrid() {
   const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
   const isCombined =
-    state.activeView === 'COMBINED' ||
-    (tickers.length !== 1 && !state.positions?.[state.activeView || '']);
+    activeView === 'COMBINED' ||
+    (tickers.length !== 1 && !state.positions?.[activeView || '']);
 
   if (isCombined) {
     let totalInvested = 0;
@@ -463,7 +465,7 @@ export function SummaryMetricsGrid() {
 
   // Single Ticker View
   const pos =
-    (state.activeView ? state.positions?.[state.activeView] : undefined) ||
+    (activeView ? state.positions?.[activeView] : undefined) ||
     state.positions?.[tickers[0]];
   if (!pos) return null;
 
@@ -650,3 +652,5 @@ export function SummaryMetricsGrid() {
     </>
   );
 }
+
+export const SummaryMetricsGrid = memo(SummaryMetricsGridView);

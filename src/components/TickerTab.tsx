@@ -1,50 +1,43 @@
+import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { isMarginDeskView, resolveTabNavigationIndex, shouldRefreshQuotesOnNavigation } from '../ui/tabNavigation';
-import { usePortfolio } from '../store/portfolioStore';
+import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { formatPortfolioEquityBadge } from '../ui/portfolioEquityBadge';
+import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 
-export function TickerTabs({
+export const TickerTabs = memo(function TickerTabs({
   isAdmin = false,
-  userId,
-  onDeskLoadingChange
+  userId
 }: {
   isAdmin?: boolean;
   userId?: string;
-  onDeskLoadingChange?: (view: string, isLoading: boolean) => void;
 } = {}) {
   const state = usePortfolio();
-  const [isRefreshingQuotes, setIsRefreshingQuotes] = useState(false);
+  const activeView = useActiveView();
+  const [isSyncingPortfolio, setIsSyncingPortfolio] = useState(false);
   const quoteRefreshPromise = useRef<Promise<void> | null>(null);
+  const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const selectView = (view: string) => {
     if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS' && !(userId && view === 'GUEST_HISTORY')) return;
-    // Persist at the actual navigation click site as well as through the store,
-    // so a view change is durable even if a later render/hydration races it.
-    try {
-      if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', view);
-    } catch {
-      // Continue navigation when storage is unavailable.
-    }
     // Refresh the portfolio once when returning to the Margin desk. Switching
     // between its ticker tabs does not require another all-symbol quote batch.
-    const refreshQuotes = shouldRefreshQuotesOnNavigation(state.activeView, view, isAdmin);
-    if (refreshQuotes) onDeskLoadingChange?.(view, true);
+    const refreshQuotes = shouldRefreshQuotesOnNavigation(activeView, view, isAdmin);
     emitUiEvent('portfolio:set-active-view', { view });
-    if (refreshQuotes) {
-      void handleRefreshQuotes().finally(() => onDeskLoadingChange?.(view, false));
-    }
+    // Show the selected desk immediately; refresh existing prices in the background.
+    if (refreshQuotes) void handleRefreshQuotes();
   };
 
   const isCushionActive =
-    state.activeView === 'CASH_CUSHION' || state.activeView === 'BALANCE';
-  const isClosedHistoryActive = state.activeView === 'CLOSED_HISTORY';
-  const isGuestHistoryActive = state.activeView === 'GUEST_HISTORY';
-  const isSettingsActive = state.activeView === 'SETTINGS';
-  const isMarginDeskActive = isMarginDeskView(state.activeView, isAdmin);
+    activeView === 'CASH_CUSHION' || activeView === 'BALANCE';
+  const isClosedHistoryActive = activeView === 'CLOSED_HISTORY';
+  const isGuestHistoryActive = activeView === 'GUEST_HISTORY';
+  const isSettingsActive = activeView === 'SETTINGS';
+  const isMarginDeskActive = isMarginDeskView(activeView, isAdmin);
 
   // The Margin desk depends on open broker orders. Request them only when the
   // user enters this workspace, not whenever they switch between ticker tabs.
@@ -124,7 +117,6 @@ export function TickerTabs({
   const handleRefreshQuotes = async (): Promise<void> => {
     if (quoteRefreshPromise.current) return quoteRefreshPromise.current;
 
-    setIsRefreshingQuotes(true);
     const request = new Promise<void>((resolve) => {
       emitUiEvent('portfolio:refresh-live-prices', { resolve });
     });
@@ -133,24 +125,42 @@ export function TickerTabs({
       await request;
     } finally {
       if (quoteRefreshPromise.current === request) quoteRefreshPromise.current = null;
-      setIsRefreshingQuotes(false);
+    }
+  };
+
+  const handleSyncPortfolio = async (): Promise<void> => {
+    if (portfolioSyncPromise.current) {
+      await portfolioSyncPromise.current;
+      return;
+    }
+
+    setIsSyncingPortfolio(true);
+    const request = new Promise<ManualPortfolioSyncResult>((resolve) => {
+      emitUiEvent('portfolio:sync-request', { resolve });
+    });
+    portfolioSyncPromise.current = request;
+    try {
+      await request;
+    } finally {
+      if (portfolioSyncPromise.current === request) portfolioSyncPromise.current = null;
+      setIsSyncingPortfolio(false);
     }
   };
 
   return (
     <>
-      {((isAdmin && tickers.length > 0) || (!isAdmin && Boolean(userId) && guestHoldings.length > 0)) && (
+      {(isAdmin || Boolean(userId)) && (
         <button
-          id="refreshQuotesButton"
+          id="syncPortfolioButton"
           type="button"
-          title="Update quotes"
-          aria-label="Refresh live quotes"
-          aria-busy={isRefreshingQuotes}
-          disabled={isRefreshingQuotes}
-          onClick={handleRefreshQuotes}
+          title={translateText('Sync portfolio', getAppLanguage())}
+          aria-label={translateText('Sync portfolio', getAppLanguage())}
+          aria-busy={isSyncingPortfolio}
+          disabled={isSyncingPortfolio}
+          onClick={handleSyncPortfolio}
           class="h-8 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
         >
-          <span class={isRefreshingQuotes ? 'animate-spin' : ''}>↻</span>
+          <span class={isSyncingPortfolio ? 'animate-spin' : ''} aria-hidden="true">↻</span>
         </button>
       )}
 
@@ -179,8 +189,8 @@ export function TickerTabs({
           type="button"
           onClick={() => selectView(tickers[0])}
           aria-label={`Margin: ${tickers[0]}`}
-          aria-pressed={state.activeView === tickers[0]}
-          class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === tickers[0] && isMarginDeskActive
+          aria-pressed={activeView === tickers[0]}
+          class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === tickers[0] && isMarginDeskActive
             ? 'bg-emerald-600 text-black'
             : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
             }`}
@@ -200,8 +210,8 @@ export function TickerTabs({
             type="button"
             onClick={() => selectView('COMBINED')}
             aria-label="Combined portfolio"
-            aria-pressed={state.activeView === 'COMBINED'}
-            class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === 'COMBINED' && isMarginDeskActive
+            aria-pressed={activeView === 'COMBINED'}
+            class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === 'COMBINED' && isMarginDeskActive
               ? 'bg-emerald-600 text-black'
               : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
               }`}
@@ -220,8 +230,8 @@ export function TickerTabs({
               type="button"
               onClick={() => selectView(t)}
               aria-label={`Margin: ${t}`}
-              aria-pressed={state.activeView === t}
-              class={`px-3 py-1 rounded text-xs font-bold transition ${state.activeView === t && isMarginDeskActive
+              aria-pressed={activeView === t}
+              class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === t && isMarginDeskActive
                 ? 'bg-emerald-600 text-black'
                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                 }`}
@@ -313,4 +323,4 @@ export function TickerTabs({
       </button>
     </>
   );
-}
+});
