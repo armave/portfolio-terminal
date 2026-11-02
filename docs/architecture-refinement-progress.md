@@ -1,7 +1,7 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Cloud state sync runtime extraction  
+**Current work:** Remaining API facade decomposition  
 **Base:** `5b55f0a3c883e2333e533fbada04dbd803353dc6`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
@@ -159,16 +159,15 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Verify guests fetch only the server-scoped guest projection and do not request the administrator cloud workspace.
 - [x] Exact-head validation: 1,036 tests across 98 files; typecheck/build, dead-code validation, both audits and production browser smoke passed. Squash-merged to `main` as `5b55f0a3c883e2333e533fbada04dbd803353dc6`.
 
-## Current PR #257 — cloud state sync runtime
+## Merged PR #257 — cloud state sync runtime
 
 - [x] Extract encrypted portfolio pull/push, revision-aware queued writes, closed-history pull/push, legacy history migration, and migration caches into an injectable runtime.
 - [x] Keep the existing `api.ts` cloud-sync functions as compatibility exports.
 - [x] Preserve stale-session guards, read-only guest pulls, durable history-before-compaction ordering, separate history revisions, force-clear semantics, duplicate read/write coordination, encryption upgrades, and conflict-safe `If-Match` behavior.
 - [x] Port the missing explanatory Settings warnings from the older cloud-data-loss branch; retain current Russian translations and add accessibility assertions.
 - [x] Retain the already-merged reset/session binding and stale-pull guards; do not merge stale branch histories.
-- [x] Validation on implementation head `4ff1cda902242df4821b345a71e30febafa436ed`: typecheck, 1,036 tests across 98 files, dead-code validation, both audits, production build, and Chromium browser smoke passed. Entry bundle: 499,837 / 500,000 bytes; gzip: 159,744 / 165,000 bytes. Full dependency audit: 9 low/moderate advisories (2 low, 7 moderate); production audit: 0 vulnerabilities. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41436822379) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41436822446).
-- [ ] Re-run exact-head checks after this tracker-only update.
-- [ ] Review and merge.
+- [x] Final-head validation on `40e2f04c495125b7b3cbfe2896e5690e85886f79`: typecheck, 1,036 tests across 98 files, dead-code validation, both audits, production build, and Chromium browser smoke passed. Entry bundle: 499,837 / 500,000 bytes; gzip: 159,744 / 165,000 bytes. Full dependency audit: 9 low/moderate advisories (2 low, 7 moderate); production audit: 0 vulnerabilities. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41437200885) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41437200940).
+- [x] Squash-merged to `main` as `fdfa6c63f19fec4e50fd1823f61fc9d632798d86`.
 
 ## Remaining architecture work
 
