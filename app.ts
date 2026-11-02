@@ -15,7 +15,7 @@ import {
 } from './src/domain/portfolio';
 import { extractGeminiResponseText, parseAiIntent, type PortfolioActionIntent } from './src/features/ai/intent';
 import { applyAiPortfolioActionAfterConfirmation } from './src/features/ai/confirmedPortfolioAction';
-import { canAccessPortfolioView } from './src/domain/accountPermissions';
+import { bindPortfolioNavigationRuntime } from './src/services/portfolioNavigationRuntime';
 import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
   calculateTargetUpsidePercent,
@@ -2337,18 +2337,10 @@ function bindStartupActions() {
     void initApp();
   });
   addUiEventListener('terminal:startup-offline', () => { void continueStartupOffline(); });
-  addUiEventListener('portfolio:set-active-view', (event) => {
-    const requestedView = event.detail.view;
-    // The session role is verified during startup and authentication changes.
-    // Navigation is local UI state; do not revalidate the same session for every tab click.
-    if (!canAccessPortfolioView(currentAccountRole, requestedView)) {
-      setActiveView('BALANCE');
-      return;
-    }
-    setActiveView(requestedView);
-  });
-  addUiEventListener('portfolio:refresh-live-prices', (event) => {
-    void refreshAllLivePrices().finally(event.detail.resolve);
+  bindPortfolioNavigationRuntime({
+    getAccountRole: () => currentAccountRole,
+    setActiveView,
+    refreshLivePrices: refreshAllLivePrices
   });
   addUiEventListener('portfolio:sync-request', (event) => {
     void (async () => {
