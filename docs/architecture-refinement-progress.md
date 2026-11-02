@@ -216,10 +216,23 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41461251079) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41461251288) passed.
 - [x] Squash-merged to `main` as `057f7a0b0ad3975e8960dc9195e4b7b4d88f2e7b`.
 
+## Merged PR #263 — sale financing and realized accounting
+
+- [x] Extract portfolio-weighted margin-interest calculation and proportional per-sale allocation into `calculateSaleAccounting`.
+- [x] Preserve the position-level one-shot margin charge floor, allocated debt weighting, and cent rounding.
+- [x] Extract total commissions, gross profit, net profit, and net cash proceeds calculations.
+- [x] Keep rollover state, debt/cash settlement, position updates, closed-trade construction, and persistence in `PortfolioStore`.
+- [x] Add deterministic tests for multi-position debt weighting, accrued tranche interest, partial-exit allocation, realized totals, and the one-shot charge floor.
+- [x] Exact-head validation on `72df188f724df887d0d98631c91c15c86aa3e84e`: typecheck, 1,072 tests across 102 files, production build, dead-code validation, both dependency audits, and production Chromium smoke passed.
+- [x] Production build bundle: 483,601 / 500,000 bytes; gzip: 155,060 / 165,000 bytes.
+- [x] Production dependency audit: 0 vulnerabilities; full dependency tree retains 9 low/moderate advisories (2 low, 7 moderate).
+- [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41462093840) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41462093564) passed.
+- [x] Squash-merged to `main` as `4375feae30a0841c2751464abc656e7ec18bd001`.
+
 ## Next architecture step
 
-- [ ] Extract margin-interest allocation and realized-sale P&L construction into pure domain functions, preserving current behavior and keeping all state mutation in `PortfolioStore`.
-- [ ] Add parity tests for accrued rollover treatment, financing allocation across partial exits, and realized closed-trade record fields before moving those calculations.
+- [ ] Extract closed-trade record construction into a pure domain function while preserving IDs, date normalization, holding-day rounding, aliases, and every persisted field.
+- [ ] Add deterministic tests for invalid dates, fallback timestamps, holding-period boundaries, and exact closed-trade record shape before extraction.
 
 ## Remaining architecture work
 
