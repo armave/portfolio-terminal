@@ -238,6 +238,60 @@ describe('cloud state sync', () => {
     expect(payload.encryptedPayload).toMatch(/^aesgcm:v2:[A-Za-z0-9+/]+=*:[A-Za-z0-9+/]+=*$/);
     expect(payload.encryptedPayload).not.toContain('cloud-encryption-secret');
   });
+  it('does not persist a cloud response after the authenticated session changes mid-pull', async () => {
+    let isCurrent = true;
+    let resolveResponse!: (response: Response) => void;
+    const responsePromise = new Promise<Response>((resolve) => { resolveResponse = resolve; });
+    const fetchMock = vi.fn(() => responsePromise);
+    vi.stubGlobal('fetch', fetchMock);
+    const saveSpy = vi.spyOn(storage, 'saveState').mockReturnValue(true);
+    const rewriteLocal = vi.fn();
+    const reportResult = vi.fn();
+
+    const pending = pullCloudState({
+      state: { activeView: 'LOCAL', balance: 1000 },
+      secret: 'cloud-encryption-secret',
+      allowCloudWrites: false,
+      isCurrentSession: () => isCurrent,
+      pullCloudAndRewriteLocal: rewriteLocal,
+      showToast: vi.fn(),
+      logTerminal: vi.fn()
+    }, reportResult);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    isCurrent = false;
+    resolveResponse(new Response(JSON.stringify({
+      activeView: 'STALE-CLOUD',
+      balance: 9999,
+      lastRolloverTimestamp: Date.now()
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ETag: '"42"' }
+    }));
+
+    await pending;
+
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(rewriteLocal).not.toHaveBeenCalled();
+    expect(reportResult).toHaveBeenCalledWith(false);
+  });
+
+  it('does not start a cloud request for an already-stale account session', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const reportResult = vi.fn();
+
+    await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 1000 },
+      secret: 'cloud-encryption-secret',
+      isCurrentSession: () => false,
+      showToast: vi.fn()
+    }, reportResult);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(reportResult).toHaveBeenCalledWith(false);
+  });
+
   it('imports shared portfolio state for read-only guests without posting legacy cloud history', async () => {
     const secret = 'guest-read-only-history-migration-secret';
     const encryptedPayload = await encryptV2Fixture({
@@ -336,6 +390,35 @@ describe('cloud revision conflict handling', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const secondHeaders = fetchMock.mock.calls[1][1].headers as Record<string, string>;
     expect(secondHeaders['If-Match']).toBe('"42"');
+  });
+
+  it('drops a queued push when its account session changes before the write starts', async () => {
+    let resolveFirstResponse!: (response: Response) => void;
+    const firstResponse = new Promise<Response>((resolve) => { resolveFirstResponse = resolve; });
+    const fetchMock = vi.fn().mockImplementationOnce(() => firstResponse);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = pushCloudState({ activeView: 'FIRST', balance: 100 }, {
+      secret: 'cloud-encryption-secret',
+      showToast: vi.fn()
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    let isCurrent = true;
+    const second = pushCloudState({ activeView: 'STALE-SECOND', balance: 200 }, {
+      secret: 'cloud-encryption-secret',
+      isCurrentSession: () => isCurrent,
+      showToast: vi.fn()
+    });
+    isCurrent = false;
+    resolveFirstResponse(new Response('{}', {
+      status: 200,
+      headers: new Headers({ ETag: '"42"' })
+    }));
+
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('reports a conflict instead of silently overwriting a newer cloud state', async () => {
