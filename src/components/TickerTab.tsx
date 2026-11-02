@@ -25,8 +25,8 @@ export const TickerTabs = memo(function TickerTabs({
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const selectView = (view: string) => {
     if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS' && !(userId && view === 'GUEST_HISTORY')) return;
-    // Refresh the portfolio once when returning to the Margin desk. Switching
-    // between its ticker tabs does not require another all-symbol quote batch.
+    // Refresh the latest portfolio quotes whenever a different Margin section
+    // is selected; same-section clicks and non-Margin routes do not start a batch.
     const refreshQuotes = shouldRefreshQuotesOnNavigation(activeView, view, isAdmin);
     emitUiEvent('portfolio:set-active-view', { view });
     // Show the selected desk immediately; refresh existing prices in the background.
