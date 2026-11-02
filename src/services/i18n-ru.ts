@@ -12,7 +12,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   '⚙️ SETTINGS': '⚙️ НАСТРОЙКИ',
   'Settings': 'Настройки',
   'PORTFOLIO TERMINAL': 'ПОРТФЕЛЬНЫЙ ТЕРМИНАЛ',
-  'Margin Portfolio Terminal — Tradernet Armenia Edition': RU_DOCUMENT_TITLE,
+  'Margin Portfolio Terminal — Tradernet Armenia Edition': 'Маржинальный портфель — терминал Tradernet (Армения)',
   'TERMINAL SETTINGS & SYNC': 'НАСТРОЙКИ ТЕРМИНАЛА И СИНХРОНИЗАЦИЯ',
   'Manage your account and quote refresh preferences.': 'Управляйте учётной записью и частотой обновления котировок.',
   'Configure broker assumptions, cloud synchronization, quote polling, and account access.': 'Настройте параметры брокера, облачную синхронизацию, обновление котировок и доступ к учётным записям.',
