@@ -34,7 +34,7 @@ describe('portfolio subscription adapters', () => {
     const sameTickers = (previous: string[], next: string[]) =>
       previous.length === next.length && previous.every((ticker, index) => ticker === next[index]);
 
-    const unsubscribe = subscribeToPortfolioSelector(selectTickers, listener, sameTickers, store);
+    const unsubscribe = subscribeToPortfolioSelector(selectTickers, listener, store, sameTickers);
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenLastCalledWith([]);
