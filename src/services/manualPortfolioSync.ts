@@ -1,4 +1,4 @@
-export type ManualPortfolioSyncRole = 'admin' | 'guest' | null;
+type ManualPortfolioSyncRole = 'admin' | 'guest' | null;
 
 export interface ManualPortfolioSyncResult {
   role: ManualPortfolioSyncRole;
