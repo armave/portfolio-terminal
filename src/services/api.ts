@@ -497,7 +497,6 @@ export function clearYahooDeepStockDataCache(): void {
   yahooQuoteQueue.clear();
   yahooQuoteFlushScheduled = false;
   marketInsightsProviders.clear();
-  cloudStateSyncRuntime.clearValidatedCloudResponse();
 }
 
 export async function validateGatewaySecret(secret: string): Promise<boolean> {
@@ -516,8 +515,7 @@ export async function validateGatewaySecret(secret: string): Promise<boolean> {
       },
       cache: 'no-store'
     });
-    cloudStateSyncRuntime.clearValidatedCloudResponse();
-    if (!response.ok) {
+      if (!response.ok) {
       currentUserCache = null;
       return false;
     }
@@ -530,8 +528,7 @@ export async function validateGatewaySecret(secret: string): Promise<boolean> {
     if (user) rememberCurrentUser(cleanSecret, user);
     return true;
   } catch (error) {
-    cloudStateSyncRuntime.clearValidatedCloudResponse();
-    console.warn('Account session validation failed:', error);
+      console.warn('Account session validation failed:', error);
     return false;
   }
 }
