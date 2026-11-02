@@ -20,6 +20,7 @@ function createFixture(options: {
   session?: GuestPortfolioSessionIdentity;
   currentView?: string | null;
   snapshot?: GuestPortfolioSnapshot;
+  missingIdentityGeneration?: boolean;
 } = {}) {
   let session: GuestPortfolioSessionIdentity = options.session ?? {
     role: 'guest',
@@ -28,7 +29,10 @@ function createFixture(options: {
     generation: 1
   };
   const dependencies = {
-    getSessionIdentity: vi.fn(() => session),
+    getSessionIdentity: vi.fn((missingGeneration: number) => ({
+      ...session,
+      generation: options.missingIdentityGeneration ? missingGeneration : session.generation
+    })),
     getGuestPortfolioSnapshot: vi.fn(async () => options.snapshot ?? createSnapshot()),
     getActiveView: vi.fn(() => options.currentView ?? 'BALANCE'),
     createCleanWorkspaceState: vi.fn(() => createBlankPortfolioState(100)),
@@ -100,6 +104,17 @@ describe('guest portfolio hydration runtime', () => {
     expect(fixture.dependencies.importGuestWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({ activeView: 'BALANCE' })
     );
+  });
+
+  it('rejects the request when the session guard cannot capture an identity', async () => {
+    const fixture = createFixture({ missingIdentityGeneration: true });
+    const runtime = createGuestPortfolioHydrationRuntime(fixture.dependencies);
+
+    await runtime.pullGuestPortfolioSnapshot();
+
+    expect(fixture.dependencies.getSessionIdentity).toHaveBeenNthCalledWith(1, -1);
+    expect(fixture.dependencies.getSessionIdentity).toHaveBeenNthCalledWith(2, -2);
+    expect(fixture.dependencies.importGuestWorkspace).not.toHaveBeenCalled();
   });
 
   it('ignores a snapshot response after the active account or credential changes', async () => {

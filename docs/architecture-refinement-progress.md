@@ -2,7 +2,7 @@
 
 **Repository:** `armave/portfolio-terminal`  
 **Current work:** Guest portfolio snapshot hydration runtime extraction  
-**Base:** `fe8de28506809f39f65122aabbdc2fb3af142cdc`
+**Base:** `e05a8c910195fddcdc9318083c90f066706d70e6`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 

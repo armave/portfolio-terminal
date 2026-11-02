@@ -889,13 +889,13 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
 }
 
 const guestPortfolioHydrationRuntime = createGuestPortfolioHydrationRuntime({
-  getSessionIdentity: () => {
+  getSessionIdentity: (missingGeneration) => {
     const identity = currentAccountSessionGuard.capture();
     return {
       role: currentAccountRole,
       accountId: currentAccountId,
       secret: getGatewaySecret(),
-      generation: identity?.generation ?? -1
+      generation: identity?.generation ?? missingGeneration
     };
   },
   getGuestPortfolioSnapshot,

@@ -8,7 +8,7 @@ import {
 } from './guestPortfolioSession';
 
 export interface GuestPortfolioHydrationRuntimeDependencies {
-  getSessionIdentity: () => GuestPortfolioSessionIdentity;
+  getSessionIdentity: (missingGeneration: number) => GuestPortfolioSessionIdentity;
   getGuestPortfolioSnapshot: () => Promise<GuestPortfolioSnapshot>;
   getActiveView: () => string | null | undefined;
   createCleanWorkspaceState: () => PortfolioState;
@@ -28,13 +28,13 @@ export function createGuestPortfolioHydrationRuntime(
   dependencies: GuestPortfolioHydrationRuntimeDependencies
 ): GuestPortfolioHydrationRuntime {
   const pullGuestPortfolioSnapshot = async (): Promise<void> => {
-    const requestedSession = dependencies.getSessionIdentity();
+    const requestedSession = dependencies.getSessionIdentity(-1);
     if (requestedSession.role !== 'guest' || !requestedSession.accountId) {
       throw new Error('A guest session is required to load assigned holdings.');
     }
 
     const snapshot = await dependencies.getGuestPortfolioSnapshot();
-    const currentSession = dependencies.getSessionIdentity();
+    const currentSession = dependencies.getSessionIdentity(-2);
 
     // A response authorized by the previous guest must never hydrate the next
     // account's local workspace after an account or credential switch.

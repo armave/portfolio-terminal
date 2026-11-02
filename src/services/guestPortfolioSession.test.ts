@@ -32,8 +32,8 @@ describe('isCurrentGuestPortfolioSession', () => {
     const runtime = readSource('./guestPortfolioHydrationRuntime.ts');
     expect(app).toContain('createGuestPortfolioHydrationRuntime({');
     expect(app).toContain('currentAccountSessionGuard.capture()');
-    expect(runtime).toContain('const requestedSession = dependencies.getSessionIdentity()');
-    expect(runtime).toContain('const currentSession = dependencies.getSessionIdentity()');
+    expect(runtime).toContain('const requestedSession = dependencies.getSessionIdentity(-1)');
+    expect(runtime).toContain('const currentSession = dependencies.getSessionIdentity(-2)');
     expect(runtime).toContain('if (!isCurrentGuestPortfolioSession(requestedSession, currentSession)) return');
     expect(runtime).toContain('const guestId = requestedSession.accountId');
   });
