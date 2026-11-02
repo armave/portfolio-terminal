@@ -11,7 +11,6 @@ import {
   PositionRecord,
   Holding,
   TrancheItem,
-  BrokerAssumptions,
   PendingMutation,
   ClosedTrade
 } from '../types/portfolio';
@@ -23,6 +22,7 @@ import {
   getQuoteRefreshInterval
 } from '../services/storage';
 import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
+import { allocateFifoSaleTranches, calculateSaleCommission, settleSaleProceeds } from '../domain/portfolioTransactions';
 import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
@@ -34,45 +34,6 @@ function todayIso(): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
-}
-
-/** Shared broker commission calculation for all confirmed stock-sale paths. */
-function calculateSaleCommission(shares: number, proceeds: number, rules: BrokerAssumptions): number {
-  const { commPerShare, commVolumePct, minCommOrder } = resolveCommissionConfig(rules);
-  const fallback = Number(Math.max(minCommOrder, shares * commPerShare + proceeds * commVolumePct).toFixed(2));
-
-  try {
-    const calculated = calculateCommission(shares, proceeds, {
-      commPerShare,
-      commVolumePct,
-      minCommOrder
-    });
-    return Number.isFinite(calculated) && calculated > 0
-      ? Number(calculated.toFixed(2))
-      : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-/** Shared debt-first allocation of net sale proceeds. */
-function settleSaleProceeds(
-  debt: number,
-  freeCash: number,
-  netProceeds: number
-): { remainingDebt: number; freeCash: number; debtRepaid: number; cashSurplus: number } {
-  const normalizedDebt = Math.max(0, Number(debt) || 0);
-  const normalizedCash = Math.max(0, Number(freeCash) || 0);
-  const normalizedProceeds = Math.max(0, Number(netProceeds) || 0);
-  const debtRepaid = Math.min(normalizedDebt, normalizedProceeds);
-  const cashSurplus = Math.max(0, normalizedProceeds - debtRepaid);
-
-  return {
-    remainingDebt: Math.max(0, normalizedDebt - debtRepaid),
-    freeCash: normalizedCash + cashSurplus,
-    debtRepaid,
-    cashSurplus
-  };
 }
 
 export class PortfolioStore {
@@ -647,64 +608,27 @@ export class PortfolioStore {
 
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
       const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
-
-      let remainingToSell = actualSold;
-      let soldCostBasis = 0;
-      let buyCommAllocated = 0;
-      const updatedTranches: TrancheItem[] = [];
       const origTranches = pos.tranches || [
         { qty: pos.shares, price: pos.currentPrice, date: pos.startDate }
       ];
-      const hasPerTrancheCommissions = origTranches.length > 0 && origTranches.every(
-        (tranche) => Number.isFinite(Number(tranche.buyCommission))
-      );
       const earliestBuyDate =
         origTranches[0]?.date || pos.startDate || state.startDate || todayIso();
+      const sellRatio = pos.shares > 0 ? actualSold / pos.shares : 1;
 
-      for (const tr of origTranches) {
-        const trQty = Number(tr.qty ?? tr.shares) || 0;
-        const trPrice = Number(tr.price ?? tr.entryPrice) || 0;
-
-        if (remainingToSell <= 0) {
-          updatedTranches.push({ ...tr });
-          continue;
-        }
-
-        const take = Math.min(trQty, remainingToSell);
-        soldCostBasis += take * trPrice;
-        remainingToSell -= take;
-
-        const trancheBuyCommission = hasPerTrancheCommissions
-          ? Math.max(0, Number(tr.buyCommission) || 0)
-          : 0;
-        const commissionForTake = hasPerTrancheCommissions && trQty > 0
-          ? Number((trancheBuyCommission * take / trQty).toFixed(2))
-          : 0;
-        buyCommAllocated += commissionForTake;
-
-        if (trQty - take > 0) {
-          updatedTranches.push({
-            ...tr,
-            qty: trQty - take,
-            ...(hasPerTrancheCommissions
-              ? { buyCommission: Number((trancheBuyCommission - commissionForTake).toFixed(2)) }
-              : {})
-          });
-        }
-      }
+      const allocation = allocateFifoSaleTranches(
+        origTranches,
+        actualSold,
+        pos.shares,
+        Number(pos.commBuy) || 0
+      );
+      let { soldCostBasis } = allocation;
+      const { buyCommissionAllocated: buyCommAllocated, remainingTranches: updatedTranches } = allocation;
 
       if (soldCostBasis <= 0 && pos.currentPrice > 0) {
+        // Preserve the historical fallback for positions with missing/zero cost basis.
         soldCostBasis = actualSold * pos.currentPrice;
       }
 
-      const sellRatio = pos.shares > 0 ? actualSold / pos.shares : 1;
-      if (hasPerTrancheCommissions) {
-        buyCommAllocated = Number(buyCommAllocated.toFixed(2));
-      } else {
-        // Legacy positions may have only an aggregate commission. Preserve the
-        // historical proportional allocation until their lots carry commission data.
-        buyCommAllocated = Number(((Number(pos.commBuy) || 0) * sellRatio).toFixed(2));
-      }
       const sellProceeds = actualSold * sellPrice;
 
       // Shared with the AI-confirmed sale path to keep broker fees consistent.
