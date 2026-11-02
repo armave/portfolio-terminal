@@ -196,9 +196,6 @@ async function mockWorkerApi(page) {
         return;
       }
       switch (call.action) {
-        case 'freedom-session':
-          await json(route, 200, { success: true }, {}, call);
-          return;
         case 'freedom-positions':
           if (failNextBrokerAccount) {
             failNextBrokerAccount = false;
