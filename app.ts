@@ -84,8 +84,7 @@ import { createBlankPortfolioState } from './src/store/portfolioDefaults';
 import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
-import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
-import { isCurrentGuestPortfolioSession, resolveGuestPortfolioRefreshView } from './src/services/guestPortfolioSession';
+import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
 import { createSessionIdentityGuard } from './src/utils/sessionIdentityGuard';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
@@ -889,73 +888,30 @@ function publishGuestPortfolioSnapshots(): Promise<void> {
   return guestPortfolioPublishQueue;
 }
 
+const guestPortfolioHydrationRuntime = createGuestPortfolioHydrationRuntime({
+  getSessionIdentity: () => {
+    const identity = currentAccountSessionGuard.capture();
+    return {
+      role: currentAccountRole,
+      accountId: currentAccountId,
+      secret: getGatewaySecret(),
+      generation: identity?.generation ?? -1
+    };
+  },
+  getGuestPortfolioSnapshot,
+  getActiveView: () => portfolioStore.getState().activeView,
+  createCleanWorkspaceState,
+  importGuestWorkspace: (guestWorkspace) => {
+    portfolioStore.importState(guestWorkspace);
+    state = portfolioStore.getState();
+    saveState(state);
+    renderBoard();
+  }
+});
+
 /** Hydrate a guest from their server-scoped projection, never from the shared portfolio. */
 async function pullGuestPortfolioSnapshot(): Promise<void> {
-  const requestedIdentity = currentAccountSessionGuard.capture();
-  const requestedSession = {
-    role: currentAccountRole,
-    accountId: currentAccountId,
-    secret: getGatewaySecret(),
-    generation: requestedIdentity?.generation ?? -1
-  };
-  if (requestedSession.role !== 'guest' || !requestedSession.accountId) {
-    throw new Error('A guest session is required to load assigned holdings.');
-  }
-
-  const snapshot = await getGuestPortfolioSnapshot();
-  const currentIdentity = currentAccountSessionGuard.capture();
-  const currentSession = {
-    role: currentAccountRole,
-    accountId: currentAccountId,
-    secret: getGatewaySecret(),
-    generation: currentIdentity?.generation ?? -2
-  };
-  // A response authorized by the previous guest must never hydrate the next
-  // account's local workspace after an account or credential switch.
-  if (!isCurrentGuestPortfolioSession(requestedSession, currentSession)) return;
-
-  const guestId = requestedSession.accountId;
-  const assignments = Object.fromEntries(snapshot.tranches.map((tranche) => [tranche.id, guestId]));
-  const types = Object.fromEntries(snapshot.tranches.map((tranche) => [tranche.id, 'cash' as const]));
-  const holdings = getGuestAssignedCashHoldings({
-    guestId,
-    activeTranches: snapshot.tranches,
-    assignments,
-    types,
-    mixes: {},
-    cashHoldings: []
-  });
-  // A snapshot refresh updates guest data, not the user's current desk.
-  // Keep the selected guest-accessible route (Balance, LOTS or Settings).
-  const refreshActiveView = resolveGuestPortfolioRefreshView(portfolioStore.getState().activeView);
-  const blank = createCleanWorkspaceState();
-  portfolioStore.importState({
-    ...blank,
-    activeView: refreshActiveView,
-    selectedTicker: null,
-    positions: {},
-    activeTrancheGuestAssignments: assignments,
-    activeTrancheTypes: types,
-    activeTrancheMixes: {},
-    guestPortfolioSnapshot: { updatedAt: snapshot.updatedAt, tranches: snapshot.tranches },
-    guestTrancheLedger: snapshot.ledger,
-    brokerAccountInfo: undefined,
-    brokerExecutedTrades: [],
-    cashflows: [],
-    closedTrades: [],
-    closedHistory: [],
-    balance: 0,
-    cashBalance: 0,
-    realizedMarginCharged: 0,
-    portfolioEquity: holdings.reduce((sum, holding) => sum + (Number(holding.marketValue) || 0), 0),
-    cashCushion: { freeCash: 0, holdings },
-    cashStocks: holdings,
-    gatewaySecret: undefined,
-    apiKeys: {}
-  } as any);
-  state = portfolioStore.getState();
-  saveState(state);
-  renderBoard();
+  await guestPortfolioHydrationRuntime.pullGuestPortfolioSnapshot();
 }
 
 let startupCloudWritesSuppressed = true;
