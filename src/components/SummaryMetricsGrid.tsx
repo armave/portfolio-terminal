@@ -16,6 +16,9 @@ import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
 import { normalizeFreedomTrades } from '../services/api';
+import { emitUiEvent } from '../ui/uiEventBus';
+import { MarketDepthButton } from './MarketDepthButton';
+import { BoardExternalLinks } from './BoardExternalLinks';
 
 export function getUsableMarketPrice(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -288,6 +291,38 @@ export function getMarginTrancheQuantity(
   return getMarginTrancheQuantities([tranche], brokerLots, ticker)[0] ?? null;
 }
 
+
+function MarginMarketTools({ ticker }: { ticker?: string }) {
+  const language = getAppLanguage();
+  const reviewLabel = ticker ? 'News + Review' : 'Portfolio Review';
+  const reviewTitle = ticker
+    ? 'Review recent news and margin-position risks with Gemini'
+    : 'Review recent news and risk across all margin positions with Gemini';
+
+  return (
+    <div class="portfolio-micro-column portfolio-micro-actions" aria-label={translateText('MARKET TOOLS', language)}>
+      <span class="portfolio-micro-heading">{translateText('MARKET TOOLS', language)}</span>
+      <div class="flex flex-wrap items-center gap-1.5">
+        {ticker && <MarketDepthButton ticker={ticker} compact />}
+        <button
+          type="button"
+          title={translateText(reviewTitle, language)}
+          aria-label={translateText(reviewLabel, language)}
+          onClick={() => emitUiEvent('terminal:margin-intelligence-request', ticker ? { ticker } : {})}
+          class="rounded border border-cyan-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-cyan-200 transition hover:bg-cyan-950/50"
+        >
+          ✦ {translateText(reviewLabel, language)}
+        </button>
+      </div>
+      {ticker && (
+        <div class="flex flex-wrap items-center gap-1.5" aria-label={translateText('External market research links', language)}>
+          <BoardExternalLinks />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SummaryMetricsGridView() {
   const state = usePortfolio();
   const activeView = useActiveView();
@@ -448,6 +483,7 @@ function SummaryMetricsGridView() {
               <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
             </div>
           </div>
+          <MarginMarketTools />
         </section>
 
         <MarginRiskGaugeCard
@@ -638,6 +674,7 @@ function SummaryMetricsGridView() {
             <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
           </div>
         </div>
+        <MarginMarketTools ticker={pos.ticker} />
       </section>
 
       <MarginRiskGaugeCard
