@@ -1,8 +1,8 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Auth transport runtime extraction  
-**Base:** `5b55f0a3c883e2333e533fbada04dbd803353dc6`
+**Current work:** Dependency security maintenance  
+**Base:** `71efbb16420cdb1a6ef2d2457ea8291e6a85743a`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
@@ -242,10 +242,17 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41462722752) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41462722707) passed.
 - [x] Squash-merged to `main` as `dcb203c6ebfc45e2a2e94b82b383f445f43e837b`.
 
-## Next architecture step
+## PR #265 — development dependency security maintenance
 
-- [ ] Review and resolve known low/moderate development dependency advisories in a focused maintenance PR.
-- [ ] Re-run full and production dependency audits after updates.
+- [x] Override Workbox's off-main-thread Rollup plugin from 3.0.0-pre1 to 4.0.0, removing the vulnerable EJS 3.1.10 / Jake 10 / filelist 1 dependency chain.
+- [x] Override Workbox's glob dependency to fixed 14.0.2 and minimatch to fixed 11.0.1.
+- [x] Regenerate `package-lock.json` with npm on GitHub Actions and inspect the resolved dependency graph.
+- [x] Validate exact PR head `02d44477663a1385db2f206ac329cb6dcc03b7f0`: TypeScript, 1,075 Vitest tests across 102 files, production build, dead-code validation, and production Chromium smoke all passed.
+- [x] Production bundle remained within its existing budget: 484,136 / 500,000 bytes; gzip 155,166 / 165,000 bytes.
+- [x] Full dependency audit reduced from 9 advisories to 4 low-severity dependency-tree exposures from the single remaining `deepmerge` advisory (GHSA-gcqx-w48m-w2h4). The full audit's configured high-severity threshold passes; the production-only audit reports 0 vulnerabilities.
+- [x] Reviewed the remaining `deepmerge` advisory: no patched release is published. `npm audit fix --force` proposes a breaking downgrade of `vite-plugin-pwa` to 0.2.1, so that unsafe fix is not applied.
+- [x] Remove the temporary lock-refresh workflow after lockfile generation; only `package.json`, `package-lock.json`, and this tracker are retained in the PR.
+- [ ] Review and merge [PR #265](https://github.com/armave/portfolio-terminal/pull/265).
 
 ## Remaining architecture work
 
@@ -278,8 +285,9 @@ This is the continuing checklist for the architecture-refinement program. A chec
 
 ### P2 — dependency maintenance
 
-- [ ] Review and resolve known low/moderate development dependency advisories.
-- [ ] Re-run full and production dependency audits after updates.
+- [x] Review and apply available development-tooling security updates in PR #265; the OMT/EJS/Jake/filelist chain and vulnerable glob/minimatch versions are replaced.
+- [x] Re-run exact-head full and production dependency audits: four low-severity dependency-tree exposures remain from the single unpatched `deepmerge` advisory; production dependencies report zero vulnerabilities.
+- [ ] Revisit `deepmerge` when a compatible upstream fix is published.
 
 ## Non-negotiable guardrails
 
