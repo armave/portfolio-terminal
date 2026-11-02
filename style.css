@@ -2908,7 +2908,6 @@ summary:focus-visible {
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-start;
   column-gap: 0.75rem;
   row-gap: 0.5rem;
 }

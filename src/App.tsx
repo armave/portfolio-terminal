@@ -706,7 +706,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
               <div
                 id="boardTitleRow"
-                class={"board-title-row flex flex-wrap items-center justify-between gap-2 " + (emptyStateVisible ? "hidden" : "")}
+                class={"board-title-row flex justify-center flex-wrap items-center md:justify-between gap-2 " + (emptyStateVisible ? "hidden" : "")}
               >
                 <div class="board-title-text min-w-0 text-lg font-bold text-white" id="boardTitle">
                   {boardTitle}
@@ -770,13 +770,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>
             {hasOpenedCashCushion
               ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}>
-                  <CashCushionDesk
-                    key={`balance-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
-                    showActiveTranches={permissions.canViewActiveTranches}
-                    isAdmin={permissions.isAdmin}
-                    guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined}
-                  />
-                </Suspense></div>
+                <CashCushionDesk
+                  key={`balance-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
+                  showActiveTranches={permissions.canViewActiveTranches}
+                  isAdmin={permissions.isAdmin}
+                  guestUserId={currentUser?.role === 'guest' ? currentUser.id : undefined}
+                />
+              </Suspense></div>
               : <DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}
           </div>
 
@@ -787,11 +787,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           >
             {hasOpenedGuestHistory
               ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}>
-                  <GuestTrancheHistory
-                    records={guestHistorySnapshot.guestTrancheLedger}
-                    activeTranches={guestHistorySnapshot.guestPortfolioSnapshot?.tranches || []}
-                  />
-                </Suspense></div>
+                <GuestTrancheHistory
+                  records={guestHistorySnapshot.guestTrancheLedger}
+                  activeTranches={guestHistorySnapshot.guestPortfolioSnapshot?.tranches || []}
+                />
+              </Suspense></div>
               : <DeskLoading title="Preparing lots" message="Loading your assigned tranche history…" accent="purple" />}
           </div>}
 
@@ -814,12 +814,12 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       >
         {permissions.canViewClosedHistory && (hasOpenedClosedHistory
           ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />}>
-              <ClosedHistoryDesk
-                key={`closed-history-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
-                accountId={currentUser?.id || ''}
-                isSessionCurrent={isAccountSessionCurrent}
-              />
-            </Suspense></div>
+            <ClosedHistoryDesk
+              key={`closed-history-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
+              accountId={currentUser?.id || ''}
+              isSessionCurrent={isAccountSessionCurrent}
+            />
+          </Suspense></div>
           : <DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />)}
       </div>
 
@@ -827,8 +827,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       <div class={"p-4 sm:p-6 rounded-xl space-y-4 " + (activeDeskView === "SETTINGS" ? "" : "hidden")} id="settings">
         {hasOpenedSettings
           ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}>
-              <SettingsDesk currentUser={currentUser} />
-            </Suspense></div>
+            <SettingsDesk currentUser={currentUser} />
+          </Suspense></div>
           : <DeskLoading title="Preparing settings" message="Loading account access and preferences…" accent="blue" />}
       </div>
 
