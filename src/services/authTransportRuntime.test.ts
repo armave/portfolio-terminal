@@ -30,13 +30,15 @@ function createRuntime(fetchImpl: typeof fetch, token = 'session-token', clearAl
 
 describe('auth transport runtime', () => {
   it('coalesces identical concurrent GETs without retaining completed requests', async () => {
-    let resolve!: (response: Response) => void;
-    const fetchImpl = vi.fn(() => new Promise<Response>((done) => { resolve = done; })) as unknown as typeof fetch;
+    let resolveFirst!: (response: Response) => void;
+    const fetchImpl = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((done) => { resolveFirst = done; }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ setupRequired: false, userCount: 1 }), { status: 200 })) as unknown as typeof fetch;
     const { runtime } = createRuntime(fetchImpl);
     const first = runtime.getAuthStatus();
     const second = runtime.getAuthStatus();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    resolve(new Response(JSON.stringify({ setupRequired: false, userCount: 1 }), { status: 200 }));
+    resolveFirst(new Response(JSON.stringify({ setupRequired: false, userCount: 1 }), { status: 200 }));
     await expect(Promise.all([first, second])).resolves.toEqual([
       { setupRequired: false, userCount: 1 },
       { setupRequired: false, userCount: 1 }
