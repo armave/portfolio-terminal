@@ -198,6 +198,8 @@ describe('active broker tranches', () => {
         ticker: 'MSFT',
         shares: 5,
         currentPrice: 225,
+        pt: 250,
+        commBuy: 0,
         quoteUpdatedAt: observedAt,
         quoteSource: 'Yahoo',
         quoteDetails: { price: 225, freshness: 'fresh', sourceTimestamp }
