@@ -22,7 +22,7 @@ import {
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
-import { runManualPortfolioSync } from './src/services/manualPortfolioSync';
+import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
 import {
   createPortfolioAutoRefreshScheduler,
   DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
@@ -2342,56 +2342,29 @@ function bindStartupActions() {
     setActiveView,
     refreshLivePrices: refreshAllLivePrices
   });
-  addUiEventListener('portfolio:sync-request', (event) => {
-    void (async () => {
-      try {
-        const result = await runManualPortfolioSync({
-          role: currentAccountRole,
-          refreshBrokerAccount: () => new Promise<boolean>((resolve) => {
-            emitBrokerEvent('broker:request-account-info-and-wait', { resolve });
-          }),
-          refreshExecutedTrades: () => new Promise<boolean>((resolve) => {
-            emitBrokerEvent('broker:request-executed-trades-and-wait', { resolve });
-          }),
-          refreshActiveOrders: () => new Promise<boolean>((resolve) => {
-            emitBrokerEvent('broker:request-active-orders-and-wait', { resolve });
-          }),
-          refreshQuotes: () => refreshAllLivePrices(),
-          pushCloud: async () => {
-            state = portfolioStore.getState();
-            return pushStateToCloud(true);
-          },
-          pullGuestSnapshot: async () => {
-            await pullGuestPortfolioSnapshot();
-            return true;
-          }
-        });
-
-        const anySourceSucceeded = result.role === 'admin'
-          ? Boolean(result.brokerAccount || result.executedTrades || result.activeOrders || result.quotes || result.cloud)
-          : Boolean(result.guestSnapshot || result.quotes);
-        if (result.success) {
-          showToast(translateText('Portfolio sync completed.'), 'success');
-          logTerminal('[Sync]: Broker data, market quotes and cloud snapshot are up to date.');
-        } else if (anySourceSucceeded) {
-          showToast(translateText('Portfolio sync completed with issues. Check the activity log.'), 'warning');
-          logTerminal('[Sync Warning]: One or more portfolio data sources could not be refreshed.');
-        } else {
-          showToast(translateText('Could not sync portfolio. Check your connection and try again.'), 'error');
-          logTerminal('[Sync Error]: No portfolio data source completed successfully.');
-        }
-        event.detail.resolve(result);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        logTerminal(`[Sync Error]: ${message}`);
-        showToast(translateText('Could not sync portfolio. Check your connection and try again.'), 'error');
-        event.detail.resolve({
-          role: currentAccountRole,
-          success: false,
-          quotes: false
-        });
-      }
-    })();
+  bindPortfolioSyncRuntime({
+    getAccountRole: () => currentAccountRole,
+    refreshBrokerAccount: () => new Promise<boolean>((resolve) => {
+      emitBrokerEvent('broker:request-account-info-and-wait', { resolve });
+    }),
+    refreshExecutedTrades: () => new Promise<boolean>((resolve) => {
+      emitBrokerEvent('broker:request-executed-trades-and-wait', { resolve });
+    }),
+    refreshActiveOrders: () => new Promise<boolean>((resolve) => {
+      emitBrokerEvent('broker:request-active-orders-and-wait', { resolve });
+    }),
+    refreshQuotes: refreshAllLivePrices,
+    pushCloud: async () => {
+      state = portfolioStore.getState();
+      return pushStateToCloud(true);
+    },
+    pullGuestSnapshot: async () => {
+      await pullGuestPortfolioSnapshot();
+      return true;
+    },
+    translateText,
+    showToast,
+    logTerminal
   });
   addUiEventListener('terminal:execute-command', (event) => {
     void (async () => {
