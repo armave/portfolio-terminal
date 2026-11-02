@@ -36,17 +36,6 @@ The Worker regression test verifies the API-key v2 request URL, parameter-only J
 The target-price, analyst-consensus, detailed fundamentals, and earnings-estimate integrations are intentionally unchanged; this change does not claim those fields are available through Tradernet.
 
 
-## Market-depth diagnostics
-
-The read-only `freedom-market-depth` response now includes a `diagnostics` object on success and failure. It records whether the production WebSocket opened, whether the `orderBook` subscription was sent, whether a matching `b` snapshot confirmed it, the initial `userData` production/demo status, received event names, observed order-book tickers, close code, and elapsed time. Cloudflare Worker logs emit the same structured diagnostics. Raw packets, SID values, and account/login identifiers are never included. It also subscribes to read-only quotes for the same ticker and records `q` events. If quotes arrive but no `b` event does, the ticker is recognized and the remaining issue is specific to market depth (for example feed availability or account entitlement). If neither arrives, investigate ticker recognition or upstream subscription handling.
-
-The production WebSocket uses the documented `[event, data]` protocol at `wss://wss.tradernet.com/`. TradeNet's Node.js client sends `["orderBook", [ticker]]` and listens for event `b`; its order-book payload identifies the instrument with `i`.
-
-Inside Cloudflare Workers, the upstream socket is established with the Workers fetch-based WebSocket client: the Worker sends a request to `https://wss.tradernet.com/?SID=...` with the `Upgrade: websocket` header, then accepts the returned `response.webSocket` before sending protocol events. The `https:` scheme is intentional for this fetch-based upgrade path; use `wss:` only with the `new WebSocket(url)` constructor. When the upstream does not return a WebSocket, diagnostics retain the HTTP status and content type where available, or a sanitized network/TLS/timeout category when the handshake itself fails. The SID is never included in logs or diagnostics.
-
-TradeNet may identify a US instrument in the returned `b` event with a `.US` suffix even when the subscription used the bare ticker (for example, the request `GOOGL` can be echoed as `GOOGL.US`). The Worker treats only this exact `.US` suffix difference as equivalent, then returns the original requested symbol to the browser. Other exchange suffixes are not stripped or treated as aliases. See the [TradeNet WebSocket documentation](https://rc.tradernet.com/tradernet-api/websocket?site_lang=en) and the [official Tradernet WebSocket client](https://github.com/tradernet-api/tn-ws-nodejs).
-
-
 ## Balance snapshot synchronization
 
 The Balance desk restores the last persisted portfolio snapshot immediately and keeps it visible while a fresh read-only `freedom-positions` request runs. The account request is always a full snapshot: it does not accept or send a date cursor, begin/end date, or other history filter. A successful TradeNet response is normalized and committed through the canonical portfolio store, which persists the account balance, classified holdings, broker snapshot and derived cash holdings locally and through the existing cloud-state sync path. Refresh failures mark the broker snapshot stale without clearing the last good values.
