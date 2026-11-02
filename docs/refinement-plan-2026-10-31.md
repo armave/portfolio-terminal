@@ -411,7 +411,7 @@ Client-side request lifecycle and presentation state only. No provider endpoints
 
 **Release validation**
 
-- [ ] Exact-PR-head GitHub Actions: typecheck, Vitest, production build, dead-code validation, and production dependency audit.
+- [x] Exact-PR-head GitHub Actions passed on PR #241 implementation head `85ccdbf020d13109cf67908d7ec705a0cebfbe3c`: [Validate run 41391151619](https://github.com/armave/portfolio-terminal/actions/runs/41391151619) and [Pull Request CI run 41391151624](https://github.com/armave/portfolio-terminal/actions/runs/41391151624). Both workflows passed typecheck, 75 test files / 899 tests, production build, dead-code validation, the full dependency audit threshold, and the production-only dependency audit.
 - [ ] Browser network-panel verification that switching ticker tabs while on Fundamentals/Earnings/Analysts does not request News, while the selected deep-data request remains scoped to the new ticker.
 - [ ] Verify News/Stocktwits opt-in, cached revisit, explicit refresh, and rapid ticker switching with delayed responses in a real browser.
 
@@ -462,7 +462,7 @@ Client-side Market Depth presentation, accessibility labels and Russian localiza
 
 **Validation**
 
-- [ ] Exact-head Pull Request CI and Validate workflows pass typecheck, full tests, production build, dead-code validation and production dependency audit.
+- [x] Exact-head Pull Request CI and Validate workflows passed on PR #241 implementation head `85ccdbf020d13109cf67908d7ec705a0cebfbe3c`: [Validate run 41391151619](https://github.com/armave/portfolio-terminal/actions/runs/41391151619) and [Pull Request CI run 41391151624](https://github.com/armave/portfolio-terminal/actions/runs/41391151624); 75 test files / 899 tests passed, and the production-only audit found 0 vulnerabilities.
 - [ ] Verify English and Russian dialog text, accessible names, loading, retry and stale-warning states in a real browser.
 
 
@@ -485,7 +485,7 @@ Client-side Market Insights dialog state only. No News provider requests, Stockt
 
 **Validation**
 
-- [ ] Exact-head Pull Request CI and Validate workflows pass typecheck, all tests, production build, dead-code validation and dependency security audit.
+- [x] Exact-head Pull Request CI and Validate workflows passed on PR #241 implementation head `85ccdbf020d13109cf67908d7ec705a0cebfbe3c`: [Validate run 41391151619](https://github.com/armave/portfolio-terminal/actions/runs/41391151619) and [Pull Request CI run 41391151624](https://github.com/armave/portfolio-terminal/actions/runs/41391151624); 75 test files / 899 tests passed, and the production-only audit found 0 vulnerabilities.
 - [ ] Verify the open article dialog closes and focus is restored safely after a ticker change in a real browser.
 
 
@@ -517,7 +517,7 @@ This PR explicitly adds a production-only audit so runtime dependency exposure i
 
 **Performance baseline and expected result**
 
-The pre-PR main build emitted a 603.27 kB minified JavaScript entry chunk (184.51 kB gzip), above Vite's 500 kB warning threshold. Vite also warned that the API service was both dynamically and statically imported, so the dynamic import could not split it. This PR moves rarely used desks and modal code behind actual lazy component boundaries and removes the ineffective API dynamic import. The resulting chunk sizes and warning state will be recorded from the exact PR-head build below.
+The pre-PR main build emitted a 603.27 kB minified JavaScript entry chunk (184.51 kB gzip), above Vite's 500 kB warning threshold. Vite also warned that the API service was both dynamically and statically imported, so the dynamic import could not split it. This PR moves rarely used desks and modal code behind actual lazy component boundaries and removes the ineffective API dynamic import. On PR #241 implementation head `85ccdbf020d13109cf67908d7ec705a0cebfbe3c`, the main entry chunk fell to **481.00 kB minified / 153.71 kB gzip** (about 20.3% / 16.7% smaller than the 603.27 kB / 184.51 kB baseline). Vite emitted separate chunks for Closed History (34.99 kB), Cash & Balance (27.94 kB), Market Insights (19.28 kB), Settings (17.02 kB), Guest LOTS (8.58 kB), and the modal-only dialogs (5.18–6.75 kB). No chunk exceeded the 500 kB warning threshold, and the redundant `api.ts` dynamic/static import warning no longer appeared. Both exact-head CI workflows passed: [Validate run 41391151619](https://github.com/armave/portfolio-terminal/actions/runs/41391151619) and [Pull Request CI run 41391151624](https://github.com/armave/portfolio-terminal/actions/runs/41391151624). The full audit still reports 9 low/moderate development-tooling advisories; the production-only audit found 0 vulnerabilities.
 
 **Still-open real-browser release checks**
 
