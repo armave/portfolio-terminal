@@ -20,6 +20,7 @@ describe('navigation performance wiring', () => {
     const app = readSource('../App.tsx');
     expect(tabs).toContain('if (refreshQuotes) void handleRefreshQuotes();');
     expect(tabs).not.toContain('onDeskLoadingChange');
+    expect(tabs).not.toContain("localStorage.setItem('portfolio_active_view'");
     expect(app).not.toContain('key={`trading-console-${activeDeskView}`}');
   });
 

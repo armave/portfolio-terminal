@@ -22,13 +22,6 @@ export const TickerTabs = memo(function TickerTabs({
   const quoteRefreshPromise = useRef<Promise<void> | null>(null);
   const selectView = (view: string) => {
     if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS' && !(userId && view === 'GUEST_HISTORY')) return;
-    // Persist at the actual navigation click site as well as through the store,
-    // so a view change is durable even if a later render/hydration races it.
-    try {
-      if (typeof localStorage !== 'undefined') localStorage.setItem('portfolio_active_view', view);
-    } catch {
-      // Continue navigation when storage is unavailable.
-    }
     // Refresh the portfolio once when returning to the Margin desk. Switching
     // between its ticker tabs does not require another all-symbol quote batch.
     const refreshQuotes = shouldRefreshQuotesOnNavigation(activeView, view, isAdmin);
