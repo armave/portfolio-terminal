@@ -35,10 +35,10 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
   // A retained order book is useful only for the ticker it belongs to.
   const currentSnapshot = snapshot?.symbol === ticker.trim().toUpperCase() ? snapshot : null;
   const language = getAppLanguage();
-  const depthTitle = `${translateText('Market depth', language)} · ${ticker}`;
+  const depthTitle = translateText('Market depth · ' + ticker, language);
   const loadingLabel = translateText('Loading market depth…', language);
   const refreshLabel = translateText(error ? 'Retry depth' : 'Refresh depth', language);
-  const regionLabel = `${translateText('Market depth order book for', language)} ${ticker}`;
+  const regionLabel = depthTitle;
 
   const loadDepth = async () => {
     if (!ticker || isLoading) return;
@@ -98,9 +98,9 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
 
   return (
     <div class="inline-flex">
-      <button ref={triggerRef} type="button" onClick={openModal} title={depthTitle} aria-label={`${translateText('Open market depth for', language)} ${ticker}`}
+      <button ref={triggerRef} type="button" onClick={openModal} title={depthTitle} aria-label={translateText('Open market depth for ' + ticker, language)}
         class={'inline-flex shrink-0 items-center gap-1 rounded border border-cyan-800/80 bg-slate-900 text-cyan-300 hover:border-cyan-500 hover:bg-cyan-950/50 transition ' + (compact ? 'px-1.5 py-0.5 text-[9px] font-bold' : 'px-2 py-1 text-[10px] font-bold')}>
-        <span aria-hidden="true">≋</span><span>Depth</span>
+        <span aria-hidden="true">≋</span><span>{translateText('Depth', language)}</span>
       </button>
       {isOpen && createPortal(
         <div class="market-depth-modal fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-950/85 backdrop-blur-sm"
@@ -148,12 +148,12 @@ export function MarketDepthButton({ ticker, compact = false }: MarketDepthButton
                 </div>
                 <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <section class="min-w-0">
-                    <div class="mb-2 flex items-center justify-between border-b border-emerald-900/60 pb-2"><h3 class="text-xs font-black uppercase tracking-wider text-emerald-300">{translateText('Bids · buyers', language)}</h3><span class="text-[9px] text-slate-500">{currentSnapshot.bids.length} levels</span></div>
+                    <div class="mb-2 flex items-center justify-between border-b border-emerald-900/60 pb-2"><h3 class="text-xs font-black uppercase tracking-wider text-emerald-300">{translateText('Bids · buyers', language)}</h3><span class="text-[9px] text-slate-500">{translateText('Levels', language)}: {currentSnapshot.bids.length}</span></div>
                     {renderLevels(currentSnapshot.bids, 'bid')}
                     {currentSnapshot.bids.length === 0 && <p class="py-5 text-center text-xs text-slate-500">{translateText('No bid levels returned.', language)}</p>}
                   </section>
                   <section class="min-w-0">
-                    <div class="mb-2 flex items-center justify-between border-b border-rose-900/60 pb-2"><h3 class="text-xs font-black uppercase tracking-wider text-rose-300">{translateText('Asks · sellers', language)}</h3><span class="text-[9px] text-slate-500">{currentSnapshot.asks.length} levels</span></div>
+                    <div class="mb-2 flex items-center justify-between border-b border-rose-900/60 pb-2"><h3 class="text-xs font-black uppercase tracking-wider text-rose-300">{translateText('Asks · sellers', language)}</h3><span class="text-[9px] text-slate-500">{translateText('Levels', language)}: {currentSnapshot.asks.length}</span></div>
                     {renderLevels(currentSnapshot.asks, 'ask')}
                     {currentSnapshot.asks.length === 0 && <p class="py-5 text-center text-xs text-slate-500">{translateText('No ask levels returned.', language)}</p>}
                   </section>
