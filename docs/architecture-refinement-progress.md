@@ -1,8 +1,8 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Remaining application startup orchestration and API facade decomposition  
-**Base:** `abe430d91482b25666bba01bc622268a79ba6feb`
+**Current work:** Consolidated broker request, startup bootstrap, and guest assignment ID boundaries  
+**Base:** `72663e0fca6b665eed823350b7f938a064b15e76`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
@@ -22,6 +22,9 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Merge the credential and account-switch runtime extraction in [PR #248](https://github.com/armave/portfolio-terminal/pull/248).
 - [x] Merge session-bound guest snapshot hydration in [PR #249](https://github.com/armave/portfolio-terminal/pull/249).
 - [x] Merge browser lifecycle wiring and administrator rollover timer extraction in [PR #251](https://github.com/armave/portfolio-terminal/pull/251).
+- [x] Extract account-scoped broker request event coordination and waitable request disposal.
+- [x] Extract first-load credential restoration, validation, auth fallback, and startup failure sequencing.
+- [x] Extract fresh and deterministic legacy guest tranche assignment ID generation.
 
 ## Merged PR #246 — portfolio sync runtime
 
@@ -86,13 +89,27 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Validation on final PR head `b2727bbe7cb14f056b65725298f67c6240f32872`: 991 tests across 90 files; typecheck, build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41418140232) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41418140126).
 - [x] Squash-merged to `main` as `abe430d91482b25666bba01bc622268a79ba6feb`. The full dependency tree still reports low/moderate advisories; the production-only audit reports zero vulnerabilities.
 
+## Current PR — consolidated runtime boundaries
+
+- [x] Move administrator broker request listeners for account info, executed trades, and active orders into `portfolioBrokerRequestRuntime.ts`.
+- [x] Preserve account-session scoping in `App.tsx`, including in-flight request coalescing and stale-session checks.
+- [x] Preserve the startup refresh order: executed trades, active orders, then account balances and positions.
+- [x] Preserve waitable refresh completion semantics, converting rejected reads to `false`.
+- [x] Add Vitest coverage for startup ordering, request routing, waitable failures, and listener disposal.
+- [x] Move `initApp` first-load credential restoration, validation, auth fallback, and failure sequencing into `portfolioStartupRuntime.ts`.
+- [x] Preserve the first-account setup rule that retains the legacy Gateway Secret until administrator bootstrap.
+- [x] Preserve the rule that an unresolved identity never renders a cached administrator workspace.
+- [x] Extract fresh guest assignment IDs and deterministic legacy assignment IDs into a tested domain helper.
+- [ ] Run exact-head typecheck, Vitest, build, dead-code validation, dependency audits, and production browser smoke.
+- [ ] Review and merge.
+
 ## Remaining architecture work
 
 ### P1 — application runtime boundaries
 
-- [ ] Extract broker runtime: broker event coordination, account refresh, executed-trade refresh, and active-order refresh.
-- [ ] Extract guest portfolio publication and assignment lifecycle while preserving server-side ledger behavior.
-- [ ] Extract remaining `initApp` / `startApp` orchestration: credential restoration, authentication fallback, workspace hydration, quote bootstrap, and failure/retry sequencing.
+- [ ] Complete the broker runtime by moving account/trade/order provider reads and app-owned response publication out of `App.tsx`, preserving session-generation guards, incremental history merging, fee allocations, account classification, and error events.
+- [ ] Extract guest assignment commands and serialized snapshot/ledger publication from `app.ts`; preserve durable server ledger behavior, legacy backfill, reassignment history, and stale-data gating.
+- [ ] Extract remaining `startApp` orchestration: role-aware workspace hydration, shared-cloud pull, quote bootstrap, rollover ordering, and startup cloud-write recovery.
 
 ### P1 — API compatibility facade
 

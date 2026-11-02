@@ -25,6 +25,7 @@ import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
 import { createPortfolioBrokerRefreshRuntime } from './src/services/portfolioBrokerRefreshRuntime';
 import { createPortfolioStartupLifecycleRuntime } from './src/services/portfolioStartupLifecycleRuntime';
+import { createPortfolioStartupRuntime } from './src/services/portfolioStartupRuntime';
 import { createPortfolioSessionRuntime } from './src/services/portfolioSessionRuntime';
 import { createPortfolioAuthenticationRuntime } from './src/services/portfolioAuthenticationRuntime';
 import {
@@ -92,6 +93,7 @@ import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
 import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, BrokerAssumptions, GuestTrancheLedgerRecord, PortfolioState, QuoteDetails } from './src/types/portfolio';
 import { buildClosedTradeGuestLedgerUpserts, resolveClosedTradeOperationDate } from './src/domain/closedTradeGuestAssignments';
+import { createGuestTrancheAssignmentId, createLegacyGuestTrancheAssignmentId } from './src/domain/guestTrancheAssignmentIds';
 import { attributeClosedTradeExecutions } from './src/domain/closedTradeAttribution';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from './src/domain/brokerExecutionMetrics';
 
@@ -547,27 +549,6 @@ addBrokerEventListener('broker:account-info-error', () => {
 
 let guestPortfolioPublishQueue: Promise<void> = Promise.resolve();
 let brokerTradeHistoryLoaded = false;
-
-function createGuestTrancheAssignmentId(): string {
-  try {
-    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
-  } catch {
-    // Fall through to a local non-secret identifier if the runtime lacks randomUUID.
-  }
-  return `assignment-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
-}
-
-function createLegacyGuestTrancheAssignmentId(guestId: string, trancheId: string): string {
-  const source = `${guestId}|${trancheId}`;
-  let first = 2166136261;
-  let second = 2246822519;
-  for (let index = 0; index < source.length; index += 1) {
-    const code = source.charCodeAt(index);
-    first = Math.imul(first ^ code, 16777619);
-    second = Math.imul(second ^ code, 3266489917);
-  }
-  return `legacy-${(first >>> 0).toString(36)}-${(second >>> 0).toString(36)}`;
-}
 
 /** Publish current cash-backed holdings plus durable assignment lifecycle updates.
  * The server retains closed/unassigned rows; only a guest can read their own ledger. */
@@ -2231,36 +2212,32 @@ async function startApp(secret: string) {
   hideStartupLoading();
 }
 
-export async function initApp() {
-  if (appInitialized) return;
-
-  try {
-    const secret = await restoreGatewaySecret();
-    if (secret && await validateGatewaySecret(secret)) {
-      appInitialized = true;
-      hideAuthContainer();
-      await startApp(secret);
-    } else {
-      const authStatus = await getAuthStatus();
-      // During first account setup the old Gateway Secret is still needed to
-      // decrypt existing cloud state. Keep it until the admin bootstrap succeeds.
-      if (secret && !authStatus.setupRequired) {
-        saveGatewaySecret('');
-        await persistGatewaySecret();
-      }
-      loadTradernetRules();
-      // Do not render a cached administrator workspace while identity is unresolved.
-      portfolioStore.importState(createBlankPortfolioState());
-      state = portfolioStore.getState();
-      switchView('BALANCE');
-      hideStartupLoading();
-      showAuthContainer();
-    }
-  } catch (error) {
-    appInitialized = false;
+const portfolioStartupRuntime = createPortfolioStartupRuntime({
+  isInitialized: () => appInitialized,
+  setInitialized: (initialized) => { appInitialized = initialized; },
+  restoreGatewaySecret,
+  validateGatewaySecret,
+  getAuthStatus,
+  clearSavedGatewaySecret: () => saveGatewaySecret(''),
+  persistGatewaySecret,
+  loadBrokerRules: loadTradernetRules,
+  clearUnresolvedWorkspace: () => {
+    portfolioStore.importState(createBlankPortfolioState());
+    state = portfolioStore.getState();
+  },
+  showBalanceView: () => switchView('BALANCE'),
+  hideStartupLoading,
+  showAuthContainer,
+  hideAuthContainer,
+  startApp,
+  onStartupFailure: (error) => {
     console.error('[Startup Error]:', error);
     showStartupFailure();
   }
+});
+
+export async function initApp() {
+  await portfolioStartupRuntime.initApp();
 }
 
 function showStartupFailure() {
