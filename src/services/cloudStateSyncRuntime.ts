@@ -67,7 +67,7 @@ export function createCloudStateSyncRuntime(dependencies: CloudStateSyncRuntimeD
     return new Response(cached.body, { status: cached.status, headers });
   };
 
-export async function pullCloudState(
+async function pullCloudState(
   options: SyncOptions | ((state: any) => void) = {},
   reportResult?: (success: boolean) => void
 ): Promise<any> {
@@ -296,7 +296,7 @@ function enqueueCloudHistoryWrite(
   return operation;
 }
 
-export function pushCloudHistory(
+function pushCloudHistory(
   history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] },
   secret = dependencies.getActiveGatewaySecret(),
   knownRevision?: number,
@@ -310,7 +310,7 @@ export function pushCloudHistory(
  * The forced write bypasses the ordinary no-change fingerprint so a previous
  * empty snapshot cannot hide cloud history added by another device later.
  */
-export function clearCloudHistory(
+function clearCloudHistory(
   secret = dependencies.getActiveGatewaySecret(),
   options: Pick<SyncOptions, 'isCurrentSession'> = {}
 ): Promise<boolean> {
@@ -363,7 +363,7 @@ async function performPushCloudHistory(
   return true;
 }
 
-export async function pullCloudHistory(secret = dependencies.getActiveGatewaySecret()): Promise<CloudHistory | null> {
+async function pullCloudHistory(secret = dependencies.getActiveGatewaySecret()): Promise<CloudHistory | null> {
   if (!secret) return null;
   const snapshot = await pullCloudHistorySnapshot(secret);
   if (snapshot.history) return snapshot.history;
@@ -413,7 +413,7 @@ async function performPullCloudHistory(secret: string): Promise<CloudHistorySnap
   };
 }
 
-export function pushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
+function pushCloudState(state?: any, options: SyncOptions = {}): Promise<boolean> {
   return dependencies.revisionCoordinator.enqueueWrite((expectedRevision) =>
     performPushCloudState(state, options, expectedRevision)
   );
@@ -557,7 +557,7 @@ async function performPushCloudState(
   }
 }
 
-export async function syncCloudState(mode = 'push', options: SyncOptions = {}): Promise<boolean> {
+async function syncCloudState(mode = 'push', options: SyncOptions = {}): Promise<boolean> {
   const handlers = typeof options === 'function' ? { pullCloudAndRewriteLocal: options } : options;
   if (mode === 'push') {
     const currentState = (handlers as any).state || (typeof (handlers as any).getState === 'function' ? (handlers as any).getState() : {});
