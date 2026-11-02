@@ -63,8 +63,22 @@ This PR:
 - Imports `logoutAccount` from the already-loaded API module rather than dynamically importing the same module again.
 - Adds `src/ui/appCodeSplitting.test.ts` to protect the lazy-loading wiring and prevent reintroducing the ineffective duplicate import.
 
-Exact PR-head build output must be used to assess the resulting chunk split and confirm the redundant API-import warning is gone.
+On PR #241 implementation head `85ccdbf020d13109cf67908d7ec705a0cebfbe3c`, the production entry chunk measured **481.00 kB minified / 153.71 kB gzip**, down from the 603.27 kB / 184.51 kB baseline (about 20.3% smaller minified). Desks and modal modules emitted separate chunks (Closed History 34.99 kB, Cash & Balance 27.94 kB, Market Insights 19.28 kB, Settings 17.02 kB, Guest LOTS 8.58 kB, modal-only chunks 5.18–6.75 kB). No chunk exceeded Vite's 500 kB warning threshold, and the previous API dynamic/static import warning was absent. The build completed successfully.
 
 ## Environment and validation limits
 
 A local clone attempt failed because the environment could not resolve `github.com`. Repository review and edits therefore used the connected GitHub repository API. No local npm install, local test/build run, or real-browser inspection is claimed. GitHub Actions on the exact PR head provides executable validation; browser-only release checks remain explicitly open in `docs/refinement-plan-2026-10-31.md`.
+
+
+## PR #241 exact-head validation
+
+On implementation head `85ccdbf020d13109cf67908d7ec705a0cebfbe3c`:
+
+- [Validate run 41391151619](https://github.com/armave/portfolio-terminal/actions/runs/41391151619) — success.
+- [Pull Request CI run 41391151624](https://github.com/armave/portfolio-terminal/actions/runs/41391151624) — success.
+- TypeScript passed; **75 test files / 899 tests passed**; dead-code validation passed; production build passed.
+- Full dependency audit passed its configured high-severity threshold and continued to report the known 9 advisories (2 low / 7 moderate) in development tooling.
+- The new production-only audit reported **0 vulnerabilities**.
+- The production entry chunk measured 481.00 kB minified / 153.71 kB gzip; lazy desk/modal chunks were emitted separately, with no 500 kB chunk warning and no redundant API dynamic/static import warning.
+
+The two workflows ran against the PR implementation head. Subsequent documentation-only edits are recorded in the same PR; final PR status checks should be read from the PR page.
