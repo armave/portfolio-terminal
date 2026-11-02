@@ -34,8 +34,8 @@ export function subscribeToPortfolioState(
 export function subscribeToPortfolioSelector<T>(
   selector: (state: PortfolioState) => T,
   listener: (selection: T) => void,
-  isEqual: (previous: T, next: T) => boolean = Object.is,
-  store: PortfolioSubscriptionSource
+  store: PortfolioSubscriptionSource,
+  isEqual: (previous: T, next: T) => boolean = Object.is
 ): () => void {
   let current = selector(store.getState());
   const unsubscribe = store.subscribe((state) => {
