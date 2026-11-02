@@ -193,7 +193,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41457467471) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41457467610) passed.
 - [x] Squash-merged to `main` as `59b3ce8a1d606624d0a36c81096d1479793e77fc`.
 
-## Current PR #260 — portfolio transaction calculation boundary
+## Current PR #261 — portfolio transaction calculation boundary
 
 - [x] Extract pure FIFO sale-lot allocation, sale commission calculation, and debt-first sale-proceeds settlement into `portfolioTransactions.ts`.
 - [x] Keep portfolio state ownership, position mutation, rollover, and realized-trade persistence in `PortfolioStore`.
