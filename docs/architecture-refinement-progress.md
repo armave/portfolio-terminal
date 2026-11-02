@@ -229,10 +229,23 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41462093840) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41462093564) passed.
 - [x] Squash-merged to `main` as `4375feae30a0841c2751464abc656e7ec18bd001`.
 
+## Merged PR #264 — closed-trade record construction
+
+- [x] Extract legacy-compatible closed-trade field mapping and holding-day rounding into `createClosedTradeRecord`.
+- [x] Extract requested/date/fallback close-timestamp precedence into `resolveClosedTradeTimestamp`.
+- [x] Preserve ID format and `Date.now()` call placement in `PortfolioStore`.
+- [x] Preserve every persisted field and compatibility alias.
+- [x] Add deterministic tests for full record shape, 1.5-day rounding, invalid-date holding-day behavior, and timestamp precedence.
+- [x] Exact-head validation on `a35f462536c434f5f3985e15774347b676559c45`: typecheck, 1,075 tests across 102 files, production build, dead-code validation, both dependency audits, and production Chromium smoke passed.
+- [x] Production build bundle: 484,136 / 500,000 bytes; gzip: 155,166 / 165,000 bytes.
+- [x] Production dependency audit: 0 vulnerabilities; full dependency tree retains 9 low/moderate advisories (2 low, 7 moderate).
+- [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41462722752) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41462722707) passed.
+- [x] Squash-merged to `main` as `dcb203c6ebfc45e2a2e94b82b383f445f43e837b`.
+
 ## Next architecture step
 
-- [ ] Extract closed-trade record construction into a pure domain function while preserving IDs, date normalization, holding-day rounding, aliases, and every persisted field.
-- [ ] Add deterministic tests for invalid dates, fallback timestamps, holding-period boundaries, and exact closed-trade record shape before extraction.
+- [ ] Review and resolve known low/moderate development dependency advisories in a focused maintenance PR.
+- [ ] Re-run full and production dependency audits after updates.
 
 ## Remaining architecture work
 
@@ -260,8 +273,8 @@ This is the continuing checklist for the architecture-refinement program. A chec
 
 ### P2 — portfolio store modularization
 
-- [ ] Extract transaction calculation/command boundaries from `PortfolioStore` without introducing a second state owner.
-- [ ] Add parity/regression coverage for FIFO allocation, commissions, margin interest, debt settlement, realized P&L, and rollover accounting before moving those responsibilities.
+- [x] Extract pure FIFO allocation, sale commissions, debt-first settlement, portfolio-weighted margin-interest allocation, realized sale totals, and closed-trade record construction into `portfolioTransactions.ts`.
+- [x] Add parity/regression coverage for FIFO allocation, commissions, margin interest, staged debt settlement, realized P&L, holding-day rounding, and rollover accounting while keeping `PortfolioStore` as the single state owner.
 
 ### P2 — dependency maintenance
 
