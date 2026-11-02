@@ -25,6 +25,7 @@ function activeTranche(overrides: Partial<ActiveBrokerTranche> = {}): ActiveBrok
 function createFixture(overrides: Partial<GuestPortfolioAssignmentRuntimeDependencies> = {}) {
   const state = createBlankPortfolioState(1);
   let accountRole: 'admin' | 'guest' | null = 'admin';
+  let activeTrancheResults: ActiveBrokerTranche[] = [];
   const dependencies: GuestPortfolioAssignmentRuntimeDependencies = {
     getAccountRole: () => accountRole,
     requireAdmin: vi.fn(async () => true),
@@ -39,14 +40,15 @@ function createFixture(overrides: Partial<GuestPortfolioAssignmentRuntimeDepende
     logError: vi.fn(),
     logTerminal: vi.fn(),
     now: () => 1_000,
-    getActiveTranches: vi.fn(() => []),
+    getActiveTranches: vi.fn(() => activeTrancheResults),
     ...overrides
   };
   return {
     state,
     dependencies,
     runtime: createGuestPortfolioAssignmentRuntime(dependencies),
-    setAccountRole: (role: 'admin' | 'guest' | null) => { accountRole = role; }
+    setAccountRole: (role: 'admin' | 'guest' | null) => { accountRole = role; },
+    setActiveTranches: (tranches: ActiveBrokerTranche[]) => { activeTrancheResults = tranches; }
   };
 }
 
@@ -62,7 +64,7 @@ function preparePublisher(fixture: ReturnType<typeof createFixture>, tranche = a
       assignedQuantity: tranche.quantity
     }
   };
-  fixture.dependencies.getActiveTranches = vi.fn(() => [tranche]);
+  fixture.setActiveTranches([tranche]);
   fixture.runtime.setBrokerTradeHistoryLoaded(true);
 }
 
