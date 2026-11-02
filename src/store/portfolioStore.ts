@@ -17,7 +17,7 @@ import {
 } from '../services/storage';
 import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
 import { createBlankPortfolioState } from './portfolioDefaults';
-import { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
+import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
 
