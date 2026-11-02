@@ -17,6 +17,7 @@
 - [x] Role changes invalidate all sessions for the changed account. Account deletion invalidates existing sessions as well.
 - [x] Expired, orphaned, or stale-generation session records are cleaned in resumable pages using `startAfter`; at most 100 session keys are examined per cleanup pass, and automatic cleanup runs at most once every five minutes.
 - [x] The cleanup cursor and per-user indexes are bounded/validated so malformed index data cannot create an unbounded session walk.
+- [x] Worker-level guest projection fixtures now model legacy sessions with the original finite issue timestamp; they no longer bypass the new server-side session policy with impossible records.
 
 ## Regression coverage added
 
@@ -30,6 +31,7 @@
 - [x] Legacy unindexed tokens are invalidated when an account enters the new index generation.
 - [x] Bounded cleanup processes 100/100/5 records across three resumable passes.
 - [x] Cleanup is throttled to one automatic pass per five minutes.
+- [x] Existing Worker guest-projection ownership tests use compatible session fixtures.
 
 ## Acceptance
 
