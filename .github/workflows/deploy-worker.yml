@@ -9,7 +9,6 @@ on:
       - "src/services/freedomTradeNet.ts"
       - "state-store.js"
       - "wrangler.jsonc"
-      - ".github/workflows/deploy-worker.yml"
   workflow_dispatch:
 
 permissions:
