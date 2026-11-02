@@ -38,7 +38,7 @@ describe('cloud state security runtime', () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ key: 'shared-workspace-key' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
-    }));
+    })) as unknown as typeof fetch;
     const { security } = createSecurity(fetchImpl);
     security.setSecretGetter(() => 'stored-session-secret');
 
@@ -68,7 +68,7 @@ describe('cloud state security runtime', () => {
   it('retries shared-key retrieval after a failed request', async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'temporary failure' }), { status: 503 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ key: 'recovered-key' }), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ key: 'recovered-key' }), { status: 200 })) as unknown as typeof fetch;
     const { security } = createSecurity(fetchImpl);
     security.setSecretGetter(() => 'configured');
 
