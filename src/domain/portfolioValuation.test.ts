@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { calculatePortfolioValuation, getPositiveMarketPrice } from './portfolioValuation';
+import {
+  calculatePortfolioValuation,
+  getPortfolioValuationReliability,
+  getPositiveMarketPrice
+} from './portfolioValuation';
 
 describe('getPositiveMarketPrice', () => {
   it('uses the first finite positive price and falls back past zero or invalid values', () => {
@@ -21,6 +25,7 @@ describe('calculatePortfolioValuation', () => {
     });
 
     expect(result).toEqual({
+      accountBalanceAvailable: true,
       cashBalance: 250,
       marginDebt: 1200,
       marginHoldingsValue: 1050,
@@ -66,9 +71,56 @@ describe('calculatePortfolioValuation', () => {
       cashHoldings: []
     });
 
+    expect(result.accountBalanceAvailable).toBe(false);
     expect(result.cashBalance).toBe(0);
     expect(result.marginDebt).toBe(0);
     expect(result.equity).toBe(0);
     expect(result.unpricedHoldings).toBe(1);
+  });
+
+  it('marks a missing account balance unavailable while retaining a finite calculation fallback', () => {
+    const result = calculatePortfolioValuation({
+      signedAccountBalance: undefined,
+      freeCash: 100,
+      marginPositions: [],
+      cashHoldings: []
+    });
+
+    expect(result.accountBalanceAvailable).toBe(false);
+    expect(result.cashBalance).toBe(100);
+    expect(result.equity).toBe(100);
+  });
+});
+
+describe('getPortfolioValuationReliability', () => {
+  const current = {
+    accountBalanceAvailable: true,
+    unpricedHoldings: 0,
+    staleQuotes: 0,
+    delayedQuotes: 0,
+    unknownQuotes: 0,
+    unavailableQuotes: 0
+  };
+
+  it('classifies verified current quotes as current', () => {
+    expect(getPortfolioValuationReliability(current)).toBe('current');
+  });
+
+  it('classifies a retained stale broker balance as provisional', () => {
+    expect(getPortfolioValuationReliability({ ...current, accountBalanceStale: true })).toBe('provisional');
+  });
+
+  it.each([
+    ['stale', { staleQuotes: 1 }],
+    ['delayed', { delayedQuotes: 1 }],
+    ['unknown timestamp', { unknownQuotes: 1 }],
+    ['unavailable quote', { unavailableQuotes: 1 }]
+  ])('classifies %s observations as provisional', (_label, override) => {
+    expect(getPortfolioValuationReliability({ ...current, ...override })).toBe('provisional');
+  });
+
+  it('classifies missing balances or unpriced holdings as incomplete', () => {
+    expect(getPortfolioValuationReliability({ ...current, accountBalanceAvailable: false })).toBe('incomplete');
+    expect(getPortfolioValuationReliability({ ...current, unpricedHoldings: 1, staleQuotes: 1 })).toBe('incomplete');
   });
 });
