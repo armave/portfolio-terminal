@@ -528,49 +528,104 @@ describe('versioned cloud encryption', () => {
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Failed to decrypt cloud state'), 'error');
   });
 
-  it('reads legacy CryptoJS ciphertext and schedules a versioned encryption upgrade', async () => {
+  it('rejects malformed decrypted portfolio containers before replacing local state', async () => {
+    const secret = 'cloud-encryption-secret';
+    const encryptedPayload = await encryptV2Fixture({
+      positions: null,
+      cashCushion: { freeCash: 10, holdings: [] },
+      closedTrades: []
+    }, secret);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ encryptedPayload }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ETag: '"69"' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const saveSpy = vi.spyOn(storage, 'saveState').mockReturnValue(true);
+    const showToast = vi.fn();
+
+    await pullCloudState({
+      state: { activeView: 'LOCAL' },
+      secret,
+      allowCloudWrites: false,
+      showToast,
+      logTerminal: vi.fn()
+    });
+
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Invalid cloud portfolio'), 'error');
+  });
+
+  it('reads legacy CryptoJS ciphertext, writes AES-GCM, and verifies the saved replacement', async () => {
     const secret = 'cloud-encryption-secret';
     const legacyPayload = CryptoJS.AES.encrypt(JSON.stringify({
       activeView: 'AAPL',
       balance: 1250,
       lastRolloverTimestamp: Date.now()
     }), secret).toString();
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
+    let revision = 70;
+    let storedPayload = legacyPayload;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        storedPayload = JSON.parse(String(init.body)).encryptedPayload;
+        revision += 1;
+        return new Response(JSON.stringify({ success: true, revision }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+        });
+      }
+      return new Response(JSON.stringify({ encryptedPayload: storedPayload }), {
         status: 200,
-        headers: new Headers({ ETag: '"70"' }),
-        json: async () => ({ encryptedPayload: legacyPayload })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        headers: new Headers({ ETag: '"71"' })
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        headers: new Headers({ ETag: '"72"' })
+        headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
       });
+    });
     vi.stubGlobal('fetch', fetchMock);
     vi.spyOn(storage, 'saveState').mockReturnValue(true);
+    const showToast = vi.fn();
 
     const result = await pullCloudState({
       state: { activeView: 'LOCAL', balance: 0 },
       secret,
-      showToast: vi.fn(),
+      showToast,
       logTerminal: vi.fn()
     });
 
     expect(result.activeView).toBe('AAPL');
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    const upgrade = JSON.parse(String(fetchMock.mock.calls[1][1].body));
-    expect(upgrade.encryptedPayload).toMatch(/^aesgcm:v2:/);
-    // Drain the background migration write before another test replaces global fetch.
-    await expect(pushCloudState({ activeView: 'AAPL', balance: 1250 }, {
+    expect(fetchMock.mock.calls.map(call => (call[1] as RequestInit).method || 'GET')).toEqual(['GET', 'POST', 'GET']);
+    expect(storedPayload).toMatch(/^aesgcm:v2:/);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('keeps the local portfolio and reports a failed encryption upgrade', async () => {
+    const secret = 'cloud-encryption-failure-secret';
+    const legacyPayload = CryptoJS.AES.encrypt(JSON.stringify({
+      activeView: 'AAPL',
+      balance: 1250,
+      lastRolloverTimestamp: Date.now()
+    }), secret).toString();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ encryptedPayload: legacyPayload }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ETag: '"80"' }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'temporarily unavailable' }), {
+        status: 503, headers: { 'Content-Type': 'application/json' }
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(storage, 'saveState').mockReturnValue(true);
+    const showToast = vi.fn();
+
+    const result = await pullCloudState({
+      state: { activeView: 'LOCAL', balance: 0 },
       secret,
-      showToast: vi.fn()
-    })).resolves.toBe(true);
+      showToast,
+      logTerminal: vi.fn()
+    });
+
+    expect(result.activeView).toBe('AAPL');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('Cloud encryption upgrade could not be verified'),
+      'error'
+    );
   });
 });
 
@@ -1534,6 +1589,93 @@ describe('closed-history request deduplication', () => {
     await expect(pushCloudHistory(second, 'same-history-secret')).resolves.toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(['GET', 'POST']);
+  });
+
+  it('upgrades legacy Closed History to AES-GCM and verifies the stored record', async () => {
+    const secret = 'legacy-history-migration-secret';
+    const originalHistory = {
+      brokerExecutedTrades: [{ id: 'legacy-trade-1' }],
+      cashflows: [{ id: 'legacy-fee-1' }]
+    };
+    let revision = 20;
+    let storedPayload = CryptoJS.AES.encrypt(JSON.stringify(originalHistory), secret).toString();
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        storedPayload = JSON.parse(String(init.body)).encryptedPayload;
+        revision += 1;
+        return new Response(JSON.stringify({ success: true, revision }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+        });
+      }
+      return new Response(JSON.stringify({ encryptedPayload: storedPayload }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(pullCloudHistory(secret)).resolves.toEqual(originalHistory);
+    expect(fetchMock.mock.calls.map(call => (call[1] as RequestInit).method || 'GET')).toEqual(['GET', 'POST', 'GET']);
+    expect(storedPayload).toMatch(/^aesgcm:v2:/);
+  });
+
+  it('retains legacy Closed History and retries a failed encryption migration', async () => {
+    const secret = 'retry-history-migration-secret';
+    const originalHistory = {
+      brokerExecutedTrades: [{ id: 'retained-trade' }],
+      cashflows: [{ id: 'retained-fee' }]
+    };
+    const legacyPayload = CryptoJS.AES.encrypt(JSON.stringify(originalHistory), secret).toString();
+    let storedPayload = legacyPayload;
+    let revision = 30;
+    let failFirstWrite = true;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        if (failFirstWrite) {
+          failFirstWrite = false;
+          return new Response(JSON.stringify({ error: 'temporary write failure' }), {
+            status: 503, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        storedPayload = JSON.parse(String(init.body)).encryptedPayload;
+        revision += 1;
+        return new Response(JSON.stringify({ success: true, revision }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+        });
+      }
+      return new Response(JSON.stringify({ encryptedPayload: storedPayload }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ETag: `"${revision}"` }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const migrationFailure = vi.fn();
+
+    await expect(pullCloudHistory(secret, {
+      onEncryptionMigrationFailure: migrationFailure
+    })).resolves.toEqual(originalHistory);
+    expect(migrationFailure).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('HTTP 503') }));
+    expect(storedPayload).toBe(legacyPayload);
+
+    await expect(pullCloudHistory(secret)).resolves.toEqual(originalHistory);
+    expect(fetchMock.mock.calls.map(call => (call[1] as RequestInit).method || 'GET')).toEqual([
+      'GET', 'POST', 'GET', 'POST', 'GET'
+    ]);
+    expect(storedPayload).toMatch(/^aesgcm:v2:/);
+  });
+
+  it('rejects malformed decrypted Closed History arrays instead of replacing them with empty rows', async () => {
+    const secret = 'invalid-history-payload-secret';
+    const encryptedPayload = await encryptV2Fixture({ brokerExecutedTrades: {}, cashflows: [] }, secret);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ encryptedPayload }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ETag: '"9"' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(pullCloudHistory(secret)).rejects.toThrow('Invalid cloud history');
   });
 
   it('shares one in-flight cloud history read among concurrent callers', async () => {
