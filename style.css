@@ -2902,6 +2902,30 @@ summary:focus-visible {
   text-wrap: balance;
 }
 
+/* Keep the ticker title and analyst target together until the row runs out of room. */
+.board-title-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  column-gap: 0.75rem;
+  row-gap: 0.5rem;
+}
+
+#boardTitle {
+  flex: 1 1 24rem;
+  min-width: min(100%, 18rem);
+  width: auto;
+  overflow-wrap: anywhere;
+}
+
+#boardAnalystConsensus {
+  flex: 0 0 auto;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
 #daysToBreakeven {
   max-width: 100%;
   font-size: clamp(0.7rem, 0.85vw, 0.875rem);
