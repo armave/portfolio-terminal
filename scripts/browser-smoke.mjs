@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 
@@ -44,8 +45,45 @@ async function mockWorkerApi(page) {
   let bootstrapComplete = false;
   let currentUser = null;
   let currentToken = '';
+  let stateRevision = 0;
+  let stateExists = false;
+  let stateCiphertext = '';
+  let historyRevision = 0;
+  let historyExists = false;
+  let historyCiphertext = '';
+  let failNextBrokerAccount = false;
+  let failNextStateConflict = false;
+  let brokerAccountFailures = 0;
+  let stateConflictCount = 0;
+  let guestPublication = null;
 
-  const json = async (route, status, payload, extraHeaders = {}) => {
+  const accountPayload = {
+    data: { result: { ps: {
+      loaded: true,
+      acc: [{ curr: 'USD', s: '10000', currval: '10000' }],
+      pos: [{
+        curr: 'USD', i: 'AAPL.US', name: 'Apple', q: '5',
+        mkt_price: '11', market_value: '55', bal_price_a: '10',
+        profit_close: '5', acc_pos_id: 7001
+      }]
+    } } }
+  };
+  const tradesPayload = {
+    data: { trades: { trade: [{
+      trade_id: 'smoke-buy-aapl-1',
+      instr_nm: 'AAPL.US',
+      operation: '1',
+      quantity: '5',
+      p: '10',
+      date: '2026-11-02T09:00:00.000Z',
+      v: '50',
+      curr_c: 'USD',
+      commiss: '0.10',
+      profit: '0'
+    }] } }
+  };
+  const json = async (route, status, payload, extraHeaders = {}, call = null) => {
+    if (call) call.responseStatus = status;
     const origin = route.request().headers().origin || '*';
     await route.fulfill({
       status,
@@ -60,8 +98,13 @@ async function mockWorkerApi(page) {
       body: JSON.stringify(payload)
     });
   };
+  const etag = (revision) => '"' + revision + '"';
+  const parseRevision = (value) => {
+    const revision = Number(String(value || '0').replace(/^W\//, '').replaceAll('"', ''));
+    return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
+  };
 
-  await page.route(`${workerOrigin}/**`, async (route) => {
+  await page.route(workerOrigin + '/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const method = request.method().toUpperCase();
@@ -70,7 +113,8 @@ async function mockWorkerApi(page) {
     const token = headers['x-app-auth'] || headers.authorization?.replace(/^Bearer\s+/i, '') || '';
     let body = {};
     try { body = request.postDataJSON() || {}; } catch { body = {}; }
-    calls.push({ method, pathname, token, body });
+    const call = { method, pathname, token, body, action: url.searchParams.get('action') || '' };
+    calls.push(call);
 
     if (method === 'OPTIONS') {
       const origin = headers.origin || '*';
@@ -83,113 +127,205 @@ async function mockWorkerApi(page) {
           'Access-Control-Expose-Headers': 'ETag'
         }
       });
+      call.responseStatus = 204;
       return;
     }
-
     if (pathname === '/api/auth/status' && method === 'GET') {
-      await json(route, 200, { setupRequired: !bootstrapComplete, userCount: bootstrapComplete ? 1 : 0 });
+      await json(route, 200, { setupRequired: !bootstrapComplete, userCount: bootstrapComplete ? 1 : 0 }, {}, call);
       return;
     }
     if (pathname === '/api/auth/bootstrap' && method === 'POST') {
       if (bootstrapComplete || body.bootstrapSecret !== 'smoke-bootstrap-secret') {
-        await json(route, 401, { error: 'Invalid bootstrap credentials.' });
+        await json(route, 401, { error: 'Invalid bootstrap credentials.' }, {}, call);
         return;
       }
       bootstrapComplete = true;
       currentUser = adminUser;
       currentToken = 'smoke-admin-session';
-      await json(route, 200, { token: currentToken, user: adminUser, expiresAt: Date.now() + 3_600_000 });
+      await json(route, 200, { token: currentToken, user: adminUser, expiresAt: Date.now() + 3600000 }, {}, call);
       return;
     }
     if (pathname === '/api/auth/login' && method === 'POST') {
       if (body.name !== 'Smoke Guest' || body.password !== 'valid-smoke-password') {
-        await json(route, 401, { error: 'Invalid account credentials.' });
+        await json(route, 401, { error: 'Invalid account credentials.' }, {}, call);
         return;
       }
       currentUser = guestUser;
       currentToken = 'smoke-guest-session';
-      await json(route, 200, { token: currentToken, user: guestUser, expiresAt: Date.now() + 3_600_000 });
+      await json(route, 200, { token: currentToken, user: guestUser, expiresAt: Date.now() + 3600000 }, {}, call);
       return;
     }
     if (pathname === '/api/auth/me' && method === 'GET') {
       if (!currentUser || token !== currentToken) {
-        await json(route, 401, { error: 'Not signed in.' });
+        await json(route, 401, { error: 'Not signed in.' }, {}, call);
         return;
       }
-      await json(route, 200, { user: currentUser });
+      await json(route, 200, { user: currentUser }, {}, call);
       return;
     }
     if (pathname === '/api/auth/cloud-key' && method === 'GET') {
       if (!currentUser || token !== currentToken) {
-        await json(route, 401, { error: 'Not signed in.' });
+        await json(route, 401, { error: 'Not signed in.' }, {}, call);
         return;
       }
-      await json(route, 200, { key: 'smoke-workspace-encryption-key' });
+      await json(route, 200, { key: 'smoke-workspace-encryption-key' }, {}, call);
       return;
     }
     if (pathname === '/api/auth/users' && method === 'GET') {
       if (currentUser?.role !== 'admin' || token !== currentToken) {
-        await json(route, 403, { error: 'Administrator access required.' });
+        await json(route, 403, { error: 'Administrator access required.' }, {}, call);
         return;
       }
-      await json(route, 200, { users: [adminUser, guestUser] });
+      await json(route, 200, { users: [adminUser, guestUser] }, {}, call);
       return;
     }
     if (pathname === '/api/auth/logout' && method === 'POST') {
       if (token !== currentToken) {
-        await json(route, 401, { error: 'Not signed in.' });
+        await json(route, 401, { error: 'Not signed in.' }, {}, call);
         return;
       }
       currentUser = null;
       currentToken = '';
-      await json(route, 200, { success: true });
-      return;
-    }
-    if (pathname === '/api/state') {
-      if (currentUser?.role !== 'admin' || token !== currentToken) {
-        await json(route, 403, { error: 'Administrator access required.' });
-        return;
-      }
-      if (method === 'GET') {
-        await json(route, 404, { error: 'No cloud workspace has been saved yet.' });
-        return;
-      }
-      if (method === 'POST') {
-        await json(route, 200, { success: true, revision: 1 }, { ETag: '"1"' });
-        return;
-      }
-    }
-    if (pathname === '/api/guest-portfolio') {
-      if (method === 'GET' && currentUser?.role === 'guest' && token === currentToken) {
-        await json(route, 200, {
-          snapshot: { updatedAt: 1, tranches: [] },
-          ledger: [],
-          ledgerUpdatedAt: 1
-        });
-        return;
-      }
-      if (method === 'POST' && currentUser?.role === 'admin' && token === currentToken) {
-        await json(route, 200, { success: true, revisions: {} });
-        return;
-      }
-      await json(route, 403, { error: 'This session cannot access the guest projection.' });
-      return;
-    }
-    if (pathname === '/api/history' && method === 'GET') {
-      await json(route, 404, { error: 'No cloud history has been saved yet.' });
+      await json(route, 200, { success: true }, {}, call);
       return;
     }
 
-    // Market-data/broker routes fail closed; no live services or credentials are used.
-    await json(route, 401, { error: 'External services are disabled in the browser smoke test.' });
+    if (pathname === '/' && call.action) {
+      if (!currentUser || token !== currentToken) {
+        await json(route, 401, { error: 'Not signed in.' }, {}, call);
+        return;
+      }
+      switch (call.action) {
+        case 'freedom-session':
+          await json(route, 200, { success: true }, {}, call);
+          return;
+        case 'freedom-positions':
+          if (failNextBrokerAccount) {
+            failNextBrokerAccount = false;
+            brokerAccountFailures += 1;
+            await json(route, 503, { error: 'Broker balance source unavailable in smoke test.' }, {}, call);
+            return;
+          }
+          await json(route, 200, accountPayload, {}, call);
+          return;
+        case 'freedom-trades':
+          await json(route, 200, tradesPayload, {}, call);
+          return;
+        case 'freedom-orders':
+          await json(route, 200, { ok: true, data: { orders: { order: [] } } }, {}, call);
+          return;
+        case 'quote': {
+          const symbols = String(url.searchParams.get('symbol') || '').split(',').filter(Boolean);
+          await json(route, 200, symbols.map((symbol) => ({
+            symbol: symbol.toUpperCase(),
+            price: { current: 11, previousClose: 10, marketState: 'REGULAR' }
+          })), {}, call);
+          return;
+        }
+        case 'news':
+          await json(route, 200, [], {}, call);
+          return;
+        case 'stocktwits':
+          await json(route, 200, { messages: [] }, {}, call);
+          return;
+        default:
+          await json(route, 400, { error: 'Unsupported smoke action: ' + call.action }, {}, call);
+          return;
+      }
+    }
+
+    if (pathname === '/api/state') {
+      if (currentUser?.role !== 'admin' || token !== currentToken) {
+        await json(route, 403, { error: 'Administrator access required.' }, {}, call);
+        return;
+      }
+      if (method === 'GET') {
+        if (!stateExists) {
+          await json(route, 404, { error: 'No cloud workspace has been saved yet.' }, { ETag: etag(stateRevision) }, call);
+          return;
+        }
+        await json(route, 200, { encryptedPayload: stateCiphertext }, { ETag: etag(stateRevision) }, call);
+        return;
+      }
+      if (method === 'POST') {
+        if (failNextStateConflict) {
+          failNextStateConflict = false;
+          stateConflictCount += 1;
+          await json(route, 412, { error: 'Cloud revision conflict.' }, { ETag: etag(stateRevision) }, call);
+          return;
+        }
+        if (parseRevision(headers['if-match']) !== stateRevision) {
+          stateConflictCount += 1;
+          await json(route, 412, { error: 'Cloud revision conflict.' }, { ETag: etag(stateRevision) }, call);
+          return;
+        }
+        stateRevision += 1;
+        stateExists = true;
+        stateCiphertext = String(body.encryptedPayload || '');
+        await json(route, 200, { success: true, revision: stateRevision }, { ETag: etag(stateRevision) }, call);
+        return;
+      }
+    }
+
+    if (pathname === '/api/history') {
+      if (currentUser?.role !== 'admin' || token !== currentToken) {
+        await json(route, 403, { error: 'Administrator access required.' }, {}, call);
+        return;
+      }
+      if (method === 'GET') {
+        if (!historyExists) {
+          await json(route, 404, { error: 'No cloud history has been saved yet.' }, { ETag: etag(historyRevision) }, call);
+          return;
+        }
+        await json(route, 200, { encryptedPayload: historyCiphertext }, { ETag: etag(historyRevision) }, call);
+        return;
+      }
+      if (method === 'POST') {
+        if (parseRevision(headers['if-match']) !== historyRevision) {
+          await json(route, 412, { error: 'Cloud history revision conflict.' }, { ETag: etag(historyRevision) }, call);
+          return;
+        }
+        historyRevision += 1;
+        historyExists = true;
+        historyCiphertext = String(body.encryptedPayload || '');
+        await json(route, 200, { success: true, revision: historyRevision }, { ETag: etag(historyRevision) }, call);
+        return;
+      }
+    }
+
+    if (pathname === '/api/guest-portfolio') {
+      if (method === 'GET' && currentUser?.role === 'guest' && token === currentToken) {
+        const ownPublication = guestPublication?.snapshots?.find((item) => item.guestId === currentUser.id);
+        await json(route, 200, {
+          snapshot: ownPublication?.snapshot || { updatedAt: 1, tranches: [] },
+          ledger: ownPublication?.ledgerUpserts || [],
+          ledgerUpdatedAt: guestPublication ? Date.now() : 1
+        }, {}, call);
+        return;
+      }
+      if (method === 'POST' && currentUser?.role === 'admin' && token === currentToken) {
+        guestPublication = body;
+        await json(route, 200, { success: true, revisions: {} }, {}, call);
+        return;
+      }
+      await json(route, 403, { error: 'This session cannot access the guest projection.' }, {}, call);
+      return;
+    }
+
+    await json(route, 401, { error: 'External services are disabled in the browser smoke test.' }, {}, call);
   });
 
   return {
     calls,
-    count: (method, pathname) => calls.filter((call) => call.method === method && call.pathname === pathname).length
+    count: (method, pathname) => calls.filter((call) => call.method === method && call.pathname === pathname).length,
+    countAction: (action) => calls.filter((call) => call.action === action).length,
+    failNextBrokerAccount: () => { failNextBrokerAccount = true; },
+    failNextStateConflict: () => { failNextStateConflict = true; },
+    brokerAccountFailures: () => brokerAccountFailures,
+    stateConflictCount: () => stateConflictCount,
+    getGuestPublication: () => guestPublication
   };
 }
-
 async function waitForAuthOverlay(page, open) {
   await page.waitForFunction(
     (shouldBeOpen) => document.querySelector('#auth-container')?.classList.contains('auth-overlay-open') === shouldBeOpen,
@@ -204,6 +340,16 @@ async function submitAuth(page, { name, password, bootstrapSecret }) {
   if (bootstrapSecret) await page.locator('#bootstrapSecret').fill(bootstrapSecret);
   await page.locator('.auth-submit-button').click();
 }
+
+async function waitForCondition(predicate, label, timeoutMs = 20_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await delay(100);
+  }
+  throw new Error('Timed out waiting for ' + label + '.');
+}
+
 
 try {
   await waitForPreview();
