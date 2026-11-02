@@ -1,8 +1,8 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Portfolio sync runtime extraction  
-**Base:** `main` at `0eb0ffdb347bc523f729d9bcb8eae39671c87431`
+**Current work:** Authenticated session identity and logout runtime extraction  
+**Base:** `main` at `e01cab2b686ff3915907a05ca3151edea281af60`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
@@ -15,26 +15,35 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Add production-browser smoke coverage for desktop, tablet, and phone.
 - [x] Extract portfolio state, selector, and active-desk subscriptions while preserving store compatibility exports.
 - [x] Extract navigation permission checks and explicit live-quote refresh event bindings.
-- [x] Extract manual portfolio-sync UI event wiring, injected broker/cloud operations, result messaging, and event completion into `src/services/portfolioSyncRuntime.ts`.
-- [x] Add focused Vitest coverage for the portfolio sync runtime adapter.
-- [x] Merge the preceding foundation work in [PR #245](https://github.com/armave/portfolio-terminal/pull/245).
+- [x] Extract manual portfolio-sync UI event wiring, injected broker/cloud operations, result messaging, and event completion.
+- [x] Merge the portfolio sync runtime extraction in [PR #246](https://github.com/armave/portfolio-terminal/pull/246).
 
-## Current PR — portfolio sync runtime
+## Merged PR #246 — portfolio sync runtime
 
-- [x] Preserve the existing role-specific sync policy in `manualPortfolioSync.ts`.
+- [x] Preserve role-specific sync policy in `manualPortfolioSync.ts`.
 - [x] Move `portfolio:sync-request` binding out of `app.ts`.
 - [x] Inject broker request, quote refresh, cloud push, and guest snapshot operations.
 - [x] Preserve success, partial-success, failure notifications, and request resolution.
-- [x] Add Vitest coverage for admin, guest, partial-failure, unauthenticated, and listener-disposal behavior.
-- [x] Exact-head GitHub Actions passed on `cd29b1ac2acac2dbb22db42985bda5f5dbfe13ea`: 961 tests across 85 files, typecheck, build, dead-code, both dependency audits, and production browser smoke. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41411746504) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41411746503).
-- [ ] Review feedback.
-- [ ] Merge this PR.
+- [x] Add focused admin, guest, partial-failure, unauthenticated, and listener-disposal tests.
+- [x] Exact-head GitHub Actions passed on `8e912e5f0c0a016947dfa57cdb4d1aa6896bf4f1`: 961 tests across 85 files, typecheck, build, dead-code validation, both dependency audits, and production browser smoke. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41411977641) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41411977666).
+- [x] Squash-merged to `main` as `e01cab2b686ff3915907a05ca3151edea281af60`.
+
+## Current PR — authenticated session runtime
+
+- [x] Extract account identity publication and role/write-permission transitions into `src/services/portfolioSessionRuntime.ts`.
+- [x] Preserve session-guard invalidation and cloud-encryption cache invalidation when identity changes.
+- [x] Preserve the ordering that disables guest cloud writes before clearing a previous administrator workspace.
+- [x] Move administrator authorization checks into the session runtime.
+- [x] Move logout event handling, remote logout, local credential clearing, and reload into the session runtime.
+- [x] Add focused Vitest coverage for admin/guest switching, repeated identity, failed identity lookup, authorization, logout failure cleanup, and listener disposal.
+- [ ] Run exact-head typecheck, Vitest, build, dead-code validation, dependency audits, and production browser smoke.
+- [ ] Review feedback and merge.
 
 ## Remaining architecture work
 
 ### P1 — application runtime boundaries
 
-- [ ] Extract authenticated session lifecycle: identity changes, credential verification, login/logout, and guest/admin transitions.
+- [ ] Extract credential verification and authenticated account-switch startup orchestration from `handleSaveGatewaySecret` and `startApp` without changing auth/storage semantics.
 - [ ] Extract broker runtime: broker event coordination, account refresh, executed-trade refresh, and active-order refresh.
 - [ ] Extract guest portfolio synchronization: publication, hydration, assignment lifecycle, and session guards.
 - [ ] Extract startup lifecycle: initialization, retry, offline startup, rollover timer, and visibility handling.
@@ -70,4 +79,4 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - Preserve i18n keys and translation behavior.
 - Add Vitest coverage for every extracted runtime/service boundary.
 - Keep client changes grouped in a focused PR.
-- Change Cloudflare Workers on `main` only when a demonstrated server-side change is required; no Worker change is needed for the current sync-runtime extraction.
+- Change Cloudflare Workers on `main` only when a demonstrated server-side change is required; no Worker change is needed for this client-side session-runtime extraction.
