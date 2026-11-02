@@ -136,7 +136,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Preserve legacy active-assignment ID backfill and closed/unassigned assignment history.
 - [x] Keep all portfolio state ownership in the app store; inject state, persistence, authorization, and API operations.
 - [x] Add focused Vitest coverage for commands, readiness gates, publication payloads, queue serialization, and recovery after publication failure.
-- [ ] Run exact-head TypeScript, Vitest, build, dead-code, audits, and browser smoke validation.
+- [x] Validation on PR head `52ca8cd824ce7618a935cf11ca7208a9144b902a`: 1,023 tests across 96 files; typecheck, production build, dead-code validation, both dependency audits, and production browser smoke passed. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41427655823) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41427655797).
 - [ ] Review and merge.
 
 ## Remaining architecture work
