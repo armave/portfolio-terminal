@@ -1467,6 +1467,49 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().cashCushion.holdings.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(220);
   });
 
+  it('returns whether the store actually accepted a quote update', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const requestStartedAt = Date.now() + 1_000;
+
+    expect(store.updateLiveQuote('AAPL', {
+      price: 110,
+      requestStartedAt,
+      quoteDetails: { sourceTimestamp: requestStartedAt, freshness: 'fresh' }
+    })).toBe(true);
+    expect(store.updateLiveQuote('AAPL', {
+      price: 105,
+      requestStartedAt: requestStartedAt - 1,
+      quoteDetails: { sourceTimestamp: requestStartedAt - 1, freshness: 'fresh' }
+    })).toBe(false);
+  });
+
+  it('rejects an older market observation even when its request started later', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const requestStartedAt = Date.now() + 1_000;
+
+    expect(store.updateLiveQuote('AAPL', {
+      price: 110,
+      requestStartedAt: requestStartedAt + 100,
+      quoteDetails: { sourceTimestamp: requestStartedAt + 100, freshness: 'fresh' }
+    })).toBe(true);
+    const acceptedState = store.getState();
+
+    expect(store.updateLiveQuote('AAPL', {
+      price: 95,
+      requestStartedAt: requestStartedAt + 200,
+      quoteDetails: { sourceTimestamp: requestStartedAt + 50, freshness: 'stale' }
+    })).toBe(false);
+    expect(store.getState()).toBe(acceptedState);
+    expect(store.getState().positions.AAPL).toMatchObject({
+      currentPrice: 110,
+      quoteDetails: { sourceTimestamp: requestStartedAt + 100 }
+    });
+  });
+
   it('accepts a later network quote even when its sequence is lower than a persisted sequence', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();

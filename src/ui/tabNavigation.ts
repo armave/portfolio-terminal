@@ -35,11 +35,11 @@ export function isMarginDeskView(view: string, isAdmin: boolean): boolean {
   return isAdmin && !NON_MARGIN_DESK_VIEWS.has(view);
 }
 
-/** Trigger a portfolio-wide quote refresh only when navigating into the Margin desk. */
+/** Refresh market quotes whenever an administrator selects a different Margin section. */
 export function shouldRefreshQuotesOnNavigation(
   currentView: string,
   nextView: string,
   isAdmin: boolean
 ): boolean {
-  return !isMarginDeskView(currentView, isAdmin) && isMarginDeskView(nextView, isAdmin);
+  return currentView !== nextView && isMarginDeskView(nextView, isAdmin);
 }

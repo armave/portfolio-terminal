@@ -12,15 +12,17 @@ function describeProviderError(error: unknown): string {
 // Time-anchored and monotonic, including requests started in the same millisecond.
 // Anchoring to epoch time keeps persisted ordering comparable after ordinary reloads.
 let lastQuoteRequestSequence = 0;
-export function nextQuoteRequestSequence(): number {
+function nextQuoteRequestSequence(): number {
   lastQuoteRequestSequence = Math.max(Date.now() * 1000, lastQuoteRequestSequence + 1);
   return lastQuoteRequestSequence;
 }
 
-export async function fetchFallbackPrice(symbol: string) {
+async function fetchFallbackPrice(symbol: string, force = false) {
   for (const provider of ['finnhub', 'twelvedata'] as const) {
     try {
-      const fallback = await fetchFallbackQuote(symbol, provider);
+      const fallback = force
+        ? await fetchFallbackQuote(symbol, provider, true)
+        : await fetchFallbackQuote(symbol, provider);
       return {
         price: fallback.price,
         sourceName: fallback.sourceName,
@@ -51,7 +53,7 @@ export interface QuoteProvenance {
  * Classifies a provider observation timestamp independently from the time the
  * browser received it. Yahoo market-data timestamps are Unix seconds.
  */
-export function resolveQuoteProvenance(
+function resolveQuoteProvenance(
   marketState: string | undefined,
   sourceTimeSeconds: unknown,
   now = Date.now()
@@ -72,8 +74,11 @@ export function resolveQuoteProvenance(
   return { freshness: 'fresh' as const, sourceTimestamp };
 }
 
-export async function fetchLivePriceFromProviders(symbol: string) {
-  const requestStartedAt = Date.now();
+export async function fetchLivePriceFromProviders(
+  symbol: string,
+  requestStartedAt = Date.now(),
+  force = false
+) {
   const requestSequence = nextQuoteRequestSequence();
   symbol = symbol.toUpperCase();
   let price: number | null = null;
@@ -83,8 +88,8 @@ export async function fetchLivePriceFromProviders(symbol: string) {
   // Start both providers together; selection below is based on source timestamps,
   // not request completion order or a hard-coded vendor preference.
   const [freedomResult, yahooResult] = await Promise.allSettled([
-    fetchFreedomQuote(symbol),
-    fetchYahooQuoteData(symbol)
+    force ? fetchFreedomQuote(symbol, true) : fetchFreedomQuote(symbol),
+    force ? fetchYahooQuoteData(symbol, true) : fetchYahooQuoteData(symbol)
   ]);
   let freedomQuote: Awaited<ReturnType<typeof fetchFreedomQuote>> | null = null;
   if (freedomResult.status === 'fulfilled') {
@@ -182,7 +187,9 @@ export async function fetchLivePriceFromProviders(symbol: string) {
   }
 
   if (price === null) {
-    const fallback = await fetchFallbackPrice(symbol);
+    const fallback = force
+      ? await fetchFallbackPrice(symbol, true)
+      : await fetchFallbackPrice(symbol);
     if (fallback) {
       price = fallback.price;
       sourceName = fallback.sourceName;

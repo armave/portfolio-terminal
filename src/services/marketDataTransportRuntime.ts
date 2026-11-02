@@ -23,7 +23,7 @@ export interface MarketDataTransportRuntimeDependencies {
 export interface MarketDataTransportRuntime {
   fetchYahooQuoteData: (ticker: string, force?: boolean) => Promise<YahooBatchQuoteResult | null>;
   fetchYahooStockData: (ticker: string) => Promise<unknown | null>;
-  fetchFallbackQuote: (ticker: string, provider: FallbackQuoteProvider) => Promise<NormalizedFallbackQuote>;
+  fetchFallbackQuote: (ticker: string, provider: FallbackQuoteProvider, force?: boolean) => Promise<NormalizedFallbackQuote>;
   rememberYahooDeepStockData: (value: unknown) => void;
   fetchYahooDeepStockData: (ticker: string, force?: boolean, signal?: AbortSignal) => Promise<YahooDeepStockData>;
   fetchMarketNews: (ticker: string, force?: boolean, signal?: AbortSignal) => Promise<MarketNewsItem[]>;
@@ -50,6 +50,7 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     request: Promise<YahooBatchQuoteResult>;
     resolvers: Array<(value: YahooBatchQuoteResult) => void>;
     rejecters: Array<(error: unknown) => void>;
+    force: boolean;
   }>();
   let yahooQuoteFlushScheduled = false;
 
@@ -62,9 +63,14 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     yahooQuoteQueue.clear();
     if (!entries.length) return;
     const symbols = entries.map(([symbol]) => symbol);
+    const force = entries.some(([, pending]) => pending.force);
     const startedAt = now();
     try {
-      const response = await dependencies.proxyFetch('quote', { symbol: symbols.join(',') });
+      const response = await dependencies.proxyFetch(
+        'quote',
+        { symbol: symbols.join(',') },
+        force ? { cache: 'no-store' } : {}
+      );
       const results = normalizeYahooBatchResults(response, symbols);
       const bySymbol = new Map<string, YahooBatchQuoteResult>();
       results.forEach((item) => {
@@ -118,8 +124,9 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     if (pending) {
       pending.resolvers.push(resolveRequest);
       pending.rejecters.push(rejectRequest);
+      pending.force = pending.force || force;
     } else {
-      yahooQuoteQueue.set(symbol, { request, resolvers: [resolveRequest], rejecters: [rejectRequest] });
+      yahooQuoteQueue.set(symbol, { request, resolvers: [resolveRequest], rejecters: [rejectRequest], force });
       yahooQuoteRequests.set(symbol, request);
     }
     if (!yahooQuoteFlushScheduled) {
@@ -160,10 +167,18 @@ export function createMarketDataTransportRuntime(dependencies: MarketDataTranspo
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
   };
-  const fetchFallbackQuote = async (ticker: string, provider: FallbackQuoteProvider): Promise<NormalizedFallbackQuote> => {
+  const fetchFallbackQuote = async (
+    ticker: string,
+    provider: FallbackQuoteProvider,
+    force = false
+  ): Promise<NormalizedFallbackQuote> => {
     const symbol = normalizeYahooSymbol(ticker);
     if (!symbol) throw new Error('A ticker symbol is required for fallback quotes.');
-    const responseData: unknown = await dependencies.proxyFetch('provider-quote', { symbol, provider });
+    const responseData: unknown = await dependencies.proxyFetch(
+      'provider-quote',
+      { symbol, provider },
+      force ? { cache: 'no-store' } : {}
+    );
     const data = isFallbackQuoteRecord(responseData) ? responseData : {};
     const currentValue = provider === 'finnhub' ? data.c : data.close;
     const previousValue = provider === 'finnhub' ? data.pc : data.previous_close;

@@ -21,12 +21,11 @@ export const TickerTabs = memo(function TickerTabs({
   const tickers = usePortfolioSelector(selectPositionTickers, areTickerListsEqual);
   const activeView = useActiveView();
   const [isSyncingPortfolio, setIsSyncingPortfolio] = useState(false);
-  const quoteRefreshPromise = useRef<Promise<void> | null>(null);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const selectView = (view: string) => {
     if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS' && !(userId && view === 'GUEST_HISTORY')) return;
-    // Refresh the portfolio once when returning to the Margin desk. Switching
-    // between its ticker tabs does not require another all-symbol quote batch.
+    // Refresh the latest portfolio quotes whenever a different Margin section
+    // is selected; same-section clicks and non-Margin routes do not start a batch.
     const refreshQuotes = shouldRefreshQuotesOnNavigation(activeView, view, isAdmin);
     emitUiEvent('portfolio:set-active-view', { view });
     // Show the selected desk immediately; refresh existing prices in the background.
@@ -72,17 +71,11 @@ export const TickerTabs = memo(function TickerTabs({
   };
 
   const handleRefreshQuotes = async (): Promise<void> => {
-    if (quoteRefreshPromise.current) return quoteRefreshPromise.current;
-
-    const request = new Promise<void>((resolve) => {
+    // Every section change reaches the app coordinator. It coalesces duplicate
+    // queued triggers without losing a latest-state follow-up behind an active batch.
+    await new Promise<void>((resolve) => {
       emitUiEvent('portfolio:refresh-live-prices', { resolve });
     });
-    quoteRefreshPromise.current = request;
-    try {
-      await request;
-    } finally {
-      if (quoteRefreshPromise.current === request) quoteRefreshPromise.current = null;
-    }
   };
 
   const handleSyncPortfolio = async (): Promise<void> => {

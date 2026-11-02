@@ -59,10 +59,14 @@ function freedomSymbol(symbol: string): string {
   return normalized.includes(".") ? normalized : `${normalized}.US`;
 }
 
-export async function fetchFreedomQuote(symbol: string): Promise<FreedomQuote> {
+export async function fetchFreedomQuote(symbol: string, force = false): Promise<FreedomQuote> {
   const normalized = symbol.trim().toUpperCase();
   if (!normalized) throw new Error("A ticker symbol is required.");
-  const payload = await proxyFetch("freedom-quote", { symbol: freedomSymbol(normalized) });
+  const payload = await proxyFetch(
+    "freedom-quote",
+    { symbol: freedomSymbol(normalized) },
+    force ? { cache: 'no-store' } : {}
+  );
   const quote = normalizeFreedomQuote(payload?.data, normalized);
   if (!quote) throw new Error("Freedom TradeNet returned an unsupported quote payload.");
   return quote;

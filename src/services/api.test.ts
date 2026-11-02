@@ -1706,7 +1706,22 @@ describe('closed-session market request cache integration', () => {
     vi.restoreAllMocks();
   });
 
-  it('reuses one successful deep-data request per symbol without blocking other symbols', async () => {
+  it('bypasses the closed-session response cache for an explicit no-store market refresh', async () => {
+    setMarketRequestSessionForTests('CLOSED');
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ articles: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await proxyFetch('news', { symbol: 'AAPL' });
+    await proxyFetch('news', { symbol: 'AAPL' });
+    await proxyFetch('news', { symbol: 'AAPL' }, { cache: 'no-store' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('bypasses the closed-session cache for forced deep-data requests', async () => {
     setMarketRequestSessionForTests('CLOSED');
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
@@ -1727,7 +1742,7 @@ describe('closed-session market request cache integration', () => {
     await expect(fetchYahooDeepStockData('MSFT', true)).resolves.toMatchObject({
       symbol: 'MSFT', analystTargets: { median: 450 }
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('does not retain provider error payloads, allowing a later retry', async () => {

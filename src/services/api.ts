@@ -171,7 +171,7 @@ function dispatchProxyFetch(
   const isMarketData = MARKET_DATA_ACTIONS.has(action) &&
     (action !== '' || Boolean(queryParams.symbol));
   const request = () => performProxyFetch(action, queryParams, fetchOptions);
-  return isMarketData && !fetchOptions.signal
+  return isMarketData && !fetchOptions.signal && fetchOptions.cache !== 'no-store'
     ? runMarketDataRequest(createMarketRequestIdentity(action, queryParams, fetchOptions), request)
     : request();
 }

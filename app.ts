@@ -22,6 +22,7 @@ import {
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
+import { createQuoteRefreshCoordinator } from './src/services/quoteRefreshCoordinator';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
 import { createPortfolioBrokerRefreshRuntime } from './src/services/portfolioBrokerRefreshRuntime';
 import { createPortfolioStartupLifecycleRuntime } from './src/services/portfolioStartupLifecycleRuntime';
@@ -923,21 +924,23 @@ function recordTrackedPrice(
   quoteDetails: QuoteDetails | null = null,
   requestStartedAt?: number
 ) {
-  const symbol = ticker.toUpperCase();
+  const symbol = ticker.trim().toUpperCase();
+  const current = portfolioStore.getState();
   const matched = Boolean(
-    state.positions[symbol] ||
-    state.cashCushion?.holdings?.some((holding: any) => holding.ticker === symbol)
+    current.positions[symbol] ||
+    current.cashCushion?.holdings?.some((holding: any) => holding.ticker.trim().toUpperCase() === symbol) ||
+    current.cashStocks?.some((holding: any) => holding.ticker.trim().toUpperCase() === symbol) ||
+    current.guestPortfolioSnapshot?.tranches?.some((tranche) => tranche.ticker.trim().toUpperCase() === symbol)
   );
   if (!matched) return false;
 
-  portfolioStore.updateLiveQuote(symbol, {
+  return portfolioStore.updateLiveQuote(symbol, {
     price,
     quoteSource: sourceName,
     ...(updatedAt === null ? {} : { quoteUpdatedAt: updatedAt }),
     ...(quoteDetails ? { quoteDetails } : {}),
     ...(requestStartedAt === undefined ? {} : { requestStartedAt })
   });
-  return true;
 }
 
 function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
@@ -988,7 +991,7 @@ async function requestLivePrice(symbol: string, force = false) {
   if (existingRequest && !force) return existingRequest;
 
   const requestStartedAt = Date.now();
-  const request = fetchLivePriceFromProviders(symbol).then(result => ({
+  const request = fetchLivePriceFromProviders(symbol, requestStartedAt, force).then(result => ({
     ...result,
     matched: result.price !== null
       ? recordTrackedPrice(symbol, result.price, result.sourceName, result.updatedAt, result.quoteDetails, requestStartedAt)
@@ -1025,23 +1028,14 @@ async function fetchLivePrice(ticker: string, silent = false, force = false) {
   return null;
 }
 
-let liveQuoteRefreshInFlight: Promise<boolean> | null = null;
+const liveQuoteRefreshCoordinator = createQuoteRefreshCoordinator(performRefreshAllLivePrices);
 
-/**
- * Prevent interval/manual refresh triggers from starting overlapping batch
- * requests when a provider response takes longer than the configured interval.
- */
-function refreshAllLivePrices(): Promise<boolean> {
-  if (liveQuoteRefreshInFlight) return liveQuoteRefreshInFlight;
-
-  const request = performRefreshAllLivePrices().finally(() => {
-    if (liveQuoteRefreshInFlight === request) liveQuoteRefreshInFlight = null;
-  });
-  liveQuoteRefreshInFlight = request;
-  return request;
+/** Coalesce routine polling while reserving a fresh follow-up for explicit triggers. */
+function refreshAllLivePrices(force = false): Promise<boolean> {
+  return liveQuoteRefreshCoordinator.refresh(force);
 }
 
-async function performRefreshAllLivePrices(): Promise<boolean> {
+async function performRefreshAllLivePrices(force = false): Promise<boolean> {
   const current = portfolioStore.getState();
   const cashHoldings = current.cashCushion && current.cashCushion.holdings;
   const tickersArray = currentAccountRole === 'guest'
@@ -1049,13 +1043,14 @@ async function performRefreshAllLivePrices(): Promise<boolean> {
     : currentAccountRole === 'admin'
       ? Array.from(new Set<string>([
         ...Object.keys(current.positions || {}),
-        ...(cashHoldings || []).map((holding: any) => holding.ticker)
+        ...(cashHoldings || []).map((holding: any) => holding.ticker),
+        ...(current.cashStocks || []).map((holding: any) => holding.ticker)
       ]))
       : [];
   if (tickersArray.length === 0) return true;
 
   try {
-    const updatedCount = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice);
+    const updatedCount = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice, force);
     if (updatedCount > 0) {
       // Automatic quote polling remains local; explicit sync pushes the final snapshot.
       state = portfolioStore.getState();
@@ -1074,10 +1069,8 @@ async function performRefreshAllLivePrices(): Promise<boolean> {
   }
 }
 
-function refreshAllLivePricesAfterCurrent(): Promise<boolean> {
-  const pending = liveQuoteRefreshInFlight;
-  if (!pending) return refreshAllLivePrices();
-  return pending.then(() => refreshAllLivePrices());
+function refreshAllLivePricesAfterCurrent(force = false): Promise<boolean> {
+  return liveQuoteRefreshCoordinator.refreshAfterCurrent(force);
 }
 
 function refreshSupplementalPortfolioData(): Promise<void> | void {
@@ -1093,7 +1086,7 @@ function refreshSupplementalPortfolioData(): Promise<void> | void {
     // Wait for an older quote batch before fetching prices for the latest assignment set.
     if (guestCloudRefreshInFlight) return guestCloudRefreshInFlight.then(() => undefined);
     const request = pullGuestPortfolioSnapshot()
-      .then(() => refreshAllLivePricesAfterCurrent())
+      .then(() => refreshAllLivePricesAfterCurrent(true))
       .then(() => undefined)
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
@@ -1536,7 +1529,7 @@ async function executeCommand(commandText: string) {
         await fetchLivePrice(effect.ticker, false, true); // Start quote request after the trade.
         await pushStateToGist();
       } else if (effect.type === 'REFRESH_ALL') {
-        await refreshAllLivePrices();
+        await refreshAllLivePrices(true);
       } else if (effect.type === 'SWITCH_VIEW') {
         setActiveView(effect.view);
       } else if (effect.type === 'CLEAR_TERMINAL') {
@@ -1665,7 +1658,7 @@ const portfolioAuthenticationRuntime = createPortfolioAuthenticationRuntime({
   setQuoteRefreshInterval,
   pullGuestPortfolioSnapshot,
   pullAdminPortfolioSnapshot: () => syncCloudState('pull'),
-  refreshAllLivePrices,
+  refreshAllLivePrices: () => refreshAllLivePrices(true),
   startApp,
   hideAuthContainer
 });
@@ -1715,7 +1708,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   showGuestBalanceView: () => setActiveView('BALANCE'),
   showSavedAdminView: () => switchView(state.activeView),
   scrollWorkspace: () => emitUiEvent('terminal:scroll-workspace'),
-  refreshLivePrices: () => refreshAllLivePrices(),
+  refreshLivePrices: () => refreshAllLivePrices(true),
   finishInitialQuoteRefresh: () => { initialQuoteRefreshPending = false; },
   renderBoardAnalystConsensus: () => renderBoardAnalystConsensus(getMarketInsightsTicker(state)),
   recoverPendingCloudWrites: async () => {
@@ -1769,14 +1762,14 @@ function bindStartupActions() {
   bindPortfolioNavigationRuntime({
     getAccountRole: () => currentAccountRole,
     setActiveView,
-    refreshLivePrices: refreshAllLivePrices
+    refreshLivePrices: () => refreshAllLivePrices(true)
   });
   bindPortfolioSyncRuntime({
     getAccountRole: () => currentAccountRole,
     refreshBrokerAccount: portfolioBrokerRefreshRuntime.refreshAccountInfo,
     refreshExecutedTrades: portfolioBrokerRefreshRuntime.refreshExecutedTrades,
     refreshActiveOrders: portfolioBrokerRefreshRuntime.refreshActiveOrders,
-    refreshQuotes: refreshAllLivePrices,
+    refreshQuotes: () => refreshAllLivePrices(true),
     pushCloud: async () => {
       state = portfolioStore.getState();
       return pushStateToCloud(true);

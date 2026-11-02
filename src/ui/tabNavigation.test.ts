@@ -23,12 +23,13 @@ describe('resolveTabNavigationIndex', () => {
 });
 
 describe('Margin desk navigation request triggers', () => {
-  it('refreshes the portfolio only when entering the Margin desk', () => {
+  it('refreshes when entering or switching between administrator Margin sections', () => {
     expect(shouldRefreshQuotesOnNavigation('BALANCE', 'COMBINED', true)).toBe(true);
     expect(shouldRefreshQuotesOnNavigation('SETTINGS', 'AAPL', true)).toBe(true);
-    expect(shouldRefreshQuotesOnNavigation('COMBINED', 'AAPL', true)).toBe(false);
-    expect(shouldRefreshQuotesOnNavigation('AAPL', 'MSFT', true)).toBe(false);
+    expect(shouldRefreshQuotesOnNavigation('COMBINED', 'AAPL', true)).toBe(true);
+    expect(shouldRefreshQuotesOnNavigation('AAPL', 'MSFT', true)).toBe(true);
     expect(shouldRefreshQuotesOnNavigation('AAPL', 'AAPL', true)).toBe(false);
+    expect(shouldRefreshQuotesOnNavigation('AAPL', 'BALANCE', true)).toBe(false);
   });
 
   it('does not start Margin requests for guest or unknown roles', () => {
