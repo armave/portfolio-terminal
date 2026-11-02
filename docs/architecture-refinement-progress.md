@@ -48,7 +48,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Preserve guest immediate Balance navigation, guest-only snapshot hydration, admin shared-cloud pull, and quote refresh ordering.
 - [x] Keep `handleSaveGatewaySecret` as an exported compatibility wrapper.
 - [x] Add Vitest coverage for empty/invalid credentials, initial guest startup, guest/admin account switching, persistence failure, and startup failure.
-- [ ] Run exact-head typecheck, Vitest, build, dead-code validation, dependency audits, and production browser smoke.
+- [x] Validation on implementation head `646a7da02c443673b3cfa7158c8fbba2acfe27cc`: 976 tests across 87 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke completed successfully. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41414716519) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41414716286).
 - [ ] Review feedback and merge.
 
 ## Remaining architecture work
