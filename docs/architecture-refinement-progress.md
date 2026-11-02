@@ -1,7 +1,7 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Guest portfolio snapshot hydration runtime extraction  
+**Current work:** Broker refresh request runtime extraction  
 **Base:** `e05a8c910195fddcdc9318083c90f066706d70e6`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
@@ -20,6 +20,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Merge the sync-runtime extraction in [PR #246](https://github.com/armave/portfolio-terminal/pull/246).
 - [x] Merge the authenticated session-runtime extraction in [PR #247](https://github.com/armave/portfolio-terminal/pull/247).
 - [x] Merge the credential and account-switch runtime extraction in [PR #248](https://github.com/armave/portfolio-terminal/pull/248).
+- [x] Merge session-bound guest snapshot hydration in [PR #249](https://github.com/armave/portfolio-terminal/pull/249).
 
 ## Merged PR #246 — portfolio sync runtime
 
@@ -52,7 +53,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Validation on final PR head `77356836d17d4fb2ffb2505d6cdc3ae7b8bf002d`: 976 tests across 87 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41414975296) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41414975300).
 - [x] Squash-merged to `main` as `e05a8c910195fddcdc9318083c90f066706d70e6`.
 
-## Current PR — guest portfolio hydration runtime
+## Merged PR #249 — guest portfolio hydration runtime
 
 - [x] Move guest snapshot fetching and account-generation checks behind a typed hydration service.
 - [x] Preserve server-scoped guest-only projection loading and reject responses for changed account, credential, role, or login generation.
@@ -61,6 +62,16 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Keep portfolio import, persistence, and rendering injected through the existing single app store owner.
 - [x] Add Vitest coverage for guest-role gating, desk preservation/fallback, successful hydration, and stale-session rejection.
 - [x] Validation on implementation head `560a2727664e950e5bb9838ddfb21dd13946ac12`: 982 tests across 88 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone browser smoke all passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41415633570) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41415633535).
+- [ ] Review and merge.
+
+## Current PR — broker refresh request runtime
+
+- [x] Add a typed broker refresh adapter for payload-free scheduled requests and awaitable manual-refresh requests.
+- [x] Preserve scheduled request ordering: account info, executed trades, then active orders.
+- [x] Reuse the same waitable request methods for manual portfolio sync.
+- [x] Keep broker response listeners, account classification, active-order target resolution, and financial calculations in the app unchanged.
+- [x] Add Vitest coverage for scheduled order, individual events, and waitable success/failure results.
+- [ ] Run exact-head typecheck, Vitest, build, dead-code validation, dependency audits, and production browser smoke.
 - [ ] Review and merge.
 
 ## Remaining architecture work
