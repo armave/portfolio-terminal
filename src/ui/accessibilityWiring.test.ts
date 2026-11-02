@@ -114,8 +114,12 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('const currentSnapshot = snapshot?.symbol === ticker.trim().toUpperCase() ? snapshot : null;');
     expect(source).not.toContain('setSnapshot(null)');
     expect(source).toContain('currentSnapshot && isLoading');
-    expect(source).toContain('Refresh failed; showing the last successful order-book snapshot.');
-    expect(source).toContain("error ? 'Retry depth' : 'Refresh depth'");
+    expect(source).toContain("translateText('Refreshing order book; previous snapshot remains visible.', language)");
+    expect(source).toContain("translateText('Refresh failed; showing the last successful order-book snapshot.', language)");
+    expect(source).toContain("const refreshLabel = translateText(error ? 'Retry depth' : 'Refresh depth', language);");
+    expect(source).toContain('aria-label={isLoading ? loadingLabel : refreshLabel}');
+    expect(source).toContain("translateText('Best bid', language)");
+    expect(source).toContain("translateText('Best ask', language)");
     expect(source).toContain('aria-busy={isLoading}');
   });
 
