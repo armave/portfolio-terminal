@@ -59,11 +59,11 @@ describe('auth transport runtime', () => {
 
   it('returns false for invalid sessions and empty tokens without network access', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'expired' }), { status: 401 })) as unknown as typeof fetch;
-    const { runtime } = createRuntime(fetchImpl);
+    const { runtime } = createRuntime(fetchImpl, '');
     await expect(runtime.validateGatewaySecret('')).resolves.toBe(false);
     await expect(runtime.validateGatewaySecret('expired')).resolves.toBe(false);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    await expect(runtime.getCurrentUser()).resolves.toBeDefined();
+    await expect(runtime.getCurrentUser()).rejects.toThrow('Not signed in.');
   });
 
   it('normalizes legacy account language and rejects malformed user records', async () => {
@@ -98,17 +98,23 @@ describe('auth transport runtime', () => {
   });
 
   it('does not let an invalidated in-flight directory read refill the cache', async () => {
-    let resolve!: (response: Response) => void;
-    const fetchImpl = vi.fn()
-      .mockImplementationOnce(() => new Promise<Response>((done) => { resolve = done; }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ users: [{ ...guest, id: 'guest-new' }] }), { status: 200 })) as unknown as typeof fetch;
+    let resolveStale!: (response: Response) => void;
+    let getCount = 0;
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        return new Response(JSON.stringify({ user: guest }), { status: 200 });
+      }
+      getCount += 1;
+      if (getCount === 1) return new Promise<Response>((resolve) => { resolveStale = resolve; });
+      return new Response(JSON.stringify({ users: [{ ...guest, id: 'guest-new' }] }), { status: 200 });
+    }) as unknown as typeof fetch;
     const { runtime } = createRuntime(fetchImpl);
     const stale = runtime.listUsers();
-    const update = runtime.updateUser('guest-1', { name: 'Updated Guest', role: 'guest' });
-    resolve(new Response(JSON.stringify({ users: [guest] }), { status: 200 }));
-    await update;
+    await runtime.updateUser('guest-1', { name: 'Updated Guest', role: 'guest' });
+    resolveStale(new Response(JSON.stringify({ users: [guest] }), { status: 200 }));
     await stale;
     await expect(runtime.listUsers()).resolves.toMatchObject([{ id: 'guest-new' }]);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it('clears cached identity and invokes application-wide cache clearing after logout', async () => {
