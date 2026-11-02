@@ -184,6 +184,79 @@ describe('fetchLivePriceFromProviders', () => {
     expect(result.error).toBeNull();
   });
 
+  it('keeps the daily move against previous close when the market is closed', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue({
+      price: {
+        current: 100,
+        previousClose: 95,
+        change: 5,
+        changePercent: 5.263157894736842,
+        regularMarketTime: nowSeconds,
+        marketState: 'CLOSED'
+      }
+    } as never);
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(result.price).toBe(100);
+    expect(result.quoteDetails).toMatchObject({
+      marketState: 'CLOSED',
+      change: 5,
+      changePercent: 5.263157894736842
+    });
+  });
+
+  it('preserves Yahoo change percentage when the previous close is unavailable', async () => {
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue({
+      price: {
+        current: 100,
+        changePercent: 5.26,
+        marketState: 'CLOSED'
+      }
+    } as never);
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(result.quoteDetails).toMatchObject({ changePercent: 5.26 });
+    expect(result.quoteDetails).not.toHaveProperty('change');
+  });
+
+  it('does not turn missing Freedom daily-change data into zero', async () => {
+    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+      symbol: 'AAPL',
+      price: 210,
+      previousClose: null,
+      change: null,
+      changePercent: null,
+      sourceTimestamp: Date.now(),
+      raw: {}
+    });
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(result.sourceName).toBe('Freedom TradeNet');
+    expect(result.quoteDetails).not.toHaveProperty('change');
+    expect(result.quoteDetails).not.toHaveProperty('changePercent');
+  });
+
+  it('does not turn missing fallback daily-change data into zero', async () => {
+    vi.mocked(fetchYahooQuoteData).mockRejectedValue(new Error('Yahoo unavailable'));
+    vi.mocked(fetchFallbackQuote).mockResolvedValue({
+      price: 42,
+      sourceName: 'Finnhub',
+      previousClose: null,
+      change: null,
+      changePercent: null
+    } as never);
+
+    const result = await fetchLivePriceFromProviders('MSFT');
+
+    expect(result.sourceName).toBe('Finnhub');
+    expect(result.quoteDetails).not.toHaveProperty('change');
+    expect(result.quoteDetails).not.toHaveProperty('changePercent');
+  });
+
   it('falls back through supported providers when Yahoo has no usable quote', async () => {
     vi.mocked(fetchYahooQuoteData).mockResolvedValue(null as never);
     vi.mocked(fetchFallbackQuote)
