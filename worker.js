@@ -72,6 +72,73 @@ function jsonError(message, status, headers) {
     return new Response(JSON.stringify({ error: message }), { status, headers });
 }
 
+const AUTH_EDGE_RATE_LIMITED_PATHS = new Set([
+    "/api/auth/login",
+    "/api/auth/bootstrap",
+    "/api/auth/users",
+    "/api/auth/me"
+]);
+const AUTH_EDGE_RATE_LIMIT_PERIOD_SECONDS = 60;
+
+function isTrustedCloudflareClientIp(value) {
+    // CF-Connecting-IP is injected by Cloudflare for inbound requests. Do not
+    // fall back to X-Forwarded-For or other caller-controlled proxy headers.
+    return typeof value === "string" &&
+        value.length > 0 &&
+        value.length <= 64 &&
+        /^[0-9a-fA-F:.]+$/.test(value);
+}
+
+async function enforceAuthEdgeRateLimit(request, env, pathname, corsHeaders) {
+    const required = env.AUTH_EDGE_LIMITER_REQUIRED === "true";
+    const limiter = env.AUTH_EDGE_RATE_LIMITER;
+
+    if (!limiter || typeof limiter.limit !== "function") {
+        if (!required) return null; // Local unit tests and unconfigured development.
+        console.error("Required authentication edge rate-limit binding is unavailable.");
+        return jsonError("Authentication protection is temporarily unavailable.", 503, {
+            ...corsHeaders,
+            "Cache-Control": "no-store"
+        });
+    }
+
+    const clientIp = request.headers.get("CF-Connecting-IP")?.trim();
+    if (!isTrustedCloudflareClientIp(clientIp)) {
+        if (!required) return null;
+        console.warn(JSON.stringify({ type: "auth_edge_rate_limit_missing_client_ip", route: pathname }));
+        return jsonError("Authentication protection is temporarily unavailable.", 503, {
+            ...corsHeaders,
+            "Cache-Control": "no-store"
+        });
+    }
+
+    try {
+        // Login is unauthenticated, so the Cloudflare-generated client IP is
+        // the only stable pre-authentication identity available here. Include
+        // the route to keep login, bootstrap, and account mutations isolated.
+        const { success } = await limiter.limit({ key: `auth:${pathname}:${clientIp}` });
+        if (typeof success !== "boolean") {
+            throw new Error("Rate limiter returned an invalid decision.");
+        }
+        if (success) return null;
+
+        // Do not log the IP, username, password, session token, or request body.
+        console.warn(JSON.stringify({ type: "auth_edge_rate_limited", route: pathname }));
+        return jsonError("Too many authentication requests. Try again shortly.", 429, {
+            ...corsHeaders,
+            "Cache-Control": "no-store",
+            "Retry-After": String(AUTH_EDGE_RATE_LIMIT_PERIOD_SECONDS)
+        });
+    } catch {
+        console.error(JSON.stringify({ type: "auth_edge_rate_limit_error", route: pathname }));
+        if (!required) return null;
+        return jsonError("Authentication protection is temporarily unavailable.", 503, {
+            ...corsHeaders,
+            "Cache-Control": "no-store"
+        });
+    }
+}
+
 function validSymbolList(symbol) {
     const symbols = symbol.split(",").map(value => value.trim()).filter(Boolean);
     return symbols.length > 0 && symbols.length <= MAX_TICKERS &&
@@ -327,6 +394,16 @@ export default {
 
         const incomingUrl = new URL(request.url);
         if (incomingUrl.pathname.startsWith("/api/auth/")) {
+            if (request.method === "POST" && AUTH_EDGE_RATE_LIMITED_PATHS.has(incomingUrl.pathname)) {
+                const rateLimitResponse = await enforceAuthEdgeRateLimit(
+                    request,
+                    env,
+                    incomingUrl.pathname,
+                    corsHeaders
+                );
+                if (rateLimitResponse) return rateLimitResponse;
+            }
+
             if (!env.PORTFOLIO_STATE_DO) return jsonError("PORTFOLIO_STATE_DO binding is missing.", 500, corsHeaders);
 
             let forwardedRequest = request;

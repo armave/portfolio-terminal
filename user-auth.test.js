@@ -8,9 +8,10 @@ class MemoryDurableStorage {
   async get(key) { return this.values.get(key); }
   async put(key, value) { this.values.set(key, value); }
   async delete(key) { return this.values.delete(key); }
-  async list({ prefix = "", limit = Number.POSITIVE_INFINITY } = {}) {
+  async list({ prefix = "", limit = Number.POSITIVE_INFINITY, startAfter } = {}) {
     return new Map([...this.values.entries()]
-      .filter(([key]) => key.startsWith(prefix))
+      .filter(([key]) => key.startsWith(prefix) && (typeof startAfter !== "string" || key > startAfter))
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
       .slice(0, limit));
   }
   async transaction(callback) {
@@ -223,17 +224,247 @@ describe("Durable Object account authentication", () => {
     expect(demote.status).toBe(409);
   });
 
-  it("keeps administrator sessions valid without a time-based expiry", async () => {
+  it("issues administrator sessions with a finite 30-day absolute expiry", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const before = Date.now();
+    const session = await bootstrap(store);
+    const sessionKey = await sessionStorageKey(session.token);
+    const stored = await storage.get(sessionKey);
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+
+    expect(session.expiresAt).toBeGreaterThanOrEqual(before + thirtyDays);
+    expect(session.expiresAt).toBeLessThanOrEqual(Date.now() + thirtyDays);
+    expect(stored).toMatchObject({
+      userId: session.user.id,
+      issuedAt: expect.any(Number),
+      expiresAt: session.expiresAt,
+      sessionVersion: 1
+    });
+    expect(session.expiresAt - stored.issuedAt).toBe(thirtyDays);
+
+    const verify = await request(store, "/api/auth/verify", {}, session.token);
+    expect(verify.status).toBe(200);
+  });
+
+  it("migrates legacy administrator expiry from issuedAt and rejects sessions without a trustworthy issue time", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const admin = await bootstrap(store);
+    const sessionKey = await sessionStorageKey(admin.token);
+    const issuedAt = Date.now() - 5 * 24 * 60 * 60 * 1000;
+    const legacy = await storage.get(sessionKey);
+    await storage.put(sessionKey, { ...legacy, issuedAt, expiresAt: null });
+
+    const migrated = await request(store, "/api/auth/verify", {}, admin.token);
+    expect(migrated.status).toBe(200);
+    expect(await storage.get(sessionKey)).toMatchObject({
+      issuedAt,
+      expiresAt: issuedAt + 30 * 24 * 60 * 60 * 1000,
+      sessionVersion: 1
+    });
+
+    const secondLogin = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "a-long-password-123"
+    });
+    expect(secondLogin.status).toBe(200);
+    const secondSession = await secondLogin.json();
+    const secondKey = await sessionStorageKey(secondSession.token);
+    const secondStored = await storage.get(secondKey);
+    const { issuedAt: _discardedIssueTime, ...withoutIssueTime } = secondStored;
+    await storage.put(secondKey, withoutIssueTime);
+
+    const rejected = await request(store, "/api/auth/verify", {}, secondSession.token);
+    expect(rejected.status).toBe(401);
+    expect(await storage.get(secondKey)).toBeUndefined();
+  });
+
+  it("rejects administrator sessions after 30 days even when their stored expiry is null", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const admin = await bootstrap(store);
+    const sessionKey = await sessionStorageKey(admin.token);
+    const stored = await storage.get(sessionKey);
+    const issuedAt = Date.now() - 30 * 24 * 60 * 60 * 1000 - 1;
+    await storage.put(sessionKey, { ...stored, issuedAt, expiresAt: null });
+
+    const verify = await request(store, "/api/auth/verify", {}, admin.token);
+    expect(verify.status).toBe(401);
+    expect(await storage.get(sessionKey)).toBeUndefined();
+  });
+
+  it("keeps at most five active sessions per user and evicts the oldest session", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const first = await bootstrap(store);
+    const sessions = [first];
+
+    for (let index = 0; index < 5; index += 1) {
+      const login = await request(store, "/api/auth/login", {
+        name: "Primary Admin",
+        password: "a-long-password-123"
+      });
+      expect(login.status).toBe(200);
+      sessions.push(await login.json());
+    }
+
+    const indexRecord = await storage.get("auth:user-sessions:" + first.user.id);
+    expect(indexRecord.sessions).toHaveLength(5);
+    expect(indexRecord.sessions.map((entry) => entry.key)).not.toContain(await sessionStorageKey(first.token));
+
+    const oldest = await request(store, "/api/auth/verify", {}, first.token);
+    expect(oldest.status).toBe(401);
+    for (const session of sessions.slice(1)) {
+      const valid = await request(store, "/api/auth/verify", {}, session.token);
+      expect(valid.status).toBe(200);
+    }
+  });
+
+  it("cleans expired and orphaned session records in bounded resumable batches", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    for (let index = 0; index < 205; index += 1) {
+      const key = "auth:session:" + String(index).padStart(4, "0");
+      await storage.put(key, {
+        userId: "deleted-user-" + index,
+        issuedAt: Date.now() - 40 * 24 * 60 * 60 * 1000,
+        expiresAt: Date.now() - 10 * 24 * 60 * 60 * 1000
+      });
+    }
+
+    expect(await store.cleanupExpiredSessions({ force: true })).toBe(100);
+    expect([...storage.values.keys()].filter((key) => key.startsWith("auth:session:"))).toHaveLength(105);
+    expect(await storage.get("maintenance:auth-session-cleanup-cursor:v1")).toBe("auth:session:0099");
+
+    expect(await store.cleanupExpiredSessions({ force: true })).toBe(100);
+    expect([...storage.values.keys()].filter((key) => key.startsWith("auth:session:"))).toHaveLength(5);
+    expect(await store.cleanupExpiredSessions({ force: true })).toBe(5);
+    expect([...storage.values.keys()].filter((key) => key.startsWith("auth:session:"))).toHaveLength(0);
+    expect(await storage.get("maintenance:auth-session-cleanup-cursor:v1")).toBeUndefined();
+  });
+
+  it("removes a logged-out token from the per-user session index", async () => {
     vi.stubGlobal("crypto", webcrypto);
     const { store, storage } = createStore();
     const session = await bootstrap(store);
-    expect(session.expiresAt).toBeNull();
-
-    // A legacy administrator token with an already-passed expiresAt is still valid.
     const sessionKey = await sessionStorageKey(session.token);
-    await storage.put(sessionKey, { userId: session.user.id, expiresAt: Date.now() - 1000 });
+    const indexKey = "auth:user-sessions:" + session.user.id;
+
+    const logout = await request(store, "/api/auth/logout", {}, session.token);
+    expect(logout.status).toBe(200);
+    expect(await storage.get(sessionKey)).toBeUndefined();
+    expect((await storage.get(indexKey)).sessions).toHaveLength(0);
+
     const verify = await request(store, "/api/auth/verify", {}, session.token);
-    expect(verify.status).toBe(200);
+    expect(verify.status).toBe(401);
+  });
+
+  it("throttles session cleanup while allowing an explicit bounded cleanup pass", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const listSpy = vi.spyOn(storage, "list");
+
+    expect(await store.cleanupExpiredSessions()).toBe(0);
+    expect(await store.cleanupExpiredSessions()).toBe(0);
+    expect(listSpy).toHaveBeenCalledTimes(1);
+
+    await store.cleanupExpiredSessions({ force: true });
+    expect(listSpy).toHaveBeenCalledTimes(2);
+    expect(await storage.get("maintenance:auth-session-cleanup-last-run:v1")).toEqual(expect.any(Number));
+  });
+
+  it("invalidates legacy unindexed sessions when the account enters the indexed-session generation", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store, storage } = createStore();
+    const legacy = await bootstrap(store);
+    const legacyKey = await sessionStorageKey(legacy.token);
+    const stored = await storage.get(legacyKey);
+    await storage.delete("auth:user-sessions:" + legacy.user.id);
+    await storage.put(legacyKey, {
+      ...stored,
+      sessionVersion: 0,
+      expiresAt: null
+    });
+
+    const beforeLogin = await request(store, "/api/auth/verify", {}, legacy.token);
+    expect(beforeLogin.status).toBe(200);
+    expect(Number.isFinite((await storage.get(legacyKey)).expiresAt)).toBe(true);
+
+    const newLogin = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "a-long-password-123"
+    });
+    expect(newLogin.status).toBe(200);
+    const migratedSession = await newLogin.json();
+
+    const oldToken = await request(store, "/api/auth/verify", {}, legacy.token);
+    expect(oldToken.status).toBe(401);
+    const newToken = await request(store, "/api/auth/verify", {}, migratedSession.token);
+    expect(newToken.status).toBe(200);
+  });
+
+  it("keeps the current session after password change and revokes other sessions", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const current = await bootstrap(store);
+    const otherLogin = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "a-long-password-123"
+    });
+    const other = await otherLogin.json();
+
+    const changed = await request(store, "/api/auth/users", {
+      action: "update",
+      id: current.user.id,
+      password: "new-strong-password-456"
+    }, current.token);
+    expect(changed.status).toBe(200);
+
+    const currentStillValid = await request(store, "/api/auth/verify", {}, current.token);
+    const otherRevoked = await request(store, "/api/auth/verify", {}, other.token);
+    expect(currentStillValid.status).toBe(200);
+    expect(otherRevoked.status).toBe(401);
+
+    const oldPassword = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "a-long-password-123"
+    });
+    const newPassword = await request(store, "/api/auth/login", {
+      name: "Primary Admin",
+      password: "new-strong-password-456"
+    });
+    expect(oldPassword.status).toBe(401);
+    expect(newPassword.status).toBe(200);
+  });
+
+  it("revokes all target-user sessions when an administrator changes their role", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    const { store } = createStore();
+    const administrator = await bootstrap(store);
+    const created = await request(store, "/api/auth/users", {
+      action: "create",
+      name: "Second Admin",
+      password: "another-long-password-123",
+      role: "admin"
+    }, administrator.token);
+    expect(created.status).toBe(201);
+    const secondUser = (await created.json()).user;
+    const secondLogin = await request(store, "/api/auth/login", {
+      name: "Second Admin",
+      password: "another-long-password-123"
+    });
+    const secondSession = await secondLogin.json();
+
+    const changed = await request(store, "/api/auth/users", {
+      action: "update",
+      id: secondUser.id,
+      role: "guest"
+    }, administrator.token);
+    expect(changed.status).toBe(200);
+
+    const revoked = await request(store, "/api/auth/verify", {}, secondSession.token);
+    expect(revoked.status).toBe(401);
   });
 
   it("issues guest sessions for 30 days and upgrades legacy guest sessions", async () => {
@@ -262,16 +493,19 @@ describe("Durable Object account authentication", () => {
     // They receive a full 30-day lifetime measured from their original issue time.
     const sessionKey = await sessionStorageKey(guestSession.token);
     const issuedAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
+    const issuedSession = await storage.get(sessionKey);
     await storage.put(sessionKey, {
-      userId: guestUser.id,
-      expiresAt: issuedAt + 7 * 24 * 60 * 60 * 1000
+      ...issuedSession,
+      expiresAt: issuedAt + 7 * 24 * 60 * 60 * 1000,
+      issuedAt: undefined
     });
     const verify = await request(store, "/api/auth/verify", {}, guestSession.token);
     expect(verify.status).toBe(200);
     expect(await storage.get(sessionKey)).toEqual({
-      userId: guestUser.id,
+      ...issuedSession,
       issuedAt,
-      expiresAt: issuedAt + thirtyDays
+      expiresAt: issuedAt + thirtyDays,
+      sessionVersion: 1
     });
   });
 
@@ -292,8 +526,9 @@ describe("Durable Object account authentication", () => {
     const guestSession = await login.json();
     const sessionKey = await sessionStorageKey(guestSession.token);
     const issuedAt = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    const issuedSession = await storage.get(sessionKey);
     await storage.put(sessionKey, {
-      userId: guestUser.id,
+      ...issuedSession,
       issuedAt,
       expiresAt: issuedAt + 30 * 24 * 60 * 60 * 1000
     });

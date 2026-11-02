@@ -147,6 +147,9 @@ describe('terminal command validation and cash routing', () => {
   });
 
   it('does not report sale success or request cloud sync when persistence fails', () => {
+  it('reports blocked cost-basis sales as errors and does not request cloud sync', () => {
+    const error = new Error('Position has no cost-basis tranches; reconcile its entry cost before selling.');
+    vi.spyOn(portfolioStore, 'sellStock').mockImplementation(() => { throw error; });
     const state = portfolioStore.getState();
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
       ...state,
@@ -167,6 +170,15 @@ describe('terminal command validation and cash routing', () => {
     const result = CommandDispatcher.execute('sold all AAPL for 120');
     expect(result.type).toBe('err');
     expect(result.text).toBe(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
+          tranches: []
+        }
+      }
+    });
+
+    const result = CommandDispatcher.execute('sold all AAPL for 120');
+
+    expect(result.type).toBe('err');
+    expect(result.text).toContain('Sale blocked because purchase lots are missing or inconsistent');
     expect(result.sideEffect).toBeUndefined();
   });
 

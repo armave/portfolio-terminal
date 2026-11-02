@@ -961,6 +961,149 @@ describe('Freedom cashflows Worker action', () => {
 });
 
 
+describe('Cloudflare authentication edge rate limiting', () => {
+  const origin = 'https://portfolio.example.test';
+  const clientIp = '203.0.113.42';
+
+  function buildEnv({
+    decision = { success: true },
+    limiter = { limit: vi.fn(async () => decision) },
+    required = 'true',
+    doFetch = vi.fn(async () => new Response(JSON.stringify({ token: 'session-token' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }))
+  } = {}) {
+    return {
+      GATEWAY_SECRET: 'test-gateway-secret',
+      ALLOWED_ORIGINS: origin,
+      AUTH_EDGE_LIMITER_REQUIRED: required,
+      AUTH_EDGE_RATE_LIMITER: limiter,
+      PORTFOLIO_STATE_DO: {
+        idFromName: vi.fn().mockReturnValue('portfolio_state'),
+        get: vi.fn().mockReturnValue({ fetch: doFetch })
+      },
+      doFetch,
+      limiter
+    };
+  }
+
+  function authRequest(pathname, headers = {}, body = '{}') {
+    return new Request(`https://worker.test${pathname}`, {
+      method: 'POST',
+      headers: {
+        Origin: origin,
+        'Content-Type': 'application/json',
+        'CF-Connecting-IP': clientIp,
+        ...headers
+      },
+      body
+    });
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('checks the Cloudflare-generated client address before forwarding a login request', async () => {
+    const env = buildEnv();
+    const response = await worker.fetch(authRequest('/api/auth/login', {
+      'X-Forwarded-For': '198.51.100.200'
+    }), env);
+
+    expect(response.status).toBe(200);
+    expect(env.limiter.limit).toHaveBeenCalledWith({
+      key: `auth:/api/auth/login:${clientIp}`
+    });
+    expect(env.doFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects over-limit auth requests before the Durable Object and preserves retry/CORS headers', async () => {
+    const env = buildEnv({ decision: { success: false } });
+    const response = await worker.fetch(authRequest('/api/auth/login'), env);
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({
+      error: 'Too many authentication requests. Try again shortly.'
+    });
+    expect(response.headers.get('Retry-After')).toBe('60');
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin);
+    expect(response.headers.get('Content-Type')).toContain('application/json');
+    expect(env.doFetch).not.toHaveBeenCalled();
+  });
+
+  it('uses independent route keys for login and account/password mutations', async () => {
+    const env = buildEnv();
+    await worker.fetch(authRequest('/api/auth/login'), env);
+    await worker.fetch(authRequest('/api/auth/me'), env);
+    await worker.fetch(authRequest('/api/auth/users'), env);
+
+    expect(env.limiter.limit.mock.calls.map(([argument]) => argument.key)).toEqual([
+      `auth:/api/auth/login:${clientIp}`,
+      `auth:/api/auth/me:${clientIp}`,
+      `auth:/api/auth/users:${clientIp}`
+    ]);
+    expect(env.doFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('fails closed in production when the required binding is missing', async () => {
+    const env = buildEnv({ limiter: undefined });
+    delete env.AUTH_EDGE_RATE_LIMITER;
+    const response = await worker.fetch(authRequest('/api/auth/login'), env);
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin);
+    expect(env.doFetch).not.toHaveBeenCalled();
+  });
+
+  it('fails closed in production when the edge limiter cannot make a decision', async () => {
+    const env = buildEnv({
+      limiter: { limit: vi.fn().mockRejectedValue(new Error('internal binding detail')) }
+    });
+    const response = await worker.fetch(authRequest('/api/auth/login'), env);
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: 'Authentication protection is temporarily unavailable.'
+    });
+    expect(env.doFetch).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a production request has no trusted Cloudflare client address', async () => {
+    const env = buildEnv();
+    const request = authRequest('/api/auth/login', {
+      'CF-Connecting-IP': '',
+      'X-Forwarded-For': clientIp
+    });
+    const response = await worker.fetch(request, env);
+
+    expect(response.status).toBe(503);
+    expect(env.limiter.limit).not.toHaveBeenCalled();
+    expect(env.doFetch).not.toHaveBeenCalled();
+  });
+
+  it('does not rate-limit non-sensitive auth reads or non-auth routes', async () => {
+    const env = buildEnv();
+    const status = await worker.fetch(new Request('https://worker.test/api/auth/status', {
+      headers: { Origin: origin }
+    }), env);
+    expect(status.status).toBe(200);
+    expect(env.limiter.limit).not.toHaveBeenCalled();
+  });
+
+  it('allows development/unit-test mode to run without a configured edge binding', async () => {
+    const env = buildEnv({ required: 'false', limiter: undefined });
+    delete env.AUTH_EDGE_RATE_LIMITER;
+    const response = await worker.fetch(authRequest('/api/auth/login'), env);
+
+    expect(response.status).toBe(200);
+    expect(env.doFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('gateway authentication and request contract', () => {
 
   it('allows the exact local Vite origin for initial admin bootstrap', async () => {
@@ -1327,7 +1470,11 @@ describe('Durable Object guest portfolio ownership', () => {
       get: async (key) => values.get(key),
       put: async (key, value) => values.set(key, value),
       delete: async (key) => values.delete(key),
-      list: async ({ prefix }) => new Map([...values.entries()].filter(([key]) => key.startsWith(prefix))),
+      list: async ({ prefix = "", limit = Number.POSITIVE_INFINITY, startAfter } = {}) =>
+        new Map([...values.entries()]
+          .filter(([key]) => key.startsWith(prefix) && (typeof startAfter !== "string" || key > startAfter))
+          .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+          .slice(0, limit)),
       transaction: async (callback) => callback({
         get: async (key) => values.get(key),
         put: async (key, value) => values.set(key, value),
@@ -1344,7 +1491,12 @@ describe('Durable Object guest portfolio ownership', () => {
     const issueTestSession = async (token, userId) => {
       const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)));
       const hex = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
-      values.set('auth:session:' + hex, { userId, expiresAt: Date.now() + 60_000 });
+      const issuedAt = Date.now();
+      values.set('auth:session:' + hex, {
+        userId,
+        issuedAt,
+        expiresAt: issuedAt + 60_000
+      });
     };
     await issueTestSession('admin-token', 'admin-1');
     await issueTestSession('guest-one-token', 'guest-1');

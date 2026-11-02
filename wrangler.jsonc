@@ -27,5 +27,20 @@
         "PortfolioStateDO"
       ]
     }
-  ]
+  ],
+  // Stable namespace for this Worker. The binding is approximate and location-local;
+  // route-qualified keys keep authentication counters separate from other resources.
+  "ratelimits": [
+    {
+      "name": "AUTH_EDGE_RATE_LIMITER",
+      "namespace_id": "28103110320261103",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
+    }
+  ],
+  "vars": {
+    "AUTH_EDGE_LIMITER_REQUIRED": "true"
+  }
 }

@@ -1433,6 +1433,125 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().positions.AAPL.commBuy).toBeCloseTo(0.6, 8);
   });
 
+  it('blocks terminal and AI-confirmed sales when acquisition lots are missing, without mutating financial state', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commVolumePct: 0,
+      minCommOrder: 0,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const position = store.getState().positions.AAPL;
+    store.setState({
+      positions: {
+        ...store.getState().positions,
+        AAPL: { ...position, currentPrice: 500, tranches: [] }
+      }
+    });
+
+    const before = store.getState();
+    const beforeSnapshot = structuredClone(before);
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(() => store.sellStock('AAPL', 'ALL', 120, '2026-10-16'))
+      .toThrow('Position has no cost-basis tranches');
+    expect(() => store.sellMarginPosition('AAPL', 1, 120, Date.parse('2026-10-16')))
+      .toThrow('Position has no cost-basis tranches');
+
+    expect(store.getState()).toBe(before);
+    expect(store.getState()).toEqual(beforeSnapshot);
+    expect(store.getState().balance).toBe(beforeSnapshot.balance);
+    expect(store.getState().cashCushion).toEqual(beforeSnapshot.cashCushion);
+    expect(store.getState().closedTrades).toEqual(beforeSnapshot.closedTrades);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      tranches: [{ qty: 1, price: 100 }],
+      message: 'Recorded open shares (2) do not match tranche total (1)'
+    },
+    {
+      tranches: [{ qty: 3, price: 100 }],
+      message: 'Position tranche total (3) exceeds recorded open shares (2)'
+    }
+  ])('rejects sale when FIFO lots do not match the recorded share quantity', ({ tranches, message }) => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const position = store.getState().positions.AAPL;
+    store.setState({
+      positions: {
+        ...store.getState().positions,
+        AAPL: { ...position, tranches }
+      }
+    });
+    const before = store.getState();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(() => store.sellStock('AAPL', 1, 120, '2026-10-16')).toThrow(message);
+    expect(store.getState()).toBe(before);
+    expect(store.getState().positions.AAPL.shares).toBe(2);
+    expect(store.getState().balance).toBe(before.balance);
+    expect(store.getState().closedTrades).toEqual(before.closedTrades);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('rejects explicit lot commissions that exceed the recorded aggregate buy commission', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const position = store.getState().positions.AAPL;
+    store.setState({
+      positions: {
+        ...store.getState().positions,
+        AAPL: {
+          ...position,
+          commBuy: 0,
+          tranches: [{ qty: 2, price: 100, buyCommission: 5 }]
+        }
+      }
+    });
+    const before = store.getState();
+
+    expect(() => store.sellStock('AAPL', 1, 120, '2026-10-16'))
+      .toThrow('Tranche entry commissions exceed the recorded position commission');
+    expect(store.getState()).toBe(before);
+    expect(store.getState().closedTrades).toHaveLength(0);
+  });
+
+  it('keeps legacy alias lots with trustworthy entry prices sellable', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const position = store.getState().positions.AAPL;
+    store.setState({
+      positions: {
+        ...store.getState().positions,
+        AAPL: {
+          ...position,
+          tranches: [{ shares: 2, entryPrice: 100, purchaseDate: '2026-10-15' } as any]
+        }
+      }
+    });
+
+    store.sellStock('AAPL', 1, 120, '2026-10-16');
+
+    expect(store.getState().closedTrades[0]).toMatchObject({
+      shares: 1,
+      avgBuyPrice: 100,
+      grossProfit: 20
+    });
+    expect(store.getState().positions.AAPL.tranches).toEqual([
+      expect.objectContaining({ qty: 1, price: 100 })
+    ]);
+  });
+
   it('rejects invalid confirmed sale inputs without changing canonical state', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
