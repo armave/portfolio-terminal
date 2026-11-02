@@ -3,7 +3,6 @@ import {
   PortfolioState,
   PositionRecord,
   Holding,
-  Tranche,
   TrancheItem,
   BrokerAssumptions,
   PendingMutation,
