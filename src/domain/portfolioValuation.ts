@@ -83,8 +83,8 @@ export function getPortfolioValuationReliability(
   input: PortfolioValuationReliabilityInput
 ): PortfolioValuationReliability {
   if (!input.accountBalanceAvailable || input.unpricedHoldings > 0) return 'incomplete';
-  if (input.accountBalanceStale ||
-
+  if (
+    input.accountBalanceStale ||
     input.staleQuotes > 0 ||
     input.delayedQuotes > 0 ||
     input.unknownQuotes > 0 ||

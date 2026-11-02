@@ -362,6 +362,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Provisional valuation": "Предварительная оценка",
   "Some market quotes or broker account data are stale, delayed, or lack verifiable observation times. Treat margin-risk figures as provisional and refresh data before relying on them.": "Часть котировок или данные брокерского счёта устарели, поступили с задержкой либо не имеют проверяемого времени наблюдения. Считайте оценку маржинального риска предварительной и обновите данные, прежде чем полагаться на неё.",
   "Broker account snapshot is stale": "Снимок данных брокерского счёта устарел",
+  "Broker USD balance is unavailable in the latest snapshot": "В последнем снимке данных отсутствует доступный баланс брокерского счёта в USD",
   "Source unavailable": "Источник недоступен",
   "Stale": "Устарело",
   "Delayed": "С задержкой",

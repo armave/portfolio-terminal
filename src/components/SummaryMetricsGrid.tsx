@@ -461,9 +461,23 @@ function SummaryMetricsGridView() {
       Date.now(),
       refreshIntervalMs
     );
+    const hasCurrentBrokerUsdBalance = state.brokerAccountInfo?.loaded === true &&
+      Array.isArray(state.brokerAccountInfo.balances) &&
+      state.brokerAccountInfo.balances.some((balance) =>
+        String(balance.currency ?? '').toUpperCase() === 'USD' &&
+        balance.amount !== null && balance.amount !== undefined && balance.amount !== '' &&
+        Number.isFinite(Number(balance.amount))
+      );
+    const brokerBalanceIsStale = state.brokerAccountInfo?.status === 'stale' ||
+      (state.brokerAccountInfo?.loaded === true && !hasCurrentBrokerUsdBalance);
+    const brokerBalanceStatusText = state.brokerAccountInfo?.status === 'stale'
+      ? translateText('Broker account snapshot is stale', getAppLanguage())
+      : state.brokerAccountInfo?.loaded === true && !hasCurrentBrokerUsdBalance
+        ? translateText('Broker USD balance is unavailable in the latest snapshot', getAppLanguage())
+        : '';
     const valuationStatus = getPortfolioValuationReliability({
       accountBalanceAvailable: valuation.accountBalanceAvailable,
-      accountBalanceStale: state.brokerAccountInfo?.status === 'stale',
+      accountBalanceStale: brokerBalanceIsStale,
       unpricedHoldings: valuation.unpricedHoldings,
       staleQuotes: valuationQuoteSummary.stale,
       delayedQuotes: valuationQuoteSummary.delayed,
@@ -472,9 +486,7 @@ function SummaryMetricsGridView() {
     });
     const valuationQuoteFreshnessText = [
       formatQuoteFreshnessSummary(valuationQuoteSummary),
-      state.brokerAccountInfo?.status === 'stale'
-        ? translateText('Broker account snapshot is stale', getAppLanguage())
-        : ''
+      brokerBalanceStatusText
     ].filter(Boolean).join(' · ');
     const totalAccountEquity = valuation.equity;
     const totalAccountAssets = valuation.totalHoldingsValue + valuation.cashBalance;

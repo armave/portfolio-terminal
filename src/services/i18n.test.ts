@@ -399,7 +399,7 @@ describe('app localization', () => {
     expect(translateText(
       'Some market quotes or broker account data are stale, delayed, or lack verifiable observation times. Treat margin-risk figures as provisional and refresh data before relying on them.',
       'ru'
-    )).toContain('Часть котировок устарела, поступила с задержкой или не имеет проверяемого времени наблюдения.');
+    )).toContain('Часть котировок или данные брокерского счёта устарели');
     expect(translateText('Broker account snapshot is stale', 'ru')).toBe('Снимок данных брокерского счёта устарел');
   });
 });

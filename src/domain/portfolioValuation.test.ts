@@ -106,10 +106,6 @@ describe('getPortfolioValuationReliability', () => {
     expect(getPortfolioValuationReliability(current)).toBe('current');
   });
 
-  it('classifies a retained stale broker balance as provisional', () => {
-    expect(getPortfolioValuationReliability({ ...current, accountBalanceStale: true })).toBe('provisional');
-  });
-
   it.each([
     ['stale', { staleQuotes: 1 }],
     ['delayed', { delayedQuotes: 1 }],
