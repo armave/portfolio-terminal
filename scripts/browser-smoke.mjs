@@ -497,6 +497,8 @@ try {
       worker.count('POST', '/api/history') > historyWritesBeforeReset,
     'confirmed local portfolio and closed-history reset'
   );
+  // Reset returns the app to its default desk; reopen Settings for sign-out.
+  await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   await page.getByRole('button', { name: 'Sign out' }).click();
   await waitForAuthOverlay(page, true);
