@@ -12,17 +12,20 @@ describe('portfolio navigation runtime bindings', () => {
 
   it('checks the active role when navigation is requested', () => {
     let role: 'admin' | 'guest' | null = 'guest';
-    const setActiveView = vi.fn();
+    let activeView = 'SETTINGS';
+    const setActiveView = vi.fn((view: string) => { activeView = view; });
     const refreshLivePrices = vi.fn().mockResolvedValue(undefined);
 
     unbind = bindPortfolioNavigationRuntime({
       getAccountRole: () => role,
+      getActiveView: () => activeView,
       setActiveView,
       refreshLivePrices
     });
 
     emitUiEvent('portfolio:set-active-view', { view: 'COMBINED' });
     expect(setActiveView).toHaveBeenLastCalledWith('BALANCE');
+    expect(refreshLivePrices).toHaveBeenCalledTimes(1);
 
     role = 'admin';
     emitUiEvent('portfolio:set-active-view', { view: 'COMBINED' });
@@ -36,6 +39,7 @@ describe('portfolio navigation runtime bindings', () => {
 
     unbind = bindPortfolioNavigationRuntime({
       getAccountRole: () => 'admin',
+      getActiveView: () => 'SETTINGS',
       setActiveView: vi.fn(),
       refreshLivePrices
     });
@@ -52,6 +56,7 @@ describe('portfolio navigation runtime bindings', () => {
 
     unbind = bindPortfolioNavigationRuntime({
       getAccountRole: () => 'admin',
+      getActiveView: () => 'COMBINED',
       setActiveView,
       refreshLivePrices
     });
@@ -62,6 +67,38 @@ describe('portfolio navigation runtime bindings', () => {
     emitUiEvent('portfolio:refresh-live-prices', { resolve: vi.fn() });
 
     expect(setActiveView).not.toHaveBeenCalled();
+    expect(refreshLivePrices).not.toHaveBeenCalled();
+  });
+
+  it('refreshes automatically when the canonical navigation event enters Balance', () => {
+    let activeView = 'AAPL';
+    const setActiveView = vi.fn((view: string) => { activeView = view; });
+    const refreshLivePrices = vi.fn().mockResolvedValue(true);
+    unbind = bindPortfolioNavigationRuntime({
+      getAccountRole: () => 'admin',
+      getActiveView: () => activeView,
+      setActiveView,
+      refreshLivePrices
+    });
+
+    emitUiEvent('portfolio:set-active-view', { view: 'BALANCE' });
+
+    expect(setActiveView).toHaveBeenCalledWith('BALANCE');
+    expect(activeView).toBe('BALANCE');
+    expect(refreshLivePrices).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['BALANCE', 'CASH_CUSHION'])('does not re-refresh when already on Balance (%s)', (activeView) => {
+    const refreshLivePrices = vi.fn().mockResolvedValue(true);
+    unbind = bindPortfolioNavigationRuntime({
+      getAccountRole: () => 'admin',
+      getActiveView: () => activeView,
+      setActiveView: vi.fn(),
+      refreshLivePrices
+    });
+
+    emitUiEvent('portfolio:set-active-view', { view: 'BALANCE' });
+
     expect(refreshLivePrices).not.toHaveBeenCalled();
   });
 });
