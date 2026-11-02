@@ -2914,8 +2914,8 @@ summary:focus-visible {
 }
 
 #boardTitle {
-  flex: 1 1 24rem;
-  min-width: min(100%, 18rem);
+  flex: 1 1 0;
+  min-width: min(100%, 16rem);
   width: auto;
   overflow-wrap: anywhere;
 }
