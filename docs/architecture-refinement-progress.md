@@ -89,7 +89,9 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Validation on final PR head `b2727bbe7cb14f056b65725298f67c6240f32872`: 991 tests across 90 files; typecheck, build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41418140232) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41418140126).
 - [x] Squash-merged to `main` as `abe430d91482b25666bba01bc622268a79ba6feb`. The full dependency tree still reports low/moderate advisories; the production-only audit reports zero vulnerabilities.
 
-## Current PR — consolidated runtime boundaries
+## Current PR #252 — consolidated broker and startup runtimes
+
+[PR #252](https://github.com/armave/portfolio-terminal/pull/252)
 
 - [x] Move administrator broker request listeners for account info, executed trades, and active orders into `portfolioBrokerRequestRuntime.ts`.
 - [x] Preserve account-session scoping in `App.tsx`, including in-flight request coalescing and stale-session checks.
@@ -100,7 +102,9 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Preserve the first-account setup rule that retains the legacy Gateway Secret until administrator bootstrap.
 - [x] Preserve the rule that an unresolved identity never renders a cached administrator workspace.
 - [x] Extract fresh guest assignment IDs and deterministic legacy assignment IDs into a tested domain helper.
-- [ ] Run exact-head typecheck, Vitest, build, dead-code validation, dependency audits, and production browser smoke.
+- [x] Exact-head validation on `4ac5200e594b5d980b58fe211f595677fa7ddc9b`: 1,003 tests across 93 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed.
+- [x] [Validate run 41420114028](https://github.com/armave/portfolio-terminal/actions/runs/41420114028) and [Pull Request CI run 41420113643](https://github.com/armave/portfolio-terminal/actions/runs/41420113643) both passed all steps.
+- [x] Production-only dependency audit: 0 vulnerabilities. Full dependency tree: 9 low/moderate advisories (2 low, 7 moderate), unresolved and not represented as fixed.
 - [ ] Review and merge.
 
 ## Remaining architecture work
