@@ -32,24 +32,24 @@ function createFixture(initialRole: AuthUser['role'] | null = 'admin', initialId
     getCurrentUser: vi.fn(async () => guestUser),
     getAccountRole: () => role,
     getAccountId: () => accountId,
-    setAccountRole: vi.fn((nextRole) => {
+    setAccountRole: vi.fn((nextRole: AuthUser['role'] | null) => {
       role = nextRole;
       calls.push(`role:${nextRole ?? 'none'}`);
     }),
-    setAccountId: vi.fn((nextId) => {
+    setAccountId: vi.fn((nextId: string | null) => {
       accountId = nextId;
       calls.push(`account:${nextId ?? 'none'}`);
     }),
-    setCloudWritePermission: vi.fn((allowed) => {
+    setCloudWritePermission: vi.fn((allowed: boolean) => {
       canWriteCloudState = allowed;
       calls.push(`cloud-write:${allowed}`);
     }),
-    setSessionIdentity: vi.fn((identity) => calls.push(`identity:${identity ?? 'none'}`)),
+    setSessionIdentity: vi.fn((identity: string | null) => calls.push(`identity:${identity ?? 'none'}`)),
     clearCloudEncryptionSecretCache: vi.fn(() => calls.push('clear-encryption-cache')),
     clearPendingCloudWrite: vi.fn(() => calls.push('clear-cloud-write-timer')),
     clearGuestWorkspace: vi.fn(() => calls.push('clear-guest-workspace')),
-    emitUserChanged: vi.fn((user) => calls.push(user ? `user:${user.role}:${user.id}` : 'user:none')),
-    showToast: vi.fn((message, tone) => calls.push(`toast:${tone}:${message}`)),
+    emitUserChanged: vi.fn((user: AuthUser | null) => calls.push(user ? `user:${user.role}:${user.id}` : 'user:none')),
+    showToast: vi.fn((message: string, tone: 'error') => calls.push(`toast:${tone}:${message}`)),
     logoutAccount: vi.fn(async () => { calls.push('logout-api'); }),
     clearSavedGatewaySecret: vi.fn(() => calls.push('clear-saved-secret')),
     persistGatewaySecret: vi.fn(async () => {
@@ -114,7 +114,7 @@ describe('portfolio session runtime', () => {
     });
     expect(fixture.dependencies.clearGuestWorkspace).not.toHaveBeenCalled();
     expect(fixture.calls).toContain('cloud-write:true');
-    expect(fixture.calls.at(-1)).toBe('user:admin:admin-a');
+    expect(fixture.calls[fixture.calls.length - 1]).toBe('user:admin:admin-a');
   });
 
   it('does not invalidate caches or clear workspace for a repeated identity notification', async () => {
