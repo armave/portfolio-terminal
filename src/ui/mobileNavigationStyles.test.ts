@@ -16,6 +16,14 @@ describe('mobile workspace navigation styles', () => {
     expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*scroll-snap-type:\s*none;/);
   });
 
+  it('defines the navigation layout once and avoids competing desktop/mobile overflow rules', () => {
+    expect(mobileNavigationStyles.match(/#tickerTabs\s*\{/g) || []).toHaveLength(2);
+    expect(mobileNavigationStyles.match(/#tickerTabs>\*\s*\{/g) || []).toHaveLength(2);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s);
+    expect(mobileNavigationStyles).toMatch(/@media\s*\(max-width:\s*768px\)\s*\{\s*#tickerTabs\s*\{[^}]*flex-wrap:\s*wrap;[^}]*overflow-x:\s*visible;/s);
+    expect(stylesheet.match(/#tickerTabs\s*\{/g) || []).toHaveLength(2);
+  });
+
   it('uses compact Combined and ticker captions only on phone-sized screens', () => {
     expect(mobileNavigationStyles).toMatch(/@media\s*\(max-width:\s*480px\)/);
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-label--desktop\s*\{\s*display:\s*none;/);
