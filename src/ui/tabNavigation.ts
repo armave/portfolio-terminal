@@ -35,11 +35,17 @@ export function isMarginDeskView(view: string, isAdmin: boolean): boolean {
   return isAdmin && !NON_MARGIN_DESK_VIEWS.has(view);
 }
 
-/** Refresh market quotes whenever an administrator selects a different Margin section. */
+/**
+ * Refresh quotes when entering Balance or a different administrator Margin section.
+ * Balance displays the same live position/holding prices, so returning to it must
+ * not leave the user looking at quotes fetched only during the previous app load.
+ */
 export function shouldRefreshQuotesOnNavigation(
   currentView: string,
   nextView: string,
   isAdmin: boolean
 ): boolean {
-  return currentView !== nextView && isMarginDeskView(nextView, isAdmin);
+  return currentView !== nextView && (
+    nextView === 'BALANCE' || isMarginDeskView(nextView, isAdmin)
+  );
 }
