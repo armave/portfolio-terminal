@@ -966,6 +966,102 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().closedTrades[0].marginInterest).toBeGreaterThan(0);
   });
 
+  it('allocates a one-shot position margin charge proportionally and never carries it into a later exit', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commVolumePct: 0,
+      minCommOrder: 0,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    store.setCashBalance(1_000);
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    store.update((state) => {
+      const position = state.positions.AAPL;
+      if (!position) return state;
+      return {
+        ...state,
+        positions: {
+          ...state.positions,
+          AAPL: { ...position, marginCharged: 10 }
+        }
+      };
+    });
+
+    store.sellStock('AAPL', 1, 110, '2026-10-16');
+
+    expect(store.getState().closedTrades[0].marginInterest).toBe(5);
+    expect(store.getState().positions.AAPL.marginCharged).toBeUndefined();
+    expect(store.getState().realizedMarginCharged).toBe(5);
+
+    store.sellStock('AAPL', 'ALL', 110, '2026-10-17');
+
+    expect(store.getState().closedTrades[0].marginInterest).toBe(0);
+    expect(store.getState().realizedMarginCharged).toBe(5);
+  });
+
+  it('reconciles fractional partial exits using per-record cent rounding', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commVolumePct: 0,
+      minCommOrder: 0,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    store.setCashBalance(100);
+    store.buyStock('AAPL', 0.333, 10, '2026-10-15');
+
+    store.sellStock('AAPL', 0.111, 12, '2026-10-16');
+
+    expect(store.getState().closedTrades[0]).toMatchObject({
+      shares: 0.111,
+      grossProfit: 0.22,
+      commissions: 0,
+      marginInterest: 0,
+      netProfit: 0.22
+    });
+    expect(store.getState().positions.AAPL.shares).toBeCloseTo(0.222, 10);
+    expect(store.getState().positions.AAPL.tranches?.[0].qty).toBeCloseTo(0.222, 10);
+    expect(store.getState().positions.AAPL.tranches?.[0].price).toBe(10);
+
+    store.sellStock('AAPL', 'ALL', 12, '2026-10-17');
+
+    expect(store.getState().closedTrades.map((trade) => trade.grossProfit)).toEqual([0.44, 0.22]);
+    expect(store.getState().closedTrades.reduce((sum, trade) => sum + (trade.netProfit || 0), 0)).toBe(0.66);
+    expect(store.getState().positions.AAPL).toBeUndefined();
+  });
+
+  it('applies proceeds from staged partial exits to margin debt before creating free cash', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.updateAssumptions({
+      commPerShare: 0,
+      commVolumePct: 0,
+      minCommOrder: 0,
+      annualRate: 0,
+      annualBorrowRate: 0
+    });
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+
+    expect(store.getState().balance).toBe(-200);
+
+    store.sellStock('AAPL', 1, 110, '2026-10-16');
+
+    expect(store.getState().balance).toBe(-90);
+    expect(store.getState().cashCushion.freeCash).toBe(0);
+    expect(store.getState().closedTrades[0].netProfit).toBe(10);
+
+    store.sellStock('AAPL', 'ALL', 110, '2026-10-17');
+
+    expect(store.getState().balance).toBe(0);
+    expect(store.getState().cashCushion.freeCash).toBe(20);
+    expect(store.getState().closedTrades.reduce((sum, trade) => sum + (trade.netProfit || 0), 0)).toBe(20);
+  });
+
   it('returns to the combined desk after selling the final share of the active ticker', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
