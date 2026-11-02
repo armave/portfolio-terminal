@@ -10,15 +10,22 @@ describe('navigation performance wiring', () => {
     const app = readSource('../App.tsx');
     const store = readSource('../store/portfolioStore.ts');
     expect(app).toContain('const activeDeskView = useActiveView();');
+    expect(app).toContain('const hasMarginPositions = usePortfolioSelector((state) => Object.keys(state.positions || {}).length > 0);');
+    expect(app).not.toContain('const portfolioSnapshot = usePortfolio();');
     expect(app).not.toContain('deskLoadingView');
     expect(store).toContain('public subscribeActiveView');
     expect(store).toContain('export function useActiveView()');
+    expect(store).toContain('export function subscribeToPortfolioSelector');
+    expect(store).toContain('export function usePortfolioSelector');
   });
 
   it('does not gate Margin navigation on quote refresh or remount the console per ticker', () => {
     const tabs = readSource('../components/TickerTab.tsx');
     const app = readSource('../App.tsx');
     expect(tabs).toContain('if (refreshQuotes) void handleRefreshQuotes();');
+    expect(tabs).toContain('usePortfolioSelector(selectPositionTickers, areTickerListsEqual)');
+    expect(tabs).toContain('BalanceEquityBadge');
+    expect(tabs).not.toContain('const state = usePortfolio();');
     expect(tabs).not.toContain('onDeskLoadingChange');
     expect(tabs).not.toContain("localStorage.setItem('portfolio_active_view'");
     expect(app).not.toContain('key={`trading-console-${activeDeskView}`}');

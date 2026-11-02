@@ -10,99 +10,46 @@ import { getAppLanguage, translateText } from '../services/i18n';
 import { formatPortfolioEquityBadge } from '../ui/portfolioEquityBadge';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 
-export const TickerTabs = memo(function TickerTabs({
-  isAdmin = false,
-  userId
-}: {
-  isAdmin?: boolean;
-  userId?: string;
-} = {}) {
-  const state = usePortfolio();
-  const activeView = useActiveView();
-  const [isSyncingPortfolio, setIsSyncingPortfolio] = useState(false);
-  const quoteRefreshPromise = useRef<Promise<void> | null>(null);
-  const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
-  const selectView = (view: string) => {
-    if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS' && !(userId && view === 'GUEST_HISTORY')) return;
-    // Refresh the portfolio once when returning to the Margin desk. Switching
-    // between its ticker tabs does not require another all-symbol quote batch.
-    const refreshQuotes = shouldRefreshQuotesOnNavigation(activeView, view, isAdmin);
-    emitUiEvent('portfolio:set-active-view', { view });
-    // Show the selected desk immediately; refresh existing prices in the background.
-    if (refreshQuotes) void handleRefreshQuotes();
+type BalanceBadgeSnapshot = Pick<
+  PortfolioState,
+  'positions' | 'balance' | 'cashCushion' | 'guestPortfolioSnapshot'
+>;
+
+function selectBalanceBadgeSnapshot(state: PortfolioState): BalanceBadgeSnapshot {
+  return {
+    positions: state.positions,
+    balance: state.balance,
+    cashCushion: state.cashCushion,
+    guestPortfolioSnapshot: state.guestPortfolioSnapshot
   };
+}
 
-  const isCushionActive =
-    activeView === 'CASH_CUSHION' || activeView === 'BALANCE';
-  const isClosedHistoryActive = activeView === 'CLOSED_HISTORY';
-  const isGuestHistoryActive = activeView === 'GUEST_HISTORY';
-  const isSettingsActive = activeView === 'SETTINGS';
-  const isMarginDeskActive = isMarginDeskView(activeView, isAdmin);
+function areBalanceBadgeSnapshotsEqual(previous: BalanceBadgeSnapshot, next: BalanceBadgeSnapshot): boolean {
+  return previous.positions === next.positions &&
+    previous.balance === next.balance &&
+    previous.cashCushion === next.cashCushion &&
+    previous.guestPortfolioSnapshot === next.guestPortfolioSnapshot;
+}
 
-  // The Margin desk depends on open broker orders. Request them only when the
-  // user enters this workspace, not whenever they switch between ticker tabs.
-  useEffect(() => {
-    if (isMarginDeskActive) emitBrokerEvent('broker:request-active-orders');
-  }, [isMarginDeskActive]);
+function selectPositionTickers(state: PortfolioState): string[] {
+  return Object.keys(state.positions || {});
+}
 
-  const tickers = Object.keys(state.positions || {});
-  const marginDeskViews = tickers.length === 0
-    ? ['COMBINED']
-    : tickers.length === 1
-      ? [tickers[0]]
-      : ['COMBINED', ...tickers];
-  const canViewGuestHistory = !isAdmin && Boolean(userId);
-  const navigationViews = isAdmin
-    ? [...marginDeskViews, 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']
-    : canViewGuestHistory ? ['BALANCE', 'GUEST_HISTORY', 'SETTINGS'] : ['BALANCE', 'SETTINGS'];
-  const balanceNavIndex = isAdmin ? marginDeskViews.length : 0;
-  const guestHistoryNavIndex = balanceNavIndex + 1;
-  const settingsNavIndex = balanceNavIndex + (isAdmin || canViewGuestHistory ? 2 : 1);
-  const tabButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+function areTickerListsEqual(previous: string[], next: string[]): boolean {
+  return previous.length === next.length && previous.every((ticker, index) => ticker === next[index]);
+}
 
-  const portfolioValuation = calculatePortfolioValuation({
-    signedAccountBalance: state.balance,
-    freeCash: state.cashCushion?.freeCash,
-    marginPositions: Object.values(state.positions || {}),
-    cashHoldings: state.cashCushion?.holdings || []
-  });
-  const guestTranches = state.guestPortfolioSnapshot?.tranches || [];
-  const guestAssignments = userId
-    ? Object.fromEntries(guestTranches.map((tranche) => [tranche.id, userId]))
-    : {};
-  const guestTypes = Object.fromEntries(guestTranches.map((tranche) => [tranche.id, 'cash' as const]));
-  const guestHoldings = !isAdmin && userId
-    ? getGuestAssignedCashHoldings({
-      guestId: userId,
-      activeTranches: guestTranches,
-      assignments: guestAssignments,
-      types: guestTypes,
-      cashHoldings: state.cashCushion?.holdings || []
-    })
-    : [];
-  const guestEquity = calculateGuestPersonalEquity(guestHoldings);
-  const displayedEquity = isAdmin ? portfolioValuation.equity : guestEquity;
-  const hasUnpricedPortfolioHoldings = portfolioValuation.unpricedHoldings > 0;
-  const hasPricedPortfolioHoldings = portfolioValuation.pricedHoldings > 0;
-  const hasUnpricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice === null);
-  const hasPricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice !== null);
-  const equityBadgeText = formatPortfolioEquityBadge({
-    equity: displayedEquity,
-    locale: getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US',
-    hasUnpricedHoldings: isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings,
-    hasPricedHoldings: isAdmin ? hasPricedPortfolioHoldings : hasPricedGuestHoldings,
-    empty: !isAdmin && Boolean(userId) && guestHoldings.length === 0
-  });
-  const hasPartialEquity = isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings;
-  const equityBadgeTitle = translateText(
-    hasPartialEquity
-      ? 'Partial value: holdings without a valid market quote are excluded.'
-      : isAdmin
-        ? 'Current portfolio equity from available market quotes and broker cash balance.'
-        : 'Current market value of your assigned cash-funded stocks.',
-    getAppLanguage()
-  );
-
+/** Isolate live valuation updates from the navigation buttons themselves. */
+const BalanceEquityBadge = memo(function BalanceEquityBadge({
+  isAdmin,
+  userId,
+  isActive
+}: {
+  isAdmin: boolean;
+  userId?: string;
+  isActive: boolean;
+}) {
+  const state = usePortfolioSelector(selectBalanceBadgeSnapshot, areBalanceBadgeSnapshotsEqual);
   const handleTabKeyDown = (event: KeyboardEvent) => {
     const currentButton = event.currentTarget as HTMLButtonElement;
     const currentIndex = Number(currentButton.dataset.navIndex);
@@ -249,7 +196,7 @@ export const TickerTabs = memo(function TickerTabs({
       <button
         type="button"
         onClick={() => selectView('BALANCE')}
-        aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}
+        aria-label={translateText('Balance', getAppLanguage())}
         aria-pressed={isCushionActive}
         class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
           ? 'bg-cyan-500 text-black'
@@ -261,12 +208,7 @@ export const TickerTabs = memo(function TickerTabs({
           onKeyDown={handleTabKeyDown}
       >
         <span>BALANCE</span>
-        <span title={equityBadgeTitle} aria-hidden="true"
-          class={`workspace-nav-equity-badge ${isAdmin ? 'workspace-nav-equity-badge--admin' : ''} text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
-            }`}
-        >
-          {equityBadgeText}
-        </span>
+        <BalanceEquityBadge isAdmin={isAdmin} userId={userId} isActive={isCushionActive} />
       </button>
 
       {canViewGuestHistory && <button

@@ -15,7 +15,7 @@ import { EmptyStatePanel } from './components/EmptyStatePanel';
 import type { MarginIntelligenceState, MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/scenarioContracts';
 import { ensureFreedomTradeNetSession, fetchFreedomTradeNetPositions, fetchFreedomTradeNetTrades, fetchFreedomTradeNetActiveOrders, normalizeFreedomPortfolio, normalizeFreedomTrades, normalizeFreedomActiveOrders, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
-import { portfolioStore, useActiveView, usePortfolio } from './store/portfolioStore';
+import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import {
@@ -90,8 +90,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     [accountSession?.identity, accountSession?.generation]
   );
   const activeDeskView = useActiveView();
-  const portfolioSnapshot = usePortfolio();
-  const emptyStateVisible = Object.keys(portfolioSnapshot.positions || {}).length === 0 && activeDeskView === 'COMBINED';
+  const hasMarginPositions = usePortfolioSelector((state) => Object.keys(state.positions || {}).length > 0);
+  const emptyStateVisible = !hasMarginPositions && activeDeskView === 'COMBINED';
   const [hasOpenedClosedHistory, setHasOpenedClosedHistory] = useState(false);
   const [hasOpenedGuestHistory, setHasOpenedGuestHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);

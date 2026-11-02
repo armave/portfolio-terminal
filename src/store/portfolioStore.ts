@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import {
   PortfolioState,
   PositionRecord,
@@ -1314,6 +1314,50 @@ export function subscribeToPortfolioState(
   const unsubscribe = store.subscribe(listener);
   listener(store.getState());
   return unsubscribe;
+}
+
+/**
+ * Subscribe to a derived portfolio slice and notify only when that selection
+ * changes. This keeps quote-only updates away from components that render
+ * navigation structure or other state-independent UI.
+ */
+export function subscribeToPortfolioSelector<T>(
+  selector: (state: PortfolioState) => T,
+  listener: (selection: T) => void,
+  isEqual: (previous: T, next: T) => boolean = Object.is,
+  store: Pick<PortfolioStore, 'getState' | 'subscribe'> = portfolioStore
+): () => void {
+  let current = selector(store.getState());
+  const unsubscribe = store.subscribe((state) => {
+    const next = selector(state);
+    if (isEqual(current, next)) return;
+    current = next;
+    listener(next);
+  });
+
+  // Subscribe before replaying so no update can be lost between the initial
+  // selection and effect installation.
+  listener(current);
+  return unsubscribe;
+}
+
+export function usePortfolioSelector<T>(
+  selector: (state: PortfolioState) => T,
+  isEqual: (previous: T, next: T) => boolean = Object.is
+): T {
+  const selectorRef = useRef(selector);
+  const equalityRef = useRef(isEqual);
+  selectorRef.current = selector;
+  equalityRef.current = isEqual;
+
+  const [selection, setSelection] = useState<T>(() => selector(portfolioStore.getState()));
+  useEffect(() => subscribeToPortfolioSelector(
+    (state) => selectorRef.current(state),
+    setSelection,
+    (previous, next) => equalityRef.current(previous, next)
+  ), []);
+
+  return selection;
 }
 
 export function usePortfolio(): PortfolioState {
