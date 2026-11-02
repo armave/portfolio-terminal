@@ -264,7 +264,7 @@ function tradeNetSymbolsMatch(candidate, requested) {
     const requestedSymbol = normalize(requested);
     if (!candidateSymbol || !requestedSymbol) return false;
     if (candidateSymbol === requestedSymbol) return true;
-    return candidateSymbol.replace(/\\.US$/, "") === requestedSymbol.replace(/\\.US$/, "");
+    return candidateSymbol.replace(/\.US$/, "") === requestedSymbol.replace(/\.US$/, "");
 }
 
 export function sanitizeFreedomMarketDepth(response, requestedSymbol) {
