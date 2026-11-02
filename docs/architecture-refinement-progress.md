@@ -1,8 +1,8 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Broker data runtime extraction and guest assignment lifecycle  
-**Base:** `91a03a29395f944cfbc2c07623ba886536bc09f3`
+**Current work:** Guest assignment runtime extraction  
+**Base:** `01f1545b2a1e3103be39d44c274dac9a8773dfa4`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
@@ -116,7 +116,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Production-only dependency audit: 0 vulnerabilities. Full dependency tree: 9 low/moderate advisories (2 low, 7 moderate), unresolved.
 - [x] Squash-merged to `main` as `91a03a29395f944cfbc2c07623ba886536bc09f3`.
 
-## Current PR #253 — broker data runtime
+## Merged PR #253 — broker data runtime
 
 - [x] Move administrator account-info, executed-trade, and active-order provider reads into `portfolioBrokerDataRuntime.ts`.
 - [x] Keep the app as the single portfolio-store owner and inject current account/session boundaries.
@@ -126,15 +126,25 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Add focused Vitest coverage for account, trade-history, and active-order reads.
 - [x] Validation on final PR head `4e173d2c7c4f0ad449f724d4a5eea4d69317195e`: 1,015 tests across 95 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41422557776) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41422557677).
 - [x] Production-only dependency audit: 0 vulnerabilities. Full dependency tree: 9 low/moderate advisories (2 low, 7 moderate), unresolved.
+- [x] Merged to `main` as `01f1545b2a1e3103be39d44c274dac9a8773dfa4`.
+
+## Current PR #254 — guest assignment runtime
+
+- [x] Move the closed-trade allocation command behind a typed runtime boundary.
+- [x] Move active-tranche guest assignment and unassignment behind the same boundary.
+- [x] Move serialized guest projection and durable ledger publication out of `app.ts`.
+- [x] Preserve legacy active-assignment ID backfill and closed/unassigned assignment history.
+- [x] Keep all portfolio state ownership in the app store; inject state, persistence, authorization, and API operations.
+- [x] Add focused Vitest coverage for commands, readiness gates, publication payloads, queue serialization, and recovery after publication failure.
+- [x] Validation on PR head `52ca8cd824ce7618a935cf11ca7208a9144b902a`: 1,023 tests across 96 files; typecheck, production build, dead-code validation, both dependency audits, and production browser smoke passed. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41427655823) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41427655797).
 - [ ] Review and merge.
 
 ## Remaining architecture work
 
 ### P1 — application runtime boundaries
 
-- [ ] Extract guest assignment commands and serialized snapshot/ledger publication from `app.ts`; preserve durable server ledger behavior, legacy backfill, reassignment history, and stale-data gating.
+- [x] Complete guest assignment commands and serialized snapshot/ledger publication in PR #254, preserving durable server ledger behavior, legacy backfill, reassignment history, and stale-data gating.
 - [x] Complete broker provider-read runtime extraction in PR #253 while keeping account classification and financial calculations app-owned.
-- [ ] Extract guest assignment commands and serialized snapshot/ledger publication from `app.ts`; preserve durable server ledger behavior, legacy backfill, reassignment history, and stale-data gating.
 - [x] Extract `startApp` orchestration: role-aware workspace hydration, shared-cloud pull, quote bootstrap, rollover ordering, and startup cloud-write recovery.
 
 ### P1 — API compatibility facade
