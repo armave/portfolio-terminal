@@ -1467,6 +1467,60 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().cashCushion.holdings.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(220);
   });
 
+  it('accepts a later network quote even when its sequence is lower than a persisted sequence', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const requestBase = Date.now() + 1_000;
+
+    store.updateLiveQuote('AAPL', {
+      price: 110,
+      requestStartedAt: requestBase + 200,
+      requestSequence: 42,
+      quoteSource: 'Older request'
+    });
+    store.updateLiveQuote('AAPL', {
+      price: 115,
+      requestStartedAt: requestBase + 300,
+      requestSequence: 41,
+      quoteSource: 'Newer request'
+    });
+
+    expect(store.getState().positions.AAPL).toMatchObject({
+      currentPrice: 115,
+      quoteSource: 'Newer request',
+      quoteRequestStartedAt: requestBase + 300,
+      quoteRequestSequence: 41
+    });
+  });
+
+  it('rejects an earlier network quote even when its sequence is higher', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    const requestBase = Date.now() + 1_000;
+
+    store.updateLiveQuote('AAPL', {
+      price: 115,
+      requestStartedAt: requestBase + 300,
+      requestSequence: 41,
+      quoteSource: 'Newer request'
+    });
+    store.updateLiveQuote('AAPL', {
+      price: 110,
+      requestStartedAt: requestBase + 200,
+      requestSequence: 42,
+      quoteSource: 'Older request'
+    });
+
+    expect(store.getState().positions.AAPL).toMatchObject({
+      currentPrice: 115,
+      quoteSource: 'Newer request',
+      quoteRequestStartedAt: requestBase + 300,
+      quoteRequestSequence: 41
+    });
+  });
+
   it('uses monotonic request sequence to reject out-of-order quotes started in the same millisecond', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
