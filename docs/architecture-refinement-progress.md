@@ -198,7 +198,10 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Extract pure FIFO sale-lot allocation, sale commission calculation, and debt-first sale-proceeds settlement into `portfolioTransactions.ts`.
 - [x] Keep portfolio state ownership, position mutation, rollover, and realized-trade persistence in `PortfolioStore`.
 - [x] Add direct tests for FIFO partial allocation, legacy fee fallback, tranche aliases, commission normalization, and debt/cash settlement.
-- [ ] Run exact-head typecheck, Vitest, production build, dead-code validation, both dependency audits, and production browser smoke.
+- [x] Exact-head validation on `482b98b3901117f907032ce12ddcab09343c5f02`: typecheck, 1,067 tests across 102 files, production build, dead-code validation, both dependency audits, and production Chromium smoke passed.
+- [x] Production build bundle: 482,981 / 500,000 bytes; gzip: 154,907 / 165,000 bytes.
+- [x] Production dependency audit: 0 vulnerabilities; full dependency tree retains 9 low/moderate advisories (2 low, 7 moderate).
+- [x] [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41460196876) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41460196906) passed.
 - [ ] Review and merge.
 
 ## Remaining architecture work
