@@ -1,4 +1,5 @@
 import { portfolioStore } from '../../store/portfolioStore';
+import { getAppLanguage, translateText } from '../../services/i18n';
 import { calculateAccruedFees, calculateCommission, calculateMarginInterest, calculateProjectedDebt, resolveCommissionConfig } from '../../domain/portfolio';
 import { getUsEquityProjectionDates } from '../../domain/tradingCalendar';
 import type { ScenarioInput, ScenarioModalData } from './scenarioContracts';
@@ -456,8 +457,15 @@ export class CommandDispatcher {
         type: 'unrecognized'
       };
     } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Execution failed';
+      const isCostBasisFailure = /cost-basis|cost basis|reconcile (?:its entry cost|lots|the position|fees)|tranche total|recorded open shares/i.test(message);
       return {
-        text: err instanceof Error ? err.message : 'Execution failed',
+        text: isCostBasisFailure
+          ? translateText(
+            'Sale blocked because purchase lots are missing or inconsistent. Reconcile the cost basis before selling.',
+            getAppLanguage()
+          )
+          : message,
         type: 'err'
       };
     }

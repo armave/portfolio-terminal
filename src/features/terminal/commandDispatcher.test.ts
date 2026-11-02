@@ -130,6 +130,32 @@ describe('terminal command validation and cash routing', () => {
     expect(result.sideEffect).toEqual({ type: 'SYNC_CLOUD' });
   });
 
+  it('reports blocked cost-basis sales as errors and does not request cloud sync', () => {
+    const error = new Error('Position has no cost-basis tranches; reconcile its entry cost before selling.');
+    vi.spyOn(portfolioStore, 'sellStock').mockImplementation(() => { throw error; });
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      positions: {
+        ...state.positions,
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 7,
+          currentPrice: 100,
+          pt: 110,
+          commBuy: 0,
+          tranches: []
+        }
+      }
+    });
+
+    const result = CommandDispatcher.execute('sold all AAPL for 120');
+
+    expect(result.type).toBe('err');
+    expect(result.text).toContain('Sale blocked because purchase lots are missing or inconsistent');
+    expect(result.sideEffect).toBeUndefined();
+  });
+
   it('preserves an explicit backdated purchase date in the buy command', () => {
     const buyStock = vi.spyOn(portfolioStore, 'buyStock').mockImplementation(() => {});
     const result = CommandDispatcher.execute('bought 30 WDC for 345 on 2026-10-19');

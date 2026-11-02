@@ -1,3 +1,5 @@
+import { validateSaleCostBasisTranches } from './saleCostBasis';
+
 export interface TradeTranche {
   qty: number;
   shares?: number;
@@ -816,60 +818,25 @@ export function realizeClosedTrade(
   }
 
   const originalShares = Number(position.shares);
-  const sourceTranches = Array.isArray(position.tranches) ? position.tranches : [];
-  if (sourceTranches.length === 0) {
-    throw new Error('Position has no cost-basis tranches; reconcile its entry cost before selling.');
-  }
-
-  const lots = sourceTranches.map((tranche) => {
-    const qty = Number(tranche.qty);
-    const price = Number(tranche.price);
-    const buyCommission = tranche.buyCommission === undefined ? 0 : Number(tranche.buyCommission);
-    if (!Number.isFinite(qty) || qty <= 0 || !Number.isFinite(price) || price <= 0 ||
-        !Number.isFinite(buyCommission) || buyCommission < 0) {
-      throw new Error('Position contains an invalid cost-basis tranche; reconcile lots before selling.');
-    }
-    return { ...tranche, qty, price, buyCommission };
-  });
-
-  const trancheShares = lots.reduce((total, tranche) => total + tranche.qty, 0);
-  const shareTolerance = Math.max(1e-8, Math.abs(originalShares) * 1e-8);
-  if (trancheShares - originalShares > shareTolerance) {
-    throw new Error(
-      `Position tranche total (${trancheShares}) exceeds recorded open shares (${originalShares}); reconcile lots before selling.`
-    );
-  }
-  if (originalShares - trancheShares > shareTolerance) {
-    throw new Error(
-      `Recorded open shares (${originalShares}) do not match tranche total (${trancheShares}); reconcile lots before selling.`
-    );
-  }
-
-  // Normalize only sub-tolerance floating-point drift after validating the ledger.
-  const scale = trancheShares > originalShares && trancheShares > 0 ? originalShares / trancheShares : 1;
-  if (scale < 1) {
-    lots.forEach((tranche) => {
-      tranche.qty *= scale;
-      tranche.buyCommission *= scale;
-    });
-  }
-
   const rawCommission = Number(position.commBuy);
-  if (!Number.isFinite(rawCommission) || rawCommission < 0) {
-    throw new Error('Position entry commission must be finite and non-negative.');
-  }
-  const scaledCommission = scale < 1 ? rawCommission * scale : rawCommission;
-  const lotCommissionTotal = lots.reduce((total, tranche) => total + tranche.buyCommission, 0);
-  if (lotCommissionTotal - scaledCommission > 0.01) {
-    throw new Error('Tranche entry commissions exceed the recorded position commission; reconcile fees before selling.');
-  }
+  const validatedCostBasis = validateSaleCostBasisTranches(
+    position.tranches,
+    originalShares,
+    rawCommission,
+    ticker
+  );
+  const normalizedCommission = validatedCostBasis.aggregateBuyCommission;
+  const lots = validatedCostBasis.tranches.map((tranche) => ({
+    ...tranche,
+    buyCommission: tranche.buyCommission ?? 0
+  })) as TradeTranche[];
   const rawMarginCharged = position.marginCharged === undefined ? 0 : Number(position.marginCharged);
   if (!Number.isFinite(rawMarginCharged) || rawMarginCharged < 0) {
     throw new Error('Position financing charges must be finite and non-negative.');
   }
 
   const lotBuyCommissions = lots.reduce((total, tranche) => total + Math.max(0, Number(tranche.buyCommission) || 0), 0);
-  const unassignedBuyCommission = Math.max(0, scaledCommission - lotBuyCommissions);
+  const unassignedBuyCommission = Math.max(0, normalizedCommission - lotBuyCommissions);
   const closedLots: { qty: number; cost: number; buyCommission: number; acquiredAt: number }[] = [];
   let remainingToClose = shares;
 
@@ -922,7 +889,7 @@ export function realizeClosedTrade(
       ...position,
       shares: Math.max(0, originalShares - closedShares),
       tranches: remainingLots,
-      commBuy: Math.max(0, scaledCommission - buyCommission),
+      commBuy: Math.max(0, normalizedCommission - buyCommission),
       marginCharged: Math.max(0, rawMarginCharged - marginFee)
     },
     trade,

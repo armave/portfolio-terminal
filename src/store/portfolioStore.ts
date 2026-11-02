@@ -21,6 +21,7 @@ import {
   getQuoteRefreshInterval
 } from '../services/storage';
 import { calculateCommission, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
+import { validateSaleCostBasisTranches } from '../domain/saleCostBasis';
 import { allocateFifoSaleTranches, calculateSaleAccounting, calculateSaleCommission, createClosedTradeRecord, resolveClosedTradeTimestamp, settleSaleProceeds } from '../domain/portfolioTransactions';
 import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
@@ -606,9 +607,15 @@ export class PortfolioStore {
       if (actualSold <= 0) return state;
 
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
-      const origTranches = pos.tranches || [
-        { qty: pos.shares, price: pos.currentPrice, date: pos.startDate }
-      ];
+      // Fail closed for legacy or corrupted records without a trustworthy
+      // acquisition ledger. A live quote is never a purchase-price source.
+      const validatedCostBasis = validateSaleCostBasisTranches(
+        pos.tranches,
+        pos.shares,
+        Number(pos.commBuy ?? 0),
+        clean
+      );
+      const origTranches = validatedCostBasis.tranches as TrancheItem[];
       const earliestBuyDate =
         origTranches[0]?.date || pos.startDate || state.startDate || todayIso();
 
@@ -616,15 +623,9 @@ export class PortfolioStore {
         origTranches,
         actualSold,
         pos.shares,
-        Number(pos.commBuy) || 0
+        validatedCostBasis.aggregateBuyCommission
       );
-      let { soldCostBasis } = allocation;
-      const { buyCommissionAllocated: buyCommAllocated, remainingTranches: updatedTranches } = allocation;
-
-      if (soldCostBasis <= 0 && pos.currentPrice > 0) {
-        // Preserve the historical fallback for positions with missing/zero cost basis.
-        soldCostBasis = actualSold * pos.currentPrice;
-      }
+      const { soldCostBasis, buyCommissionAllocated: buyCommAllocated, remainingTranches: updatedTranches } = allocation;
 
       const sellProceeds = actualSold * sellPrice;
 
@@ -668,7 +669,7 @@ export class PortfolioStore {
         const remainingPosition = {
           ...pos,
           shares: remainingShares,
-          commBuy: Math.max(0, (Number(pos.commBuy) || 0) - buyCommAllocated),
+          commBuy: Math.max(0, validatedCostBasis.aggregateBuyCommission - buyCommAllocated),
           tranches: updatedTranches
         };
         // The sold slice has been realized below; do not carry a one-shot

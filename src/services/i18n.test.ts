@@ -85,6 +85,13 @@ describe('app localization', () => {
       .toBe('Не удалось проверить переход на новое шифрование истории сделок. Сохранённая история доступна; повторите миграцию.');
   });
 
+  it('localizes cost-basis sale rejection messaging into Russian', () => {
+    expect(translateText(
+      'Sale blocked because purchase lots are missing or inconsistent. Reconcile the cost basis before selling.',
+      'ru'
+    )).toBe('Продажа заблокирована: данные о покупках отсутствуют или противоречат друг другу. Восстановите себестоимость позиции перед продажей.');
+  });
+
   it('translates known UI copy into Russian and leaves unknown text unchanged', () => {
     expect(translateText('User management', 'ru')).toBe('Управление пользователями');
     expect(translateText('Settings', 'ru')).toBe('Настройки');

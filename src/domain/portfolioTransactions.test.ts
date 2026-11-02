@@ -64,8 +64,41 @@ describe('portfolio transaction calculations', () => {
 
     expect(result.soldCostBasis).toBe(90);
     expect(result.remainingTranches).toEqual([
-      { shares: 2, entryPrice: 90, date: '2026-10-01', qty: 1 },
+      { date: '2026-10-01', qty: 1, price: 90 },
       { qty: 3, price: 110, date: '2026-10-02' }
+    ]);
+  });
+
+  it('rejects sales when tranche quantities do not exactly explain the open position', () => {
+    expect(() => allocateFifoSaleTranches([], 1, 5, 0))
+      .toThrow('Position has no cost-basis tranches');
+    expect(() => allocateFifoSaleTranches([{ qty: 4, price: 10 }], 1, 5, 0))
+      .toThrow('Recorded open shares (5) do not match tranche total (4)');
+    expect(() => allocateFifoSaleTranches([{ qty: 6, price: 10 }], 1, 5, 0))
+      .toThrow('Position tranche total (6) exceeds recorded open shares (5)');
+    expect(() => allocateFifoSaleTranches([{ qty: 5, price: 10 }], 1, 5, -1))
+      .toThrow('Position entry commission must be finite and non-negative');
+  });
+
+  it('allocates unassigned aggregate buy fees proportionally when lot fees are incomplete', () => {
+    const result = allocateFifoSaleTranches([
+      { qty: 2, price: 100, buyCommission: 2 },
+      { qty: 2, price: 120 }
+    ], 2, 4, 8);
+
+    expect(result.soldCostBasis).toBe(200);
+    expect(result.buyCommissionAllocated).toBe(4);
+  });
+
+  it('allocates unassigned aggregate buy fees in addition to complete lot fees', () => {
+    const result = allocateFifoSaleTranches([
+      { qty: 2, price: 100, buyCommission: 2 }
+    ], 1, 2, 4);
+
+    expect(result.soldCostBasis).toBe(100);
+    expect(result.buyCommissionAllocated).toBe(2);
+    expect(result.remainingTranches).toEqual([
+      { qty: 1, price: 100, buyCommission: 1 }
     ]);
   });
 

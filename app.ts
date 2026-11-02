@@ -1282,7 +1282,18 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
       return;
     }
 
-    const result = portfolioStore.sellMarginPosition(ticker, sharesToSell, sellPrice);
+    let result: ReturnType<typeof portfolioStore.sellMarginPosition>;
+    try {
+      result = portfolioStore.sellMarginPosition(ticker, sharesToSell, sellPrice);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      logTerminal(`[Sell Error]: ${detail}`);
+      showToast(translateText(
+        'Sale blocked because purchase lots are missing or inconsistent. Reconcile the cost basis before selling.',
+        getAppLanguage()
+      ), 'error');
+      return;
+    }
     if (!result) {
       logTerminal(`[Sell Error]: Could not sell margin position ${ticker}.`);
       showToast('Margin position sale failed.', 'error');
