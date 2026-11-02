@@ -21,7 +21,6 @@ export const TickerTabs = memo(function TickerTabs({
   const tickers = usePortfolioSelector(selectPositionTickers, areTickerListsEqual);
   const activeView = useActiveView();
   const [isSyncingPortfolio, setIsSyncingPortfolio] = useState(false);
-  const quoteRefreshPromise = useRef<Promise<void> | null>(null);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const selectView = (view: string) => {
     if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS' && !(userId && view === 'GUEST_HISTORY')) return;
@@ -72,17 +71,11 @@ export const TickerTabs = memo(function TickerTabs({
   };
 
   const handleRefreshQuotes = async (): Promise<void> => {
-    if (quoteRefreshPromise.current) return quoteRefreshPromise.current;
-
-    const request = new Promise<void>((resolve) => {
+    // Every section change reaches the app coordinator. It coalesces duplicate
+    // queued triggers without losing a latest-state follow-up behind an active batch.
+    await new Promise<void>((resolve) => {
       emitUiEvent('portfolio:refresh-live-prices', { resolve });
     });
-    quoteRefreshPromise.current = request;
-    try {
-      await request;
-    } finally {
-      if (quoteRefreshPromise.current === request) quoteRefreshPromise.current = null;
-    }
   };
 
   const handleSyncPortfolio = async (): Promise<void> => {
