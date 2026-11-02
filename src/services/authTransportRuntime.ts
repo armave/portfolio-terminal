@@ -12,7 +12,7 @@ export interface AuthSession {
   user: AuthUser;
   expiresAt: number;
 }
-export interface AuthRequestOptions {
+interface AuthRequestOptions {
   method?: "GET" | "POST";
   body?: Record<string, unknown>;
   token?: string;
