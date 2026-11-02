@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { normalizeFreedomQuote } from "./freedomMarketData";
+import { describe, expect, it, vi } from "vitest";
+import { proxyFetch } from "./api";
+import { fetchFreedomQuote, normalizeFreedomQuote } from "./freedomMarketData";
+
+vi.mock("./api", () => ({ proxyFetch: vi.fn() }));
 
 describe("normalizeFreedomQuote", () => {
   it("normalizes a quote payload with common Tradernet field names", () => {
@@ -74,6 +77,19 @@ describe("normalizeFreedomQuote", () => {
       change: 10,
       changePercent: 10
     });
+  });
+
+  it("bypasses the closed-session cache for a forced Freedom quote", async () => {
+    vi.mocked(proxyFetch).mockResolvedValue({
+      data: { q: [{ c: "AAPL.US", ltp: 215, pp: 200, chg: 15, pcp: 7.5 }] }
+    });
+
+    await expect(fetchFreedomQuote("AAPL", true)).resolves.toMatchObject({ price: 215 });
+    expect(proxyFetch).toHaveBeenCalledWith(
+      "freedom-quote",
+      { symbol: "AAPL.US" },
+      { cache: "no-store" }
+    );
   });
 
   it("rejects empty, malformed, and non-positive prices", () => {
