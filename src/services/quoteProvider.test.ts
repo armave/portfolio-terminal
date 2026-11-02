@@ -256,6 +256,30 @@ describe('fetchLivePriceFromProviders', () => {
     });
   });
 
+  it('forces both primary providers and preserves the batch request timestamp', async () => {
+    const requestStartedAt = Date.now() - 1_000;
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue({
+      symbol: 'AAPL',
+      price: {
+        current: 215,
+        previousClose: 200,
+        regularMarketTime: Math.floor(Date.now() / 1000),
+        marketState: 'REGULAR',
+        change: 15
+      }
+    } as never);
+
+    const result = await fetchLivePriceFromProviders('aapl', requestStartedAt, true);
+
+    expect(fetchFreedomQuote).toHaveBeenCalledWith('AAPL', true);
+    expect(fetchYahooQuoteData).toHaveBeenCalledWith('AAPL', true);
+    expect(result).toMatchObject({
+      price: 215,
+      requestStartedAt,
+      quoteDetails: { requestStartedAt }
+    });
+  });
+
   it('returns a clear error when every quote provider fails', async () => {
     vi.mocked(fetchYahooQuoteData).mockRejectedValue(new Error('Yahoo unavailable'));
     vi.mocked(fetchFallbackQuote).mockRejectedValue(new Error('Fallback unavailable'));
