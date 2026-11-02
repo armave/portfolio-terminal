@@ -66,9 +66,9 @@ const MarginIntelligenceModal = lazy(() =>
 );
 
 // In-flight broker reads are isolated by authenticated session generation.
-const tradesRequests = new Map<string, Promise<void>>();
-const accountRequests = new Map<string, Promise<void>>();
-const activeOrdersRequests = new Map<string, Promise<void>>();
+const tradesRequests = new Map<string, Promise<boolean>>();
+const accountRequests = new Map<string, Promise<boolean>>();
+const activeOrdersRequests = new Map<string, Promise<boolean>>();
 
 interface AppProps {
   onSaveGatewaySecret: (secret: string) => Promise<boolean>;
@@ -465,7 +465,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       void loadExecutedTrades(session);
     });
     const removeAwaitableRequestListener = addBrokerEventListener('broker:request-executed-trades-and-wait', (request) => {
-      void loadExecutedTrades(session).finally(request.resolve);
+      void loadExecutedTrades(session).then(request.resolve).catch(() => request.resolve(false));
     });
     void loadExecutedTrades(session);
     return () => {
@@ -474,8 +474,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     };
   }, [currentUser?.id, currentUser?.role]);
 
-  const loadFreedomAccount = async (session: SessionIdentityToken): Promise<void> => {
-    if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+  const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
+    if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
     const requestKey = getSessionIdentityRequestKey(session);
     const existing = accountRequests.get(requestKey);
     if (existing) return existing;
@@ -484,36 +484,37 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const request = (async () => {
       const secret = await restoreGatewaySecret();
       if (!secret.trim()) throw new Error('Gateway Secret is not available.');
-      if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+      if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
       const response = await fetchFreedomTradeNetPositions();
-      if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+      if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
       const snapshot = normalizeFreedomPortfolio(response);
-      if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+      if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
       emitBrokerEvent('broker:account-info', snapshot);
+      return snapshot.loaded === true;
     })();
     accountRequests.set(requestKey, request);
     try {
-      await request;
+      return await request;
     } finally {
       if (accountRequests.get(requestKey) === request) accountRequests.delete(requestKey);
     }
   };
 
-  const loadExecutedTrades = async (session: SessionIdentityToken): Promise<void> => {
-    if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+  const loadExecutedTrades = async (session: SessionIdentityToken): Promise<boolean> => {
+    if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
     const requestKey = getSessionIdentityRequestKey(session);
     const existing = tradesRequests.get(requestKey);
     if (existing) return existing;
 
-    const request = (async () => {
+    const request = (async (): Promise<boolean> => {
       try {
         // The saved Gateway Secret is encrypted and restored asynchronously from IndexedDB.
         // Never issue the startup request until restoration has completed.
         const secret = await restoreGatewaySecret();
-        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+        if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
         if (!secret.trim()) {
           emitBrokerEvent('broker:executed-trades-error');
-          return;
+          return false;
         }
         const accountId = currentUser?.id || '';
         const savedExecutions = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
@@ -529,9 +530,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           )
           : undefined;
         const response = await fetchFreedomTradeNetTrades(fromDate);
-        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+        if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
         const normalizedPage = normalizeFreedomTrades(response);
-        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+        if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
 
         // Merge the returned range into every local source before publishing it.
         // A bounded response is never an authoritative replacement for history.
@@ -555,19 +556,21 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           }
         }
 
-        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+        if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
         // Keep broker executions separate from app-owned ClosedTrade records.
         // ClosedHistoryDesk subscribes to this event and renders the merged cache.
         emitBrokerEvent('broker:executed-trades', mergedTrades);
+        return true;
       } catch (error) {
-        if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+        if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
         console.error('Unable to load TradeNet executed trades:', error);
         emitBrokerEvent('broker:executed-trades-error');
+        return false;
       }
     })();
     tradesRequests.set(requestKey, request);
     try {
-      await request;
+      return await request;
     } finally {
       if (tradesRequests.get(requestKey) === request) tradesRequests.delete(requestKey);
     }
@@ -577,36 +580,42 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     if (currentUser?.role !== 'admin') return;
     const session = brokerSessionIdentityRef.current.capture();
     if (!session) return;
-    const loadActiveOrders = async (): Promise<void> => {
-      if (!brokerSessionIdentityRef.current.isCurrent(session)) return;
+    const loadActiveOrders = async (): Promise<boolean> => {
+      if (!brokerSessionIdentityRef.current.isCurrent(session)) return false;
       const requestKey = getSessionIdentityRequestKey(session);
       const existing = activeOrdersRequests.get(requestKey);
       if (existing) return existing;
 
-      const request = refreshActiveOrders({
-        restoreGatewaySecret,
-        isCurrent: () => brokerSessionIdentityRef.current.isCurrent(session),
-        fetchActiveOrders: fetchFreedomTradeNetActiveOrders,
-        normalizeActiveOrders: normalizeFreedomActiveOrders,
-        onSuccess: (orders) => {
-          if (brokerSessionIdentityRef.current.isCurrent(session)) {
-            emitBrokerEvent('broker:active-orders', orders);
+      let succeeded = false;
+      const request = (async () => {
+        await refreshActiveOrders({
+          restoreGatewaySecret,
+          isCurrent: () => brokerSessionIdentityRef.current.isCurrent(session),
+          fetchActiveOrders: fetchFreedomTradeNetActiveOrders,
+          normalizeActiveOrders: normalizeFreedomActiveOrders,
+          onSuccess: (orders) => {
+            if (brokerSessionIdentityRef.current.isCurrent(session)) {
+              succeeded = true;
+              emitBrokerEvent('broker:active-orders', orders);
+            }
+          },
+          onError: () => {
+            if (brokerSessionIdentityRef.current.isCurrent(session)) {
+              succeeded = false;
+              emitBrokerEvent('broker:active-orders-error');
+            }
+          },
+          logError: (error) => {
+            if (brokerSessionIdentityRef.current.isCurrent(session)) {
+              console.error('Unable to load active TradeNet orders:', error);
+            }
           }
-        },
-        onError: () => {
-          if (brokerSessionIdentityRef.current.isCurrent(session)) {
-            emitBrokerEvent('broker:active-orders-error');
-          }
-        },
-        logError: (error) => {
-          if (brokerSessionIdentityRef.current.isCurrent(session)) {
-            console.error('Unable to load active TradeNet orders:', error);
-          }
-        }
-      });
+        });
+        return succeeded;
+      })();
       activeOrdersRequests.set(requestKey, request);
       try {
-        await request;
+        return await request;
       } finally {
         if (activeOrdersRequests.get(requestKey) === request) activeOrdersRequests.delete(requestKey);
       }
@@ -614,9 +623,15 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const removeRequestListener = addBrokerEventListener('broker:request-active-orders', () => {
       void loadActiveOrders();
     });
+    const removeAwaitableRequestListener = addBrokerEventListener('broker:request-active-orders-and-wait', (request) => {
+      void loadActiveOrders().then(request.resolve).catch(() => request.resolve(false));
+    });
     // Refresh for each authenticated administrator identity, not just at mount.
     void loadActiveOrders();
-    return removeRequestListener;
+    return () => {
+      removeRequestListener();
+      removeAwaitableRequestListener();
+    };
   }, [currentUser?.id, currentUser?.role]);
 
   // Broker-wide balances and positions are administrator data. Guests refresh
@@ -633,9 +648,16 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         emitBrokerEvent('broker:account-info-error');
       });
     };
+    const refreshAccountInfoAndWait = (request: { resolve: (success: boolean) => void }) => {
+      void loadFreedomAccount(session).then(request.resolve).catch(() => request.resolve(false));
+    };
     const removeRequestListener = addBrokerEventListener('broker:request-account-info', refreshAccountInfo);
+    const removeAwaitableRequestListener = addBrokerEventListener('broker:request-account-info-and-wait', refreshAccountInfoAndWait);
     refreshAccountInfo();
-    return removeRequestListener;
+    return () => {
+      removeRequestListener();
+      removeAwaitableRequestListener();
+    };
   }, [currentUser?.id, currentUser?.role]);
 
 

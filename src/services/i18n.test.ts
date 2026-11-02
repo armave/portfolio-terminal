@@ -10,6 +10,15 @@ describe('app localization', () => {
     expect(translateText('Sign out')).toBe('Sign out');
   });
 
+  it('localizes the full portfolio sync button and outcome messages', () => {
+    expect(translateText('Sync portfolio', 'ru')).toBe('Синхронизировать портфель');
+    expect(translateText('Portfolio sync completed.', 'ru')).toBe('Синхронизация портфеля завершена.');
+    expect(translateText('Portfolio sync completed with issues. Check the activity log.', 'ru'))
+      .toBe('Синхронизация портфеля завершена не полностью. Проверьте журнал действий.');
+    expect(translateText('Could not sync portfolio. Check your connection and try again.', 'ru'))
+      .toBe('Не удалось синхронизировать портфель. Проверьте подключение и повторите попытку.');
+  });
+
   it('translates Balance background sync states into Russian', () => {
     expect(translateText('Refreshing balance…', 'ru')).toBe('Обновление баланса…');
     expect(translateText('Syncing…', 'ru')).toBe('Синхронизация…');

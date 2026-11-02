@@ -118,6 +118,19 @@ describe('portfolio UI action requests', () => {
     expect(resolve).toHaveBeenCalledTimes(1);
     removeUiEventListener('portfolio:refresh-live-prices', listener);
   });
+
+  it('allows the full portfolio sync owner to resolve its result', () => {
+    const result = { role: 'admin' as const, success: true, quotes: true, cloud: true };
+    const listener = vi.fn((event) => event.detail.resolve(result));
+    const resolve = vi.fn();
+    addUiEventListener('portfolio:sync-request', listener);
+
+    emitUiEvent('portfolio:sync-request', { resolve });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledWith(result);
+    removeUiEventListener('portfolio:sync-request', listener);
+  });
 });
 
 

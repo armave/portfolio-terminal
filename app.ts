@@ -23,6 +23,7 @@ import {
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
+import { runManualPortfolioSync, type ManualPortfolioSyncResult } from './src/services/manualPortfolioSync';
 import { getMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
@@ -971,26 +972,27 @@ portfolioStore.subscribe(syncCalculatedPortfolioEquity);
 // left local-only until the next trade or quote refresh.
 syncCalculatedPortfolioEquity(portfolioStore.getState());
 
-async function pushStateToCloud(forceImmediate = false) {
+async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
   if (!canWriteCloudState) {
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
     gistSyncTimeout = null;
-    return;
+    return false;
   }
 
   if (!areHeaderCredentialsConfigured()) {
     setCloudStatus('idle', 'ADD SECRET');
-    return;
+    return false;
   }
 
   if (startupCloudWritesSuppressed) {
     startupCloudWritePending = true;
-    return;
+    return false;
   }
 
   portfolioStore.setState({ lastUpdated: Date.now() });
+  state = portfolioStore.getState();
 
-  const doPush = async () => {
+  const doPush = async (): Promise<boolean> => {
     setCloudStatus('syncing', 'WRITING...');
     try {
       const ok = await syncCloudState('push');
@@ -998,22 +1000,26 @@ async function pushStateToCloud(forceImmediate = false) {
         try { await publishGuestPortfolioSnapshots(); }
         catch (error) { console.error('Guest portfolio projection sync failed:', error); }
         setCloudStatus('synced', 'UPDATED');
-      } else {
-        setCloudStatus('error', 'FAIL');
+        return true;
       }
+
+      setCloudStatus('error', 'FAIL');
+      return false;
     } catch (err: any) {
       logTerminal(`[KV Cloud Sync Error]: ${err.message}`);
       setCloudStatus('error', 'FAIL');
+      return false;
     }
   };
 
   if (forceImmediate) {
     if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
-    await doPush();
-  } else {
-    if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
-    gistSyncTimeout = setTimeout(doPush, 600);
+    return doPush();
   }
+
+  if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
+  gistSyncTimeout = setTimeout(() => { void doPush(); }, 600);
+  return true;
 }
 
 const pushStateToGist = pushStateToCloud;
@@ -1533,13 +1539,13 @@ async function fetchLivePrice(ticker: string, silent = false, force = false) {
   return null;
 }
 
-let liveQuoteRefreshInFlight: Promise<void> | null = null;
+let liveQuoteRefreshInFlight: Promise<boolean> | null = null;
 
 /**
  * Prevent interval/manual refresh triggers from starting overlapping batch
  * requests when a provider response takes longer than the configured interval.
  */
-function refreshAllLivePrices(): Promise<void> {
+function refreshAllLivePrices(): Promise<boolean> {
   if (liveQuoteRefreshInFlight) return liveQuoteRefreshInFlight;
 
   const request = performRefreshAllLivePrices().finally(() => {
@@ -1549,7 +1555,7 @@ function refreshAllLivePrices(): Promise<void> {
   return request;
 }
 
-async function performRefreshAllLivePrices() {
+async function performRefreshAllLivePrices(): Promise<boolean> {
   const current = portfolioStore.getState();
   const cashHoldings = current.cashCushion && current.cashCushion.holdings;
   const tickersArray = currentAccountRole === 'guest'
@@ -1560,21 +1566,25 @@ async function performRefreshAllLivePrices() {
         ...(cashHoldings || []).map((holding: any) => holding.ticker)
       ]))
       : [];
-  if (tickersArray.length === 0) return;
+  if (tickersArray.length === 0) return true;
 
   try {
     const updatedCount = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice);
     if (updatedCount > 0) {
-      // Live quotes stay local rather than causing a cloud write every poll.
+      // Automatic quote polling remains local; explicit sync pushes the final snapshot.
+      state = portfolioStore.getState();
       saveState(state);
       renderBoard();
       logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
-    } else {
-      logTerminal('[Warning]: No quotes updated during batch fetch.');
+      return true;
     }
+
+    logTerminal('[Warning]: No quotes updated during batch fetch.');
+    return false;
   } catch (err: any) {
     console.error('Batch quote fetch failed:', err);
     logTerminal(`[Error]: Batch fetch failed - ${err.message}`);
+    return false;
   }
 }
 
@@ -2300,6 +2310,57 @@ function bindStartupActions() {
   });
   addUiEventListener('portfolio:refresh-live-prices', (event) => {
     void refreshAllLivePrices().finally(event.detail.resolve);
+  });
+  addUiEventListener('portfolio:sync-request', (event) => {
+    void (async () => {
+      try {
+        const result = await runManualPortfolioSync({
+          role: currentAccountRole,
+          refreshBrokerAccount: () => new Promise<boolean>((resolve) => {
+            emitBrokerEvent('broker:request-account-info-and-wait', { resolve });
+          }),
+          refreshExecutedTrades: () => new Promise<boolean>((resolve) => {
+            emitBrokerEvent('broker:request-executed-trades-and-wait', { resolve });
+          }),
+          refreshActiveOrders: () => new Promise<boolean>((resolve) => {
+            emitBrokerEvent('broker:request-active-orders-and-wait', { resolve });
+          }),
+          refreshQuotes: () => refreshAllLivePrices(),
+          pushCloud: async () => {
+            state = portfolioStore.getState();
+            return pushStateToCloud(true);
+          },
+          pullGuestSnapshot: async () => {
+            await pullGuestPortfolioSnapshot();
+            return true;
+          }
+        });
+
+        const anySourceSucceeded = result.role === 'admin'
+          ? Boolean(result.brokerAccount || result.executedTrades || result.activeOrders || result.quotes || result.cloud)
+          : Boolean(result.guestSnapshot || result.quotes);
+        if (result.success) {
+          showToast(translateText('Portfolio sync completed.'), 'success');
+          logTerminal('[Sync]: Broker data, market quotes and cloud snapshot are up to date.');
+        } else if (anySourceSucceeded) {
+          showToast(translateText('Portfolio sync completed with issues. Check the activity log.'), 'warning');
+          logTerminal('[Sync Warning]: One or more portfolio data sources could not be refreshed.');
+        } else {
+          showToast(translateText('Could not sync portfolio. Check your connection and try again.'), 'error');
+          logTerminal('[Sync Error]: No portfolio data source completed successfully.');
+        }
+        event.detail.resolve(result);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logTerminal(`[Sync Error]: ${message}`);
+        showToast(translateText('Could not sync portfolio. Check your connection and try again.'), 'error');
+        event.detail.resolve({
+          role: currentAccountRole,
+          success: false,
+          quotes: false
+        });
+      }
+    })();
   });
   addUiEventListener('terminal:execute-command', (event) => {
     void (async () => {

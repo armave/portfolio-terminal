@@ -8,6 +8,7 @@ import { emitUiEvent } from '../ui/uiEventBus';
 import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { formatPortfolioEquityBadge } from '../ui/portfolioEquityBadge';
+import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 
 export const TickerTabs = memo(function TickerTabs({
   isAdmin = false,
@@ -18,8 +19,9 @@ export const TickerTabs = memo(function TickerTabs({
 } = {}) {
   const state = usePortfolio();
   const activeView = useActiveView();
-  const [isRefreshingQuotes, setIsRefreshingQuotes] = useState(false);
+  const [isSyncingPortfolio, setIsSyncingPortfolio] = useState(false);
   const quoteRefreshPromise = useRef<Promise<void> | null>(null);
+  const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const selectView = (view: string) => {
     if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS' && !(userId && view === 'GUEST_HISTORY')) return;
     // Refresh the portfolio once when returning to the Margin desk. Switching
@@ -115,7 +117,6 @@ export const TickerTabs = memo(function TickerTabs({
   const handleRefreshQuotes = async (): Promise<void> => {
     if (quoteRefreshPromise.current) return quoteRefreshPromise.current;
 
-    setIsRefreshingQuotes(true);
     const request = new Promise<void>((resolve) => {
       emitUiEvent('portfolio:refresh-live-prices', { resolve });
     });
@@ -124,24 +125,42 @@ export const TickerTabs = memo(function TickerTabs({
       await request;
     } finally {
       if (quoteRefreshPromise.current === request) quoteRefreshPromise.current = null;
-      setIsRefreshingQuotes(false);
+    }
+  };
+
+  const handleSyncPortfolio = async (): Promise<void> => {
+    if (portfolioSyncPromise.current) {
+      await portfolioSyncPromise.current;
+      return;
+    }
+
+    setIsSyncingPortfolio(true);
+    const request = new Promise<ManualPortfolioSyncResult>((resolve) => {
+      emitUiEvent('portfolio:sync-request', { resolve });
+    });
+    portfolioSyncPromise.current = request;
+    try {
+      await request;
+    } finally {
+      if (portfolioSyncPromise.current === request) portfolioSyncPromise.current = null;
+      setIsSyncingPortfolio(false);
     }
   };
 
   return (
     <>
-      {((isAdmin && tickers.length > 0) || (!isAdmin && Boolean(userId) && guestHoldings.length > 0)) && (
+      {(isAdmin || Boolean(userId)) && (
         <button
-          id="refreshQuotesButton"
+          id="syncPortfolioButton"
           type="button"
-          title="Update quotes"
-          aria-label="Refresh live quotes"
-          aria-busy={isRefreshingQuotes}
-          disabled={isRefreshingQuotes}
-          onClick={handleRefreshQuotes}
+          title={translateText('Sync portfolio', getAppLanguage())}
+          aria-label={translateText('Sync portfolio', getAppLanguage())}
+          aria-busy={isSyncingPortfolio}
+          disabled={isSyncingPortfolio}
+          onClick={handleSyncPortfolio}
           class="h-8 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
         >
-          <span class={isRefreshingQuotes ? 'animate-spin' : ''}>↻</span>
+          <span class={isSyncingPortfolio ? 'animate-spin' : ''} aria-hidden="true">↻</span>
         </button>
       )}
 
