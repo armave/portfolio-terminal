@@ -4,6 +4,7 @@ import {
   getTotalPortfolioInvested,
   getPortfolioProjectionInputs,
   getMarketInsightsTicker,
+  isCurrentMarketInsightsTicker,
   resolvePositionEntryDate
 } from './portfolioSelectors';
 import type { BoardState } from '../types/portfolio';
@@ -33,6 +34,30 @@ describe('market insights ticker selector', () => {
     } as unknown as BoardState;
 
     expect(getMarketInsightsTicker(state)).toBe('MSFT');
+  });
+
+
+  it('recognizes an analyst-target completion for the currently selected ticker', () => {
+    const state = {
+      activeView: 'GOOGL',
+      positions: { GOOGL: { ticker: 'GOOGL' }, AAPL: { ticker: 'AAPL' } }
+    } as unknown as BoardState;
+
+    expect(isCurrentMarketInsightsTicker(state, 'googl')).toBe(true);
+  });
+
+  it('ignores stale analyst-target completions after the selected ticker changes', () => {
+    const state = {
+      activeView: 'AAPL',
+      positions: { GOOGL: { ticker: 'GOOGL' }, AAPL: { ticker: 'AAPL' } }
+    } as unknown as BoardState;
+
+    expect(isCurrentMarketInsightsTicker(state, 'GOOGL')).toBe(false);
+  });
+
+  it('does not publish analyst-target completions without a valid current ticker', () => {
+    expect(isCurrentMarketInsightsTicker(null, 'GOOGL')).toBe(false);
+    expect(isCurrentMarketInsightsTicker(undefined, '')).toBe(false);
   });
 });
 
