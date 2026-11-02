@@ -244,7 +244,6 @@ export class PortfolioStateDO {
 
     const users = await this.getAuthUsers();
     const usersById = new Map(users.map((user) => [user.id, user]));
-    const now = Date.now();
 
     for (const [key, session] of batch.entries()) {
       const user = session && usersById.get(session.userId);
