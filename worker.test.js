@@ -1934,7 +1934,7 @@ describe('Freedom market-depth proxy', () => {
 
   it('reports connection, session, event and timeout diagnostics without exposing the SID', async () => {
     vi.useFakeTimers();
-    const { pending, socket } = await createMockConnection();
+    const { pending, socket, fetchMock } = await createMockConnection();
     const log = vi.spyOn(console, 'warn').mockImplementation(() => {});
     socket.emit('message', {
       data: JSON.stringify(['userData', {
