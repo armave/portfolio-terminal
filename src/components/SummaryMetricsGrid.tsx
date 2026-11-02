@@ -443,7 +443,7 @@ function SummaryMetricsGridView() {
     const cashHoldingsForQuotes = (state.cashCushion?.holdings || [])
       .filter((holding) => Number(holding.shares) > 0)
       .map((holding) =>
-        getUsableMarketPrice(holding.currentPrice ?? holding.price) === null
+        (getUsableMarketPrice(holding.currentPrice) ?? getUsableMarketPrice(holding.price)) === null
           ? { ...holding, quoteUpdatedAt: undefined, quoteSource: undefined, quoteDetails: undefined }
           : holding
       );
@@ -465,8 +465,7 @@ function SummaryMetricsGridView() {
       Array.isArray(state.brokerAccountInfo.balances) &&
       state.brokerAccountInfo.balances.some((balance) =>
         String(balance.currency ?? '').toUpperCase() === 'USD' &&
-        balance.amount !== null && balance.amount !== undefined && balance.amount !== '' &&
-        Number.isFinite(Number(balance.amount))
+        balance.amount !== null && balance.amount !== undefined && Number.isFinite(Number(balance.amount))
       );
     const brokerBalanceIsStale = state.brokerAccountInfo?.status === 'stale' ||
       (state.brokerAccountInfo?.loaded === true && !hasCurrentBrokerUsdBalance);
@@ -660,11 +659,58 @@ function SummaryMetricsGridView() {
     return Number.isFinite(shares) && shares > 0 && marketPrice === null;
   }).length;
   const positionUnpricedHoldingCount = (usableMarketPrice === null ? 1 : 0) + cashUnpricedHoldingCount;
-  const valuationAvailable = positionUnpricedHoldingCount === 0;
+  const cashHoldingsForQuotes = (state.cashCushion?.holdings || [])
+    .filter((holding) => Number(holding.shares) > 0)
+    .map((holding) =>
+      (getUsableMarketPrice(holding.currentPrice) ?? getUsableMarketPrice(holding.price)) === null
+        ? { ...holding, quoteUpdatedAt: undefined, quoteSource: undefined, quoteDetails: undefined }
+        : holding
+    );
+  const positionQuoteHolding = usableMarketPrice === null
+    ? { ...pos, quoteUpdatedAt: undefined, quoteSource: undefined, quoteDetails: undefined }
+    : pos;
+  const positionQuoteSummary = summarizeQuoteFreshness(
+    [positionQuoteHolding, ...cashHoldingsForQuotes],
+    Date.now(),
+    refreshIntervalMs
+  );
+  const accountBalanceAvailable = state.balance !== null && state.balance !== undefined &&
+    Number.isFinite(Number(state.balance));
+  const hasCurrentBrokerUsdBalance = state.brokerAccountInfo?.loaded === true &&
+    Array.isArray(state.brokerAccountInfo.balances) &&
+    state.brokerAccountInfo.balances.some((balance) =>
+      String(balance.currency ?? '').toUpperCase() === 'USD' &&
+      balance.amount !== null && balance.amount !== undefined &&
+      Number.isFinite(Number(balance.amount))
+    );
+  const brokerBalanceIsStale = state.brokerAccountInfo?.status === 'stale' ||
+    (state.brokerAccountInfo?.loaded === true && !hasCurrentBrokerUsdBalance);
+  const brokerBalanceStatusText = state.brokerAccountInfo?.status === 'stale'
+    ? translateText('Broker account snapshot is stale', getAppLanguage())
+    : state.brokerAccountInfo?.loaded === true && !hasCurrentBrokerUsdBalance
+      ? translateText('Broker USD balance is unavailable in the latest snapshot', getAppLanguage())
+      : '';
+  const positionValuationStatus = getPortfolioValuationReliability({
+    accountBalanceAvailable,
+    accountBalanceStale: brokerBalanceIsStale,
+    unpricedHoldings: positionUnpricedHoldingCount,
+    staleQuotes: positionQuoteSummary.stale,
+    delayedQuotes: positionQuoteSummary.delayed,
+    unknownQuotes: positionQuoteSummary.unknown,
+    unavailableQuotes: positionQuoteSummary.unavailable
+  });
+  const positionQuoteFreshnessText = [
+    formatQuoteFreshnessSummary(positionQuoteSummary),
+    brokerBalanceStatusText
+  ].filter(Boolean).join(' · ');
   const positionAssets = currentMktVal + allocatedCushion;
   const positionEquity = positionAssets - allocatedDebt;
-  const equityPct = positionAssets > 0 ? (positionEquity / positionAssets) * 100 : Number.NaN;
-  const equityText = `${formatUSD(positionEquity)} (${Number.isFinite(equityPct) ? equityPct.toFixed(2) + "%" : "N/A"})`;
+  const equityPct = accountBalanceAvailable && positionAssets > 0
+    ? (positionEquity / positionAssets) * 100
+    : Number.NaN;
+  const equityText = accountBalanceAvailable
+    ? `${formatUSD(positionEquity)} (${Number.isFinite(equityPct) ? equityPct.toFixed(2) + "%" : "N/A"})`
+    : translateText('Account balance unavailable', getAppLanguage());
 
   const risk = computeMarginRiskDisplay(allocatedDebt, currentMktVal, allocatedCushion, rules);
 
@@ -757,8 +803,10 @@ function SummaryMetricsGridView() {
         equityText={equityText}
         collateralText={formatUSD(allocatedCushion)}
         rules={rules}
-        valuationAvailable={valuationAvailable}
+        valuationStatus={positionValuationStatus}
+        accountBalanceAvailable={accountBalanceAvailable}
         unpricedHoldings={positionUnpricedHoldingCount}
+        quoteFreshnessText={positionQuoteFreshnessText}
       />
     </>
   );
