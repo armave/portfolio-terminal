@@ -82,6 +82,50 @@ function positiveFinite(value: unknown): number | null {
   return Number.isFinite(number) && number > 0 ? number : null;
 }
 
+interface StoredQuoteRecord {
+  currentPrice?: unknown;
+  price?: unknown;
+  quoteUpdatedAt?: unknown;
+  quoteRequestStartedAt?: unknown;
+  quoteRequestSequence?: unknown;
+  quoteSource?: unknown;
+  quoteDetails?: { sourceTimestamp?: unknown; [key: string]: unknown };
+}
+
+function getLatestTimestampedQuote(
+  ...records: Array<StoredQuoteRecord | null | undefined>
+): { record: StoredQuoteRecord; price: number; sourceTimestamp: number } | null {
+  let latest: { record: StoredQuoteRecord; price: number; sourceTimestamp: number } | null = null;
+
+  for (const record of records) {
+    if (!record) continue;
+    const price = getPositiveMarketPrice(record.currentPrice, record.price);
+    const sourceTimestamp = Number(record.quoteDetails?.sourceTimestamp);
+    if (price === null || !Number.isFinite(sourceTimestamp) || sourceTimestamp <= 0) continue;
+    if (!latest || sourceTimestamp > latest.sourceTimestamp) {
+      latest = { record, price, sourceTimestamp };
+    }
+  }
+
+  return latest;
+}
+
+/** Preserve provenance from a timestamped live quote when a broker snapshot has no observation time. */
+function preserveTimestampedQuoteMetadata<T extends object>(
+  target: T,
+  storedQuote: StoredQuoteRecord | null | undefined
+): T {
+  if (!storedQuote) return target;
+  return {
+    ...target,
+    ...(storedQuote.quoteUpdatedAt !== undefined ? { quoteUpdatedAt: storedQuote.quoteUpdatedAt } : {}),
+    ...(storedQuote.quoteRequestStartedAt !== undefined ? { quoteRequestStartedAt: storedQuote.quoteRequestStartedAt } : {}),
+    ...(storedQuote.quoteRequestSequence !== undefined ? { quoteRequestSequence: storedQuote.quoteRequestSequence } : {}),
+    ...(storedQuote.quoteSource !== undefined ? { quoteSource: storedQuote.quoteSource } : {}),
+    ...(storedQuote.quoteDetails !== undefined ? { quoteDetails: storedQuote.quoteDetails } : {})
+  } as T;
+}
+
 
 export interface FreedomActiveLimitSellOrderLike {
   ticker?: string;
@@ -403,7 +447,14 @@ export function classifyFreedomPortfolio(
   const positions: Record<string, PositionRecord> = {};
   const cashByTicker = new Map<string, any>();
   const cashCostByTicker = new Map<string, { totalCost: number; pricedQuantity: number }>();
-  const marginByTicker = new Map<string, { tranche: ActiveBrokerTranche; prior: PositionRecord | undefined; currentPrice: number; entryTranches: Array<{ qty: number; price: number; date?: string; buyCommission?: number }> }>();
+  const marginByTicker = new Map<string, {
+    tranche: ActiveBrokerTranche;
+    prior: PositionRecord | undefined;
+    currentPrice: number;
+    preservedQuote: ReturnType<typeof getLatestTimestampedQuote>;
+    snapshotPrice: number | null;
+    entryTranches: Array<{ qty: number; price: number; date?: string; buyCommission?: number }>;
+  }>();
   const previousCash = new Map<string, any>();
   for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
     const ticker = tickerKey(holding?.ticker);
@@ -425,7 +476,12 @@ export function classifyFreedomPortfolio(
       : undefined;
     const prior = sourcePositions[tranche.ticker];
     const priorCash = previousCash.get(tranche.ticker);
-    const currentPrice = getPositiveMarketPrice(
+    // Freedom account snapshots expose mkt_price without an observation timestamp.
+    // Do not let that unprovable value overwrite a quote already backed by a
+    // timestamped market observation; the next live quote refresh can supersede it.
+    const preservedQuote = getLatestTimestampedQuote(prior, priorCash);
+    const snapshotPrice = positiveFinite(tranche.marketPrice);
+    const currentPrice = preservedQuote?.price ?? getPositiveMarketPrice(
       tranche.marketPrice,
       prior?.currentPrice,
       priorCash?.currentPrice,
@@ -450,6 +506,8 @@ export function classifyFreedomPortfolio(
         tranche: { ...tranche, quantity: combinedQuantity, marketPrice: combinedMarketPrice, marketValue: combinedMarketPrice !== null ? combinedMarketPrice * combinedQuantity : null },
         prior,
         currentPrice,
+        preservedQuote,
+        snapshotPrice,
         entryTranches
       });
     }
@@ -466,7 +524,25 @@ export function classifyFreedomPortfolio(
         pricedQuantity: (previousCost?.pricedQuantity || 0) +
           (hasKnownEntryPrice ? cashQuantity : 0)
       });
-      cashByTicker.set(tranche.ticker, { ...(existing || priorCash || {}), ticker: tranche.ticker, shares: quantity, ...(tranche.marketPrice !== null ? { currentPrice: tranche.marketPrice, price: tranche.marketPrice } : {}) });
+      const cashHolding = {
+        ...(existing || priorCash || {}),
+        ticker: tranche.ticker,
+        shares: quantity,
+        ...(currentPrice > 0 ? { currentPrice, price: currentPrice } : {}),
+        ...(!preservedQuote && snapshotPrice !== null ? {
+          quoteSource: 'Freedom TradeNet',
+          quoteDetails: {
+            ...(priorCash?.quoteDetails || {}),
+            price: snapshotPrice,
+            freshness: 'unknown',
+            receivedAt
+          }
+        } : {})
+      };
+      cashByTicker.set(
+        tranche.ticker,
+        preserveTimestampedQuoteMetadata(cashHolding, preservedQuote?.record)
+      );
     }
   }
 
@@ -477,7 +553,9 @@ export function classifyFreedomPortfolio(
     const entryPrice = totalEntryQuantity > 0
       ? item.entryTranches.reduce((sum, entry) => sum + entry.qty * entry.price, 0) / totalEntryQuantity
       : (!Array.isArray(executedTrades) ? (Number(prior?.tranches?.[0]?.price) || item.currentPrice) : item.currentPrice);
-    positions[ticker] = {
+    const preservedQuote = item.preservedQuote;
+    const snapshotPrice = item.snapshotPrice;
+    const classifiedPosition: PositionRecord = {
       ...(prior || {}),
       ticker,
       shares: tranche.quantity,
@@ -490,9 +568,17 @@ export function classifyFreedomPortfolio(
         ? item.entryTranches.reduce((sum, entry) => sum + Math.max(0, Number(entry.buyCommission) || 0), 0)
         : (Number(prior?.commBuy) || 0),
       tranches: item.entryTranches,
-      quoteSource: tranche.marketPrice !== null ? 'Freedom TradeNet' : prior?.quoteSource,
-      ...(tranche.marketPrice !== null ? { quoteDetails: { ...(prior?.quoteDetails || {}), price: tranche.marketPrice, freshness: 'unknown', receivedAt } } : {})
+      quoteSource: !preservedQuote && snapshotPrice !== null ? 'Freedom TradeNet' : prior?.quoteSource,
+      ...(!preservedQuote && snapshotPrice !== null ? {
+        quoteDetails: {
+          ...(prior?.quoteDetails || {}),
+          price: snapshotPrice,
+          freshness: 'unknown',
+          receivedAt
+        }
+      } : {})
     };
+    positions[ticker] = preserveTimestampedQuoteMetadata(classifiedPosition, preservedQuote?.record);
   }
   const cashStocks = [...cashByTicker.values()].map((holding) => {
     const cost = cashCostByTicker.get(tickerKey(holding.ticker));
