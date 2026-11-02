@@ -62,7 +62,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Keep portfolio import, persistence, and rendering injected through the existing single app store owner.
 - [x] Add Vitest coverage for guest-role gating, desk preservation/fallback, successful hydration, and stale-session rejection.
 - [x] Validation on implementation head `560a2727664e950e5bb9838ddfb21dd13946ac12`: 982 tests across 88 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone browser smoke all passed. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41415633570) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41415633535).
-- [ ] Review and merge.
+- [x] Squash-merged to `main` as `0ebb5937c13b725f9887273d3055adb12f5300c7`.
 
 ## Current PR — broker refresh request runtime
 
