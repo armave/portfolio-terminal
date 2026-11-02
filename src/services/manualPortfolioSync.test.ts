@@ -54,6 +54,24 @@ describe('runManualPortfolioSync', () => {
     expect(operations.pushCloud).not.toHaveBeenCalled();
   });
 
+  it('refreshes the guest-owned snapshot and quote data sequentially without broker-wide reads', async () => {
+    const sequence: string[] = [];
+    const operations = createOperations({
+      role: 'guest',
+      pullGuestSnapshot: async () => { sequence.push('assigned holdings and LOTS ledger'); return true; },
+      refreshQuotes: async () => { sequence.push('assigned ticker quotes'); return true; }
+    });
+
+    const result = await runManualPortfolioSync(operations);
+
+    expect(sequence).toEqual(['assigned holdings and LOTS ledger', 'assigned ticker quotes']);
+    expect(result).toEqual({ role: 'guest', guestSnapshot: true, quotes: true, success: true });
+    expect(operations.refreshBrokerAccount).not.toHaveBeenCalled();
+    expect(operations.refreshExecutedTrades).not.toHaveBeenCalled();
+    expect(operations.refreshActiveOrders).not.toHaveBeenCalled();
+    expect(operations.pushCloud).not.toHaveBeenCalled();
+  });
+
   it('still refreshes guest quotes and reports a failed guest snapshot', async () => {
     const operations = createOperations({
       role: 'guest',

@@ -987,6 +987,10 @@ export class PortfolioStore {
       const hasMatchingCashHolding = cashHoldings.some((holding) => holding.ticker.toUpperCase() === clean);
       const cashStocks = [...(latestState.cashStocks || [])];
       const hasMatchingCashStock = cashStocks.some((holding) => holding.ticker.toUpperCase() === clean);
+      const guestPortfolioSnapshot = latestState.guestPortfolioSnapshot;
+      const hasMatchingGuestTranche = Boolean(guestPortfolioSnapshot?.tranches.some(
+        (tranche) => tranche.ticker.trim().toUpperCase() === clean
+      ));
       const latestRequestStartedAt = Math.max(
         Number(position?.quoteRequestStartedAt) || 0,
         ...cashHoldings.filter((holding) => holding.ticker.toUpperCase() === clean)
@@ -1051,13 +1055,27 @@ export class PortfolioStore {
               ...(requestSequence !== undefined ? { quoteRequestSequence: requestSequence } : {}) }
           : holding
       );
+      // Guest Balance cards read cashCushion.holdings, while the standalone LOTS
+      // desk reads guestPortfolioSnapshot.tranches. Keep both projections on the
+      // same accepted quote so LOTS market values do not remain at admin-publish time.
+      const updatedGuestPortfolioSnapshot = hasMatchingGuestTranche && guestPortfolioSnapshot
+        ? {
+          ...guestPortfolioSnapshot,
+          tranches: guestPortfolioSnapshot.tranches.map((tranche) =>
+            tranche.ticker.trim().toUpperCase() === clean
+              ? { ...tranche, marketPrice: price, marketValue: price * tranche.quantity }
+              : tranche
+          )
+        }
+        : guestPortfolioSnapshot;
 
-      if (!position && !hasMatchingCashHolding && !hasMatchingCashStock) return latestState;
+      if (!position && !hasMatchingCashHolding && !hasMatchingCashStock && !hasMatchingGuestTranche) return latestState;
 
       return {
         ...latestState,
         positions,
         cashStocks: updatedCashStocks,
+        ...(updatedGuestPortfolioSnapshot ? { guestPortfolioSnapshot: updatedGuestPortfolioSnapshot } : {}),
         cashCushion: {
           ...(latestState.cashCushion || { freeCash: 0, holdings: [] }),
           holdings: updatedCashHoldings

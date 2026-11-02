@@ -891,6 +891,82 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(store.getState().selectedTicker).toBeNull();
   });
 
+  it('refreshes guest LOTS tranche market values alongside Balance cash-holding quotes', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.importState({
+      guestPortfolioSnapshot: {
+        updatedAt: 1_000,
+        tranches: [
+          {
+            id: 'AAPL:buy-1',
+            ticker: 'AAPL',
+            name: 'Apple',
+            quantity: 2,
+            marketPrice: 100,
+            averagePrice: 90,
+            marketValue: 200,
+            purchasedAt: 100
+          },
+          {
+            id: 'MSFT:buy-2',
+            ticker: 'MSFT',
+            name: 'Microsoft',
+            quantity: 3,
+            marketPrice: 200,
+            averagePrice: 180,
+            marketValue: 600,
+            purchasedAt: 200
+          }
+        ]
+      },
+      cashCushion: {
+        freeCash: 0,
+        holdings: [{
+          ticker: 'AAPL',
+          shares: 2,
+          price: 100,
+          currentPrice: 100,
+          averagePrice: 90,
+          marketValue: 200
+        }]
+      }
+    } as any);
+
+    store.updateLiveQuote('AAPL', {
+      price: 125,
+      quoteSource: 'Yahoo',
+      quoteUpdatedAt: 2_000,
+      quoteDetails: { change: 5, changePercent: 4 },
+      requestStartedAt: 1_900,
+      requestSequence: 12
+    });
+
+    const state = store.getState();
+    expect(state.cashCushion.holdings[0]).toMatchObject({
+      ticker: 'AAPL',
+      currentPrice: 125,
+      price: 125,
+      quoteDetails: { change: 5, changePercent: 4 }
+    });
+    expect(state.guestPortfolioSnapshot).toMatchObject({
+      updatedAt: 1_000,
+      tranches: [
+        expect.objectContaining({
+          id: 'AAPL:buy-1',
+          marketPrice: 125,
+          marketValue: 250,
+          averagePrice: 90
+        }),
+        expect.objectContaining({
+          id: 'MSFT:buy-2',
+          marketPrice: 200,
+          marketValue: 600
+        })
+      ]
+    });
+  });
+
   it('makes a new buy execution authoritative over an older live quote', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
