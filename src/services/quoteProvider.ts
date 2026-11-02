@@ -12,12 +12,12 @@ function describeProviderError(error: unknown): string {
 // Time-anchored and monotonic, including requests started in the same millisecond.
 // Anchoring to epoch time keeps persisted ordering comparable after ordinary reloads.
 let lastQuoteRequestSequence = 0;
-export function nextQuoteRequestSequence(): number {
+function nextQuoteRequestSequence(): number {
   lastQuoteRequestSequence = Math.max(Date.now() * 1000, lastQuoteRequestSequence + 1);
   return lastQuoteRequestSequence;
 }
 
-export async function fetchFallbackPrice(symbol: string, force = false) {
+async function fetchFallbackPrice(symbol: string, force = false) {
   for (const provider of ['finnhub', 'twelvedata'] as const) {
     try {
       const fallback = force
@@ -53,7 +53,7 @@ export interface QuoteProvenance {
  * Classifies a provider observation timestamp independently from the time the
  * browser received it. Yahoo market-data timestamps are Unix seconds.
  */
-export function resolveQuoteProvenance(
+function resolveQuoteProvenance(
   marketState: string | undefined,
   sourceTimeSeconds: unknown,
   now = Date.now()
