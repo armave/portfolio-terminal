@@ -12,16 +12,11 @@ import { TradingConsole } from './components/TradingConsole';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
 import type { MarginIntelligenceState, MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
 import type { ScenarioModalData } from './features/terminal/scenarioContracts';
-import { ensureFreedomTradeNetSession, normalizeFreedomTrades, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
+import { ensureFreedomTradeNetSession, fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
 import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
-import {
-  hasFreedomTradeHistoryBaseline,
-  loadSavedHistory,
-  markFreedomTradeHistoryBaseline,
-  restoreGatewaySecret
-} from './services/storage';
+import { restoreGatewaySecret } from './services/storage';
 import { setAppLanguage, subscribeAppLanguage } from './services/i18n';
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
@@ -465,16 +460,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     const brokerDataRuntime = createPortfolioBrokerDataRuntime({
       getAccountId: () => currentUser?.id || '',
       isSessionCurrent: (requestedSession) => brokerSessionIdentityRef.current.isCurrent(requestedSession),
-      restoreGatewaySecret,
-      fetchAccountInfo: fetchFreedomTradeNetPositions,
-      normalizeAccountInfo: normalizeFreedomPortfolio,
-      fetchExecutedTrades: fetchFreedomTradeNetTrades,
-      normalizeExecutedTrades: normalizeFreedomTrades,
-      loadSavedBrokerExecutions: () => normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades),
       getCurrentBrokerExecutions: () => portfolioStore.getState().brokerExecutedTrades || [],
       getClosedTrades: () => portfolioStore.getState().closedTrades || [],
-      hasHistoryBaseline: hasFreedomTradeHistoryBaseline,
-      markHistoryBaseline: markFreedomTradeHistoryBaseline,
       setBrokerExecutions: (executions) => portfolioStore.setState({ brokerExecutedTrades: executions }),
       fetchActiveOrders: fetchFreedomTradeNetActiveOrders,
       normalizeActiveOrders: normalizeFreedomActiveOrders,

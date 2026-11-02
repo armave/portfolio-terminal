@@ -1,4 +1,18 @@
 import { emitBrokerEvent } from './brokerEventBus';
+import {
+  fetchFreedomTradeNetActiveOrders,
+  fetchFreedomTradeNetPositions,
+  fetchFreedomTradeNetTrades,
+  normalizeFreedomActiveOrders,
+  normalizeFreedomPortfolio,
+  normalizeFreedomTrades
+} from './api';
+import {
+  hasFreedomTradeHistoryBaseline,
+  loadSavedHistory,
+  markFreedomTradeHistoryBaseline,
+  restoreGatewaySecret
+} from './storage';
 import type { BrokerEventEmitter } from './portfolioBrokerRefreshRuntime';
 import type { ActiveOrdersRefreshDependencies } from './activeOrdersRefresh';
 import { refreshActiveOrders } from './activeOrdersRefresh';
@@ -17,19 +31,20 @@ export interface PortfolioBrokerDataRuntimeDependencies {
   getAccountId: () => string;
   /** Session-generation guard; all asynchronous boundaries recheck it. */
   isSessionCurrent: (session: SessionIdentityToken) => boolean;
-  restoreGatewaySecret: () => Promise<string>;
-  fetchAccountInfo: () => Promise<unknown>;
-  normalizeAccountInfo: (response: unknown) => FreedomPortfolioSnapshot;
-  fetchExecutedTrades: (fromDate?: string) => Promise<unknown>;
-  normalizeExecutedTrades: (response: unknown) => FreedomExecutedTrade[];
-  loadSavedBrokerExecutions: () => FreedomExecutedTrade[];
+  /** Optional overrides keep provider/storage boundaries directly testable. */
+  restoreGatewaySecret?: () => Promise<string>;
+  fetchAccountInfo?: () => Promise<unknown>;
+  normalizeAccountInfo?: (response: unknown) => FreedomPortfolioSnapshot;
+  fetchExecutedTrades?: (fromDate?: string) => Promise<unknown>;
+  normalizeExecutedTrades?: (response: unknown) => FreedomExecutedTrade[];
+  loadSavedBrokerExecutions?: () => FreedomExecutedTrade[];
   getCurrentBrokerExecutions: () => FreedomExecutedTrade[];
   getClosedTrades: () => readonly unknown[];
-  hasHistoryBaseline: (accountId: string) => boolean;
-  markHistoryBaseline: (accountId: string) => boolean;
+  hasHistoryBaseline?: (accountId: string) => boolean;
+  markHistoryBaseline?: (accountId: string) => boolean;
   setBrokerExecutions: (executions: FreedomExecutedTrade[]) => void;
-  fetchActiveOrders: () => Promise<unknown>;
-  normalizeActiveOrders: (response: unknown) => FreedomActiveOrder[];
+  fetchActiveOrders?: () => Promise<unknown>;
+  normalizeActiveOrders?: (response: unknown) => FreedomActiveOrder[];
   refreshOrders?: (
     dependencies: ActiveOrdersRefreshDependencies<unknown, FreedomActiveOrder>
   ) => Promise<void>;
@@ -57,6 +72,17 @@ export function createPortfolioBrokerDataRuntime(
   const activeOrdersRequests = new Map<string, Promise<boolean>>();
   const emit = dependencies.emit || emitBrokerEvent;
   const refreshOrders = dependencies.refreshOrders || refreshActiveOrders;
+  const restoreSecret = restoreSecret || restoreGatewaySecretFromStorage;
+  const fetchAccountInfo = dependencies.fetchAccountInfo || fetchFreedomTradeNetPositions;
+  const normalizeAccountInfo = dependencies.normalizeAccountInfo || normalizeFreedomPortfolio;
+  const fetchExecutedTrades = dependencies.fetchExecutedTrades || fetchFreedomTradeNetTrades;
+  const normalizeExecutedTrades = dependencies.normalizeExecutedTrades || normalizeFreedomTrades;
+  const loadSavedBrokerExecutions = dependencies.loadSavedBrokerExecutions ||
+    (() => normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades));
+  const hasHistoryBaseline = dependencies.hasHistoryBaseline || hasFreedomTradeHistoryBaseline;
+  const markHistoryBaseline = dependencies.markHistoryBaseline || markFreedomTradeHistoryBaseline;
+  const fetchActiveOrders = fetchActiveOrders || fetchFreedomTradeNetActiveOrders;
+  const normalizeActiveOrders = normalizeActiveOrders || normalizeFreedomActiveOrders;
   const logError = dependencies.logError || ((message, error) => console.error(message, error));
 
   const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
@@ -67,14 +93,14 @@ export function createPortfolioBrokerDataRuntime(
 
     emit('broker:account-info-refreshing');
     const request = (async () => {
-      const secret = await dependencies.restoreGatewaySecret();
+      const secret = await restoreSecret();
       if (!secret.trim()) throw new Error('Gateway Secret is not available.');
       if (!dependencies.isSessionCurrent(session)) return false;
 
-      const response = await dependencies.fetchAccountInfo();
+      const response = await fetchAccountInfo();
       if (!dependencies.isSessionCurrent(session)) return false;
 
-      const snapshot = dependencies.normalizeAccountInfo(response);
+      const snapshot = normalizeAccountInfo(response);
       if (!dependencies.isSessionCurrent(session)) return false;
 
       emit('broker:account-info', snapshot);
@@ -116,9 +142,9 @@ export function createPortfolioBrokerDataRuntime(
         }
 
         const accountId = dependencies.getAccountId();
-        const savedExecutions = dependencies.loadSavedBrokerExecutions();
+        const savedExecutions = loadSavedBrokerExecutions();
         const currentExecutions = dependencies.getCurrentBrokerExecutions();
-        const hasCompleteBaseline = dependencies.hasHistoryBaseline(accountId);
+        const hasCompleteBaseline = hasHistoryBaseline(accountId);
         const fromDate = hasCompleteBaseline
           ? getLatestClosedTradeDate(
             [...savedExecutions, ...currentExecutions],
@@ -126,10 +152,10 @@ export function createPortfolioBrokerDataRuntime(
           )
           : undefined;
 
-        const response = await dependencies.fetchExecutedTrades(fromDate);
+        const response = await fetchExecutedTrades(fromDate);
         if (!dependencies.isSessionCurrent(session)) return false;
 
-        const normalizedPage = dependencies.normalizeExecutedTrades(response);
+        const normalizedPage = normalizeExecutedTrades(response);
         if (!dependencies.isSessionCurrent(session)) return false;
 
         // A bounded provider response is never an authoritative replacement for
@@ -150,7 +176,7 @@ export function createPortfolioBrokerDataRuntime(
         if (!hasCompleteBaseline) {
           const persistedCount = dependencies.loadSavedBrokerExecutions().length;
           if (mergedTrades.length === 0 || persistedCount >= mergedTrades.length) {
-            dependencies.markHistoryBaseline(accountId);
+            markHistoryBaseline(accountId);
           }
         }
 
