@@ -78,7 +78,8 @@ export class PortfolioStore {
   }
 
   private initializeState(): PortfolioState {
-    const saved = loadSavedState(this.state) as Partial<PortfolioState> | null;
+    const defaults = createBlankPortfolioState();
+    const saved = loadSavedState(defaults) as Partial<PortfolioState> | null;
     const savedRules = loadBrokerRules();
     const refreshInterval = getQuoteRefreshInterval();
 
