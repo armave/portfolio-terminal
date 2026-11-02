@@ -773,13 +773,20 @@ export class PortfolioStore {
           .map((holding) => Number(holding.quoteRequestSequence) || 0)
       );
 
-      // Requests can finish out of order. Apply a response only if it started
-      // after the last accepted request for this ticker, and never over a trade.
-      if (
-        (requestSequence !== undefined && latestRequestSequence > 0 && requestSequence < latestRequestSequence) ||
-        (requestSequence === undefined && quote.requestStartedAt !== undefined && quote.requestStartedAt < latestRequestStartedAt) ||
-        (requestSequence === undefined && quote.requestStartedAt !== undefined && quote.requestStartedAt === latestRequestStartedAt && latestRequestSequence > 0)
-      ) {
+      // Request start time is the primary ordering signal. The sequence only
+      // breaks ties for requests started in the same millisecond; it can reset
+      // across page loads and must never make a later request look older.
+      const hasRequestStartTime = quote.requestStartedAt !== undefined;
+      const isOlderRequest = hasRequestStartTime
+        ? requestStartedAt < latestRequestStartedAt ||
+          (requestStartedAt === latestRequestStartedAt &&
+            latestRequestSequence > 0 &&
+            (requestSequence === undefined || requestSequence < latestRequestSequence))
+        : requestSequence !== undefined &&
+          latestRequestSequence > 0 &&
+          requestSequence < latestRequestSequence;
+
+      if (isOlderRequest) {
         return latestState;
       }
       if (
