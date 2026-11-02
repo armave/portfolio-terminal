@@ -59,7 +59,7 @@ describe('refreshTrackedQuotes', () => {
   it('bounds provider concurrency and applies results in the requested ticker order', async () => {
     const tickers = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'META'];
     const releases = new Map<string, (result: ReturnType<typeof quoteResult>) => void>();
-    vi.mocked(fetchLivePriceFromProviders).mockImplementation((ticker, requestStartedAt = 0) =>
+    vi.mocked(fetchLivePriceFromProviders).mockImplementation((ticker, _requestStartedAt = 0) =>
       new Promise((resolve) => {
         releases.set(ticker, (result) => resolve(result as never));
       }) as never
