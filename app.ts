@@ -9,7 +9,6 @@ import {
   calculateProjectedDebt,
   calculateMarginInterest,
   collectOpenPositionTranches,
-  createBlankState,
   createPortfolioBackupSnapshot,
   normalizePortfolioBackup,
   resolveSaleQuantity,
@@ -79,6 +78,7 @@ import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from './src/do
 import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, portfolioStore } from './src/store/portfolioStore';
+import { createBlankPortfolioState } from './src/store/portfolioDefaults';
 import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
@@ -87,7 +87,7 @@ import { isCurrentGuestPortfolioSession, resolveGuestPortfolioRefreshView } from
 import { createSessionIdentityGuard } from './src/utils/sessionIdentityGuard';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
-import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, BrokerAssumptions, GuestTrancheLedgerRecord, QuoteDetails } from './src/types/portfolio';
+import type { ActiveBrokerTranche, ActiveTrancheGuestAssignmentDetail, BrokerAssumptions, GuestTrancheLedgerRecord, PortfolioState, QuoteDetails } from './src/types/portfolio';
 import { buildClosedTradeGuestLedgerUpserts, resolveClosedTradeOperationDate } from './src/domain/closedTradeGuestAssignments';
 import { attributeClosedTradeExecutions } from './src/domain/closedTradeAttribution';
 import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from './src/domain/brokerExecutionMetrics';
@@ -98,7 +98,7 @@ import { calculateBrokerExecutionMetrics, normalizeExecutionTicker } from './src
 const DEFAULT_TRADERNET_RULES: BrokerAssumptions = DEFAULT_BROKER_ASSUMPTIONS;
 const TRADERNET_RULES: BrokerAssumptions = { ...DEFAULT_TRADERNET_RULES };
 
-let state: any = createBlankState();
+let state: PortfolioState = portfolioStore.getState();
 // Guest sessions may read the shared snapshot, but must never enqueue cloud writes.
 let canWriteCloudState = false;
 let currentAccountRole: 'admin' | 'guest' | null = null;
@@ -914,7 +914,7 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
   // A snapshot refresh updates guest data, not the user's current desk.
   // Keep the selected guest-accessible route (Balance, LOTS or Settings).
   const refreshActiveView = resolveGuestPortfolioRefreshView(portfolioStore.getState().activeView);
-  const blank = createBlankState();
+  const blank = createBlankPortfolioState();
   portfolioStore.importState({
     ...blank,
     activeView: refreshActiveView,
@@ -948,7 +948,7 @@ let startupCloudWritesSuppressed = true;
 let startupCloudWritePending = false;
 
 const syncCalculatedPortfolioEquity = (nextStoreState: ReturnType<typeof portfolioStore.getState>) => {
-  state = nextStoreState as any;
+  state = nextStoreState;
 
   // Equity is derived from the latest stored cash, holdings, and prices. Persist
   // it into the canonical snapshot and cloud-sync only when its cent value changes.
@@ -2139,7 +2139,7 @@ async function publishCurrentUser() {
       // receives the guest identity event or renders the Balance screen.
       if (gistSyncTimeout) clearTimeout(gistSyncTimeout);
       gistSyncTimeout = null;
-      portfolioStore.importState(createBlankState() as any);
+      portfolioStore.importState(createBlankPortfolioState());
       state = portfolioStore.getState();
     }
     emitUiEvent('auth:user-changed', { user });
@@ -2296,7 +2296,7 @@ export async function initApp() {
       }
       loadTradernetRules();
       // Do not render a cached administrator workspace while identity is unresolved.
-      portfolioStore.importState(createBlankState() as any);
+      portfolioStore.importState(createBlankPortfolioState());
       state = portfolioStore.getState();
       switchView('BALANCE');
       hideStartupLoading();
