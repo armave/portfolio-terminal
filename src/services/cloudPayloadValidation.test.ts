@@ -21,12 +21,12 @@ describe('cloud portfolio payload validation', () => {
   });
 
   it.each([
-    [{ positions: null }, 'positions'],
-    [{ positions: { AAPL: null } }, 'position AAPL'],
-    [{ cashCushion: [] }, 'cash cushion'],
-    [{ cashCushion: { holdings: {} } }, 'cash cushion holdings'],
-    [{ closedTrades: {} }, 'closed trades'],
-    [{ apiKeys: [] }, 'API keys']
+    { positions: null },
+    { positions: { AAPL: null } },
+    { cashCushion: [] },
+    { cashCushion: { holdings: {} } },
+    { closedTrades: {} },
+    { apiKeys: [] }
   ])('rejects malformed snapshot containers: %j', (payload) => {
     expect(() => assertValidCloudPortfolioPayload(payload)).toThrow('Invalid cloud portfolio');
   });
