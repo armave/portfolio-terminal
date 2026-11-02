@@ -10,5 +10,8 @@
     "app.ts",
     "state-store.js",
     "**/*.css"
+  ],
+  "ignoreDependencies": [
+    "playwright"
   ]
 }
