@@ -101,6 +101,7 @@ export function MarketInsightsPanel() {
     loading: boolean;
     error: string | null;
   }>({ ticker, loading: false, error: null });
+  const [deepDataRefreshRequest, setDeepDataRefreshRequest] = useState(0);
   const [stockData, setStockData] = useState<YahooDeepStockData | null>(null);
   const [stockDataTicker, setStockDataTicker] = useState<string | null>(null);
   const [newsData, setNewsData] = useState<MarketNewsItem[]>([]);
@@ -128,18 +129,19 @@ export function MarketInsightsPanel() {
   const stocktwitsRequestIdRef = useRef(0);
   const newsRequestIdRef = useRef(0);
   const requestIdRef = useRef(0);
+  const lastDeepDataManualRefreshRef = useRef(0);
   const lastNewsManualRefreshRef = useRef(0);
   const lastStocktwitsManualRefreshRef = useRef(0);
   const newsTickerRef = useRef<string | null>(null);
   const stocktwitsTickerRef = useRef<string | null>(null);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const requestPlan = getMarketInsightsRequestPlan(ticker, activeSection, stocktwitsRequested);
-  const loading = requestPlan.deepData &&
-    (deepDataRequest.ticker !== ticker ||
-      deepDataRequest.loading ||
-      (stockDataTicker !== ticker && !deepDataRequest.error));
-  const error = requestPlan.deepData && deepDataRequest.ticker === ticker ? deepDataRequest.error : null;
   const currentStockData = stockDataTicker === ticker ? stockData : null;
+  // Keep the last successful snapshot visible during a manual refresh. A first
+  // load still gets a blocking loading state, scoped to the selected ticker.
+  const loading = requestPlan.deepData && !currentStockData &&
+    (deepDataRequest.ticker !== ticker || deepDataRequest.loading || !deepDataRequest.error);
+  const error = requestPlan.deepData && deepDataRequest.ticker === ticker ? deepDataRequest.error : null;
   const hasCurrentNews = newsTickerRef.current === ticker;
   const currentNewsData = hasCurrentNews ? newsData : [];
   const currentNewsError = hasCurrentNews ? newsError : null;
@@ -160,11 +162,13 @@ export function MarketInsightsPanel() {
       return;
     }
 
+    const forceOnStart = deepDataRefreshRequest !== lastDeepDataManualRefreshRef.current;
+    lastDeepDataManualRefreshRef.current = deepDataRefreshRequest;
     const currentRequestId = ++requestIdRef.current;
     const controller = new AbortController();
     setDeepDataRequest({ ticker, loading: true, error: null });
 
-    fetchYahooDeepStockData(ticker, false, controller.signal)
+    fetchYahooDeepStockData(ticker, forceOnStart, controller.signal)
       .then((data) => {
         if (currentRequestId !== requestIdRef.current) return;
         setStockData(data);
@@ -184,7 +188,7 @@ export function MarketInsightsPanel() {
       controller.abort();
       requestIdRef.current += 1;
     };
-  }, [ticker, requestPlan.deepData]);
+  }, [ticker, deepDataRefreshRequest, requestPlan.deepData]);
 
   // Company news loads on open and refreshes only when requested.
   useEffect(() => {
@@ -306,9 +310,19 @@ export function MarketInsightsPanel() {
       );
     }
 
-    if (error) {
+    if (error && !currentStockData) {
       return (
-        <div class="py-3 text-rose-400 text-xs">Failed to load insights: {error}</div>
+        <div role="alert" class="flex flex-col items-start gap-2 py-3 text-xs text-rose-400">
+          <span>Failed to load insights: {error}</span>
+          <button
+            type="button"
+            onClick={() => setDeepDataRefreshRequest((value) => value + 1)}
+            class="rounded border border-rose-800/70 px-2.5 py-1.5 font-semibold text-rose-200 transition hover:bg-rose-950/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-400"
+            aria-label="Retry market data refresh"
+          >
+            Retry
+          </button>
+        </div>
       );
     }
 
@@ -545,6 +559,18 @@ export function MarketInsightsPanel() {
             }
           </div>
         </div>
+        {requestPlan.deepData && !error && (
+          <button
+            type="button"
+            onClick={() => setDeepDataRefreshRequest((value) => value + 1)}
+            disabled={deepDataRequest.ticker === ticker && deepDataRequest.loading}
+            aria-busy={deepDataRequest.ticker === ticker && deepDataRequest.loading}
+            class="rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 transition hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Refresh market data"
+          >
+            {deepDataRequest.ticker === ticker && deepDataRequest.loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+        )}
         {activeSection === 'news' && (
           <button type="button" onClick={() => setNewsRefreshRequest((value) => value + 1)}
             class="rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
@@ -600,6 +626,19 @@ export function MarketInsightsPanel() {
         aria-live="polite"
         aria-busy={loading}
       >
+        {error && currentStockData && (
+          <div role="alert" class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded border border-amber-900/60 bg-amber-950/20 px-2.5 py-2 text-[10px] text-amber-300">
+            <span>Refresh failed; showing previously loaded market data. {error}</span>
+            <button
+              type="button"
+              onClick={() => setDeepDataRefreshRequest((value) => value + 1)}
+              class="rounded border border-amber-800/70 px-2.5 py-1 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300"
+              aria-label="Retry market data refresh"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {renderContent()}
       </div>
 
