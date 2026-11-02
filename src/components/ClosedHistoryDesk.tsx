@@ -538,10 +538,12 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
   }).sort((a, b) => getExitTimestamp(b) - getExitTimestamp(a));
   const tradesPageSize = 10;
   const tradesPageCount = Math.max(1, Math.ceil(trades.length / tradesPageSize));
-  const visibleTrades = trades.slice((tradesPage - 1) * tradesPageSize, tradesPage * tradesPageSize);
+  // Clamp during render so a shrinking refresh never paints an empty, out-of-range page.
+  const safeTradesPage = Math.max(1, Math.min(tradesPage, tradesPageCount));
+  const visibleTrades = trades.slice((safeTradesPage - 1) * tradesPageSize, safeTradesPage * tradesPageSize);
   useEffect(() => {
-    if (tradesPage > tradesPageCount) setTradesPage(tradesPageCount);
-  }, [tradesPage, tradesPageCount]);
+    if (tradesPage !== safeTradesPage) setTradesPage(safeTradesPage);
+  }, [tradesPage, safeTradesPage]);
   const realizedNet = trades.reduce((total, row) => total + (row.profit ?? 0), 0);
   const totalFees = trades.reduce((total, row) => total + (Number.isFinite(row.feesTotal) ? row.feesTotal : ((row.fees || 0) + (row.commissions || 0))), 0);
   const hasIncompleteCommissions = trades.some((row: any) => row.commissionsComplete === false);
@@ -840,12 +842,12 @@ export function ClosedHistoryDesk({ accountId }: { accountId: string }) {
       {trades.length > 0 && (
         <div class="closed-history-pagination flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 px-1 pt-3 text-xs" aria-label="Closed history pagination">
           <span class="text-slate-500" aria-live="polite">
-            Showing {(tradesPage - 1) * tradesPageSize + 1}–{Math.min(tradesPage * tradesPageSize, trades.length)} of {trades.length} trades
+            Showing {(safeTradesPage - 1) * tradesPageSize + 1}–{Math.min(safeTradesPage * tradesPageSize, trades.length)} of {trades.length} trades
           </span>
           <div class="closed-history-pagination-controls flex items-center gap-2">
-            <button type="button" onClick={() => setTradesPage(page => Math.max(1, page - 1))} disabled={tradesPage <= 1} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Previous closed history page" aria-controls="closedTradesTableBody">&lt;</button>
-            <span class="table-pagination-current min-w-16 text-center font-mono text-slate-400" aria-current="page" aria-live="polite">Page {tradesPage} / {tradesPageCount}</span>
-            <button type="button" onClick={() => setTradesPage(page => Math.min(tradesPageCount, page + 1))} disabled={tradesPage >= tradesPageCount} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Next closed history page" aria-controls="closedTradesTableBody">&gt;</button>
+            <button type="button" onClick={() => setTradesPage(Math.max(1, safeTradesPage - 1))} disabled={safeTradesPage <= 1} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Previous closed history page" aria-controls="closedTradesTableBody">&lt;</button>
+            <span class="table-pagination-current min-w-16 text-center font-mono text-slate-400" aria-current="page" aria-live="polite">Page {safeTradesPage} / {tradesPageCount}</span>
+            <button type="button" onClick={() => setTradesPage(Math.min(tradesPageCount, safeTradesPage + 1))} disabled={safeTradesPage >= tradesPageCount} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Next closed history page" aria-controls="closedTradesTableBody">&gt;</button>
           </div>
         </div>
       )}
