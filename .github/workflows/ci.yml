@@ -42,6 +42,8 @@ jobs:
 
       - name: Audit all dependencies, including build and test tooling
         run: npm run audit:dependencies
+      - name: Audit production dependency surface
+        run: npm run audit:production
 
       - name: Build production site
         run: npm run build
