@@ -1,7 +1,7 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Remaining API facade decomposition  
+**Current work:** Auth transport runtime extraction  
 **Base:** `5b55f0a3c883e2333e533fbada04dbd803353dc6`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
@@ -169,6 +169,22 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Final-head validation on `40e2f04c495125b7b3cbfe2896e5690e85886f79`: typecheck, 1,036 tests across 98 files, dead-code validation, both audits, production build, and Chromium browser smoke passed. Entry bundle: 499,837 / 500,000 bytes; gzip: 159,744 / 165,000 bytes. Full dependency audit: 9 low/moderate advisories (2 low, 7 moderate); production audit: 0 vulnerabilities. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41437200885) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41437200940).
 - [x] Squash-merged to `main` as `fdfa6c63f19fec4e50fd1823f61fc9d632798d86`.
 
+## Current PR #258 — authentication transport runtime
+
+- [x] Extract authenticated Worker request transport and GET request coalescing into `authTransportRuntime.ts`.
+- [x] Move login, bootstrap, token validation, identity reads, user directory reads/mutations, language updates, and logout into the injected runtime.
+- [x] Preserve API compatibility exports and reuse the validated identity during startup.
+- [x] Preserve token-scoped user cache TTL, directory invalidation, in-flight generation guards, no-store requests, and logout-wide cache invalidation.
+- [x] Extract Freedom TradeNet endpoints and the token/date-scoped cashflow cache into `freedomBrokerTransportRuntime.ts`.
+- [x] Preserve read-only/no-store endpoint options, symbol/date normalization, five-minute cache TTL, request coalescing, retry-after-failure, and explicit cache clearing.
+- [x] Add 8 focused Vitest cases covering route contracts, validation, session creation, cache keying/expiry, in-flight coalescing, failure retry, and reset.
+- [x] Extract Yahoo batched quotes, fallback quote normalization, deep-data caching, Market News and Stocktwits transport into `marketDataTransportRuntime.ts`.
+- [x] Preserve quote batching and TTL, explicit force refresh, deep-data cancellation/cache semantics, closed-session market request gating, and feed normalization/cache behavior.
+- [x] Add 7 focused Vitest cases for quote batching, TTL, force refresh, partial batches, fallback quote normalization/validation, and cache clearing.
+- [x] Add focused Vitest coverage for GET coalescing, identity reuse, invalid tokens, normalization, mutation invalidation, stale in-flight directory reads, logout cleanup, and error retry.
+- [ ] Run exact-head typecheck, Vitest, build, dead-code validation, audits, and production browser smoke.
+- [ ] Review and merge.
+
 ## Remaining architecture work
 
 ### P1 — application runtime boundaries
@@ -182,8 +198,8 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Extract cloud-state encryption and Gateway Secret resolution into `cloudStateSecurity.ts`, retaining `api.ts` compatibility exports.
 - [x] Extract cloud revision persistence, pull-generation tracking, and serialized snapshot-write ordering into `cloudRevisionCoordinator.ts`.
 - [x] Extract cloud-state pull/push operations and closed-history synchronization in PR #257, preserving session-bound caches, request coalescing, cloud revision checks, and serialized writes.
-- [ ] Separate authentication/session transport from the compatibility facade.
-- [ ] Separate broker transport and market-data transport from the compatibility facade.
+- [x] Extract authentication/session transport in PR #258; keep `api.ts` compatibility exports.
+- [x] Extract broker and market-data transport in PR #258.
 
 ### P1 — authenticated browser coverage
 
