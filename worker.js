@@ -253,13 +253,27 @@ export function sanitizeFreedomActiveOrders(response) {
     return { orders: { order } };
 }
 
+/**
+ * TradeNet can echo the US exchange suffix in an order-book event even when
+ * the subscription was made with the bare ticker. Treat only that exact
+ * .US suffix difference as equivalent; never collapse other exchange codes.
+ */
+function tradeNetSymbolsMatch(candidate, requested) {
+    const normalize = value => String(value || "").trim().toUpperCase();
+    const candidateSymbol = normalize(candidate);
+    const requestedSymbol = normalize(requested);
+    if (!candidateSymbol || !requestedSymbol) return false;
+    if (candidateSymbol === requestedSymbol) return true;
+    return candidateSymbol.replace(/\\.US$/, "") === requestedSymbol.replace(/\\.US$/, "");
+}
+
 export function sanitizeFreedomMarketDepth(response, requestedSymbol) {
     const dom = Array.isArray(response?.dom) ? response.dom
         : Array.isArray(response?.data?.dom) ? response.data.dom
             : response?.i ? [response]
                 : response?.data?.i ? [response.data] : [];
     const ticker = String(requestedSymbol || "").trim().toUpperCase();
-    const book = dom.find(row => String(row?.i || "").trim().toUpperCase() === ticker);
+    const book = dom.find(row => tradeNetSymbolsMatch(row?.i, ticker));
     if (!book) throw new Error("TradeNet did not return an order book for this symbol.");
     const rows = Array.isArray(book.ins) ? book.ins : [];
     const toNumber = value => {
@@ -606,7 +620,7 @@ export function fetchFreedomMarketDepthWithSid(symbol, session) {
                     /^[A-Z0-9.^=-]{1,20}$/.test(ticker)) {
                     diagnostics.orderBookSymbolsReceived.push(ticker);
                 }
-                if (ticker !== requestedSymbol) {
+                if (!tradeNetSymbolsMatch(ticker, requestedSymbol)) {
                     diagnostics.unmatchedOrderBooks += 1;
                     return;
                 }
