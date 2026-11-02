@@ -69,6 +69,19 @@ export function createCloudStateSyncRuntime({
     if (injectedStorage !== undefined) return injectedStorage;
     try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch { return null; }
   };
+
+  const apiUrl = (path: string): string => new URL(path, workerProxyUrl).toString();
+  const authHeaders = (secret: string, ifMatch?: string): Record<string, string> => ({
+    'Content-Type': 'application/json', 'X-App-Auth': secret,
+    Authorization: `Bearer ${secret}`,
+    ...(ifMatch ? { 'If-Match': ifMatch } : {})
+  });
+  const responseError = async (response: Response): Promise<string> => {
+    const data = await response.json().catch(() => null);
+    return typeof data === 'object' && data !== null
+      ? (data.error || data.message || `HTTP ${response.status}`)
+      : `HTTP ${response.status}`;
+  };
   const cloudStatePushFingerprints = new Map<string, string>();
   const VALIDATED_CLOUD_RESPONSE_TTL_MS = 30 * 1000;
   let validatedCloudResponse: ValidatedCloudResponse | null = null;
@@ -111,15 +124,11 @@ async function pullCloudState(
 
   try {
     const cachedValidationResponse = consumeValidatedCloudResponse(currentSecret);
-    const url = new URL('/api/state', workerProxyUrl);
+    const url = apiUrl('/api/state');
     if (!isCurrentSession()) return stalePullFallback();
-    const res = cachedValidationResponse || await fetchImpl(url.toString(), {
+    const res = cachedValidationResponse || await fetchImpl(url, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-App-Auth': currentSecret,
-        Authorization: `Bearer ${currentSecret}`
-      }
+      headers: authHeaders(currentSecret)
     });
     if (!isCurrentSession()) return stalePullFallback();
 
@@ -137,11 +146,8 @@ async function pullCloudState(
     }
 
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
+      const errorMessage = await responseError(res);
       if (!isCurrentSession()) return stalePullFallback();
-      const errorMessage = typeof errData === 'object' && errData !== null
-        ? (errData.error || errData.message || `HTTP ${res.status}`)
-        : `HTTP ${res.status}`;
       throw new Error(errorMessage);
     }
 
@@ -353,17 +359,17 @@ async function performPushCloudHistory(
 
   let revision = knownRevision;
   if (!Number.isSafeInteger(revision) || (revision as number) < 0) {
-    const url = new URL('/api/history', workerProxyUrl).toString();
-    const current = await fetchImpl(url, { method: 'GET', headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}` } });
+    const url = apiUrl('/api/history');
+    const current = await fetchImpl(url, { method: 'GET', headers: authHeaders(secret) });
     if (!isCurrentSession()) return false;
     revision = readCloudRevision(current.headers) ?? 0;
     if (!current.ok && current.status !== 404) throw new Error(`Closed history revision check failed (HTTP ${current.status}).`);
   }
   const encryptedPayload = await encryptCloudPayload(plaintext, secret);
   if (!isCurrentSession()) return false;
-  const res = await fetchImpl(new URL('/api/history', workerProxyUrl).toString(), {
+  const res = await fetchImpl(apiUrl('/api/history'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}`, 'If-Match': `"${revision}"` },
+    headers: authHeaders(secret, `\"${revision}\"`),
     body: JSON.stringify({ encryptedPayload })
   });
   if (!isCurrentSession()) return false;
@@ -408,9 +414,9 @@ function pullCloudHistorySnapshot(secret: string): Promise<CloudHistorySnapshot>
 }
 
 async function performPullCloudHistory(secret: string): Promise<CloudHistorySnapshot> {
-  const res = await fetchImpl(new URL('/api/history', workerProxyUrl).toString(), {
+  const res = await fetchImpl(apiUrl('/api/history'), {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json', 'X-App-Auth': secret, Authorization: `Bearer ${secret}` }
+    headers: authHeaders(secret)
   });
   const revision = readCloudRevision(res.headers) ?? 0;
   if (res.status === 404) return { history: null, revision };
@@ -539,22 +545,13 @@ async function performPushCloudState(
     const url = new URL('/api/state', workerProxyUrl);
     const res = await fetchImpl(url.toString(), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-App-Auth': currentSecret,
-        Authorization: `Bearer ${currentSecret}`,
-        'If-Match': `"${expectedRevision}"`
-      },
+      headers: authHeaders(currentSecret, `\"${expectedRevision}\"`),
       body: JSON.stringify(payload)
     });
     if (!isCurrentSession()) return false;
 
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      const errorMessage = typeof errData === 'object' && errData !== null
-        ? (errData.error || errData.message || `HTTP ${res.status}`)
-        : `HTTP ${res.status}`;
-      throw new Error(errorMessage);
+      throw new Error(await responseError(res));
     }
 
     const savedRevision = readCloudRevision(res.headers);
