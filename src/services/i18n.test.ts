@@ -17,6 +17,7 @@ describe('app localization', () => {
   });
 
   it('localizes Market Insights refresh and recovery actions', () => {
+    expect(translateText('Failed to load insights: ', 'ru')).toBe('Не удалось загрузить рыночную аналитику: ');
     expect(translateText('Refresh market data', 'ru')).toBe('Обновить рыночные данные');
     expect(translateText('Retry market data refresh', 'ru')).toBe('Повторить обновление рыночных данных');
     expect(translateText('Refresh failed; showing previously loaded market data.', 'ru'))
