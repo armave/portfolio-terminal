@@ -1,4 +1,11 @@
-import { useState, useEffect, useRef } from 'preact/hooks';
+import {
+  subscribeToActiveView as subscribeActiveViewFromStore,
+  subscribeToPortfolioSelector as subscribePortfolioSelectorFromStore,
+  subscribeToPortfolioState as subscribePortfolioStateFromStore,
+  useActiveViewFromStore,
+  usePortfolioFromStore,
+  usePortfolioSelectorFromStore
+} from './portfolioSubscriptions';
 import {
   PortfolioState,
   PositionRecord,
@@ -1171,92 +1178,40 @@ export class PortfolioStore {
 
 export const portfolioStore = new PortfolioStore();
 
-/**
- * Subscribe and immediately replay the current portfolio snapshot.
- * Registering before reading closes the render-to-effect race: a state update
- * between the initial render and effect installation cannot be missed.
- */
 export function subscribeToPortfolioState(
   listener: (state: PortfolioState) => void,
   store: Pick<PortfolioStore, 'getState' | 'subscribe'> = portfolioStore
 ): () => void {
-  const unsubscribe = store.subscribe(listener);
-  listener(store.getState());
-  return unsubscribe;
+  return subscribePortfolioStateFromStore(listener, store);
 }
 
-/**
- * Subscribe to a derived portfolio slice and notify only when that selection
- * changes. This keeps quote-only updates away from components that render
- * navigation structure or other state-independent UI.
- */
 export function subscribeToPortfolioSelector<T>(
   selector: (state: PortfolioState) => T,
   listener: (selection: T) => void,
   isEqual: (previous: T, next: T) => boolean = Object.is,
   store: Pick<PortfolioStore, 'getState' | 'subscribe'> = portfolioStore
 ): () => void {
-  let current = selector(store.getState());
-  const unsubscribe = store.subscribe((state) => {
-    const next = selector(state);
-    if (isEqual(current, next)) return;
-    current = next;
-    listener(next);
-  });
-
-  // Subscribe before replaying so no update can be lost between the initial
-  // selection and effect installation.
-  listener(current);
-  return unsubscribe;
+  return subscribePortfolioSelectorFromStore(selector, listener, isEqual, store);
 }
 
 export function usePortfolioSelector<T>(
   selector: (state: PortfolioState) => T,
   isEqual: (previous: T, next: T) => boolean = Object.is
 ): T {
-  const selectorRef = useRef(selector);
-  const equalityRef = useRef(isEqual);
-  selectorRef.current = selector;
-  equalityRef.current = isEqual;
-
-  const [selection, setSelection] = useState<T>(() => selector(portfolioStore.getState()));
-  useEffect(() => subscribeToPortfolioSelector(
-    (state) => selectorRef.current(state),
-    setSelection,
-    (previous, next) => equalityRef.current(previous, next)
-  ), []);
-
-  return selection;
+  return usePortfolioSelectorFromStore(selector, isEqual, portfolioStore);
 }
 
 export function usePortfolio(): PortfolioState {
-  const [state, setState] = useState<PortfolioState>(() => portfolioStore.getState());
-
-  useEffect(() => {
-    return subscribeToPortfolioState((newState) => {
-      setState({ ...newState });
-    });
-  }, []);
-
-  return state;
+  return usePortfolioFromStore(portfolioStore);
 }
 
-/**
- * Subscribe to the device-local active desk independently from portfolio data.
- * Registering before replaying the value prevents a render-to-effect race.
- */
 export function subscribeToActiveView(
   listener: (view: string) => void,
   store: Pick<PortfolioStore, 'getState' | 'subscribeActiveView'> = portfolioStore
 ): () => void {
-  const unsubscribe = store.subscribeActiveView(listener);
-  listener(store.getState().activeView);
-  return unsubscribe;
+  return subscribeActiveViewFromStore(listener, store);
 }
 
 export function useActiveView(): string {
-  const [activeView, setActiveView] = useState<string>(() => portfolioStore.getState().activeView);
-
-  useEffect(() => subscribeToActiveView(setActiveView), []);
-  return activeView;
+  return useActiveViewFromStore(portfolioStore);
 }
