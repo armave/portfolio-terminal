@@ -36,7 +36,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Move administrator authorization checks into the session runtime.
 - [x] Move logout event handling, remote logout, local credential clearing, and reload into the session runtime.
 - [x] Add focused Vitest coverage for admin/guest switching, repeated identity, failed identity lookup, authorization, logout failure cleanup, and listener disposal.
-- [ ] Run exact-head typecheck, Vitest, build, dead-code validation, dependency audits, and production browser smoke.
+- [x] Exact-head GitHub Actions passed on `a18caee6baf540c34ebd537cefb0592d1516e73b`: 969 tests across 86 files, typecheck, production build, dead-code validation, both dependency audits, and production browser smoke at desktop, tablet, and phone viewports. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41413499908) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41413499889).
 - [ ] Review feedback and merge.
 
 ## Remaining architecture work
