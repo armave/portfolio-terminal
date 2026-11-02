@@ -26,7 +26,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Inject broker request, quote refresh, cloud push, and guest snapshot operations.
 - [x] Preserve success, partial-success, failure notifications, and request resolution.
 - [x] Add Vitest coverage for admin, guest, partial-failure, unauthenticated, and listener-disposal behavior.
-- [ ] Exact-head GitHub Actions: typecheck, Vitest, build, dead-code, dependency audits, and production browser smoke.
+- [x] Exact-head GitHub Actions passed on `cd29b1ac2acac2dbb22db42985bda5f5dbfe13ea`: 961 tests across 85 files, typecheck, build, dead-code, both dependency audits, and production browser smoke. [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41411746504) · [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41411746503).
 - [ ] Review feedback.
 - [ ] Merge this PR.
 
