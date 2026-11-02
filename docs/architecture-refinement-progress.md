@@ -1,8 +1,8 @@
 # Portfolio Terminal architecture refinement tracker
 
 **Repository:** `armave/portfolio-terminal`  
-**Current work:** Authenticated browser journey coverage  
-**Base:** `3b16d36cec87a02db31a45630c4751dde34b310b`
+**Current work:** Cloud state sync runtime extraction  
+**Base:** `5b55f0a3c883e2333e533fbada04dbd803353dc6`
 
 This is the continuing checklist for the architecture-refinement program. A checked item means code has been implemented; validation is tracked separately so implementation is not confused with a passing CI run.
 
@@ -139,7 +139,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Validation on PR head `52ca8cd824ce7618a935cf11ca7208a9144b902a`: 1,023 tests across 96 files; typecheck, production build, dead-code validation, both dependency audits, and production browser smoke passed. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41427655823) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41427655797).
 - [x] Squash-merged to `main` as `3b16d36cec87a02db31a45630c4751dde34b310b`.
 
-## Current PR #255 — cloud state security and revision runtimes
+## Merged PR #255 — cloud state security and revision runtimes
 
 - [x] Extract AES-GCM encryption/decryption, legacy CryptoJS decryption, shared cloud-key retrieval, and active Gateway Secret lookup into `cloudStateSecurity.ts`.
 - [x] Preserve the `api.ts` compatibility exports for `setSecretGetter` and `clearCloudEncryptionSecretCache`.
@@ -150,14 +150,24 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Validation on final PR head `74831217256bd1b0337b702754e26ae5511dfd72`: 1,036 tests across 98 files; typecheck, production build, dead-code validation, both dependency audits, and desktop/tablet/phone production browser smoke passed. Full dependency tree still has 9 low/moderate advisories (2 low, 7 moderate); production audit reports 0 vulnerabilities. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41430277038) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41430277303).
 - [x] Squash-merged to `main` as `da9f9e747e44a1eebc132fab8fc8bcca9abf4785`.
 
-## Current PR #256 — authenticated browser journeys
+## Merged PR #256 — authenticated browser journeys
 
 - [x] Extend the existing Playwright smoke harness rather than adding a second browser-test stack.
 - [x] Exercise first-run administrator bootstrap through the real AuthModal form.
 - [x] Exercise administrator sign-out and account switching to a guest in the same browser context.
 - [x] Verify failed sign-in remains recoverable and does not preserve the previous administrator session.
 - [x] Verify guests fetch only the server-scoped guest projection and do not request the administrator cloud workspace.
-- [ ] Run exact-head typecheck, Vitest, build, audits, dead-code validation, and production browser smoke.
+- [x] Exact-head validation: 1,036 tests across 98 files; typecheck/build, dead-code validation, both audits and production browser smoke passed. Squash-merged to `main` as `5b55f0a3c883e2333e533fbada04dbd803353dc6`.
+
+## Current PR #257 — cloud state sync runtime
+
+- [x] Extract encrypted portfolio pull/push, revision-aware queued writes, closed-history pull/push, legacy history migration, and migration caches into an injectable runtime.
+- [x] Keep the existing `api.ts` cloud-sync functions as compatibility exports.
+- [x] Preserve stale-session guards, read-only guest pulls, durable history-before-compaction ordering, separate history revisions, force-clear semantics, duplicate read/write coordination, encryption upgrades, and conflict-safe `If-Match` behavior.
+- [x] Port the missing explanatory Settings warnings from the older cloud-data-loss branch; retain current Russian translations and add accessibility assertions.
+- [x] Retain the already-merged reset/session binding and stale-pull guards; do not merge stale branch histories.
+- [x] Validation on implementation head `4ff1cda902242df4821b345a71e30febafa436ed`: typecheck, 1,036 tests across 98 files, dead-code validation, both audits, production build, and Chromium browser smoke passed. Entry bundle: 499,837 / 500,000 bytes; gzip: 159,744 / 165,000 bytes. Full dependency audit: 9 low/moderate advisories (2 low, 7 moderate); production audit: 0 vulnerabilities. [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41436822379) · [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41436822446).
+- [ ] Re-run exact-head checks after this tracker-only update.
 - [ ] Review and merge.
 
 ## Remaining architecture work
@@ -172,7 +182,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 
 - [x] Extract cloud-state encryption and Gateway Secret resolution into `cloudStateSecurity.ts`, retaining `api.ts` compatibility exports.
 - [x] Extract cloud revision persistence, pull-generation tracking, and serialized snapshot-write ordering into `cloudRevisionCoordinator.ts`.
-- [ ] Extract cloud-state pull/push operations and closed-history synchronization while preserving session-bound caches, request coalescing, cloud revision checks, and serialized writes.
+- [x] Extract cloud-state pull/push operations and closed-history synchronization in PR #257, preserving session-bound caches, request coalescing, cloud revision checks, and serialized writes.
 - [ ] Separate authentication/session transport from the compatibility facade.
 - [ ] Separate broker transport and market-data transport from the compatibility facade.
 

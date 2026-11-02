@@ -319,6 +319,8 @@ describe('cloud state sync', () => {
     vi.stubGlobal('fetch', fetchMock);
     const rewriteLocal = vi.fn();
     const reportResult = vi.fn();
+    const showToast = vi.fn();
+    const logTerminal = vi.fn();
     vi.spyOn(storage, 'saveState').mockReturnValue(true);
 
     const result = await pullCloudState({
@@ -326,10 +328,11 @@ describe('cloud state sync', () => {
       secret,
       allowCloudWrites: false,
       pullCloudAndRewriteLocal: rewriteLocal,
-      showToast: vi.fn(),
-      logTerminal: vi.fn()
+      showToast,
+      logTerminal
     }, reportResult);
 
+    expect(showToast).not.toHaveBeenCalled();
     expect(result.activeView).toBe('AAPL');
     expect(rewriteLocal).toHaveBeenCalledWith(expect.objectContaining({ activeView: 'AAPL' }));
     expect(reportResult).toHaveBeenCalledWith(true);
@@ -1114,13 +1117,16 @@ describe('Gateway validation response reuse', () => {
 
     await expect(validateGatewaySecret(secret)).resolves.toBe(true);
     const reportResult = vi.fn();
+    const showToast = vi.fn();
+    const logTerminal = vi.fn();
     await pullCloudState({
       state: { activeView: 'LOCAL', balance: 100 },
       secret,
-      showToast: vi.fn(),
-      logTerminal: vi.fn()
+      showToast,
+      logTerminal
     }, reportResult);
 
+    expect(showToast).not.toHaveBeenCalled();
     expect(reportResult).toHaveBeenCalledWith(true);
     expect(fetchMock.mock.calls.map(([input]) => new URL(String(input)).pathname)).toEqual([
       '/api/auth/me', '/api/state'
