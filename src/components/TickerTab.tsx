@@ -206,7 +206,6 @@ export const TickerTabs = memo(function TickerTabs({
       <button
         type="button"
         onClick={() => selectView('BALANCE')}
-        aria-label={translateText('Balance', getAppLanguage())}
         aria-pressed={isCushionActive}
         class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
           ? 'bg-cyan-500 text-black'
@@ -364,8 +363,7 @@ const BalanceEquityBadge = memo(function BalanceEquityBadge({
   return (
     <span
       title={equityBadgeTitle}
-      aria-label={`${equityBadgeText}. ${equityBadgeTitle}`}
-      aria-hidden="true"
+      aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}
       class={`workspace-nav-equity-badge ${isAdmin ? 'workspace-nav-equity-badge--admin' : ''} text-[10px] px-1.5 py-0.2 rounded ${isActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'}`}
     >
       {equityBadgeText}
