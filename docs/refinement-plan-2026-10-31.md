@@ -439,5 +439,5 @@ Client-side Market Depth presentation and localization only. No broker order beh
 
 **Validation**
 
-- [ ] Exact-head GitHub Actions typecheck, full test suite, production build, dead-code validation, and dependency security audit.
+- [x] Implementation head `c626475e7c50fc0ed6dbfedc01ca43ee562c5826` passed both [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/41388314307) and [Validate](https://github.com/armave/portfolio-terminal/actions/runs/41388314318): typecheck, full tests, production build, dead-code validation, and dependency security audit.
 - [ ] Browser verification of successful initial load, refresh failure with a retained snapshot, retry recovery, and ticker changes.
