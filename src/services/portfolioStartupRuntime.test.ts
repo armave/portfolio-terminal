@@ -48,7 +48,7 @@ describe('portfolio startup runtime', () => {
 
   it('validates a restored credential before starting the authenticated app', async () => {
     const fixture = createFixture({
-      restoreGatewaySecret: vi.fn(async () => 'valid-secret'),
+      restoreGatewaySecret: vi.fn(async () => { calls.push('restore'); return 'valid-secret'; }),
       validateGatewaySecret: vi.fn(async () => true)
     });
 
@@ -61,7 +61,7 @@ describe('portfolio startup runtime', () => {
 
   it('clears an invalid saved credential after auth setup is complete', async () => {
     const fixture = createFixture({
-      restoreGatewaySecret: vi.fn(async () => 'expired-secret')
+      restoreGatewaySecret: vi.fn(async () => { calls.push('restore'); return 'expired-secret'; })
     });
 
     await fixture.runtime.initApp();
@@ -74,7 +74,7 @@ describe('portfolio startup runtime', () => {
 
   it('retains the previous credential while first-account setup is required', async () => {
     const fixture = createFixture({
-      restoreGatewaySecret: vi.fn(async () => 'legacy-secret'),
+      restoreGatewaySecret: vi.fn(async () => { calls.push('restore'); return 'legacy-secret'; }),
       getAuthStatus: vi.fn(async () => ({ setupRequired: true }))
     });
 
