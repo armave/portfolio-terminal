@@ -128,7 +128,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       );
       if (JSON.stringify(resolved) !== JSON.stringify(cloud) && (resolved.brokerExecutedTrades.length || resolved.cashflows.length)) {
         if (!isSessionCurrent()) return;
-        try { await pushCloudHistory(resolved); }
+        try { await pushCloudHistory(resolved, undefined, undefined, { isCurrentSession }); }
         catch (error) {
           if (isSessionCurrent()) console.error('Unable to sync closed history:', error);
         }
@@ -257,7 +257,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           const synced = await pushCloudHistory({
             brokerExecutedTrades: brokerExecutionsChanged ? updatedExecutions : brokerExecutions,
             cashflows: cashflowRows
-          });
+          }, undefined, undefined, { isCurrentSession });
           if (!isSessionCurrent()) return false;
           if (!synced) throw new Error('Cloud history did not confirm the update.');
         } catch (error) {
@@ -370,7 +370,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           void pushCloudHistory({
             brokerExecutedTrades: normalized,
             cashflows: portfolioStore.getState().cashflows || []
-          }).catch(error => console.error('Unable to sync updated broker history:', error));
+          }, undefined, undefined, { isCurrentSession }).catch(error => {
+            if (isSessionCurrent()) console.error('Unable to sync updated broker history:', error);
+          });
         }
       }
     };

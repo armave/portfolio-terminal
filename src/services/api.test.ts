@@ -1391,6 +1391,34 @@ describe('closed-history cloud write serialization', () => {
     expect((historyCalls[4][1] as RequestInit).headers).toMatchObject({ 'If-Match': `"${revision - 1}"` });
   });
 
+  it('drops a queued history write when its account session becomes stale', async () => {
+    let resolveFirstResponse!: (response: Response) => void;
+    const firstResponse = new Promise<Response>((resolve) => { resolveFirstResponse = resolve; });
+    const fetchMock = vi.fn(() => firstResponse);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = pushCloudHistory({
+      brokerExecutedTrades: [{ id: 'first-session-trade' }],
+      cashflows: [{ id: 'first-session-fee' }]
+    }, 'queued-history-session-secret', 0);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    let isCurrent = true;
+    const second = pushCloudHistory({
+      brokerExecutedTrades: [{ id: 'stale-session-trade' }],
+      cashflows: [{ id: 'stale-session-fee' }]
+    }, 'queued-history-session-secret', 0, { isCurrentSession: () => isCurrent });
+    isCurrent = false;
+    resolveFirstResponse(new Response('{}', {
+      status: 200,
+      headers: new Headers({ ETag: '"1"' })
+    }));
+
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('serializes concurrent history pushes so each reads the revision after the previous write', async () => {
     let revision = 4;
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
