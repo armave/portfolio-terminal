@@ -607,13 +607,11 @@ export class PortfolioStore {
       if (actualSold <= 0) return state;
 
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
-      const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
       const origTranches = pos.tranches || [
         { qty: pos.shares, price: pos.currentPrice, date: pos.startDate }
       ];
       const earliestBuyDate =
         origTranches[0]?.date || pos.startDate || state.startDate || todayIso();
-      const sellRatio = pos.shares > 0 ? actualSold / pos.shares : 1;
 
       const allocation = allocateFifoSaleTranches(
         origTranches,
@@ -655,6 +653,7 @@ export class PortfolioStore {
         netCashProceeds
       } = accounting;
 
+      const totalDebt = Math.abs(Number(state.balance) || 0);
       const settlement = settleSaleProceeds(
         totalDebt,
         Number(state.cashCushion?.freeCash) || 0,
