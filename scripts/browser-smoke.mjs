@@ -399,7 +399,108 @@ try {
     throw new Error('Administrator startup unexpectedly requested the guest-scoped projection.');
   }
 
+  // Assign the active cash tranche through the admin UI and verify that the
+  // Worker receives both the guest projection and durable LOTS ledger record.
+  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.locator('#activeTranches').waitFor({ state: 'visible', timeout: 20_000 });
+  await page.locator('#activeTranches').getByRole('button', { name: 'Expand' }).click();
+  await page.locator('#activeTranchesTable .active-tranche-row').first().waitFor({ state: 'visible', timeout: 20_000 });
+  const guestAssignment = page.locator('#activeTranchesTable select').first();
+  await guestAssignment.waitFor({ state: 'visible', timeout: 20_000 });
+  await waitForCondition(
+    () => worker.calls.some((call) => call.method === 'GET' && call.pathname === '/api/auth/users'),
+    'administrator guest directory request'
+  );
+  await page.waitForFunction(() => {
+    const select = document.querySelector('#activeTranchesTable select');
+    return Boolean(select && Array.from(select.options).some((option) => option.value === 'guest-smoke'));
+  }, null, { timeout: 20_000 });
+  await guestAssignment.selectOption('guest-smoke');
+  await waitForCondition(
+    () => worker.calls.some((call) =>
+      call.method === 'POST' &&
+      call.pathname === '/api/guest-portfolio' &&
+      Array.isArray(call.body.snapshots) &&
+      call.body.snapshots.some((snapshot) => snapshot.guestId === 'guest-smoke' &&
+        Array.isArray(snapshot.snapshot?.tranches) &&
+        snapshot.snapshot.tranches.some((tranche) => String(tranche.ticker || '').toUpperCase().includes('AAPL')) &&
+        Array.isArray(snapshot.ledgerUpserts) &&
+        snapshot.ledgerUpserts.some((row) => row.status === 'active'))
+    ),
+    'guest snapshot and active assignment ledger publication'
+  );
+
+  // Fail the broker account snapshot once; executions, active orders, quotes
+  // and cloud sync should still complete and report a partial-success warning.
+  worker.failNextBrokerAccount();
+  const previousBrokerFailures = worker.brokerAccountFailures();
+  const syncButton = page.locator('#syncPortfolioButton');
+  await syncButton.waitFor({ state: 'visible', timeout: 20_000 });
+  await syncButton.click();
+  await waitForCondition(
+    () => worker.brokerAccountFailures() > previousBrokerFailures,
+    'one-shot TradeNet account-info failure'
+  );
+  await page.getByText('Portfolio sync completed with issues. Check the activity log.', { exact: true })
+    .waitFor({ state: 'visible', timeout: 20_000 });
+  if (worker.countAction('freedom-trades') < 2 || worker.countAction('freedom-orders') < 2) {
+    throw new Error('Partial broker failure prevented other TradeNet sources from refreshing.');
+  }
+
+  // A single 412 response proves the manual sync preserves cloud revision safety.
+  worker.failNextStateConflict();
+  const previousConflicts = worker.stateConflictCount();
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#syncPortfolioButton');
+    return Boolean(button && !button.disabled);
+  }, null, { timeout: 20_000 });
+  await syncButton.click();
+  await waitForCondition(
+    () => worker.stateConflictCount() > previousConflicts,
+    'cloud state revision conflict response'
+  );
+  await page.getByText(/Cloud push failed: Cloud revision conflict/i)
+    .waitFor({ state: 'visible', timeout: 20_000 });
+
+  // Export the actual browser snapshot, reject malformed JSON, restore the valid
+  // backup and confirm a reset of local portfolio plus revisioned cloud history.
   await page.locator('#settingsBtn').click();
+  await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export portfolio backup as JSON' }).click();
+  const download = await downloadPromise;
+  const backupPath = await download.path();
+  if (!backupPath) throw new Error('Backup export did not produce a readable download.');
+  const backupBytes = await readFile(backupPath);
+
+  await page.locator('#importFileInput').setInputFiles({
+    name: 'invalid-smoke-backup.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{ invalid json')
+  });
+  await page.getByText(/Backup import failed:/).waitFor({ state: 'visible', timeout: 10_000 });
+
+  const stateWritesBeforeImport = worker.count('POST', '/api/state');
+  page.once('dialog', (dialog) => { void dialog.accept(); });
+  await page.locator('#importFileInput').setInputFiles({
+    name: 'smoke-backup.json',
+    mimeType: 'application/json',
+    buffer: backupBytes
+  });
+  await waitForCondition(
+    () => worker.count('POST', '/api/state') > stateWritesBeforeImport,
+    'valid backup import cloud write'
+  );
+
+  const stateWritesBeforeReset = worker.count('POST', '/api/state');
+  const historyWritesBeforeReset = worker.count('POST', '/api/history');
+  page.once('dialog', (dialog) => { void dialog.accept(); });
+  await page.getByRole('button', { name: 'Reset local and cloud portfolio data' }).click();
+  await waitForCondition(
+    () => worker.count('POST', '/api/state') > stateWritesBeforeReset &&
+      worker.count('POST', '/api/history') > historyWritesBeforeReset,
+    'confirmed local portfolio and closed-history reset'
+  );
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   await page.getByRole('button', { name: 'Sign out' }).click();
   await waitForAuthOverlay(page, true);
@@ -425,6 +526,10 @@ try {
   if (worker.count('GET', '/api/state') !== sharedWorkspaceReadsBeforeGuest) {
     throw new Error('Guest login attempted to read the administrator shared workspace.');
   }
+  const publishedGuestSnapshot = worker.getGuestPublication()?.snapshots?.find((snapshot) => snapshot.guestId === 'guest-smoke');
+  if (!publishedGuestSnapshot?.snapshot?.tranches?.some((tranche) => String(tranche.ticker || '').toUpperCase().includes('AAPL'))) {
+    throw new Error('Guest login could not verify the AAPL assignment published by the administrator.');
+  }
 
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
@@ -435,7 +540,7 @@ try {
     throw new Error(`Uncaught browser errors during authenticated journeys: ${pageErrors.join('; ')}`);
   }
 
-  console.log('Browser smoke passed: responsive mounting, admin bootstrap, sign-out/account switch, failed sign-in recovery, and guest-only workspace hydration.');
+  console.log('Browser smoke passed: responsive mounting, admin bootstrap, broker partial failure, cloud revision conflict, backup export/import/reset, guest assignment publication, sign-out/account switch, failed sign-in recovery, and guest-only workspace hydration.');
 } finally {
   await browser?.close();
   if (server.exitCode === null && server.signalCode === null) {
