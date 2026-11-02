@@ -1706,6 +1706,21 @@ describe('closed-session market request cache integration', () => {
     vi.restoreAllMocks();
   });
 
+  it('bypasses the closed-session response cache for an explicit no-store market refresh', async () => {
+    setMarketRequestSessionForTests('CLOSED');
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ articles: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await proxyFetch('news', { symbol: 'AAPL' });
+    await proxyFetch('news', { symbol: 'AAPL' });
+    await proxyFetch('news', { symbol: 'AAPL' }, { cache: 'no-store' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('reuses one successful deep-data request per symbol without blocking other symbols', async () => {
     setMarketRequestSessionForTests('CLOSED');
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
