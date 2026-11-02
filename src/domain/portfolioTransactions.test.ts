@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { BrokerAssumptions, TrancheItem } from '../types/portfolio';
+import type { BrokerAssumptions, PositionRecord, TrancheItem } from '../types/portfolio';
 import {
   allocateFifoSaleTranches,
+  calculateSaleAccounting,
   calculateSaleCommission,
   settleSaleProceeds
 } from './portfolioTransactions';
@@ -79,6 +80,81 @@ describe('portfolio transaction calculations', () => {
     };
 
     expect(calculateSaleCommission(10, 1_000, freeTrading)).toBe(0);
+  });
+
+  it('weights accrued margin interest by position investment and builds realized sale totals', () => {
+    const aapl: PositionRecord = {
+      ticker: 'AAPL',
+      shares: 10,
+      currentPrice: 100,
+      pt: 110,
+      commBuy: 2,
+      tranches: [{ qty: 10, price: 100, date: '2026-10-15' }]
+    };
+    const msft: PositionRecord = {
+      ticker: 'MSFT',
+      shares: 10,
+      currentPrice: 100,
+      pt: 110,
+      commBuy: 2,
+      tranches: [{ qty: 10, price: 100, date: '2026-10-15' }]
+    };
+
+    const result = calculateSaleAccounting({
+      tranches: aapl.tranches || [],
+      positions: { AAPL: aapl, MSFT: msft },
+      positionShares: 10,
+      sharesSold: 5,
+      balance: -1_000,
+      brokerAssumptions: { ...brokerRules, annualBorrowRate: 0.365 },
+      sellProceeds: 600,
+      soldCostBasis: 500,
+      buyCommissionAllocated: 2,
+      sellCommission: 1,
+      now: new Date('2026-10-17T12:00:00.000Z')
+    });
+
+    expect(result).toEqual({
+      marginInterestAllocated: 0.5,
+      totalCommissions: 3,
+      grossProfit: 100,
+      netProfit: 96.5,
+      netCashProceeds: 599
+    });
+  });
+
+  it('uses the remaining one-shot position charge as a floor and rounds the sold allocation to cents', () => {
+    const position: PositionRecord = {
+      ticker: 'AAPL',
+      shares: 2,
+      currentPrice: 100,
+      pt: 110,
+      commBuy: 1,
+      marginCharged: 10,
+      tranches: [{ qty: 2, price: 100, date: '2026-10-15' }]
+    };
+
+    const result = calculateSaleAccounting({
+      tranches: position.tranches || [],
+      positions: { AAPL: position },
+      positionShares: 2,
+      sharesSold: 1,
+      balance: 0,
+      brokerAssumptions: { ...brokerRules, annualBorrowRate: 0 },
+      positionMarginCharged: position.marginCharged,
+      sellProceeds: 110,
+      soldCostBasis: 100,
+      buyCommissionAllocated: 1,
+      sellCommission: 1.2
+    });
+
+    expect(result).toEqual({
+      marginInterestAllocated: 5,
+      totalCommissions: 2.2,
+      grossProfit: 10,
+      netProfit: 2.8,
+      netCashProceeds: 108.8
+    });
   });
 
   it('repays margin debt before adding remaining sale proceeds to free cash', () => {

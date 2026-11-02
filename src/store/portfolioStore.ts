@@ -21,8 +21,8 @@ import {
   saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
-import { calculateCommission, calculateMarginInterest, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
-import { allocateFifoSaleTranches, calculateSaleCommission, settleSaleProceeds } from '../domain/portfolioTransactions';
+import { calculateCommission, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
+import { allocateFifoSaleTranches, calculateSaleAccounting, calculateSaleCommission, settleSaleProceeds } from '../domain/portfolioTransactions';
 import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
@@ -607,13 +607,11 @@ export class PortfolioStore {
       if (actualSold <= 0) return state;
 
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
-      const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
       const origTranches = pos.tranches || [
         { qty: pos.shares, price: pos.currentPrice, date: pos.startDate }
       ];
       const earliestBuyDate =
         origTranches[0]?.date || pos.startDate || state.startDate || todayIso();
-      const sellRatio = pos.shares > 0 ? actualSold / pos.shares : 1;
 
       const allocation = allocateFifoSaleTranches(
         origTranches,
@@ -634,51 +632,28 @@ export class PortfolioStore {
       // Shared with the AI-confirmed sale path to keep broker fees consistent.
       const sellComm = calculateSaleCommission(actualSold, sellProceeds, rules);
 
-      // Debt and margin interest calculation
-      const totalPortfolioInvested = Object.values(positions).reduce(
-        (acc, p) =>
-          acc +
-          (p.tranches || []).reduce(
-            (s, t) =>
-              s +
-              (Number(t.qty ?? t.shares) || 0) *
-              (Number(t.price ?? t.entryPrice) || 0),
-            0
-          ),
-        0
-      );
-      const posInvested = origTranches.reduce(
-        (s, t) =>
-          s +
-          (Number(t.qty ?? t.shares) || 0) *
-          (Number(t.price ?? t.entryPrice) || 0),
-        0
-      );
-      const weight = totalPortfolioInvested > 0 ? posInvested / totalPortfolioInvested : 1;
+      const accounting = calculateSaleAccounting({
+        tranches: origTranches,
+        positions,
+        positionShares: pos.shares,
+        sharesSold: actualSold,
+        balance: state.balance,
+        brokerAssumptions: rules,
+        positionMarginCharged: pos.marginCharged,
+        sellProceeds,
+        soldCostBasis,
+        buyCommissionAllocated: buyCommAllocated,
+        sellCommission: sellComm
+      });
+      const {
+        marginInterestAllocated,
+        totalCommissions,
+        grossProfit,
+        netProfit,
+        netCashProceeds
+      } = accounting;
+
       const totalDebt = Math.abs(Number(state.balance) || 0);
-      const allocatedDebt = totalDebt * weight;
-
-      let posMarginInterest = 0;
-      try {
-        posMarginInterest = calculateMarginInterest(origTranches, {
-          dailyRate,
-          marginDebt: allocatedDebt,
-          totalDebt
-        });
-      } catch {
-        posMarginInterest = 0;
-      }
-      // Keep any already-recorded position charge if the current accrual is lower.
-      posMarginInterest = Math.max(posMarginInterest, Number(pos.marginCharged) || 0);
-      const marginInterestAllocated = Number((posMarginInterest * sellRatio).toFixed(2));
-
-      const totalCommissions = Number((buyCommAllocated + sellComm).toFixed(2));
-      const grossProfit = Number((sellProceeds - soldCostBasis).toFixed(2));
-      const netProfit = Number((grossProfit - totalCommissions - marginInterestAllocated).toFixed(2));
-      // Rollover interest is already reflected in state.balance before a sale.
-      // Keep it in realized P&L, but do not subtract it a second time from cash proceeds.
-      const netCashProceeds = Number((sellProceeds - sellComm).toFixed(2));
-
       const settlement = settleSaleProceeds(
         totalDebt,
         Number(state.cashCushion?.freeCash) || 0,
