@@ -47,8 +47,7 @@ describe('on-demand application code splitting', () => {
   it('keeps logout on the statically injected API dependency behind the session runtime', () => {
     const appRuntime = readSource('../../app.ts');
     const sessionRuntime = readSource('../services/portfolioSessionRuntime.ts');
-    expect(appRuntime).toContain('  logoutAccount,');
-    expect(appRuntime).toContain('  logoutAccount,');
+    expect(appRuntime).toContain('  listUsers,\n  logoutAccount,\n  normalizeFreedomTrades,');
     expect(sessionRuntime).toContain('await dependencies.logoutAccount();');
     expect(sessionRuntime).toContain('dependencies.clearSavedGatewaySecret();');
     expect(appRuntime).not.toContain("await import('./src/services/api')");
