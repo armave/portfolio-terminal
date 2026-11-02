@@ -123,8 +123,10 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   );
   const guestUsers = guestDirectory.users;
   const guestUsersLoading = guestDirectory.status === 'loading';
-  const balanceRefreshing = balanceSync.status === 'refreshing' ||
-    brokerExecutionHistory.status === 'refreshing' || executedTradesLoading || guestUsersLoading;
+  const balanceRefreshing =
+    (isAdmin && balanceSync.status === 'refreshing') ||
+    (shouldReadBrokerHistory && (brokerExecutionHistory.status === 'refreshing' || executedTradesLoading)) ||
+    (isAdmin && guestUsersLoading);
   const guestUsersRequestGeneration = useRef(0);
   const loadGuestUsers = () => {
     const requestId = ++guestUsersRequestGeneration.current;
@@ -204,7 +206,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       removeTradesListener();
       removeErrorListener();
     };
-  }, []);
+  }, [shouldReadBrokerHistory]);
 
   // App startup may finish broker hydration before this lazily mounted desk has
   // installed its event listener. usePortfolio replays the current store snapshot
@@ -365,7 +367,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
         </div>
       </div>
 
-      {(balanceSync.status === 'stale' || balanceSync.status === 'error') && (
+      {isAdmin && (balanceSync.status === 'stale' || balanceSync.status === 'error') && (
         <div role="alert" aria-live="polite" class="flex flex-col gap-2 rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between">
           <span>{balanceSync.hasSnapshot
             ? translateText('Balance refresh failed. Showing the last saved broker snapshot.', getAppLanguage())
@@ -374,7 +376,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
         </div>
       )}
 
-      {(brokerExecutionHistory.status === 'stale' || brokerExecutionHistory.status === 'error') && (
+      {shouldReadBrokerHistory && (brokerExecutionHistory.status === 'stale' || brokerExecutionHistory.status === 'error') && (
         <div
           role="alert"
           aria-live="polite"

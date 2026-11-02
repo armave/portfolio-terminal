@@ -13,9 +13,9 @@ describe('Trades cache-first rendering', () => {
   it('binds the Trades desk to the active account session and remounts after an identity change', () => {
     const app = readAppSource();
     const source = readSource();
-    expect(app).toContain('const closedHistorySession = brokerSessionIdentityRef.current.capture()');
-    expect(app).toContain('isSessionCurrent={isClosedHistorySessionCurrent}');
-    expect(app).toContain('key={`closed-history-${closedHistorySession?.identity ?? \'none\'}-${closedHistorySession?.generation ?? -1}`}');
+    expect(app).toContain('const accountSession = brokerSessionIdentityRef.current.capture()');
+    expect(app).toContain('isSessionCurrent={isAccountSessionCurrent}');
+    expect(app).toContain('key={`closed-history-${accountSession?.identity ?? \'none\'}-${accountSession?.generation ?? -1}`}');
     expect(source).toContain('isSessionCurrent = () => true');
     expect(source).toContain('if (!isSessionCurrent() || cashflowSyncStarted.current) return');
     expect(source).toContain('{ isCurrentSession: isSessionCurrent }');
