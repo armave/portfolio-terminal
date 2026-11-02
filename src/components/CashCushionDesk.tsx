@@ -15,7 +15,6 @@ import { createGuestDirectoryState, guestDirectoryReducer } from '../domain/gues
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage, translateText } from '../services/i18n';
-import { MarketDepthButton } from './MarketDepthButton';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
 
@@ -324,7 +323,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       isGroupStart: index === 0
     }))
   );
-  const renderedMarketDepthTickers = new Set<string>();
 
   if (isAdmin && balanceSync.status === 'loading' && !balanceSync.hasSnapshot) {
     return <DeskLoading
@@ -528,8 +526,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       ? (val / stocksTotal) * 100
                       : null;
                     const quoteMeta = formatQuoteMetadata(h, refreshIntervalMs);
-                    const showMarketDepthButton = !renderedMarketDepthTickers.has(h.ticker);
-                    renderedMarketDepthTickers.add(h.ticker);
 
                     const hasChange = Number.isFinite(h.quoteDetails?.change);
                     const direction: SentimentDirection = hasChange
@@ -553,7 +549,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                           <td data-label="Ticker" class="py-2 px-3 text-cyan-300 font-bold">
                             <div class="inline-flex items-center gap-1.5">
                               <span>{h.ticker}</span>
-                              {isAdmin && showMarketDepthButton && <MarketDepthButton ticker={h.ticker} compact />}
                               <span
                                 data-sentiment={direction}
                                 title={
