@@ -1,4 +1,4 @@
-export interface ValidatedSaleCostBasisTranche {
+interface ValidatedSaleCostBasisTranche {
   qty: number;
   price: number;
   buyCommission?: number;
