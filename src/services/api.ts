@@ -119,7 +119,7 @@ export function clearCloudEncryptionSecretCache(): void {
 function readCloudRevision(headers?: Headers | null): number | null {
   const etag = headers?.get('ETag');
   if (!etag) return null;
-  const revision = Number(etag.replace(/^W\\//, '').replace(/^"|\"$/g, ''));
+  const revision = Number(etag.replace(/^W\//, '').replace(/^"|"$/g, ''));
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
 }
 
