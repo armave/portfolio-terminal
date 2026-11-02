@@ -42,15 +42,15 @@ describe('app localization', () => {
     expect(translateText('Refresh failed; showing the last successful order-book snapshot.', 'ru'))
       .toBe('Не удалось обновить данные; показан последний успешно полученный снимок стакана заявок.');
     expect(translateText('Read-only order book snapshot · TradeNet', 'ru'))
-      .toBe('Снимок стакана заявок только для чтения · TradeNet');
+      .toBe('Снимок стакана заявок TradeNet · только для чтения');
     expect(translateText('Close market depth', 'ru')).toBe('Закрыть стакан заявок');
     expect(translateText('Best bid', 'ru')).toBe('Лучшая цена покупки');
     expect(translateText('Best ask', 'ru')).toBe('Лучшая цена продажи');
     expect(translateText('Tick', 'ru')).toBe('Шаг цены');
-    expect(translateText('Bids · buyers', 'ru')).toBe('Заявки на покупку');
-    expect(translateText('Asks · sellers', 'ru')).toBe('Заявки на продажу');
+    expect(translateText('Bids · buyers', 'ru')).toBe('Заявки на покупку · покупатели');
+    expect(translateText('Asks · sellers', 'ru')).toBe('Заявки на продажу · продавцы');
     expect(translateText('Check that FREEDOM_PUBLIC_KEY and FREEDOM_PRIVATE_KEY are configured as Cloudflare Worker secrets. Never expose the private key in browser code.', 'ru'))
-      .toBe('Проверьте, что FREEDOM_PUBLIC_KEY и FREEDOM_PRIVATE_KEY настроены как секреты Cloudflare Worker. Никогда не раскрывайте приватный ключ в коде браузера.');
+      .toBe('Проверьте, что FREEDOM_PUBLIC_KEY и FREEDOM_PRIVATE_KEY заданы как секреты Cloudflare Worker. Никогда не раскрывайте закрытый ключ в клиентском коде.');
   });
 
   it('localizes the administrator equity badge description', () => {
