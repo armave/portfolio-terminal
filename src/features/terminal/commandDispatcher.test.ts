@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CommandDispatcher } from './commandDispatcher';
-import { portfolioStore } from '../../store/portfolioStore';
+import { PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from '../../store/portfolioStore';
 
 describe('terminal command validation and cash routing', () => {
   afterEach(() => {
@@ -8,8 +8,8 @@ describe('terminal command validation and cash routing', () => {
   });
 
   it('routes cash commands to free cash without calling the margin-balance setter', () => {
-    const setFreeCash = vi.spyOn(portfolioStore, 'setFreeCash').mockImplementation(() => {});
-    const setCashBalance = vi.spyOn(portfolioStore, 'setCashBalance').mockImplementation(() => {});
+    const setFreeCash = vi.spyOn(portfolioStore, 'setFreeCash').mockImplementation(() => true);
+    const setCashBalance = vi.spyOn(portfolioStore, 'setCashBalance').mockImplementation(() => true);
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
       ...portfolioStore.getState(),
       balance: -587.81
@@ -24,8 +24,8 @@ describe('terminal command validation and cash routing', () => {
   });
 
   it('routes explicit balance and debt commands through the balance setter', () => {
-    const setFreeCash = vi.spyOn(portfolioStore, 'setFreeCash').mockImplementation(() => {});
-    const setCashBalance = vi.spyOn(portfolioStore, 'setCashBalance').mockImplementation(() => {});
+    const setFreeCash = vi.spyOn(portfolioStore, 'setFreeCash').mockReturnValue(true);
+    const setCashBalance = vi.spyOn(portfolioStore, 'setCashBalance').mockReturnValue(true);
 
     expect(CommandDispatcher.execute('balance 2500').type).toBe('res');
     expect(setCashBalance).toHaveBeenCalledWith(2500);
@@ -47,7 +47,7 @@ describe('terminal command validation and cash routing', () => {
   });
 
   it('removes an untouched optional target placeholder from a buy template', () => {
-    const buyStock = vi.spyOn(portfolioStore, 'buyStock').mockImplementation(() => {});
+    const buyStock = vi.spyOn(portfolioStore, 'buyStock').mockImplementation(() => true);
     const result = CommandDispatcher.execute('bought 2 AAPL for 100, pt [target]');
     expect(result.type).toBe('res');
     expect(buyStock).toHaveBeenCalledWith('AAPL', 2, 100, expect.any(String), undefined);
@@ -62,7 +62,7 @@ describe('terminal command validation and cash routing', () => {
   });
 
   it('applies manual quote commands to the store and requests cloud sync', () => {
-    const updatePrice = vi.spyOn(portfolioStore, 'updatePrice').mockImplementation(() => {});
+    const updatePrice = vi.spyOn(portfolioStore, 'updatePrice').mockReturnValue(true);
     const result = CommandDispatcher.execute('quote AAPL 195.50');
 
     expect(result.type).toBe('res');
@@ -77,26 +77,26 @@ describe('terminal command validation and cash routing', () => {
     expect(result.sideEffect).toBeUndefined();
   });
 
-  it('adds cash holdings and requests cloud sync when a manual price is supplied', () => {
-    const addCashStock = vi.spyOn(portfolioStore, 'addCashStock').mockImplementation(() => {});
-    const result = CommandDispatcher.execute('cash add 10 MSFT for 420');
+  it('adds priced and unpriced cash holdings before requesting follow-up work', () => {
+    const addCashHolding = vi.spyOn(portfolioStore, 'addCashHolding').mockReturnValue({
+      ticker: 'MSFT', shares: 10, price: 420
+    });
+    const priced = CommandDispatcher.execute('cash add 10 MSFT for 420');
 
-    expect(result.type).toBe('res');
-    expect(addCashStock).toHaveBeenCalledWith('MSFT', 10, 420);
-    expect(result.sideEffect).toEqual({ type: 'SYNC_CLOUD' });
-  });
+    expect(priced.type).toBe('res');
+    expect(addCashHolding).toHaveBeenCalledWith('MSFT', 10, 420);
+    expect(priced.sideEffect).toEqual({ type: 'SYNC_CLOUD' });
 
-  it('requests a live quote when a cash holding is added without a price', () => {
-    const addCashStock = vi.spyOn(portfolioStore, 'addCashStock').mockImplementation(() => {});
-    const result = CommandDispatcher.execute('add cash 10 MSFT');
+    addCashHolding.mockReturnValue({ ticker: 'MSFT', shares: 10, price: 0 });
+    const unpriced = CommandDispatcher.execute('add cash 10 MSFT');
 
-    expect(result.type).toBe('res');
-    expect(addCashStock).toHaveBeenCalledWith('MSFT', 10, 0);
-    expect(result.sideEffect).toEqual({ type: 'FETCH_QUOTE', ticker: 'MSFT' });
+    expect(unpriced.type).toBe('res');
+    expect(addCashHolding).toHaveBeenLastCalledWith('MSFT', 10, 0);
+    expect(unpriced.sideEffect).toEqual({ type: 'FETCH_QUOTE', ticker: 'MSFT' });
   });
 
   it('removes a cash holding and requests cloud sync', () => {
-    const removeCashStock = vi.spyOn(portfolioStore, 'removeCashStock').mockImplementation(() => {});
+    const removeCashStock = vi.spyOn(portfolioStore, 'removeCashStock').mockImplementation(() => true);
     const result = CommandDispatcher.execute('cash remove MSFT');
 
     expect(result.type).toBe('res');
@@ -105,7 +105,7 @@ describe('terminal command validation and cash routing', () => {
   });
 
   it('routes sold-all commands to the store using the full current share count', () => {
-    const sellStock = vi.spyOn(portfolioStore, 'sellStock').mockImplementation(() => null);
+    const sellStock = vi.spyOn(portfolioStore, 'sellStock').mockImplementation(() => true);
     const state = portfolioStore.getState();
     vi.spyOn(portfolioStore, 'getState').mockReturnValue({
       ...state,
@@ -130,8 +130,40 @@ describe('terminal command validation and cash routing', () => {
     expect(result.sideEffect).toEqual({ type: 'SYNC_CLOUD' });
   });
 
+  it('does not report buy success or request a quote when persistence fails', () => {
+    vi.spyOn(portfolioStore, 'buyStock').mockReturnValue(false);
+    const result = CommandDispatcher.execute('bought 2 AAPL for 100');
+    expect(result.type).toBe('err');
+    expect(result.text).toBe(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
+    expect(result.sideEffect).toBeUndefined();
+  });
+
+  it('does not report sale success or request cloud sync when persistence fails', () => {
+    const state = portfolioStore.getState();
+    vi.spyOn(portfolioStore, 'getState').mockReturnValue({
+      ...state,
+      positions: {
+        ...state.positions,
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 7,
+          currentPrice: 100,
+          pt: 110,
+          commBuy: 0,
+          tranches: [{ qty: 7, price: 100, date: '2026-10-01' }]
+        }
+      }
+    });
+    vi.spyOn(portfolioStore, 'sellStock').mockReturnValue(false);
+
+    const result = CommandDispatcher.execute('sold all AAPL for 120');
+    expect(result.type).toBe('err');
+    expect(result.text).toBe(PORTFOLIO_PERSISTENCE_ERROR_MESSAGE);
+    expect(result.sideEffect).toBeUndefined();
+  });
+
   it('preserves an explicit backdated purchase date in the buy command', () => {
-    const buyStock = vi.spyOn(portfolioStore, 'buyStock').mockImplementation(() => {});
+    const buyStock = vi.spyOn(portfolioStore, 'buyStock').mockReturnValue(true);
     const result = CommandDispatcher.execute('bought 30 WDC for 345 on 2026-10-19');
 
     expect(result.type).toBe('res');

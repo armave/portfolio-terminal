@@ -15,8 +15,8 @@ import type { ScenarioModalData } from './features/terminal/scenarioContracts';
 import { fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
 import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
-import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
-import { setAppLanguage, subscribeAppLanguage } from './services/i18n';
+import { addErrorToast, dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
+import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './services/i18n';
 import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
@@ -107,6 +107,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
   const closeMarginIntelligence = useCallback(() => setMarginIntelligence(null), []);
   const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
+
+  useEffect(() => portfolioStore.subscribePersistenceErrors((message) => {
+    addErrorToast(translateText(message, getAppLanguage()));
+  }), []);
 
   useEffect(() => {
     if (!permissions.canViewMarginDesk) {

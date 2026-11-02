@@ -7,6 +7,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Syncing…': 'Синхронизация…',
   'Migrating…': 'Выполняется миграция…',
   'Retry encryption migration': 'Повторить миграцию шифрования',
+  'Could not save portfolio changes. Previous saved data is unchanged.': 'Не удалось сохранить изменения портфеля. Предыдущая сохранённая версия не изменена.',
   'Cloud encryption upgrade could not be verified. Your local portfolio is safe; retry cloud sync.': 'Не удалось проверить переход на новое шифрование облака. Локальный портфель сохранён; повторите облачную синхронизацию.',
   'Closed History encryption upgrade could not be verified. Your saved history is still available; retry the migration.': 'Не удалось проверить переход на новое шифрование истории сделок. Сохранённая история доступна; повторите миграцию.',
   'Balance refresh failed. Showing the last saved broker snapshot.': 'Не удалось обновить баланс. Показан последний сохранённый снимок брокера.',

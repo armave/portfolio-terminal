@@ -1219,7 +1219,17 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
     const cashUsed = Math.min(priorFreeCash, totalOutlay);
     const debtAdded = totalOutlay - cashUsed;
 
-    portfolioStore.buyStock(ticker, shares, price, action.date || new Date().toISOString().split('T')[0], targetPrice);
+    const committed = portfolioStore.buyStock(
+      ticker,
+      shares,
+      price,
+      action.date || new Date().toISOString().split('T')[0],
+      targetPrice
+    );
+    if (!committed) {
+      logTerminal('[Error]: Could not save portfolio changes. Previous saved data is unchanged.');
+      return;
+    }
     const committedState = portfolioStore.getState();
 
     logTerminal(`[Executed Buy]: Added ${shares} ${ticker} @ ${formatUSD(price)}. Outlay: ${formatUSD(totalOutlay)} (Comm: ${formatUSD(buyComm)}). Funded: ${formatUSD(cashUsed)} cash | +${formatUSD(debtAdded)} margin debt. Free Cash remaining: ${formatUSD(committedState.cashCushion.freeCash)}. Total Margin Debt: -${formatUSD(Math.abs(committedState.balance))} (was -${formatUSD(priorDebt)}).`);
