@@ -1,5 +1,5 @@
-import type { BrokerAssumptions, TrancheItem } from '../types/portfolio';
-import { calculateCommission, resolveCommissionConfig } from './portfolio';
+import type { BrokerAssumptions, PositionRecord, TrancheItem } from '../types/portfolio';
+import { calculateCommission, calculateMarginInterest, resolveCommissionConfig } from './portfolio';
 
 export interface FifoSaleAllocation {
   soldCostBasis: number;
@@ -117,5 +117,104 @@ export function settleSaleProceeds(
     freeCash: normalizedCash + cashSurplus,
     debtRepaid,
     cashSurplus
+  };
+}
+
+
+export interface SaleAccountingInput {
+  tranches: readonly TrancheItem[];
+  positions: Readonly<Record<string, PositionRecord>>;
+  positionShares: number;
+  sharesSold: number;
+  balance: number;
+  brokerAssumptions: Pick<BrokerAssumptions, 'annualBorrowRate' | 'dayCountBasis'>;
+  positionMarginCharged?: number;
+  sellProceeds: number;
+  soldCostBasis: number;
+  buyCommissionAllocated: number;
+  sellCommission: number;
+  /** Optional deterministic clock for tests; production preserves the existing system clock. */
+  now?: Date;
+}
+
+export interface SaleAccountingResult {
+  marginInterestAllocated: number;
+  totalCommissions: number;
+  grossProfit: number;
+  netProfit: number;
+  netCashProceeds: number;
+}
+
+/**
+ * Calculate the financing allocation and realized accounting for one sale.
+ * This is deliberately pure: PortfolioStore remains responsible for committing
+ * the resulting position, debt, cash, and closed-trade state.
+ */
+export function calculateSaleAccounting(input: SaleAccountingInput): SaleAccountingResult {
+  const {
+    tranches,
+    positions,
+    positionShares,
+    sharesSold,
+    balance,
+    brokerAssumptions,
+    positionMarginCharged,
+    sellProceeds,
+    soldCostBasis,
+    buyCommissionAllocated,
+    sellCommission,
+    now
+  } = input;
+  const dailyRate = brokerAssumptions.annualBorrowRate / brokerAssumptions.dayCountBasis;
+  const totalPortfolioInvested = Object.values(positions).reduce(
+    (acc, position) =>
+      acc +
+      (position.tranches || []).reduce(
+        (sum, tranche) =>
+          sum +
+          (Number(tranche.qty ?? tranche.shares) || 0) *
+          (Number(tranche.price ?? tranche.entryPrice) || 0),
+        0
+      ),
+    0
+  );
+  const positionInvested = tranches.reduce(
+    (sum, tranche) =>
+      sum +
+      (Number(tranche.qty ?? tranche.shares) || 0) *
+      (Number(tranche.price ?? tranche.entryPrice) || 0),
+    0
+  );
+  const weight = totalPortfolioInvested > 0 ? positionInvested / totalPortfolioInvested : 1;
+  const totalDebt = Math.abs(Number(balance) || 0);
+  const allocatedDebt = totalDebt * weight;
+
+  let positionMarginInterest = 0;
+  try {
+    positionMarginInterest = calculateMarginInterest(tranches, {
+      dailyRate,
+      marginDebt: allocatedDebt,
+      totalDebt,
+      ...(now ? { now } : {})
+    });
+  } catch {
+    positionMarginInterest = 0;
+  }
+  // Keep any already-recorded position charge if the current accrual is lower.
+  positionMarginInterest = Math.max(positionMarginInterest, Number(positionMarginCharged) || 0);
+  const sellRatio = positionShares > 0 ? sharesSold / positionShares : 1;
+  const marginInterestAllocated = Number((positionMarginInterest * sellRatio).toFixed(2));
+  const totalCommissions = Number((buyCommissionAllocated + sellCommission).toFixed(2));
+  const grossProfit = Number((sellProceeds - soldCostBasis).toFixed(2));
+  const netProfit = Number((grossProfit - totalCommissions - marginInterestAllocated).toFixed(2));
+  // Rollover interest is already reflected in balance before a sale. Do not deduct it again from cash proceeds.
+  const netCashProceeds = Number((sellProceeds - sellCommission).toFixed(2));
+
+  return {
+    marginInterestAllocated,
+    totalCommissions,
+    grossProfit,
+    netProfit,
+    netCashProceeds
   };
 }
