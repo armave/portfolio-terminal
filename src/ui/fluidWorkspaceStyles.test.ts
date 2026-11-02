@@ -47,7 +47,7 @@ describe('Margin projection and insights layout', () => {
 
   it('places the projection table and market insights in the same responsive workspace row', () => {
     const workspaceStart = appSource.indexOf('id="marginDataWorkspace"');
-    const projection = appSource.indexOf('<ProjectionsTable />', workspaceStart);
+    const projection = appSource.indexOf('<MemoProjectionsTable />', workspaceStart);
     const insights = appSource.indexOf('<MarketInsightsPanel />', workspaceStart);
     const workspaceEnd = appSource.indexOf('</div>', insights);
     expect(workspaceStart).toBeGreaterThan(-1);
