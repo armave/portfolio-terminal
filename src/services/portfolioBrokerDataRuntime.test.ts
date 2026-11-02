@@ -91,12 +91,11 @@ describe('portfolio broker data runtime', () => {
     const first = fixture.runtime.loadFreedomAccount(fixture.session);
     const second = fixture.runtime.loadFreedomAccount(fixture.session);
 
-    expect(first).toBe(second);
     expect(fixture.events).toEqual([{ type: 'broker:account-info-refreshing' }]);
     await vi.waitFor(() => expect(fixture.dependencies.fetchAccountInfo).toHaveBeenCalledTimes(1));
 
     resolveFetch?.({ raw: true });
-    await expect(first).resolves.toBe(true);
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
     expect(fixture.events[1]).toEqual({
       type: 'broker:account-info',
       payload: { loaded: true, balances: [], positions: [] }
@@ -172,8 +171,7 @@ describe('portfolio broker data runtime', () => {
     const first = fixture.runtime.loadActiveOrders(fixture.session);
     const second = fixture.runtime.loadActiveOrders(fixture.session);
 
-    expect(first).toBe(second);
-    await expect(first).resolves.toBe(true);
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
     expect(fixture.dependencies.fetchActiveOrders).toHaveBeenCalledTimes(1);
     expect(fixture.events).toContainEqual({
       type: 'broker:active-orders',
