@@ -10,6 +10,25 @@ function readAppSource(): string {
 }
 
 describe('Trades cache-first rendering', () => {
+  it('binds the Trades desk to the active account session and remounts after an identity change', () => {
+    const app = readAppSource();
+    const source = readSource();
+    expect(app).toContain('const closedHistorySession = brokerSessionIdentityRef.current.capture()');
+    expect(app).toContain('isSessionCurrent={isClosedHistorySessionCurrent}');
+    expect(app).toContain('key={`closed-history-${closedHistorySession?.identity ?? \'none\'}-${closedHistorySession?.generation ?? -1}`}');
+    expect(source).toContain('isSessionCurrent = () => true');
+    expect(source).toContain('if (!isSessionCurrent() || cashflowSyncStarted.current) return');
+  });
+
+  it('discards delayed cloud-history and cashflow responses after the account session changes', () => {
+    const source = readSource();
+    expect(source).toContain('if (!active || !isSessionCurrent()) return');
+    expect(source).toContain('if (!isSessionCurrent()) return;\n      const fetchedRows = normalizeFreedomCashflowRows(response)');
+    expect(source).toContain('if (!saved || !isSessionCurrent()) return');
+    expect(source).toContain('if (!isSessionCurrent()) return false;');
+    expect(source).toContain('if (isSessionCurrent()) setCashflowSyncReady(true)');
+  });
+
   it('clamps the rendered Trades page before a shrinking refresh can show an empty range', () => {
     const source = readSource();
     expect(source).toContain('const safeTradesPage = Math.max(1, Math.min(tradesPage, tradesPageCount))');

@@ -59,6 +59,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const previousCurrentUserRef = useRef<AuthUser | null>(null);
   const brokerSessionIdentityRef = useRef(createSessionIdentityGuard(null));
   brokerSessionIdentityRef.current.setIdentity(currentUser ? `${currentUser.role}:${currentUser.id}` : null);
+  const closedHistorySession = brokerSessionIdentityRef.current.capture();
+  const isClosedHistorySessionCurrent = () =>
+    closedHistorySession !== null && brokerSessionIdentityRef.current.isCurrent(closedHistorySession);
   const activeDeskView = usePortfolioSelector(resolveActiveView);
   const portfolioSnapshot = usePortfolio();
   const emptyStateVisible = Object.keys(portfolioSnapshot.positions || {}).length === 0 && activeDeskView === 'COMBINED';
@@ -758,7 +761,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         class={"desk-view-transition rounded-lg " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
       >
         {permissions.canViewClosedHistory && (hasOpenedClosedHistory
-          ? <div class="desk-content-reveal"><ClosedHistoryDesk accountId={currentUser?.id || ''} /></div>
+          ? <div class="desk-content-reveal"><ClosedHistoryDesk
+              key={`closed-history-${closedHistorySession?.identity ?? 'none'}-${closedHistorySession?.generation ?? -1}`}
+              accountId={currentUser?.id || ''}
+              isSessionCurrent={isClosedHistorySessionCurrent}
+            /></div>
           : <DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />)}
       </div>
 
