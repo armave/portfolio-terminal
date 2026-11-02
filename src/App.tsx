@@ -17,6 +17,7 @@ import { portfolioStore, useActiveView, usePortfolioSelector } from './store/por
 import { getAccountPermissions } from './domain/accountPermissions';
 import { dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import { setAppLanguage, subscribeAppLanguage } from './services/i18n';
+import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
 import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerDataRuntime';
@@ -637,7 +638,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         type="file"
         id="importFileInput"
         class="hidden"
-        accept=".json"
+        accept={PORTFOLIO_BACKUP_FILE_EXTENSION}
         onChange={(event: Event) => {
           const input = event.currentTarget as HTMLInputElement;
           const file = input.files?.[0];

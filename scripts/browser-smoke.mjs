@@ -462,6 +462,14 @@ try {
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export portfolio backup as JSON' }).click();
   const download = await downloadPromise;
+  const exportedFilename = download.suggestedFilename();
+  if (!exportedFilename.endsWith('.json')) {
+    throw new Error(`Backup export used an extension the importer does not accept: ${exportedFilename}`);
+  }
+  const importAccept = await page.locator('#importFileInput').getAttribute('accept');
+  if (importAccept !== '.json') {
+    throw new Error(`Backup importer accepts ${importAccept || 'no explicit extension'}, expected .json`);
+  }
   const backupPath = await download.path();
   if (!backupPath) throw new Error('Backup export did not produce a readable download.');
   const backupBytes = await readFile(backupPath);

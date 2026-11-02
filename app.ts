@@ -39,6 +39,7 @@ import {
 import { getMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
+import { buildPortfolioBackupFilename, createPortfolioBackupBlob } from './src/services/portfolioBackupFile';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
   fetchYahooDeepStockData,
@@ -1143,14 +1144,16 @@ function setQuoteRefreshInterval(interval: number | string): number {
 
 function exportBackupJSON() {
   const exportState = createPortfolioBackupSnapshot(state);
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportState, null, 2));
+  const backupBlob = createPortfolioBackupBlob(exportState);
+  const downloadUrl = URL.createObjectURL(backupBlob);
   const downloadAnchor = document.createElement('a');
-  const filename = `margin_portfolio_backup_${new Date().toISOString().split('T')[0]}.json`;
-  downloadAnchor.setAttribute("href", dataStr);
-  downloadAnchor.setAttribute("download", filename);
+  const filename = buildPortfolioBackupFilename();
+  downloadAnchor.href = downloadUrl;
+  downloadAnchor.download = filename;
   document.body.appendChild(downloadAnchor);
   downloadAnchor.click();
   downloadAnchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
   logTerminal(`[Backup]: Exported state to ${filename}.`);
 }
 
