@@ -36,7 +36,7 @@ import {
   DEFAULT_GUEST_REFRESH_INTERVAL_MS,
   normalizeQuoteRefreshInterval
 } from './src/services/portfolioAutoRefresh';
-import { getMarketInsightsTicker } from './src/domain/portfolioSelectors';
+import { getMarketInsightsTicker, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
 import { buildPortfolioBackupFilename, createPortfolioBackupBlob } from './src/services/portfolioBackupFile';
@@ -913,7 +913,7 @@ function renderBoardAnalystConsensus(ticker: string, force = false) {
     boardAnalystErrors.set(ticker, { failedAt: Date.now(), message });
   }).finally(() => {
     boardAnalystRequests.delete(ticker);
-    if (getMarketInsightsTicker() === ticker) renderBoardAnalystConsensus(ticker);
+    if (isCurrentMarketInsightsTicker(portfolioStore.getState(), ticker)) renderBoardAnalystConsensus(ticker);
   });
   boardAnalystRequests.set(ticker, request);
 }
