@@ -708,9 +708,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 id="boardTitleRow"
                 class={"board-title-row flex flex-wrap items-center justify-between gap-2 " + (emptyStateVisible ? "hidden" : "")}
               >
-                <div class="min-w-0 flex-1 text-lg font-bold text-white" id="boardTitle">
+                <div class="board-title-text min-w-0 text-lg font-bold text-white" id="boardTitle">
                   {boardTitle}
                 </div>
+                <div id="boardAnalystConsensus" class={"board-analyst-consensus " + analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
               </div>
 
 
@@ -720,7 +721,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 class="board-title-actions flex flex-wrap items-center gap-2"
               >
                 <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
-                <div id="boardAnalystConsensus" class={analystConsensus.className} title={analystConsensus.title}>{analystConsensus.text}</div>
               </div>
 
               <div
