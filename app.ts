@@ -1747,7 +1747,7 @@ async function applyPortfolioActions(action: PortfolioActionIntent) {
   }
   else if (action.action === "sell") {
     const ticker = action.ticker.toUpperCase();
-    let pos = state.positions[ticker];
+    let pos: (Partial<PositionRecord> & { ticker: string; shares: number | string }) | undefined = state.positions[ticker];
     let isCashHolding = false;
     let cashHoldingIdx = -1;
 
@@ -1948,7 +1948,7 @@ function confirmAiPortfolioAction(action: PortfolioActionIntent): boolean {
     message
   ];
   const currentPosition = state.positions[ticker] ||
-    state.cashCushion?.holdings?.find((holding: { ticker: string; shares?: number }) => holding.ticker === ticker);
+    state.cashCushion?.holdings?.find((holding) => holding.ticker === ticker);
   const currentShares = action.action === 'buy'
     ? Number(state.positions[ticker]?.shares) || 0
     : Number(currentPosition?.shares) || 0;
