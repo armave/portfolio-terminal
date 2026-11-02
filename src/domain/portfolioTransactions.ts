@@ -29,6 +29,7 @@ export function allocateFifoSaleTranches(
     positionShares,
     aggregateBuyCommission
   );
+  const normalizedAggregateBuyCommission = validated.aggregateBuyCommission;
   const shareTolerance = Math.max(1e-8, Math.abs(positionShares) * 1e-8);
   if (sharesToSell - positionShares > shareTolerance) {
     throw new Error('Sale quantity cannot exceed the validated open position.');
@@ -79,11 +80,11 @@ export function allocateFifoSaleTranches(
   const sellRatio = normalizedSharesToSell / positionShares;
   const unassignedBuyCommission = Math.max(
     0,
-    aggregateBuyCommission - validated.explicitBuyCommissionTotal
+    normalizedAggregateBuyCommission - validated.explicitBuyCommissionTotal
   );
   const allocatedCommission = hasPerTrancheCommissions
     ? Number((buyCommissionAllocated + unassignedBuyCommission * sellRatio).toFixed(2))
-    : Number((aggregateBuyCommission * sellRatio).toFixed(2));
+    : Number((normalizedAggregateBuyCommission * sellRatio).toFixed(2));
 
   return {
     soldCostBasis: Number(soldCostBasis.toFixed(8)),

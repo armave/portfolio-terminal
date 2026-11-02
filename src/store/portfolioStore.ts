@@ -623,7 +623,7 @@ export class PortfolioStore {
         origTranches,
         actualSold,
         pos.shares,
-        Number(pos.commBuy ?? 0)
+        validatedCostBasis.aggregateBuyCommission
       );
       const { soldCostBasis, buyCommissionAllocated: buyCommAllocated, remainingTranches: updatedTranches } = allocation;
 
@@ -669,7 +669,7 @@ export class PortfolioStore {
         const remainingPosition = {
           ...pos,
           shares: remainingShares,
-          commBuy: Math.max(0, (Number(pos.commBuy) || 0) - buyCommAllocated),
+          commBuy: Math.max(0, validatedCostBasis.aggregateBuyCommission - buyCommAllocated),
           tranches: updatedTranches
         };
         // The sold slice has been realized below; do not carry a one-shot

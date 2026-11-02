@@ -825,6 +825,7 @@ export function realizeClosedTrade(
     rawCommission,
     ticker
   );
+  const normalizedCommission = validatedCostBasis.aggregateBuyCommission;
   const lots = validatedCostBasis.tranches.map((tranche) => ({
     ...tranche,
     buyCommission: tranche.buyCommission ?? 0
@@ -835,7 +836,7 @@ export function realizeClosedTrade(
   }
 
   const lotBuyCommissions = lots.reduce((total, tranche) => total + Math.max(0, Number(tranche.buyCommission) || 0), 0);
-  const unassignedBuyCommission = Math.max(0, rawCommission - lotBuyCommissions);
+  const unassignedBuyCommission = Math.max(0, normalizedCommission - lotBuyCommissions);
   const closedLots: { qty: number; cost: number; buyCommission: number; acquiredAt: number }[] = [];
   let remainingToClose = shares;
 
@@ -888,7 +889,7 @@ export function realizeClosedTrade(
       ...position,
       shares: Math.max(0, originalShares - closedShares),
       tranches: remainingLots,
-      commBuy: Math.max(0, scaledCommission - buyCommission),
+      commBuy: Math.max(0, normalizedCommission - buyCommission),
       marginCharged: Math.max(0, rawMarginCharged - marginFee)
     },
     trade,

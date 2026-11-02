@@ -132,20 +132,23 @@ export function validateSaleCostBasisTranches(
     );
   }
 
-  // Correct only floating-point drift within the explicit tolerance. Never
-  // scale a materially inconsistent lot ledger into an apparently valid one.
+  // Correct only floating-point drift within the explicit tolerance. Scale all
+  // lots and aggregate fees together so average entry cost and fee allocation
+  // remain consistent whether the recorded lot sum is slightly above or below.
+  const shareScale = positionShares / totalShares;
+  if (!Number.isFinite(shareScale) || shareScale <= 0) {
+    throw new Error('Position cost-basis tranche quantities are inconsistent; reconcile lots before selling.');
+  }
   if (difference !== 0) {
-    const last = tranches[tranches.length - 1];
-    const previousQty = last.qty;
-    const correctedQty = previousQty + difference;
-    if (!Number.isFinite(correctedQty) || correctedQty <= 0) {
-      throw new Error('Position cost-basis tranche quantities are inconsistent; reconcile lots before selling.');
-    }
-    last.qty = correctedQty;
-    if (last.buyCommission !== undefined && difference < 0) {
-      last.buyCommission = Number((last.buyCommission * correctedQty / previousQty).toFixed(8));
-    }
+    tranches.forEach((tranche) => {
+      tranche.qty *= shareScale;
+      if (tranche.buyCommission !== undefined) tranche.buyCommission *= shareScale;
+    });
     totalShares = positionShares;
+  }
+  const normalizedAggregateBuyCommission = aggregateBuyCommission * shareScale;
+  if (!Number.isFinite(normalizedAggregateBuyCommission) || normalizedAggregateBuyCommission < 0) {
+    throw new Error('Position entry commission is invalid after share reconciliation; reconcile fees before selling.');
   }
 
   const totalCostBasis = tranches.reduce((total, tranche) => total + tranche.qty * tranche.price, 0);
@@ -160,14 +163,14 @@ export function validateSaleCostBasisTranches(
   if (!Number.isFinite(explicitBuyCommissionTotal)) {
     throw new Error('Position entry commissions are invalid; reconcile fees before selling.');
   }
-  if (explicitBuyCommissionTotal - aggregateBuyCommission > 0.01) {
+  if (explicitBuyCommissionTotal - normalizedAggregateBuyCommission > 0.01) {
     throw new Error('Tranche entry commissions exceed the recorded position commission; reconcile fees before selling.');
   }
 
   return {
     tranches,
     positionShares,
-    aggregateBuyCommission,
+    aggregateBuyCommission: normalizedAggregateBuyCommission,
     totalShares,
     totalCostBasis,
     explicitBuyCommissionTotal,
