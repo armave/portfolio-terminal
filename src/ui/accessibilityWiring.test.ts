@@ -109,6 +109,16 @@ describe('Stage 10 accessibility wiring', () => {
     expect(stylesheet).toContain('max-height: min(calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.5rem), 52rem);');
   });
 
+  it('retains the latest same-ticker order book during refresh and after a failed refresh', () => {
+    const source = readSource('../components/MarketDepthButton.tsx');
+    expect(source).toContain('const currentSnapshot = snapshot?.symbol === ticker.trim().toUpperCase() ? snapshot : null;');
+    expect(source).not.toContain('setSnapshot(null)');
+    expect(source).toContain('currentSnapshot && isLoading');
+    expect(source).toContain('Refresh failed; showing the last successful order-book snapshot.');
+    expect(source).toContain("error ? 'Retry depth' : 'Refresh depth'");
+    expect(source).toContain('aria-busy={isLoading}');
+  });
+
   it('renders order-book levels with semantic table headings and localized captions', () => {
     const source = readSource('../components/MarketDepthButton.tsx');
     expect(source).toContain('<caption class="sr-only">{caption}</caption>');

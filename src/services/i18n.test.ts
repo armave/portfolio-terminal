@@ -31,6 +31,14 @@ describe('app localization', () => {
     expect(translateText('Priced market value', 'ru')).toBe('Рыночная стоимость позиций с котировкой');
   });
 
+  it('localizes Market Depth refresh recovery copy', () => {
+    expect(translateText('Retry depth', 'ru')).toBe('Повторить загрузку стакана');
+    expect(translateText('Refreshing order book; previous snapshot remains visible.', 'ru'))
+      .toBe('Обновление стакана заявок; предыдущий снимок остаётся доступным.');
+    expect(translateText('Refresh failed; showing the last successful order-book snapshot.', 'ru'))
+      .toBe('Не удалось обновить данные; показан последний успешно полученный снимок стакана заявок.');
+  });
+
   it('localizes the administrator equity badge description', () => {
     expect(translateText('Current portfolio equity from available market quotes and broker cash balance.', 'ru'))
       .toBe('Текущий капитал портфеля по доступным рыночным котировкам и денежному балансу брокера.');
