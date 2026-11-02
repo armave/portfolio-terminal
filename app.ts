@@ -83,7 +83,7 @@ import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistor
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings } from './src/domain/guestPortfolio';
-import { isCurrentGuestPortfolioSession } from './src/services/guestPortfolioSession';
+import { isCurrentGuestPortfolioSession, resolveGuestPortfolioRefreshView } from './src/services/guestPortfolioSession';
 import { createSessionIdentityGuard } from './src/utils/sessionIdentityGuard';
 import { CommandDispatcher } from './src/features/terminal/commandDispatcher';
 import type { ScenarioModalData } from './src/features/terminal/scenarioContracts';
