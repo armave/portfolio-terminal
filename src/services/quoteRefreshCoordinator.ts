@@ -11,7 +11,6 @@ export function createQuoteRefreshCoordinator(
   executeRefresh: (force: boolean) => Promise<boolean>
 ): QuoteRefreshCoordinator {
   let inFlight: Promise<boolean> | null = null;
-  let forcedRequest: Promise<boolean> | null = null;
   let queuedRequest: Promise<boolean> | null = null;
   let queuedForce = false;
 
@@ -21,20 +20,14 @@ export function createQuoteRefreshCoordinator(
       .then(() => executeRefresh(force))
       .finally(() => {
         if (inFlight === request) inFlight = null;
-        if (forcedRequest === request) forcedRequest = null;
       });
     inFlight = request;
-    if (force) forcedRequest = request;
     return request;
   };
 
   const refreshAfterCurrent = (force = false): Promise<boolean> => {
-    if (force && forcedRequest) return forcedRequest;
     if (queuedRequest) {
-      if (force) {
-        queuedForce = true;
-        forcedRequest = queuedRequest;
-      }
+      queuedForce = queuedForce || force;
       return queuedRequest;
     }
 
@@ -45,34 +38,35 @@ export function createQuoteRefreshCoordinator(
     let request: Promise<boolean>;
     request = (async () => {
       await pending.catch(() => false);
-      // Also wait for any ordinary poll that starts while the explicit refresh
-      // is queued. The next batch then captures the latest canonical portfolio.
+      // Also wait for any ordinary poll that starts while this request is
+      // queued. The next batch then captures the latest canonical portfolio.
       while (inFlight) {
         const current = inFlight;
         await current.catch(() => false);
       }
-      return start(queuedForce);
+      const runForce = queuedForce;
+      // Clear the queue before starting the follow-up. A new explicit trigger
+      // during that follow-up can then reserve one further latest-state batch.
+      if (queuedRequest === request) {
+        queuedRequest = null;
+        queuedForce = false;
+      }
+      return start(runForce);
     })().finally(() => {
       if (queuedRequest === request) {
         queuedRequest = null;
         queuedForce = false;
       }
-      if (forcedRequest === request) forcedRequest = null;
     });
 
     queuedRequest = request;
-    if (force) forcedRequest = request;
     return request;
   };
 
   const refresh = (force = false): Promise<boolean> => {
-    if (force && forcedRequest) return forcedRequest;
     if (inFlight) return force ? refreshAfterCurrent(true) : inFlight;
     if (queuedRequest) {
-      if (force) {
-        queuedForce = true;
-        forcedRequest = queuedRequest;
-      }
+      queuedForce = queuedForce || force;
       return queuedRequest;
     }
     return start(force);
