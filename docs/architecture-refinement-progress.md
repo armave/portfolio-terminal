@@ -185,6 +185,19 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [ ] Run exact-head typecheck, Vitest, build, dead-code validation, audits, and production browser smoke.
 - [ ] Review and merge.
 
+## Current PR #259 — production browser recovery and assignment journeys
+
+- [x] Extend the existing Playwright production smoke using only mocked Worker routes.
+- [x] Model revisioned state/history endpoints with ETags and deterministic 412 conflict injection.
+- [x] Model TradeNet account, execution-history, active-order and Yahoo quote responses.
+- [x] Exercise admin active-tranche guest assignment and assert a guest projection plus active LOTS ledger publication.
+- [x] Exercise manual sync when the broker balance endpoint fails but other sources continue successfully.
+- [x] Exercise cloud revision conflict handling through the manual sync UI.
+- [x] Exercise backup export, invalid JSON rejection, valid backup import and confirmed local/cloud history reset.
+- [x] Verify the published guest snapshot remains available to the authenticated guest without accessing shared admin state.
+- [ ] Run exact-head typecheck, Vitest, production build, browser smoke, dead-code validation, and both dependency audits.
+- [ ] Review and merge.
+
 ## Remaining architecture work
 
 ### P1 — application runtime boundaries
@@ -204,10 +217,10 @@ This is the continuing checklist for the architecture-refinement program. A chec
 ### P1 — authenticated browser coverage
 
 - [x] Admin bootstrap, guest sign-in, admin-to-guest sign-out/switch, failed-login recovery, and role-scoped workspace isolation in PR #256.
-- [ ] Broker refresh and partial-source-failure journeys.
-- [ ] Backup import and portfolio reset journeys.
-- [ ] Cloud sync and revision-conflict journeys.
-- [ ] Guest assignment publication and history journeys.
+- [x] Broker refresh and partial-source-failure journeys in PR #259.
+- [x] Backup import and portfolio reset journeys in PR #259.
+- [x] Cloud sync and revision-conflict journeys in PR #259.
+- [x] Guest assignment publication and guest-readable LOTS history journeys in PR #259.
 
 ### P2 — portfolio store modularization
 
