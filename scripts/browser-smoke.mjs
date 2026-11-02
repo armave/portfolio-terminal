@@ -18,7 +18,7 @@ let browser;
 async function waitForPreview() {
   let lastError;
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    if (server.exitCode !== null) {
+    if (server.exitCode !== null || server.signalCode !== null) {
       throw new Error(`Vite preview exited with code ${server.exitCode}.`);
     }
     try {
@@ -68,6 +68,7 @@ try {
     await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(
       () => Boolean(document.querySelector('#root')?.firstElementChild),
+      null,
       { timeout: 15_000 }
     );
     await page.waitForTimeout(150);
@@ -80,12 +81,10 @@ try {
   console.log('Browser smoke passed: Preact application mounted at desktop, tablet, and phone viewports.');
 } finally {
   await browser?.close();
-  if (server.exitCode === null) {
+  if (server.exitCode === null && server.signalCode === null) {
+    const exited = new Promise((resolve) => server.once('exit', resolve));
     server.kill('SIGTERM');
-    await Promise.race([
-      new Promise((resolve) => server.once('exit', resolve)),
-      delay(5_000)
-    ]);
-    if (server.exitCode === null) server.kill('SIGKILL');
+    await Promise.race([exited, delay(5_000)]);
+    if (server.exitCode === null && server.signalCode === null) server.kill('SIGKILL');
   }
 }
