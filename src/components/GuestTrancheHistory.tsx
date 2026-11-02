@@ -44,7 +44,7 @@ export function GuestTrancheHistory({ records, activeTranches }: GuestTrancheHis
     : formatUSD(summary.currentMarketValue);
 
   return (
-    <section id="guestTrancheHistory" class="space-y-3 rounded-xl border border-indigo-900/50 bg-slate-950/50 p-3 sm:p-4"
+    <section id="guestTrancheHistory" class="text-center md:text-left space-y-3 rounded-xl border border-indigo-900/50 bg-slate-950/50 p-3 sm:p-4"
       aria-labelledby="guestTrancheHistoryHeading">
       <div class="flex flex-wrap items-start justify-between gap-2 border-b border-slate-800 pb-3">
         <div>

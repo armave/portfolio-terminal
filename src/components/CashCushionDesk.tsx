@@ -348,7 +348,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
           .guest-stock-card-enter { animation: none; }
         }
       `}</style>
-      <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+      <div class="flex text-center md:text-left justify-center md:justify-between items-center border-b border-slate-800 pb-2">
         <div>
           <div class="flex items-center gap-2">
             <h2 class="text-lg font-black text-cyan-400 tracking-wide">
@@ -484,7 +484,6 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                       </div>
                     )}
                   </div>
-                  <p class="mt-3 text-[9px] text-slate-500">{formatQuoteMetadata(holding, refreshIntervalMs)}</p>
                 </article>
               );
             })}
