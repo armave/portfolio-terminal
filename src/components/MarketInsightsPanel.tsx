@@ -9,7 +9,7 @@ import { getMarketInsightsTicker } from '../domain/portfolioSelectors';
 import { getMarketInsightsRequestPlan, type MarketInsightsSection } from '../features/quotes/marketInsightsRequestPolicy';
 import { useDialogFocus } from '../ui/dialogFocus';
 
-export type InsightSection = MarketInsightsSection;
+type InsightSection = MarketInsightsSection;
 
 export function formatNewsRelativeTime(datetime: unknown, now = Date.now()): string {
   if ((typeof datetime !== 'number' && typeof datetime !== 'string') ||
