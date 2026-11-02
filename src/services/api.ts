@@ -97,7 +97,11 @@ function setCloudRevision(revision: number): void {
       localStorage.setItem(CLOUD_REVISION_STORAGE_KEY, String(revision));
     }
   } catch {
-    // The in-memory revision still protects thiconst cloudStateSecurity = createCloudStateSecurity({
+    // The in-memory revision still protects this running app instance.
+  }
+}
+
+const cloudStateSecurity = createCloudStateSecurity({
   workerProxyUrl: WORKER_PROXY_URL,
   getStoredGatewaySecret: getGatewaySecret
 });
@@ -121,11 +125,6 @@ function readCloudRevision(headers?: Headers | null): number | null {
   if (!etag) return null;
   const revision = Number(etag.replace(/^W\//, '').replace(/^"|"$/g, ''));
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
-}
-
- catch {
-    return '';
-  }
 }
 
 export interface ProxyFetchOptions extends RequestInit {
