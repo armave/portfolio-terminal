@@ -392,6 +392,35 @@ describe('cloud revision conflict handling', () => {
     expect(secondHeaders['If-Match']).toBe('"42"');
   });
 
+  it('drops a queued push when its account session changes before the write starts', async () => {
+    let resolveFirstResponse!: (response: Response) => void;
+    const firstResponse = new Promise<Response>((resolve) => { resolveFirstResponse = resolve; });
+    const fetchMock = vi.fn().mockImplementationOnce(() => firstResponse);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const first = pushCloudState({ activeView: 'FIRST', balance: 100 }, {
+      secret: 'cloud-encryption-secret',
+      showToast: vi.fn()
+    });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    let isCurrent = true;
+    const second = pushCloudState({ activeView: 'STALE-SECOND', balance: 200 }, {
+      secret: 'cloud-encryption-secret',
+      isCurrentSession: () => isCurrent,
+      showToast: vi.fn()
+    });
+    isCurrent = false;
+    resolveFirstResponse(new Response('{}', {
+      status: 200,
+      headers: new Headers({ ETag: '"42"' })
+    }));
+
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('reports a conflict instead of silently overwriting a newer cloud state', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,

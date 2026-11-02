@@ -858,6 +858,7 @@ export async function pullCloudState(
     reportResult?.(true);
     return parsedState;
   } catch (err: any) {
+    if (!isCurrentSession()) return stalePullFallback();
     reportResult?.(false);
     console.error('Failed to pull KV cloud state:', err);
     showToast(`Cloud pull failed: ${err.message}`, 'error');
@@ -1038,6 +1039,8 @@ async function performPushCloudState(
     getState,
     showToast = (msg: string, type: string) => console.log(`[${type}] ${msg}`)
   } = handlers;
+  const isCurrentSession = handlers.isCurrentSession || (() => true);
+  if (!isCurrentSession()) return false;
 
   const currentState = state || (typeof getState === 'function' ? getState() : {});
   const currentSecret = handlers.secret || getActiveGatewaySecret();
@@ -1125,6 +1128,7 @@ async function performPushCloudState(
       throw new Error(`Cloud state is still too large after compacting (${(serializedBytes / 1024 / 1024).toFixed(2)} MB). Check large state fields before syncing.`);
     }
     const ciphertext = await encryptCloudPayload(serializedState, currentSecret);
+    if (!isCurrentSession()) return false;
     const payload = { encryptedPayload: ciphertext };
 
     const url = new URL('/api/state', WORKER_PROXY_URL);
@@ -1138,6 +1142,7 @@ async function performPushCloudState(
       },
       body: JSON.stringify(payload)
     });
+    if (!isCurrentSession()) return false;
 
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
@@ -1154,6 +1159,7 @@ async function performPushCloudState(
     handlers.onStatusChange?.('synced');
     return true;
   } catch (err: any) {
+    if (!isCurrentSession()) return false;
     console.error('Failed to push to KV cloud:', err);
     handlers.onStatusChange?.('error');
     showToast(`Cloud push failed: ${err.message}`, 'error');
