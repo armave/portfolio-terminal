@@ -16,6 +16,19 @@ describe('Margin Market Tools placement', () => {
     expect(summarySource).toContain("const reviewLabel = ticker ? 'News + Review' : 'Portfolio Review'");
   });
 
+  it('keeps the analyst target beside the ticker title in one wrapping header row', () => {
+    const titleRowStart = appSource.indexOf('id="boardTitleRow"');
+    const title = appSource.indexOf('id="boardTitle"', titleRowStart);
+    const analystTarget = appSource.indexOf('id="boardAnalystConsensus"', titleRowStart);
+    const actionsRow = appSource.indexOf('id="boardTitleActions"', titleRowStart);
+
+    expect(titleRowStart).toBeGreaterThan(-1);
+    expect(title).toBeGreaterThan(titleRowStart);
+    expect(analystTarget).toBeGreaterThan(title);
+    expect(actionsRow).toBeGreaterThan(analystTarget);
+    expect(appSource).toContain('class={"board-analyst-consensus " + analystConsensus.className}');
+  });
+
   it('removes market-depth and review actions from their previous toolbar and console locations', () => {
     expect(appSource).not.toContain('<MarketDepthButton');
     expect(appSource).not.toContain('BoardExternalLinks');
