@@ -27,5 +27,18 @@
         "PortfolioStateDO"
       ]
     }
-  ]
+  ],
+  "ratelimits": [
+    {
+      "name": "AUTH_EDGE_RATE_LIMITER",
+      "namespace_id": "28103110320261103",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
+    }
+  ],
+  "vars": {
+    "AUTH_EDGE_LIMITER_REQUIRED": "true"
+  }
 }
