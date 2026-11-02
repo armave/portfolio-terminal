@@ -11,14 +11,6 @@ export interface SyncOptions {
   isCurrentSession?: () => boolean;
   allowCloudWrites?: boolean;
 }
-interface ValidatedCloudResponse {
-  secret: string;
-  checkedAt: number;
-  status: number;
-  etag: string | null;
-  contentType: string | null;
-  body: string;
-}
 export interface CloudStateSyncRuntimeDependencies {
   workerProxyUrl: string;
   getActiveGatewaySecret: () => string;
@@ -42,7 +34,6 @@ export interface CloudStateSyncRuntime {
   pushCloudHistory: (history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] }, secret?: string, knownRevision?: number, options?: Pick<SyncOptions, 'isCurrentSession'>) => Promise<boolean>;
   clearCloudHistory: (secret?: string, options?: Pick<SyncOptions, 'isCurrentSession'>) => Promise<boolean>;
   pullCloudHistory: (secret?: string) => Promise<{ brokerExecutedTrades: unknown[]; cashflows: unknown[] } | null>;
-  clearValidatedCloudResponse: () => void;
   clearRequestCache: () => void;
 }
 
@@ -83,17 +74,6 @@ export function createCloudStateSyncRuntime({
       : `HTTP ${response.status}`;
   };
   const cloudStatePushFingerprints = new Map<string, string>();
-  const VALIDATED_CLOUD_RESPONSE_TTL_MS = 30 * 1000;
-  let validatedCloudResponse: ValidatedCloudResponse | null = null;
-  const consumeValidatedCloudResponse = (secret: string): Response | null => {
-    const cached = validatedCloudResponse;
-    validatedCloudResponse = null;
-    if (!cached || cached.secret !== secret || now() - cached.checkedAt > VALIDATED_CLOUD_RESPONSE_TTL_MS) return null;
-    const headers = new Headers();
-    if (cached.etag) headers.set('ETag', cached.etag);
-    if (cached.contentType) headers.set('Content-Type', cached.contentType);
-    return new Response(cached.body, { status: cached.status, headers });
-  };
 
 async function pullCloudState(
   options: SyncOptions | ((state: any) => void) = {},
@@ -123,10 +103,9 @@ async function pullCloudState(
   // showToast('Pulling portfolio from KV cloud...', 'info');
 
   try {
-    const cachedValidationResponse = consumeValidatedCloudResponse(currentSecret);
     const url = apiUrl('/api/state');
     if (!isCurrentSession()) return stalePullFallback();
-    const res = cachedValidationResponse || await fetchImpl(url, {
+    const res = await fetchImpl(url, {
       method: 'GET',
       headers: authHeaders(currentSecret)
     });
@@ -584,14 +563,12 @@ async function syncCloudState(mode = 'push', options: SyncOptions = {}): Promise
   }
   return false;
 }
-  const clearValidatedCloudResponse = (): void => { validatedCloudResponse = null; };
   const clearRequestCache = (): void => {
     cloudStatePushFingerprints.clear();
-    validatedCloudResponse = null;
   };
   return {
     pullCloudState, pushCloudState, syncCloudState,
     pushCloudHistory, clearCloudHistory, pullCloudHistory,
-    clearValidatedCloudResponse, clearRequestCache
+    clearRequestCache
   };
 }
