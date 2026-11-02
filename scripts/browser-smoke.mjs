@@ -44,9 +44,20 @@ try {
   // Keep the smoke test deterministic and independent of broker credentials or live services.
   await page.route(`${workerOrigin}/**`, async (route) => {
     const { pathname } = new URL(route.request().url());
+    const origin = route.request().headers().origin || '*';
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-App-Auth'
+    };
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: corsHeaders });
+      return;
+    }
     if (pathname === '/api/auth/status') {
       await route.fulfill({
         status: 200,
+        headers: corsHeaders,
         contentType: 'application/json',
         body: JSON.stringify({ setupRequired: true, userCount: 0 })
       });
@@ -54,6 +65,7 @@ try {
     }
     await route.fulfill({
       status: 401,
+      headers: corsHeaders,
       contentType: 'application/json',
       body: JSON.stringify({ error: 'External services are disabled in the browser smoke test.' })
     });
