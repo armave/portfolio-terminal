@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { isMarginDeskView, resolveTabNavigationIndex, shouldRefreshQuotesOnNavigation } from '../ui/tabNavigation';
-import { useActiveView, usePortfolio } from '../store/portfolioStore';
+import { useActiveView, usePortfolioSelector } from '../store/portfolioStore';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
 import { emitUiEvent } from '../ui/uiEventBus';
@@ -9,6 +9,7 @@ import { calculateGuestPersonalEquity, getGuestAssignedCashHoldings, getGuestHol
 import { getAppLanguage, translateText } from '../services/i18n';
 import { formatPortfolioEquityBadge } from '../ui/portfolioEquityBadge';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
+import type { PortfolioState } from '../types/portfolio';
 
 export const TickerTabs = memo(function TickerTabs({
   isAdmin = false,
@@ -17,7 +18,7 @@ export const TickerTabs = memo(function TickerTabs({
   isAdmin?: boolean;
   userId?: string;
 } = {}) {
-  const state = usePortfolio();
+  const tickers = usePortfolioSelector(selectPositionTickers, areTickerListsEqual);
   const activeView = useActiveView();
   const [isSyncingPortfolio, setIsSyncingPortfolio] = useState(false);
   const quoteRefreshPromise = useRef<Promise<void> | null>(null);
@@ -45,7 +46,6 @@ export const TickerTabs = memo(function TickerTabs({
     if (isMarginDeskActive) emitBrokerEvent('broker:request-active-orders');
   }, [isMarginDeskActive]);
 
-  const tickers = Object.keys(state.positions || {});
   const marginDeskViews = tickers.length === 0
     ? ['COMBINED']
     : tickers.length === 1
@@ -59,49 +59,6 @@ export const TickerTabs = memo(function TickerTabs({
   const guestHistoryNavIndex = balanceNavIndex + 1;
   const settingsNavIndex = balanceNavIndex + (isAdmin || canViewGuestHistory ? 2 : 1);
   const tabButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  const portfolioValuation = calculatePortfolioValuation({
-    signedAccountBalance: state.balance,
-    freeCash: state.cashCushion?.freeCash,
-    marginPositions: Object.values(state.positions || {}),
-    cashHoldings: state.cashCushion?.holdings || []
-  });
-  const guestTranches = state.guestPortfolioSnapshot?.tranches || [];
-  const guestAssignments = userId
-    ? Object.fromEntries(guestTranches.map((tranche) => [tranche.id, userId]))
-    : {};
-  const guestTypes = Object.fromEntries(guestTranches.map((tranche) => [tranche.id, 'cash' as const]));
-  const guestHoldings = !isAdmin && userId
-    ? getGuestAssignedCashHoldings({
-      guestId: userId,
-      activeTranches: guestTranches,
-      assignments: guestAssignments,
-      types: guestTypes,
-      cashHoldings: state.cashCushion?.holdings || []
-    })
-    : [];
-  const guestEquity = calculateGuestPersonalEquity(guestHoldings);
-  const displayedEquity = isAdmin ? portfolioValuation.equity : guestEquity;
-  const hasUnpricedPortfolioHoldings = portfolioValuation.unpricedHoldings > 0;
-  const hasPricedPortfolioHoldings = portfolioValuation.pricedHoldings > 0;
-  const hasUnpricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice === null);
-  const hasPricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice !== null);
-  const equityBadgeText = formatPortfolioEquityBadge({
-    equity: displayedEquity,
-    locale: getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US',
-    hasUnpricedHoldings: isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings,
-    hasPricedHoldings: isAdmin ? hasPricedPortfolioHoldings : hasPricedGuestHoldings,
-    empty: !isAdmin && Boolean(userId) && guestHoldings.length === 0
-  });
-  const hasPartialEquity = isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings;
-  const equityBadgeTitle = translateText(
-    hasPartialEquity
-      ? 'Partial value: holdings without a valid market quote are excluded.'
-      : isAdmin
-        ? 'Current portfolio equity from available market quotes and broker cash balance.'
-        : 'Current market value of your assigned cash-funded stocks.',
-    getAppLanguage()
-  );
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
     const currentButton = event.currentTarget as HTMLButtonElement;
@@ -249,7 +206,6 @@ export const TickerTabs = memo(function TickerTabs({
       <button
         type="button"
         onClick={() => selectView('BALANCE')}
-        aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}
         aria-pressed={isCushionActive}
         class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
           ? 'bg-cyan-500 text-black'
@@ -261,12 +217,7 @@ export const TickerTabs = memo(function TickerTabs({
           onKeyDown={handleTabKeyDown}
       >
         <span>BALANCE</span>
-        <span title={equityBadgeTitle} aria-hidden="true"
-          class={`workspace-nav-equity-badge ${isAdmin ? 'workspace-nav-equity-badge--admin' : ''} text-[10px] px-1.5 py-0.2 rounded ${isCushionActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'
-            }`}
-        >
-          {equityBadgeText}
-        </span>
+        <BalanceEquityBadge isAdmin={isAdmin} userId={userId} isActive={isCushionActive} />
       </button>
 
       {canViewGuestHistory && <button
@@ -322,5 +273,100 @@ export const TickerTabs = memo(function TickerTabs({
         <span aria-hidden="true">⚙️</span>
       </button>
     </>
+  );
+});
+
+
+type BalanceBadgeSnapshot = Pick<
+  PortfolioState,
+  'positions' | 'balance' | 'cashCushion' | 'guestPortfolioSnapshot'
+>;
+
+function selectBalanceBadgeSnapshot(state: PortfolioState): BalanceBadgeSnapshot {
+  return {
+    positions: state.positions,
+    balance: state.balance,
+    cashCushion: state.cashCushion,
+    guestPortfolioSnapshot: state.guestPortfolioSnapshot
+  };
+}
+
+function areBalanceBadgeSnapshotsEqual(previous: BalanceBadgeSnapshot, next: BalanceBadgeSnapshot): boolean {
+  return previous.positions === next.positions &&
+    previous.balance === next.balance &&
+    previous.cashCushion === next.cashCushion &&
+    previous.guestPortfolioSnapshot === next.guestPortfolioSnapshot;
+}
+
+function selectPositionTickers(state: PortfolioState): string[] {
+  return Object.keys(state.positions || {});
+}
+
+function areTickerListsEqual(previous: string[], next: string[]): boolean {
+  return previous.length === next.length && previous.every((ticker, index) => ticker === next[index]);
+}
+
+/** Isolate live valuation updates from the navigation buttons themselves. */
+const BalanceEquityBadge = memo(function BalanceEquityBadge({
+  isAdmin,
+  userId,
+  isActive
+}: {
+  isAdmin: boolean;
+  userId?: string;
+  isActive: boolean;
+}) {
+  const state = usePortfolioSelector(selectBalanceBadgeSnapshot, areBalanceBadgeSnapshotsEqual);
+  const portfolioValuation = calculatePortfolioValuation({
+    signedAccountBalance: state.balance,
+    freeCash: state.cashCushion?.freeCash,
+    marginPositions: Object.values(state.positions || {}),
+    cashHoldings: state.cashCushion?.holdings || []
+  });
+  const guestTranches = state.guestPortfolioSnapshot?.tranches || [];
+  const guestAssignments = userId
+    ? Object.fromEntries(guestTranches.map((tranche) => [tranche.id, userId]))
+    : {};
+  const guestTypes = Object.fromEntries(guestTranches.map((tranche) => [tranche.id, 'cash' as const]));
+  const guestHoldings = !isAdmin && userId
+    ? getGuestAssignedCashHoldings({
+      guestId: userId,
+      activeTranches: guestTranches,
+      assignments: guestAssignments,
+      types: guestTypes,
+      cashHoldings: state.cashCushion?.holdings || []
+    })
+    : [];
+  const guestEquity = calculateGuestPersonalEquity(guestHoldings);
+  const displayedEquity = isAdmin ? portfolioValuation.equity : guestEquity;
+  const hasUnpricedPortfolioHoldings = portfolioValuation.unpricedHoldings > 0;
+  const hasPricedPortfolioHoldings = portfolioValuation.pricedHoldings > 0;
+  const hasUnpricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice === null);
+  const hasPricedGuestHoldings = guestHoldings.some((holding) => getGuestHoldingValuation(holding).currentPrice !== null);
+  const equityBadgeText = formatPortfolioEquityBadge({
+    equity: displayedEquity,
+    locale: getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US',
+    hasUnpricedHoldings: isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings,
+    hasPricedHoldings: isAdmin ? hasPricedPortfolioHoldings : hasPricedGuestHoldings,
+    empty: !isAdmin && Boolean(userId) && guestHoldings.length === 0
+  });
+  const hasPartialEquity = isAdmin ? hasUnpricedPortfolioHoldings : hasUnpricedGuestHoldings;
+  const equityBadgeTitle = translateText(
+    hasPartialEquity
+      ? 'Partial value: holdings without a valid market quote are excluded.'
+      : isAdmin
+        ? 'Current portfolio equity from available market quotes and broker cash balance.'
+        : 'Current market value of your assigned cash-funded stocks.',
+    getAppLanguage()
+  );
+
+  return (
+    <span
+      title={equityBadgeTitle}
+      aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}
+      class={`workspace-nav-equity-badge ${isAdmin ? 'workspace-nav-equity-badge--admin' : ''} text-[10px] px-1.5 py-0.2 rounded ${isActive ? 'bg-cyan-800 text-white' : 'bg-cyan-950 text-cyan-300 font-mono'}`}
+    >
+      {equityBadgeText}
+    </span>
   );
 });

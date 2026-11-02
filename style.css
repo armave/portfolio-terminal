@@ -72,7 +72,6 @@ body::before {
 }
 
 #terminalLog,
-#tickerTabs,
 input,
 select,
 button {
@@ -125,12 +124,6 @@ button {
 
 #terminalLog::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 0.85);
-}
-
-#tickerTabs {
-  font-family: var(--font-mono);
-  scrollbar-width: thin;
-  scrollbar-color: var(--text-dim) transparent;
 }
 
 #tickerTabs::-webkit-scrollbar {
@@ -414,16 +407,6 @@ summary:hover {
   letter-spacing: -0.025em;
   line-height: 1.25;
   overflow-wrap: anywhere;
-}
-
-#tickerTabs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  max-width: 100%;
-  padding-bottom: 0.25rem;
 }
 
 #marketInsightsContent,
@@ -712,14 +695,6 @@ summary:hover {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.75rem;
-  }
-
-  #tickerTabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    width: 100%;
-    overflow: visible;
   }
 
   #tickerTabs button,
@@ -1838,18 +1813,6 @@ summary:hover {
   row-gap: 0.75rem;
 }
 
-#tickerTabs {
-  min-width: 0;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  padding: 0.125rem 0.125rem 0.5rem;
-}
-
-#tickerTabs>* {
-  flex: 0 0 auto;
-}
-
 #boardTitleActions {
   min-width: 0;
   row-gap: 0.5rem;
@@ -2036,20 +1999,6 @@ textarea {
   outline-offset: -1px;
 }
 
-#tickerTabs {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-  max-width: 100%;
-  -webkit-overflow-scrolling: touch;
-}
-
-#tickerTabs>* {
-  flex: 0 0 auto;
-}
-
 #mainTerminalView {
   width: min(100%, 88rem);
   box-sizing: border-box;
@@ -2095,17 +2044,6 @@ textarea {
 
   :where(button, input[type="checkbox"], input[type="radio"], select) {
     touch-action: manipulation;
-  }
-
-  #tickerTabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding: 0.25rem 0 0.625rem;
-    scroll-snap-type: x proximity;
-  }
-
-  #tickerTabs>* {
-    scroll-snap-align: start;
   }
 
   #mainTerminalView {
@@ -2829,11 +2767,29 @@ summary:focus-visible {
 }
 
 /* Mobile workspace navigation wraps without hiding destinations. */
-/*
- * Keep every workspace destination reachable without a horizontal gesture on
- * phones and compact tablets. The desktop tab strip retains its horizontal
- * scrolling behavior above this breakpoint.
- */
+#tickerTabs {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-dim) transparent;
+  font-family: var(--font-mono);
+  padding: 0.125rem 0.125rem 0.5rem;
+  column-gap: clamp(0.375rem, 0.65vw, 0.625rem);
+  row-gap: 0.5rem;
+}
+
+#tickerTabs>* {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 768px) {
   #tickerTabs {
     width: 100%;
@@ -2843,10 +2799,12 @@ summary:focus-visible {
     overflow-x: visible;
     overflow-y: visible;
     scroll-snap-type: none;
+    padding: 0.25rem 0 0.625rem;
   }
 
   #tickerTabs>* {
     max-width: 100%;
+    flex-shrink: 0;
     scroll-snap-align: unset;
   }
 }
@@ -2941,12 +2899,6 @@ summary:focus-visible {
   max-width: 100%;
   font-size: clamp(0.7rem, 0.85vw, 0.875rem);
   overflow-wrap: anywhere;
-}
-
-#tickerTabs {
-  min-width: 0;
-  column-gap: clamp(0.375rem, 0.65vw, 0.625rem);
-  row-gap: 0.5rem;
 }
 
 #tradingWorkspaceGrid.trading-workspace-grid {

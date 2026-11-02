@@ -5,9 +5,99 @@ import {
   migrateLegacyCloudHoldingsToPositions,
   PortfolioStore,
   subscribeToPortfolioState,
+  subscribeToPortfolioSelector,
   subscribeToActiveView
 } from './portfolioStore';
 import type { Holding, PositionRecord } from '../types/portfolio';
+
+describe('portfolio selector subscriptions', () => {
+  it('replays selected values and ignores unrelated portfolio and quote updates', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 2,
+          currentPrice: 100,
+          pt: 120,
+          commBuy: 0,
+          tranches: [{ qty: 2, price: 90, date: '2026-10-01' }]
+        }
+      }
+    });
+
+    const selectTickers = (state: ReturnType<typeof store.getState>) => Object.keys(state.positions || {});
+    const areSameTickers = (previous: string[], next: string[]) =>
+      previous.length === next.length && previous.every((ticker, index) => ticker === next[index]);
+    const listener = vi.fn();
+    const unsubscribe = subscribeToPortfolioSelector(selectTickers, listener, areSameTickers, store);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenLastCalledWith(['AAPL']);
+
+    store.setState({ balance: 123 });
+    store.setState({
+      positions: {
+        AAPL: {
+          ...store.getState().positions.AAPL,
+          currentPrice: 105
+        }
+      }
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    store.setState({
+      positions: {
+        ...store.getState().positions,
+        MSFT: {
+          ticker: 'MSFT',
+          shares: 1,
+          currentPrice: 200,
+          pt: 220,
+          commBuy: 0,
+          tranches: [{ qty: 1, price: 180, date: '2026-10-02' }]
+        }
+      }
+    });
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenLastCalledWith(['AAPL', 'MSFT']);
+
+    unsubscribe();
+    store.setState({ balance: 456 });
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it('supports primitive selectors for app-shell visibility flags', () => {
+    const store = new PortfolioStore();
+    const selectHasPositions = (state: ReturnType<typeof store.getState>) =>
+      Object.keys(state.positions || {}).length > 0;
+    const listener = vi.fn();
+    const unsubscribe = subscribeToPortfolioSelector(selectHasPositions, listener, Object.is, store);
+
+    expect(listener).toHaveBeenLastCalledWith(false);
+    store.setState({ balance: 500 });
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    store.setState({
+      positions: {
+        GOOGL: {
+          ticker: 'GOOGL',
+          shares: 1,
+          currentPrice: 300,
+          pt: 350,
+          commBuy: 0,
+          tranches: [{ qty: 1, price: 250, date: '2026-10-01' }]
+        }
+      }
+    });
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener).toHaveBeenLastCalledWith(true);
+    unsubscribe();
+  });
+});
 
 describe('portfolio store snapshot subscriptions', () => {
   it('delivers the latest snapshot immediately and continues streaming updates', () => {
