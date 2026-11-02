@@ -97,7 +97,7 @@ describe('Stage 10 accessibility wiring', () => {
     const source = readSource('../components/MarketDepthButton.tsx');
     const stylesheet = readSource('../../style.css');
 
-    expect(source).toContain("import { createPortal, memo } from 'preact/compat';");
+    expect(source).toContain("import { createPortal } from 'preact/compat'");
     expect(source).toContain('isOpen && createPortal(');
     expect(source).toContain('document.body');
     expect(source).toContain('market-depth-dialog flex min-h-0');
