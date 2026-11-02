@@ -26,18 +26,24 @@ This change is a behavior-preserving architecture slice. It does not change fina
 
 ## Validation
 
-The final PR head must pass the existing validation gates:
+The runtime-extraction code was validated on PR head `ab7887c78b3661995d289ac64c4a7f2fa608bd5c` by both GitHub Actions workflows:
 
-- [ ] `npm ci`
-- [ ] `npm run typecheck`
-- [ ] `npm test`
-- [ ] `npm run validate:dead-code`
-- [ ] `npm run audit:dependencies`
-- [ ] `npm run audit:production`
-- [ ] `npm run build`
-- [ ] Playwright production browser smoke test
+- [x] `npm ci`
+- [x] `npm run typecheck`
+- [x] `npm test` — **955 tests across 84 files passed**
+- [x] `npm run validate:dead-code`
+- [x] `npm run audit:dependencies` — passed at the configured high-severity threshold
+- [x] `npm run audit:production` — **0 production vulnerabilities**
+- [x] `npm run build`
+- [x] Playwright production browser smoke at 1440px, 768px, and 390px
 
-No local test or build pass is claimed from the repository-editing environment. Exact-head GitHub Actions is the validation source for this branch.
+Actions evidence:
+- [Validate run 41410697344](https://github.com/armave/portfolio-terminal/actions/runs/41410697344)
+- [Pull Request CI run 41410697361](https://github.com/armave/portfolio-terminal/actions/runs/41410697361)
+
+The CI-only browser runner is installed ephemerally. The repository manifest and lockfile are unchanged by that installation. The full dependency tree still has 9 low/moderate advisories (2 low, 7 moderate); these remain disclosed, not marked fixed.
+
+The repository could not be cloned locally in this environment. All validation results above are from GitHub Actions, not local execution. This validation note itself is documentation-only; Actions will rerun on the updated PR head.
 
 ## Deliberate boundaries
 
