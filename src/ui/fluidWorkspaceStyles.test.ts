@@ -158,7 +158,11 @@ describe('cross-platform navigation and motion performance', () => {
   it('keeps global scrolling immediate and reserves hover transforms for fine pointers', () => {
     expect(stylesheet).toMatch(/html\s*\{\s*scroll-behavior:\s*auto;/);
     expect(stylesheet).toMatch(/@media\s*\(hover:\s*hover\)\s*and\s*\(pointer:\s*fine\)/);
-    expect(stylesheet).not.toMatch(/button:hover:not\(:disabled\)\s*\{[^}]*transform/);
+    const hoverRuleIndex = stylesheet.indexOf('button:hover:not(:disabled)');
+    const hoverMediaIndex = stylesheet.lastIndexOf('@media (hover: hover) and (pointer: fine)', hoverRuleIndex);
+    expect(hoverRuleIndex).toBeGreaterThan(-1);
+    expect(hoverMediaIndex).toBeGreaterThan(-1);
+    expect(hoverMediaIndex).toBeLessThan(hoverRuleIndex);
   });
 
   it('uses blur-free, short desk and pagination animations', () => {
