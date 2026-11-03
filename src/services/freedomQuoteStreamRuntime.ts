@@ -31,6 +31,9 @@ export interface FreedomQuoteStreamRuntime {
   start: (tickers: string[], sessionKey: string) => Promise<boolean>;
   stop: () => void;
   isConnected: () => boolean;
+  isSocketOpen: () => boolean;
+  isSubscribed: (ticker: string) => boolean;
+  isForSession: (sessionKey: string) => boolean;
 }
 
 const QUOTE_STREAM_HEARTBEAT_MS = 20_000;
@@ -302,6 +305,9 @@ export function createFreedomQuoteStreamRuntime(
   return {
     start,
     stop,
-    isConnected: () => connected && socket?.readyState === 1 && lastPongAt > 0 && now() - lastPongAt <= QUOTE_STREAM_PONG_TIMEOUT_MS
+    isConnected: () => connected && socket?.readyState === 1 && lastPongAt > 0 && now() - lastPongAt <= QUOTE_STREAM_PONG_TIMEOUT_MS,
+    isSocketOpen: () => active && socket?.readyState === 1,
+    isSubscribed: (ticker) => requestedTickers.includes(ticker.trim().toUpperCase()),
+    isForSession: (sessionKey) => active && activeSessionKey === sessionKey
   };
 }

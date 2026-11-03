@@ -1029,37 +1029,43 @@ function stopFreedomAccountStreamRuntime(): void {
 }
 
 let freedomQuoteStreamRuntimePromise: Promise<FreedomQuoteStreamRuntime> | null = null;
+let freedomQuoteStreamRuntime: FreedomQuoteStreamRuntime | null = null;
 
 function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
   if (!freedomQuoteStreamRuntimePromise) {
     freedomQuoteStreamRuntimePromise = import('./src/services/freedomQuoteStreamAppRuntime')
-      .then(({ createFreedomQuoteStreamAppRuntime }) => createFreedomQuoteStreamAppRuntime({
-        createTicket: async (tickers) => {
-          const result = await createFreedomQuoteStreamTicket(tickers);
-          return { ticket: result.ticket };
-        },
-        buildSocketUrl: buildFreedomQuoteStreamSocketUrl,
-        getCurrentSessionKey: () => currentAccountRole && currentAccountId
-          ? `${currentAccountRole}:${currentAccountId}`
-          : '',
-        nextRequestSequence: nextLiveQuoteRequestSequence,
-        recordQuote: (ticker, price, source, updatedAt, details, requestStartedAt) =>
-          recordTrackedPrice(ticker, price, source, updatedAt, details as QuoteDetails, requestStartedAt),
-        renderAfterUpdate: () => {
-          state = portfolioStore.getState();
-          renderBoard();
-        },
-        onStatus: (status, message) => {
-          if (status === 'connected') {
-            logTerminal('[System]: Live TradeNet quote stream connected.');
-          } else if (status === 'reconnecting') {
-            logTerminal(message
-              ? `[Warning]: Live TradeNet quote stream reconnecting (${message}).`
-              : '[Warning]: Live TradeNet quote stream reconnecting; the browser socket remains open.');
+      .then(({ createFreedomQuoteStreamAppRuntime }) => {
+        const runtime = createFreedomQuoteStreamAppRuntime({
+          createTicket: async (tickers) => {
+            const result = await createFreedomQuoteStreamTicket(tickers);
+            return { ticket: result.ticket };
+          },
+          buildSocketUrl: buildFreedomQuoteStreamSocketUrl,
+          getCurrentSessionKey: () => currentAccountRole && currentAccountId
+            ? `${currentAccountRole}:${currentAccountId}`
+            : '',
+          nextRequestSequence: nextLiveQuoteRequestSequence,
+          recordQuote: (ticker, price, source, updatedAt, details, requestStartedAt) =>
+            recordTrackedPrice(ticker, price, source, updatedAt, details as QuoteDetails, requestStartedAt),
+          renderAfterUpdate: () => {
+            state = portfolioStore.getState();
+            renderBoard();
+          },
+          onStatus: (status, message) => {
+            if (status === 'connected') {
+              logTerminal('[System]: Live TradeNet quote stream connected.');
+            } else if (status === 'reconnecting') {
+              logTerminal(message
+                ? `[Warning]: Live TradeNet quote stream reconnecting (${message}).`
+                : '[Warning]: Live TradeNet quote stream reconnecting; the browser socket remains open.');
+            }
           }
-        }
-      })).catch((error) => {
+        });
+        freedomQuoteStreamRuntime = runtime;
+        return runtime;
+      }).catch((error) => {
         freedomQuoteStreamRuntimePromise = null;
+        freedomQuoteStreamRuntime = null;
         throw error;
       });
   }
@@ -1139,6 +1145,22 @@ async function requestLivePrice(symbol: string, force = false) {
 
 async function fetchLivePrice(ticker: string, silent = false, force = false) {
   const symbol = ticker.toUpperCase();
+  if (
+    freedomQuoteStreamRuntime?.isForSession(currentAccountRole && currentAccountId
+      ? `${currentAccountRole}:${currentAccountId}`
+      : '') &&
+    freedomQuoteStreamRuntime?.isSocketOpen() &&
+    freedomQuoteStreamRuntime.isSubscribed(symbol)
+  ) {
+    const trackedPrice = Number(state.positions[symbol]?.currentPrice ||
+      state.cashCushion?.holdings?.find((holding: any) => holding.ticker.trim().toUpperCase() === symbol)?.price ||
+      state.cashStocks?.find((holding: any) => holding.ticker.trim().toUpperCase() === symbol)?.currentPrice ||
+      0);
+    if (!silent) {
+      logTerminal(`[System]: ${symbol} is subscribed to the live quote socket; the REST quote backup was skipped.`);
+    }
+    return Number.isFinite(trackedPrice) && trackedPrice > 0 ? trackedPrice : null;
+  }
   const result = await requestLivePrice(symbol, force);
 
   if (result.price !== null) {
@@ -1254,9 +1276,8 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
     const sessionKey = currentAccountId ? `admin:${currentAccountId}` : '';
     if (!sessionKey) return false;
 
-    // Both private stream channels must be healthy before periodic REST
-    // snapshots are suppressed. Until then, wait for all three broker sources
-    // so the following Closed History checkpoint includes refreshed executions.
+    // The persistent browser stream suppresses its REST backups while connected.
+    // If a recovery check runs before reconnection, perform one broker catch-up.
     const refreshMode = resolveFreedomAccountRefreshMode(sessionKey);
     if (refreshMode === 'recover') clearFreedomTradeNetStreamSnapshotCache();
     if (refreshMode === 'recover' || refreshMode === 'fallback') {
@@ -2278,4 +2299,3 @@ async function continueStartupOffline() {
     showStartupFailure();
   }
 }
-

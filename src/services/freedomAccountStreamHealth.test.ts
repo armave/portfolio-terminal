@@ -26,30 +26,28 @@ describe('Freedom account stream health', () => {
     expect(isFreedomAccountStreamHealthy(session)).toBe(true);
   });
 
-  it('allows one recovery after a connected stream drops, then suppresses repeated recovery', () => {
+  it('allows one recovery during an outage and clears it when the socket reconnects', () => {
     const session = 'admin:account-1';
     setFreedomAccountStreamStatus(session, 'connected');
     markFreedomAccountStreamSnapshot(session, 'portfolio');
     markFreedomAccountStreamSnapshot(session, 'orders');
     expect(isFreedomAccountStreamHealthy(session)).toBe(true);
 
-    setFreedomAccountStreamStatus(session, 'reconnecting');
+    setFreedomAccountStreamStatus(session, 'disconnected');
     expect(isFreedomAccountStreamHealthy(session)).toBe(false);
     expect(hasFreedomAccountStreamSnapshot(session, 'portfolio')).toBe(false);
     // Repeated reconnect notices before the connection recovers are one outage.
-    setFreedomAccountStreamStatus(session, 'reconnecting');
+    setFreedomAccountStreamStatus(session, 'disconnected');
 
-    // A brief outage still needs history catch-up even if both channels recover
-    // before the next 60-second scheduler tick.
+    // A recovered persistent socket takes over immediately without a REST catch-up.
     setFreedomAccountStreamStatus(session, 'connected');
     markFreedomAccountStreamSnapshot(session, 'portfolio');
     markFreedomAccountStreamSnapshot(session, 'orders');
     expect(isFreedomAccountStreamHealthy(session)).toBe(true);
-    expect(consumeFreedomAccountStreamRecovery(session)).toBe(true);
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(false);
 
     // A later disconnect is a distinct outage and opens exactly one new recovery.
-    setFreedomAccountStreamStatus(session, 'reconnecting');
+    setFreedomAccountStreamStatus(session, 'disconnected');
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(true);
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(false);
   });
@@ -57,11 +55,11 @@ describe('Freedom account stream health', () => {
   it('does not schedule recovery for a stream that never connected', () => {
     const session = 'admin:account-1';
     setFreedomAccountStreamStatus(session, 'connecting');
-    setFreedomAccountStreamStatus(session, 'reconnecting');
+    setFreedomAccountStreamStatus(session, 'disconnected');
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(false);
   });
 
-  it('requests a REST fallback whenever the stream is absent or has not delivered both channels', () => {
+  it('suppresses REST as soon as the persistent browser socket is connected', () => {
     const session = 'admin:account-1';
     expect(resolveFreedomAccountRefreshMode(session)).toBe('fallback');
 
@@ -69,24 +67,36 @@ describe('Freedom account stream health', () => {
     expect(resolveFreedomAccountRefreshMode(session)).toBe('fallback');
 
     setFreedomAccountStreamStatus(session, 'connected');
+    expect(resolveFreedomAccountRefreshMode(session)).toBe('live');
     markFreedomAccountStreamSnapshot(session, 'portfolio');
-    expect(resolveFreedomAccountRefreshMode(session)).toBe('fallback');
+    expect(resolveFreedomAccountRefreshMode(session)).toBe('live');
 
     markFreedomAccountStreamSnapshot(session, 'orders');
     expect(resolveFreedomAccountRefreshMode(session)).toBe('live');
+
+    setFreedomAccountStreamStatus(session, 'reconnecting');
+    expect(resolveFreedomAccountRefreshMode(session)).toBe('live');
   });
 
-  it('requests one broker catch-up after a healthy stream disconnects and recovers', () => {
+  it('allows one broker catch-up while disconnected and drops it if the socket recovers first', () => {
     const session = 'admin:account-1';
     setFreedomAccountStreamStatus(session, 'connected');
     markFreedomAccountStreamSnapshot(session, 'portfolio');
     markFreedomAccountStreamSnapshot(session, 'orders');
-    setFreedomAccountStreamStatus(session, 'reconnecting');
-    setFreedomAccountStreamStatus(session, 'connected');
-    markFreedomAccountStreamSnapshot(session, 'portfolio');
-    markFreedomAccountStreamSnapshot(session, 'orders');
+    setFreedomAccountStreamStatus(session, 'disconnected');
 
     expect(resolveFreedomAccountRefreshMode(session)).toBe('recover');
+    expect(resolveFreedomAccountRefreshMode(session)).toBe('fallback');
+
+    setFreedomAccountStreamStatus(session, 'connected');
+    expect(resolveFreedomAccountRefreshMode(session)).toBe('live');
+  });
+
+  it('does not run a recovery catch-up after the persistent socket reconnects first', () => {
+    const session = 'admin:account-1';
+    setFreedomAccountStreamStatus(session, 'connected');
+    setFreedomAccountStreamStatus(session, 'disconnected');
+    setFreedomAccountStreamStatus(session, 'connected');
     expect(resolveFreedomAccountRefreshMode(session)).toBe('live');
   });
 
@@ -100,7 +110,7 @@ describe('Freedom account stream health', () => {
     markFreedomAccountStreamSnapshot(session, 'portfolio');
     const revision = getFreedomAccountStreamSnapshotRevision(session, 'portfolio');
 
-    setFreedomAccountStreamStatus(session, 'reconnecting');
+    setFreedomAccountStreamStatus(session, 'disconnected');
     expect(getFreedomAccountStreamSnapshotRevision(session, 'portfolio')).toBe(revision);
     setFreedomAccountStreamStatus(session, 'connected');
     markFreedomAccountStreamSnapshot(session, 'portfolio');

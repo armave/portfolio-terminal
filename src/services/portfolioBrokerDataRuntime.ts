@@ -28,7 +28,8 @@ import {
 import { getLatestClosedTradeDate } from '../domain/tradeHistorySync';
 import {
   getFreedomAccountStreamSnapshotRevision,
-  hasFreedomAccountStreamSnapshot
+  hasFreedomAccountStreamSnapshot,
+  isFreedomAccountStreamConnected
 } from './freedomAccountStreamHealth';
 
 export interface PortfolioBrokerDataRuntimeDependencies {
@@ -94,6 +95,10 @@ export function createPortfolioBrokerDataRuntime(
 
   const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
+    if (isFreedomAccountStreamConnected(session.identity)) {
+      emit('broker:account-info-refresh-complete');
+      return true;
+    }
     if (hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')) {
       // The account stream already applied a current snapshot. Notify mounted
       // desks waiting for the request lifecycle even though no new payload or
@@ -111,9 +116,17 @@ export function createPortfolioBrokerDataRuntime(
       const secret = await restoreSecret();
       if (!secret.trim()) throw new Error('Gateway Secret is not available.');
       if (!dependencies.isSessionCurrent(session)) return false;
+      if (isFreedomAccountStreamConnected(session.identity)) {
+        emit('broker:account-info-refresh-complete');
+        return true;
+      }
 
       const response = await fetchAccountInfo();
       if (!dependencies.isSessionCurrent(session)) return false;
+      if (isFreedomAccountStreamConnected(session.identity)) {
+        emit('broker:account-info-refresh-complete');
+        return true;
+      }
       // A valid live event that arrived during the request is newer than this
       // one-shot snapshot, even if the stream disconnects before the request ends.
       if (
@@ -158,6 +171,7 @@ export function createPortfolioBrokerDataRuntime(
 
   const loadExecutedTrades = async (session: SessionIdentityToken): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
+    if (isFreedomAccountStreamConnected(session.identity)) return true;
     const requestKey = getSessionIdentityRequestKey(session);
     const existing = tradesRequests.get(requestKey);
     if (existing) return existing;
@@ -171,6 +185,7 @@ export function createPortfolioBrokerDataRuntime(
           emit('broker:executed-trades-error');
           return false;
         }
+        if (isFreedomAccountStreamConnected(session.identity)) return true;
 
         const accountId = dependencies.getAccountId();
         const savedExecutions = loadSavedBrokerExecutions();
@@ -185,6 +200,7 @@ export function createPortfolioBrokerDataRuntime(
 
         const response = await fetchExecutedTrades(fromDate);
         if (!dependencies.isSessionCurrent(session)) return false;
+        if (isFreedomAccountStreamConnected(session.identity)) return true;
 
         const normalizedPage = normalizeExecutedTrades(response);
         if (!dependencies.isSessionCurrent(session)) return false;
@@ -233,6 +249,7 @@ export function createPortfolioBrokerDataRuntime(
 
   const loadActiveOrders = async (session: SessionIdentityToken): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
+    if (isFreedomAccountStreamConnected(session.identity)) return true;
     if (hasFreedomAccountStreamSnapshot(session.identity, 'orders')) return true;
     const requestKey = getSessionIdentityRequestKey(session);
     const existing = activeOrdersRequests.get(requestKey);
@@ -242,6 +259,7 @@ export function createPortfolioBrokerDataRuntime(
     let succeeded = false;
     let orderStreamFills: FreedomExecutedTrade[] = [];
     const fetchActiveOrdersAndCaptureFills = async (): Promise<unknown> => {
+      if (isFreedomAccountStreamConnected(session.identity)) return { streamConnected: true };
       const response = await fetchActiveOrders();
       if (dependencies.isSessionCurrent(session)) {
         orderStreamFills = normalizeOrderFills(response);
@@ -257,6 +275,7 @@ export function createPortfolioBrokerDataRuntime(
         onSuccess: (orders) => {
           if (!dependencies.isSessionCurrent(session)) return;
           succeeded = true;
+          if (isFreedomAccountStreamConnected(session.identity)) return;
           // Do not replay a cached one-shot snapshot after a newer live orders
           // event has already updated the canonical order and fill stores.
           if (

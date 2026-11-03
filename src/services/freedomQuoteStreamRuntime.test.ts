@@ -169,6 +169,11 @@ describe('Freedom persistent quote stream runtime', () => {
 
     sockets[0].receive({ type: 'status', status: 'reconnecting' });
     expect(runtime.isConnected()).toBe(false);
+    expect(runtime.isSocketOpen()).toBe(true);
+    expect(runtime.isSubscribed('GOOGL')).toBe(true);
+    expect(runtime.isSubscribed('AAPL')).toBe(false);
+    expect(runtime.isForSession('guest:guest-3')).toBe(true);
+    expect(runtime.isForSession('guest:other')).toBe(false);
     await expect(runtime.start(['GOOGL'], 'guest:guest-3')).resolves.toBe(true);
     expect(createTicket).toHaveBeenCalledTimes(1);
     expect(sockets).toHaveLength(1);
