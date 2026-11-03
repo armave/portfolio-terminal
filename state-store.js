@@ -18,6 +18,39 @@ function jsonResponse(body, status = 200, revision = null) {
  * read the shared workspace, closed history, or its encryption key.
  */
 
+const FREEDOM_TRADENET_SESSION_TTL_MS = 30 * 60 * 1000;
+const FREEDOM_TRADENET_RATE_LIMIT_BASE_MS = 60 * 1000;
+const FREEDOM_TRADENET_RATE_LIMIT_MAX_MS = 15 * 60 * 1000;
+
+function sanitizeFreedomTradeNetLoginError(value) {
+  if (typeof value !== "string") return null;
+  const sanitized = value
+    .replace(/(password|passwd|pwd|login|username|email|sid|token|signature|secret)\s*[:=]\s*[^,\s;)]+/gi, "$1=[redacted]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email redacted]")
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, "[phone redacted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+  return sanitized || null;
+}
+
+function freedomTradeNetLoginErrorCode(payload) {
+  const value = payload?.errorCode ?? payload?.code;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && /^[A-Za-z0-9_.-]{1,32}$/.test(value)) return value;
+  return null;
+}
+
+function retryAfterMilliseconds(response, fallbackMs) {
+  const value = response?.headers?.get?.("Retry-After");
+  if (!value) return fallbackMs;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(FREEDOM_TRADENET_RATE_LIMIT_MAX_MS, seconds * 1000);
+  const date = Date.parse(value);
+  if (Number.isFinite(date)) return Math.max(1000, Math.min(FREEDOM_TRADENET_RATE_LIMIT_MAX_MS, date - Date.now()));
+  return fallbackMs;
+}
+
 const AUTH_USERS_KEY = "auth:users";
 const AUTH_CLOUD_KEY_KEY = "auth:cloud-encryption-key";
 const LEGACY_FREEDOM_TRADE_NET_SESSION_KEY = "freedom:tradenet-session";
@@ -108,6 +141,183 @@ export class PortfolioStateDO {
   constructor(ctx, env) {
     this.ctx = ctx;
     this.env = env;
+    // Broker SID stays in this Durable Object's memory only. Never persist it
+    // to SQLite/KV or expose it through a client-facing route.
+    this.freedomTradeNetSession = null;
+    this.freedomTradeNetLoginPromise = null;
+    this.freedomTradeNetRateLimitUntil = 0;
+    this.freedomTradeNetRateLimitAttempts = 0;
+  }
+
+  async requestFreedomTradeNetSession() {
+    if (!this.env.FREEDOM_LOGIN || !this.env.FREEDOM_PASSWORD) {
+      const error = new Error("FREEDOM_LOGIN and FREEDOM_PASSWORD must be configured as Worker secrets.");
+      error.status = 503;
+      throw error;
+    }
+
+    const authRequest = {
+      cmd: "authByLogin",
+      params: {
+        login: this.env.FREEDOM_LOGIN,
+        password: this.env.FREEDOM_PASSWORD,
+        rememberMe: 1,
+        getAccounts: false
+      }
+    };
+    const form = new URLSearchParams({ q: JSON.stringify(authRequest) });
+    const response = await fetch("https://tradernet.am/api/", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+      signal: AbortSignal.timeout(12000)
+    });
+    const payload = await response.json().catch(() => null);
+
+    const providerErrorMessage = sanitizeFreedomTradeNetLoginError(
+      payload?.errMsg ?? payload?.error ?? payload?.message
+    );
+    const providerErrorCode = freedomTradeNetLoginErrorCode(payload);
+    const failed = !response.ok || !payload || payload.success !== true ||
+      payload.logged !== true || typeof payload.SID !== "string" ||
+      payload.SID.length < 10 || payload.real !== true;
+
+    if (failed) {
+      const isRateLimited = response.status === 429 ||
+        Number(providerErrorCode) === 429 ||
+        /request limit has been exceeded|too many requests|rate.?limit/i.test(providerErrorMessage || "");
+      let retryAfterSeconds = null;
+      if (isRateLimited) {
+        this.freedomTradeNetRateLimitAttempts += 1;
+        const fallbackMs = Math.min(
+          FREEDOM_TRADENET_RATE_LIMIT_MAX_MS,
+          FREEDOM_TRADENET_RATE_LIMIT_BASE_MS * (2 ** Math.min(8, this.freedomTradeNetRateLimitAttempts - 1))
+        );
+        const cooldownMs = retryAfterMilliseconds(response, fallbackMs);
+        this.freedomTradeNetRateLimitUntil = Date.now() + cooldownMs;
+        retryAfterSeconds = Math.max(1, Math.ceil(cooldownMs / 1000));
+      }
+
+      const failedChecks = [];
+      if (!payload) failedChecks.push("login_payload_missing_or_invalid_json");
+      if (payload?.success !== true) failedChecks.push("success_not_true");
+      if (payload?.logged !== true) failedChecks.push("logged_not_true");
+      if (typeof payload?.SID !== "string" || payload.SID.length < 10) failedChecks.push("sid_missing_or_invalid");
+      if (payload?.real !== true) failedChecks.push("production_session_not_confirmed");
+      if (providerErrorMessage || providerErrorCode !== null) failedChecks.push("provider_returned_login_error");
+      if (isRateLimited) failedChecks.push("login_rate_limit_cooldown");
+
+      const error = new Error(payload?.real === false
+        ? "TradeNet returned a demo or non-production account session."
+        : isRateLimited
+          ? providerErrorMessage || "TradeNet login request was rate limited. Please retry after the cooldown."
+          : providerErrorMessage
+            ? "TradeNet rejected the login request: " + providerErrorMessage
+            : !response.ok
+              ? "TradeNet login endpoint returned HTTP " + response.status + "."
+              : "TradeNet login failed or requested additional verification.");
+      error.status = isRateLimited ? 429 : payload?.real === false ? 403 : response.ok ? 401 : response.status >= 500 ? 502 : 401;
+      error.diagnostics = {
+        phase: isRateLimited ? "login_rate_limited" : "login_response_validation",
+        loginResponseReceived: true,
+        loginHttpStatus: response.status,
+        payloadReceived: Boolean(payload),
+        success: payload?.success === true,
+        logged: payload?.logged === true,
+        sidPresent: typeof payload?.SID === "string" && payload.SID.length >= 10,
+        productionSession: payload?.real === true ? true : payload?.real === false ? false : null,
+        providerErrorFieldPresent: Boolean(payload && (
+          Object.prototype.hasOwnProperty.call(payload, "errMsg") ||
+          Object.prototype.hasOwnProperty.call(payload, "error") ||
+          Object.prototype.hasOwnProperty.call(payload, "errorCode") ||
+          Object.prototype.hasOwnProperty.call(payload, "code") ||
+          Object.prototype.hasOwnProperty.call(payload, "message")
+        )),
+        providerErrorCode,
+        providerErrorMessage,
+        ...(retryAfterSeconds !== null ? { retryAfterSeconds } : {}),
+        failedChecks
+      };
+      throw error;
+    }
+
+    this.freedomTradeNetRateLimitAttempts = 0;
+    this.freedomTradeNetRateLimitUntil = 0;
+    return payload.SID;
+  }
+
+  async getFreedomTradeNetSession() {
+    const now = Date.now();
+    if (this.freedomTradeNetSession && this.freedomTradeNetSession.expiresAt > now) {
+      return this.freedomTradeNetSession.sid;
+    }
+    if (this.freedomTradeNetSession) this.freedomTradeNetSession = null;
+
+    if (this.freedomTradeNetRateLimitUntil > now) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((this.freedomTradeNetRateLimitUntil - now) / 1000));
+      const error = new Error("TradeNet login is rate limited. Retry in " + retryAfterSeconds + " seconds.");
+      error.status = 429;
+      error.diagnostics = {
+        phase: "login_rate_limit_cooldown",
+        providerErrorCode: 429,
+        providerErrorMessage: "Your request limit has been exceeded. Please try again later.",
+        retryAfterSeconds,
+        cachedSessionAvailable: false
+      };
+      throw error;
+    }
+
+    if (!this.freedomTradeNetLoginPromise) {
+      const loginPromise = this.requestFreedomTradeNetSession();
+      this.freedomTradeNetLoginPromise = loginPromise;
+    }
+    const pending = this.freedomTradeNetLoginPromise;
+    try {
+      const sid = await pending;
+      if (this.freedomTradeNetLoginPromise === pending) {
+        this.freedomTradeNetSession = {
+          sid,
+          expiresAt: Date.now() + FREEDOM_TRADENET_SESSION_TTL_MS
+        };
+      }
+      return sid;
+    } finally {
+      if (this.freedomTradeNetLoginPromise === pending) {
+        this.freedomTradeNetLoginPromise = null;
+      }
+    }
+  }
+
+  invalidateFreedomTradeNetSession(sid) {
+    if (!sid || this.freedomTradeNetSession?.sid !== sid) return false;
+    this.freedomTradeNetSession = null;
+    return true;
+  }
+
+  async handleFreedomTradeNetSessionRequest(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/internal/freedom-tradenet-session") {
+      if (request.method !== "GET") return authJson({ error: "Method not allowed." }, 405);
+      try {
+        const sid = await this.getFreedomTradeNetSession();
+        return authJson({ ok: true, sid, expiresInSeconds: Math.floor(FREEDOM_TRADENET_SESSION_TTL_MS / 1000) });
+      } catch (error) {
+        const status = Number(error?.status) || 502;
+        return authJson({
+          ok: false,
+          error: error instanceof Error ? error.message : "TradeNet session could not be created.",
+          diagnostics: error?.diagnostics || null
+        }, status);
+      }
+    }
+
+    if (url.pathname === "/internal/freedom-tradenet-session/invalidate") {
+      if (request.method !== "POST") return authJson({ error: "Method not allowed." }, 405);
+      const body = await request.json().catch(() => null);
+      const invalidated = this.invalidateFreedomTradeNetSession(body?.sid);
+      return authJson({ ok: true, invalidated });
+    }
+    return null;
   }
 
   async clearRetiredTradeNetSession() {
@@ -1124,6 +1334,11 @@ export class PortfolioStateDO {
     }
 
     const requestUrl = new URL(request.url);
+    if (requestUrl.pathname.startsWith("/internal/freedom-tradenet-session")) {
+      const sessionResponse = await this.handleFreedomTradeNetSessionRequest(request);
+      if (sessionResponse) return sessionResponse;
+      return authJson({ error: "Not found." }, 404);
+    }
     await this.clearRetiredTradeNetSession();
     if (requestUrl.pathname.startsWith("/api/auth/")) return this.handleAuth(request);
     if (requestUrl.pathname === "/api/guest-portfolio") return this.handleGuestPortfolio(request);
