@@ -379,6 +379,34 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(socket.close).toHaveBeenCalled();
   });
 
+  it('rejects an unloaded portfolio WebSocket event instead of fabricating a loaded snapshot', async () => {
+    const socket = makeEventSocket('portfolio', {
+      loaded: false,
+      acc: [{ curr: 'USD', s: 100 }],
+      pos: []
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce({ status: 101, headers: new Headers(), webSocket: socket });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-portfolio-snapshot',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body.ok).toBe(false);
+    expect(body.error).toContain('not fully loaded');
+    expect(body).not.toHaveProperty('data');
+    expect(socket.close).toHaveBeenCalled();
+  });
+
   it('rejects event names outside the read-only allowlist before login or socket access', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
