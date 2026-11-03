@@ -26,7 +26,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Premarket': 'Премаркет',
   'Market': 'Рынок',
   'Postmarket': 'Постмаркет',
-  'Closed': 'Закрыт',
+  'Market closed status': 'Закрыт',
   'Unavailable': 'Недоступно',
   'Updated at': 'Обновлено',
   'Market status unavailable': 'Статус рынка недоступен',
