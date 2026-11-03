@@ -291,7 +291,6 @@ const freedomBrokerTransportRuntime = createFreedomBrokerTransportRuntime({
   recordMetric: recordApiMetric
 });
 
-export const testFreedomTradeNetEventStream = freedomBrokerTransportRuntime.testFreedomTradeNetEventStream;
 export const fetchFreedomTradeNetPositions = freedomBrokerTransportRuntime.fetchFreedomTradeNetPositions;
 export const fetchFreedomTradeNetTrades = freedomBrokerTransportRuntime.fetchFreedomTradeNetTrades;
 export const fetchFreedomTradeNetActiveOrders = freedomBrokerTransportRuntime.fetchFreedomTradeNetActiveOrders;
@@ -299,6 +298,43 @@ export const fetchFreedomTradeNetQuoteStreamOnce = freedomBrokerTransportRuntime
 export const clearFreedomTradeNetStreamSnapshotCache = freedomBrokerTransportRuntime.clearFreedomStreamSnapshotCache;
 export const fetchFreedomCashflows = freedomBrokerTransportRuntime.fetchFreedomCashflows;
 export const clearFreedomCashflowCache = freedomBrokerTransportRuntime.clearFreedomCashflowCache;
+
+export interface FreedomUsMarketStatus {
+  market: string;
+  code: string;
+  status: string;
+  source: string;
+}
+
+export interface FreedomMarketStatusResponse {
+  ok: true;
+  provider: string;
+  marketStatus: FreedomUsMarketStatus;
+  updatedAt: number;
+}
+
+/** Fetch a compact public US-equities status; no exchange list or private account data is returned. */
+export async function fetchFreedomMarketStatus(): Promise<FreedomMarketStatusResponse> {
+  const response = await proxyFetch('freedom-market-status', undefined, { cache: 'no-store' });
+  if (response?.ok !== true || !response.marketStatus ||
+      typeof response.marketStatus.status !== 'string' ||
+      !response.marketStatus.status.trim()) {
+    throw new Error(response?.error || 'US equity market status is unavailable.');
+  }
+  return {
+    ok: true,
+    provider: typeof response.provider === 'string' ? response.provider : 'Freedom TradeNet',
+    marketStatus: {
+      market: typeof response.marketStatus.market === 'string' ? response.marketStatus.market : 'US equities',
+      code: typeof response.marketStatus.code === 'string' ? response.marketStatus.code : 'US',
+      status: response.marketStatus.status.trim().toUpperCase(),
+      source: typeof response.marketStatus.source === 'string' ? response.marketStatus.source : 'US_EXCHANGES'
+    },
+    updatedAt: Number.isFinite(Number(response.updatedAt)) && Number(response.updatedAt) > 0
+      ? Number(response.updatedAt)
+      : Date.now()
+  };
+}
 
 export interface FreedomQuoteStreamTicket {
   ticket: string;
