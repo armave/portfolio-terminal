@@ -170,8 +170,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   const guestUsersLoading = guestDirectory.status === 'loading';
   const balanceRefreshing =
     (isAdmin && balanceSync.status === 'refreshing') ||
-    (shouldReadBrokerHistory && (brokerExecutionHistory.status === 'refreshing' || executedTradesLoading)) ||
-    (isAdmin && guestUsersLoading);
+    (shouldReadBrokerHistory && (brokerExecutionHistory.status === 'refreshing' || executedTradesLoading));
   const guestUsersRequestGeneration = useRef(0);
   const loadGuestUsers = () => {
     const requestId = ++guestUsersRequestGeneration.current;
@@ -218,6 +217,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     const removeAccountListener = addBrokerEventListener('broker:account-info', () => {
       dispatchBalanceSync({ type: 'success' });
     });
+    const removeRefreshCompleteListener = addBrokerEventListener('broker:account-info-refresh-complete', () => {
+      dispatchBalanceSync({ type: 'success' });
+    });
     const removeAccountErrorListener = addBrokerEventListener('broker:account-info-error', () => {
       dispatchBalanceSync({ type: 'failure' });
     });
@@ -226,6 +228,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     return () => {
       removeRefreshingListener();
       removeAccountListener();
+      removeRefreshCompleteListener();
       removeAccountErrorListener();
     };
   }, [isAdmin]);
