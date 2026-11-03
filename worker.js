@@ -1081,7 +1081,7 @@ export default {
                     const result = await diagnoseFreedomEventStream(env, eventName);
                     const eventsConfirmed = result.connectionOpened &&
                         result.userDataReceived && result.eventReceived &&
-                        result.isDemo === false && result.sessionMode === "prod";
+                        result.isDemo !== true && result.sessionMode === "prod";
                     return new Response(JSON.stringify({
                         ok: eventsConfirmed,
                         provider: "Freedom TradeNet",
