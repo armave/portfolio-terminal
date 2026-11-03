@@ -1225,12 +1225,12 @@ function refreshAllLivePricesAfterCurrent(force = false): Promise<boolean> {
   return liveQuoteRefreshCoordinator.refreshAfterCurrent(force);
 }
 
-async function refreshSupplementalPortfolioData(): Promise<void> {
-  if (document.hidden) return;
+async function refreshSupplementalPortfolioData(): Promise<boolean> {
+  if (document.hidden) return false;
 
   if (currentAccountRole === 'admin') {
     const sessionKey = currentAccountId ? `admin:${currentAccountId}` : '';
-    if (!sessionKey) return;
+    if (!sessionKey) return false;
 
     // Both private stream channels must be healthy before periodic REST
     // snapshots are suppressed. Until then, wait for all three broker sources
@@ -1238,36 +1238,40 @@ async function refreshSupplementalPortfolioData(): Promise<void> {
     const refreshMode = resolveFreedomAccountRefreshMode(sessionKey);
     if (refreshMode === 'recover') clearFreedomTradeNetStreamSnapshotCache();
     if (refreshMode === 'recover' || refreshMode === 'fallback') {
-      await Promise.all([
+      const results = await Promise.all([
         portfolioBrokerRefreshRuntime.refreshAccountInfo(),
         portfolioBrokerRefreshRuntime.refreshExecutedTrades(),
         portfolioBrokerRefreshRuntime.refreshActiveOrders()
       ]);
+      return results.every(Boolean);
     }
-    return;
+    return true;
   }
 
   if (currentAccountRole === 'guest') {
     // Refresh only the authenticated guest's assigned holdings and LOTS ledger.
     // Wait for an older quote batch before fetching prices for the latest assignment set.
     if (guestCloudRefreshInFlight) {
-      await guestCloudRefreshInFlight;
-      return;
+      const existingResult = await guestCloudRefreshInFlight;
+      return existingResult !== false;
     }
     const request = pullGuestPortfolioSnapshot()
       .then(() => refreshAllLivePricesAfterCurrent(true))
-      .then(() => undefined)
+      .then((result) => result !== false)
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         console.warn('[Guest Auto Update Warning]: Unable to refresh assigned holdings and LOTS history.', error);
         logTerminal(`[Guest Auto Update Warning]: Assigned holdings and LOTS history were not refreshed (${message}).`);
+        return false;
       })
       .finally(() => {
         if (guestCloudRefreshInFlight === request) guestCloudRefreshInFlight = null;
       });
     guestCloudRefreshInFlight = request;
-    await request;
+    return await request;
   }
+
+  return false;
 }
 
 /**
