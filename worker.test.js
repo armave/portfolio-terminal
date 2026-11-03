@@ -861,7 +861,7 @@ describe('Freedom quote endpoint', () => {
 describe('Freedom authenticated quote WebSocket stream', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  function makeQuoteSocket(expectedSymbol, payload) {
+  function makeQuoteSocket(expectedSymbol, payload, userData = { isDemo: false, mode: 'prod' }) {
     const listeners = new Map();
     const socket = {
       addEventListener: vi.fn((name, callback) => {
@@ -874,7 +874,7 @@ describe('Freedom authenticated quote WebSocket stream', () => {
         expect(JSON.parse(message)).toEqual(['quotes', [expectedSymbol]]);
         queueMicrotask(() => {
           for (const callback of listeners.get('message') || []) {
-            callback({ data: JSON.stringify(['userData', { isDemo: false, mode: 'prod' }]) });
+            callback({ data: JSON.stringify(['userData', userData]) });
             callback({ data: JSON.stringify(['q', payload]) });
           }
         });
@@ -949,6 +949,86 @@ describe('Freedom authenticated quote WebSocket stream', () => {
     expect(socket.close).toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[1][0])).toContain('wss.tradernet.com');
+  });
+
+  it('uses the shared Durable Object SID broker instead of logging in for each quote request', async () => {
+    const sid = 's'.repeat(48);
+    const socket = makeQuoteSocket('GOOGL.US', {
+      q: [{ c: 'GOOGL.US', ltp: 280.55, pp: 279.84 }]
+    });
+    const sessionStub = {
+      fetch: vi.fn().mockResolvedValue(new Response(JSON.stringify({
+        ok: true, sid, expiresInSeconds: 1800
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    };
+    const namespace = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn(() => sessionStub)
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      status: 101, headers: new Headers(), webSocket: socket
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      PORTFOLIO_STATE_DO: namespace
+    });
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).ok).toBe(true);
+    expect(namespace.idFromName).toHaveBeenCalledWith('freedom-tradenet-auth-session:v1');
+    expect(sessionStub.fetch).toHaveBeenCalledWith(
+      'https://portfolio-state.internal/internal/freedom-tradenet-session',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('SID')).toBe(sid);
+  });
+
+  it('invalidates the shared cached SID when TradeNet reports a demo session', async () => {
+    const sid = 's'.repeat(48);
+    const socket = makeQuoteSocket(
+      'GOOGL.US',
+      { q: [{ c: 'GOOGL.US', ltp: 280.55 }] },
+      { isDemo: true, mode: 'demo' }
+    );
+    const sessionStub = {
+      fetch: vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, sid }), {
+          status: 200, headers: { 'Content-Type': 'application/json' }
+        }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, invalidated: true }), {
+          status: 200, headers: { 'Content-Type': 'application/json' }
+        }))
+    };
+    const namespace = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn(() => sessionStub)
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      status: 101, headers: new Headers(), webSocket: socket
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      PORTFOLIO_STATE_DO: namespace
+    });
+
+    expect(response.status).toBe(403);
+    expect(sessionStub.fetch).toHaveBeenCalledTimes(2);
+    expect(sessionStub.fetch.mock.calls[1][0]).toBe(
+      'https://portfolio-state.internal/internal/freedom-tradenet-session/invalidate'
+    );
+    expect(JSON.parse(sessionStub.fetch.mock.calls[1][1].body)).toEqual({ sid });
+    expect(JSON.stringify(await response.json())).not.toContain(sid);
   });
 
   it('summarizes nested quote event wrappers without returning quote prices', async () => {
