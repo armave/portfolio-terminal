@@ -48,6 +48,33 @@ describe('active tranche market price', () => {
     })).toBe(130);
   });
 
+  it('prefers the latest WebSocket receive time when TradeNet ltt has no numeric timestamp', () => {
+    expect(getActiveTrancheMarketPrice({
+      ticker: 'GOOGL',
+      marketPrice: 265
+    }, [{
+      ticker: 'GOOGL',
+      currentPrice: 280.55,
+      price: 280.55,
+      quoteUpdatedAt: 1_800_000_000_000,
+      quoteDetails: {
+        transport: 'websocket',
+        receivedAt: 1_800_000_000_000,
+        freshness: 'unknown'
+      }
+    }], {
+      GOOGL: {
+        currentPrice: 279,
+        quoteUpdatedAt: 1_799_999_000_000,
+        quoteDetails: {
+          transport: 'websocket',
+          receivedAt: 1_799_999_000_000,
+          freshness: 'unknown'
+        }
+      }
+    })).toBe(280.55);
+  });
+
   it('uses the stored margin position price before the untimestamped broker fallback', () => {
     expect(getActiveTrancheMarketPrice({
       ticker: 'MSFT',
