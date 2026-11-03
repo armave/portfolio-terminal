@@ -60,7 +60,7 @@ export interface FreedomPortfolioSnapshotLike {
   positions: Array<{ ticker: string; quantity: number; marketPrice: number | null }>;
 }
 
-export interface FreedomQuantityMismatch {
+interface FreedomQuantityMismatch {
   ticker: string;
   marginQuantity: number;
   freedomQuantity: number;
