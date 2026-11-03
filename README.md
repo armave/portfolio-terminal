@@ -144,17 +144,13 @@ Freedom TradeNet account data is the preferred source for the broker-reported US
 
 If Freedom account data is unavailable or the Gateway Secret has not been configured, locally saved portfolio data remains available and the app surfaces a warning. A previously loaded broker snapshot is marked stale after a failed refresh; it must not be presented as a current broker balance. Quote freshness is marked unknown when the broker snapshot does not provide a verifiable market observation timestamp.
 
-### Live market depth and TradeNet session
+### TradeNet authenticated orders-stream diagnostic
 
-For production order-book snapshots, configure these Cloudflare Worker secrets:
+The Worker provides an administrator-only diagnostic endpoint at `?action=freedom-orders-stream`. It uses the Worker-only `FREEDOM_LOGIN` and `FREEDOM_PASSWORD` secrets to obtain a short-lived TradeNet SID, opens the production WebSocket through Cloudflare, and subscribes to the read-only `orders` event. It reports connection and event metadata only; it never returns order payloads, account identifiers, credentials, or the SID. The SID is not persisted, and the socket closes after the required events arrive or the eight-second observation window ends.
 
-- `FREEDOM_LOGIN` and `FREEDOM_PASSWORD`: TradeNet account credentials used only by the Worker to establish the live account session.
-- `FREEDOM_PUBLIC_KEY` and `FREEDOM_PRIVATE_KEY`: existing API-key pair used by the signed REST market-data endpoints.
-- `GATEWAY_SECRET`: existing internal Worker-to-Durable-Object authentication secret.
+The signed REST market-data endpoints continue to use `FREEDOM_PUBLIC_KEY` and `FREEDOM_PRIVATE_KEY`. `GATEWAY_SECRET` remains the Worker gateway/bootstrap secret. This diagnostic does not restore Market Depth or affect portfolio data.
 
-The administrator dashboard requests TradeNet session initialization after sign-in. The Worker stores the returned SID in the existing `PORTFOLIO_STATE_DO` Durable Object, refreshes it ahead of expiry, and never returns the SID to the browser. The live order-book feed uses TradeNet's production WebSocket endpoint and is restricted to real-account sessions. No additional account ID or currency secret is needed for a single linked USD account.
-
-If TradeNet requires an additional SMS or verification challenge during password login, the automatic login attempt will fail safely and will not persist a session; interactive challenge handling is not currently implemented.
+If TradeNet requires an additional SMS or verification challenge during password login, the diagnostic login will fail safely; interactive challenge handling is not implemented.
 
 ## Market Data & API Keys
 
