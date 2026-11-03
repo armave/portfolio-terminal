@@ -49,8 +49,6 @@ import {
   buildFreedomQuoteStreamSocketUrl,
   createFreedomAccountStreamTicket,
   buildFreedomAccountStreamSocketUrl,
-  normalizeFreedomPortfolio,
-  normalizeFreedomActiveOrders,
   clearCloudHistory,
   proxyFetch,
   setSecretGetter,
@@ -96,7 +94,6 @@ import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';
 import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
-import { normalizeFreedomOrderFills } from './src/services/freedomTradeContracts';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
@@ -971,8 +968,14 @@ let freedomAccountStreamRuntimePromise: Promise<FreedomAccountStreamRuntime> | n
 
 function getFreedomAccountStreamRuntime(): Promise<FreedomAccountStreamRuntime> {
   if (!freedomAccountStreamRuntimePromise) {
-    freedomAccountStreamRuntimePromise = import('./src/services/freedomAccountStreamRuntime')
-      .then(({ createFreedomAccountStreamRuntime }) => createFreedomAccountStreamRuntime({
+    freedomAccountStreamRuntimePromise = Promise.all([
+      import('./src/services/freedomAccountStreamRuntime'),
+      import('./src/services/freedomAccountContracts'),
+      import('./src/services/freedomTradeContracts')
+    ]).then(([{ createFreedomAccountStreamRuntime }, {
+      normalizeFreedomPortfolio,
+      normalizeFreedomActiveOrders
+    }, { normalizeFreedomOrderFills }]) => createFreedomAccountStreamRuntime({
         createTicket: async () => {
           const result = await createFreedomAccountStreamTicket();
           return { ticket: result.ticket };
