@@ -689,26 +689,71 @@ function summarizeFreedomStreamEvent(eventName, payload) {
         };
     }
     if (eventName === "quotes") {
-        const rows = Array.isArray(payload?.q) ? payload.q
-            : Array.isArray(payload) ? payload : [];
+        const containers = [
+            ["payload.q", payload?.q],
+            ["payload.quotes", payload?.quotes],
+            ["payload.data.q", payload?.data?.q],
+            ["payload.data.quotes", payload?.data?.quotes],
+            ["payload.result.q", payload?.result?.q],
+            ["payload.result.quotes", payload?.result?.quotes],
+            ["payload.data.result.q", payload?.data?.result?.q],
+            ["payload.data.result.quotes", payload?.data?.result?.quotes],
+            ["payload", payload]
+        ];
+        let containerPath = "none";
+        let container = null;
+        for (const [path, value] of containers) {
+            if (Array.isArray(value)) {
+                containerPath = path;
+                container = value;
+                break;
+            }
+        }
+        if (!container && isRecord(payload)) {
+            const values = Object.values(payload);
+            if (values.length && values.every(isRecord)) {
+                containerPath = "payload.object_values";
+                container = values;
+            } else if (["c", "symbol", "ticker", "code", "i", "instr", "instrument"].some(key => payload[key] !== undefined)) {
+                containerPath = "payload.single_quote_object";
+                container = [payload];
+            }
+        }
+        const rows = Array.isArray(container) ? container : [];
         const quoteKeys = new Set([
-            "c", "n", "mrg", "ltr", "kind", "type", "name", "name2", "bbp", "bbc",
+            "c", "symbol", "ticker", "code", "i", "instr", "instrument",
+            "n", "mrg", "ltr", "kind", "type", "name", "name2", "bbp", "bbc",
             "bbs", "bbf", "bap", "bac", "bas", "baf", "pp", "op", "ltp", "lts",
             "ltt", "chg", "pcp", "ltc", "mintp", "maxtp", "vol", "vlt", "trades",
             "min_step", "step_price", "p5", "chg5", "p22", "chg22", "p110",
             "chg110", "p220", "chg220", "x_curr", "x_lot", "x_istrade"
         ]);
+        const identifierKeys = ["c", "symbol", "ticker", "code", "i", "instr", "instrument"];
         const sample = rows[0];
         const quoteItemKeys = sample ? keys(sample).filter(key => quoteKeys.has(key)) : [];
+        const returnedSymbols = rows.slice(0, 10).map(row => {
+            if (!isRecord(row)) return null;
+            const key = identifierKeys.find(candidate => typeof row[candidate] === "string");
+            return key ? row[key].slice(0, 64) : null;
+        }).filter(Boolean);
+        const keyedSymbols = containerPath === "payload.object_values" ? keys(payload).slice(0, 10) : [];
         return {
             event: eventName,
             payloadType,
             topLevelKeys: keys(payload),
+            quoteContainerPath: containerPath,
+            quoteContainerType: container === null ? "unrecognized" : "array",
             quotesCount: rows.length,
             quoteItemKeys,
             quoteItemTypes: sample && isRecord(sample)
                 ? Object.fromEntries(quoteItemKeys.map(key => [key, describeRedactedValueType(sample[key])]))
-                : {}
+                : {},
+            identifierFieldTypes: sample && isRecord(sample)
+                ? Object.fromEntries(identifierKeys.filter(key => sample[key] !== undefined)
+                    .map(key => [key, describeRedactedValueType(sample[key])]))
+                : {},
+            returnedSymbols,
+            keyedSymbols
         };
     }
     throw new Error("Unsupported TradeNet stream event.");
@@ -1291,8 +1336,23 @@ export default {
                 if (!quoteSymbol || !/^[A-Z0-9.^=-]{1,32}$/.test(quoteSymbol)) {
                     return jsonError("Provide exactly one valid TradeNet ticker symbol.", 400, corsHeaders);
                 }
+                let quoteStreamDiagnostics = null;
                 try {
                     const result = await diagnoseFreedomEventStream(env, "quotes", true, [quoteSymbol]);
+                    quoteStreamDiagnostics = {
+                        phase: result.phase,
+                        requestedEvent: "quotes",
+                        responseEvent: "q",
+                        requestedSymbol: quoteSymbol,
+                        handshakeStatus: result.handshakeStatus,
+                        elapsedMs: result.elapsedMs,
+                        connectionOpened: result.connectionOpened,
+                        userDataReceived: result.userDataReceived,
+                        sessionMode: result.sessionMode,
+                        eventReceived: result.eventReceived,
+                        eventCounts: result.eventCounts,
+                        eventSummary: result.eventSummary
+                    };
                     const eventsConfirmed = result.connectionOpened &&
                         result.userDataReceived && result.eventReceived &&
                         result.isDemo !== true && result.sessionMode === "prod";
@@ -1332,8 +1392,8 @@ export default {
                         symbol: quoteSymbol,
                         error: error instanceof Error ? error.message : "TradeNet quote stream failed.",
                         diagnostics: error?.diagnostics
-                            ? Object.fromEntries(Object.entries(error.diagnostics).filter(([key]) => !["eventSummary", "eventPayload"].includes(key)))
-                            : null
+                            ? Object.fromEntries(Object.entries(error.diagnostics).filter(([key]) => !["eventPayload"].includes(key)))
+                            : quoteStreamDiagnostics
                     }), { status, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 }
             }

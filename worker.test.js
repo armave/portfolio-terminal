@@ -841,6 +841,41 @@ describe('Freedom authenticated quote WebSocket stream', () => {
     expect(String(fetchMock.mock.calls[1][0])).toContain('wss.tradernet.com');
   });
 
+  it('summarizes nested quote event wrappers without returning quote prices', async () => {
+    const socket = makeQuoteSocket('GOOGL.US', {
+      data: {
+        result: {
+          q: [{ symbol: 'GOOGL.US', last: 280.49, bid: 280.40, ask: 280.50 }]
+        }
+      }
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce({ status: 101, headers: new Headers(), webSocket: socket });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body.diagnostics.eventSummary).toMatchObject({
+      quoteContainerPath: 'payload.data.result.q',
+      quotesCount: 1,
+      quoteItemKeys: ['ask', 'bid', 'last', 'symbol'],
+      returnedSymbols: ['GOOGL.US']
+    });
+    expect(JSON.stringify(body)).not.toContain('280.49');
+    expect(JSON.stringify(body)).not.toContain('280.40');
+    expect(JSON.stringify(body)).not.toContain('280.50');
+  });
+
   it('rejects invalid or multiple symbols before authentication', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -872,7 +907,24 @@ describe('Freedom authenticated quote WebSocket stream', () => {
     const body = await response.json();
     expect(body.ok).toBe(false);
     expect(body.error).toContain('did not return the requested symbol');
-    expect(JSON.stringify(body)).not.toContain('META.US');
+    expect(body.diagnostics).toMatchObject({
+      phase: 'event_received',
+      requestedEvent: 'quotes',
+      responseEvent: 'q',
+      requestedSymbol: 'GOOGL.US',
+      connectionOpened: true,
+      userDataReceived: true,
+      eventReceived: true,
+      eventSummary: {
+        event: 'quotes',
+        quoteContainerPath: 'payload.q',
+        quotesCount: 1,
+        quoteItemKeys: ['c', 'ltp'],
+        returnedSymbols: ['META.US']
+      }
+    });
+    expect(JSON.stringify(body)).not.toContain('500');
+    expect(JSON.stringify(body)).not.toContain('SID');
   });
 });
 
