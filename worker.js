@@ -1282,41 +1282,7 @@ export default {
                 if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
                     return jsonError("Authentication requests must use application/json.", 415, corsHeaders);
                 }
-                if (action === "freedom-quote-stream-ticket") {
-            const rawSymbols = url.searchParams.get("symbols") || "";
-            if (!validSymbolList(rawSymbols)) {
-                return jsonError("Provide 1–10 valid ticker symbols for the quote stream.", 400, corsHeaders);
-            }
-            if (!env.PORTFOLIO_STATE_DO || !accountId || !["admin", "guest"].includes(accountRole)) {
-                return jsonError("An authenticated portfolio account is required for the quote stream.", 401, corsHeaders);
-            }
-            const symbols = [...new Set(rawSymbols.split(",").map(value => {
-                const normalized = value.trim().toUpperCase();
-                return normalized && !normalized.includes(".") ? normalized + ".US" : normalized;
-            }))];
-            const streamStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
-            const ticketResponse = await streamStub.fetch(new Request(
-                "https://portfolio-state.internal/internal/freedom-quote-stream-ticket",
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ accountId, role: accountRole, symbols })
-                }
-            ));
-            const ticketPayload = await ticketResponse.json().catch(() => null);
-            if (!ticketResponse.ok || ticketPayload?.ok !== true || typeof ticketPayload.ticket !== "string") {
-                return jsonError(ticketPayload?.error || "Could not create a quote stream ticket.", ticketResponse.status || 502, corsHeaders);
-            }
-            return new Response(JSON.stringify({
-                ok: true,
-                provider: "Freedom TradeNet",
-                ticket: ticketPayload.ticket,
-                expiresAt: ticketPayload.expiresAt,
-                symbols
-            }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
-        }
-
-        const declaredLength = Number(request.headers.get("Content-Length") || 0);
+                const declaredLength = Number(request.headers.get("Content-Length") || 0);
                 if (Number.isFinite(declaredLength) && declaredLength > 8192) {
                     return jsonError("Authentication request exceeds the 8 KB limit.", 413, corsHeaders);
                 }
@@ -1451,6 +1417,40 @@ export default {
         }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && pathname !== "/api/history" && symbol && !validSymbolList(symbol)) {
             return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
+        }
+
+        if (action === "freedom-quote-stream-ticket") {
+            const rawSymbols = url.searchParams.get("symbols") || "";
+            if (!validSymbolList(rawSymbols)) {
+                return jsonError("Provide 1–10 valid ticker symbols for the quote stream.", 400, corsHeaders);
+            }
+            if (!env.PORTFOLIO_STATE_DO || !accountId || !["admin", "guest"].includes(accountRole)) {
+                return jsonError("An authenticated portfolio account is required for the quote stream.", 401, corsHeaders);
+            }
+            const symbols = [...new Set(rawSymbols.split(",").map(value => {
+                const normalized = value.trim().toUpperCase();
+                return normalized && !normalized.includes(".") ? normalized + ".US" : normalized;
+            }))];
+            const streamStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
+            const ticketResponse = await streamStub.fetch(new Request(
+                "https://portfolio-state.internal/internal/freedom-quote-stream-ticket",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ accountId, role: accountRole, symbols })
+                }
+            ));
+            const ticketPayload = await ticketResponse.json().catch(() => null);
+            if (!ticketResponse.ok || ticketPayload?.ok !== true || typeof ticketPayload.ticket !== "string") {
+                return jsonError(ticketPayload?.error || "Could not create a quote stream ticket.", ticketResponse.status || 502, corsHeaders);
+            }
+            return new Response(JSON.stringify({
+                ok: true,
+                provider: "Freedom TradeNet",
+                ticket: ticketPayload.ticket,
+                expiresAt: ticketPayload.expiresAt,
+                symbols
+            }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
         }
 
         const declaredLength = Number(request.headers.get("Content-Length") || 0);
