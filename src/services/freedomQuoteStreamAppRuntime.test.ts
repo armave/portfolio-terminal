@@ -37,12 +37,13 @@ describe('Freedom quote stream app adapter', () => {
     const persistAndRender = vi.fn();
     const socket = new FakeSocket();
     let currentSessionKey = 'admin:account-1';
+    let requestSequence = 122;
     const runtime = createFreedomQuoteStreamAppRuntime({
       createTicket: vi.fn(async () => ({ ticket: 'a'.repeat(64) })),
       buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
       createSocket: () => socket,
       getCurrentSessionKey: () => currentSessionKey,
-      nextRequestSequence: () => 123,
+      nextRequestSequence: () => ++requestSequence,
       recordQuote,
       persistAndRender
     });
@@ -91,6 +92,44 @@ describe('Freedom quote stream app adapter', () => {
     );
     expect(persistAndRender).toHaveBeenCalledTimes(1);
 
+    // Every subsequent q message for the same ticker must be forwarded as a
+    // new local overwrite, even if the provider's ltt timestamp moves backward.
+    socket.receive({
+      type: 'quote',
+      symbol: 'GOOGL.US',
+      data: {
+        c: 'GOOGL.US',
+        ltp: 281.25,
+        pp: 279.84,
+        chg: 1.41,
+        pcp: 0.50,
+        bbp: 281.2,
+        bap: 281.3,
+        vol: 123999,
+        ltt: '2026-11-03T09:59:00',
+        UTCOffset: -300
+      },
+      receivedAt: 1_800_000_001_000
+    });
+
+    expect(recordQuote).toHaveBeenCalledTimes(2);
+    expect(recordQuote).toHaveBeenNthCalledWith(
+      2,
+      'GOOGL',
+      281.25,
+      'Freedom TradeNet',
+      1_800_000_001_000,
+      expect.objectContaining({
+        transport: 'websocket',
+        price: 281.25,
+        bid: 281.2,
+        ask: 281.3,
+        requestSequence: 124
+      }),
+      1_800_000_001_000
+    );
+    expect(persistAndRender).toHaveBeenCalledTimes(2);
+
     currentSessionKey = 'guest:guest-2';
     socket.receive({
       type: 'quote',
@@ -98,8 +137,8 @@ describe('Freedom quote stream app adapter', () => {
       data: { c: 'GOOGL.US', ltp: 281 },
       receivedAt: 1_800_000_001_000
     });
-    expect(recordQuote).toHaveBeenCalledTimes(1);
-    expect(persistAndRender).toHaveBeenCalledTimes(1);
+    expect(recordQuote).toHaveBeenCalledTimes(2);
+    expect(persistAndRender).toHaveBeenCalledTimes(2);
 
     runtime.stop();
   });
