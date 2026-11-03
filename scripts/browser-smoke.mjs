@@ -427,42 +427,49 @@ try {
     'guest snapshot and active assignment ledger publication'
   );
 
-  // A manual sync must reuse the load-time broker/quote snapshots instead of
-  // reopening WebSocket or backup REST endpoints. Executed-trade history remains
-  // on its canonical REST source and is still refreshed by the explicit sync.
+  // The first explicit sync may be the first snapshot trigger in this browser
+  // session. It may therefore make the one allowed WebSocket/REST request per
+  // source. A second sync must reuse those results and create no backup traffic.
   worker.failNextStateConflict();
   const previousConflicts = worker.stateConflictCount();
   const previousStateWrites = worker.count('POST', '/api/state');
-  const previousPortfolioSnapshotRequests =
-    worker.countAction('freedom-portfolio-snapshot') + worker.countAction('freedom-positions');
-  const previousOrderSnapshotRequests =
-    worker.countAction('freedom-orders-stream') + worker.countAction('freedom-orders');
-  const previousQuoteSnapshotRequests =
-    worker.countAction('freedom-quote-stream') + worker.countAction('freedom-quote');
-  const previousTradeHistoryRequests = worker.countAction('freedom-trades');
   const syncButton = page.locator('#syncPortfolioButton');
   await syncButton.waitFor({ state: 'visible', timeout: 20_000 });
   await syncButton.click();
   await waitForCondition(
     () => worker.count('POST', '/api/state') > previousStateWrites,
-    'manual sync cloud push using the load-time snapshots'
+    'initial manual sync cloud push'
   );
-  if (
-    worker.countAction('freedom-portfolio-snapshot') + worker.countAction('freedom-positions') !== previousPortfolioSnapshotRequests ||
-    worker.countAction('freedom-orders-stream') + worker.countAction('freedom-orders') !== previousOrderSnapshotRequests ||
-    worker.countAction('freedom-quote-stream') + worker.countAction('freedom-quote') !== previousQuoteSnapshotRequests
-  ) {
-    throw new Error('Manual sync reopened a one-shot WebSocket snapshot or its REST backup.');
-  }
-  if (worker.countAction('freedom-trades') <= previousTradeHistoryRequests) {
-    throw new Error('Manual sync did not refresh canonical executed-trade history over REST.');
-  }
   await waitForCondition(
     () => worker.stateConflictCount() > previousConflicts,
     'cloud state revision conflict response'
   );
   await page.getByRole('alert').filter({ hasText: 'Cloud push failed: Cloud revision conflict.' })
     .waitFor({ state: 'visible', timeout: 20_000 });
+
+  const snapshotRequestsAfterInitialSync = {
+    portfolio: worker.countAction('freedom-portfolio-snapshot') + worker.countAction('freedom-positions'),
+    orders: worker.countAction('freedom-orders-stream') + worker.countAction('freedom-orders'),
+    quotes: worker.countAction('freedom-quote-stream') + worker.countAction('freedom-quote')
+  };
+  const previousSecondSyncWrites = worker.count('POST', '/api/state');
+  const previousSecondSyncTrades = worker.countAction('freedom-trades');
+  await syncButton.click();
+  await waitForCondition(
+    () => worker.count('POST', '/api/state') > previousSecondSyncWrites,
+    'second manual sync cloud push'
+  );
+  const snapshotRequestsAfterSecondSync = {
+    portfolio: worker.countAction('freedom-portfolio-snapshot') + worker.countAction('freedom-positions'),
+    orders: worker.countAction('freedom-orders-stream') + worker.countAction('freedom-orders'),
+    quotes: worker.countAction('freedom-quote-stream') + worker.countAction('freedom-quote')
+  };
+  if (JSON.stringify(snapshotRequestsAfterSecondSync) !== JSON.stringify(snapshotRequestsAfterInitialSync)) {
+    throw new Error('Second manual sync reopened a one-shot WebSocket snapshot or its REST backup.');
+  }
+  if (worker.countAction('freedom-trades') <= previousSecondSyncTrades) {
+    throw new Error('Manual sync did not refresh canonical executed-trade history over REST.');
+  }
 
   // Export the actual browser snapshot, reject malformed JSON, restore the valid
   // backup and confirm a reset of local portfolio plus revisioned cloud history.
