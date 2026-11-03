@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createBlankPortfolioState } from '../store/portfolioDefaults';
 import type { GuestPortfolioSnapshot } from './api';
+import type { PortfolioState } from '../types/portfolio';
 import type { GuestPortfolioSessionIdentity } from './guestPortfolioSession';
 import {
   createGuestPortfolioHydrationRuntime,
@@ -20,6 +21,7 @@ function createFixture(options: {
   session?: GuestPortfolioSessionIdentity;
   currentView?: string | null;
   snapshot?: GuestPortfolioSnapshot;
+  currentCashHoldings?: PortfolioState['cashCushion']['holdings'];
   missingIdentityGeneration?: boolean;
 } = {}) {
   let session: GuestPortfolioSessionIdentity = options.session ?? {
@@ -35,6 +37,7 @@ function createFixture(options: {
     })),
     getGuestPortfolioSnapshot: vi.fn(async () => options.snapshot ?? createSnapshot()),
     getActiveView: vi.fn(() => options.currentView ?? 'BALANCE'),
+    getCurrentCashHoldings: vi.fn(() => options.currentCashHoldings ?? []),
     createCleanWorkspaceState: vi.fn(() => createBlankPortfolioState(100)),
     importGuestWorkspace: vi.fn()
   } satisfies GuestPortfolioHydrationRuntimeDependencies;
@@ -92,6 +95,65 @@ describe('guest portfolio hydration runtime', () => {
       cashStocks: [],
       gatewaySecret: undefined,
       apiKeys: {}
+    });
+  });
+
+  it('preserves the daily quote badge while refreshing the guest portfolio snapshot', async () => {
+    const receivedAt = Date.parse('2026-11-03T15:00:00.000Z');
+    const quoteDetails = {
+      price: 278.62,
+      change: -0.36,
+      changePercent: -0.13,
+      freshness: 'fresh' as const,
+      receivedAt,
+      sourceTimestamp: receivedAt
+    };
+    const fixture = createFixture({
+      currentCashHoldings: [{
+        ticker: 'GOOGL',
+        shares: 31,
+        averagePrice: 337.77,
+        price: 278.62,
+        currentPrice: 278.62,
+        quoteUpdatedAt: receivedAt,
+        quoteSource: 'Freedom TradeNet',
+        quoteDetails
+      }],
+      snapshot: {
+        updatedAt: 43,
+        tranches: [{
+          id: 'GOOGL:buy-1',
+          ticker: 'GOOGL',
+          name: 'Alphabet',
+          quantity: 31,
+          marketPrice: 277.5,
+          averagePrice: 337.77,
+          marketValue: 8602.5,
+          purchasedAt: receivedAt - 86_400_000
+        }],
+        ledger: [],
+        ledgerUpdatedAt: 43
+      }
+    });
+    const runtime = createGuestPortfolioHydrationRuntime(fixture.dependencies);
+
+    await runtime.pullGuestPortfolioSnapshot();
+
+    const [workspace] = vi.mocked(fixture.dependencies.importGuestWorkspace).mock.calls[0];
+    expect(workspace.cashCushion.holdings).toEqual([
+      expect.objectContaining({
+        ticker: 'GOOGL',
+        shares: 31,
+        currentPrice: 278.62,
+        price: 278.62,
+        quoteUpdatedAt: receivedAt,
+        quoteSource: 'Freedom TradeNet',
+        quoteDetails
+      })
+    ]);
+    expect(workspace.guestPortfolioSnapshot?.tranches[0]).toMatchObject({
+      marketPrice: 277.5,
+      averagePrice: 337.77
     });
   });
 
