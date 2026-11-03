@@ -362,10 +362,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
               id="quoteRefreshInterval"
               value={refreshInterval}
               onChange={handleIntervalChange}
-              aria-label="Automatic portfolio data refresh interval"
+              aria-label={translateText('Automatic portfolio quote and cloud sync interval')}
               title={translateText(account?.role === 'guest'
                 ? 'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.'
-                : 'Live quotes update at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes both.')}
+                : 'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes all data.')}
               class="h-8 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
             >
               <option value="0">{translateText('Off')}</option>
@@ -379,7 +379,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
               ? translateText('Automatic updates are paused. Manual Sync remains available.')
               : translateText(account?.role === 'guest'
                 ? 'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.'
-                : 'Live quotes update at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes both.')}
+                : 'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes all data.')}
           </p>
           {permissions.canManageBackups && <>
             <button

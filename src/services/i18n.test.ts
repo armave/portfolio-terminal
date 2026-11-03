@@ -12,9 +12,9 @@ describe('app localization', () => {
 
   it('localizes the role-specific automatic refresh descriptions', () => {
     expect(translateText(
-      'Live quotes update at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes both.',
+      'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes all data.',
       'ru'
-    )).toContain('Балансы, позиции, сделки и заявки брокера обновляются каждые 60 секунд.');
+    )).toContain('Котировки и состояние портфеля синхронизируются с облаком с выбранным интервалом.');
     expect(translateText(
       'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.',
       'ru'
