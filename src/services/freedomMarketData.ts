@@ -1,4 +1,4 @@
-import { proxyFetch } from "./api";
+import { fetchFreedomTradeNetQuoteStreamOnce, proxyFetch } from "./api";
 
 export interface FreedomQuote {
   symbol: string;
@@ -97,11 +97,10 @@ export async function fetchFreedomQuoteWebSocket(symbol: string): Promise<Freedo
   const timeout = setTimeout(() => controller.abort(), 9_000);
   let payload: any;
   try {
-    payload = await proxyFetch(
-      "freedom-quote-stream",
-      { symbol: ticker },
-      { cache: "no-store", signal: controller.signal }
-    );
+    payload = await fetchFreedomTradeNetQuoteStreamOnce(ticker, { signal: controller.signal });
+    if (payload === null) {
+      throw new Error("TradeNet WebSocket quote snapshot was already requested for this ticker during this app session.");
+    }
   } catch (error) {
     if (controller.signal.aborted) {
       throw new Error("TradeNet WebSocket quote request timed out.");
