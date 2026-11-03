@@ -30,12 +30,14 @@ describe('portfolio automatic refresh policy', () => {
       const refreshQuotes = vi.fn(() => { sequence.push('quotes'); });
       const refreshSupplemental = vi.fn(() => { sequence.push('supplemental'); });
       const syncState = vi.fn(() => { sequence.push('state-sync'); });
+      const syncHistory = vi.fn(() => { sequence.push('history-sync'); });
       const scheduler = createPortfolioAutoRefreshScheduler({
         getRole: () => role,
         isVisible: () => true,
         refreshQuotes,
         refreshSupplemental,
-        syncState
+        syncState,
+        syncHistory
       });
 
       scheduler.configure(15_000, role);
@@ -43,13 +45,15 @@ describe('portfolio automatic refresh policy', () => {
 
       expect(refreshQuotes).toHaveBeenCalledTimes(4);
       expect(syncState).toHaveBeenCalledTimes(role === 'admin' ? 4 : 0);
+      expect(syncHistory).toHaveBeenCalledTimes(role === 'admin' ? 1 : 0);
       expect(refreshSupplemental).toHaveBeenCalledTimes(1);
       if (role === 'admin') {
         expect(sequence.filter((value) => value !== 'supplemental')).toEqual([
           'quotes', 'state-sync',
           'quotes', 'state-sync',
           'quotes', 'state-sync',
-          'quotes', 'state-sync'
+          'quotes', 'state-sync',
+          'history-sync'
         ]);
       }
       scheduler.stop();
@@ -59,6 +63,7 @@ describe('portfolio automatic refresh policy', () => {
   it('runs a guest refresh as one snapshot-first operation when requested immediately', async () => {
     const sequence: string[] = [];
     const syncState = vi.fn();
+    const syncHistory = vi.fn();
     const scheduler = createPortfolioAutoRefreshScheduler({
       getRole: () => 'guest',
       isVisible: () => true,
@@ -84,14 +89,16 @@ describe('portfolio automatic refresh policy', () => {
       isVisible: () => true,
       refreshQuotes: async () => { completed.push('quotes'); },
       refreshSupplemental: async () => { completed.push('broker balances, trades and orders'); },
-      syncState: async () => { completed.push('state sync'); }
+      syncState: async () => { completed.push('state sync'); },
+      syncHistory: async () => { completed.push('closed history cloud record'); }
     });
 
     scheduler.configure(60_000, 'admin');
     await expect(scheduler.refreshNow()).resolves.toBe(true);
-    expect(completed).toHaveLength(3);
+    expect(completed).toHaveLength(4);
     expect(completed).toContain('quotes');
     expect(completed).toContain('state sync');
+    expect(completed).toContain('closed history cloud record');
     expect(completed).toContain('broker balances, trades and orders');
     scheduler.stop();
   });
@@ -102,12 +109,14 @@ describe('portfolio automatic refresh policy', () => {
     const refreshQuotes = vi.fn();
     const refreshSupplemental = vi.fn();
     const syncState = vi.fn();
+    const syncHistory = vi.fn();
     const scheduler = createPortfolioAutoRefreshScheduler({
       getRole: () => 'admin',
       isVisible: () => visible,
       refreshQuotes,
       refreshSupplemental,
-      syncState
+      syncState,
+      syncHistory
     });
 
     scheduler.configure(15_000, 'admin');
@@ -121,6 +130,7 @@ describe('portfolio automatic refresh policy', () => {
     expect(refreshQuotes).toHaveBeenCalledTimes(1);
     expect(refreshSupplemental).toHaveBeenCalledTimes(1);
     expect(syncState).toHaveBeenCalledTimes(1);
+    expect(syncHistory).toHaveBeenCalledTimes(1);
     scheduler.stop();
   });
 
@@ -134,13 +144,15 @@ describe('portfolio automatic refresh policy', () => {
       isVisible: () => true,
       refreshQuotes,
       refreshSupplemental,
-      syncState
+      syncState,
+      syncHistory
     });
 
     expect(scheduler.configure(0, 'admin')).toBe(DEFAULT_ADMIN_REFRESH_INTERVAL_MS);
     await vi.advanceTimersByTimeAsync(DEFAULT_ADMIN_REFRESH_INTERVAL_MS);
     expect(refreshQuotes).toHaveBeenCalledTimes(1);
     expect(syncState).toHaveBeenCalledTimes(1);
+    expect(syncHistory).toHaveBeenCalledTimes(1);
     expect(refreshSupplemental).toHaveBeenCalledTimes(1);
     scheduler.stop();
   });
