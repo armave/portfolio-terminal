@@ -32,7 +32,7 @@ export function createFreedomAccountStreamAppRuntime(
     emitBrokerEvent('broker:executed-trades', mergedTrades);
   });
 
-  return createFreedomAccountStreamRuntime({
+  const runtime = createFreedomAccountStreamRuntime({
     createTicket: dependencies.createTicket,
     buildSocketUrl: dependencies.buildSocketUrl,
     getCurrentSessionKey: dependencies.getCurrentSessionKey,
@@ -49,4 +49,16 @@ export function createFreedomAccountStreamAppRuntime(
     },
     onStatus: dependencies.onStatus
   });
+
+  return {
+    start: (sessionKey: string) => {
+      if (!dependencies.isAdmin() || !sessionKey.startsWith('admin:')) {
+        runtime.stop();
+        return Promise.resolve(false);
+      }
+      return runtime.start(sessionKey);
+    },
+    stop: () => runtime.stop(),
+    isConnected: () => runtime.isConnected()
+  };
 }
