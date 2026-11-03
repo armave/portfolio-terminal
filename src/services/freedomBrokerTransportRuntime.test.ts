@@ -43,6 +43,38 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch.mock.calls[6][2]).toEqual({ cache: 'no-store' });
   });
 
+  it('fetches loaded WebSocket and REST portfolio snapshots for a read-only comparison', async () => {
+    const wsData = { result: { ps: { loaded: true, acc: [], pos: [] } } };
+    const restData = { result: { ps: { loaded: true, acc: [], pos: [] } } };
+    const { runtime, proxyFetch } = createRuntime({
+      resolve: (action) => action === 'freedom-portfolio-snapshot'
+        ? { ok: true, source: 'authenticated_websocket', data: wsData }
+        : action === 'freedom-positions'
+          ? { ok: true, data: restData }
+          : undefined
+    });
+
+    await expect(runtime.testFreedomTradeNetPortfolioReconciliation()).resolves.toEqual({
+      websocket: wsData,
+      rest: restData
+    });
+    expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
+      'freedom-portfolio-snapshot', 'freedom-positions'
+    ]);
+    expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
+    expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
+  });
+
+  it('rejects unavailable or unloaded snapshots rather than comparing incomplete data', async () => {
+    const { runtime } = createRuntime({
+      resolve: (action) => action === 'freedom-portfolio-snapshot'
+        ? { ok: true, data: { result: { ps: { loaded: false, acc: [], pos: [] } } } }
+        : { ok: true, data: { result: { ps: { loaded: true, acc: [], pos: [] } } } }
+    });
+    await expect(runtime.testFreedomTradeNetPortfolioReconciliation())
+      .rejects.toThrow('WebSocket portfolio snapshot is unavailable or not loaded.');
+  });
+
   it('rejects unapproved event names before making a broker request', async () => {
     const { runtime, proxyFetch } = createRuntime();
     await expect(runtime.testFreedomTradeNetEventStream('orders' as never))
