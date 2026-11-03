@@ -161,17 +161,18 @@ export function createFreedomQuoteStreamRuntime(
         if (!active || runGeneration !== generation || socket !== nextSocket) return;
         const message = parseStreamMessage(event?.data);
         if (!message) return;
-        if (message.type === 'ready') {
+        if (message.type === 'ready' || (message.type === 'status' && message.status === 'connected')) {
           connected = true;
           reconnectAttempt = 0;
           reportStatus('connected');
-          finish();
+          if (message.type === 'ready') finish();
           return;
         }
         if (message.type === 'quote' &&
             typeof message.symbol === 'string' &&
             message.data && typeof message.data === 'object' &&
             !Array.isArray(message.data)) {
+          connected = true;
           dependencies.onQuote({
             type: 'quote',
             symbol: message.symbol,
@@ -227,7 +228,10 @@ export function createFreedomQuoteStreamRuntime(
       requestedTickers.every((ticker, index) => ticker === normalized[index]);
 
     if (unchanged) {
-      if (connected) return true;
+      // The browser socket remains open while the Durable Object reconnects
+      // its upstream TradeNet socket. Do not mint another ticket/socket during
+      // that server-side recovery window.
+      if (connected || socket?.readyState === 1) return true;
       if (connectPromise) return connectPromise;
       if (reconnectHandle !== null) return true;
     } else {
