@@ -526,6 +526,9 @@ export class PortfolioStateDO {
       this.freedomQuoteUpstream = null;
       this.freedomQuoteUpstreamReady = false;
       this.freedomQuoteSubscribedSymbols.clear();
+      if (this.freedomQuoteUpstreamWaiter?.socket === socket) {
+        this.freedomQuoteUpstreamWaiter.reject(new Error("TradeNet closed the quote socket during authentication."));
+      }
       for (const client of this.getFreedomQuoteClients()) {
         try { client.send(JSON.stringify({ type: "status", status: "reconnecting" })); } catch { /* ignore */ }
       }
@@ -535,6 +538,9 @@ export class PortfolioStateDO {
       this.freedomQuoteUpstream = null;
       this.freedomQuoteUpstreamReady = false;
       this.freedomQuoteSubscribedSymbols.clear();
+      if (this.freedomQuoteUpstreamWaiter?.socket === socket) {
+        this.freedomQuoteUpstreamWaiter.reject(new Error("TradeNet quote socket failed during authentication."));
+      }
       for (const client of this.getFreedomQuoteClients()) {
         try { client.send(JSON.stringify({ type: "status", status: "reconnecting" })); } catch { /* ignore */ }
       }
