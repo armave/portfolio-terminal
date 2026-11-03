@@ -23,6 +23,10 @@ import {
 import { fetchLivePriceFromProviders, nextLiveQuoteRequestSequence } from './src/services/quoteProvider';
 import type { FreedomQuoteStreamRuntime } from './src/services/freedomQuoteStreamRuntime';
 import type { FreedomAccountStreamRuntime } from './src/services/freedomAccountStreamRuntime';
+import {
+  consumeFreedomAccountStreamRecovery,
+  isFreedomAccountStreamHealthy
+} from './src/services/freedomAccountStreamHealth';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { createQuoteRefreshCoordinator } from './src/services/quoteRefreshCoordinator';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
@@ -59,6 +63,7 @@ import {
   listUsers,
   logoutAccount,
   normalizeFreedomTrades,
+  clearFreedomTradeNetStreamSnapshotCache,
   getGuestPortfolioSnapshot,
   publishGuestPortfolioSnapshots as publishGuestPortfolioSnapshotsBatch,
   clearCloudEncryptionSecretCache
@@ -1215,6 +1220,14 @@ function refreshSupplementalPortfolioData(): Promise<void> | void {
   if (document.hidden) return;
 
   if (currentAccountRole === 'admin') {
+    const sessionKey = currentAccountId ? `admin:${currentAccountId}` : '';
+    if (!sessionKey || isFreedomAccountStreamHealthy(sessionKey)) return;
+
+    // Startup already performs the complete historical baseline. Once a
+    // previously connected stream drops, allow one fresh REST catch-up; do not
+    // poll broker REST every minute while the push stream is still unavailable.
+    if (!consumeFreedomAccountStreamRecovery(sessionKey)) return;
+    clearFreedomTradeNetStreamSnapshotCache();
     portfolioBrokerRefreshRuntime.requestAll();
     return;
   }
