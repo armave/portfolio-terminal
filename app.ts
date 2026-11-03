@@ -1,6 +1,6 @@
 import { emitUiEvent, addUiEventListener } from './src/ui/uiEventBus';
 import { getAppLanguage, translateText } from './src/services/i18n';
-import { addBrokerEventListener } from './src/services/brokerEventBus';
+import { addBrokerEventListener, emitBrokerEvent } from './src/services/brokerEventBus';
 import { setAiStatus, setBreakevenText, setCloudStatusState, setCloudSyncStatus, setAnalystConsensus } from './src/ui/uiStateStore';
 import {
   calculateBreakevenDays,
@@ -22,6 +22,7 @@ import {
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders, nextLiveQuoteRequestSequence } from './src/services/quoteProvider';
 import type { FreedomQuoteStreamRuntime } from './src/services/freedomQuoteStreamRuntime';
+import type { FreedomAccountStreamRuntime } from './src/services/freedomAccountStreamRuntime';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { createQuoteRefreshCoordinator } from './src/services/quoteRefreshCoordinator';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
@@ -46,6 +47,10 @@ import {
   fetchYahooDeepStockData,
   createFreedomQuoteStreamTicket,
   buildFreedomQuoteStreamSocketUrl,
+  createFreedomAccountStreamTicket,
+  buildFreedomAccountStreamSocketUrl,
+  normalizeFreedomPortfolio,
+  normalizeFreedomActiveOrders,
   clearCloudHistory,
   proxyFetch,
   setSecretGetter,
@@ -90,7 +95,8 @@ import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';
-import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
+import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
+import { normalizeFreedomOrderFills } from './src/services/freedomTradeContracts';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
@@ -209,6 +215,19 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
   logTerminal('[Freedom] Active tickers, cash/margin classifications, balance and prices refreshed.');
   renderBoard();
   void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
+});
+
+addBrokerEventListener('broker:live-order-fills', (fills) => {
+  if (currentAccountRole !== 'admin' || !Array.isArray(fills) || fills.length === 0) return;
+  const current = portfolioStore.getState();
+  const savedRows = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
+  const retainedRows = [...savedRows, ...(current.brokerExecutedTrades || [])];
+  const knownIds = new Set(retainedRows.map((trade) => String(trade.id)));
+  const newFills = fills.filter((trade) => !knownIds.has(String(trade.id)));
+  if (newFills.length === 0) return;
+  const fillsWithPersistedFees = preservePersistedBrokerFeeAllocations(newFills, retainedRows);
+  const mergedTrades = mergeBrokerExecutionHistory(retainedRows, fillsWithPersistedFees);
+  emitBrokerEvent('broker:executed-trades', mergedTrades);
 });
 
 addBrokerEventListener('broker:executed-trades-error', () => {
@@ -948,6 +967,60 @@ function recordTrackedPrice(
   });
 }
 
+let freedomAccountStreamRuntimePromise: Promise<FreedomAccountStreamRuntime> | null = null;
+
+function getFreedomAccountStreamRuntime(): Promise<FreedomAccountStreamRuntime> {
+  if (!freedomAccountStreamRuntimePromise) {
+    freedomAccountStreamRuntimePromise = import('./src/services/freedomAccountStreamRuntime')
+      .then(({ createFreedomAccountStreamRuntime }) => createFreedomAccountStreamRuntime({
+        createTicket: async () => {
+          const result = await createFreedomAccountStreamTicket();
+          return { ticket: result.ticket };
+        },
+        buildSocketUrl: buildFreedomAccountStreamSocketUrl,
+        getCurrentSessionKey: () => currentAccountRole && currentAccountId
+          ? `${currentAccountRole}:${currentAccountId}`
+          : '',
+        onPortfolio: (data, sessionKey) => {
+          const currentSessionKey = currentAccountRole && currentAccountId
+            ? `${currentAccountRole}:${currentAccountId}`
+            : '';
+          if (currentAccountRole !== 'admin' || currentSessionKey !== sessionKey) return;
+          const snapshot = normalizeFreedomPortfolio(data);
+          if (snapshot.loaded) emitBrokerEvent('broker:account-info', snapshot);
+        },
+        onOrders: (data, sessionKey) => {
+          const currentSessionKey = currentAccountRole && currentAccountId
+            ? `${currentAccountRole}:${currentAccountId}`
+            : '';
+          if (currentAccountRole !== 'admin' || currentSessionKey !== sessionKey) return;
+          emitBrokerEvent('broker:active-orders', normalizeFreedomActiveOrders(data));
+          const fills = normalizeFreedomOrderFills(data);
+          if (fills.length > 0) emitBrokerEvent('broker:live-order-fills', fills);
+        },
+        onStatus: (status, message) => {
+          if (status === 'connected') {
+            logTerminal('[System]: Live TradeNet portfolio and orders streams connected.');
+          } else if (status === 'reconnecting') {
+            logTerminal(message
+              ? `[Warning]: TradeNet account stream reconnecting (${message}).`
+              : '[Warning]: TradeNet account stream reconnecting.');
+          }
+        }
+      })).catch((error) => {
+        freedomAccountStreamRuntimePromise = null;
+        throw error;
+      });
+  }
+  return freedomAccountStreamRuntimePromise;
+}
+
+function stopFreedomAccountStreamRuntime(): void {
+  if (freedomAccountStreamRuntimePromise) {
+    void freedomAccountStreamRuntimePromise.then((runtime) => runtime.stop()).catch(() => undefined);
+  }
+}
+
 let freedomQuoteStreamRuntimePromise: Promise<FreedomQuoteStreamRuntime> | null = null;
 
 function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
@@ -1099,6 +1172,20 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
         ...(current.cashStocks || []).map((holding: any) => holding.ticker)
       ]))
       : [];
+  const accountStreamSessionKey = currentAccountRole && currentAccountId
+    ? `${currentAccountRole}:${currentAccountId}`
+    : '';
+  if (currentAccountRole === 'admin' && accountStreamSessionKey) {
+    try {
+      const accountStreamRuntime = await getFreedomAccountStreamRuntime();
+      await accountStreamRuntime.start(accountStreamSessionKey);
+    } catch (streamError) {
+      console.warn('[Freedom Account Stream]: Unable to establish the portfolio/orders socket; initial account snapshots remain available.', streamError);
+    }
+  } else {
+    stopFreedomAccountStreamRuntime();
+  }
+
   if (tickersArray.length === 0) {
     stopFreedomQuoteStreamRuntime();
     return true;
@@ -1742,11 +1829,17 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
   getAccountRole: () => currentAccountRole,
   getAccountId: () => currentAccountId,
   setAccountRole: (role) => {
-    if (currentAccountRole !== role) stopFreedomQuoteStreamRuntime();
+    if (currentAccountRole !== role) {
+      stopFreedomQuoteStreamRuntime();
+      stopFreedomAccountStreamRuntime();
+    }
     currentAccountRole = role;
   },
   setAccountId: (accountId) => {
-    if (currentAccountId !== accountId) stopFreedomQuoteStreamRuntime();
+    if (currentAccountId !== accountId) {
+      stopFreedomQuoteStreamRuntime();
+      stopFreedomAccountStreamRuntime();
+    }
     currentAccountId = accountId;
   },
   setCloudWritePermission: (allowed) => { canWriteCloudState = allowed; },
@@ -1819,6 +1912,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   publishCurrentUser,
   clearAccountIdentity: () => {
     stopFreedomQuoteStreamRuntime();
+    stopFreedomAccountStreamRuntime();
     currentAccountRole = null;
     currentAccountId = null;
     canWriteCloudState = false;
