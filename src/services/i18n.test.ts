@@ -397,6 +397,17 @@ describe('app localization', () => {
       .toBe('[Симуляция AAPL @ $205.00 через 14 дн.]: Валовая прибыль: $200.00 | Комиссии: -$4.00 | Маржинальные проценты: -$3.00 → Чистая прибыль/убыток: +$193.00');
   });
 
+  it('localizes workspace cloud status labels and sync feedback', () => {
+    expect(translateText('Cloud storage', 'ru')).toBe('Облачное хранилище');
+    expect(translateText('OFFLINE', 'ru')).toBe('НЕ В СЕТИ');
+    expect(translateText('ADD SECRET', 'ru')).toBe('ДОБАВЬТЕ СЕКРЕТ');
+    expect(translateText('WRITING...', 'ru')).toBe('СОХРАНЕНИЕ...');
+    expect(translateText('UPDATED', 'ru')).toBe('ОБНОВЛЕНО');
+    expect(translateText('FAIL', 'ru')).toBe('ОШИБКА');
+    expect(translateText('Sync failed', 'ru')).toBe('Ошибка синхронизации');
+    expect(translateText('Synced', 'ru')).toBe('Синхронизировано');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));

@@ -718,4 +718,9 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "• compare exits [ticker] today at <p>, tomorrow at <p>, after 4 days at <p>, 1 week later at <p>": "• compare exits [ticker] today at <p>, tomorrow at <p>, after 4 days at <p>, 1 week later at <p> (сравнение сценариев выхода)",
   "• buy scenario <shares> <ticker> at <price> (read-only add-on purchase simulation)": "• buy scenario <shares> <ticker> at <price> (моделирование дополнительной покупки без изменения портфеля)",
   "• view <ticker|combined|cash> | refresh | clear": "• view <ticker|combined|cash> | refresh | clear (раздел, котировки, очистка терминала)",
+  'Cloud storage': 'Облачное хранилище',
+  'OFFLINE': 'НЕ В СЕТИ',
+  'ADD SECRET': 'ДОБАВЬТЕ СЕКРЕТ',
+  'WRITING...': 'СОХРАНЕНИЕ...',
+  'UPDATED': 'ОБНОВЛЕНО',
 };

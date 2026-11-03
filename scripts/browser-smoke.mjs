@@ -348,6 +348,43 @@ async function waitForCondition(predicate, label, timeoutMs = 20_000) {
 }
 
 
+async function assertResponsiveLayout(page, width) {
+  await page.setViewportSize({ width, height: 900 });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+  const layout = await page.evaluate(() => {
+    const viewportWidth = document.documentElement.clientWidth;
+    const main = document.querySelector('#mainTerminalView');
+    const navigation = document.querySelector('#tickerTabs');
+    const mainBounds = main?.getBoundingClientRect();
+    const navBounds = navigation?.getBoundingClientRect();
+    const navControls = Array.from(navigation?.querySelectorAll('[data-nav-tab="true"]') || [])
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => {
+        const bounds = element.getBoundingClientRect();
+        return { left: bounds.left, right: bounds.right };
+      });
+    return {
+      viewportWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      mainBounds: mainBounds ? { left: mainBounds.left, right: mainBounds.right } : null,
+      navBounds: navBounds ? { left: navBounds.left, right: navBounds.right } : null,
+      navControls
+    };
+  });
+
+  if (layout.documentWidth > layout.viewportWidth + 1) {
+    throw new Error(`Unexpected page-level horizontal overflow at ${width}px: ${layout.documentWidth}px content in ${layout.viewportWidth}px viewport.`);
+  }
+  if (!layout.mainBounds || layout.mainBounds.left < -1 || layout.mainBounds.right > layout.viewportWidth + 1) {
+    throw new Error(`The portfolio workspace is clipped at ${width}px.`);
+  }
+  if (!layout.navBounds || layout.navControls.some((control) =>
+    control.left < layout.navBounds.left - 1 || control.right > layout.navBounds.right + 1
+  )) {
+    throw new Error(`Workspace navigation contains a clipped destination at ${width}px.`);
+  }
+}
+
 try {
   await waitForPreview();
   browser = await chromium.launch({ headless: true });
@@ -386,6 +423,32 @@ try {
     bootstrapSecret: 'smoke-bootstrap-secret'
   });
   await waitForAuthOverlay(page, false);
+
+  // Verify page geometry rather than treating successful mounting as responsive QA.
+  await page.locator('#boardHeaderBanner #cloudStatus').waitFor({ state: 'visible', timeout: 10_000 });
+  if (await page.locator('#cloudStatus').count() !== 1) {
+    throw new Error('Cloud synchronization health must have one persistent header indicator.');
+  }
+  for (const width of [320, 360, 390, 768, 1024, 1440]) {
+    await assertResponsiveLayout(page, width);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  // Exercise roving keyboard navigation through the full destination list.
+  const navigationTabs = page.locator('#tickerTabs [data-nav-tab="true"]');
+  await navigationTabs.first().focus();
+  await page.keyboard.press('End');
+  if (await page.evaluate(() => document.activeElement?.id) !== 'settingsBtn') {
+    throw new Error('End did not move focus to the final workspace destination.');
+  }
+  await page.keyboard.press('Enter');
+  await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  await page.locator('#settingsBtn').focus();
+  await page.keyboard.press('ArrowRight');
+  if (!(await navigationTabs.first().evaluate((element) => element === document.activeElement))) {
+    throw new Error('ArrowRight did not wrap from the final destination to the first.');
+  }
+
   if (worker.count('POST', '/api/auth/bootstrap') !== 1) {
     throw new Error('Administrator bootstrap did not reach the mocked Worker exactly once.');
   }
@@ -528,6 +591,17 @@ try {
     null,
     { timeout: 20_000 }
   );
+
+  // Confirm the shared authentication dialog traps keyboard focus at its boundaries.
+  await page.locator('#authUserName').focus();
+  await page.keyboard.press('Shift+Tab');
+  if (await page.evaluate(() => document.activeElement?.type) !== 'submit') {
+    throw new Error('Shift+Tab escaped the authentication dialog instead of wrapping to Submit.');
+  }
+  await page.keyboard.press('Tab');
+  if (await page.evaluate(() => document.activeElement?.id) !== 'authUserName') {
+    throw new Error('Tab did not wrap to the first authentication field.');
+  }
 
   await submitAuth(page, { name: 'Unknown User', password: 'invalid-smoke-password' });
   await page.locator('.auth-feedback--error').waitFor({ state: 'visible', timeout: 10_000 });
