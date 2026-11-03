@@ -952,70 +952,35 @@ let freedomQuoteStreamRuntimePromise: Promise<FreedomQuoteStreamRuntime> | null 
 
 function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
   if (!freedomQuoteStreamRuntimePromise) {
-    freedomQuoteStreamRuntimePromise = Promise.all([
-      import('./src/services/freedomMarketData'),
-      import('./src/services/freedomQuoteStreamRuntime')
-    ]).then(([marketData, streamRuntime]) => streamRuntime.createFreedomQuoteStreamRuntime({
-    createTicket: async (tickers) => {
-      const result = await createFreedomQuoteStreamTicket(tickers);
-      return { ticket: result.ticket };
-    },
-    buildSocketUrl: buildFreedomQuoteStreamSocketUrl,
-    onQuote: (message, sessionKey) => {
-      const currentSessionKey = currentAccountRole && currentAccountId
-        ? `${currentAccountRole}:${currentAccountId}`
-        : '';
-      if (!currentSessionKey || sessionKey !== currentSessionKey) return;
-  
-      const wireSymbol = message.symbol.trim().toUpperCase();
-      const ticker = wireSymbol.endsWith('.US') ? wireSymbol.slice(0, -3) : wireSymbol;
-      const quote = marketData.normalizeFreedomQuote({ q: [message.data] }, ticker);
-      if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) return;
-  
-      const receivedAt = Number(message.receivedAt) || Date.now();
-      const sourceTimestamp = quote.sourceTimestamp ?? undefined;
-      const ageMs = sourceTimestamp === undefined ? null : receivedAt - sourceTimestamp;
-      const freshness = ageMs === null ? 'unknown' as const
-        : ageMs < 0 ? 'stale' as const
-          : ageMs > 5 * 60 * 1000
-            ? quote.marketState === 'CLOSED' ? 'delayed' as const : 'stale' as const
-            : 'fresh' as const;
-      const requestSequence = nextLiveQuoteRequestSequence();
-      const quoteDetails: QuoteDetails = {
-        marketState: quote.marketState || 'UNKNOWN',
-        freshness,
-        receivedAt,
-        requestSequence,
-        requestStartedAt: receivedAt,
-        sourceTimestamp,
-        transport: 'websocket',
-        price: quote.price,
-        ...(quote.change !== null ? { change: quote.change } : {}),
-        ...(quote.changePercent !== null ? { changePercent: quote.changePercent } : {}),
-        ...(quote.bid !== null && quote.bid !== undefined ? { bid: quote.bid } : {}),
-        ...(quote.ask !== null && quote.ask !== undefined ? { ask: quote.ask } : {}),
-        ...(quote.volume !== null && quote.volume !== undefined ? { volume: quote.volume } : {}),
-        ...(quote.lastTradeTime ? { lastTradeTime: quote.lastTradeTime } : {}),
-        ...(quote.utcOffset !== null && quote.utcOffset !== undefined ? { utcOffset: quote.utcOffset } : {}),
-        ...(quote.serverTime ? { serverTime: quote.serverTime } : {})
-      };
-      if (recordTrackedPrice(ticker, quote.price, 'Freedom TradeNet', receivedAt, quoteDetails, receivedAt)) {
-        state = portfolioStore.getState();
-        saveState(state);
-        renderBoard();
-      }
-    },
-    onStatus: (status, message) => {
-      if (status === 'connected') {
-        console.info('[Freedom Quote Stream]: Persistent TradeNet socket connected.');
-      } else if (status === 'reconnecting' && message) {
-        console.warn('[Freedom Quote Stream]: Reconnecting after upstream status change:', message);
-      }
-    }
-    })).catch((error) => {
-      freedomQuoteStreamRuntimePromise = null;
-      throw error;
-    });
+    freedomQuoteStreamRuntimePromise = import('./src/services/freedomQuoteStreamAppRuntime')
+      .then(({ createFreedomQuoteStreamAppRuntime }) => createFreedomQuoteStreamAppRuntime({
+        createTicket: async (tickers) => {
+          const result = await createFreedomQuoteStreamTicket(tickers);
+          return { ticket: result.ticket };
+        },
+        buildSocketUrl: buildFreedomQuoteStreamSocketUrl,
+        getCurrentSessionKey: () => currentAccountRole && currentAccountId
+          ? `${currentAccountRole}:${currentAccountId}`
+          : '',
+        nextRequestSequence: nextLiveQuoteRequestSequence,
+        recordQuote: (ticker, price, source, updatedAt, details, requestStartedAt) =>
+          recordTrackedPrice(ticker, price, source, updatedAt, details as QuoteDetails, requestStartedAt),
+        persistAndRender: () => {
+          state = portfolioStore.getState();
+          saveState(state);
+          renderBoard();
+        },
+        onStatus: (status, message) => {
+          if (status === 'connected') {
+            console.info('[Freedom Quote Stream]: Persistent TradeNet socket connected.');
+          } else if (status === 'reconnecting' && message) {
+            console.warn('[Freedom Quote Stream]: Reconnecting after upstream status change:', message);
+          }
+        }
+      })).catch((error) => {
+        freedomQuoteStreamRuntimePromise = null;
+        throw error;
+      });
   }
   return freedomQuoteStreamRuntimePromise;
 }
