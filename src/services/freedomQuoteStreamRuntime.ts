@@ -118,7 +118,13 @@ export function createFreedomQuoteStreamRuntime(
 
   const connect = async (runGeneration: number): Promise<boolean> => {
     reportStatus(reconnectAttempt === 0 ? 'connecting' : 'reconnecting');
-    const ticket = await dependencies.createTicket(requestedTickers);
+    let ticket: { ticket: string };
+    try {
+      ticket = await dependencies.createTicket(requestedTickers);
+    } catch (error) {
+      if (active && runGeneration === generation) scheduleReconnect(runGeneration);
+      throw error instanceof Error ? error : new Error(String(error));
+    }
     if (!active || runGeneration !== generation) return false;
 
     const nextSocket = createSocket(dependencies.buildSocketUrl(ticket.ticket));
