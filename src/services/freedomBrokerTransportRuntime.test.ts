@@ -24,17 +24,30 @@ describe('Freedom broker transport runtime', () => {
     });
     await runtime.testFreedomTradeNetConnection();
     await runtime.testFreedomTradeNetOrdersStream();
+    await runtime.testFreedomTradeNetEventStream('portfolio');
+    await runtime.testFreedomTradeNetEventStream('markets');
     await runtime.fetchFreedomTradeNetPositions();
     await runtime.fetchFreedomTradeNetTrades(' 2026-01-02 ');
     await runtime.fetchFreedomTradeNetActiveOrders();
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-test', 'freedom-orders-stream', 'freedom-positions', 'freedom-trades', 'freedom-orders-stream'
+      'freedom-test', 'freedom-orders-stream', 'freedom-event-stream', 'freedom-event-stream', 'freedom-positions', 'freedom-trades', 'freedom-orders-stream'
     ]);
     expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
     expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[3][1]).toEqual({ fromDate: '2026-01-02' });
+    expect(proxyFetch.mock.calls[2][1]).toEqual({ event: 'portfolio' });
+    expect(proxyFetch.mock.calls[2][2]).toEqual({ cache: 'no-store' });
+    expect(proxyFetch.mock.calls[3][1]).toEqual({ event: 'markets' });
     expect(proxyFetch.mock.calls[3][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[4][2]).toEqual({ cache: 'no-store' });
+    expect(proxyFetch.mock.calls[5][1]).toEqual({ fromDate: '2026-01-02' });
+    expect(proxyFetch.mock.calls[5][2]).toEqual({ cache: 'no-store' });
+    expect(proxyFetch.mock.calls[6][2]).toEqual({ cache: 'no-store' });
+  });
+
+  it('rejects unapproved event names before making a broker request', async () => {
+    const { runtime, proxyFetch } = createRuntime();
+    await expect(runtime.testFreedomTradeNetEventStream('orders' as never))
+      .rejects.toThrow('Unsupported TradeNet stream event.');
+    expect(proxyFetch).not.toHaveBeenCalled();
   });
 
   it('falls back to the existing REST active-orders endpoint when the WebSocket snapshot fails', async () => {
