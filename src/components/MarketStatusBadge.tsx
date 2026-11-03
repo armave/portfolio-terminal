@@ -6,6 +6,10 @@ const MARKET_STATUS_REFRESH_MS = 5 * 60 * 1000;
 
 type MarketStatusTone = 'open' | 'closed' | 'transition' | 'unknown';
 
+export function getMarketStatusRoleLabel(isAdmin: boolean): string {
+  return translateText(isAdmin ? 'Portfolio market' : 'Your market');
+}
+
 export function getMarketStatusLabel(status: string | null | undefined): string {
   const normalized = String(status || '').trim().toUpperCase();
   switch (normalized) {
@@ -93,10 +97,10 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
       minute: '2-digit'
     })
     : '';
-  const roleLabel = translateText(isAdmin ? 'Portfolio market' : 'Your market');
+  const roleLabel = getMarketStatusRoleLabel(isAdmin);
   const updatedTitle = updatedAt
-    ? `${translateText('Updated at')} ${updatedAt}${failed ? ' · refresh failed' : ''}`
-    : failed ? 'Market status unavailable' : 'Loading market status';
+    ? `${translateText('Updated at')} ${updatedAt}${failed ? ' · ' + translateText('Refresh failed') : ''}`
+    : failed ? translateText('Market status unavailable') : translateText('Loading market status');
 
   return (
     <div
