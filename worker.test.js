@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { fetchWithTimeout, normalizeMarketState, sanitizeFreedomPositions, sanitizeFreedomActiveOrders } from './worker.js';
+import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomActiveOrders } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 
 describe('upstream timeout coverage', () => {
@@ -407,16 +407,28 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(Object.keys(body)).toEqual(['ok', 'provider', 'marketStatus', 'updatedAt']);
   });
 
-  it('normalizes the closed state while retaining unrecognized provider states', async () => {
-    const closed = await runEventDiagnostic('markets', {
-      m: [{ n: 'US Equities', n2: 'FIX', s: 'CLOSE' }]
-    }, { isDemo: false, mode: 'prod' }, 'freedom-market-status');
-    expect((await closed.response.json()).marketStatus.status).toBe('CLOSED');
+  it.each([
+    ['PREV', 'PREMARKET'],
+    ['PRE', 'PREMARKET'],
+    ['PREPRE', 'PREMARKET'],
+    ['OPEN', 'MARKET'],
+    ['REGULAR', 'MARKET'],
+    ['POST', 'POSTMARKET'],
+    ['POSTPOST', 'POSTMARKET'],
+    ['CLOSE', 'CLOSED'],
+    ['CLOSED', 'CLOSED']
+  ])('normalizes TradeNet market phase %s to %s', (providerStatus, expected) => {
+    expect(normalizeFreedomUsMarketPhase(providerStatus)).toBe(expected);
+    expect(selectFreedomUsMarketStatus({
+      marketPreview: [{ n: 'US Equities', n2: 'FIX', s: providerStatus }]
+    })).toMatchObject({ market: 'US equities', code: 'FIX', status: expected });
+  });
 
-    const unknown = await runEventDiagnostic('markets', {
-      m: [{ n: 'US Equities', n2: 'FIX', s: 'PREV' }]
-    }, { isDemo: false, mode: 'prod' }, 'freedom-market-status');
-    expect((await unknown.response.json()).marketStatus.status).toBe('PREV');
+  it('does not leak unrecognized provider status values to the UI', () => {
+    expect(normalizeFreedomUsMarketPhase('PREV_UNKNOWN')).toBeNull();
+    expect(selectFreedomUsMarketStatus({
+      marketPreview: [{ n: 'US Equities', n2: 'FIX', s: 'PREV_UNKNOWN' }]
+    })).toBeNull();
   });
 
   it('does not subscribe to security-session events as a market schedule source', async () => {
