@@ -25,15 +25,12 @@ describe('Freedom broker transport runtime', () => {
           ? { ok: true, data: { orders: { order: [] } } }
           : undefined
     });
-    await runtime.testFreedomTradeNetEventStream('markets');
     await runtime.fetchFreedomTradeNetPositions();
     await runtime.fetchFreedomTradeNetTrades(' 2026-01-02 ');
     await runtime.fetchFreedomTradeNetActiveOrders();
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-event-stream', 'freedom-portfolio-snapshot', 'freedom-trades', 'freedom-orders-stream'
+      'freedom-portfolio-snapshot', 'freedom-trades', 'freedom-orders-stream'
     ]);
-    expect(proxyFetch.mock.calls[0][1]).toEqual({ event: 'markets' });
-    expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
     expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
     expect(proxyFetch.mock.calls[2][1]).toEqual({ fromDate: '2026-01-02' });
     expect(proxyFetch.mock.calls[2][2]).toEqual({ cache: 'no-store' });
@@ -133,13 +130,6 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
       'freedom-portfolio-snapshot', 'freedom-positions'
     ]);
-  });
-
-  it('rejects probes for account events already delivered by the persistent app stream', async () => {
-    const { runtime, proxyFetch } = createRuntime();
-    await expect(runtime.testFreedomTradeNetEventStream('portfolio' as never))
-      .rejects.toThrow('Only the not-yet-integrated markets event can be probed.');
-    expect(proxyFetch).not.toHaveBeenCalled();
   });
 
   it('uses the REST active-orders fallback only once when the initial WebSocket snapshot fails', async () => {
