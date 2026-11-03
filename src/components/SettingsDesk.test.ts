@@ -30,8 +30,20 @@ describe('automatic update settings', () => {
     expect(source).toContain('DEFAULT_ADMIN_REFRESH_INTERVAL_MS');
     expect(source).toContain('refreshNow: true');
     expect(source).toContain('Your assigned holdings and LOTS history refresh every 60 seconds.');
-    expect(source).toContain('Broker balances, positions, trades and orders refresh every 60 seconds.');
-    expect(source).toContain('Automatic updates are paused. Manual Sync remains available.');
+    expect(source).toContain('Broker balances, positions, trades and orders refresh every 60 seconds when the live account stream is not healthy.');
+    expect(source).not.toContain('<option value="0">');
+    expect(source).not.toContain('Automatic updates are paused. Manual Sync remains available.');
+  });
+});
+
+describe('manual sync in Settings', () => {
+  it('exposes the same full role-specific manual sync action to admins and guests', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('id="settingsSyncPortfolioButton"');
+    expect(source).toContain("account?.role === \"admin\" || account?.role === \"guest\"");
+    expect(source).toContain("emitUiEvent('portfolio:sync-request'");
+    expect(source).toContain("translateText('Sync portfolio')");
+    expect(source).toContain("translateText('Syncing…')");
   });
 });
 

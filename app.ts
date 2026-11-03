@@ -23,10 +23,7 @@ import {
 import { fetchLivePriceFromProviders, nextLiveQuoteRequestSequence } from './src/services/quoteProvider';
 import type { FreedomQuoteStreamRuntime } from './src/services/freedomQuoteStreamRuntime';
 import type { FreedomAccountStreamRuntime } from './src/services/freedomAccountStreamRuntime';
-import {
-  consumeFreedomAccountStreamRecovery,
-  isFreedomAccountStreamHealthy
-} from './src/services/freedomAccountStreamHealth';
+import { resolveFreedomAccountRefreshMode } from './src/services/freedomAccountStreamHealth';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { createQuoteRefreshCoordinator } from './src/services/quoteRefreshCoordinator';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
@@ -1216,16 +1213,19 @@ function refreshSupplementalPortfolioData(): Promise<void> | void {
     const sessionKey = currentAccountId ? `admin:${currentAccountId}` : '';
     if (!sessionKey) return;
 
-    // Consume recovery before checking current health: a short outage can end
-    // between scheduler ticks, but its missed execution window still needs one
-    // incremental history catch-up after the stream has reconnected.
-    if (consumeFreedomAccountStreamRecovery(sessionKey)) {
+    // Both private stream channels must be healthy before periodic REST
+    // snapshots are suppressed. A connection that never becomes healthy still
+    // receives a broker-data fallback every 60 seconds; a recovered connection
+    // gets one catch-up so changes missed during the outage are not lost.
+    const refreshMode = resolveFreedomAccountRefreshMode(sessionKey);
+    if (refreshMode === 'recover') {
       clearFreedomTradeNetStreamSnapshotCache();
       portfolioBrokerRefreshRuntime.requestAll();
       return;
     }
-    if (isFreedomAccountStreamHealthy(sessionKey)) return;
-    return;
+    if (refreshMode === 'fallback') {
+      portfolioBrokerRefreshRuntime.requestAll();
+    }
   }
 
   if (currentAccountRole === 'guest') {

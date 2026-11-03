@@ -474,11 +474,19 @@ describe('storage service', () => {
       storageMap.set('quote_refresh_interval_guest_v1', 'not-a-number');
       expect(getQuoteRefreshInterval(60000, 'admin')).toBe(60000);
       expect(getQuoteRefreshInterval(15000, 'guest')).toBe(15000);
+
+      // Legacy users who previously selected Off are migrated to their role default.
+      storageMap.set('quote_refresh_interval', '0');
+      storageMap.set('quote_refresh_interval_guest_v1', '0');
+      expect(getQuoteRefreshInterval(60000, 'admin')).toBe(60000);
+      expect(getQuoteRefreshInterval(15000, 'guest')).toBe(15000);
     });
 
-    it('does not persist unsupported refresh intervals', () => {
+    it('does not persist unsupported or disabled refresh intervals', () => {
       saveQuoteRefreshInterval(20000, 'admin');
+      saveQuoteRefreshInterval(0, 'guest');
       expect(storageMap.has('quote_refresh_interval')).toBe(false);
+      expect(storageMap.has('quote_refresh_interval_guest_v1')).toBe(false);
     });
   });
 

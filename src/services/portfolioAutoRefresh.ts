@@ -1,4 +1,4 @@
-const SUPPORTED_QUOTE_REFRESH_INTERVALS = [0, 15_000, 30_000, 60_000] as const;
+const SUPPORTED_QUOTE_REFRESH_INTERVALS = [15_000, 30_000, 60_000] as const;
 
 export const DEFAULT_ADMIN_REFRESH_INTERVAL_MS = 60_000;
 export const DEFAULT_GUEST_REFRESH_INTERVAL_MS = 15_000;
@@ -132,7 +132,7 @@ export function createPortfolioAutoRefreshScheduler(
       : DEFAULT_ADMIN_REFRESH_INTERVAL_MS;
     activeInterval = normalizeQuoteRefreshInterval(interval, fallback);
 
-    if (!role || activeInterval === 0) return activeInterval;
+    if (!role) return activeInterval;
 
     // One selected cadence controls both quote refresh/stream maintenance and
     // the cloud-state checkpoint that follows it.

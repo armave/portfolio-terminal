@@ -9,6 +9,7 @@ import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
 import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
+import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
 import { translateText, type AppLanguage } from '../services/i18n';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
@@ -61,6 +62,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [savingUser, setSavingUser] = useState(false);
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [languageError, setLanguageError] = useState("");
+  const [syncingPortfolio, setSyncingPortfolio] = useState(false);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
   const refreshUsers = async () => {
@@ -209,6 +211,18 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     setRuleValues((current) => ({ ...current, [field]: value }));
   };
 
+  const handleManualPortfolioSync = async (): Promise<void> => {
+    if (!account || syncingPortfolio) return;
+    setSyncingPortfolio(true);
+    try {
+      await new Promise<ManualPortfolioSyncResult>((resolve) => {
+        emitUiEvent('portfolio:sync-request', { resolve });
+      });
+    } finally {
+      setSyncingPortfolio(false);
+    }
+  };
+
   const handleIntervalChange = (e: Event) => {
     const val = (e.target as HTMLSelectElement).value;
     setRefreshInterval(val);
@@ -250,6 +264,16 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </label>}
           {languageError && <span role="alert" class="text-[10px] text-rose-300">{languageError}</span>}
           <button type="button" onClick={() => emitUiEvent("auth:logout")} class="h-8 rounded border border-slate-600 bg-slate-800 px-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700">Sign out</button>
+          {(account?.role === "admin" || account?.role === "guest") && <button
+            id="settingsSyncPortfolioButton"
+            type="button"
+            disabled={syncingPortfolio}
+            aria-busy={syncingPortfolio}
+            aria-label={translateText('Sync portfolio')}
+            title={translateText('Sync portfolio')}
+            onClick={() => void handleManualPortfolioSync()}
+            class="h-8 rounded border border-cyan-700 bg-cyan-950/50 px-2.5 text-xs font-bold text-cyan-300 hover:bg-cyan-900 disabled:cursor-wait disabled:opacity-50"
+          >{syncingPortfolio ? translateText('Syncing…') : translateText('Sync portfolio')}</button>}
           {account?.role === "admin" && <button type="button" onClick={() => emitUiEvent("settings:pull-cloud-state")} title={translateText("Pull cloud replaces this device's local portfolio with the shared KV cloud snapshot. Changes that have not synced can be lost.")} aria-label={translateText('Replace local portfolio from KV cloud')} class="h-8 rounded border border-purple-600 bg-slate-800 px-2.5 text-xs font-bold text-purple-300 hover:bg-slate-700">Pull cloud</button>}
         </div>
 
@@ -261,24 +285,21 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
               id="quoteRefreshInterval"
               value={refreshInterval}
               onChange={handleIntervalChange}
-              aria-label={translateText('Automatic portfolio quote and cloud sync interval')}
+              aria-label={translateText('Automatic portfolio data refresh interval')}
               title={translateText(account?.role === 'guest'
                 ? 'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.'
-                : 'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes all data.')}
+                : 'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the live account stream is not healthy. Returning to the app refreshes all data.')}
               class="h-8 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
             >
-              <option value="0">{translateText('Off')}</option>
               <option value="15000">{translateText('15 sec')}</option>
               <option value="30000">{translateText('30 sec')}</option>
               <option value="60000">{translateText('1 min')}</option>
             </select>
           </label>
           <p class="basis-full text-center text-[10px] leading-relaxed text-slate-500">
-            {refreshInterval === '0'
-              ? translateText('Automatic updates are paused. Manual Sync remains available.')
-              : translateText(account?.role === 'guest'
-                ? 'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.'
-                : 'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes all data.')}
+            {translateText(account?.role === 'guest'
+              ? 'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.'
+              : 'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the live account stream is not healthy. Returning to the app refreshes all data.')}
           </p>
           {permissions.canManageBackups && <>
             <button
