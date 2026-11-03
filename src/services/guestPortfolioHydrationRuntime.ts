@@ -11,6 +11,7 @@ export interface GuestPortfolioHydrationRuntimeDependencies {
   getSessionIdentity: (missingGeneration: number) => GuestPortfolioSessionIdentity;
   getGuestPortfolioSnapshot: () => Promise<GuestPortfolioSnapshot>;
   getActiveView: () => string | null | undefined;
+  getCurrentCashHoldings: () => PortfolioState['cashCushion']['holdings'];
   createCleanWorkspaceState: () => PortfolioState;
   importGuestWorkspace: (guestWorkspace: PortfolioState) => void;
 }
@@ -49,7 +50,9 @@ export function createGuestPortfolioHydrationRuntime(
       assignments,
       types,
       mixes: {},
-      cashHoldings: []
+      // The server projection carries assignment data, not the live quote metadata
+      // already displayed by the guest card. Keep the last accepted quote per ticker.
+      cashHoldings: dependencies.getCurrentCashHoldings()
     });
 
     // A snapshot refresh updates guest data, not the user's current desk.
