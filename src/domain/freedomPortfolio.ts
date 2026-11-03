@@ -89,29 +89,46 @@ interface StoredQuoteRecord {
   quoteRequestStartedAt?: unknown;
   quoteRequestSequence?: unknown;
   quoteSource?: unknown;
-  quoteDetails?: { sourceTimestamp?: unknown; [key: string]: unknown };
+  quoteDetails?: { sourceTimestamp?: unknown; receivedAt?: unknown; transport?: unknown; [key: string]: unknown };
 }
 
-function getLatestTimestampedQuote(
+function getLatestPreservedQuote(
   ...records: Array<StoredQuoteRecord | null | undefined>
-): { record: StoredQuoteRecord; price: number; sourceTimestamp: number } | null {
-  let latest: { record: StoredQuoteRecord; price: number; sourceTimestamp: number } | null = null;
+): { record: StoredQuoteRecord; price: number; orderingTimestamp: number } | null {
+  let latest: { record: StoredQuoteRecord; price: number; orderingTimestamp: number } | null = null;
 
   for (const record of records) {
     if (!record) continue;
     const price = getPositiveMarketPrice(record.currentPrice, record.price);
+    if (price === null) continue;
+
     const sourceTimestamp = Number(record.quoteDetails?.sourceTimestamp);
-    if (price === null || !Number.isFinite(sourceTimestamp) || sourceTimestamp <= 0) continue;
-    if (!latest || sourceTimestamp > latest.sourceTimestamp) {
-      latest = { record, price, sourceTimestamp };
+    const isLiveWebSocketQuote = record.quoteDetails?.transport === 'websocket';
+    // TradeNet q timestamps can be missing or non-numeric (for example, an ISO
+    // ltt string). The browser receive time is still a reliable local ordering
+    // signal and must protect that live price from a later account/history
+    // reclassification built from an older, untimestamped broker snapshot.
+    const arrivalTimestamp = isLiveWebSocketQuote
+      ? Number(record.quoteDetails?.receivedAt) ||
+        Number(record.quoteUpdatedAt) ||
+        Number(record.quoteRequestStartedAt)
+      : 0;
+    const orderingTimestamp = Number.isFinite(sourceTimestamp) && sourceTimestamp > 0
+      ? sourceTimestamp
+      : Number.isFinite(arrivalTimestamp) && arrivalTimestamp > 0
+        ? arrivalTimestamp
+        : 0;
+    if (orderingTimestamp <= 0) continue;
+    if (!latest || orderingTimestamp > latest.orderingTimestamp) {
+      latest = { record, price, orderingTimestamp };
     }
   }
 
   return latest;
 }
 
-/** Preserve provenance from a timestamped live quote when a broker snapshot has no observation time. */
-function preserveTimestampedQuoteMetadata<T extends object>(
+/** Preserve the latest local quote provenance when reclassifying an untimestamped broker snapshot. */
+function preserveLocalQuoteMetadata<T extends object>(
   target: T,
   storedQuote: StoredQuoteRecord | null | undefined
 ): T {
@@ -451,7 +468,7 @@ export function classifyFreedomPortfolio(
     tranche: ActiveBrokerTranche;
     prior: PositionRecord | undefined;
     currentPrice: number;
-    preservedQuote: ReturnType<typeof getLatestTimestampedQuote>;
+    preservedQuote: ReturnType<typeof getLatestPreservedQuote>;
     snapshotPrice: number | null;
     entryTranches: Array<{ qty: number; price: number; date?: string; buyCommission?: number }>;
   }>();
@@ -479,7 +496,7 @@ export function classifyFreedomPortfolio(
     // Freedom account snapshots expose mkt_price without an observation timestamp.
     // Do not let that unprovable value overwrite a quote already backed by a
     // timestamped market observation; the next live quote refresh can supersede it.
-    const preservedQuote = getLatestTimestampedQuote(prior, priorCash);
+    const preservedQuote = getLatestPreservedQuote(prior, priorCash);
     const snapshotPrice = positiveFinite(tranche.marketPrice);
     const currentPrice = preservedQuote?.price ?? getPositiveMarketPrice(
       tranche.marketPrice,
@@ -541,7 +558,7 @@ export function classifyFreedomPortfolio(
       };
       cashByTicker.set(
         tranche.ticker,
-        preserveTimestampedQuoteMetadata(cashHolding, preservedQuote?.record)
+        preserveLocalQuoteMetadata(cashHolding, preservedQuote?.record)
       );
     }
   }
@@ -578,7 +595,7 @@ export function classifyFreedomPortfolio(
         }
       } : {})
     };
-    positions[ticker] = preserveTimestampedQuoteMetadata(classifiedPosition, preservedQuote?.record);
+    positions[ticker] = preserveLocalQuoteMetadata(classifiedPosition, preservedQuote?.record);
   }
   const cashStocks = [...cashByTicker.values()].map((holding) => {
     const cost = cashCostByTicker.get(tickerKey(holding.ticker));
