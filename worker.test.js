@@ -630,7 +630,10 @@ describe('sanitizeFreedomActiveOrders', () => {
   });
 
   it('returns an empty order list for an unrecognized response shape', () => {
-    expect(sanitizeFreedomActiveOrders({ unexpected: true })).toEqual({ orders: { order: [] } });
+    expect(sanitizeFreedomActiveOrders({ unexpected: true })).toEqual({
+      orders: { order: [] },
+      trades: { trade: [] }
+    });
   });
 });
 
