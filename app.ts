@@ -213,11 +213,18 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding: any) => {
+  const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
-    return { ...holding, ...(price !== null ? { price } : {}) };
+    return {
+      ...holding,
+      // The compatibility projection stores numeric shares/prices even though
+      // imported cash-cushion rows may retain numeric strings.
+      shares: Number(holding.shares) || 0,
+      currentPrice: price ?? (typeof holding.currentPrice === 'number' ? holding.currentPrice : undefined),
+      ...(price !== null ? { price } : {})
+    };
   });
-  const usdBalance = snapshot.balances.find((item: any) =>
+  const usdBalance = snapshot.balances.find((item) =>
     String(item.currency ?? '').toUpperCase() === 'USD' && Number.isFinite(Number(item.amount))
   );
 
@@ -270,9 +277,16 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding: any) => {
+  const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
-    return { ...holding, ...(price !== null ? { price } : {}) };
+    return {
+      ...holding,
+      // The compatibility projection stores numeric shares/prices even though
+      // imported cash-cushion rows may retain numeric strings.
+      shares: Number(holding.shares) || 0,
+      currentPrice: price ?? (typeof holding.currentPrice === 'number' ? holding.currentPrice : undefined),
+      ...(price !== null ? { price } : {})
+    };
   });
   portfolioStore.setState({
     positions: applyActiveLimitSellTargets(classified.positions, activeLimitSellTargets),
@@ -339,9 +353,16 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     resolveCommissionConfig(TRADERNET_RULES),
     activeTrancheMixes
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding: any) => {
+  const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
-    return { ...holding, ...(price !== null ? { price } : {}) };
+    return {
+      ...holding,
+      // The compatibility projection stores numeric shares/prices even though
+      // imported cash-cushion rows may retain numeric strings.
+      shares: Number(holding.shares) || 0,
+      currentPrice: price ?? (typeof holding.currentPrice === 'number' ? holding.currentPrice : undefined),
+      ...(price !== null ? { price } : {})
+    };
   });
   portfolioStore.setState({
     activeTrancheTypes,

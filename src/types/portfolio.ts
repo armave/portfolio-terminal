@@ -84,7 +84,7 @@ interface CashStock {
   quoteRequestSequence?: number;
 }
 
-interface CashStockHolding {
+export interface CashStockHolding {
   ticker: string;
   shares: number | string;
   /** Weighted average entry price of the still-open cash-allocated purchase lots. */

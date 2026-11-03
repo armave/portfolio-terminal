@@ -1,4 +1,4 @@
-import type { ActiveBrokerTranche, ActiveTrancheMix, ActiveTrancheType, PositionRecord } from '../types/portfolio';
+import type { ActiveBrokerTranche, ActiveTrancheMix, ActiveTrancheType, CashStockHolding, PositionRecord } from '../types/portfolio';
 import { calculateCommission, type CommissionConfig } from './portfolio';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import { getPositiveMarketPrice } from './portfolioValuation';
@@ -66,11 +66,20 @@ interface FreedomQuantityMismatch {
   freedomQuantity: number;
 }
 
+export type FreedomReconciliationPosition = Pick<PositionRecord, 'ticker' | 'shares'> &
+  Partial<Omit<PositionRecord, 'ticker' | 'shares'>>;
+
 export interface FreedomReconciliationResult {
   brokerUsdBalance?: { amount: number };
-  positions: Record<string, any>;
-  cashStocks: any[];
+  /** Legacy reconciliation rows may omit newer PositionRecord fields. */
+  positions: Record<string, FreedomReconciliationPosition>;
+  cashStocks: CashStockHolding[];
   mismatches: FreedomQuantityMismatch[];
+}
+
+export interface FreedomPortfolioClassificationResult {
+  positions: Record<string, PositionRecord>;
+  cashStocks: CashStockHolding[];
 }
 
 function tickerKey(value: unknown): string {
@@ -454,15 +463,15 @@ export function getActiveBrokerTranches(snapshot: FreedomPortfolioSnapshotLike |
 export function classifyFreedomPortfolio(
   snapshot: FreedomPortfolioSnapshotLike,
   sourcePositions: Record<string, PositionRecord>,
-  sourceCashHoldings: any[],
+  sourceCashHoldings: CashStockHolding[],
   classifications: Record<string, ActiveTrancheType> = {},
   receivedAt = Date.now(),
   executedTrades?: FreedomExecutedTradeLike[],
   commissionRules?: CommissionConfig,
   mixedAllocations: Record<string, ActiveTrancheMix> = {}
-): { positions: Record<string, PositionRecord>; cashStocks: any[] } {
+): FreedomPortfolioClassificationResult {
   const positions: Record<string, PositionRecord> = {};
-  const cashByTicker = new Map<string, any>();
+  const cashByTicker = new Map<string, CashStockHolding>();
   const cashCostByTicker = new Map<string, { totalCost: number; pricedQuantity: number }>();
   const marginByTicker = new Map<string, {
     tranche: ActiveBrokerTranche;
@@ -472,7 +481,7 @@ export function classifyFreedomPortfolio(
     snapshotPrice: number | null;
     entryTranches: Array<{ qty: number; price: number; date?: string; buyCommission?: number }>;
   }>();
-  const previousCash = new Map<string, any>();
+  const previousCash = new Map<string, CashStockHolding>();
   for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
     const ticker = tickerKey(holding?.ticker);
     if (ticker && !previousCash.has(ticker)) previousCash.set(ticker, holding);
@@ -542,7 +551,7 @@ export function classifyFreedomPortfolio(
         pricedQuantity: (previousCost?.pricedQuantity || 0) +
           (hasKnownEntryPrice ? cashQuantity : 0)
       });
-      const cashHolding = {
+      const cashHolding: CashStockHolding = {
         ...(existing || priorCash || {}),
         ticker: tranche.ticker,
         shares: quantity,
@@ -622,15 +631,15 @@ export function classifyFreedomPortfolio(
  */
 export function reconcileFreedomPortfolio(
   snapshot: FreedomPortfolioSnapshotLike,
-  sourcePositions: Record<string, any>,
-  sourceCashHoldings: any[],
+  sourcePositions: Record<string, FreedomReconciliationPosition>,
+  sourceCashHoldings: CashStockHolding[],
   receivedAt = Date.now()
 ): FreedomReconciliationResult {
   const usdBalance = snapshot.balances.find(
     item => String(item.currency ?? '').toUpperCase() === 'USD' && Number.isFinite(Number(item.amount))
   );
 
-  const positions: Record<string, any> = { ...sourcePositions };
+  const positions: Record<string, FreedomReconciliationPosition> = { ...sourcePositions };
   const marginQuantities = new Map<string, number>();
   const marginPositionKeys = new Map<string, string[]>();
 
@@ -677,8 +686,8 @@ export function reconcileFreedomPortfolio(
   }
 
   const mismatches: FreedomQuantityMismatch[] = [];
-  const cashStocks: Array<Record<string, any>> = [];
-  const priorCashByTicker = new Map<string, Record<string, any>>();
+  const cashStocks: CashStockHolding[] = [];
+  const priorCashByTicker = new Map<string, CashStockHolding>();
   for (const holding of Array.isArray(sourceCashHoldings) ? sourceCashHoldings : []) {
     const ticker = tickerKey(holding?.ticker);
     if (ticker && !priorCashByTicker.has(ticker)) priorCashByTicker.set(ticker, holding);
