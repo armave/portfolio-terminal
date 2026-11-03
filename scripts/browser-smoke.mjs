@@ -431,8 +431,8 @@ async function assertVisibleControlsHaveNames(page, surface) {
         : '';
       if (value) return value;
       const content = getText(element);
-      if (content) return content;
-      return element.getAttribute('title')?.trim() || '';
+      if (content && /[a-zA-ZА-Яа-яЁё0-9]/u.test(content)) return content;
+      return element.getAttribute('title')?.trim() || content;
     };
 
     return controls
