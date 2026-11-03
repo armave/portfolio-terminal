@@ -20,7 +20,7 @@ The Worker exposes `?action=freedom-orders-stream` as an administrator-only, rea
 
 ## Additional authenticated event probes
 
-The administrator-only `?action=freedom-event-stream&event=portfolio` and `event=markets` probes use the same short-lived production SID and WebSocket transport. They send the documented single-event subscriptions and wait for both `userData` and the requested event. The Worker returns schema metadata only: key names and record counts. It does not return account balances, holding quantities, tickers, market status values, session identifiers, credentials, or the SID. These probes are diagnostic only; they do not update portfolio state. The live payload schema must be confirmed before any additional event is applied to the app.
+The administrator-only `?action=freedom-event-stream&event=portfolio` and `event=markets` probes use the same short-lived production SID and WebSocket transport. They send the documented single-event subscriptions and wait for both `userData` and the requested event. The Worker returns a value-redacted schema sample: key names, record counts, primitive value types, and bounded nested shape descriptors (for example, `number`, `string`, `array`, `object`). All actual values are removed. Identity keys such as order/account IDs and login names are omitted from nested shape descriptors. It does not return account balances, holding quantities, tickers, market status values, session identifiers, credentials, or the SID. These probes are diagnostic only; they do not update portfolio state. The live payload schema must be confirmed before any additional event is applied to the app.
 
 ## Read-only actions
 
