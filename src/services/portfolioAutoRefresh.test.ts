@@ -139,6 +139,7 @@ describe('portfolio automatic refresh policy', () => {
     const refreshQuotes = vi.fn();
     const refreshSupplemental = vi.fn();
     const syncState = vi.fn();
+    const syncHistory = vi.fn();
     const scheduler = createPortfolioAutoRefreshScheduler({
       getRole: () => 'admin',
       isVisible: () => true,
