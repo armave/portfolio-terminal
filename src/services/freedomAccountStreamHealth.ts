@@ -46,10 +46,16 @@ export function setFreedomAccountStreamStatus(
   if (status === 'connected') {
     state.connected = true;
     state.everConnected = true;
+    state.recoveryPending = false;
     return;
   }
 
-  if (status === 'reconnecting' || status === 'disconnected') {
+  if (status === 'reconnecting') {
+    // Upstream recovery notices arrive over the still-open browser socket.
+    return;
+  }
+
+  if (status === 'disconnected') {
     // Only the connected -> disconnected transition opens a new recovery
     // window; repeated reconnect notices during one outage must not restart it.
     if (state.connected && state.everConnected) state.recoveryPending = true;
@@ -91,7 +97,7 @@ export function getFreedomAccountStreamSnapshotRevision(
   return channel === 'portfolio' ? state.portfolioRevision : state.ordersRevision;
 }
 
-/** Both private data channels must have delivered a valid event before recurring REST is suppressed. */
+/** Tracks whether both private channels have delivered validated snapshots. */
 export function isFreedomAccountStreamHealthy(sessionKey: string): boolean {
   return Boolean(
     sessionKey &&
@@ -100,6 +106,11 @@ export function isFreedomAccountStreamHealthy(sessionKey: string): boolean {
     state.portfolioReceived &&
     state.ordersReceived
   );
+}
+
+/** A connected browser stream is authoritative even while its upstream recovers. */
+export function isFreedomAccountStreamConnected(sessionKey: string): boolean {
+  return Boolean(sessionKey && state.sessionKey === sessionKey && state.connected);
 }
 
 /** A single REST catch-up is allowed for each disconnect after a previously healthy connection. */
@@ -113,13 +124,13 @@ export type FreedomAccountRefreshMode = 'inactive' | 'live' | 'recover' | 'fallb
 
 /**
  * Resolve the admin's supplemental broker-data policy once per scheduled
- * checkpoint. Until both private channels have delivered validated snapshots,
- * REST snapshots remain the fallback; a recovered stream gets one catch-up.
+ * checkpoint. REST is only eligible while the persistent browser socket is down.
  */
 export function resolveFreedomAccountRefreshMode(sessionKey: string): FreedomAccountRefreshMode {
   if (!sessionKey) return 'inactive';
+  if (isFreedomAccountStreamConnected(sessionKey)) return 'live';
   if (consumeFreedomAccountStreamRecovery(sessionKey)) return 'recover';
-  return isFreedomAccountStreamHealthy(sessionKey) ? 'live' : 'fallback';
+  return 'fallback';
 }
 
 /** Test isolation and explicit account-session teardown. */

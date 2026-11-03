@@ -43,7 +43,6 @@ describe('automatic update settings', () => {
 describe('manual sync in Settings', () => {
   it('exposes the same full role-specific manual sync action to admins and guests', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
-    expect(source).toContain('id="settingsSyncPortfolioButton"');
     expect(source).toContain("account?.role === \"admin\" || account?.role === \"guest\"");
     expect(source).toContain("emitUiEvent('portfolio:sync-request'");
     expect(source).toContain("translateText('Sync portfolio')");

@@ -453,4 +453,18 @@ describe('app localization', () => {
       'ru'
     )).toBe('Оценка маржинального риска недоступна, пока не удастся оценить денежный баланс и все активы.');
   });
+  
+  it('localizes workspace navigation labels and accessible names', () => {
+    expect(translateText('Workspace navigation', 'ru')).toBe('Навигация по разделам');
+    expect(translateText('MARGIN DESK', 'ru')).toBe('МАРЖИНАЛЬНЫЙ РАЗДЕЛ');
+    expect(translateText('COMBINED PORTFOLIO', 'ru')).toBe('ОБЩИЙ ПОРТФЕЛЬ');
+    expect(translateText('MARGIN', 'ru')).toBe('МАРЖА');
+    expect(translateText('BALANCE', 'ru')).toBe('БАЛАНС');
+    expect(translateText('LOTS', 'ru')).toBe('ЛОТЫ');
+    expect(translateText('TRADES', 'ru')).toBe('СДЕЛКИ');
+    expect(translateText('Trades', 'ru')).toBe('Сделки');
+    expect(translateText('Settings', 'ru')).toBe('Настройки');
+    expect(translateText('Sync portfolio', 'ru')).toBe('Синхронизировать портфель');
+  });
+
 });

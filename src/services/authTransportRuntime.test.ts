@@ -57,6 +57,7 @@ describe('auth transport runtime', () => {
     expect(String(url)).toBe('https://worker.example/api/auth/me');
     expect(options.headers['X-App-Auth']).toBe('session-token');
     expect(options.cache).toBe('no-store');
+    expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('returns false for invalid sessions and empty tokens without network access', async () => {
@@ -66,6 +67,15 @@ describe('auth transport runtime', () => {
     await expect(runtime.validateGatewaySecret('expired')).resolves.toBe(false);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     await expect(runtime.getCurrentUser()).rejects.toThrow('Not signed in.');
+  });
+
+  it('rejects a successful session response without a valid user record', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 })) as unknown as typeof fetch;
+    const { runtime } = createRuntime(fetchImpl);
+
+    await expect(runtime.validateGatewaySecret('session-token')).resolves.toBe(false);
+    await expect(runtime.getCurrentUser()).rejects.toThrow('authenticated user response was invalid');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('normalizes legacy account language and rejects malformed user records', async () => {
@@ -117,6 +127,13 @@ describe('auth transport runtime', () => {
     await stale;
     await expect(runtime.listUsers()).resolves.toMatchObject([{ id: 'guest-new' }]);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it('surfaces malformed user directory records instead of treating them as an empty list', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ users: [{ id: 'bad-record' }] }), { status: 200 })) as unknown as typeof fetch;
+    const { runtime } = createRuntime(fetchImpl);
+
+    await expect(runtime.listUsers()).rejects.toThrow('user directory response was invalid');
   });
 
   it('clears cached identity and invokes application-wide cache clearing after logout', async () => {

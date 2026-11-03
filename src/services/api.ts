@@ -5,6 +5,7 @@ import { createCloudStateSyncRuntime } from './cloudStateSyncRuntime';
 import { createAuthTransportRuntime } from './authTransportRuntime';
 import { createFreedomBrokerTransportRuntime } from './freedomBrokerTransportRuntime';
 import { createMarketDataTransportRuntime } from './marketDataTransportRuntime';
+import { DEFAULT_REQUEST_TIMEOUT_MS, fetchAndConsumeWithTimeout } from './requestTimeout';
 export type { AuthUser, AuthSession } from './authTransportRuntime';
 export type { SyncOptions, CloudHistoryPushOptions } from './cloudStateSyncRuntime';
 import { processRollovers } from '../domain/portfolio';
@@ -238,7 +239,7 @@ async function performProxyFetch(
     throw new Error('Gateway Secret is not available. Restore or enter the Gateway Secret before requesting broker data.');
   }
 
-  const res = await fetch(url.toString(), {
+  return fetchAndConsumeWithTimeout(fetch, url.toString(), {
     ...fetchOptions,
     headers: {
       ...(fetchOptions.headers || {}),
@@ -248,18 +249,18 @@ async function performProxyFetch(
       'X-App-Auth': authSecret,
       Authorization: `Bearer ${authSecret}`
     }
-  });
+  }, async (res) => {
+    const isJson = res.headers.get('content-type')?.includes('application/json');
+    const data = isJson ? await res.json() : await res.text();
 
-  const isJson = res.headers.get('content-type')?.includes('application/json');
-  const data = isJson ? await res.json() : await res.text();
-
-  if (!res.ok) {
-    const errorMessage = typeof data === 'object' && data !== null
-      ? (data.error || data.message || `HTTP ${res.status}`)
-      : `HTTP ${res.status}`;
-    throw new Error(errorMessage);
-  }
-  return data;
+    if (!res.ok) {
+      const errorMessage = typeof data === 'object' && data !== null
+        ? (data.error || data.message || `HTTP ${res.status}`)
+        : `HTTP ${res.status}`;
+      throw new Error(errorMessage);
+    }
+    return data;
+  }, DEFAULT_REQUEST_TIMEOUT_MS);
 }
 
 function recordApiMetric(metric: string, details: Record<string, unknown> = {}): void {

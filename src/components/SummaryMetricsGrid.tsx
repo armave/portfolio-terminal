@@ -1,6 +1,6 @@
 import { formatRelativeTime } from '../utils/relativeTime';
 import { memo } from 'preact/compat';
-import { useRef, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import type { BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
 import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
@@ -338,7 +338,6 @@ function SummaryMetricsGridView() {
   const activeView = useActiveView();
   const rules = state.brokerAssumptions;
   const refreshIntervalMs = useQuoteRefreshInterval();
-  const previousPricesRef = useRef<Record<string, number>>({});
   const [expandedTrancheTicker, setExpandedTrancheTicker] = useState<string | null>(null);
   const dailyRate = rules.annualBorrowRate / rules.dayCountBasis;
   const tickers = Object.keys(state.positions || {});
@@ -586,11 +585,6 @@ function SummaryMetricsGridView() {
   // Keep a zero market value for conservative risk calculations when no usable
   // quote exists, but never display that fallback as a real market price or P&L.
   const currentMktVal = usableMarketPrice === null ? 0 : pos.shares * usableMarketPrice;
-  const previousPrice = previousPricesRef.current[pos.ticker];
-  const priceFlashClass = usableMarketPrice === null || previousPrice === undefined || previousPrice === pos.currentPrice
-    ? ''
-    : pos.currentPrice > previousPrice ? 'quote-flash-up' : 'quote-flash-down';
-  previousPricesRef.current[pos.ticker] = pos.currentPrice;
   const unrealized = usableMarketPrice === null ? null : currentMktVal - totalInvested;
   const unrealizedPct = usableMarketPrice !== null && avgPrice > 0 ? ((usableMarketPrice - avgPrice) / avgPrice) * 100 : null;
 
@@ -731,7 +725,7 @@ function SummaryMetricsGridView() {
           <span class="portfolio-micro-heading">MARKET VALUATION</span>
           <div class="portfolio-micro-row portfolio-micro-market-primary">
             <span class="portfolio-metric-label text-[10px]">Share Price / Market Value</span>
-            <span key={`${pos.ticker}-${pos.currentPrice}`} id="boardPrice" class={`portfolio-metric-value text-xs sm:text-sm ${priceFlashClass}`}>
+            <span id="boardPrice" class="portfolio-metric-value text-xs sm:text-sm">
               {usableMarketPrice !== null ? formatUSD(usableMarketPrice) : '—'} | {usableMarketPrice !== null ? formatUSD(currentMktVal) : '—'}{' '}
               {unrealized !== null && unrealizedPct !== null ? (
                 <span class={unrealized >= 0 ? 'text-emerald-400' : 'text-rose-400'}>

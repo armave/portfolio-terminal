@@ -1,8 +1,8 @@
-import { useState, useEffect, useReducer, useRef } from 'preact/hooks';
-import { usePortfolio } from '../store/portfolioStore';
+import { useState, useEffect, useReducer, useRef, useMemo } from 'preact/hooks';
+import { usePortfolioSelector } from '../store/portfolioStore';
 import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
-import { QuoteDetails, ActiveTrancheType } from '../types/portfolio';
+import type { ActiveTrancheMix, ActiveTrancheType, PortfolioState, QuoteDetails } from '../types/portfolio';
 import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixInput, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
 import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEventBus';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
@@ -24,9 +24,43 @@ const BADGE_STYLES: Record<string, string> = {
   neutral: 'border-slate-700 bg-slate-900 text-slate-300',
   unknown: 'border-slate-800 bg-slate-950 text-slate-500'
 };
+const EMPTY_TRANCHE_MIXES: Record<string, ActiveTrancheMix> = {};
+const EMPTY_TRANCHE_TYPES: Record<string, ActiveTrancheType> = {};
+const EMPTY_GUEST_ASSIGNMENTS: Record<string, string> = {};
+
+function selectCashCushionPortfolioState(state: PortfolioState) {
+  return {
+    brokerAccountInfo: state.brokerAccountInfo,
+    brokerExecutedTrades: state.brokerExecutedTrades,
+    guestPortfolioSnapshot: state.guestPortfolioSnapshot,
+    activeTrancheGuestAssignments: state.activeTrancheGuestAssignments,
+    activeTrancheTypes: state.activeTrancheTypes,
+    activeTrancheMixes: state.activeTrancheMixes,
+    cashHoldings: state.cashCushion?.holdings,
+    positions: state.positions
+  };
+}
+
+function areCashCushionPortfolioStatesEqual(
+  previous: ReturnType<typeof selectCashCushionPortfolioState>,
+  next: ReturnType<typeof selectCashCushionPortfolioState>
+): boolean {
+  return previous.brokerAccountInfo === next.brokerAccountInfo &&
+    previous.brokerExecutedTrades === next.brokerExecutedTrades &&
+    previous.guestPortfolioSnapshot === next.guestPortfolioSnapshot &&
+    previous.activeTrancheGuestAssignments === next.activeTrancheGuestAssignments &&
+    previous.activeTrancheTypes === next.activeTrancheTypes &&
+    previous.activeTrancheMixes === next.activeTrancheMixes &&
+    previous.cashHoldings === next.cashHoldings &&
+    previous.positions === next.positions;
+}
 
 export function formatDailyQuoteRange(details: Pick<QuoteDetails, 'high' | 'low'>): string {
   return `H ${formatUSD(details.high)} / L ${formatUSD(details.low)}`;
+}
+
+export function getAssignedGuestIds(assignments: Record<string, string> | undefined): string[] {
+  return [...new Set(Object.values(assignments || {}).filter(Boolean))].sort();
 }
 
 export function getCashHoldingMarketPrice(holding: { currentPrice?: unknown; price?: unknown }): number | null {
@@ -119,7 +153,7 @@ function renderDailyQuoteSubtext(details?: QuoteDetails | null) {
 }
 
 export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, guestUserId }: { showActiveTranches?: boolean; isAdmin?: boolean; guestUserId?: string } = {}) {
-  const state = usePortfolio();
+  const state = usePortfolioSelector(selectCashCushionPortfolioState, areCashCushionPortfolioStatesEqual);
   const refreshIntervalMs = useQuoteRefreshInterval(guestUserId ? 15_000 : 60_000, guestUserId ? 'guest' : 'admin');
   const shouldReadBrokerHistory = !guestUserId && (showActiveTranches || isAdmin);
   const [balanceSync, dispatchBalanceSync] = useReducer(
@@ -248,11 +282,18 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
       // Preserve the last good in-memory or saved snapshot; only mark it stale.
       dispatchBrokerExecutionHistory({ type: 'failure' });
     });
+    const removeOrdersListener = addBrokerEventListener('broker:active-orders', () => {
+      dispatchBrokerExecutionHistory({
+        type: 'success',
+        trades: brokerExecutionHistoryRef.current.trades
+      });
+    });
     dispatchBrokerExecutionHistory({ type: 'refresh' });
     emitBrokerEvent('broker:request-executed-trades');
     return () => {
       removeTradesListener();
       removeErrorListener();
+      removeOrdersListener();
     };
   }, [shouldReadBrokerHistory]);
 
@@ -282,36 +323,43 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     };
   }, [showActiveTranches]);
 
-  const activeTrancheSource = guestUserId
-    ? (state.guestPortfolioSnapshot?.tranches || [])
-    : getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo);
-  const activeTrancheGuestAssignments = guestUserId
-    ? Object.fromEntries(activeTrancheSource.map((tranche) => [tranche.id, guestUserId]))
-    : state.activeTrancheGuestAssignments;
-  const activeTrancheTypes = guestUserId
-    ? Object.fromEntries(activeTrancheSource.map((tranche) => [tranche.id, 'cash' as ActiveTrancheType]))
-    : state.activeTrancheTypes;
-  const activeTrancheMixes = guestUserId ? {} : state.activeTrancheMixes;
-  const activeTranches = activeTrancheSource.map((tranche) => {
-    const latestPrice = getActiveTrancheMarketPrice(
-      tranche,
-      state.cashCushion?.holdings || [],
-      state.positions || {}
-    );
+  const cashHoldings = state.cashHoldings || [];
+  const positions = state.positions || {};
+  const activeTrancheSource = useMemo(
+    () => guestUserId
+      ? state.guestPortfolioSnapshot?.tranches || []
+      : getActiveTranchesFromTrades(executedTrades, state.brokerAccountInfo),
+    [guestUserId, state.guestPortfolioSnapshot?.tranches, executedTrades, state.brokerAccountInfo]
+  );
+  const activeTrancheGuestAssignments = useMemo(
+    () => guestUserId
+      ? Object.fromEntries(activeTrancheSource.map((tranche) => [tranche.id, guestUserId]))
+      : state.activeTrancheGuestAssignments || EMPTY_GUEST_ASSIGNMENTS,
+    [guestUserId, activeTrancheSource, state.activeTrancheGuestAssignments]
+  );
+  const activeTrancheTypes = useMemo(
+    () => guestUserId
+      ? Object.fromEntries(activeTrancheSource.map((tranche) => [tranche.id, 'cash' as ActiveTrancheType]))
+      : state.activeTrancheTypes || EMPTY_TRANCHE_TYPES,
+    [guestUserId, activeTrancheSource, state.activeTrancheTypes]
+  );
+  const activeTrancheMixes = guestUserId ? EMPTY_TRANCHE_MIXES : state.activeTrancheMixes || EMPTY_TRANCHE_MIXES;
+  const activeTranches = useMemo(() => activeTrancheSource.map((tranche) => {
+    const latestPrice = getActiveTrancheMarketPrice(tranche, cashHoldings, positions);
     if (latestPrice === null || latestPrice === tranche.marketPrice) return tranche;
     return { ...tranche, marketPrice: latestPrice, marketValue: latestPrice * tranche.quantity };
-  });
-  const guestHoldings = guestUserId
+  }), [activeTrancheSource, cashHoldings, positions]);
+  const guestHoldings = useMemo(() => guestUserId
     ? getGuestAssignedCashHoldings({
       guestId: guestUserId,
       activeTranches,
       assignments: activeTrancheGuestAssignments,
       types: activeTrancheTypes,
       mixes: activeTrancheMixes,
-      cashHoldings: state.cashCushion?.holdings || []
+      cashHoldings
     })
-    : [];
-  const holdings = isAdmin ? state.cashCushion?.holdings || [] : guestHoldings;
+    : [], [guestUserId, activeTranches, activeTrancheGuestAssignments, activeTrancheTypes, activeTrancheMixes, cashHoldings]);
+  const holdings = isAdmin ? cashHoldings : guestHoldings;
   const setActiveTrancheType = (
     ticker: string,
     type: ActiveTrancheType,
@@ -324,54 +372,70 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
 
   const [activeTranchesExpanded, setActiveTranchesExpanded] = useState(false);
 
-  const unpricedHoldingCount = holdings.filter((holding) =>
-    Number(holding.shares) > 0 && getCashHoldingMarketPrice(holding) === null
-  ).length;
-  const pricedHoldingCount = holdings.filter((holding) =>
-    Number(holding.shares) > 0 && getCashHoldingMarketPrice(holding) !== null
-  ).length;
-  const stocksTotal = holdings.reduce((sum, holding) => {
-    const price = getCashHoldingMarketPrice(holding);
-    const shares = Number(holding.shares);
-    return price !== null && Number.isFinite(shares) && shares > 0 ? sum + shares * price : sum;
-  }, 0);
+  const { unpricedHoldingCount, pricedHoldingCount, stocksTotal } = useMemo(() => {
+    let unpriced = 0;
+    let priced = 0;
+    let total = 0;
+    for (const holding of holdings) {
+      const shares = Number(holding.shares);
+      if (!Number.isFinite(shares) || shares <= 0) continue;
+      const price = getCashHoldingMarketPrice(holding);
+      if (price === null) unpriced++;
+      else {
+        priced++;
+        total += shares * price;
+      }
+    }
+    return { unpricedHoldingCount: unpriced, pricedHoldingCount: priced, stocksTotal: total };
+  }, [holdings]);
 
-  const adminHoldingGroups = isAdmin ? guestUsers.map((guest) => ({
-    key: guest.id,
-    label: guest.name || guest.id,
-    holdings: getGuestAssignedCashHoldings({
-      guestId: guest.id,
-      activeTranches,
-      assignments: state.activeTrancheGuestAssignments,
-      types: state.activeTrancheTypes,
-      mixes: state.activeTrancheMixes,
-      cashHoldings: state.cashCushion?.holdings || []
-    })
-  })).filter((group) => group.holdings.length > 0) : [];
+  const guestNames = useMemo(
+    () => new Map(guestUsers.map((guest) => [guest.id, guest.name || guest.id])),
+    [guestUsers]
+  );
+  const adminHoldingGroups = useMemo(() => isAdmin
+    ? getAssignedGuestIds(activeTrancheGuestAssignments).map((guestId) => ({
+      key: guestId,
+      label: guestNames.get(guestId) || guestId,
+      holdings: getGuestAssignedCashHoldings({
+        guestId,
+        activeTranches,
+        assignments: activeTrancheGuestAssignments,
+        types: activeTrancheTypes,
+        mixes: activeTrancheMixes,
+        cashHoldings
+      })
+    })).filter((group) => group.holdings.length > 0)
+    : [],
+  [isAdmin, guestNames, activeTranches, activeTrancheGuestAssignments, activeTrancheTypes, activeTrancheMixes, cashHoldings]);
 
-  const assignedByTicker = new Map<string, number>();
-  adminHoldingGroups.forEach((group) => group.holdings.forEach((holding) => {
-    assignedByTicker.set(holding.ticker, (assignedByTicker.get(holding.ticker) || 0) + holding.shares);
-  }));
-  const unassignedHoldings = isAdmin ? holdings.flatMap((holding) => {
-    const shares = Math.max(0, Number(holding.shares || 0) - (assignedByTicker.get(holding.ticker) || 0));
-    return shares > 1e-8 ? [{ ...holding, shares }] : [];
-  }) : [];
+  const unassignedHoldings = useMemo(() => {
+    if (!isAdmin) return [];
+    const assignedByTicker = new Map<string, number>();
+    adminHoldingGroups.forEach((group) => group.holdings.forEach((holding) => {
+      assignedByTicker.set(holding.ticker, (assignedByTicker.get(holding.ticker) || 0) + holding.shares);
+    }));
+    return holdings.flatMap((holding) => {
+      const shares = Math.max(0, Number(holding.shares || 0) - (assignedByTicker.get(holding.ticker) || 0));
+      return shares > 1e-8 ? [{ ...holding, shares }] : [];
+    });
+  }, [isAdmin, adminHoldingGroups, holdings]);
 
-  const displayHoldingGroups = isAdmin
+  const displayHoldingGroups = useMemo(() => isAdmin
     ? [
       ...adminHoldingGroups,
       ...(unassignedHoldings.length ? [{ key: 'unassigned', label: 'Unassigned · shared holdings', holdings: unassignedHoldings }] : [])
     ]
-    : [{ key: 'guest', label: '', holdings }];
-  const displayHoldings = displayHoldingGroups.flatMap((group) =>
+    : [{ key: 'guest', label: '', holdings }],
+  [isAdmin, adminHoldingGroups, unassignedHoldings, holdings]);
+  const displayHoldings = useMemo(() => displayHoldingGroups.flatMap((group) =>
     group.holdings.map((holding, index) => ({
       ...holding,
       groupKey: group.key,
       groupLabel: group.label,
       isGroupStart: index === 0
     }))
-  );
+  ), [displayHoldingGroups]);
 
 
   if (isAdmin && balanceSync.status === 'loading' && !balanceSync.hasSnapshot) {
@@ -746,13 +810,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         {executedTrades.length ? 'No active purchase operations.' : 'Active purchase operations will appear after Freedom trade history loads.'}
                       </td></tr>
                     ) : activeTranches.map((tranche) => {
-                      const type = state.activeTrancheTypes?.[tranche.id] || state.activeTrancheTypes?.[tranche.ticker] || 'cash';
+                      const type = activeTrancheTypes[tranche.id] || activeTrancheTypes[tranche.ticker] || 'cash';
                       const mix = normalizeActiveTrancheMix(
                         tranche.quantity,
-                        state.activeTrancheMixes?.[tranche.id] || state.activeTrancheMixes?.[tranche.ticker]
+                        activeTrancheMixes[tranche.id] || activeTrancheMixes[tranche.ticker]
                       );
                       const cashQuantity = getAssignableActiveTrancheCashQuantity(type, tranche.quantity, mix);
-                      const assignedGuestId = state.activeTrancheGuestAssignments?.[tranche.id] || '';
+                      const assignedGuestId = activeTrancheGuestAssignments[tranche.id] || '';
                       const updateMixCash = (value: string) => {
                         const cash = resolveActiveTrancheMixInput(value, tranche.quantity, mix.cash);
                         setActiveTrancheType(tranche.id, 'mix', { cash, margin: tranche.quantity - cash });

@@ -1,5 +1,3 @@
-import CryptoJS from 'crypto-js';
-
 export interface CloudStateSecurityDependencies {
   workerProxyUrl: string;
   getStoredGatewaySecret: () => string;
@@ -106,6 +104,7 @@ export function createCloudStateSecurity(
   ): Promise<{ plaintext: string; legacy: boolean }> => {
     const encryptionSecret = await resolveCloudEncryptionSecret(sessionToken);
     if (!payload.startsWith(CLOUD_CIPHERTEXT_V2_PREFIX)) {
+      const { default: CryptoJS } = await import('crypto-js');
       const bytes = CryptoJS.AES.decrypt(payload, encryptionSecret);
       const plaintext = bytes ? bytes.toString(CryptoJS.enc.Utf8) : '';
       if (!plaintext) throw new Error('Legacy decryption failed — verify the Gateway Secret.');

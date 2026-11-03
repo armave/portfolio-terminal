@@ -10,6 +10,23 @@ function getTableHeaderTags(source: string): string[] {
 }
 
 describe('Stage 10 accessibility wiring', () => {
+  it('keeps portfolio synchronization outside the workspace destination group', () => {
+    const app = readSource('../App.tsx');
+    const ticker = readSource('../components/TickerTab.tsx');
+    const settings = readSource('../components/SettingsDesk.tsx');
+    const tabsStart = ticker.indexOf('export const TickerTabs');
+    const syncStart = ticker.indexOf('export function PortfolioSyncButton');
+    expect(tabsStart).toBeGreaterThan(-1);
+    expect(syncStart).toBeGreaterThan(tabsStart);
+    expect(ticker.slice(tabsStart, syncStart)).toContain('workspace-nav-ticker-list');
+    expect(app).not.toContain('<MemoPortfolioSyncButton');
+    expect(settings).toContain("emitUiEvent('portfolio:sync-request'");
+    expect(app).toContain("aria-label={translateText('Workspace navigation', getAppLanguage())}");
+    expect(app).toContain('id="tickerTabs" role="group"');
+    expect(ticker).toContain("scrollIntoView({ block: 'nearest', inline: 'nearest' })");
+  });
+
+
   it('uses shared modal focus behavior for News and restores focus to the article trigger', () => {
     const source = readSource('../components/MarketInsightsPanel.tsx');
     expect(source).toContain("import { createPortal, memo } from 'preact/compat';");

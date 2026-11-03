@@ -2773,7 +2773,8 @@ summary:focus-visible {
   }
 }
 
-/* Mobile workspace navigation wraps without hiding destinations. */
+/* Keep the ticker strip independent on desktop and merge it into the centered
+   workspace navigation flow on small screens. */
 #tickerTabs {
   display: flex;
   flex-wrap: nowrap;
@@ -2797,12 +2798,32 @@ summary:focus-visible {
   flex: 0 0 auto;
 }
 
+#tickerTabs>.workspace-nav-ticker-list {
+  display: flex;
+  flex: 0 1 min(52vw, 52rem);
+  align-items: center;
+  gap: inherit;
+  min-width: 0;
+  max-width: min(52vw, 52rem);
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-dim) transparent;
+}
+
+.workspace-nav-ticker-list>* {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 768px) {
   #tickerTabs {
     width: 100%;
     min-width: 0;
     max-width: 100%;
     flex-wrap: wrap;
+    justify-content: center;
     overflow-x: visible;
     overflow-y: visible;
     scroll-snap-type: none;
@@ -2813,6 +2834,10 @@ summary:focus-visible {
     max-width: 100%;
     flex-shrink: 0;
     scroll-snap-align: unset;
+  }
+
+  #tickerTabs>.workspace-nav-ticker-list {
+    display: contents;
   }
 }
 
@@ -3771,5 +3796,53 @@ table tbody tr:hover {
 @media (prefers-reduced-motion: reduce) {
   .cloud-sync-indicator--pending .cloud-sync-indicator__dot {
     animation: none;
+  }
+}
+
+/* Stage 3: keep summary labels readable without competing with primary values. */
+.portfolio-micro-heading {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+}
+
+.portfolio-micro-row .portfolio-metric-label {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+.portfolio-micro-row .portfolio-metric-value {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+@media (max-width: 480px) {
+  .portfolio-micro-heading {
+    font-size: 0.6875rem;
+  }
+
+  .portfolio-micro-row .portfolio-metric-label {
+    font-size: 0.6875rem;
+  }
+
+  .portfolio-micro-row .portfolio-metric-value {
+    font-size: 0.75rem;
+  }
+}
+
+/* Keep the mobile header flex row shrinkable around the centered navigation. */
+@media (max-width: 768px) {
+  .board-header-banner > .flex {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #tickerTabs {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
 }

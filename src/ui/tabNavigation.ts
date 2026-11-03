@@ -56,3 +56,11 @@ export function shouldRefreshQuotesOnNavigation(
 ): boolean {
   return currentView !== nextView && isMarginDeskView(nextView, isAdmin);
 }
+
+
+export function getWorkspaceNavigationViews(tickers: string[], isAdmin: boolean, canViewGuestHistory: boolean): string[] {
+  const margin = tickers.length > 1 ? ['COMBINED', ...tickers] : [tickers[0] || 'COMBINED'];
+  return isAdmin
+    ? [...margin, 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']
+    : ['BALANCE', ...(canViewGuestHistory ? ['GUEST_HISTORY'] : []), 'SETTINGS'];
+}

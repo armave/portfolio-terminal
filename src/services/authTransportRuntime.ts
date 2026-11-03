@@ -1,4 +1,5 @@
 import type { AppLanguage } from './i18n';
+import { DEFAULT_REQUEST_TIMEOUT_MS, fetchAndConsumeWithTimeout } from './requestTimeout';
 
 export interface AuthUser {
   id: string;
@@ -66,7 +67,10 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
 
   const normalizeAuthSession = (session: AuthSession): AuthSession => {
     const user = normalizeAuthUser(session?.user);
-    if (!user) throw new Error("The authenticated user response was invalid.");
+    if (!user || typeof session?.token !== "string" || !session.token.trim() ||
+        typeof session.expiresAt !== "number" || !Number.isFinite(session.expiresAt)) {
+      throw new Error("The authenticated user response was invalid.");
+    }
     return { ...session, user };
   };
 
@@ -96,15 +100,22 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
       headers.Authorization = `Bearer ${options.token}`;
       headers["X-App-Auth"] = options.token;
     }
-    const response = await fetchImpl(new URL(path, dependencies.apiUrl), {
-      method: options.method || "GET",
-      headers,
-      ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-      cache: "no-store"
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(payload?.error || `Authentication request failed (HTTP ${response.status}).`);
-    return payload as T;
+    return fetchAndConsumeWithTimeout(
+      fetchImpl,
+      new URL(path, dependencies.apiUrl),
+      {
+        method: options.method || "GET",
+        headers,
+        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+        cache: "no-store"
+      },
+      async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error || `Authentication request failed (HTTP ${response.status}).`);
+        return payload as T;
+      },
+      DEFAULT_REQUEST_TIMEOUT_MS
+    );
   };
 
   const authRequest = <T>(path: string, options: AuthRequestOptions = {}): Promise<T> => {
@@ -129,7 +140,7 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
     const cleanSecret = typeof secret === "string" ? secret.trim() : "";
     if (!cleanSecret) return false;
     try {
-      const response = await fetchImpl(new URL("/api/auth/me", dependencies.apiUrl), {
+      return await fetchAndConsumeWithTimeout(fetchImpl, new URL("/api/auth/me", dependencies.apiUrl), {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -137,17 +148,22 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
           Authorization: `Bearer ${cleanSecret}`
         },
         cache: "no-store"
-      });
-      if (!response.ok) {
-        currentUserCache = null;
-        return false;
-      }
-      const payload = typeof response.json === "function"
-        ? await response.json().catch(() => null)
-        : null;
-      const user = normalizeAuthUser(payload?.user);
-      if (user) rememberCurrentUser(cleanSecret, user);
-      return true;
+      }, async (response) => {
+        if (!response.ok) {
+          currentUserCache = null;
+          return false;
+        }
+        const payload = typeof response.json === "function"
+          ? await response.json().catch(() => null)
+          : null;
+        const user = normalizeAuthUser(payload?.user);
+        if (!user) {
+          currentUserCache = null;
+          return false;
+        }
+        rememberCurrentUser(cleanSecret, user);
+        return true;
+      }, DEFAULT_REQUEST_TIMEOUT_MS);
     } catch (error) {
       warn("Account session validation failed:", error);
       return false;
@@ -193,9 +209,14 @@ export function createAuthTransportRuntime(dependencies: AuthTransportRuntimeDep
     const generation = usersCacheGeneration;
     const request = authRequest<{ users: unknown[] }>("/api/auth/users", { token })
       .then((payload) => {
-        const users = Array.isArray(payload?.users)
-          ? payload.users.map(normalizeAuthUser).filter((user): user is AuthUser => user !== null)
-          : [];
+        if (!Array.isArray(payload?.users)) {
+          throw new Error("The user directory response was invalid.");
+        }
+        const normalizedUsers = payload.users.map(normalizeAuthUser);
+        const users = normalizedUsers.filter((user): user is AuthUser => user !== null);
+        if (users.length !== normalizedUsers.length) {
+          throw new Error("The user directory response was invalid.");
+        }
         if (generation === usersCacheGeneration) {
           usersCache = { token, users, expiresAt: now() + AUTH_READ_TTL_MS };
         }

@@ -120,15 +120,38 @@ describe('portfolio broker data runtime', () => {
     ]);
   });
 
+  it('skips all broker REST backups while the persistent account socket is connected', async () => {
+    const fixture = createFixture();
+    const cachedTrade = trade('cached-sell');
+    fixture.setSaved([cachedTrade]);
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+    setFreedomAccountStreamStatus(fixture.session.identity, 'reconnecting');
+
+    await expect(Promise.all([
+      fixture.runtime.loadFreedomAccount(fixture.session),
+      fixture.runtime.loadExecutedTrades(fixture.session),
+      fixture.runtime.loadActiveOrders(fixture.session)
+    ])).resolves.toEqual([true, true, true]);
+
+    expect(fixture.dependencies.fetchAccountInfo).not.toHaveBeenCalled();
+    expect(fixture.dependencies.fetchExecutedTrades).not.toHaveBeenCalled();
+    expect(fixture.dependencies.fetchActiveOrders).not.toHaveBeenCalled();
+    expect(fixture.dependencies.restoreGatewaySecret).not.toHaveBeenCalled();
+    expect(fixture.events).toEqual([
+      { type: 'broker:executed-trades', payload: [cachedTrade] }
+    ]);
+  });
+
   it('discards a portfolio snapshot that resolves after a newer live portfolio event', async () => {
     let resolveFetch: ((value: unknown) => void) | undefined;
     const fixture = createFixture({
       fetchAccountInfo: vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }))
     });
-    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+    setFreedomAccountStreamStatus(fixture.session.identity, 'disconnected');
 
     const request = fixture.runtime.loadFreedomAccount(fixture.session);
     await vi.waitFor(() => expect(fixture.dependencies.fetchAccountInfo).toHaveBeenCalledTimes(1));
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
     markFreedomAccountStreamSnapshot(fixture.session.identity, 'portfolio');
     resolveFetch?.({ raw: 'stale one-shot snapshot' });
 
@@ -144,10 +167,11 @@ describe('portfolio broker data runtime', () => {
     const fixture = createFixture({
       fetchActiveOrders: vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }))
     });
-    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+    setFreedomAccountStreamStatus(fixture.session.identity, 'disconnected');
 
     const request = fixture.runtime.loadActiveOrders(fixture.session);
     await vi.waitFor(() => expect(fixture.dependencies.fetchActiveOrders).toHaveBeenCalledTimes(1));
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
     markFreedomAccountStreamSnapshot(fixture.session.identity, 'orders');
     resolveFetch?.({
       orders: { order: [{ order_id: 'stale-order' }] },

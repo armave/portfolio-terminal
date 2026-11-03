@@ -96,6 +96,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedGuestHistory, setHasOpenedGuestHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
+  const shouldRenderClosedHistory = hasOpenedClosedHistory || activeDeskView === 'CLOSED_HISTORY';
+  const shouldRenderCashCushion = hasOpenedCashCushion ||
+    activeDeskView === 'CASH_CUSHION' ||
+    activeDeskView === 'BALANCE';
 
 
 
@@ -478,7 +482,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           class="board-header-banner border-b border-slate-800 pb-3"
         >
           <div class="flex flex-wrap items-center gap-2 justify-center">
-            <div id="tickerTabs" role="group" aria-label="Workspace navigation"><MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
+            <div id="tickerTabs" role="group" aria-label={translateText('Workspace navigation', getAppLanguage())}><MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
             <MarketStatusBadge isAdmin={permissions.isAdmin} />
             {permissions.canViewKvStatus && <CloudSyncIndicator cloudStatus={cloudStatus} cloudSyncStatus={cloudSyncStatus} />}
           </div>
@@ -574,7 +578,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
           {/* Cash Cushion Management Panel */}
           <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>
-            {hasOpenedCashCushion
+            {shouldRenderCashCushion
               ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}>
                 <CashCushionDesk
                   key={`balance-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
@@ -618,7 +622,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
         class={"desk-view-transition rounded-lg " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
       >
-        {permissions.canViewClosedHistory && (hasOpenedClosedHistory
+        {permissions.canViewClosedHistory && shouldRenderClosedHistory
           ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />}>
             <ClosedHistoryDesk
               key={`closed-history-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
@@ -626,7 +630,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               isSessionCurrent={isAccountSessionCurrent}
             />
           </Suspense></div>
-          : <DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />)}
+          : null}
       </div>
 
       {/* Settings */}

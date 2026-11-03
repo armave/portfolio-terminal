@@ -361,7 +361,15 @@ async function assertResponsiveLayout(page, width) {
       .filter((element) => element.getClientRects().length > 0)
       .map((element) => {
         const bounds = element.getBoundingClientRect();
-        return { left: bounds.left, right: bounds.right };
+        const tickerStrip = element.closest('.workspace-nav-ticker-list');
+        const tickerStripBounds = tickerStrip?.getBoundingClientRect();
+        return {
+          left: bounds.left,
+          right: bounds.right,
+          inScrollableTickerStrip: Boolean(tickerStrip),
+          tickerStripWidth: tickerStripBounds?.width || 0,
+          tickerStripDisplay: tickerStrip ? getComputedStyle(tickerStrip).display : ''
+        };
       });
     return {
       viewportWidth,
@@ -379,9 +387,113 @@ async function assertResponsiveLayout(page, width) {
     throw new Error(`The portfolio workspace is clipped at ${width}px.`);
   }
   if (!layout.navBounds || layout.navControls.some((control) =>
-    control.left < layout.navBounds.left - 1 || control.right > layout.navBounds.right + 1
+    !control.inScrollableTickerStrip &&
+    (control.left < layout.navBounds.left - 1 || control.right > layout.navBounds.right + 1)
   )) {
-    throw new Error(`Workspace navigation contains a clipped destination at ${width}px.`);
+    throw new Error(`Workspace navigation contains a clipped fixed destination at ${width}px.`);
+  }
+  if (layout.navControls.some((control) =>
+    control.inScrollableTickerStrip &&
+    control.tickerStripDisplay !== 'contents' &&
+    control.tickerStripWidth < 1
+  )) {
+    throw new Error(`The ticker navigation strip is not visible at ${width}px.`);
+  }
+}
+
+async function assertManyTickerNavigation(page) {
+  await page.setViewportSize({ width: 360, height: 844 });
+  const mobileMeasurements = await page.locator('.workspace-nav-ticker-list').evaluate((strip) => {
+    const template = strip.querySelector('button');
+    if (!template) throw new Error('The ticker navigation strip has no destination to extend.');
+    const clones = [];
+    for (let index = 0; index < 12; index += 1) {
+      const ticker = 'SMK' + String(index + 1).padStart(2, '0');
+      const clone = template.cloneNode(true);
+      clone.removeAttribute('id');
+      clone.removeAttribute('data-nav-tab');
+      clone.removeAttribute('data-nav-index');
+      clone.classList.add('stage3-nav-smoke-clone');
+      clone.textContent = ticker;
+      clone.setAttribute('aria-label', 'Margin: ' + ticker);
+      strip.appendChild(clone);
+      clones.push(clone);
+    }
+    const nav = document.querySelector('#tickerTabs');
+    const navBounds = nav.getBoundingClientRect();
+    const cloneBounds = clones.map((clone) => clone.getBoundingClientRect());
+    const result = {
+      stripDisplay: getComputedStyle(strip).display,
+      navWidth: nav.clientWidth,
+      navScrollWidth: nav.scrollWidth,
+      navBounds: { left: navBounds.left, right: navBounds.right },
+      cloneBounds: cloneBounds.map(({ left, right, top }) => ({ left, right, top })),
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+      fixedDestinationVisible: Boolean(document.querySelector('#settingsBtn')?.getClientRects().length)
+    };
+    clones.forEach((clone) => clone.remove());
+    return result;
+  });
+
+  if (mobileMeasurements.stripDisplay !== 'contents' || mobileMeasurements.navWidth < 200) {
+    throw new Error('The mobile ticker destinations are not merged into the centered navigation group.');
+  }
+  if (new Set(mobileMeasurements.cloneBounds.map(({ top }) => Math.round(top))).size < 2) {
+    throw new Error('A long mobile ticker list did not wrap within the centered navigation group.');
+  }
+  if (mobileMeasurements.cloneBounds.some(({ left, right }) =>
+    left < mobileMeasurements.navBounds.left - 1 || right > mobileMeasurements.navBounds.right + 1
+  )) {
+    throw new Error('A mobile ticker destination is clipped by the centered navigation group.');
+  }
+  if (mobileMeasurements.documentWidth > mobileMeasurements.viewportWidth + 1) {
+    throw new Error('A long mobile ticker list caused page-level horizontal overflow: ' + JSON.stringify(mobileMeasurements));
+  }
+  if (!mobileMeasurements.fixedDestinationVisible) {
+    throw new Error('Fixed workspace destinations disappeared beside a long mobile ticker list.');
+  }
+
+  await page.setViewportSize({ width: 1024, height: 900 });
+  const desktopMeasurements = await page.locator('.workspace-nav-ticker-list').evaluate((strip) => {
+    const template = strip.querySelector('button');
+    if (!template) throw new Error('The ticker navigation strip has no destination to extend.');
+    const clones = [];
+    for (let index = 0; index < 12; index += 1) {
+      const ticker = 'SMK' + String(index + 1).padStart(2, '0');
+      const clone = template.cloneNode(true);
+      clone.removeAttribute('id');
+      clone.removeAttribute('data-nav-tab');
+      clone.removeAttribute('data-nav-index');
+      clone.classList.add('stage3-nav-smoke-clone');
+      clone.textContent = ticker;
+      clone.setAttribute('aria-label', 'Margin: ' + ticker);
+      strip.appendChild(clone);
+      clones.push(clone);
+    }
+    const result = {
+      clientWidth: strip.clientWidth,
+      scrollWidth: strip.scrollWidth,
+      stripWidth: strip.getBoundingClientRect().width,
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+      fixedDestinationVisible: Boolean(document.querySelector('#settingsBtn')?.getClientRects().length)
+    };
+    clones.forEach((clone) => clone.remove());
+    return result;
+  });
+
+  if (desktopMeasurements.stripWidth < 200 || desktopMeasurements.clientWidth < 200) {
+    throw new Error('The desktop ticker strip does not receive usable width.');
+  }
+  if (desktopMeasurements.scrollWidth <= desktopMeasurements.clientWidth + 20) {
+    throw new Error('A long desktop ticker list did not become independently scrollable.');
+  }
+  if (desktopMeasurements.documentWidth > desktopMeasurements.viewportWidth + 1) {
+    throw new Error('A long desktop ticker list caused page-level horizontal overflow: ' + JSON.stringify(desktopMeasurements));
+  }
+  if (!desktopMeasurements.fixedDestinationVisible) {
+    throw new Error('Fixed workspace destinations disappeared beside a long ticker list.');
   }
 }
 
@@ -512,6 +624,8 @@ try {
   for (const width of [320, 360, 390, 768, 1024, 1440]) {
     await assertResponsiveLayout(page, width);
   }
+
+  await assertManyTickerNavigation(page);
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // Exercise roving keyboard navigation through the full destination list.
@@ -576,14 +690,6 @@ try {
   // source. A second sync must reuse those results and create no backup traffic.
   worker.failNextStateConflict();
   const previousConflicts = worker.stateConflictCount();
-  const previousStateWrites = worker.count('POST', '/api/state');
-  const syncButton = page.locator('#syncPortfolioButton');
-  await syncButton.waitFor({ state: 'visible', timeout: 20_000 });
-  await syncButton.click();
-  await waitForCondition(
-    () => worker.count('POST', '/api/state') > previousStateWrites,
-    'initial manual sync cloud push'
-  );
   await waitForCondition(
     () => worker.stateConflictCount() > previousConflicts,
     'cloud state revision conflict response'
@@ -598,6 +704,10 @@ try {
   };
   const previousSecondSyncWrites = worker.count('POST', '/api/state');
   const previousSecondSyncTrades = worker.countAction('freedom-trades');
+  await page.locator('#settingsBtn').click();
+  await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  const syncButton = page.locator('#settingsDesk button[aria-label="Sync portfolio"]');
+  await syncButton.waitFor({ state: 'visible', timeout: 10_000 });
   await syncButton.click();
   await waitForCondition(
     () => worker.count('POST', '/api/state') > previousSecondSyncWrites,

@@ -21,6 +21,7 @@ function jsonResponse(body, status = 200, revision = null) {
 const FREEDOM_TRADENET_SESSION_TTL_MS = 30 * 60 * 1000;
 const FREEDOM_TRADENET_RATE_LIMIT_BASE_MS = 60 * 1000;
 const FREEDOM_TRADENET_RATE_LIMIT_MAX_MS = 15 * 60 * 1000;
+const FREEDOM_TRADENET_SOCKET_CONNECT_TIMEOUT_MS = 12_000;
 
 function sanitizeFreedomTradeNetLoginError(value) {
   if (typeof value !== "string") return null;
@@ -528,7 +529,10 @@ export class PortfolioStateDO {
     const sid = await this.getFreedomTradeNetSession();
     const url = new URL("https://wss.tradernet.com/");
     url.searchParams.set("SID", sid);
-    const response = await fetch(url.toString(), { headers: { Upgrade: "websocket" } });
+    const response = await fetch(url.toString(), {
+      headers: { Upgrade: "websocket" },
+      signal: AbortSignal.timeout(FREEDOM_TRADENET_SOCKET_CONNECT_TIMEOUT_MS)
+    });
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {
       const error = new Error("TradeNet rejected the persistent portfolio/orders WebSocket connection.");
@@ -882,7 +886,8 @@ export class PortfolioStateDO {
     const url = new URL("https://wss.tradernet.com/");
     url.searchParams.set("SID", sid);
     const response = await fetch(url.toString(), {
-      headers: { Upgrade: "websocket" }
+      headers: { Upgrade: "websocket" },
+      signal: AbortSignal.timeout(FREEDOM_TRADENET_SOCKET_CONNECT_TIMEOUT_MS)
     });
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {

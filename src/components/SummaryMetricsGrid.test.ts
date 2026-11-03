@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { getMarginTranchePreview, getMarginTrancheQuantity, getMarginTrancheQuantities, getUsableMarketPrice } from './SummaryMetricsGrid';
 
@@ -12,6 +13,20 @@ describe('usable margin market prices', () => {
     expect(getUsableMarketPrice(null)).toBeNull();
     expect(getUsableMarketPrice(undefined)).toBeNull();
     expect(getUsableMarketPrice('')).toBeNull();
+  });
+});
+
+describe('portfolio metric quote updates', () => {
+  it('updates the displayed quote without remounting or animating its metric element', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    const priceMetricStart = source.indexOf('id="boardPrice"');
+    const priceMetricEnd = source.indexOf('>', priceMetricStart);
+    const priceMetric = source.slice(priceMetricStart, priceMetricEnd);
+
+    expect(priceMetricStart).toBeGreaterThan(-1);
+    expect(priceMetric).not.toContain('key=');
+    expect(priceMetric).not.toContain('quote-flash');
+    expect(source).not.toContain('previousPricesRef');
   });
 });
 

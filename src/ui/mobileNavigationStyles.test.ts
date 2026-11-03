@@ -3,43 +3,48 @@ import { describe, expect, it } from 'vitest';
 
 const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 const navigationComponent = readFileSync(new URL('../components/TickerTab.tsx', import.meta.url), 'utf8');
-const marker = '/* Mobile workspace navigation wraps without hiding destinations. */';
+const marker = '/* Keep the ticker strip independent on desktop and merge it into the centered';
 const markerIndex = stylesheet.lastIndexOf(marker);
 const mobileNavigationStyles = markerIndex >= 0 ? stylesheet.slice(markerIndex) : '';
 
 describe('mobile workspace navigation styles', () => {
-  it('wraps every destination into visible rows on narrow screens', () => {
+  it('centers all destinations together in one wrapping group on small screens', () => {
     expect(mobileNavigationStyles).toMatch(/@media\s*\(max-width:\s*768px\)/);
     expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*flex-wrap:\s*wrap;/);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*justify-content:\s*center;/);
     expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*overflow-x:\s*visible;/);
-    expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*overflow-y:\s*visible;/);
-    expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*scroll-snap-type:\s*none;/);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{\s*display:\s*contents;/);
   });
 
-  it('defines the navigation layout once and avoids competing desktop/mobile overflow rules', () => {
-    expect(mobileNavigationStyles.match(/#tickerTabs\s*\{/g) || []).toHaveLength(2);
-    expect(mobileNavigationStyles.match(/#tickerTabs>\*\s*\{/g) || []).toHaveLength(2);
-    expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s);
-    expect(mobileNavigationStyles).toMatch(/@media\s*\(max-width:\s*768px\)\s*\{\s*#tickerTabs\s*\{[^}]*flex-wrap:\s*wrap;[^}]*overflow-x:\s*visible;/s);
-    expect(stylesheet.match(/#tickerTabs\s*\{/g) || []).toHaveLength(2);
+  it('keeps the ticker strip independently scrollable on larger screens', () => {
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*flex:\s*0\s+1\s+min\(52vw,\s*52rem\)/s);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*overflow-x:\s*auto;/s);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*min-width:\s*0;/s);
+    expect(mobileNavigationStyles).toMatch(/\.workspace-nav-ticker-list>\*\s*\{[^}]*flex:\s*0\s+0\s+auto;/s);
+    expect(stylesheet.match(/#tickerTabs\s*\{/g) || []).toHaveLength(3);
   });
 
-  it('uses compact Combined and ticker captions only on phone-sized screens', () => {
+  it('allows the mobile header flex row and workspace container to shrink around the ticker scroll region', () => {
+    expect(stylesheet).toMatch(/@media\s*\(max-width:\s*768px\)[\s\S]*?\.board-header-banner\s*>\s*\.flex\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/);
+    expect(stylesheet).toMatch(/@media\s*\(max-width:\s*768px\)[\s\S]*?#tickerTabs\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/);
+  });
+
+  it('keeps compact phone captions and groups ticker choices separately from fixed destinations', () => {
     expect(mobileNavigationStyles).toMatch(/@media\s*\(max-width:\s*480px\)/);
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-label--desktop\s*\{\s*display:\s*none;/);
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-label--mobile\s*\{\s*display:\s*inline;/);
-    expect(navigationComponent).toContain('<span class="workspace-nav-label--mobile">COMBINED</span>');
-    expect(navigationComponent).toContain('<span class="workspace-nav-label--mobile">{tickers[0]}</span>');
-    expect(navigationComponent).toContain('<span class="workspace-nav-label--desktop">COMBINED PORTFOLIO</span>');
-    expect(navigationComponent).toContain('aria-label="Combined portfolio"');
-    expect(navigationComponent).toContain('Margin: ${tickers[0]}');
-    expect(mobileNavigationStyles).toMatch(/\.workspace-nav-equity-badge--admin\s*\{\s*display:\s*none;/);
+    expect(navigationComponent).toContain('class="workspace-nav-ticker-list"');
+    expect(navigationComponent).toContain("aria-label={translateText('MARGIN DESK', getAppLanguage())}");
+    expect(navigationComponent).toContain("translateText('COMBINED PORTFOLIO', getAppLanguage())");
+    expect(navigationComponent).toContain("translateText('BALANCE', getAppLanguage())");
+    expect(navigationComponent).toContain("translateText('LOTS', getAppLanguage())");
+    expect(navigationComponent).toContain("translateText('TRADES', getAppLanguage())");
+    expect(navigationComponent).toContain("translateText('Settings', getAppLanguage())");
+  });
+
+  it('retains the Balance equity badge and its partial-valuation accessible name', () => {
     expect(navigationComponent).toContain("isAdmin ? 'workspace-nav-equity-badge--admin' : ''");
-    expect(navigationComponent).toContain('class={`workspace-nav-equity-badge');
-    expect(navigationComponent).toContain("aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}");
-    expect(navigationComponent).toContain('aria-hidden="true"');
-    expect(navigationComponent).not.toContain('aria-label="Balance"');
-    expect(navigationComponent).toContain('aria-label="Trades"');
-    expect(navigationComponent).toContain('aria-label="Settings"');
+    expect(navigationComponent).toContain("aria-label={`" + "$" + "{translateText('Balance', getAppLanguage())}: " + "$" + "{equityBadgeText}. " + "$" + "{equityBadgeTitle}`}");
+    expect(mobileNavigationStyles).toMatch(/\.workspace-nav-equity-badge--admin\s*\{\s*display:\s*none;/);
   });
 });

@@ -452,6 +452,34 @@ export function calculateAccruedFees(
   return Number.isFinite(total) ? Number(total.toFixed(2)) : 0;
 }
 
+/** Find the first projected breakeven day while applying daily cent rounding once per day. */
+export function findProjectionBreakevenDay(
+  gross: number,
+  totalComms: number,
+  marginCharged: number,
+  debt: number,
+  dailyRate: number,
+  maxDays: number
+): number | undefined {
+  const principal = Math.abs(debt);
+  const todayNet = Number((gross - calculateAccruedFees(totalComms, marginCharged, 0)).toFixed(2));
+  if (todayNet <= 0) return 0;
+  if (debt <= 0 || dailyRate <= 0) return undefined;
+
+  let projectedDebt = principal;
+  for (let day = 1; day <= maxDays; day++) {
+    projectedDebt = Number((projectedDebt * (1 + dailyRate)).toFixed(2));
+    if (!Number.isFinite(projectedDebt)) projectedDebt = 0;
+    const projectedFees = calculateAccruedFees(
+      totalComms,
+      marginCharged,
+      projectedDebt - principal
+    );
+    if (Number((gross - projectedFees).toFixed(2)) <= 0) return day;
+  }
+  return undefined;
+}
+
 export function calculateBreakevenDays(
   netTargetProfit: number,
   totalDebt: number,
