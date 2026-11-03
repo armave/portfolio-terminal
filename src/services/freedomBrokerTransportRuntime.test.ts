@@ -143,7 +143,9 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
       'freedom-portfolio-snapshot', 'freedom-positions', 'freedom-positions'
     ]);
-    expect(proxyFetch.mock.calls.every(([, , options]) => options?.cache === 'no-store')).toBe(true);
+    expect(proxyFetch.mock.calls.every(([, , options]) =>
+      (options as { cache?: string } | undefined)?.cache === 'no-store'
+    )).toBe(true);
     expect(recordMetric).toHaveBeenCalledWith('provider_fallback', {
       operation: 'freedom_portfolio',
       from: 'websocket_snapshot',
@@ -227,7 +229,9 @@ describe('Freedom broker transport runtime', () => {
     ]);
     expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
     expect(proxyFetch.mock.calls.slice(1).every(([action, params, options]) =>
-      action === 'freedom-orders' && params?.active_only === 1 && options?.cache === 'no-store'
+      action === 'freedom-orders' &&
+      (params as { active_only?: number } | undefined)?.active_only === 1 &&
+      (options as { cache?: string } | undefined)?.cache === 'no-store'
     )).toBe(true);
     expect(recordMetric).toHaveBeenCalledWith('provider_fallback', {
       operation: 'freedom_active_orders',
