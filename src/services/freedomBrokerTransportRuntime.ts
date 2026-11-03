@@ -46,6 +46,9 @@ export function createFreedomBrokerTransportRuntime(
 
   const testFreedomTradeNetQuoteStream = (symbol: string): Promise<unknown> => {
     const normalized = symbol.trim().toUpperCase();
+    if (!normalized) {
+      return Promise.reject(new Error('Enter one valid TradeNet ticker symbol.'));
+    }
     const ticker = normalized.includes('.') ? normalized : `${normalized}.US`;
     if (!/^[A-Z0-9.^=-]{1,32}$/.test(ticker)) {
       return Promise.reject(new Error('Enter one valid TradeNet ticker symbol.'));
