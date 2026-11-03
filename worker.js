@@ -368,6 +368,7 @@ async function createFreedomDiagnosticSession(env) {
 async function diagnoseFreedomOrdersStream(env) {
     const sid = await createFreedomDiagnosticSession(env);
     const startedAt = Date.now();
+    let sanitizedOrders = { order: [] };
     const diagnostics = {
         endpoint: "wss.tradernet.com",
         phase: "connecting",
@@ -390,7 +391,12 @@ async function diagnoseFreedomOrdersStream(env) {
         socketErrorObserved: false,
         closeCode: null
     };
-    const snapshot = () => ({ ...diagnostics, eventCounts: { ...diagnostics.eventCounts }, elapsedMs: Date.now() - startedAt });
+    const snapshot = () => ({
+        ...diagnostics,
+        eventCounts: { ...diagnostics.eventCounts },
+        ordersSnapshot: sanitizedOrders,
+        elapsedMs: Date.now() - startedAt
+    });
 
     return await new Promise((resolve, reject) => {
         let socket = null;
@@ -492,7 +498,8 @@ async function diagnoseFreedomOrdersStream(env) {
                             ]);
                             diagnostics.ordersPayloadItemKeys = Object.keys(firstOrder).filter(key => safeKeys.has(key)).sort();
                         }
-                        const safeOrders = sanitizeFreedomActiveOrders(orderPayload).orders.order;
+                        sanitizedOrders = sanitizeFreedomActiveOrders(orderPayload).orders;
+                        const safeOrders = sanitizedOrders.order;
                         diagnostics.ordersPreviewCount = safeOrders.length;
                         diagnostics.ordersPreview = safeOrders.slice(0, 10).map(({ order_id, ...order }) => order);
                     } else if (eventName === "error") {
@@ -824,16 +831,18 @@ export default {
                     return jsonError("Freedom orders stream diagnostic only supports GET.", 405, corsHeaders);
                 }
                 try {
-                    const diagnostics = await diagnoseFreedomOrdersStream(env);
+                    const result = await diagnoseFreedomOrdersStream(env);
+                    const { ordersSnapshot, ...diagnostics } = result;
                     const eventsConfirmed = diagnostics.connectionOpened &&
                         diagnostics.userDataReceived && diagnostics.ordersEventReceived;
                     return new Response(JSON.stringify({
                         ok: eventsConfirmed,
                         provider: "Freedom TradeNet",
                         message: eventsConfirmed
-                            ? "Authenticated orders stream delivered userData and orders events."
-                            : "WebSocket diagnostic completed; inspect the event flags and phase.",
-                        diagnostics
+                            ? "Authenticated orders snapshot delivered by the TradeNet WebSocket."
+                            : "WebSocket snapshot completed; inspect the event flags and phase.",
+                        diagnostics,
+                        ...(eventsConfirmed ? { data: { orders: ordersSnapshot } } : {})
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
                     const status = Number(error?.status);
