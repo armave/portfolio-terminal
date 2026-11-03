@@ -955,6 +955,8 @@ function sanitizeFreedomStreamQuote(payload, requestedSymbol) {
     if (!quote) {
         throw new Error("TradeNet quote stream did not return the requested symbol.");
     }
+    // UTCOffset and acc_srv_tm are public quote timing metadata; pass them through
+    // only when present so clients can assess timestamps without guessing a zone.
     const allowedFields = new Set([
         "c", "n", "mrg", "ltr", "kind", "type", "name", "name2", "bbp", "bbc",
         "bbs", "bbf", "bap", "bac", "bas", "baf", "pp", "op", "ltp", "lts",
