@@ -160,9 +160,9 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         : kind === 'websocket'
           ? await testFreedomTradeNetOrdersStream()
           : kind === 'reconciliation'
-            ? (() => testFreedomTradeNetPortfolioReconciliation().then((snapshots) =>
-                compareFreedomPortfolioSnapshots(snapshots.websocket, snapshots.rest)))()
-            : await testFreedomTradeNetEventStream(kind);
+          ? await testFreedomTradeNetPortfolioReconciliation().then((snapshots) =>
+              compareFreedomPortfolioSnapshots(snapshots.websocket, snapshots.rest))
+          : await testFreedomTradeNetEventStream(kind);
       setTradeNetTest({ kind, loading: false, result });
     } catch (error) {
       setTradeNetTest({
