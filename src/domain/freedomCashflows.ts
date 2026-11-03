@@ -250,10 +250,10 @@ export function getFreedomCashflowRefreshStartDate(
     const text = String(row.date || '').trim();
     let timestamp = NaN;
     const excelSerial = Number(text);
-    if (/^\\d{4,6}(?:\\.\\d+)?$/.test(text) && excelSerial > 20000 && excelSerial < 100000) {
+    if (/^\d{4,6}(?:\.\d+)?$/.test(text) && excelSerial > 20000 && excelSerial < 100000) {
       timestamp = Date.UTC(1899, 11, 30) + excelSerial * 86_400_000;
     } else {
-      const dmy = text.match(/^(\\d{1,2})[.-](\\d{1,2})[.-](\\d{4})$/);
+      const dmy = text.match(/^(\d{1,2})[.-](\d{1,2})[.-](\d{4})$/);
       if (dmy) {
         timestamp = Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
       } else {
