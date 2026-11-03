@@ -110,6 +110,138 @@ export function normalizeFreedomActiveOrders(response: unknown): FreedomActiveOr
   });
 }
 
+export interface FreedomPortfolioDifference {
+  path: string;
+  websocketValue: string | number | null;
+  restValue: string | number | null;
+  delta?: number;
+}
+
+export interface FreedomPortfolioComparison {
+  matches: boolean;
+  tolerance: number;
+  websocket: { accounts: number; positions: number };
+  rest: { accounts: number; positions: number };
+  differenceCount: number;
+  differences: FreedomPortfolioDifference[];
+}
+
+/**
+ * Compare two broker snapshots after applying the app's existing USD-only
+ * normalizer. This is a pure diagnostic: it never mutates portfolio state.
+ */
+export function compareFreedomPortfolioSnapshots(
+  websocketResponse: unknown,
+  restResponse: unknown,
+  tolerance = 0.01
+): FreedomPortfolioComparison {
+  const websocket = normalizeFreedomPortfolio(websocketResponse);
+  const rest = normalizeFreedomPortfolio(restResponse);
+  const allowedTolerance = Number.isFinite(tolerance) && tolerance >= 0 ? tolerance : 0.01;
+  const differences: FreedomPortfolioDifference[] = [];
+
+  const addDifference = (difference: FreedomPortfolioDifference) => {
+    if (differences.length < 100) differences.push(difference);
+  };
+  const compareValue = (
+    path: string,
+    websocketValue: string | number | null,
+    restValue: string | number | null
+  ) => {
+    if (typeof websocketValue === 'number' && typeof restValue === 'number') {
+      const delta = websocketValue - restValue;
+      if (Math.abs(delta) > allowedTolerance) {
+        addDifference({ path, websocketValue, restValue, delta });
+      }
+      return;
+    }
+    if (websocketValue !== restValue) {
+      addDifference({ path, websocketValue, restValue });
+    }
+  };
+  const compareRows = <T>(
+    label: string,
+    websocketRows: T[],
+    restRows: T[],
+    keyOf: (row: T, index: number) => string,
+    fields: Array<keyof T>
+  ) => {
+    if (websocketRows.length !== restRows.length) {
+      addDifference({
+        path: `${label}.count`,
+        websocketValue: websocketRows.length,
+        restValue: restRows.length,
+        delta: websocketRows.length - restRows.length
+      });
+    }
+    const restByKey = new Map<string, T[]>();
+    restRows.forEach((row, index) => {
+      const key = keyOf(row, index);
+      const values = restByKey.get(key) || [];
+      values.push(row);
+      restByKey.set(key, values);
+    });
+    const consumed = new Map<string, number>();
+    websocketRows.forEach((row, index) => {
+      const key = keyOf(row, index);
+      const occurrence = consumed.get(key) || 0;
+      consumed.set(key, occurrence + 1);
+      const counterpart = restByKey.get(key)?.[occurrence];
+      if (!counterpart) {
+        addDifference({ path: `${label}[${key}].missing_in_rest`, websocketValue: "present", restValue: null });
+        return;
+      }
+      fields.forEach((field) => {
+        const websocketValue = row[field];
+        const restValue = counterpart[field];
+        if (
+          websocketValue === null || typeof websocketValue === 'string' || typeof websocketValue === 'number'
+        ) {
+          if (restValue === null || typeof restValue === 'string' || typeof restValue === 'number') {
+            compareValue(`${label}[${key}].${String(field)}`, websocketValue as string | number | null, restValue as string | number | null);
+          }
+        }
+      });
+    });
+    restRows.forEach((row, index) => {
+      const key = keyOf(row, index);
+      const websocketCount = consumed.get(key) || 0;
+      const restCount = (restByKey.get(key) || []).length;
+      const alreadyReported = differences.some((difference) => difference.path === `${label}[${key}].missing_in_rest`);
+      if (restCount > websocketCount && !alreadyReported) {
+        addDifference({ path: `${label}[${key}].missing_in_websocket`, websocketValue: null, restValue: "present" });
+      }
+    });
+  };
+
+  compareRows(
+    'balances',
+    websocket.balances,
+    rest.balances,
+    (row, index) => `${row.currency}#${index}`,
+    ['currency', 'amount', 'forecastIn', 'forecastOut', 't2In', 't2Out']
+  );
+  compareRows(
+    'positions',
+    websocket.positions,
+    rest.positions,
+    (row, index) => {
+      const ticker = row.ticker.trim().toUpperCase();
+      return ticker || `row#${index}`;
+    },
+    ['ticker', 'name', 'quantity', 'currency', 'marketPrice', 'marketValue', 'averagePrice', 'profitClose']
+  );
+
+  return {
+    matches: differences.length === 0,
+    tolerance: allowedTolerance,
+    websocket: { accounts: websocket.balances.length, positions: websocket.positions.length },
+    rest: { accounts: rest.balances.length, positions: rest.positions.length },
+    differenceCount: differences.length,
+    differences
+  };
+}
+
 /** Normalize the documented USD account fields without converting currencies or inventing values. */
 export function normalizeFreedomPortfolio(response: unknown): FreedomPortfolioSnapshot {
   const envelope = asRecord(response);
