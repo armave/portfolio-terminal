@@ -59,18 +59,17 @@ export function createFreedomBrokerTransportRuntime(
     operation: string
   ): Promise<unknown> => {
     syncStreamSnapshotScope();
-    const inFlight = streamSnapshotRequests.get(key);
-    if (inFlight) return inFlight;
-    if (attemptedStreamSnapshots.has(key)) {
-      dependencies.recordMetric?.('stream_snapshot_skipped', { operation, reason: 'already_attempted_this_session' });
-      return requestRest();
+    const cached = streamSnapshotRequests.get(key);
+    if (cached) {
+      dependencies.recordMetric?.('stream_snapshot_cache_hit', { operation });
+      return cached;
     }
 
-    // Mark before dispatch: failures and provider rate limits must not cause
-    // the scheduler to reopen this one-shot socket on every refresh interval.
+    // The first load is the only attempt for this app session. Cache the final
+    // outcome (WebSocket snapshot OR one REST recovery request), not merely the
+    // in-flight promise, so scheduler ticks never repeat backup REST traffic.
     attemptedStreamSnapshots.add(key);
-    let request: Promise<unknown>;
-    request = (async () => {
+    const request = (async () => {
       try {
         return await requestSnapshot();
       } catch {
@@ -81,9 +80,7 @@ export function createFreedomBrokerTransportRuntime(
         });
         return requestRest();
       }
-    })().finally(() => {
-      if (streamSnapshotRequests.get(key) === request) streamSnapshotRequests.delete(key);
-    });
+    })();
     streamSnapshotRequests.set(key, request);
     return request;
   };
@@ -97,21 +94,17 @@ export function createFreedomBrokerTransportRuntime(
     }
     const key = `quote:${ticker}`;
     syncStreamSnapshotScope();
-    const inFlight = streamSnapshotRequests.get(key);
-    if (inFlight) return inFlight;
-    if (attemptedStreamSnapshots.has(key)) {
-      dependencies.recordMetric?.('stream_snapshot_skipped', { operation: 'freedom_quote', reason: 'already_attempted_this_session' });
-      return Promise.resolve(null);
+    const cached = streamSnapshotRequests.get(key);
+    if (cached) {
+      dependencies.recordMetric?.('stream_snapshot_cache_hit', { operation: 'freedom_quote' });
+      return cached;
     }
     attemptedStreamSnapshots.add(key);
-    let request: Promise<unknown>;
-    request = dependencies.proxyFetch(
+    const request = dependencies.proxyFetch(
       'freedom-quote-stream',
       { symbol: ticker },
       { ...fetchOptions, cache: 'no-store' }
-    ).finally(() => {
-      if (streamSnapshotRequests.get(key) === request) streamSnapshotRequests.delete(key);
-    });
+    );
     streamSnapshotRequests.set(key, request);
     return request;
   };
