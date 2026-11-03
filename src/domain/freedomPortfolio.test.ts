@@ -237,7 +237,7 @@ describe('active broker tranches', () => {
       requestSequence: 42,
       requestStartedAt: receivedAt,
       price: 280.55,
-      freshness: 'unknown'
+      freshness: 'unknown' as const
     };
     const result = classifyFreedomPortfolio({
       loaded: true,
