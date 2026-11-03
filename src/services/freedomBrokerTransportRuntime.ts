@@ -11,6 +11,7 @@ export interface FreedomBrokerTransportRuntimeDependencies {
 
 export interface FreedomBrokerTransportRuntime {
   testFreedomTradeNetConnection: () => Promise<unknown>;
+  testFreedomTradeNetOrdersStream: () => Promise<unknown>;
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
@@ -28,7 +29,10 @@ export function createFreedomBrokerTransportRuntime(
   let freedomCashflowRequest: { secret: string; fromDate?: string; promise: Promise<unknown> } | null = null;
 
   const testFreedomTradeNetConnection = (): Promise<unknown> =>
-    dependencies.proxyFetch('freedom-test');
+    dependencies.proxyFetch('freedom-test', undefined, { cache: 'no-store' });
+
+  const testFreedomTradeNetOrdersStream = (): Promise<unknown> =>
+    dependencies.proxyFetch('freedom-orders-stream', undefined, { cache: 'no-store' });
 
   const fetchFreedomTradeNetPositions = (): Promise<unknown> =>
     dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
@@ -90,6 +94,7 @@ export function createFreedomBrokerTransportRuntime(
 
   return {
     testFreedomTradeNetConnection,
+    testFreedomTradeNetOrdersStream,
     fetchFreedomTradeNetPositions,
     fetchFreedomTradeNetTrades,
     fetchFreedomTradeNetActiveOrders,
