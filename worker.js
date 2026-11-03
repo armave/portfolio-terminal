@@ -420,6 +420,10 @@ async function diagnoseFreedomOrdersStream(env) {
         ordersPayloadItemKeys: [],
         ordersPreviewCount: 0,
         ordersPreview: [],
+        ordersTradeOrdersCount: 0,
+        ordersTradeCount: 0,
+        ordersTradeItemKeys: [],
+        ordersTradePreview: [],
         messageCount: 0,
         parseErrorCount: 0,
         eventCounts: {},
@@ -531,10 +535,45 @@ async function diagnoseFreedomOrdersStream(env) {
                             const safeKeys = new Set([
                                 "order_id", "id", "instr", "instr_nm", "i", "ticker", "symbol", "instrument",
                                 "oper", "operation", "type", "order_type", "p", "price", "limit_price",
-                                "q", "quantity", "leaves_qty", "remaining_qty", "remainingQuantity", "stat", "status"
+                                "q", "quantity", "leaves_qty", "remaining_qty", "remainingQuantity", "stat", "status", "trade"
                             ]);
                             diagnostics.ordersPayloadItemKeys = Object.keys(firstOrder).filter(key => safeKeys.has(key)).sort();
                         }
+                        const orderRows = Array.isArray(orderPayload) ? orderPayload
+                            : Array.isArray(orderPayload?.order) ? orderPayload.order
+                                : Array.isArray(orderPayload?.orders) ? orderPayload.orders : [];
+                        const tradeKeyAllowlist = new Set(["acd", "date", "fv", "go_sum", "id", "p", "profit", "q", "v"]);
+                        const tradeValueFields = ["acd", "fv", "go_sum", "p", "profit", "q", "v"];
+                        const tradeRows = [];
+                        for (const order of orderRows) {
+                            const executions = Array.isArray(order?.trade) ? order.trade : [];
+                            if (executions.length) diagnostics.ordersTradeOrdersCount += 1;
+                            for (const trade of executions) {
+                                if (trade && typeof trade === "object" && !Array.isArray(trade)) {
+                                    tradeRows.push({
+                                        instrument: String(order?.instr ?? order?.instr_nm ?? order?.i ?? "").slice(0, 64),
+                                        trade
+                                    });
+                                }
+                            }
+                        }
+                        diagnostics.ordersTradeCount = tradeRows.length;
+                        const firstTrade = tradeRows[0]?.trade;
+                        diagnostics.ordersTradeItemKeys = firstTrade
+                            ? Object.keys(firstTrade).filter(key => tradeKeyAllowlist.has(key)).sort()
+                            : [];
+                        diagnostics.ordersTradePreview = tradeRows.slice(0, 10).map(({ instrument, trade }) => {
+                            const preview = {};
+                            if (instrument) preview.instr = instrument;
+                            if (typeof trade.date === "string") preview.date = trade.date.slice(0, 64);
+                            for (const field of tradeValueFields) {
+                                const value = trade[field];
+                                const numeric = typeof value === "number" ? value
+                                    : typeof value === "string" && value.trim() ? Number(value) : NaN;
+                                if (Number.isFinite(numeric)) preview[field] = numeric;
+                            }
+                            return preview;
+                        });
                         sanitizedOrders = sanitizeFreedomActiveOrders(orderPayload).orders;
                         const safeOrders = sanitizedOrders.order;
                         diagnostics.ordersPreviewCount = safeOrders.length;
@@ -673,6 +712,18 @@ function summarizeFreedomStreamEvent(eventName, payload) {
         const marketKeys = new Set(["c", "date", "dt", "ev", "mkt_id", "n", "n2", "o", "p", "post", "s", "tz"]);
         const marketSample = rows[0];
         const marketItemKeys = marketSample ? keys(marketSample).filter(key => marketKeys.has(key)) : [];
+        // Market status and opening/closing times are exchange-level public data.
+        // Return only the documented fields; do not forward arbitrary broker payload fields.
+        const marketValueFields = ["n", "n2", "s", "o", "c", "dt"];
+        const marketPreview = rows.filter(isRecord).slice(0, 50).map(row => {
+            const market = {};
+            for (const field of marketValueFields) {
+                const value = row[field];
+                if (typeof value === "string") market[field] = value.slice(0, 64);
+                else if (typeof value === "number" && Number.isFinite(value)) market[field] = value;
+            }
+            return market;
+        });
         return {
             event: eventName,
             payloadType,
@@ -681,11 +732,13 @@ function summarizeFreedomStreamEvent(eventName, payload) {
                 ["m", "t"].filter(key => Object.prototype.hasOwnProperty.call(payload || {}, key))
                     .map(key => [key, describeRedactedValueType(payload[key])])
             ),
+            serverTime: typeof payload?.t === "string" ? payload.t.slice(0, 40) : null,
             marketsCount: rows.length,
             marketItemKeys,
             marketItemTypes: marketSample && isRecord(marketSample)
                 ? Object.fromEntries(marketItemKeys.map(key => [key, describeRedactedValueType(marketSample[key])]))
-                : {}
+                : {},
+            marketPreview
         };
     }
     if (eventName === "quotes") {

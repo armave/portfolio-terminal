@@ -79,7 +79,14 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
         queueMicrotask(() => {
           for (const callback of listeners.get('message') || []) {
             callback({ data: JSON.stringify(['userData', { isDemo: false, mode: 'prod', account: 'private-account' }]) });
-            callback({ data: JSON.stringify(['orders', [{ id: 77, instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 2, leaves_qty: 2, stat: 'active', account: 'private-account' }]]) });
+            callback({ data: JSON.stringify(['orders', [{
+              id: 77, instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 2,
+              leaves_qty: 2, stat: 'active', account: 'private-account',
+              trade: [{
+                id: 999999, date: '2026-11-03T09:40:00', p: 352.5, q: 2, v: 705,
+                profit: 0, acd: 0, fv: 1, go_sum: 100, owner_login: 'private-login'
+              }]
+            }]]) });
           }
         });
       }),
@@ -119,18 +126,29 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
     });
     expect(body.diagnostics).toMatchObject({
       ordersPayloadType: 'array',
-      ordersPayloadItemKeys: ['id', 'instr', 'leaves_qty', 'oper', 'p', 'q', 'stat', 'type'],
+      ordersPayloadItemKeys: ['id', 'instr', 'leaves_qty', 'oper', 'p', 'q', 'stat', 'trade', 'type'],
       ordersPreviewCount: 1,
       ordersPreview: [{
         instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 2, leaves_qty: 2, stat: 'active'
+      }],
+      ordersTradeOrdersCount: 1,
+      ordersTradeCount: 1,
+      ordersTradeItemKeys: ['acd', 'date', 'fv', 'go_sum', 'id', 'p', 'profit', 'q', 'v'],
+      ordersTradePreview: [{
+        instr: 'GOOGL.US', date: '2026-11-03T09:40:00',
+        p: 352.5, q: 2, v: 705, profit: 0, acd: 0, fv: 1, go_sum: 100
       }]
     });
     expect(body.data.orders.order).toEqual([{
       order_id: '77', instr: 'GOOGL.US', oper: 3, type: 2,
       p: 353, q: 2, leaves_qty: 2, stat: 'active'
     }]);
-    expect(JSON.stringify(body)).not.toContain('private-account');
+    const serializedOrders = JSON.stringify(body);
+    for (const privateValue of ['private-account', 'private-login', '999999']) {
+      expect(serializedOrders).not.toContain(privateValue);
+    }
     expect(body.diagnostics.ordersPreview[0]).not.toHaveProperty('order_id');
+    expect(body.diagnostics.ordersTradePreview[0]).not.toHaveProperty('id');
     expect(String(fetchMock.mock.calls[1][0])).toMatch(/^https:\/\/wss\.tradernet\.com\//);
     expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('SID')).toBe('s'.repeat(48));
     expect(socket.close).toHaveBeenCalled();
@@ -277,13 +295,14 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(socket.close).toHaveBeenCalled();
   });
 
-  it('reports all observed market metadata types without returning market names, schedules, or statuses', async () => {
+  it('returns documented public market status and schedule fields while stripping unrelated payload data', async () => {
     const { response, socket } = await runEventDiagnostic('markets', {
       t: '2026-11-03 09:00:00',
       m: [{
-        c: '16:00', date: Array(12).fill('redacted'), dt: -420,
+        c: '16:00:00', date: Array(12).fill('redacted'), dt: -420,
         ev: Array(8).fill('redacted'), mkt_id: 1, n: 'NASDAQ', n2: 'NASDAQ',
-        o: '09:30', p: 'pre', post: 'post', s: 'OPEN', tz: 'America/New_York'
+        o: '09:30:00', p: 'pre', post: 'post', s: 'OPEN',
+        tz: 'America/New_York', private_field: 'private-market-value'
       }]
     }, { isDemo: false, mode: 'prod' });
     expect(response.status).toBe(200);
@@ -299,6 +318,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
           m: { type: 'array', length: 1, item: { type: 'object' } },
           t: 'string'
         },
+        serverTime: '2026-11-03 09:00:00',
         marketsCount: 1,
         marketItemKeys: ['c', 'date', 'dt', 'ev', 'mkt_id', 'n', 'n2', 'o', 'p', 'post', 's', 'tz'],
         marketItemTypes: {
@@ -309,14 +329,37 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
           mkt_id: 'number',
           n: 'string', n2: 'string', o: 'string', p: 'string',
           post: 'string', s: 'string', tz: 'string'
-        }
+        },
+        marketPreview: [{
+          n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN',
+          o: '09:30:00', c: '16:00:00', dt: -420
+        }]
       }
     });
     const serialized = JSON.stringify(body);
-    for (const secret of ['NASDAQ', 'OPEN', '09:30', '16:00', 'America/New_York', 'redacted']) {
-      expect(serialized).not.toContain(secret);
+    for (const privateValue of ['America/New_York', 'redacted', 'pre', 'post', 'private-market-value']) {
+      expect(serialized).not.toContain(privateValue);
     }
+    expect(body.data.marketPreview[0]).toEqual({
+      n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN',
+      o: '09:30:00', c: '16:00:00', dt: -420
+    });
     expect(socket.close).toHaveBeenCalled();
+  });
+
+  it('does not subscribe to security-session events as a market schedule source', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-event-stream&event=sessions',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), { GATEWAY_SECRET: 'test-secret' });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: 'Unsupported TradeNet stream event. Allowed events: portfolio, markets.'
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized USD portfolio snapshot for read-only REST reconciliation', async () => {
