@@ -229,6 +229,68 @@ describe('active broker tranches', () => {
     });
   });
 
+  it('preserves the latest TradeNet WebSocket quote when account or history reclassification has no ltt timestamp', () => {
+    const receivedAt = 1_800_000_000_000;
+    const websocketQuote = {
+      transport: 'websocket',
+      receivedAt,
+      requestSequence: 42,
+      requestStartedAt: receivedAt,
+      price: 280.55,
+      freshness: 'unknown'
+    };
+    const result = classifyFreedomPortfolio({
+      loaded: true,
+      balances: [],
+      positions: [
+        { ticker: 'GOOGL.US', quantity: 5, marketPrice: 265 },
+        { ticker: 'AAPL.US', quantity: 3, marketPrice: 190 }
+      ]
+    }, {
+      GOOGL: {
+        ticker: 'GOOGL',
+        shares: 5,
+        currentPrice: 280.55,
+        pt: 300,
+        commBuy: 0,
+        quoteUpdatedAt: receivedAt,
+        quoteRequestStartedAt: receivedAt,
+        quoteRequestSequence: 42,
+        quoteSource: 'Freedom TradeNet',
+        quoteDetails: websocketQuote
+      }
+    }, [{
+      ticker: 'AAPL',
+      shares: 3,
+      currentPrice: 195.25,
+      price: 195.25,
+      quoteUpdatedAt: receivedAt,
+      quoteRequestStartedAt: receivedAt,
+      quoteRequestSequence: 42,
+      quoteSource: 'Freedom TradeNet',
+      quoteDetails: { ...websocketQuote, price: 195.25 }
+    }], { GOOGL: 'margin' }, receivedAt);
+
+    // This is the same reclassification used when the Trades section refreshes
+    // executed history. Broker mkt_price is older and has no observation time.
+    expect(result.positions.GOOGL).toMatchObject({
+      currentPrice: 280.55,
+      quoteUpdatedAt: receivedAt,
+      quoteRequestStartedAt: receivedAt,
+      quoteRequestSequence: 42,
+      quoteSource: 'Freedom TradeNet',
+      quoteDetails: websocketQuote
+    });
+    expect(result.cashStocks[0]).toMatchObject({
+      ticker: 'AAPL',
+      currentPrice: 195.25,
+      price: 195.25,
+      quoteUpdatedAt: receivedAt,
+      quoteSource: 'Freedom TradeNet',
+      quoteDetails: { ...websocketQuote, price: 195.25 }
+    });
+  });
+
   it('allows a broker snapshot to replace a cached price without source-timestamp provenance', () => {
     const result = classifyFreedomPortfolio({
       loaded: true,
