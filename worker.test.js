@@ -2295,13 +2295,157 @@ describe('guest data isolation at the Worker boundary', () => {
     const historyResponse = await worker.fetch(new Request('https://worker.test/api/history', { headers }), env);
     const tradesResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-trades', { headers }), env);
     const positionsResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-positions', { headers }), env);
+    const ordersStreamResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-orders-stream', { headers }), env);
+    const portfolioSnapshotResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-portfolio-snapshot', { headers }), env);
+    const cashflowsResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows', { headers }), env);
+    const portfolioEventResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-event-stream&event=portfolio', { headers }), env);
 
     expect(stateResponse.status).toBe(403);
     expect(historyResponse.status).toBe(403);
     expect(tradesResponse.status).toBe(403);
     expect(positionsResponse.status).toBe(403);
-    expect(stateStub.fetch).toHaveBeenCalledTimes(4);
+    expect(ordersStreamResponse.status).toBe(403);
+    expect(portfolioSnapshotResponse.status).toBe(403);
+    expect(cashflowsResponse.status).toBe(403);
+    expect(portfolioEventResponse.status).toBe(403);
+    expect(stateStub.fetch).toHaveBeenCalledTimes(8);
     expect(stateStub.fetch.mock.calls.every(([request]) => new URL(request.url).pathname === '/api/auth/verify')).toBe(true);
+  });
+
+  it('allows guests to receive the sanitized public q quote stream through the server-side broker session', async () => {
+    const listeners = new Map();
+    const socket = {
+      addEventListener: vi.fn((name, callback) => {
+        const callbacks = listeners.get(name) || [];
+        callbacks.push(callback);
+        listeners.set(name, callbacks);
+      }),
+      accept: vi.fn(),
+      send: vi.fn((message) => {
+        expect(JSON.parse(message)).toEqual(['quotes', ['GOOGL.US']]);
+        queueMicrotask(() => {
+          for (const callback of listeners.get('message') || []) {
+            callback({ data: JSON.stringify(['userData', { isDemo: false, mode: 'prod' }]) });
+            callback({ data: JSON.stringify(['q', {
+              c: 'GOOGL.US', ltp: 280.55, pp: 279.84, chg: 0.71,
+              pcp: 0.25, bbp: 280.5, bap: 280.6, vol: 1234,
+              ltt: '2026-11-03T10:00:00', UTCOffset: -300
+            }]) });
+          }
+        });
+      }),
+      close: vi.fn()
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 101, headers: new Headers(), webSocket: socket
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const stateStub = {
+      fetch: vi.fn(async (request) => {
+        const pathname = new URL(request.url).pathname;
+        if (pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        if (pathname === '/internal/freedom-tradenet-session') {
+          return new Response(JSON.stringify({ ok: true, sid: 's'.repeat(48), expiresInSeconds: 1800 }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        throw new Error('Unexpected Durable Object path: ' + pathname);
+      })
+    };
+    const namespace = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn(() => stateStub)
+    };
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'guest-session-token', Authorization: 'Bearer guest-session-token' } }
+    ), { PORTFOLIO_STATE_DO: namespace });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      source: 'authenticated_websocket',
+      symbol: 'GOOGL.US',
+      data: { q: [{ c: 'GOOGL.US', ltp: 280.55, bbp: 280.5, bap: 280.6 }] }
+    });
+    expect(namespace.idFromName).toHaveBeenCalledWith('freedom-tradenet-auth-session:v1');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(socket.close).toHaveBeenCalled();
+  });
+
+  it('allows guests to read public markets events but not private portfolio events', async () => {
+    const makeSocket = (event, payload) => {
+      const listeners = new Map();
+      const socket = {
+        addEventListener: vi.fn((name, callback) => {
+          const callbacks = listeners.get(name) || [];
+          callbacks.push(callback);
+          listeners.set(name, callbacks);
+        }),
+        accept: vi.fn(),
+        send: vi.fn((message) => {
+          expect(JSON.parse(message)).toEqual([event]);
+          queueMicrotask(() => {
+            for (const callback of listeners.get('message') || []) {
+              callback({ data: JSON.stringify(['userData', { isDemo: false, mode: 'prod' }]) });
+              callback({ data: JSON.stringify([event, payload]) });
+            }
+          });
+        }),
+        close: vi.fn()
+      };
+      return socket;
+    };
+    const socket = makeSocket('markets', {
+      m: [{ n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN', o: '09:30:00', c: '16:00:00', dt: -420 }],
+      t: '2026-11-03T10:00:00'
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 101, headers: new Headers(), webSocket: socket
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const stateStub = {
+      fetch: vi.fn(async (request) => {
+        const pathname = new URL(request.url).pathname;
+        if (pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        if (pathname === '/internal/freedom-tradenet-session') {
+          return new Response(JSON.stringify({ ok: true, sid: 's'.repeat(48), expiresInSeconds: 1800 }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        throw new Error('Unexpected Durable Object path: ' + pathname);
+      })
+    };
+    const namespace = { idFromName: vi.fn((name) => name), get: vi.fn(() => stateStub) };
+    const headers = { 'X-App-Auth': 'guest-session-token', Authorization: 'Bearer guest-session-token' };
+
+    const marketsResponse = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-event-stream&event=markets', { headers }
+    ), { PORTFOLIO_STATE_DO: namespace });
+    expect(marketsResponse.status).toBe(200);
+    await expect(marketsResponse.json()).resolves.toMatchObject({
+      ok: true,
+      event: 'markets',
+      data: { marketPreview: [{ n: 'NASDAQ', s: 'OPEN', o: '09:30:00', c: '16:00:00', dt: -420 }] }
+    });
+
+    const portfolioResponse = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-event-stream&event=portfolio', { headers }
+    ), { PORTFOLIO_STATE_DO: namespace });
+    expect(portfolioResponse.status).toBe(403);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(stateStub.fetch.mock.calls.filter(([request]) =>
+      new URL(request.url).pathname === '/api/auth/verify'
+    )).toHaveLength(2);
   });
 
   it('routes the guest endpoint without exposing the shared-state route', async () => {
