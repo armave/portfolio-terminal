@@ -1253,6 +1253,7 @@ const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
   isVisible: () => !document.hidden,
   refreshQuotes: () => refreshAllLivePrices(),
   refreshSupplemental: () => refreshSupplementalPortfolioData(),
+  syncState: () => currentAccountRole === 'admin' ? pushStateToCloud(true) : undefined,
   onError: (source, error) => {
     const message = error instanceof Error ? error.message : String(error);
     logTerminal(`[Auto Update Warning]: ${source} refresh failed (${message}).`);

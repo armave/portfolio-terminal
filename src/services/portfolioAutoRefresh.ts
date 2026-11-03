@@ -5,7 +5,7 @@ export const DEFAULT_GUEST_REFRESH_INTERVAL_MS = 15_000;
 const SUPPLEMENTAL_REFRESH_INTERVAL_MS = 60_000;
 
 type PortfolioAutoRefreshRole = 'admin' | 'guest' | null;
-type QuoteRefreshSource = 'quotes' | 'supplemental';
+type QuoteRefreshSource = 'quotes' | 'supplemental' | 'state-sync';
 
 export function isSupportedQuoteRefreshInterval(value: unknown): boolean {
   if (value === null || value === undefined) return false;
@@ -28,6 +28,8 @@ interface PortfolioAutoRefreshSchedulerOptions {
   isVisible: () => boolean;
   refreshQuotes: () => void | Promise<unknown>;
   refreshSupplemental: () => void | Promise<unknown>;
+  /** Sync the current admin portfolio snapshot after each scheduled quote cycle. */
+  syncState?: () => void | Promise<unknown>;
   onError?: (source: QuoteRefreshSource, error: unknown) => void;
   setIntervalFn?: (callback: () => void, intervalMs: number) => ReturnType<typeof setInterval>;
   clearIntervalFn?: (timer: ReturnType<typeof setInterval>) => void;
@@ -53,6 +55,7 @@ export function createPortfolioAutoRefreshScheduler(
   let activeRole: PortfolioAutoRefreshRole = null;
   let quoteInFlight: Promise<boolean> | null = null;
   let supplementalInFlight: Promise<boolean> | null = null;
+  let stateSyncInFlight: Promise<boolean> | null = null;
 
   const stopTimers = () => {
     if (quoteTimer !== null) clearIntervalFn(quoteTimer);
@@ -71,7 +74,8 @@ export function createPortfolioAutoRefreshScheduler(
     source: QuoteRefreshSource,
     task: () => void | Promise<unknown>
   ): Promise<boolean> => {
-    const existing = source === 'quotes' ? quoteInFlight : supplementalInFlight;
+    const existing = source === 'quotes' ? quoteInFlight
+      : source === 'supplemental' ? supplementalInFlight : stateSyncInFlight;
     if (existing) return existing;
 
     let request: Promise<boolean>;
@@ -85,11 +89,23 @@ export function createPortfolioAutoRefreshScheduler(
       .finally(() => {
         if (source === 'quotes' && quoteInFlight === request) quoteInFlight = null;
         if (source === 'supplemental' && supplementalInFlight === request) supplementalInFlight = null;
+        if (source === 'state-sync' && stateSyncInFlight === request) stateSyncInFlight = null;
       });
 
     if (source === 'quotes') quoteInFlight = request;
-    else supplementalInFlight = request;
+    else if (source === 'supplemental') supplementalInFlight = request;
+    else stateSyncInFlight = request;
     return request;
+  };
+
+  const refreshQuotesAndSyncState = async (): Promise<boolean> => {
+    const quotes = await runTask('quotes', options.refreshQuotes);
+
+    // Only administrators own the shared portfolio cloud record. Guests refresh
+    // their own server-scoped snapshot through the supplemental path, read-only.
+    if (activeRole !== 'admin' || !options.syncState || !canRefresh()) return quotes;
+    const synced = await runTask('state-sync', options.syncState);
+    return quotes && synced;
   };
 
   const refreshNow = async (): Promise<boolean> => {
@@ -101,11 +117,11 @@ export function createPortfolioAutoRefreshScheduler(
       return runTask('supplemental', options.refreshSupplemental);
     }
 
-    const [quotes, supplemental] = await Promise.all([
-      runTask('quotes', options.refreshQuotes),
+    const [quotesAndSync, supplemental] = await Promise.all([
+      refreshQuotesAndSyncState(),
       runTask('supplemental', options.refreshSupplemental)
     ]);
-    return quotes && supplemental;
+    return quotesAndSync && supplemental;
   };
 
   const configure = (interval: unknown, role: PortfolioAutoRefreshRole): number => {
@@ -118,8 +134,10 @@ export function createPortfolioAutoRefreshScheduler(
 
     if (!role || activeInterval === 0) return activeInterval;
 
+    // One selected cadence controls both quote refresh/stream maintenance and
+    // the cloud-state checkpoint that follows it.
     quoteTimer = setIntervalFn(() => {
-      if (canRefresh()) void runTask('quotes', options.refreshQuotes);
+      if (canRefresh()) void refreshQuotesAndSyncState();
     }, activeInterval);
     supplementalTimer = setIntervalFn(() => {
       if (canRefresh()) void runTask('supplemental', options.refreshSupplemental);
