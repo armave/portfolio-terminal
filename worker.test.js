@@ -380,7 +380,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(body).toMatchObject({
       ok: true,
       provider: 'Freedom TradeNet',
-      marketStatus: { market: 'US equities', code: 'FIX', status: 'OPEN', source: 'FIX' }
+      marketStatus: { market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX' }
     });
     expect(body).not.toHaveProperty('markets');
     expect(body).not.toHaveProperty('marketPreview');
@@ -402,7 +402,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.marketStatus).toEqual({
-      market: 'US equities', code: 'US', status: 'MIXED', source: 'US_EXCHANGES'
+      market: 'US equities', code: 'US', status: 'MARKET', source: 'US_EXCHANGES'
     });
     expect(Object.keys(body)).toEqual(['ok', 'provider', 'marketStatus', 'updatedAt']);
   });
@@ -2547,7 +2547,7 @@ describe('guest data isolation at the Worker boundary', () => {
     expect(marketsResponse.status).toBe(200);
     await expect(marketsResponse.json()).resolves.toMatchObject({
       ok: true,
-      marketStatus: { market: 'US equities', code: 'US', status: 'OPEN', source: 'US_EXCHANGES' }
+      marketStatus: { market: 'US equities', code: 'US', status: 'MARKET', source: 'US_EXCHANGES' }
     });
 
     const diagnosticResponse = await worker.fetch(new Request(
