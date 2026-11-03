@@ -445,6 +445,7 @@ const guestPortfolioHydrationRuntime = createGuestPortfolioHydrationRuntime({
   },
   getGuestPortfolioSnapshot,
   getActiveView: () => portfolioStore.getState().activeView,
+  getCurrentCashHoldings: () => portfolioStore.getState().cashCushion?.holdings || [],
   createCleanWorkspaceState,
   importGuestWorkspace: (guestWorkspace) => {
     portfolioStore.importState(guestWorkspace);
