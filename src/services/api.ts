@@ -304,6 +304,47 @@ export const clearFreedomTradeNetStreamSnapshotCache = freedomBrokerTransportRun
 export const fetchFreedomCashflows = freedomBrokerTransportRuntime.fetchFreedomCashflows;
 export const clearFreedomCashflowCache = freedomBrokerTransportRuntime.clearFreedomCashflowCache;
 
+export interface FreedomQuoteStreamTicket {
+  ticket: string;
+  expiresAt: number;
+  symbols: string[];
+}
+
+/** Mint a one-use, short-lived ticket for the authenticated browser WebSocket. */
+export async function createFreedomQuoteStreamTicket(tickers: string[]): Promise<FreedomQuoteStreamTicket> {
+  const symbols = [...new Set(tickers.map((ticker) => {
+    const normalized = ticker.trim().toUpperCase();
+    return normalized && !normalized.includes('.') ? `${normalized}.US` : normalized;
+  }).filter(Boolean))];
+  if (symbols.length < 1 || symbols.length > 10 || symbols.some((symbol) => !/^[A-Z0-9.^=-]{1,32}$/.test(symbol))) {
+    throw new Error('Select between 1 and 10 valid tickers for the live quote stream.');
+  }
+  const response = await proxyFetch(
+    'freedom-quote-stream-ticket',
+    { symbols: symbols.join(',') },
+    { cache: 'no-store' }
+  );
+  if (response?.ok !== true || typeof response.ticket !== 'string' || !/^[a-f0-9]{64}$/i.test(response.ticket)) {
+    throw new Error(response?.error || 'The server did not issue a valid quote stream ticket.');
+  }
+  return {
+    ticket: response.ticket,
+    expiresAt: Number(response.expiresAt) || 0,
+    symbols
+  };
+}
+
+/** Build the browser-visible Worker WebSocket URL; it contains only a one-use ticket, never the broker SID. */
+export function buildFreedomQuoteStreamSocketUrl(ticket: string): string {
+  if (!/^[a-f0-9]{64}$/i.test(ticket)) throw new Error('A valid quote stream ticket is required.');
+  const url = new URL(WORKER_PROXY_URL);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.searchParams.set('action', 'freedom-quote-socket');
+  url.searchParams.set('ticket', ticket);
+  return url.toString();
+}
+
+
 const guestPortfolioPublicationFingerprints = new Map<string, string>();
 const guestPortfolioPublicationRequests = new Map<string, Promise<void>>();
 
