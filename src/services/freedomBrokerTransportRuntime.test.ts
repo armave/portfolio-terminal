@@ -106,7 +106,7 @@ describe('Freedom broker transport runtime', () => {
     });
   });
 
-  it('requests the portfolio WebSocket snapshot only once and uses REST on later refreshes', async () => {
+  it('reuses the initial portfolio WebSocket snapshot without recurring REST backups', async () => {
     const websocket = {
       ok: true,
       source: 'authenticated_websocket',
@@ -118,15 +118,14 @@ describe('Freedom broker transport runtime', () => {
     });
 
     await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(websocket);
-    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(rest);
-    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(rest);
+    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(websocket);
+    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(websocket);
 
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-portfolio-snapshot', 'freedom-positions', 'freedom-positions'
+      'freedom-portfolio-snapshot'
     ]);
-    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_skipped', {
-      operation: 'freedom_portfolio',
-      reason: 'already_attempted_this_session'
+    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_cache_hit', {
+      operation: 'freedom_portfolio'
     });
   });
 
@@ -141,7 +140,7 @@ describe('Freedom broker transport runtime', () => {
     await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(rest);
     await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(rest);
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-portfolio-snapshot', 'freedom-positions', 'freedom-positions'
+      'freedom-portfolio-snapshot', 'freedom-positions'
     ]);
     expect(proxyFetch.mock.calls.every(([, , options]) =>
       (options as { cache?: string } | undefined)?.cache === 'no-store'
@@ -151,9 +150,8 @@ describe('Freedom broker transport runtime', () => {
       from: 'websocket_snapshot',
       to: 'rest'
     });
-    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_skipped', {
-      operation: 'freedom_portfolio',
-      reason: 'already_attempted_this_session'
+    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_cache_hit', {
+      operation: 'freedom_portfolio'
     });
   });
 
@@ -210,7 +208,7 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch).not.toHaveBeenCalled();
   });
 
-  it('falls back to the existing REST active-orders endpoint when the WebSocket snapshot fails', async () => {
+  it('uses the REST active-orders fallback only once when the initial WebSocket snapshot fails', async () => {
     const restSnapshot = { orders: { order: [{ order_id: 'rest-1', instr: 'GOOGL.US' }] } };
     const proxyFetch = vi.fn()
       .mockResolvedValueOnce({ ok: false, error: 'WebSocket snapshot timed out.' })
@@ -225,7 +223,7 @@ describe('Freedom broker transport runtime', () => {
     await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(restSnapshot);
     await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(restSnapshot);
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-orders-stream', 'freedom-orders', 'freedom-orders'
+      'freedom-orders-stream', 'freedom-orders'
     ]);
     expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
     expect(proxyFetch.mock.calls.slice(1).every(([action, params, options]) =>
@@ -238,13 +236,12 @@ describe('Freedom broker transport runtime', () => {
       from: 'websocket_snapshot',
       to: 'rest'
     });
-    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_skipped', {
-      operation: 'freedom_active_orders',
-      reason: 'already_attempted_this_session'
+    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_cache_hit', {
+      operation: 'freedom_active_orders'
     });
   });
 
-  it('requests the active-orders WebSocket snapshot only once and uses REST on later refreshes', async () => {
+  it('reuses the initial active-orders WebSocket snapshot without recurring REST backups', async () => {
     const websocket = { ok: true, data: { orders: { order: [] } } };
     const rest = { orders: { order: [{ order_id: 'rest-order', instr: 'GOOGL.US' }] } };
     const { runtime, proxyFetch, recordMetric } = createRuntime({
@@ -252,15 +249,14 @@ describe('Freedom broker transport runtime', () => {
     });
 
     await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(websocket.data);
-    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(rest);
-    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(rest);
+    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(websocket.data);
+    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(websocket.data);
 
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-orders-stream', 'freedom-orders', 'freedom-orders'
+      'freedom-orders-stream'
     ]);
-    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_skipped', {
-      operation: 'freedom_active_orders',
-      reason: 'already_attempted_this_session'
+    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_cache_hit', {
+      operation: 'freedom_active_orders'
     });
   });
 
@@ -320,11 +316,10 @@ describe('Freedom broker transport runtime', () => {
     resolveQuote(quote);
     await expect(Promise.all([first, concurrent])).resolves.toEqual([quote, quote]);
 
-    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('GOOGL.US')).resolves.toBeNull();
+    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('GOOGL.US')).resolves.toEqual(quote);
     expect(proxyFetch).toHaveBeenCalledTimes(1);
-    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_skipped', {
-      operation: 'freedom_quote',
-      reason: 'already_attempted_this_session'
+    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_cache_hit', {
+      operation: 'freedom_quote'
     });
   });
 
@@ -336,7 +331,7 @@ describe('Freedom broker transport runtime', () => {
     });
 
     await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).rejects.toThrow('429 rate limited');
-    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).resolves.toBeNull();
+    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).rejects.toThrow('429 rate limited');
     expect(proxyFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -352,7 +347,7 @@ describe('Freedom broker transport runtime', () => {
     });
 
     await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).resolves.toEqual({ version: 1 });
-    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).resolves.toBeNull();
+    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).resolves.toEqual({ version: 1 });
     secret = 'token-B';
     await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).resolves.toEqual({ version: 2 });
     runtime.clearFreedomStreamSnapshotCache();
