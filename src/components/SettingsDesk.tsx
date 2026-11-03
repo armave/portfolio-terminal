@@ -161,13 +161,17 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       testFreedomTradeNetQuoteStream(normalizedSymbol),
       fetchFreedomQuote(normalizedSymbol, true)
     ]);
-    const websocketPayload = websocketResult.status === 'fulfilled'
-      ? websocketResult.value
+    const websocketPayload = websocketResult.status === 'fulfilled' && websocketResult.value &&
+      typeof websocketResult.value === 'object'
+      ? websocketResult.value as { data?: { q?: unknown[] } }
       : null;
     const websocketQuote = websocketPayload
-      ? normalizeFreedomQuote(websocketPayload?.data, normalizedSymbol)
+      ? normalizeFreedomQuote(websocketPayload.data, normalizedSymbol)
       : null;
-    const websocketRow = websocketPayload?.data?.q?.[0] ?? null;
+    const websocketCandidate = websocketPayload?.data?.q?.[0];
+    const websocketRow = websocketCandidate && typeof websocketCandidate === 'object'
+      ? websocketCandidate as Record<string, unknown>
+      : null;
     const restQuote = restResult.status === 'fulfilled' ? restResult.value : null;
     const delta = (left: number | null | undefined, right: number | null | undefined) =>
       typeof left === 'number' && Number.isFinite(left) &&
