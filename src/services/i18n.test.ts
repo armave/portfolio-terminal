@@ -22,10 +22,10 @@ describe('app localization', () => {
   });
 
   it('localizes the full portfolio sync button and outcome messages', () => {
-    expect(translateText('Automatic portfolio data refresh interval', 'ru')).toBe('Интервал автоматического обновления данных портфеля');
+    expect(translateText('Mandatory automatic portfolio sync interval', 'ru')).toBe('Обязательный интервал автоматической синхронизации портфеля');
     expect(translateText('Sync portfolio', 'ru')).toBe('Синхронизировать портфель');
-    expect(translateText('Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the live account stream is not healthy. Returning to the app refreshes all data.', 'ru'))
-      .toBe('Котировки и портфель синхронизируются с облаком с выбранным интервалом. Баланс брокера, позиции, сделки и заявки обновляются каждые 60 секунд, если поток счёта не работает корректно. При возвращении в приложение все данные обновляются.');
+    expect(translateText('Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.', 'ru'))
+      .toContain('Котировки, состояние портфеля в облаке, резервные данные брокера, сделки, заявки, денежные операции и история закрытых сделок обновляются с выбранным интервалом.');
 
     expect(translateText('Portfolio sync completed.', 'ru')).toBe('Синхронизация портфеля завершена.');
     expect(translateText('Portfolio sync completed with issues. Check the activity log.', 'ru'))
