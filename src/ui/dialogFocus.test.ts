@@ -8,9 +8,10 @@ interface FocusableOptions {
 }
 
 
-interface FakeTreeElement extends HTMLElement {
+interface FakeTreeElement {
   children: FakeTreeElement[];
   parentElement: FakeTreeElement | null;
+  ownerDocument: { body: FakeTreeElement } | null;
   inert: boolean;
   attributes: Map<string, string>;
   appendChild(child: FakeTreeElement): void;
@@ -24,6 +25,7 @@ function makeTreeElement(name: string): FakeTreeElement {
     name,
     children: [] as FakeTreeElement[],
     parentElement: null as FakeTreeElement | null,
+    ownerDocument: null as { body: FakeTreeElement } | null,
     inert: false,
     attributes: new Map<string, string>(),
     appendChild(child: FakeTreeElement) {
@@ -39,18 +41,18 @@ function makeTreeElement(name: string): FakeTreeElement {
     removeAttribute(attribute: string) {
       this.attributes.delete(attribute);
     }
-  } as unknown as FakeTreeElement;
+  } as FakeTreeElement;
   return element;
 }
 
 function connectTreeToBody(body: FakeTreeElement, root: FakeTreeElement): void {
-  const document = { body } as unknown as Document;
+  const document = { body };
   const visit = (element: FakeTreeElement) => {
-    Object.defineProperty(element, 'ownerDocument', { configurable: true, value: document });
+    element.ownerDocument = document;
     element.children.forEach(visit);
   };
   visit(root);
-  Object.defineProperty(body, 'ownerDocument', { configurable: true, value: document });
+  body.ownerDocument = document;
 }
 
 let focused: string[] = [];
@@ -100,10 +102,10 @@ describe('dialog focus management', () => {
     appRoot.appendChild(authOverlay);
     authOverlay.appendChild(dialog);
     connectTreeToBody(body, appRoot);
-    Object.defineProperty(unrelatedBodyWidget, 'ownerDocument', { value: { body } });
+    unrelatedBodyWidget.ownerDocument = { body };
 
     workspace.setAttribute('aria-hidden', 'false');
-    const restore = isolateDialogBackground(dialog);
+    const restore = isolateDialogBackground(dialog as unknown as HTMLElement);
 
     expect(workspace.inert).toBe(true);
     expect(workspace.getAttribute('aria-hidden')).toBe('true');
@@ -135,8 +137,8 @@ describe('dialog focus management', () => {
     overlayTwo.appendChild(dialogTwo);
     connectTreeToBody(body, appRoot);
 
-    const restoreOne = isolateDialogBackground(dialogOne);
-    const restoreTwo = isolateDialogBackground(dialogTwo);
+    const restoreOne = isolateDialogBackground(dialogOne as unknown as HTMLElement);
+    const restoreTwo = isolateDialogBackground(dialogTwo as unknown as HTMLElement);
     expect(workspace.inert).toBe(true);
 
     restoreOne();
