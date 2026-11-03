@@ -2343,7 +2343,8 @@ describe('guest data isolation at the Worker boundary', () => {
 
     const stateStub = {
       fetch: vi.fn(async (request) => {
-        const pathname = new URL(request.url).pathname;
+        const requestUrl = typeof request === 'string' ? request : request.url;
+        const pathname = new URL(requestUrl).pathname;
         if (pathname === '/api/auth/verify') {
           return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), {
             status: 200, headers: { 'Content-Type': 'application/json' }
@@ -2411,7 +2412,8 @@ describe('guest data isolation at the Worker boundary', () => {
     vi.stubGlobal('fetch', fetchMock);
     const stateStub = {
       fetch: vi.fn(async (request) => {
-        const pathname = new URL(request.url).pathname;
+        const requestUrl = typeof request === 'string' ? request : request.url;
+        const pathname = new URL(requestUrl).pathname;
         if (pathname === '/api/auth/verify') {
           return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), {
             status: 200, headers: { 'Content-Type': 'application/json' }
@@ -2451,7 +2453,8 @@ describe('guest data isolation at the Worker boundary', () => {
   it('routes the guest endpoint without exposing the shared-state route', async () => {
     const stateStub = {
       fetch: vi.fn(async (request) => {
-        const pathname = new URL(request.url).pathname;
+        const requestUrl = typeof request === 'string' ? request : request.url;
+        const pathname = new URL(requestUrl).pathname;
         if (pathname === '/api/auth/verify') {
           return new Response(JSON.stringify({ user: { id: 'guest-1', role: 'guest' } }), {
             status: 200, headers: { 'Content-Type': 'application/json' }
