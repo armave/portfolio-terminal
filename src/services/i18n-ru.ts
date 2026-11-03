@@ -44,7 +44,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Update Interval': 'Интервал обновления',
   'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes all data.': 'Котировки и состояние портфеля синхронизируются с облаком с выбранным интервалом. Балансы, позиции, сделки и заявки брокера обновляются каждые 60 секунд. При возвращении в приложение все данные обновляются сразу.',
   'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.': 'Котировки обновляются с выбранным интервалом. Назначенные вам активы и история ЛОТОВ обновляются каждые 60 секунд. При возвращении в приложение оба набора данных обновляются сразу.',
-  'Automatic updates are paused. Manual Sync remains available.': 'Автоматические обновления приостановлены. Ручная синхронизация по-прежнему доступна.',
   'Off': 'Выкл.',
   '15 sec': '15 сек.',
   '30 sec': '30 сек.',
@@ -296,6 +295,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Update quotes': 'Обновить котировки',
   'Refresh live quotes': 'Обновить актуальные котировки',
   'Sync portfolio': 'Синхронизировать портфель',
+  'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the live account stream is not healthy. Returning to the app refreshes all data.': 'Котировки и портфель синхронизируются с облаком с выбранным интервалом. Баланс брокера, позиции, сделки и заявки обновляются каждые 60 секунд, если поток счёта не работает корректно. При возвращении в приложение все данные обновляются.',
+
   'Portfolio sync completed.': 'Синхронизация портфеля завершена.',
   'Portfolio sync completed with issues. Check the activity log.': 'Синхронизация портфеля завершена не полностью. Проверьте журнал действий.',
   'Could not sync portfolio. Check your connection and try again.': 'Не удалось синхронизировать портфель. Проверьте подключение и повторите попытку.',
