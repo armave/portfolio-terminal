@@ -411,7 +411,8 @@ async function diagnoseFreedomOrdersStream(env) {
             const result = snapshot();
             try { socket?.close(1000, "TradeNet diagnostic finished"); } catch { /* ignore close races */ }
             if (error) {
-                error.diagnostics = result;
+                const { ordersSnapshot: _ordersSnapshot, ...safeDiagnostics } = result;
+                error.diagnostics = safeDiagnostics;
                 reject(error);
             } else {
                 resolve(result);
