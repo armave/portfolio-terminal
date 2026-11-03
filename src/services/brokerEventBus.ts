@@ -30,6 +30,7 @@ export interface BrokerEventPayloads {
   'broker:account-info-refreshing': undefined;
   'broker:account-info-error': undefined;
   'broker:executed-trades': FreedomExecutedTrade[];
+  'broker:live-order-fills': FreedomExecutedTrade[];
   'broker:executed-trades-error': undefined;
   'broker:active-orders': FreedomActiveOrder[];
   'broker:active-orders-error': undefined;
