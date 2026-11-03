@@ -65,7 +65,7 @@ describe('Freedom active orders proxy', () => {
 describe('Freedom authenticated orders WebSocket diagnostic', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('opens the SID-authenticated socket, subscribes to orders, and returns event metadata only', async () => {
+  it('opens the SID-authenticated socket and returns only a sanitized orders preview', async () => {
     const listeners = new Map();
     const socket = {
       addEventListener: vi.fn((name, callback) => {
@@ -79,7 +79,7 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
         queueMicrotask(() => {
           for (const callback of listeners.get('message') || []) {
             callback({ data: JSON.stringify(['userData', { isDemo: false, mode: 'prod', account: 'private-account' }]) });
-            callback({ data: JSON.stringify(['orders', [{ order_id: 77, account: 'private-account', price: 353 }]]) });
+            callback({ data: JSON.stringify(['orders', [{ order_id: 77, instr: 'GOOGL.US', oper: 3, type: 2, price: 353, quantity: 2, account: 'private-account' }]]) });
           }
         });
       }),
@@ -117,8 +117,16 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
         phase: 'orders_event_received'
       }
     });
+    expect(body.diagnostics).toMatchObject({
+      ordersPayloadType: 'array',
+      ordersPayloadItemKeys: ['instr', 'oper', 'price', 'quantity', 'type'],
+      ordersPreviewCount: 1,
+      ordersPreview: [{
+        instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 2, leaves_qty: 2, stat: ''
+      }]
+    });
     expect(JSON.stringify(body)).not.toContain('private-account');
-    expect(JSON.stringify(body)).not.toContain('353');
+    expect(JSON.stringify(body)).not.toContain('order_id');
     expect(String(fetchMock.mock.calls[1][0])).toMatch(/^https:\/\/wss\.tradernet\.com\//);
     expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('SID')).toBe('s'.repeat(48));
     expect(socket.close).toHaveBeenCalled();
