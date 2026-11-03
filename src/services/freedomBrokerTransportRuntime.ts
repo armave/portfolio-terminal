@@ -33,13 +33,11 @@ export function createFreedomBrokerTransportRuntime(
   let freedomCashflowCache: { secret: string; fromDate?: string; expiresAt: number; data: unknown } | null = null;
   let freedomCashflowRequest: { secret: string; fromDate?: string; promise: Promise<unknown> } | null = null;
   let streamScopeSecret = dependencies.getActiveGatewaySecret().trim();
-  const attemptedStreamSnapshots = new Set<string>();
   const streamSnapshotRequests = new Map<string, Promise<unknown>>();
 
   const syncStreamSnapshotScope = (): string => {
     const secret = dependencies.getActiveGatewaySecret().trim();
     if (secret !== streamScopeSecret) {
-      attemptedStreamSnapshots.clear();
       streamSnapshotRequests.clear();
       streamScopeSecret = secret;
     }
@@ -47,7 +45,6 @@ export function createFreedomBrokerTransportRuntime(
   };
 
   const clearFreedomStreamSnapshotCache = (): void => {
-    attemptedStreamSnapshots.clear();
     streamSnapshotRequests.clear();
     streamScopeSecret = dependencies.getActiveGatewaySecret().trim();
   };
@@ -68,7 +65,6 @@ export function createFreedomBrokerTransportRuntime(
     // The first load is the only attempt for this app session. Cache the final
     // outcome (WebSocket snapshot OR one REST recovery request), not merely the
     // in-flight promise, so scheduler ticks never repeat backup REST traffic.
-    attemptedStreamSnapshots.add(key);
     const request = (async () => {
       try {
         return await requestSnapshot();
