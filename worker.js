@@ -722,7 +722,7 @@ function summarizeFreedomStreamEvent(eventName, payload) {
         const rows = Array.isArray(container) ? container : [];
         const quoteKeys = new Set([
             "c", "symbol", "ticker", "code", "i", "instr", "instrument",
-            "n", "mrg", "ltr", "kind", "type", "name", "name2", "bbp", "bbc",
+            "n", "mrg", "ltr", "kind", "type", "name", "name2", "last", "bid", "ask", "price", "bbp", "bbc",
             "bbs", "bbf", "bap", "bac", "bas", "baf", "pp", "op", "ltp", "lts",
             "ltt", "chg", "pcp", "ltc", "mintp", "maxtp", "vol", "vlt", "trades",
             "min_step", "step_price", "p5", "chg5", "p22", "chg22", "p110",
