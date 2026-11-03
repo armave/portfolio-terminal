@@ -9,6 +9,7 @@ function createOperations(overrides: Partial<ManualPortfolioSyncOperations> = {}
     refreshExecutedTrades: vi.fn(async () => true),
     refreshActiveOrders: vi.fn(async () => true),
     pushCloud: vi.fn(async () => true),
+    syncClosedHistory: vi.fn(async () => true),
     pullGuestSnapshot: vi.fn(async () => true),
     ...overrides
   };
@@ -22,12 +23,13 @@ describe('runManualPortfolioSync', () => {
       refreshExecutedTrades: async () => { sequence.push('trades'); return true; },
       refreshActiveOrders: async () => { sequence.push('orders'); return true; },
       refreshQuotes: async () => { sequence.push('quotes'); return true; },
-      pushCloud: async () => { sequence.push('cloud'); return true; }
+      pushCloud: async () => { sequence.push('cloud'); return true; },
+      syncClosedHistory: async () => { sequence.push('cloud-history'); return true; }
     }));
-    expect(sequence).toEqual(['account', 'trades', 'orders', 'quotes', 'cloud']);
+    expect(sequence).toEqual(['account', 'trades', 'orders', 'quotes', 'cloud', 'cloud-history']);
     expect(result).toEqual({
       role: 'admin', brokerAccount: true, executedTrades: true, activeOrders: true,
-      quotes: true, cloud: true, success: true
+      quotes: true, cloud: true, cloudHistory: true, success: true
     });
   });
 
@@ -42,6 +44,7 @@ describe('runManualPortfolioSync', () => {
     expect(result.activeOrders).toBe(true);
     expect(result.quotes).toBe(true);
     expect(result.cloud).toBe(true);
+    expect(result.cloudHistory).toBe(true);
   });
 
   it('limits guest sync to its own snapshot and quotes', async () => {
@@ -52,6 +55,7 @@ describe('runManualPortfolioSync', () => {
     expect(operations.refreshExecutedTrades).not.toHaveBeenCalled();
     expect(operations.refreshActiveOrders).not.toHaveBeenCalled();
     expect(operations.pushCloud).not.toHaveBeenCalled();
+    expect(operations.syncClosedHistory).not.toHaveBeenCalled();
   });
 
   it('refreshes the guest-owned snapshot and quote data sequentially without broker-wide reads', async () => {
@@ -70,6 +74,7 @@ describe('runManualPortfolioSync', () => {
     expect(operations.refreshExecutedTrades).not.toHaveBeenCalled();
     expect(operations.refreshActiveOrders).not.toHaveBeenCalled();
     expect(operations.pushCloud).not.toHaveBeenCalled();
+    expect(operations.syncClosedHistory).not.toHaveBeenCalled();
   });
 
   it('still refreshes guest quotes and reports a failed guest snapshot', async () => {
@@ -90,5 +95,6 @@ describe('runManualPortfolioSync', () => {
     expect(operations.refreshQuotes).not.toHaveBeenCalled();
     expect(operations.refreshBrokerAccount).not.toHaveBeenCalled();
     expect(operations.pushCloud).not.toHaveBeenCalled();
+    expect(operations.syncClosedHistory).not.toHaveBeenCalled();
   });
 });

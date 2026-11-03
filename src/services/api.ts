@@ -6,7 +6,7 @@ import { createAuthTransportRuntime } from './authTransportRuntime';
 import { createFreedomBrokerTransportRuntime } from './freedomBrokerTransportRuntime';
 import { createMarketDataTransportRuntime } from './marketDataTransportRuntime';
 export type { AuthUser, AuthSession } from './authTransportRuntime';
-export type { SyncOptions } from './cloudStateSyncRuntime';
+export type { SyncOptions, CloudHistoryPushOptions } from './cloudStateSyncRuntime';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '../types/portfolio';

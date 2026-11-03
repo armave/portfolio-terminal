@@ -9,6 +9,7 @@ export interface ManualPortfolioSyncResult {
   activeOrders?: boolean;
   guestSnapshot?: boolean;
   cloud?: boolean;
+  cloudHistory?: boolean;
 }
 
 export interface ManualPortfolioSyncOperations {
@@ -18,6 +19,7 @@ export interface ManualPortfolioSyncOperations {
   refreshExecutedTrades: () => Promise<boolean>;
   refreshActiveOrders: () => Promise<boolean>;
   pushCloud: () => Promise<boolean>;
+  syncClosedHistory: () => Promise<boolean>;
   pullGuestSnapshot: () => Promise<boolean>;
 }
 
@@ -42,6 +44,7 @@ export async function runManualPortfolioSync(
     ]);
     const quotes = await trySync(operations.refreshQuotes);
     const cloud = await trySync(operations.pushCloud);
+    const cloudHistory = await trySync(operations.syncClosedHistory);
     return {
       role: 'admin',
       brokerAccount,
@@ -49,7 +52,8 @@ export async function runManualPortfolioSync(
       activeOrders,
       quotes,
       cloud,
-      success: brokerAccount && executedTrades && activeOrders && quotes && cloud
+      cloudHistory,
+      success: brokerAccount && executedTrades && activeOrders && quotes && cloud && cloudHistory
     };
   }
 
