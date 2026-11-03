@@ -46,9 +46,16 @@ describe('US-equities market status presentation', () => {
     expect(getMarketStatusTone('CLOSED')).toBe('closed');
   });
 
+  it('does not mount a duplicate status badge inside the Balance desk', () => {
+    const source = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+    expect(source).not.toContain('MarketStatusBadge');
+    expect(source).not.toContain('useState<AuthUser | null>(null)');
+  });
+
   it('keeps the status badge in the shared header without gating it on currentUser state', () => {
     const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
     expect(appSource).toContain('<MarketStatusBadge isAdmin={permissions.isAdmin} />');
     expect(appSource).not.toContain('{currentUser && <MarketStatusBadge');
+    expect(appSource).not.toContain('{permissions.isAdmin && <MarketStatusBadge');
   });
 });
