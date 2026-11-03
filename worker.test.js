@@ -469,6 +469,71 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('surfaces TradeNet documented errMsg/code login failures in sanitized diagnostics', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      errMsg: 'Bad json',
+      code: 2
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: false,
+      error: 'TradeNet rejected the login request: Bad json',
+      diagnostics: {
+        phase: 'login_response_validation',
+        providerErrorFieldPresent: true,
+        providerErrorCode: 2,
+        providerErrorMessage: 'Bad json',
+        failedChecks: [
+          'success_not_true',
+          'logged_not_true',
+          'sid_missing_or_invalid',
+          'production_session_not_confirmed',
+          'provider_returned_login_error'
+        ]
+      }
+    });
+    expect(JSON.stringify(body)).not.toContain('broker-login');
+    expect(JSON.stringify(body)).not.toContain('broker-password');
+    expect(JSON.stringify(body)).not.toContain('SID');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('redacts email and credential-like values from provider login errors', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      errMsg: 'Invalid password for private.user@example.com (login: private-user)',
+      code: 'AUTH_DENIED'
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    const body = await response.json();
+    expect(body.diagnostics).toMatchObject({
+      providerErrorCode: 'AUTH_DENIED',
+      providerErrorMessage: 'Invalid password for [email redacted] (login=[redacted])'
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('private.user@example.com');
+    expect(serialized).not.toContain('private-user');
+    expect(serialized).not.toContain('broker-password');
+  });
+
   it('rejects an unloaded portfolio WebSocket event instead of fabricating a loaded snapshot', async () => {
     const socket = makeEventSocket('portfolio', {
       loaded: false,
