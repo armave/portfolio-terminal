@@ -150,6 +150,16 @@ describe('public Freedom US market status', () => {
     expect(requestInit.cache).toBe('no-store');
   });
 
+  it.each(['PREV', 'PRE', 'OPEN', 'POST', 'MIXED'])('rejects raw provider state %s until the Worker maps it to a UI phase', async (status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      marketStatus: { market: 'US equities', code: 'FIX', status, source: 'FIX' },
+      updatedAt: 1_800_000_000_000
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    await expect(fetchFreedomMarketStatus()).rejects.toThrow();
+  });
+
   it('rejects an absent US-equities status instead of showing an unsupported placeholder', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       ok: false, error: 'US equity market status is temporarily unavailable.'
