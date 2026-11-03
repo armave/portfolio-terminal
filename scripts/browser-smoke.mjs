@@ -430,9 +430,15 @@ async function assertVisibleControlsHaveNames(page, surface) {
         ? element.value
         : '';
       if (value) return value;
-      const content = getText(element);
+      // Native form controls such as select, input, and textarea do not
+      // derive their accessible name from child/option text. Only controls
+      // whose naming rules allow content may use their text as a fallback.
+      const allowsNameFromContent = element.matches(
+        'button, a[href], [role="button"], [role="link"], [role="tab"], [role="menuitem"]'
+      );
+      const content = allowsNameFromContent ? getText(element) : '';
       if (content && /[a-zA-ZА-Яа-яЁё0-9]/u.test(content)) return content;
-      return element.getAttribute('title')?.trim() || content;
+      return element.getAttribute('title')?.trim() || '';
     };
 
     return controls
