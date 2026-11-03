@@ -9,7 +9,7 @@ const MARKET_STATUS_REFRESH_MS = 5 * 60 * 1000;
 export type MarketSessionStatus = 'PREMARKET' | 'MARKET' | 'POSTMARKET' | 'CLOSED';
 
 export function normalizeMarketSessionStatus(status: string | null | undefined): MarketSessionStatus | null {
-  const normalized = String(status || '').trim().toUpperCase().replace(/[\\s_-]+/g, '');
+  const normalized = String(status || '').trim().toUpperCase().replaceAll(' ', '').replaceAll('_', '').replaceAll('-', '');
   switch (normalized) {
     case 'PREV':
     case 'PRE':
@@ -72,6 +72,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
     let inFlight = false;
     let refreshPending = false;
     let authenticated = false;
+    let hasLoaded = false;
 
     const refresh = async () => {
       if (!active || document.visibilityState === 'hidden') return;
@@ -80,11 +81,12 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
         return;
       }
       inFlight = true;
-      if (!snapshot) setLoading(true);
+      if (!hasLoaded) setLoading(true);
       try {
         const result = await fetchFreedomMarketStatus();
         if (!active) return;
         authenticated = true;
+        hasLoaded = true;
         setHasAuthenticatedSession(true);
         setSnapshot(result);
         setFailed(false);
@@ -104,6 +106,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
       authenticated = Boolean(event.detail.user);
       setHasAuthenticatedSession(authenticated);
       if (!authenticated) {
+        hasLoaded = false;
         setSnapshot(null);
         setFailed(false);
         setLoading(false);
