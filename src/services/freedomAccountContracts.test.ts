@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
+import { compareFreedomPortfolioSnapshots, normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
 
 describe('normalizeFreedomPortfolio', () => {
   it('accepts only record rows, scopes the snapshot to USD and preserves broker field aliases', () => {
@@ -78,6 +78,71 @@ describe('normalizeFreedomPortfolio', () => {
     });
     expect(snapshot.balances[0].amount).toBe(0);
     expect(snapshot.positions[0]).toMatchObject({ quantity: 0, marketPrice: null });
+  });
+});
+
+describe('compareFreedomPortfolioSnapshots', () => {
+  const snapshot = (amount: number, quantity: number, marketPrice: number) => ({
+    ok: true,
+    data: {
+      result: {
+        ps: {
+          loaded: true,
+          acc: [{ curr: 'USD', s: amount, currval: amount + 10, forecast_in: 2, forecast_out: 1, t2_in: 3, t2_out: 4 }],
+          pos: [{
+            curr: 'USD', i: 'GOOGL.US', name: 'Alphabet', q: quantity,
+            mkt_price: marketPrice, market_value: quantity * marketPrice,
+            bal_price_a: 280, profit_close: 100, acc_pos_id: 7
+          }]
+        }
+      }
+    }
+  });
+
+  it('reports matching normalized WebSocket and REST USD snapshots within the tolerance', () => {
+    const result = compareFreedomPortfolioSnapshots(
+      snapshot(10000, 31, 300),
+      snapshot(10000.005, 31, 300.005)
+    );
+    expect(result).toEqual({
+      matches: true,
+      tolerance: 0.01,
+      websocket: { accounts: 1, positions: 1 },
+      rest: { accounts: 1, positions: 1 },
+      differenceCount: 0,
+      differences: []
+    });
+  });
+
+  it('reports balance, position, and missing-row discrepancies without mutating either snapshot', () => {
+    const websocket = snapshot(10000, 31, 300);
+    const rest = snapshot(9990, 30, 299);
+    rest.data.result.ps.pos.push({
+      curr: 'USD', i: 'META.US', name: 'Meta', q: 2, mkt_price: 600,
+      market_value: 1200, bal_price_a: 580, profit_close: 40, acc_pos_id: 8
+    });
+    const websocketBefore = JSON.stringify(websocket);
+    const restBefore = JSON.stringify(rest);
+
+    const result = compareFreedomPortfolioSnapshots(websocket, rest);
+
+    expect(result.matches).toBe(false);
+    expect(result.differences).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'balances[USD#0].amount', websocketValue: 10000, restValue: 9990, delta: 10 }),
+      expect.objectContaining({ path: 'positions[GOOGL.US].quantity', websocketValue: 31, restValue: 30, delta: 1 }),
+      expect.objectContaining({ path: 'positions[GOOGL.US].marketPrice', websocketValue: 300, restValue: 299, delta: 1 }),
+      expect.objectContaining({ path: 'positions[META.US].missing_in_websocket', websocketValue: null, restValue: 'present' })
+    ]));
+    expect(result.differenceCount).toBe(result.differences.length);
+    expect(JSON.stringify(websocket)).toBe(websocketBefore);
+    expect(JSON.stringify(rest)).toBe(restBefore);
+  });
+
+  it('rejects a snapshot until TradeNet marks its portfolio loaded', () => {
+    expect(() => compareFreedomPortfolioSnapshots(
+      { data: { result: { ps: { loaded: false } } } },
+      snapshot(100, 1, 1)
+    )).toThrow('not loaded yet');
   });
 });
 
