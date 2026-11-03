@@ -1,12 +1,14 @@
 import { normalizeFreedomQuote } from './freedomMarketData';
 import {
   createFreedomQuoteStreamRuntime,
-  type FreedomQuoteStreamRuntime
+  type FreedomQuoteStreamRuntime,
+  type FreedomQuoteSocketLike
 } from './freedomQuoteStreamRuntime';
 
 export interface FreedomQuoteStreamAppRuntimeDependencies {
   createTicket: (tickers: string[]) => Promise<{ ticket: string }>;
   buildSocketUrl: (ticket: string) => string;
+  createSocket?: (url: string) => FreedomQuoteSocketLike;
   getCurrentSessionKey: () => string;
   nextRequestSequence: () => number;
   recordQuote: (
@@ -31,6 +33,7 @@ export function createFreedomQuoteStreamAppRuntime(
   return createFreedomQuoteStreamRuntime({
     createTicket: dependencies.createTicket,
     buildSocketUrl: dependencies.buildSocketUrl,
+    createSocket: dependencies.createSocket,
     onQuote: (message, sessionKey) => {
       const currentSessionKey = dependencies.getCurrentSessionKey();
       if (!currentSessionKey || sessionKey !== currentSessionKey) return;
