@@ -1,4 +1,4 @@
-export type FreedomAccountStreamStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+type FreedomAccountStreamStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
 export interface FreedomAccountSocketLike {
   readonly readyState: number;
