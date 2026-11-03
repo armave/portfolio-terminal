@@ -96,7 +96,9 @@ export function createPortfolioBrokerDataRuntime(
   const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
     if (isFreedomAccountStreamConnected(session.identity)) {
-      emit('broker:account-info-refresh-complete');
+      if (hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')) {
+        emit('broker:account-info-refresh-complete');
+      }
       return true;
     }
     if (hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')) {

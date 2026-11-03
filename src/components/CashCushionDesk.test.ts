@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { formatDailyQuoteRange, getActiveTrancheMarketPrice, getCashHoldingMarketPrice } from './CashCushionDesk';
+import {
+  formatDailyQuoteRange,
+  getActiveTrancheMarketPrice,
+  getAssignedGuestIds,
+  getCashHoldingMarketPrice
+} from './CashCushionDesk';
 import { mergeBrokerExecutionHistory } from '../domain/closedHistoryFees';
 
 describe('cash/margin mix inputs', () => {
@@ -13,6 +18,18 @@ describe('cash/margin mix inputs', () => {
     expect(deskSource).toContain('resolveActiveTrancheMixInput(value, tranche.quantity, mix.margin)');
     expect(deskSource).not.toContain('defaultValue={mix.cash}');
     expect(deskSource).not.toContain('defaultValue={mix.margin}');
+  });
+});
+
+describe('Balance guest grouping', () => {
+  it('uses stable assigned guest IDs rather than asynchronous directory order', () => {
+    expect(getAssignedGuestIds({
+      trancheC: 'guest-c',
+      trancheA: 'guest-a',
+      anotherTrancheA: 'guest-a',
+      unassigned: ''
+    })).toEqual(['guest-a', 'guest-c']);
+    expect(getAssignedGuestIds(undefined)).toEqual([]);
   });
 });
 
@@ -159,6 +176,18 @@ describe('Balance cache-first rendering wiring', () => {
     expect(deskSource).toContain('}, [shouldReadBrokerHistory]);');
     expect(deskSource).toContain('isAdmin && (balanceSync.status === \'stale\' || balanceSync.status === \'error\')');
     expect(deskSource).toContain('shouldReadBrokerHistory && (brokerExecutionHistory.status === \'stale\' || brokerExecutionHistory.status === \'error\')');
+  });
+
+  it('starts rendering Balance in the navigation render instead of waiting for a passive effect', () => {
+    expect(appSource).toContain("const shouldRenderCashCushion = hasOpenedCashCushion ||");
+    expect(appSource).toContain("activeDeskView === 'BALANCE';");
+    expect(appSource).toContain('{shouldRenderCashCushion');
+  });
+
+  it('subscribes Balance only to portfolio slices it renders', () => {
+    expect(deskSource).toContain('usePortfolioSelector(selectCashCushionPortfolioState, areCashCushionPortfolioStatesEqual)');
+    expect(deskSource).not.toContain('const state = usePortfolio();');
+    expect(deskSource).toContain('useMemo(() => activeTrancheSource.map');
   });
 
   it('refreshes the full Balance snapshot without a date cursor', () => {

@@ -1145,19 +1145,29 @@ async function requestLivePrice(symbol: string, force = false) {
 
 async function fetchLivePrice(ticker: string, silent = false, force = false) {
   const symbol = ticker.toUpperCase();
-  if (
-    freedomQuoteStreamRuntime?.isForSession(currentAccountRole && currentAccountId
-      ? `${currentAccountRole}:${currentAccountId}`
-      : '') &&
-    freedomQuoteStreamRuntime?.isSocketOpen() &&
-    freedomQuoteStreamRuntime.isSubscribed(symbol)
-  ) {
+  const sessionKey = currentAccountRole && currentAccountId
+    ? `${currentAccountRole}:${currentAccountId}`
+    : '';
+  const hasActiveQuoteSocket = Boolean(
+    freedomQuoteStreamRuntime?.isForSession(sessionKey) &&
+    freedomQuoteStreamRuntime.isSocketOpen()
+  );
+  if (hasActiveQuoteSocket && !freedomQuoteStreamRuntime?.isSubscribed(symbol)) {
+    await refreshAllLivePrices(force);
+  }
+  const quoteSocketIsOpenForSession = Boolean(
+    freedomQuoteStreamRuntime?.isForSession(sessionKey) &&
+    freedomQuoteStreamRuntime.isSocketOpen()
+  );
+  if (quoteSocketIsOpenForSession) {
     const trackedPrice = Number(state.positions[symbol]?.currentPrice ||
       state.cashCushion?.holdings?.find((holding: any) => holding.ticker.trim().toUpperCase() === symbol)?.price ||
       state.cashStocks?.find((holding: any) => holding.ticker.trim().toUpperCase() === symbol)?.currentPrice ||
       0);
     if (!silent) {
-      logTerminal(`[System]: ${symbol} is subscribed to the live quote socket; the REST quote backup was skipped.`);
+      logTerminal(freedomQuoteStreamRuntime?.isSubscribed(symbol)
+        ? `[System]: ${symbol} is subscribed to the live quote socket; the REST quote backup was skipped.`
+        : `[System]: ${symbol} is awaiting live quote socket subscription; the REST quote backup was skipped.`);
     }
     return Number.isFinite(trackedPrice) && trackedPrice > 0 ? trackedPrice : null;
   }
@@ -1243,6 +1253,14 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     if (connected) return true;
     throw new Error('TradeNet quote socket did not become ready.');
   } catch (streamError) {
+    const quoteSocketIsOpen = Boolean(
+      freedomQuoteStreamRuntime?.isForSession(sessionKey) &&
+      freedomQuoteStreamRuntime.isSocketOpen()
+    );
+    if (quoteSocketIsOpen) {
+      console.warn('[Freedom Quote Stream]: The browser socket remains open; REST quote backups are suppressed.', streamError);
+      return true;
+    }
     console.warn('[Freedom Quote Stream]: Unable to establish the live socket; using the one-time snapshot fallback.', streamError);
     try {
       const refreshResult = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice, force);
@@ -1275,6 +1293,14 @@ async function refreshSupplementalPortfolioData(): Promise<boolean> {
   if (currentAccountRole === 'admin') {
     const sessionKey = currentAccountId ? `admin:${currentAccountId}` : '';
     if (!sessionKey) return false;
+
+    try {
+      const accountStreamRuntime = await getFreedomAccountStreamRuntime();
+      if (`${currentAccountRole}:${currentAccountId}` !== sessionKey) return false;
+      await accountStreamRuntime.start(sessionKey);
+    } catch (streamError) {
+      console.warn('[Freedom Account Stream]: Unable to establish the private account socket before broker refresh.', streamError);
+    }
 
     // The persistent browser stream suppresses its REST backups while connected.
     // If a recovery check runs before reconnection, perform one broker catch-up.

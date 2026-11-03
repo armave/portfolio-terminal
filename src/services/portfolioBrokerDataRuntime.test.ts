@@ -135,6 +135,7 @@ describe('portfolio broker data runtime', () => {
     expect(fixture.dependencies.fetchExecutedTrades).not.toHaveBeenCalled();
     expect(fixture.dependencies.fetchActiveOrders).not.toHaveBeenCalled();
     expect(fixture.dependencies.restoreGatewaySecret).not.toHaveBeenCalled();
+    expect(fixture.events).toEqual([]);
   });
 
   it('discards a portfolio snapshot that resolves after a newer live portfolio event', async () => {

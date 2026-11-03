@@ -96,6 +96,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedGuestHistory, setHasOpenedGuestHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
+  const shouldRenderCashCushion = hasOpenedCashCushion ||
+    activeDeskView === 'CASH_CUSHION' ||
+    activeDeskView === 'BALANCE';
 
 
 
@@ -574,7 +577,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
           {/* Cash Cushion Management Panel */}
           <div id="cashCushionContainer" class={"desk-view-transition space-y-3 " + (["CASH_CUSHION", "BALANCE"].includes(activeDeskView) ? "" : "hidden")}>
-            {hasOpenedCashCushion
+            {shouldRenderCashCushion
               ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing balance" message="Loading holdings and account allocations…" accent="cyan" />}>
                 <CashCushionDesk
                   key={`balance-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
