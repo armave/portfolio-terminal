@@ -106,6 +106,30 @@ describe('Freedom broker transport runtime', () => {
     });
   });
 
+  it('requests the portfolio WebSocket snapshot only once and uses REST on later refreshes', async () => {
+    const websocket = {
+      ok: true,
+      source: 'authenticated_websocket',
+      data: { result: { ps: { loaded: true, acc: [], pos: [] } } }
+    };
+    const rest = { ok: true, data: { result: { ps: { loaded: true, acc: [], pos: [] } } } };
+    const { runtime, proxyFetch, recordMetric } = createRuntime({
+      resolve: (action) => action === 'freedom-portfolio-snapshot' ? websocket : action === 'freedom-positions' ? rest : undefined
+    });
+
+    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(websocket);
+    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(rest);
+    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(rest);
+
+    expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
+      'freedom-portfolio-snapshot', 'freedom-positions', 'freedom-positions'
+    ]);
+    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_skipped', {
+      operation: 'freedom_portfolio',
+      reason: 'already_attempted_this_session'
+    });
+  });
+
   it('falls back to getPositionJson when the WebSocket portfolio snapshot is unavailable or incomplete', async () => {
     const rest = { data: { result: { ps: { loaded: true, acc: [], pos: [] } } } };
     const { runtime, proxyFetch, recordMetric } = createRuntime({
@@ -206,6 +230,26 @@ describe('Freedom broker transport runtime', () => {
     });
   });
 
+  it('requests the active-orders WebSocket snapshot only once and uses REST on later refreshes', async () => {
+    const websocket = { ok: true, data: { orders: { order: [] } } };
+    const rest = { orders: { order: [{ order_id: 'rest-order', instr: 'GOOGL.US' }] } };
+    const { runtime, proxyFetch, recordMetric } = createRuntime({
+      resolve: (action) => action === 'freedom-orders-stream' ? websocket : action === 'freedom-orders' ? rest : undefined
+    });
+
+    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(websocket.data);
+    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(rest);
+    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(rest);
+
+    expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
+      'freedom-orders-stream', 'freedom-orders', 'freedom-orders'
+    ]);
+    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_skipped', {
+      operation: 'freedom_active_orders',
+      reason: 'already_attempted_this_session'
+    });
+  });
+
   it('returns the sanitized WebSocket order snapshot for the existing normalizer', async () => {
     const data = { orders: { order: [{
       order_id: 'active-1', instr: 'GOOGL.US', oper: 3, type: 4,
@@ -238,6 +282,68 @@ describe('Freedom broker transport runtime', () => {
     await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(emptySnapshot.data);
     expect(proxyFetch).toHaveBeenCalledTimes(1);
     expect(proxyFetch).toHaveBeenCalledWith('freedom-orders-stream', undefined, { cache: 'no-store' });
+  });
+
+  it('requests a q stream once per ticker and coalesces concurrent requests', async () => {
+    let resolveQuote!: (value: unknown) => void;
+    const proxyFetch = vi.fn(() => new Promise((resolve) => { resolveQuote = resolve; }));
+    const recordMetric = vi.fn();
+    const runtime = createFreedomBrokerTransportRuntime({
+      proxyFetch: proxyFetch as never,
+      getActiveGatewaySecret: () => 'token-A',
+      recordMetric
+    });
+
+    const first = runtime.fetchFreedomTradeNetQuoteStreamOnce('googl.us');
+    const concurrent = runtime.fetchFreedomTradeNetQuoteStreamOnce('GOOGL');
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
+    expect(proxyFetch).toHaveBeenCalledWith(
+      'freedom-quote-stream',
+      { symbol: 'GOOGL.US' },
+      { cache: 'no-store' }
+    );
+    const quote = { ok: true, source: 'authenticated_websocket', symbol: 'GOOGL.US' };
+    resolveQuote(quote);
+    await expect(Promise.all([first, concurrent])).resolves.toEqual([quote, quote]);
+
+    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('GOOGL.US')).resolves.toBeNull();
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
+    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_skipped', {
+      operation: 'freedom_quote',
+      reason: 'already_attempted_this_session'
+    });
+  });
+
+  it('does not retry a failed first q snapshot on the next quote refresh', async () => {
+    const proxyFetch = vi.fn().mockRejectedValueOnce(new Error('429 rate limited'));
+    const runtime = createFreedomBrokerTransportRuntime({
+      proxyFetch: proxyFetch as never,
+      getActiveGatewaySecret: () => 'token-A'
+    });
+
+    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).rejects.toThrow('429 rate limited');
+    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).resolves.toBeNull();
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('resets one-shot stream guards when the credential changes or request caches are cleared', async () => {
+    let secret = 'token-A';
+    const proxyFetch = vi.fn()
+      .mockResolvedValueOnce({ version: 1 })
+      .mockResolvedValueOnce({ version: 2 })
+      .mockResolvedValueOnce({ version: 3 });
+    const runtime = createFreedomBrokerTransportRuntime({
+      proxyFetch: proxyFetch as never,
+      getActiveGatewaySecret: () => secret
+    });
+
+    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).resolves.toEqual({ version: 1 });
+    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).resolves.toBeNull();
+    secret = 'token-B';
+    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).resolves.toEqual({ version: 2 });
+    runtime.clearFreedomStreamSnapshotCache();
+    await expect(runtime.fetchFreedomTradeNetQuoteStreamOnce('AAPL')).resolves.toEqual({ version: 3 });
+    expect(proxyFetch).toHaveBeenCalledTimes(3);
   });
 
   it('caches cashflows by token and normalized date range for five minutes', async () => {
