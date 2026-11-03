@@ -23,6 +23,8 @@ import {
   validateGatewaySecret,
   fetchYahooDeepStockData,
   fetchYahooQuoteData,
+  createFreedomQuoteStreamTicket,
+  buildFreedomQuoteStreamSocketUrl,
   fetchMarketNews,
   fetchStocktwitsStream,
   rememberYahooDeepStockData,
@@ -122,6 +124,57 @@ describe('authenticated read request deduplication', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     resolvers[1](response());
     await expect(nextRead).resolves.toEqual({ updatedAt: 10, tranches: [], ledger: [], ledgerUpdatedAt: 0 });
+  });
+});
+
+describe('persistent Freedom quote stream transport', () => {
+  it('normalizes ticker symbols and obtains a short-lived one-use ticket over authenticated HTTPS', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      ticket: 'a'.repeat(64),
+      expiresAt: 1_800_000_000_000
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(createFreedomQuoteStreamTicket([' googl ', 'AAPL', 'GOOGL']))
+      .resolves.toEqual({
+        ticket: 'a'.repeat(64),
+        expiresAt: 1_800_000_000_000,
+        symbols: ['GOOGL.US', 'AAPL.US']
+      });
+
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const url = new URL(requestUrl);
+    expect(url.searchParams.get('action')).toBe('freedom-quote-stream-ticket');
+    expect(url.searchParams.get('symbols')).toBe('GOOGL.US,AAPL.US');
+    expect(requestInit.headers).toMatchObject({
+      'X-App-Auth': 'test-gateway-secret',
+      Authorization: 'Bearer test-gateway-secret'
+    });
+    expect(requestInit.cache).toBe('no-store');
+  });
+
+  it('builds a browser WebSocket URL containing only the one-use ticket, never app credentials', () => {
+    const url = new URL(buildFreedomQuoteStreamSocketUrl('b'.repeat(64)));
+    expect(url.protocol).toBe('wss:');
+    expect(url.searchParams.get('action')).toBe('freedom-quote-socket');
+    expect(url.searchParams.get('ticket')).toBe('b'.repeat(64));
+    expect(url.searchParams.has('SID')).toBe(false);
+    expect(url.searchParams.has('secret')).toBe(false);
+  });
+
+  it('rejects invalid ticket responses and oversized ticker sets before opening a socket', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      ticket: 'not-a-ticket'
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(createFreedomQuoteStreamTicket(['AAPL'])).rejects.toThrow('server did not issue a valid quote stream ticket');
+    await expect(createFreedomQuoteStreamTicket(
+      Array.from({ length: 11 }, (_, index) => `TICKER${index}`)
+    )).rejects.toThrow('at most 10');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
