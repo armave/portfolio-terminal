@@ -26,7 +26,7 @@ describe('runManualPortfolioSync', () => {
       pushCloud: async () => { sequence.push('cloud'); return true; },
       syncClosedHistory: async () => { sequence.push('cloud-history'); return true; }
     }));
-    expect(sequence).toEqual(['account', 'trades', 'orders', 'quotes', 'cloud', 'cloud-history']);
+    expect(sequence).toEqual(['account', 'trades', 'orders', 'quotes', 'cloud-history', 'cloud']);
     expect(result).toEqual({
       role: 'admin', brokerAccount: true, executedTrades: true, activeOrders: true,
       quotes: true, cloud: true, cloudHistory: true, success: true
