@@ -35,17 +35,12 @@ describe('automatic update settings', () => {
   });
 });
 
-describe('TradeNet market status probe', () => {
-  it('retains only the not-yet-integrated public markets event preview', () => {
+describe('integrated market status', () => {
+  it('removes the temporary TradeNet market probe from Settings', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("testFreedomTradeNetEventStream('markets')");
-    expect(source).toContain('TradeNet market status probe');
-    expect(source).toContain('Test market status updates');
-    expect(source).not.toContain('Temporary TradeNet diagnostics');
-    expect(source).not.toContain('Test portfolio updates');
-    expect(source).not.toContain('Test live quote stream');
-    expect(source).not.toContain('Compare quote WebSocket vs REST');
-    expect(source).not.toContain('Compare WebSocket vs REST portfolio');
-    expect(source).not.toContain('Test authenticated WebSocket');
+    expect(source).not.toContain('TradeNet market status probe');
+    expect(source).not.toContain('testFreedomTradeNetEventStream');
+    expect(source).not.toContain('Test market status updates');
+    expect(source).not.toContain('marketStatusTest');
   });
 });
