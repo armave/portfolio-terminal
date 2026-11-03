@@ -1155,7 +1155,7 @@ export default {
                 }
             }
 
-            // Admin-only sanitized portfolio event snapshot for read-only REST reconciliation.
+            // Admin-only sanitized, fully-loaded portfolio event snapshot for read-only REST reconciliation.
             if (action === "freedom-portfolio-snapshot") {
                 try {
                     const result = await diagnoseFreedomEventStream(env, "portfolio", true);
