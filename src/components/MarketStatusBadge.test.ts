@@ -11,8 +11,8 @@ describe('US-equities market status presentation', () => {
   });
 
   it('maps the documented provider states without guessing unknown codes', () => {
-    expect(getMarketStatusLabel('OPEN')).toBe('Open');
-    expect(getMarketStatusLabel('CLOSE')).toBe('Closed');
+    expect(getMarketStatusLabel('OPEN')).toBe('Market open');
+    expect(getMarketStatusLabel('CLOSE')).toBe('Market closed');
     expect(getMarketStatusLabel('PRE')).toBe('Pre-market');
     expect(getMarketStatusLabel('POST')).toBe('After-hours');
     expect(getMarketStatusLabel('MIXED')).toBe('Mixed');
