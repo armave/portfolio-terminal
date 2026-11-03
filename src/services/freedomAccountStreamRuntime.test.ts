@@ -126,6 +126,44 @@ describe('Freedom persistent account stream runtime', () => {
     expect(onPortfolio).not.toHaveBeenCalled();
   });
 
+  it('reconnects with a fresh ticket after an upstream stream error', async () => {
+    const sockets: FakeSocket[] = [];
+    const createTicket = vi.fn()
+      .mockResolvedValueOnce({ ticket: 'h'.repeat(64) })
+      .mockResolvedValueOnce({ ticket: 'i'.repeat(64) });
+    const runtime = createFreedomAccountStreamRuntime({
+      createTicket,
+      buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      getCurrentSessionKey: () => 'admin:account-1',
+      onPortfolio: vi.fn(),
+      onOrders: vi.fn()
+    });
+
+    const start = runtime.start('admin:account-1');
+    await Promise.resolve();
+    sockets[0].open();
+    sockets[0].receive({ type: 'ready' });
+    await expect(start).resolves.toBe(true);
+
+    sockets[0].receive({ type: 'error', message: 'Upstream session rejected' });
+    expect(sockets[0].readyState).toBe(3);
+    expect(runtime.isConnected()).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await Promise.resolve();
+    expect(createTicket).toHaveBeenCalledTimes(2);
+    expect(sockets).toHaveLength(2);
+    sockets[1].open();
+    sockets[1].receive({ type: 'ready' });
+    expect(runtime.isConnected()).toBe(true);
+    runtime.stop();
+  });
+
   it('closes a half-open socket when the heartbeat pong stops arriving', async () => {
     const sockets: FakeSocket[] = [];
     const statuses: Array<[string, string?]> = [];
