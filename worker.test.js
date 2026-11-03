@@ -212,7 +212,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     return socket;
   }
 
-  async function runEventDiagnostic(eventName, payload, userData) {
+  async function runEventDiagnostic(eventName, payload, userData, action = 'freedom-event-stream') {
     const socket = makeEventSocket(eventName, payload, userData);
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
@@ -221,7 +221,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
       .mockResolvedValueOnce({ status: 101, headers: new Headers(), webSocket: socket });
     vi.stubGlobal('fetch', fetchMock);
     const response = await worker.fetch(new Request(
-      'https://worker.test/?action=freedom-event-stream&event=' + eventName,
+      'https://worker.test/?action=' + action + '&event=' + eventName,
       { headers: { 'X-App-Auth': 'test-secret' } }
     ), {
       GATEWAY_SECRET: 'test-secret',
@@ -362,6 +362,61 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(body.data.marketPreview[0]).not.toHaveProperty('post');
     expect(body.message).toContain('market status and schedule');
     expect(socket.close).toHaveBeenCalled();
+  });
+
+  it('returns one compact US-equities status and prefers the combined FIX market', async () => {
+    const { response, socket } = await runEventDiagnostic('markets', {
+      t: '2026-11-03 09:00:00',
+      m: [
+        { n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN', o: '09:30:00', c: '16:00:00' },
+        { n: 'NYSE', n2: 'NYSE', s: 'CLOSE', o: '09:30:00', c: '16:00:00' },
+        { n: 'US Equities', n2: 'FIX', s: 'OPEN', o: '09:30:00', c: '16:00:00' },
+        { n: 'LSE', n2: 'LSE', s: 'OPEN' }
+      ]
+    }, { isDemo: false, mode: 'prod' }, 'freedom-market-status');
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      marketStatus: { market: 'US equities', code: 'FIX', status: 'OPEN', source: 'FIX' }
+    });
+    expect(body).not.toHaveProperty('markets');
+    expect(body).not.toHaveProperty('marketPreview');
+    expect(body).not.toHaveProperty('diagnostics');
+    expect(body).not.toHaveProperty('serverTime');
+    expect(socket.close).toHaveBeenCalled();
+  });
+
+  it('combines separate Nasdaq and NYSE states without publishing the market list', async () => {
+    const { response } = await runEventDiagnostic('markets', {
+      t: '2026-11-03 09:00:00',
+      m: [
+        { n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN' },
+        { n: 'NYSE', n2: 'NYSE', s: 'CLOSE' },
+        { n: 'LSE', n2: 'LSE', s: 'OPEN' }
+      ]
+    }, { isDemo: false, mode: 'prod' }, 'freedom-market-status');
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.marketStatus).toEqual({
+      market: 'US equities', code: 'US', status: 'MIXED', source: 'US_EXCHANGES'
+    });
+    expect(Object.keys(body)).toEqual(['ok', 'provider', 'marketStatus', 'updatedAt']);
+  });
+
+  it('normalizes the closed state while retaining unrecognized provider states', async () => {
+    const closed = await runEventDiagnostic('markets', {
+      m: [{ n: 'US Equities', n2: 'FIX', s: 'CLOSE' }]
+    }, { isDemo: false, mode: 'prod' }, 'freedom-market-status');
+    expect((await closed.response.json()).marketStatus.status).toBe('CLOSED');
+
+    const unknown = await runEventDiagnostic('markets', {
+      m: [{ n: 'US Equities', n2: 'FIX', s: 'PREV' }]
+    }, { isDemo: false, mode: 'prod' }, 'freedom-market-status');
+    expect((await unknown.response.json()).marketStatus.status).toBe('PREV');
   });
 
   it('does not subscribe to security-session events as a market schedule source', async () => {
@@ -2473,14 +2528,18 @@ describe('guest data isolation at the Worker boundary', () => {
     const headers = { 'X-App-Auth': 'guest-session-token', Authorization: 'Bearer guest-session-token' };
 
     const marketsResponse = await worker.fetch(new Request(
-      'https://worker.test/?action=freedom-event-stream&event=markets', { headers }
+      'https://worker.test/?action=freedom-market-status&event=markets', { headers }
     ), { PORTFOLIO_STATE_DO: namespace });
     expect(marketsResponse.status).toBe(200);
     await expect(marketsResponse.json()).resolves.toMatchObject({
       ok: true,
-      event: 'markets',
-      data: { marketPreview: [{ n: 'NASDAQ', s: 'OPEN', o: '09:30:00', c: '16:00:00', dt: -420 }] }
+      marketStatus: { market: 'US equities', code: 'US', status: 'OPEN', source: 'US_EXCHANGES' }
     });
+
+    const diagnosticResponse = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-event-stream&event=markets', { headers }
+    ), { PORTFOLIO_STATE_DO: namespace });
+    expect(diagnosticResponse.status).toBe(403);
 
     const portfolioResponse = await worker.fetch(new Request(
       'https://worker.test/?action=freedom-event-stream&event=portfolio', { headers }
