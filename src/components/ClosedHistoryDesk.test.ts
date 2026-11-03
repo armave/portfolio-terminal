@@ -51,7 +51,7 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('const safeTradesPage = Math.max(1, Math.min(tradesPage, tradesPageCount))');
     expect(source).toContain('trades.slice((safeTradesPage - 1) * tradesPageSize, safeTradesPage * tradesPageSize)');
     expect(source).toContain('if (tradesPage !== safeTradesPage) setTradesPage(safeTradesPage)');
-    expect(source).toContain('Showing {(safeTradesPage - 1) * tradesPageSize + 1}');
+    expect(source).toContain("translateText(`Showing ${(safeTradesPage - 1) * tradesPageSize + 1}");
     expect(source).toContain('Page {safeTradesPage} / {tradesPageCount}');
   });
 

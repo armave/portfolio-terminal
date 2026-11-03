@@ -304,6 +304,16 @@ function translateDynamicText(normalized: string): string | undefined {
     }
   }
 
+  const closedTradeRange = normalized.match(/^Showing ([\d,]+)–([\d,]+) of ([\d,]+) trades$/i);
+  if (closedTradeRange) {
+    return `Показано ${closedTradeRange[1]}–${closedTradeRange[2]} из ${closedTradeRange[3]} сделок`;
+  }
+
+  const knownProfitWinRate = normalized.match(/^(\d+) of (\d+) records with known profit profitable$/i);
+  if (knownProfitWinRate) {
+    return `Прибыльные сделки: ${knownProfitWinRate[1]} из ${knownProfitWinRate[2]}`;
+  }
+
   const rows = normalized.match(/^Rows (.+) of (\d+)$/i);
   if (rows) return `Строки ${rows[1]} из ${rows[2]}`;
   const page = normalized.match(/^Page (\d+) of (\d+)$/i);
