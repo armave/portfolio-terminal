@@ -379,6 +379,32 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(socket.close).toHaveBeenCalled();
   });
 
+  it('reports a TradeNet login rejection as an authentication failure, not a gateway outage', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      success: false,
+      logged: false,
+      verificationRequired: true,
+      challengeToken: 'must-not-leak'
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-portfolio-snapshot',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body).toEqual({
+      ok: false,
+      error: 'TradeNet login failed or requested additional verification.'
+    });
+    expect(JSON.stringify(body)).not.toContain('must-not-leak');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects an unloaded portfolio WebSocket event instead of fabricating a loaded snapshot', async () => {
     const socket = makeEventSocket('portfolio', {
       loaded: false,
