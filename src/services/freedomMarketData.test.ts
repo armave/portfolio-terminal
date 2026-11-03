@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { proxyFetch } from "./api";
+import { fetchFreedomTradeNetQuoteStreamOnce, proxyFetch } from "./api";
 import { fetchFreedomQuote, fetchFreedomQuoteWebSocket, normalizeFreedomQuote } from "./freedomMarketData";
 
-vi.mock("./api", () => ({ proxyFetch: vi.fn() }));
+vi.mock("./api", () => ({
+  proxyFetch: vi.fn(),
+  fetchFreedomTradeNetQuoteStreamOnce: vi.fn()
+}));
 
 describe("normalizeFreedomQuote", () => {
   it("normalizes a quote payload with common Tradernet field names", () => {
@@ -94,7 +97,7 @@ describe("normalizeFreedomQuote", () => {
 
 
   it("uses the authenticated q WebSocket payload for the requested ticker", async () => {
-    vi.mocked(proxyFetch).mockResolvedValue({
+    vi.mocked(fetchFreedomTradeNetQuoteStreamOnce).mockResolvedValue({
       ok: true,
       source: "authenticated_websocket",
       symbol: "AAPL.US",
@@ -114,26 +117,25 @@ describe("normalizeFreedomQuote", () => {
       utcOffset: -300,
       serverTime: "2026-11-03 15:30:01.000"
     });
-    expect(proxyFetch).toHaveBeenCalledWith(
-      "freedom-quote-stream",
-      { symbol: "AAPL.US" },
-      expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) })
+    expect(fetchFreedomTradeNetQuoteStreamOnce).toHaveBeenCalledWith(
+      "AAPL.US",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
   });
 
   it("rejects unconfirmed, mismatched, and invalid WebSocket quote payloads", async () => {
-    vi.mocked(proxyFetch).mockResolvedValueOnce({
+    vi.mocked(fetchFreedomTradeNetQuoteStreamOnce).mockResolvedValueOnce({
       ok: false, error: "TradeNet quote event was not confirmed."
     });
     await expect(fetchFreedomQuoteWebSocket("AAPL")).rejects.toThrow("TradeNet quote event was not confirmed.");
 
-    vi.mocked(proxyFetch).mockResolvedValueOnce({
+    vi.mocked(fetchFreedomTradeNetQuoteStreamOnce).mockResolvedValueOnce({
       ok: true, source: "authenticated_websocket", symbol: "AAPL.US",
       data: { q: [{ c: "MSFT.US", ltp: 215 }] }
     });
     await expect(fetchFreedomQuoteWebSocket("AAPL")).rejects.toThrow("different ticker");
 
-    vi.mocked(proxyFetch).mockResolvedValueOnce({
+    vi.mocked(fetchFreedomTradeNetQuoteStreamOnce).mockResolvedValueOnce({
       ok: true, source: "authenticated_websocket", symbol: "AAPL.US",
       data: { q: [{ c: "AAPL.US", ltp: 0 }] }
     });
