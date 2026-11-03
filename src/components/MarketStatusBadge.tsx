@@ -42,10 +42,10 @@ export function getMarketStatusRoleLabel(isAdmin: boolean): string {
 export function getMarketStatusLabel(status: string | null | undefined): string {
   const normalized = normalizeMarketSessionStatus(status);
   switch (normalized) {
-    case 'PREMARKET': return translateText('Premarket session');
-    case 'MARKET': return translateText('Market session');
-    case 'POSTMARKET': return translateText('Postmarket session');
-    case 'CLOSED': return translateText('Closed session');
+    case 'PREMARKET': return translateText('Premarket');
+    case 'MARKET': return translateText('Market');
+    case 'POSTMARKET': return translateText('Postmarket');
+    case 'CLOSED': return translateText('Closed');
     default: return translateText('Unavailable');
   }
 }
@@ -162,13 +162,12 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div
-      class="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/50 px-2 py-1 text-[10px] leading-tight"
+      class="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-950/50 text-[10px] leading-tight"
       role="status"
       aria-label={`${roleLabel}: ${statusLabel}`}
       data-market-status-role={isAdmin ? 'admin' : 'guest'}
       title={updatedTitle}
     >
-      <span class="font-semibold text-slate-400">{roleLabel}</span>
       <span class={`rounded border px-1.5 py-0.5 font-bold ${toneClass}`}>{statusLabel}</span>
     </div>
   );
