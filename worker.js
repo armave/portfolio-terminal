@@ -346,7 +346,7 @@ function getFreedomLoginErrorCode(payload) {
  * Obtain a short-lived TradeNet account SID for a single diagnostic request.
  * Credentials and SID remain inside the Worker; neither is logged or returned.
  */
-async function createFreedomDiagnosticSession(env) {
+async function createFreedomDiagnosticSessionDirect(env) {
     if (!env.FREEDOM_LOGIN || !env.FREEDOM_PASSWORD) {
         const error = new Error("FREEDOM_LOGIN and FREEDOM_PASSWORD must be configured as Worker secrets.");
         error.status = 503;
@@ -429,6 +429,45 @@ async function createFreedomDiagnosticSession(env) {
     return payload.SID;
 }
 
+async function createFreedomDiagnosticSession(env) {
+    const namespace = env.PORTFOLIO_STATE_DO;
+    if (!namespace || typeof namespace.idFromName !== "function" || typeof namespace.get !== "function") {
+        // Local tests/development may omit the Durable Object binding. Production
+        // Worker deployments always use the shared Durable Object session broker.
+        return createFreedomDiagnosticSessionDirect(env);
+    }
+    const stub = namespace.get(namespace.idFromName("freedom-tradenet-auth-session:v1"));
+    const response = await stub.fetch("https://portfolio-state.internal/internal/freedom-tradenet-session", {
+        method: "GET",
+        headers: { "Cache-Control": "no-store" }
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || payload?.ok !== true || typeof payload.sid !== "string" || payload.sid.length < 10) {
+        const error = new Error(
+            typeof payload?.error === "string" ? payload.error : "TradeNet session broker could not provide an authenticated session."
+        );
+        error.status = response.status || 502;
+        error.diagnostics = payload?.diagnostics || null;
+        throw error;
+    }
+    return payload.sid;
+}
+
+async function invalidateFreedomDiagnosticSession(env, sid) {
+    const namespace = env.PORTFOLIO_STATE_DO;
+    if (!sid || !namespace || typeof namespace.idFromName !== "function" || typeof namespace.get !== "function") return;
+    try {
+        const stub = namespace.get(namespace.idFromName("freedom-tradenet-auth-session:v1"));
+        await stub.fetch("https://portfolio-state.internal/internal/freedom-tradenet-session/invalidate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+            body: JSON.stringify({ sid })
+        });
+    } catch {
+        // The next request can still recover after the in-memory cache expires.
+    }
+}
+
 /**
  * Fetch one production active-orders snapshot over the authenticated TradeNet stream.
  * Only the normalized allowlisted order fields leave the Worker; the SID and raw
@@ -484,6 +523,11 @@ async function diagnoseFreedomOrdersStream(env) {
             const result = snapshot();
             try { socket?.close(1000, "TradeNet diagnostic finished"); } catch { /* ignore close races */ }
             if (error) {
+                if ([401, 403].includes(Number(error.status)) ||
+                    diagnostics.phase === "demo_session" ||
+                    diagnostics.serverErrorCategory === "auth_or_session_rejected") {
+                    error.freedomDiagnosticSid = sid;
+                }
                 const { ordersSnapshot: _ordersSnapshot, ...safeDiagnostics } = result;
                 error.diagnostics = safeDiagnostics;
                 reject(error);
@@ -898,6 +942,11 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
             const result = snapshot();
             try { socket?.close(1000, "TradeNet event diagnostic finished"); } catch { /* ignore close races */ }
             if (error) {
+                if ([401, 403].includes(Number(error.status)) ||
+                    diagnostics.phase === "demo_session" ||
+                    diagnostics.serverErrorCategory === "auth_or_session_rejected") {
+                    error.freedomDiagnosticSid = sid;
+                }
                 error.diagnostics = result;
                 reject(error);
             } else {
@@ -1355,6 +1404,9 @@ export default {
                         ...(eventsConfirmed ? { data: { orders: ordersSnapshot } } : {})
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
+                    if (error?.freedomDiagnosticSid) {
+                        await invalidateFreedomDiagnosticSession(env, error.freedomDiagnosticSid);
+                    }
                     const status = Number(error?.status);
                     return new Response(JSON.stringify({
                         ok: false,
@@ -1391,6 +1443,9 @@ export default {
                         diagnostics: Object.fromEntries(Object.entries(result).filter(([key]) => key !== "eventSummary"))
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
+                    if (error?.freedomDiagnosticSid) {
+                        await invalidateFreedomDiagnosticSession(env, error.freedomDiagnosticSid);
+                    }
                     return new Response(JSON.stringify({
                         ok: false,
                         event: eventName,
@@ -1434,8 +1489,11 @@ export default {
                         }
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
+                    if (error?.freedomDiagnosticSid) {
+                        await invalidateFreedomDiagnosticSession(env, error.freedomDiagnosticSid);
+                    }
                     const upstreamStatus = Number(error?.status);
-                    const status = [401, 403, 503].includes(upstreamStatus) ? upstreamStatus : 502;
+                    const status = [401, 403, 429, 503].includes(upstreamStatus) ? upstreamStatus : 502;
                     return new Response(JSON.stringify({
                         ok: false,
                         error: error instanceof Error ? error.message : "TradeNet portfolio snapshot failed."
@@ -1497,8 +1555,11 @@ export default {
                         }
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
+                    if (error?.freedomDiagnosticSid) {
+                        await invalidateFreedomDiagnosticSession(env, error.freedomDiagnosticSid);
+                    }
                     const upstreamStatus = Number(error?.status);
-                    const status = [401, 403, 503].includes(upstreamStatus) ? upstreamStatus : 502;
+                    const status = [401, 403, 429, 503].includes(upstreamStatus) ? upstreamStatus : 502;
                     return new Response(JSON.stringify({
                         ok: false,
                         provider: "Freedom TradeNet",
