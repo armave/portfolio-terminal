@@ -98,7 +98,16 @@ describe('app localization', () => {
   });
 
   it('translates known UI copy into Russian and leaves unknown text unchanged', () => {
-    expect(translateText('TradeNet market status probe', 'ru')).toBe('Проверка статуса рынка TradeNet');
+    expect(translateText('Portfolio market', 'ru')).toBe('Рынок портфеля');
+    expect(translateText('Your market', 'ru')).toBe('Ваш рынок');
+    expect(translateText('US equities', 'ru')).toBe('Акции США');
+    expect(translateText('Open', 'ru')).toBe('Открыт');
+    expect(translateText('Closed', 'ru')).toBe('Закрыт');
+    expect(translateText('Pre-market', 'ru')).toBe('До открытия');
+    expect(translateText('After-hours', 'ru')).toBe('После закрытия');
+    expect(translateText('Mixed', 'ru')).toBe('Разные статусы');
+    expect(translateText('Unavailable', 'ru')).toBe('Недоступно');
+    expect(translateText('Updated at', 'ru')).toBe('Обновлено');
     expect(translateText('User management', 'ru')).toBe('Управление пользователями');
     expect(translateText('Settings', 'ru')).toBe('Настройки');
     expect(translateText('Unknown market symbol', 'ru')).toBe('Unknown market symbol');
