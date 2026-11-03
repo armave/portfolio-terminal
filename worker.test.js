@@ -881,7 +881,7 @@ describe('Freedom authenticated quote WebSocket stream', () => {
       c: 'GOOGL.US', n: 17, name: 'Alphabet Inc.',
       bbp: 280.40, bap: 280.50, bbs: 10, bas: 12,
       pp: 274.00, op: 276.10, ltp: 280.49, lts: 3,
-      ltt: '2026-11-03T09:40:00', chg: 6.49, pcp: 2.3686,
+      ltt: '2026-11-03T09:40:00', UTCOffset: '-04:00', acc_srv_tm: '2026-11-03T13:40:01Z', chg: 6.49, pcp: 2.3686,
       vol: 12345, vlt: 345678,
       ClosePrice: 274.00, TradingReferencePrice: 276.10,
       UTCOffset: '+00:00', Volatility: 0.25, TradingSessionSubID: 'REGULAR',
@@ -917,7 +917,8 @@ describe('Freedom authenticated quote WebSocket stream', () => {
       symbol: 'GOOGL.US',
       data: { q: [{
         c: 'GOOGL.US', ltp: 280.49, pp: 274, op: 276.1,
-        bbp: 280.4, bap: 280.5, chg: 6.49, pcp: 2.3686, vol: 12345
+        bbp: 280.4, bap: 280.5, chg: 6.49, pcp: 2.3686, vol: 12345,
+        UTCOffset: '-04:00', acc_srv_tm: '2026-11-03T13:40:01Z'
       }] },
       diagnostics: {
         responseEvent: 'q',

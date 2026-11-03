@@ -960,7 +960,7 @@ function sanitizeFreedomStreamQuote(payload, requestedSymbol) {
         "bbs", "bbf", "bap", "bac", "bas", "baf", "pp", "op", "ltp", "lts",
         "ltt", "chg", "pcp", "ltc", "mintp", "maxtp", "vol", "vlt", "trades",
         "min_step", "step_price", "p5", "chg5", "p22", "chg22", "p110",
-        "chg110", "p220", "chg220", "x_curr", "x_lot", "x_istrade"
+        "chg110", "p220", "chg220", "x_curr", "x_lot", "x_istrade", "UTCOffset", "acc_srv_tm"
     ]);
     const sanitized = {};
     for (const [key, value] of Object.entries(quote)) {
