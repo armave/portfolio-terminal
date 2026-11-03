@@ -7,6 +7,13 @@ export interface FreedomQuote {
   change: number | null;
   changePercent: number | null;
   sourceTimestamp: number | null;
+  bid?: number | null;
+  ask?: number | null;
+  volume?: number | null;
+  lastTradeTime?: string | null;
+  utcOffset?: number | null;
+  serverTime?: string | null;
+  marketState?: string;
   raw: unknown;
 }
 
@@ -51,12 +58,83 @@ export function normalizeFreedomQuote(payload: unknown, symbol: string): Freedom
   const changePercent = suppliedPercent ?? (previousClose !== null && change !== null && previousClose !== 0 ? change / previousClose * 100 : null);
   const timestampRaw = numeric(record, ["time", "timestamp", "lastTradeTime", "last_trade_time", "trade_time", "ltt"]);
   const sourceTimestamp = timestampRaw === null ? null : timestampRaw < 1e12 ? timestampRaw * 1000 : timestampRaw;
-  return { symbol, price, previousClose, change, changePercent, sourceTimestamp, raw: payload };
+  const rawMarketState = typeof record.marketStatus === "string"
+    ? record.marketStatus.trim().toUpperCase()
+    : typeof record.marketState === "string" ? record.marketState.trim().toUpperCase() : "";
+  const marketState = rawMarketState === "CLOSE" ? "CLOSED" : rawMarketState || undefined;
+  return {
+    symbol,
+    price,
+    previousClose,
+    change,
+    changePercent,
+    sourceTimestamp,
+    bid: numeric(record, ["bbp", "bid"]),
+    ask: numeric(record, ["bap", "ask"]),
+    volume: numeric(record, ["vol", "volume"]),
+    lastTradeTime: typeof record.ltt === "string" ? record.ltt : null,
+    utcOffset: numeric(record, ["UTCOffset"]),
+    serverTime: typeof record.acc_srv_tm === "string" ? record.acc_srv_tm : null,
+    marketState,
+    raw: payload
+  };
 }
 
 function freedomSymbol(symbol: string): string {
   const normalized = symbol.trim().toUpperCase();
   return normalized.includes(".") ? normalized : `${normalized}.US`;
+}
+
+export async function fetchFreedomQuoteWebSocket(symbol: string): Promise<FreedomQuote> {
+  const normalized = symbol.trim().toUpperCase();
+  if (!normalized) throw new Error("A ticker symbol is required.");
+  const ticker = freedomSymbol(normalized);
+  if (!/^[A-Z0-9.^=-]{1,32}$/.test(ticker)) {
+    throw new Error("Enter one valid TradeNet ticker symbol.");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 9_000);
+  let payload: any;
+  try {
+    payload = await proxyFetch(
+      "freedom-quote-stream",
+      { symbol: ticker },
+      { cache: "no-store", signal: controller.signal }
+    );
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("TradeNet WebSocket quote request timed out.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (
+    payload?.ok !== true ||
+    payload?.source !== "authenticated_websocket" ||
+    String(payload?.symbol || "").trim().toUpperCase() !== ticker
+  ) {
+    throw new Error(
+      typeof payload?.error === "string"
+        ? payload.error
+        : "TradeNet WebSocket did not confirm the requested production quote."
+    );
+  }
+
+  const record = firstObject(payload.data);
+  const returnedSymbol = record?.c ?? record?.symbol ?? record?.ticker ?? record?.code;
+  if (
+    typeof returnedSymbol === "string" &&
+    returnedSymbol.trim().toUpperCase() !== ticker
+  ) {
+    throw new Error("TradeNet WebSocket returned a quote for a different ticker.");
+  }
+
+  const quote = normalizeFreedomQuote(payload.data, normalized);
+  if (!quote) throw new Error("TradeNet WebSocket returned an unsupported quote payload.");
+  return quote;
 }
 
 export async function fetchFreedomQuote(symbol: string, force = false): Promise<FreedomQuote> {
@@ -65,7 +143,7 @@ export async function fetchFreedomQuote(symbol: string, force = false): Promise<
   const payload = await proxyFetch(
     "freedom-quote",
     { symbol: freedomSymbol(normalized) },
-    force ? { cache: 'no-store' } : {}
+    force ? { cache: "no-store" } : {}
   );
   const quote = normalizeFreedomQuote(payload?.data, normalized);
   if (!quote) throw new Error("Freedom TradeNet returned an unsupported quote payload.");

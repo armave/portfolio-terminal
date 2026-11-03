@@ -1,18 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchFallbackQuote, fetchYahooQuoteData } from './api';
 import { fetchLivePriceFromProviders } from './quoteProvider';
-import { fetchFreedomQuote } from './freedomMarketData';
+import { fetchFreedomQuote, fetchFreedomQuoteWebSocket } from './freedomMarketData';
 
 vi.mock('./api', () => ({
   fetchYahooQuoteData: vi.fn(),
   fetchFallbackQuote: vi.fn()
 }));
 
-vi.mock('./freedomMarketData', () => ({ fetchFreedomQuote: vi.fn() }));
+vi.mock('./freedomMarketData', () => ({
+  fetchFreedomQuote: vi.fn(),
+  fetchFreedomQuoteWebSocket: vi.fn()
+}));
 
 describe('fetchLivePriceFromProviders', () => {
   beforeEach(() => {
-    vi.mocked(fetchFreedomQuote).mockRejectedValue(new Error('Freedom unavailable'));
+    vi.mocked(fetchFreedomQuoteWebSocket).mockRejectedValue(new Error('Freedom WebSocket unavailable'));
+    vi.mocked(fetchFreedomQuote).mockRejectedValue(new Error('Freedom REST unavailable'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -22,15 +26,15 @@ describe('fetchLivePriceFromProviders', () => {
     vi.resetAllMocks();
   });
 
-  it('starts Freedom and Yahoo requests concurrently', async () => {
+  it('starts the authenticated q WebSocket and Yahoo requests concurrently', async () => {
     let resolveFreedom!: (value: any) => void;
     let resolveYahoo!: (value: any) => void;
-    vi.mocked(fetchFreedomQuote).mockImplementation(() => new Promise<any>(resolve => { resolveFreedom = resolve; }));
+    vi.mocked(fetchFreedomQuoteWebSocket).mockImplementation(() => new Promise<any>(resolve => { resolveFreedom = resolve; }));
     vi.mocked(fetchYahooQuoteData).mockImplementation(() => new Promise<any>(resolve => { resolveYahoo = resolve; }));
 
     const pending = fetchLivePriceFromProviders('AAPL');
     await Promise.resolve();
-    expect(fetchFreedomQuote).toHaveBeenCalledWith('AAPL');
+    expect(fetchFreedomQuoteWebSocket).toHaveBeenCalledWith('AAPL');
     expect(fetchYahooQuoteData).toHaveBeenCalledWith('AAPL');
     resolveFreedom({
       symbol: 'AAPL', price: 210, previousClose: 200, change: 10,
@@ -42,8 +46,8 @@ describe('fetchLivePriceFromProviders', () => {
     expect(result.sourceName).toBe('Yahoo');
   });
 
-  it('uses a valid fresh Freedom quote when Yahoo has no source timestamp', async () => {
-    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+  it('uses a valid fresh q quote when Yahoo has no source timestamp', async () => {
+    vi.mocked(fetchFreedomQuoteWebSocket).mockResolvedValue({
       symbol: 'AAPL',
       price: 210,
       previousClose: 200,
@@ -55,7 +59,7 @@ describe('fetchLivePriceFromProviders', () => {
 
     const result = await fetchLivePriceFromProviders('aapl');
 
-    expect(fetchFreedomQuote).toHaveBeenCalledWith('AAPL');
+    expect(fetchFreedomQuoteWebSocket).toHaveBeenCalledWith('AAPL');
     expect(result.price).toBe(210);
     expect(result.sourceName).toBe('Freedom TradeNet');
     expect(result.quoteDetails).toMatchObject({ freshness: 'fresh', price: 210, change: 10, changePercent: 5 });
@@ -64,7 +68,7 @@ describe('fetchLivePriceFromProviders', () => {
 
   it('prefers Yahoo when its source timestamp is newer than Freedom', async () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
-    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+    vi.mocked(fetchFreedomQuoteWebSocket).mockResolvedValue({
       symbol: 'AAPL',
       price: 210,
       previousClose: 200,
@@ -95,7 +99,7 @@ describe('fetchLivePriceFromProviders', () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const freedomTimestamp = (nowSeconds - 120) * 1000;
     const yahooTimestamp = (nowSeconds - 60) * 1000;
-    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+    vi.mocked(fetchFreedomQuoteWebSocket).mockResolvedValue({
       symbol: 'AAPL',
       price: 210,
       previousClose: 200,
@@ -128,7 +132,7 @@ describe('fetchLivePriceFromProviders', () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const freedomTimestamp = (nowSeconds - 30) * 1000;
     const yahooTimestamp = (nowSeconds - 60) * 1000;
-    vi.mocked(fetchFreedomQuote).mockResolvedValue({
+    vi.mocked(fetchFreedomQuoteWebSocket).mockResolvedValue({
       symbol: 'AAPL',
       price: 212,
       previousClose: 200,
@@ -222,8 +226,36 @@ describe('fetchLivePriceFromProviders', () => {
     expect(result.quoteDetails).not.toHaveProperty('change');
   });
 
-  it('does not turn missing Freedom daily-change data into zero', async () => {
+  it('falls back to the existing Freedom REST quote when the q WebSocket request fails', async () => {
     vi.mocked(fetchFreedomQuote).mockResolvedValue({
+      symbol: 'AAPL',
+      price: 210,
+      previousClose: 200,
+      change: 10,
+      changePercent: 5,
+      sourceTimestamp: null,
+      marketState: 'CLOSED',
+      raw: {}
+    });
+    vi.mocked(fetchYahooQuoteData).mockResolvedValue(null as never);
+
+    const result = await fetchLivePriceFromProviders('AAPL');
+
+    expect(fetchFreedomQuoteWebSocket).toHaveBeenCalledWith('AAPL');
+    expect(fetchFreedomQuote).toHaveBeenCalledWith('AAPL', true);
+    expect(result).toMatchObject({
+      price: 210,
+      sourceName: 'Freedom TradeNet',
+      quoteDetails: {
+        transport: 'rest',
+        marketState: 'CLOSED',
+        freshness: 'unknown'
+      }
+    });
+  });
+
+  it('does not turn missing Freedom daily-change data into zero', async () => {
+    vi.mocked(fetchFreedomQuoteWebSocket).mockResolvedValue({
       symbol: 'AAPL',
       price: 210,
       previousClose: null,
@@ -344,6 +376,7 @@ describe('fetchLivePriceFromProviders', () => {
 
     const result = await fetchLivePriceFromProviders('aapl', requestStartedAt, true);
 
+    expect(fetchFreedomQuoteWebSocket).toHaveBeenCalledWith('AAPL');
     expect(fetchFreedomQuote).toHaveBeenCalledWith('AAPL', true);
     expect(fetchYahooQuoteData).toHaveBeenCalledWith('AAPL', true);
     expect(result).toMatchObject({

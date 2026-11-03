@@ -1,5 +1,5 @@
 import { fetchYahooQuoteData, fetchFallbackQuote } from './api';
-import { fetchFreedomQuote } from './freedomMarketData';
+import { fetchFreedomQuote, fetchFreedomQuoteWebSocket } from './freedomMarketData';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 import type { QuoteDetails } from '../types/portfolio';
 
@@ -95,15 +95,33 @@ export async function fetchLivePriceFromProviders(
   let sourceName = "";
   let quoteDetails: QuoteDetails | null = null;
 
-  // Start both providers together; selection below is based on source timestamps,
-  // not request completion order or a hard-coded vendor preference.
+  // Prefer the authenticated q WebSocket snapshot. If its production session,
+  // handshake, event, symbol, or payload validation fails, immediately use the
+  // existing REST quote request as the corresponding recovery path. Yahoo remains
+  // concurrent so a verifiably newer observation can still win below.
+  const freedomWithRestFallback = async () => {
+    try {
+      return {
+        quote: await fetchFreedomQuoteWebSocket(symbol),
+        transport: 'websocket' as const
+      };
+    } catch (websocketError) {
+      console.warn(`[Freedom WebSocket Quote Error for ${symbol}]:`, describeProviderError(websocketError));
+      return {
+        quote: await fetchFreedomQuote(symbol, true),
+        transport: 'rest' as const
+      };
+    }
+  };
   const [freedomResult, yahooResult] = await Promise.allSettled([
-    force ? fetchFreedomQuote(symbol, true) : fetchFreedomQuote(symbol),
+    freedomWithRestFallback(),
     force ? fetchYahooQuoteData(symbol, true) : fetchYahooQuoteData(symbol)
   ]);
   let freedomQuote: Awaited<ReturnType<typeof fetchFreedomQuote>> | null = null;
+  let freedomTransport: 'websocket' | 'rest' | null = null;
   if (freedomResult.status === 'fulfilled') {
-    freedomQuote = freedomResult.value;
+    freedomQuote = freedomResult.value.quote;
+    freedomTransport = freedomResult.value.transport;
   } else {
     console.warn(`[Freedom Quote Error for ${symbol}]:`, describeProviderError(freedomResult.reason));
   }
@@ -187,18 +205,28 @@ export async function fetchLivePriceFromProviders(
     // relative age of two otherwise valid quotes.
     const chooseFreedom = price === null || (bothHaveSourceTimestamps
       ? freedomTimestamp! >= yahooTimestamp!
-      : freedomIsFresh && (!yahooIsFresh || !yahooIsNewer));
+      // When only one provider can prove freshness, prefer that observation.
+      // If Yahoo cannot prove it is fresh and the q/REST quote is valid, keep
+      // the broker quote instead of silently preferring an unverified source.
+      : !yahooIsFresh || (freedomIsFresh && !yahooIsNewer));
     if (chooseFreedom) {
       price = freedomQuote.price;
       sourceName = 'Freedom TradeNet';
       quoteDetails = {
-        marketState: 'UNKNOWN',
+        marketState: freedomQuote.marketState || 'UNKNOWN',
         freshness: freedomFreshness,
         sourceTimestamp: freedomQuote.sourceTimestamp ?? undefined,
+        transport: freedomTransport,
         receivedAt: Date.now(),
         requestSequence,
         requestStartedAt,
         price: freedomQuote.price,
+        ...(freedomQuote.bid !== null && freedomQuote.bid !== undefined ? { bid: freedomQuote.bid } : {}),
+        ...(freedomQuote.ask !== null && freedomQuote.ask !== undefined ? { ask: freedomQuote.ask } : {}),
+        ...(freedomQuote.volume !== null && freedomQuote.volume !== undefined ? { volume: freedomQuote.volume } : {}),
+        ...(freedomQuote.lastTradeTime ? { lastTradeTime: freedomQuote.lastTradeTime } : {}),
+        ...(freedomQuote.utcOffset !== null && freedomQuote.utcOffset !== undefined ? { utcOffset: freedomQuote.utcOffset } : {}),
+        ...(freedomQuote.serverTime ? { serverTime: freedomQuote.serverTime } : {}),
         ...(typeof freedomQuote.change === 'number' && Number.isFinite(freedomQuote.change)
           ? { change: freedomQuote.change }
           : {}),
