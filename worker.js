@@ -778,17 +778,29 @@ function describeRedactedValueType(value, depth = 0) {
  * Prefer FIX (the combined NYSE/Nasdaq market); older payload variants may
  * expose the exchanges separately, in which case report MIXED when they differ.
  */
+export function normalizeFreedomUsMarketPhase(value) {
+    const code = String(value || "").trim().toUpperCase().replace(/[\\s_-]+/g, "");
+    if (["PREV", "PRE", "PREPRE", "PREMARKET"].includes(code)) return "PREMARKET";
+    if (["OPEN", "REGULAR", "MARKET", "TRADING"].includes(code)) return "MARKET";
+    if (["POST", "POSTPOST", "POSTMARKET", "AFTER", "AFTERHOURS"].includes(code)) return "POSTMARKET";
+    if (["CLOSE", "CLOSED"].includes(code)) return "CLOSED";
+    return null;
+}
+
+/**
+ * Resolve one compact US-equities phase from the public markets event.
+ * Prefer FIX (the combined US market); if absent, use Nasdaq then NYSE.
+ * Provider-specific raw labels never leave the Worker.
+ */
 export function selectFreedomUsMarketStatus(eventSummary) {
     const rows = Array.isArray(eventSummary?.marketPreview) ? eventSummary.marketPreview : [];
     const normalizedCode = value => String(value || "").trim().toUpperCase();
-    const rawStatus = row => normalizedCode(row?.s);
-    const normalizeStatus = value => value === "CLOSE" ? "CLOSED" : value;
     const fixRow = rows.find(row =>
         normalizedCode(row?.n2) === "FIX" || normalizedCode(row?.n) === "FIX"
     );
-    if (fixRow) {
-        const status = normalizeStatus(rawStatus(fixRow));
-        return status ? { market: "US equities", code: "FIX", status, source: "FIX" } : null;
+    const fixStatus = normalizeFreedomUsMarketPhase(fixRow?.s);
+    if (fixStatus) {
+        return { market: "US equities", code: "FIX", status: fixStatus, source: "FIX" };
     }
 
     const usRows = rows.filter(row => {
@@ -796,15 +808,17 @@ export function selectFreedomUsMarketStatus(eventSummary) {
         const code = normalizedCode(row?.n2);
         return name === "NASDAQ" || name === "NYSE" || code === "NASDAQ" || code === "NYSE";
     });
-    if (!usRows.length) return null;
-    const statuses = [...new Set(usRows.map(row => normalizeStatus(rawStatus(row))).filter(Boolean))];
-    if (!statuses.length) return null;
-    return {
-        market: "US equities",
-        code: "US",
-        status: statuses.length === 1 ? statuses[0] : "MIXED",
-        source: "US_EXCHANGES"
-    };
+    const preferredRows = [
+        usRows.find(row => normalizedCode(row?.n2) === "NASDAQ" || normalizedCode(row?.n) === "NASDAQ"),
+        usRows.find(row => normalizedCode(row?.n2) === "NYSE" || normalizedCode(row?.n) === "NYSE")
+    ].filter(Boolean);
+    for (const row of preferredRows) {
+        const status = normalizeFreedomUsMarketPhase(row?.s);
+        if (status) {
+            return { market: "US equities", code: "US", status, source: "US_EXCHANGES" };
+        }
+    }
+    return null;
 }
 
 function summarizeFreedomStreamEvent(eventName, payload) {
