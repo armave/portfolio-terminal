@@ -13,7 +13,7 @@ import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '.
 import { normalizeFreedomTrades } from './freedomTradeContracts';
 export { normalizeFreedomTrades } from './freedomTradeContracts';
 export type { FreedomExecutedTrade } from '../types/freedomTrade';
-export { normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
+export { compareFreedomPortfolioSnapshots, normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
 export type { FreedomActiveOrder, FreedomCashBalance, FreedomOpenPosition, FreedomPortfolioSnapshot } from './freedomAccountContracts';
 export type { MarketNewsItem, StocktwitsMessage, StocktwitsStream } from './marketInsightsProviders';
 export type { YahooDeepStockData, YahooDeepAnalystTargets, YahooDeepFinancialHealth, YahooDeepPrice, YahooDeepValuation, YahooEarningsHistoryItem, YahooUpgradeDowngrade } from './yahooDeepDataContracts';
@@ -292,11 +292,92 @@ const freedomBrokerTransportRuntime = createFreedomBrokerTransportRuntime({
 });
 
 export const testFreedomTradeNetConnection = freedomBrokerTransportRuntime.testFreedomTradeNetConnection;
+export const testFreedomTradeNetOrdersStream = freedomBrokerTransportRuntime.testFreedomTradeNetOrdersStream;
+export const testFreedomTradeNetEventStream = freedomBrokerTransportRuntime.testFreedomTradeNetEventStream;
+export const testFreedomTradeNetQuoteStream = freedomBrokerTransportRuntime.testFreedomTradeNetQuoteStream;
+export const testFreedomTradeNetPortfolioReconciliation = freedomBrokerTransportRuntime.testFreedomTradeNetPortfolioReconciliation;
 export const fetchFreedomTradeNetPositions = freedomBrokerTransportRuntime.fetchFreedomTradeNetPositions;
 export const fetchFreedomTradeNetTrades = freedomBrokerTransportRuntime.fetchFreedomTradeNetTrades;
 export const fetchFreedomTradeNetActiveOrders = freedomBrokerTransportRuntime.fetchFreedomTradeNetActiveOrders;
+export const fetchFreedomTradeNetQuoteStreamOnce = freedomBrokerTransportRuntime.fetchFreedomTradeNetQuoteStreamOnce;
+export const clearFreedomTradeNetStreamSnapshotCache = freedomBrokerTransportRuntime.clearFreedomStreamSnapshotCache;
 export const fetchFreedomCashflows = freedomBrokerTransportRuntime.fetchFreedomCashflows;
 export const clearFreedomCashflowCache = freedomBrokerTransportRuntime.clearFreedomCashflowCache;
+
+export interface FreedomQuoteStreamTicket {
+  ticket: string;
+  expiresAt: number;
+  symbols: string[];
+}
+
+/** Mint a one-use, short-lived ticket for the authenticated browser WebSocket. */
+export async function createFreedomQuoteStreamTicket(tickers: string[]): Promise<FreedomQuoteStreamTicket> {
+  const symbols = [...new Set(tickers.map((ticker) => {
+    const normalized = ticker.trim().toUpperCase();
+    return normalized && !normalized.includes('.') ? `${normalized}.US` : normalized;
+  }).filter(Boolean))];
+  if (symbols.length < 1 || symbols.length > 10 || symbols.some((symbol) => !/^[A-Z0-9.^=-]{1,32}$/.test(symbol))) {
+    throw new Error('Select between 1 and 10 valid tickers for the live quote stream.');
+  }
+  const response = await proxyFetch(
+    'freedom-quote-stream-ticket',
+    { symbols: symbols.join(',') },
+    { cache: 'no-store' }
+  );
+  if (response?.ok !== true || typeof response.ticket !== 'string' || !/^[a-f0-9]{64}$/i.test(response.ticket)) {
+    throw new Error(response?.error || 'The server did not issue a valid quote stream ticket.');
+  }
+  return {
+    ticket: response.ticket,
+    expiresAt: Number(response.expiresAt) || 0,
+    symbols
+  };
+}
+
+/** Build the browser-visible Worker WebSocket URL; it contains only a one-use ticket, never the broker SID. */
+export function buildFreedomQuoteStreamSocketUrl(ticket: string): string {
+  if (!/^[a-f0-9]{64}$/i.test(ticket)) throw new Error('A valid quote stream ticket is required.');
+  const url = new URL(WORKER_PROXY_URL);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.searchParams.set('action', 'freedom-quote-socket');
+  url.searchParams.set('ticket', ticket);
+  return url.toString();
+}
+
+export interface FreedomAccountStreamTicket {
+  ticket: string;
+  expiresAt: number;
+  events: ['portfolio', 'orders'];
+}
+
+/** Mint an administrator-only, one-use ticket for portfolio and order updates. */
+export async function createFreedomAccountStreamTicket(): Promise<FreedomAccountStreamTicket> {
+  const response = await proxyFetch(
+    'freedom-account-stream-ticket',
+    undefined,
+    { cache: 'no-store' }
+  );
+  if (response?.ok !== true || typeof response.ticket !== 'string' ||
+      !/^[a-f0-9]{64}$/i.test(response.ticket)) {
+    throw new Error(response?.error || 'The server did not issue a valid account stream ticket.');
+  }
+  return {
+    ticket: response.ticket,
+    expiresAt: Number(response.expiresAt) || 0,
+    events: ['portfolio', 'orders']
+  };
+}
+
+/** The browser URL carries only a short-lived ticket, never the broker SID. */
+export function buildFreedomAccountStreamSocketUrl(ticket: string): string {
+  if (!/^[a-f0-9]{64}$/i.test(ticket)) throw new Error('A valid account stream ticket is required.');
+  const url = new URL(WORKER_PROXY_URL);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.searchParams.set('action', 'freedom-account-socket');
+  url.searchParams.set('ticket', ticket);
+  return url.toString();
+}
+
 
 const guestPortfolioPublicationFingerprints = new Map<string, string>();
 const guestPortfolioPublicationRequests = new Map<string, Promise<void>>();
@@ -311,6 +392,7 @@ export function clearApiRequestCaches(): void {
   cloudStateSyncRuntime.clearRequestCache();
   clearGuestPortfolioPublicationCache();
   clearFreedomCashflowCache();
+  clearFreedomTradeNetStreamSnapshotCache();
   resetMarketRequestGate();
 }
 

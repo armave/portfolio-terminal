@@ -42,7 +42,8 @@ export function getCashHoldingMarketPrice(holding: { currentPrice?: unknown; pri
 type ActiveTrancheQuoteRecord = {
   currentPrice?: unknown;
   price?: unknown;
-  quoteDetails?: { sourceTimestamp?: unknown };
+  quoteUpdatedAt?: unknown;
+  quoteDetails?: { sourceTimestamp?: unknown; receivedAt?: unknown; transport?: unknown; [key: string]: unknown };
 };
 
 export function getActiveTrancheMarketPrice(
@@ -55,6 +56,8 @@ export function getActiveTrancheMarketPrice(
   const position = positions[ticker];
 
   // Prefer the newest verifiable observation across cash and margin ledgers.
+  // q events may carry an ISO ltt value that the provider cannot normalize into
+  // a numeric sourceTimestamp; their local receive time is still authoritative.
   // The broker tranche snapshot has no observation timestamp and is last resort.
   let latestTimestamp = 0;
   let latestPrice: number | null = null;
@@ -62,12 +65,16 @@ export function getActiveTrancheMarketPrice(
     if (!candidate) continue;
     const price = getCashHoldingMarketPrice(candidate);
     const sourceTimestamp = Number(candidate.quoteDetails?.sourceTimestamp);
-    if (
-      price !== null &&
-      Number.isFinite(sourceTimestamp) &&
-      sourceTimestamp > latestTimestamp
-    ) {
-      latestTimestamp = sourceTimestamp;
+    const arrivalTimestamp = candidate.quoteDetails?.transport === 'websocket'
+      ? Number(candidate.quoteDetails?.receivedAt) || Number(candidate.quoteUpdatedAt)
+      : 0;
+    const orderingTimestamp = Number.isFinite(sourceTimestamp) && sourceTimestamp > 0
+      ? sourceTimestamp
+      : Number.isFinite(arrivalTimestamp) && arrivalTimestamp > 0
+        ? arrivalTimestamp
+        : 0;
+    if (price !== null && orderingTimestamp > latestTimestamp) {
+      latestTimestamp = orderingTimestamp;
       latestPrice = price;
     }
   }
@@ -163,8 +170,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
   const guestUsersLoading = guestDirectory.status === 'loading';
   const balanceRefreshing =
     (isAdmin && balanceSync.status === 'refreshing') ||
-    (shouldReadBrokerHistory && (brokerExecutionHistory.status === 'refreshing' || executedTradesLoading)) ||
-    (isAdmin && guestUsersLoading);
+    (shouldReadBrokerHistory && (brokerExecutionHistory.status === 'refreshing' || executedTradesLoading));
   const guestUsersRequestGeneration = useRef(0);
   const loadGuestUsers = () => {
     const requestId = ++guestUsersRequestGeneration.current;
@@ -211,6 +217,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     const removeAccountListener = addBrokerEventListener('broker:account-info', () => {
       dispatchBalanceSync({ type: 'success' });
     });
+    const removeRefreshCompleteListener = addBrokerEventListener('broker:account-info-refresh-complete', () => {
+      dispatchBalanceSync({ type: 'success' });
+    });
     const removeAccountErrorListener = addBrokerEventListener('broker:account-info-error', () => {
       dispatchBalanceSync({ type: 'failure' });
     });
@@ -219,6 +228,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     return () => {
       removeRefreshingListener();
       removeAccountListener();
+      removeRefreshCompleteListener();
       removeAccountErrorListener();
     };
   }, [isAdmin]);

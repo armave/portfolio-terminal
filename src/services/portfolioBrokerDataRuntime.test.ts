@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import type { FreedomPortfolioSnapshot } from './freedomAccountContracts';
 import type { SessionIdentityToken } from '../utils/sessionIdentityGuard';
@@ -6,6 +6,13 @@ import {
   createPortfolioBrokerDataRuntime,
   type PortfolioBrokerDataRuntimeDependencies
 } from './portfolioBrokerDataRuntime';
+import {
+  markFreedomAccountStreamSnapshot,
+  resetFreedomAccountStreamHealth,
+  setFreedomAccountStreamStatus
+} from './freedomAccountStreamHealth';
+
+afterEach(() => resetFreedomAccountStreamHealth());
 
 function trade(
   id: string,
@@ -82,6 +89,77 @@ function createFixture(overrides: Partial<PortfolioBrokerDataRuntimeDependencies
 }
 
 describe('portfolio broker data runtime', () => {
+  it('skips one-shot account and orders snapshots after both live channels are current', async () => {
+    const fixture = createFixture();
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+    markFreedomAccountStreamSnapshot(fixture.session.identity, 'portfolio');
+    markFreedomAccountStreamSnapshot(fixture.session.identity, 'orders');
+
+    await expect(Promise.all([
+      fixture.runtime.loadFreedomAccount(fixture.session),
+      fixture.runtime.loadActiveOrders(fixture.session)
+    ])).resolves.toEqual([true, true]);
+
+    expect(fixture.dependencies.fetchAccountInfo).not.toHaveBeenCalled();
+    expect(fixture.dependencies.fetchActiveOrders).not.toHaveBeenCalled();
+    expect(fixture.events).toEqual([
+      { type: 'broker:account-info-refresh-complete', payload: undefined }
+    ]);
+  });
+
+  it('completes the balance refresh lifecycle when the live portfolio snapshot is already applied', async () => {
+    const fixture = createFixture();
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+    markFreedomAccountStreamSnapshot(fixture.session.identity, 'portfolio');
+
+    await expect(fixture.runtime.refreshAccountInfo(fixture.session)).resolves.toBe(true);
+
+    expect(fixture.dependencies.fetchAccountInfo).not.toHaveBeenCalled();
+    expect(fixture.events).toEqual([
+      { type: 'broker:account-info-refresh-complete', payload: undefined }
+    ]);
+  });
+
+  it('discards a portfolio snapshot that resolves after a newer live portfolio event', async () => {
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    const fixture = createFixture({
+      fetchAccountInfo: vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }))
+    });
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+
+    const request = fixture.runtime.loadFreedomAccount(fixture.session);
+    await vi.waitFor(() => expect(fixture.dependencies.fetchAccountInfo).toHaveBeenCalledTimes(1));
+    markFreedomAccountStreamSnapshot(fixture.session.identity, 'portfolio');
+    resolveFetch?.({ raw: 'stale one-shot snapshot' });
+
+    await expect(request).resolves.toBe(true);
+    expect(fixture.events).toEqual([
+      { type: 'broker:account-info-refreshing', payload: undefined },
+      { type: 'broker:account-info-refresh-complete', payload: undefined }
+    ]);
+  });
+
+  it('discards an orders snapshot and embedded fills that resolve after a newer live orders event', async () => {
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    const fixture = createFixture({
+      fetchActiveOrders: vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }))
+    });
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+
+    const request = fixture.runtime.loadActiveOrders(fixture.session);
+    await vi.waitFor(() => expect(fixture.dependencies.fetchActiveOrders).toHaveBeenCalledTimes(1));
+    markFreedomAccountStreamSnapshot(fixture.session.identity, 'orders');
+    resolveFetch?.({
+      orders: { order: [{ order_id: 'stale-order' }] },
+      trades: { trade: [{ id: 'stale-fill' }] }
+    });
+
+    await expect(request).resolves.toBe(true);
+    expect(fixture.events).not.toContainEqual(expect.objectContaining({ type: 'broker:active-orders' }));
+    expect(fixture.events).not.toContainEqual(expect.objectContaining({ type: 'broker:executed-trades' }));
+    expect(fixture.getPortfolioExecutions()).toEqual([]);
+  });
+
   it('coalesces concurrent account-info reads for the same session', async () => {
     let resolveFetch: ((value: unknown) => void) | undefined;
     const fixture = createFixture({
@@ -136,6 +214,89 @@ describe('portfolio broker data runtime', () => {
     expect(fixture.getPortfolioExecutions()).toHaveLength(2);
     expect(fixture.getPortfolioExecutions()[0].marginFeeAllocations).toEqual({ 'guest-1': 2.5 });
     expect(fixture.events[fixture.events.length - 1]?.type).toBe('broker:executed-trades');
+  });
+
+  it('merges executions embedded in the authenticated orders snapshot into canonical history', async () => {
+    const oldTrade = trade('history-existing', 'buy', '2026-10-30T10:00:00.000Z');
+    const fill = {
+      id: 'trade-from-order-1',
+      order_id: 'order-77',
+      instr: 'GOOGL.US',
+      side: 'SELL',
+      curr: 'USD',
+      date: '2026-11-03T09:40:00',
+      p: 352.5,
+      q: 2,
+      v: 705,
+      profit: 12.5
+    };
+    const fixture = createFixture({
+      fetchActiveOrders: vi.fn(async () => ({
+        orders: { order: [{ order_id: 'order-77', instr: 'GOOGL.US' }] },
+        trades: { trade: [fill] }
+      })),
+      normalizeActiveOrders: vi.fn(() => [{ id: 'order-77' }] as never)
+    });
+    fixture.setSaved([oldTrade]);
+
+    await expect(fixture.runtime.loadActiveOrders(fixture.session)).resolves.toBe(true);
+
+    expect(fixture.dependencies.fetchExecutedTrades).not.toHaveBeenCalled();
+    expect(fixture.getPortfolioExecutions()).toHaveLength(2);
+    expect(fixture.getPortfolioExecutions()).toEqual(expect.arrayContaining([
+      oldTrade,
+      expect.objectContaining({
+        id: 'trade-from-order-1',
+        ticker: 'GOOGL.US',
+        side: 'SELL',
+        quantity: 2,
+        price: 352.5,
+        currency: 'USD',
+        executedAt: '2026-11-03T09:40:00',
+        tradeValue: 705,
+        profit: 12.5
+      })
+    ]));
+    expect(fixture.events).toContainEqual({
+      type: 'broker:executed-trades',
+      payload: fixture.getPortfolioExecutions()
+    });
+    expect(fixture.events).toContainEqual({
+      type: 'broker:active-orders',
+      payload: [{ id: 'order-77' }]
+    });
+  });
+
+  it('deduplicates the same TradeNet fill ID when the orders snapshot is replayed', async () => {
+    const fill = {
+      id: 'trade-replayed-1',
+      order_id: 'order-88',
+      instr: 'AAPL.US',
+      side: 'BUY',
+      curr: 'USD',
+      date: '2026-11-03T09:41:00',
+      p: 210,
+      q: 1,
+      v: 210
+    };
+    const fetchActiveOrders = vi.fn(async () => ({
+      orders: { order: [] },
+      trades: { trade: [fill] }
+    }));
+    const fixture = createFixture({
+      fetchActiveOrders,
+      normalizeActiveOrders: vi.fn(() => [] as never)
+    });
+
+    await expect(fixture.runtime.loadActiveOrders(fixture.session)).resolves.toBe(true);
+    const firstHistory = fixture.getPortfolioExecutions();
+    await expect(fixture.runtime.loadActiveOrders(fixture.session)).resolves.toBe(true);
+
+    expect(fetchActiveOrders).toHaveBeenCalledTimes(2);
+    expect(fixture.getPortfolioExecutions()).toHaveLength(1);
+    expect(fixture.getPortfolioExecutions()[0].id).toBe('trade-replayed-1');
+    expect(fixture.events.filter((event) => event.type === 'broker:executed-trades')).toHaveLength(1);
+    expect(firstHistory).toEqual(fixture.getPortfolioExecutions());
   });
 
   it('marks a missing broker secret as a history error without calling the provider', async () => {

@@ -427,33 +427,49 @@ try {
     'guest snapshot and active assignment ledger publication'
   );
 
-  // Fail the broker account snapshot once; executions, active orders, quotes
-  // and cloud sync should still complete and report a partial-success warning.
-  worker.failNextBrokerAccount();
+  // The first explicit sync may be the first snapshot trigger in this browser
+  // session. It may therefore make the one allowed WebSocket/REST request per
+  // source. A second sync must reuse those results and create no backup traffic.
   worker.failNextStateConflict();
-  const previousBrokerFailures = worker.brokerAccountFailures();
   const previousConflicts = worker.stateConflictCount();
   const previousStateWrites = worker.count('POST', '/api/state');
   const syncButton = page.locator('#syncPortfolioButton');
   await syncButton.waitFor({ state: 'visible', timeout: 20_000 });
   await syncButton.click();
   await waitForCondition(
-    () => worker.brokerAccountFailures() > previousBrokerFailures,
-    'one-shot TradeNet account-info failure'
-  );
-  await waitForCondition(
     () => worker.count('POST', '/api/state') > previousStateWrites,
-    'manual sync cloud push despite broker account failure'
+    'initial manual sync cloud push'
   );
-  if (worker.countAction('freedom-trades') < 2 || worker.countAction('freedom-orders') < 2) {
-    throw new Error('Partial broker failure prevented other TradeNet sources from refreshing.');
-  }
   await waitForCondition(
     () => worker.stateConflictCount() > previousConflicts,
     'cloud state revision conflict response'
   );
   await page.getByRole('alert').filter({ hasText: 'Cloud push failed: Cloud revision conflict.' })
     .waitFor({ state: 'visible', timeout: 20_000 });
+
+  const snapshotRequestsAfterInitialSync = {
+    portfolio: worker.countAction('freedom-portfolio-snapshot') + worker.countAction('freedom-positions'),
+    orders: worker.countAction('freedom-orders-stream') + worker.countAction('freedom-orders'),
+    quotes: worker.countAction('freedom-quote-stream') + worker.countAction('freedom-quote')
+  };
+  const previousSecondSyncWrites = worker.count('POST', '/api/state');
+  const previousSecondSyncTrades = worker.countAction('freedom-trades');
+  await syncButton.click();
+  await waitForCondition(
+    () => worker.count('POST', '/api/state') > previousSecondSyncWrites,
+    'second manual sync cloud push'
+  );
+  const snapshotRequestsAfterSecondSync = {
+    portfolio: worker.countAction('freedom-portfolio-snapshot') + worker.countAction('freedom-positions'),
+    orders: worker.countAction('freedom-orders-stream') + worker.countAction('freedom-orders'),
+    quotes: worker.countAction('freedom-quote-stream') + worker.countAction('freedom-quote')
+  };
+  if (JSON.stringify(snapshotRequestsAfterSecondSync) !== JSON.stringify(snapshotRequestsAfterInitialSync)) {
+    throw new Error('Second manual sync reopened a one-shot WebSocket snapshot or its REST backup.');
+  }
+  if (worker.countAction('freedom-trades') <= previousSecondSyncTrades) {
+    throw new Error('Manual sync did not refresh canonical executed-trade history over REST.');
+  }
 
   // Export the actual browser snapshot, reject malformed JSON, restore the valid
   // backup and confirm a reset of local portfolio plus revisioned cloud history.

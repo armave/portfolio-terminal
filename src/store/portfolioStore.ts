@@ -28,6 +28,8 @@ import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './por
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 import { DEFAULT_BROKER_ASSUMPTIONS, normalizeBrokerAssumptions } from '../domain/brokerAssumptions';
 
+export type PortfolioStoreChangeSource = 'durable' | 'live-quote' | 'derived';
+
 export const PORTFOLIO_PERSISTENCE_ERROR_MESSAGE =
   'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.';
 
@@ -41,7 +43,7 @@ function todayIso(): string {
 
 export class PortfolioStore {
   private state: PortfolioState;
-  private listeners: Set<(state: PortfolioState) => void> = new Set();
+  private listeners: Set<(state: PortfolioState, source: PortfolioStoreChangeSource) => void> = new Set();
   private activeViewListeners: Set<(view: string) => void> = new Set();
   private persistenceErrorListeners: Set<(message: string) => void> = new Set();
 
@@ -220,7 +222,7 @@ export class PortfolioStore {
     return this.state;
   }
 
-  public subscribe(listener: (state: PortfolioState) => void): () => void {
+  public subscribe(listener: (state: PortfolioState, source: PortfolioStoreChangeSource) => void): () => void {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
@@ -244,8 +246,8 @@ export class PortfolioStore {
     return () => this.persistenceErrorListeners.delete(listener);
   }
 
-  private notify(): void {
-    this.listeners.forEach((listener) => listener(this.state));
+  private notify(source: PortfolioStoreChangeSource = 'durable'): void {
+    this.listeners.forEach((listener) => listener(this.state, source));
   }
 
   private notifyPersistenceFailure(): void {
@@ -263,7 +265,11 @@ export class PortfolioStore {
    * saveState mutates candidate.lastUpdated only after its storage transaction
    * succeeds, so a failed write leaves the current in-memory snapshot intact.
    */
-  public update(updater: (state: PortfolioState) => PortfolioState, persist = true): boolean {
+  public update(
+    updater: (state: PortfolioState) => PortfolioState,
+    persist = true,
+    source: PortfolioStoreChangeSource = 'durable'
+  ): boolean {
     const next = updater(this.state);
 
     // A returned current-state reference is an intentional no-op, not a failed save.
@@ -281,16 +287,25 @@ export class PortfolioStore {
     }
 
     this.state = candidate;
-    this.notify();
+    this.notify(source);
     if (this.state.activeView !== previousState.activeView) this.notifyActiveView();
     return true;
   }
 
-  public setState(partial: Partial<PortfolioState>, persist = true): boolean {
+  public setState(
+    partial: Partial<PortfolioState>,
+    persist = true,
+    source: PortfolioStoreChangeSource = 'durable'
+  ): boolean {
     return this.update((state) => ({
       ...state,
       ...partial
-    }), persist);
+    }), persist, source);
+  }
+
+  /** Update derived display values without making them a new durable mutation. */
+  public setDerivedState(partial: Partial<PortfolioState>, persist = true): boolean {
+    return this.setState(partial, persist, 'derived');
   }
 
   public importState(newState: Partial<PortfolioState>): boolean {
@@ -784,8 +799,8 @@ export class PortfolioStore {
   }
 
   /**
-   * Applies a completed quote request to the latest store snapshot.
-   * This avoids applying a stale state object captured before an async request.
+   * Applies volatile market data to the latest in-memory snapshot.
+   * Durable callers explicitly persist their surrounding portfolio action.
    */
   public updateLiveQuote(
     ticker: string,
@@ -853,7 +868,15 @@ export class PortfolioStore {
       }
       // Request order protects against async races; source time separately
       // protects against a later response carrying an older market observation.
+      // A persistent WebSocket delivers quote events in connection order.
+      // Once a new q event arrives, its local arrival order is authoritative:
+      // provider ltt timestamps can repeat or regress across reconnects/timezone
+      // boundaries, but must not prevent the latest received tick rewriting the
+      // ticker's local price and quote metadata. Keep source-time rejection for
+      // one-shot HTTP/provider responses, where responses can complete out of order.
+      const isLiveWebSocketTick = quote.quoteDetails?.transport === 'websocket';
       if (
+        !isLiveWebSocketTick &&
         incomingSourceTimestamp > 0 &&
         latestSourceTimestamp > 0 &&
         incomingSourceTimestamp < latestSourceTimestamp
@@ -929,7 +952,7 @@ export class PortfolioStore {
           holdings: updatedCashHoldings
         }
       };
-    });
+    }, false, 'live-quote');
     return accepted && committed;
   }
 

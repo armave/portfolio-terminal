@@ -1621,6 +1621,82 @@ describe('canonical trade lifecycle and persistence', () => {
     })).toBe(false);
   });
 
+  it('rewrites the matching local ticker for every newly received WebSocket quote even when source time regresses', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    store.buyStock('MSFT', 3, 200, '2026-10-16');
+    store.addCashStock('AAPL', 1, 100);
+    store.setState({
+      cashStocks: [
+        { ticker: 'AAPL', shares: 1, currentPrice: 100 },
+        { ticker: 'MSFT', shares: 2, currentPrice: 200 }
+      ]
+    });
+    const listener = vi.fn();
+    store.subscribe(listener);
+    const firstReceivedAt = Date.now() + 1_000;
+    const secondReceivedAt = firstReceivedAt + 1_000;
+
+    expect(store.updateLiveQuote('AAPL', {
+      price: 110,
+      quoteSource: 'Freedom TradeNet',
+      quoteUpdatedAt: firstReceivedAt,
+      requestStartedAt: firstReceivedAt,
+      requestSequence: 100,
+      quoteDetails: {
+        transport: 'websocket',
+        sourceTimestamp: firstReceivedAt,
+        freshness: 'fresh',
+        bid: 109.9,
+        ask: 110.1
+      }
+    })).toBe(true);
+
+    // This q event arrived later, so its price and metadata must replace the
+    // previously stored local quote even though its provider ltt regressed.
+    expect(store.updateLiveQuote('AAPL', {
+      price: 111.25,
+      quoteSource: 'Freedom TradeNet',
+      quoteUpdatedAt: secondReceivedAt,
+      requestStartedAt: secondReceivedAt,
+      requestSequence: 101,
+      quoteDetails: {
+        transport: 'websocket',
+        sourceTimestamp: firstReceivedAt - 60_000,
+        freshness: 'stale',
+        bid: 111.2,
+        ask: 111.3
+      }
+    })).toBe(true);
+
+    const state = store.getState();
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(state.positions.AAPL).toMatchObject({
+      shares: 2,
+      currentPrice: 111.25,
+      quoteUpdatedAt: secondReceivedAt,
+      quoteRequestStartedAt: secondReceivedAt,
+      quoteRequestSequence: 101,
+      quoteSource: 'Freedom TradeNet',
+      tranches: [expect.objectContaining({ qty: 2, price: 100 })],
+      quoteDetails: {
+        transport: 'websocket',
+        sourceTimestamp: firstReceivedAt - 60_000,
+        freshness: 'stale',
+        bid: 111.2,
+        ask: 111.3
+      }
+    });
+    expect(state.cashCushion.holdings.find((holding) => holding.ticker === 'AAPL'))
+      .toMatchObject({ currentPrice: 111.25, price: 111.25 });
+    expect(state.cashStocks?.find((holding) => holding.ticker === 'AAPL'))
+      .toMatchObject({ currentPrice: 111.25, quoteUpdatedAt: secondReceivedAt });
+    expect(state.positions.MSFT.currentPrice).toBe(200);
+    expect(state.cashStocks?.find((holding) => holding.ticker === 'MSFT')?.currentPrice).toBe(200);
+  });
+
   it('rejects an older market observation even when its request started later', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();

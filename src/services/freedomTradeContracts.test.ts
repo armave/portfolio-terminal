@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeFreedomTrades } from './freedomTradeContracts';
+import { normalizeFreedomOrderFills, normalizeFreedomTrades } from './freedomTradeContracts';
 
 describe('Freedom execution contract normalization', () => {
   it('normalizes the nested TradeNet execution envelope and keeps provider facts', () => {
@@ -82,4 +82,82 @@ describe('Freedom execution contract normalization', () => {
   it('accepts a successful empty trade collection', () => {
     expect(normalizeFreedomTrades({ data: { trades: [] } })).toEqual([]);
   });
+
+  it('normalizes order-stream fills with trade IDs and the parent order side', () => {
+    const fills = normalizeFreedomOrderFills({
+      ok: true,
+      data: {
+        orders: { order: [] },
+        trades: {
+          trade: [
+            {
+              id: 13446624,
+              order_id: 8757875,
+              instr: 'GOOGL.US',
+              side: 'SELL',
+              curr: 'USD',
+              date: '2026-11-03T09:40:00',
+              p: 352.5,
+              q: 2,
+              v: 705,
+              profit: 12.5,
+              acd: 0,
+              fv: 1,
+              go_sum: 100
+            },
+            {
+              id: 13446625,
+              order_id: 8757876,
+              instr: 'GOOGL.US',
+              side: 'BUY',
+              curr: 'USD',
+              date: '2026-11-03T09:41:00',
+              p: 350,
+              q: 1,
+              v: 350
+            }
+          ]
+        }
+      }
+    });
+
+    expect(fills).toHaveLength(2);
+    expect(fills[0]).toMatchObject({
+      id: '13446624',
+      ticker: 'GOOGL.US',
+      side: 'SELL',
+      quantity: 2,
+      price: 352.5,
+      currency: 'USD',
+      executedAt: '2026-11-03T09:40:00',
+      tradeValue: 705,
+      profit: 12.5
+    });
+    expect(fills[0].raw).toMatchObject({ order_id: 8757875, id: 13446624 });
+    expect(fills[1]).toMatchObject({ id: '13446625', side: 'BUY', quantity: 1, price: 350 });
+  });
+
+  it('keeps sell-short fills distinct from closing sells', () => {
+    const [fill] = normalizeFreedomOrderFills({
+      trades: { trade: [{
+        id: 9001,
+        order_id: 900,
+        instr: 'GOOGL.US',
+        side: 'SELL_SHORT',
+        date: '2026-11-03T09:42:00',
+        p: 350,
+        q: 1,
+        v: 350
+      }] }
+    });
+    expect(fill.side).toBe('SELL_SHORT');
+  });
+
+  it('returns no executions for a valid order snapshot without fill rows', () => {
+    expect(normalizeFreedomOrderFills({
+      orders: { order: [{ order_id: 'open-1', instr: 'GOOGL.US' }] },
+      trades: { trade: [] }
+    })).toEqual([]);
+  });
+
 });

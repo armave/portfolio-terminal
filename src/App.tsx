@@ -5,7 +5,6 @@ import { lazy, memo, Suspense } from 'preact/compat';
 import { AuthModal } from './components/AuthModal';
 import { DeskLoading } from './components/DeskLoading';
 import { TickerTabs } from './components/TickerTab';
-import { SummaryMetricsGrid } from './components/SummaryMetricsGrid';
 import { ProjectionsTable } from './components/ProjectionsTable';
 import { TableScrollRegion } from './components/TableScrollRegion';
 import { TradingConsole } from './components/TradingConsole';
@@ -27,7 +26,11 @@ import { createSessionIdentityGuard } from './utils/sessionIdentityGuard';
 
 
 const MemoTickerTabs = memo(TickerTabs);
-const MemoSummaryMetricsGrid = memo(SummaryMetricsGrid);
+const MemoSummaryMetricsGrid = lazy(() =>
+  import('./components/SummaryMetricsGrid').then(({ SummaryMetricsGrid }) => ({
+    default: memo(SummaryMetricsGrid)
+  }))
+);
 const MemoProjectionsTable = memo(ProjectionsTable);
 const MemoTradingConsole = memo(TradingConsole);
 
@@ -517,7 +520,14 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 id="portfolioMetricsGrid"
                 aria-label="Portfolio summary metrics"
                 class={"portfolio-metrics-grid gap-2 text-xs text-slate-300 " + (emptyStateVisible ? "hidden" : "")}
-              ><MemoSummaryMetricsGrid /></div>
+              >
+                {permissions.canViewMarginDesk &&
+                  !["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) && (
+                    <Suspense fallback={<DeskLoading title="Preparing portfolio metrics" message="Loading portfolio metrics…" accent="cyan" />}>
+                      <MemoSummaryMetricsGrid />
+                    </Suspense>
+                  )}
+              </div>
 
               <div id="marginDataWorkspace" class="margin-data-workspace">
                 {/* Projection Table */}

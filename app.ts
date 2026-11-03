@@ -20,12 +20,19 @@ import { buildIntentPrompt } from './src/features/ai/prompt';
 import {
   calculateTargetUpsidePercent,
 } from './src/features/quotes/sentiment';
-import { fetchLivePriceFromProviders } from './src/services/quoteProvider';
+import { fetchLivePriceFromProviders, nextLiveQuoteRequestSequence } from './src/services/quoteProvider';
+import type { FreedomQuoteStreamRuntime } from './src/services/freedomQuoteStreamRuntime';
+import type { FreedomAccountStreamRuntime } from './src/services/freedomAccountStreamRuntime';
+import {
+  consumeFreedomAccountStreamRecovery,
+  isFreedomAccountStreamHealthy
+} from './src/services/freedomAccountStreamHealth';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { createQuoteRefreshCoordinator } from './src/services/quoteRefreshCoordinator';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
 import { createPortfolioBrokerRefreshRuntime } from './src/services/portfolioBrokerRefreshRuntime';
 import { createPortfolioStartupLifecycleRuntime } from './src/services/portfolioStartupLifecycleRuntime';
+import { createPortfolioEquitySyncRuntime } from './src/services/portfolioEquitySyncRuntime';
 import { createPortfolioStartupRuntime } from './src/services/portfolioStartupRuntime';
 import { createPortfolioAuthenticatedStartupRuntime } from './src/services/portfolioAuthenticatedStartupRuntime';
 import { createPortfolioSessionRuntime } from './src/services/portfolioSessionRuntime';
@@ -43,6 +50,10 @@ import { buildPortfolioBackupFilename, createPortfolioBackupBlob } from './src/s
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
   fetchYahooDeepStockData,
+  createFreedomQuoteStreamTicket,
+  buildFreedomQuoteStreamSocketUrl,
+  createFreedomAccountStreamTicket,
+  buildFreedomAccountStreamSocketUrl,
   clearCloudHistory,
   proxyFetch,
   setSecretGetter,
@@ -53,6 +64,7 @@ import {
   listUsers,
   logoutAccount,
   normalizeFreedomTrades,
+  clearFreedomTradeNetStreamSnapshotCache,
   getGuestPortfolioSnapshot,
   publishGuestPortfolioSnapshots as publishGuestPortfolioSnapshotsBatch,
   clearCloudEncryptionSecretCache
@@ -227,6 +239,9 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     [...savedFeeRows, ...(current.brokerExecutedTrades || [])]
   );
   portfolioStore.setState({ brokerExecutedTrades: tradesWithPersistedFees });
+  // Execution-history changes affect active/closed guest lots, independent of
+  // whether the latest broker account snapshot is currently available.
+  void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
   const snapshot = current.brokerAccountInfo;
   if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return;
   const classified = classifyFreedomPortfolio(
@@ -252,7 +267,6 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     }
   });
   renderBoard();
-  void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
 });
 
 addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
@@ -328,6 +342,7 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
   // Store updates persist locally immediately; push explicitly so the local write doesn't suppress cloud sync.
   saveState(state);
   pushStateToGist();
+  void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
   const ticker = operationId.split(':')[0];
   logTerminal(`[Freedom] ${ticker} purchase operation classified as ${selectedType}.`);
   renderBoard();
@@ -431,34 +446,26 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
 let startupCloudWritesSuppressed = true;
 let startupCloudWritePending = false;
 
-const syncCalculatedPortfolioEquity = (nextStoreState: ReturnType<typeof portfolioStore.getState>) => {
-  state = nextStoreState;
-
-  // Equity is derived from the latest stored cash, holdings, and prices. Persist
-  // it into the canonical snapshot and cloud-sync only when its cent value changes.
-  const valuation = calculatePortfolioValuation({
+createPortfolioEquitySyncRuntime({
+  subscribe: (listener) => portfolioStore.subscribe((nextStoreState, source) => {
+    state = nextStoreState;
+    listener(nextStoreState, source);
+  }),
+  getState: () => portfolioStore.getState(),
+  calculateEquity: (nextStoreState) => calculatePortfolioValuation({
     signedAccountBalance: nextStoreState.balance,
     freeCash: nextStoreState.cashCushion?.freeCash,
     marginPositions: Object.values(nextStoreState.positions || {}),
     cashHoldings: nextStoreState.cashCushion?.holdings || []
-  });
-  const equity = Number(valuation.equity.toFixed(2));
-  if (
-    Number.isFinite(nextStoreState.portfolioEquity) &&
-    Number(nextStoreState.portfolioEquity) === equity
-  ) return;
-
-  portfolioStore.setState({
-    portfolioEquity: equity,
-    portfolioEquityUpdatedAt: Date.now()
-  });
-  void pushStateToCloud();
-};
-
-portfolioStore.subscribe(syncCalculatedPortfolioEquity);
-// Also calculate/persist the initial snapshot so the first equity value is not
-// left local-only until the next trade or quote refresh.
-syncCalculatedPortfolioEquity(portfolioStore.getState());
+  }).equity,
+  setDerivedEquity: (equity, updatedAt, persist) => {
+    portfolioStore.setDerivedState({
+      portfolioEquity: equity,
+      portfolioEquityUpdatedAt: updatedAt
+    }, persist);
+  },
+  onDurableEquityChanged: () => { void pushStateToCloud(); }
+});
 
 async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
   if (!canWriteCloudState) {
@@ -485,8 +492,6 @@ async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
     try {
       const ok = await syncCloudState('push');
       if (ok) {
-        try { await guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots(); }
-        catch (error) { console.error('Guest portfolio projection sync failed:', error); }
         setCloudStatus('synced', 'UPDATED');
         return true;
       }
@@ -945,6 +950,92 @@ function recordTrackedPrice(
   });
 }
 
+let freedomAccountStreamRuntimePromise: Promise<FreedomAccountStreamRuntime> | null = null;
+
+function getFreedomAccountStreamRuntime(): Promise<FreedomAccountStreamRuntime> {
+  if (!freedomAccountStreamRuntimePromise) {
+    freedomAccountStreamRuntimePromise = import('./src/services/freedomAccountStreamAppRuntime')
+      .then(({ createFreedomAccountStreamAppRuntime }) => createFreedomAccountStreamAppRuntime({
+        createTicket: async () => {
+          const result = await createFreedomAccountStreamTicket();
+          return { ticket: result.ticket };
+        },
+        buildSocketUrl: buildFreedomAccountStreamSocketUrl,
+        getCurrentSessionKey: () => currentAccountRole && currentAccountId
+          ? `${currentAccountRole}:${currentAccountId}`
+          : '',
+        isAdmin: () => currentAccountRole === 'admin',
+        loadSavedBrokerExecutions: () => normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades),
+        getCurrentBrokerExecutions: () => portfolioStore.getState().brokerExecutedTrades || [],
+        onStatus: (status, message) => {
+          if (status === 'connected') {
+            logTerminal('[System]: Live TradeNet portfolio and orders streams connected.');
+          } else if (status === 'reconnecting') {
+            logTerminal(message
+              ? `[Warning]: TradeNet account stream reconnecting (${message}).`
+              : '[Warning]: TradeNet account stream reconnecting.');
+          }
+        }
+      })).catch((error) => {
+        freedomAccountStreamRuntimePromise = null;
+        throw error;
+      });
+  }
+  return freedomAccountStreamRuntimePromise;
+}
+
+function stopFreedomAccountStreamRuntime(): void {
+  if (freedomAccountStreamRuntimePromise) {
+    void freedomAccountStreamRuntimePromise.then((runtime) => runtime.stop()).catch(() => undefined);
+  }
+}
+
+let freedomQuoteStreamRuntimePromise: Promise<FreedomQuoteStreamRuntime> | null = null;
+
+function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
+  if (!freedomQuoteStreamRuntimePromise) {
+    freedomQuoteStreamRuntimePromise = import('./src/services/freedomQuoteStreamAppRuntime')
+      .then(({ createFreedomQuoteStreamAppRuntime }) => createFreedomQuoteStreamAppRuntime({
+        createTicket: async (tickers) => {
+          const result = await createFreedomQuoteStreamTicket(tickers);
+          return { ticket: result.ticket };
+        },
+        buildSocketUrl: buildFreedomQuoteStreamSocketUrl,
+        getCurrentSessionKey: () => currentAccountRole && currentAccountId
+          ? `${currentAccountRole}:${currentAccountId}`
+          : '',
+        nextRequestSequence: nextLiveQuoteRequestSequence,
+        recordQuote: (ticker, price, source, updatedAt, details, requestStartedAt) =>
+          recordTrackedPrice(ticker, price, source, updatedAt, details as QuoteDetails, requestStartedAt),
+        renderAfterUpdate: () => {
+          state = portfolioStore.getState();
+          renderBoard();
+        },
+        onStatus: (status, message) => {
+          if (status === 'connected') {
+            logTerminal('[System]: Live TradeNet quote stream connected.');
+          } else if (status === 'reconnecting') {
+            logTerminal(message
+              ? `[Warning]: Live TradeNet quote stream reconnecting (${message}).`
+              : '[Warning]: Live TradeNet quote stream reconnecting; the browser socket remains open.');
+          }
+        }
+      })).catch((error) => {
+        freedomQuoteStreamRuntimePromise = null;
+        throw error;
+      });
+  }
+  return freedomQuoteStreamRuntimePromise;
+}
+
+function stopFreedomQuoteStreamRuntime(): void {
+  if (freedomQuoteStreamRuntimePromise) {
+    void freedomQuoteStreamRuntimePromise.then((runtime) => runtime.stop()).catch(() => undefined);
+  }
+}
+
+
+
 function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
   const symbol = ticker.trim().toUpperCase();
   const quantity = Number(shares);
@@ -1049,25 +1140,68 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
         ...(current.cashStocks || []).map((holding: any) => holding.ticker)
       ]))
       : [];
-  if (tickersArray.length === 0) return true;
+  const accountStreamSessionKey = currentAccountRole && currentAccountId
+    ? `${currentAccountRole}:${currentAccountId}`
+    : '';
+  if (currentAccountRole === 'admin' && accountStreamSessionKey) {
+    try {
+      const accountStreamRuntime = await getFreedomAccountStreamRuntime();
+      await accountStreamRuntime.start(accountStreamSessionKey);
+    } catch (streamError) {
+      console.warn('[Freedom Account Stream]: Unable to establish the portfolio/orders socket; initial account snapshots remain available.', streamError);
+    }
+  } else {
+    stopFreedomAccountStreamRuntime();
+  }
+
+  if (tickersArray.length === 0) {
+    stopFreedomQuoteStreamRuntime();
+    return true;
+  }
+
+  const sessionKey = currentAccountRole && currentAccountId
+    ? `${currentAccountRole}:${currentAccountId}`
+    : '';
+  if (!sessionKey) {
+    stopFreedomQuoteStreamRuntime();
+    return true;
+  }
 
   try {
-    const updatedCount = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice, force);
-    if (updatedCount > 0) {
-      // Automatic quote polling remains local; explicit sync pushes the final snapshot.
-      state = portfolioStore.getState();
-      saveState(state);
-      renderBoard();
-      logTerminal(`[System]: Live market quotes refreshed for ${updatedCount} assets.`);
+    // The persistent TradeNet q socket is the primary quote source. It remains
+    // open after the first q payload and pushes later price changes directly
+    // into the portfolio store; routine scheduler ticks only maintain it.
+    const quoteStreamRuntime = await getFreedomQuoteStreamRuntime();
+    const currentSessionKey = currentAccountRole && currentAccountId
+      ? `${currentAccountRole}:${currentAccountId}`
+      : '';
+    if (currentSessionKey !== sessionKey) {
+      quoteStreamRuntime.stop();
       return true;
     }
-
-    logTerminal('[Warning]: No quotes updated during batch fetch.');
-    return false;
-  } catch (err: any) {
-    console.error('Batch quote fetch failed:', err);
-    logTerminal(`[Error]: Batch fetch failed - ${err.message}`);
-    return false;
+    const connected = await quoteStreamRuntime.start(tickersArray, sessionKey);
+    if (connected) return true;
+    throw new Error('TradeNet quote socket did not become ready.');
+  } catch (streamError) {
+    console.warn('[Freedom Quote Stream]: Unable to establish the live socket; using the one-time snapshot fallback.', streamError);
+    try {
+      const refreshResult = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice, force);
+      if (refreshResult.skipped) return true;
+      const updatedCount = refreshResult.updatedCount;
+      if (updatedCount > 0) {
+        state = portfolioStore.getState();
+        saveState(state);
+        renderBoard();
+        logTerminal(`[System]: Initial market quote fallback refreshed ${updatedCount} assets; the live socket is reconnecting.`);
+        return true;
+      }
+      logTerminal('[Warning]: The live quote socket and initial quote fallback returned no usable prices.');
+      return false;
+    } catch (err: any) {
+      console.error('Initial quote fallback failed:', err);
+      logTerminal(`[Error]: Initial quote fallback failed - ${err.message}`);
+      return false;
+    }
   }
 }
 
@@ -1079,7 +1213,18 @@ function refreshSupplementalPortfolioData(): Promise<void> | void {
   if (document.hidden) return;
 
   if (currentAccountRole === 'admin') {
-    portfolioBrokerRefreshRuntime.requestAll();
+    const sessionKey = currentAccountId ? `admin:${currentAccountId}` : '';
+    if (!sessionKey) return;
+
+    // Consume recovery before checking current health: a short outage can end
+    // between scheduler ticks, but its missed execution window still needs one
+    // incremental history catch-up after the stream has reconnected.
+    if (consumeFreedomAccountStreamRecovery(sessionKey)) {
+      clearFreedomTradeNetStreamSnapshotCache();
+      portfolioBrokerRefreshRuntime.requestAll();
+      return;
+    }
+    if (isFreedomAccountStreamHealthy(sessionKey)) return;
     return;
   }
 
@@ -1108,6 +1253,7 @@ const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
   isVisible: () => !document.hidden,
   refreshQuotes: () => refreshAllLivePrices(),
   refreshSupplemental: () => refreshSupplementalPortfolioData(),
+  syncState: () => currentAccountRole === 'admin' ? pushStateToCloud(true) : undefined,
   onError: (source, error) => {
     const message = error instanceof Error ? error.message : String(error);
     logTerminal(`[Auto Update Warning]: ${source} refresh failed (${message}).`);
@@ -1662,8 +1808,20 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
   getCurrentUser,
   getAccountRole: () => currentAccountRole,
   getAccountId: () => currentAccountId,
-  setAccountRole: (role) => { currentAccountRole = role; },
-  setAccountId: (accountId) => { currentAccountId = accountId; },
+  setAccountRole: (role) => {
+    if (currentAccountRole !== role) {
+      stopFreedomQuoteStreamRuntime();
+      stopFreedomAccountStreamRuntime();
+    }
+    currentAccountRole = role;
+  },
+  setAccountId: (accountId) => {
+    if (currentAccountId !== accountId) {
+      stopFreedomQuoteStreamRuntime();
+      stopFreedomAccountStreamRuntime();
+    }
+    currentAccountId = accountId;
+  },
   setCloudWritePermission: (allowed) => { canWriteCloudState = allowed; },
   setSessionIdentity: (identity) => currentAccountSessionGuard.setIdentity(identity),
   clearCloudEncryptionSecretCache,
@@ -1733,6 +1891,8 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   loadBrokerRules: loadTradernetRules,
   publishCurrentUser,
   clearAccountIdentity: () => {
+    stopFreedomQuoteStreamRuntime();
+    stopFreedomAccountStreamRuntime();
     currentAccountRole = null;
     currentAccountId = null;
     canWriteCloudState = false;

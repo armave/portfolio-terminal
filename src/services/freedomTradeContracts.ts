@@ -37,11 +37,12 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
     }
     return null;
   };
-  const normalizedSide = (...values: unknown[]): 'BUY' | 'SELL' | null => {
+  const normalizedSide = (...values: unknown[]): 'BUY' | 'SELL' | 'SELL_SHORT' | null => {
     for (const value of values) {
       const side = String(value ?? '').trim().toLowerCase();
       if (side === '1' || ['b', 'buy', 'bought', 'purchase'].includes(side)) return 'BUY';
-      if (side === '2' || ['s', 'sell', 'sold', 'sale'].includes(side)) return 'SELL';
+      if (side === '2' || side === '3' || ['s', 'sell', 'sold', 'sale'].includes(side)) return 'SELL';
+      if (side === '4' || ['ss', 'sell_short', 'sell short', 'short'].includes(side)) return 'SELL_SHORT';
     }
     return null;
   };
@@ -100,3 +101,40 @@ export function normalizeFreedomTrades(response: unknown): FreedomExecutedTrade[
   });
 }
 
+
+
+/**
+ * Normalize fills embedded in the authenticated TradeNet orders subscription.
+ * TradeNet's order operation determines the execution side:
+ * 1=Buy, 2=Buy on Margin, 3=Sell, 4=Sell Short.
+ * The fill's own trade ID is retained for idempotent history merging.
+ */
+export function normalizeFreedomOrderFills(response: unknown): FreedomExecutedTrade[] {
+  const asRecord = (value: unknown): Record<string, unknown> | null =>
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
+  const root = asRecord(response);
+  const data = asRecord(root?.data) ?? root;
+  const trades = asRecord(data?.trades);
+  const rows = Array.isArray(trades?.trade) ? trades.trade : [];
+  if (!rows.length) return [];
+
+  const normalizedRows = rows.flatMap((value) => {
+    const row = asRecord(value);
+    if (!row) return [];
+    const operation = String(row.side ?? row.operation ?? '').trim().toUpperCase();
+    const side = operation === '1' || operation === '2' ? 'BUY'
+      : operation === '3' ? 'SELL'
+        : operation === '4' ? 'SELL_SHORT'
+          : operation;
+    return [{
+      ...row,
+      side: side || 'Unknown',
+      curr: row.curr ?? row.currency ?? '',
+      instr: row.instr ?? row.ticker ?? row.symbol ?? ''
+    }];
+  });
+
+  return normalizeFreedomTrades({ trades: { trade: normalizedRows } });
+}

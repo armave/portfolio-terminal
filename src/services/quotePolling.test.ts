@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchLivePriceFromProviders } from './quoteProvider';
-import { refreshTrackedQuotes } from './quotePolling';
+import { clearTrackedQuoteSnapshotCache, refreshTrackedQuotes } from './quotePolling';
 
 vi.mock('./quoteProvider', () => ({
   fetchLivePriceFromProviders: vi.fn()
@@ -29,6 +29,7 @@ function quoteResult(price: number, requestStartedAt: number, ticker: string) {
 
 describe('refreshTrackedQuotes', () => {
   beforeEach(() => {
+    clearTrackedQuoteSnapshotCache();
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -43,7 +44,7 @@ describe('refreshTrackedQuotes', () => {
       );
     const record = vi.fn().mockReturnValue(true);
 
-    await expect(refreshTrackedQuotes([' aapl ', 'AAPL', ' msft ', ''], 123, record)).resolves.toBe(2);
+    await expect(refreshTrackedQuotes([' aapl ', 'AAPL', ' msft ', ''], 123, record)).resolves.toEqual({ updatedCount: 2, skipped: false });
 
     expect(fetchLivePriceFromProviders).toHaveBeenCalledTimes(2);
     expect(fetchLivePriceFromProviders).toHaveBeenNthCalledWith(1, 'AAPL', 123);
@@ -79,7 +80,7 @@ describe('refreshTrackedQuotes', () => {
       if (ticker !== 'AAPL') releases.get(ticker)!(quoteResult(100 + index, 765, ticker));
     }
 
-    await expect(pending).resolves.toBe(5);
+    await expect(pending).resolves.toEqual({ updatedCount: 5, skipped: false });
     expect(record.mock.calls.map(([ticker]) => ticker)).toEqual(tickers);
   });
 
@@ -89,7 +90,7 @@ describe('refreshTrackedQuotes', () => {
     );
     const record = vi.fn().mockReturnValue(true);
 
-    await expect(refreshTrackedQuotes(['AAPL', 'MSFT'], 321, record, true)).resolves.toBe(2);
+    await expect(refreshTrackedQuotes(['AAPL', 'MSFT'], 321, record, true)).resolves.toEqual({ updatedCount: 2, skipped: false });
 
     expect(fetchLivePriceFromProviders).toHaveBeenNthCalledWith(1, 'AAPL', 321, true);
     expect(fetchLivePriceFromProviders).toHaveBeenNthCalledWith(2, 'MSFT', 321, true);
@@ -101,13 +102,13 @@ describe('refreshTrackedQuotes', () => {
     );
     const record = vi.fn((ticker: string) => ticker === 'AAPL');
 
-    await expect(refreshTrackedQuotes(['AAPL', 'MSFT'], 654, record)).resolves.toBe(1);
+    await expect(refreshTrackedQuotes(['AAPL', 'MSFT'], 654, record)).resolves.toEqual({ updatedCount: 1, skipped: false });
     expect(record).toHaveBeenCalledTimes(2);
   });
 
   it('skips unavailable provider results and returns zero for an empty ticker list', async () => {
     const record = vi.fn().mockReturnValue(true);
-    await expect(refreshTrackedQuotes([], 789, record)).resolves.toBe(0);
+    await expect(refreshTrackedQuotes([], 789, record)).resolves.toEqual({ updatedCount: 0, skipped: true });
     expect(fetchLivePriceFromProviders).not.toHaveBeenCalled();
 
     vi.mocked(fetchLivePriceFromProviders).mockResolvedValue({
@@ -119,8 +120,51 @@ describe('refreshTrackedQuotes', () => {
       quoteDetails: null,
       error: 'Quote unavailable'
     } as never);
-    await expect(refreshTrackedQuotes(['TSLA'], 790, record)).resolves.toBe(0);
+    await expect(refreshTrackedQuotes(['TSLA'], 790, record)).resolves.toEqual({ updatedCount: 0, skipped: false });
     expect(record).not.toHaveBeenCalled();
+  });
+
+  it('does not repeat any provider or REST backup request on subsequent scheduled refreshes', async () => {
+    vi.mocked(fetchLivePriceFromProviders).mockImplementation(async (_ticker, requestStartedAt = 0) =>
+      quoteResult(180, requestStartedAt, 'AAPL') as never
+    );
+    const record = vi.fn().mockReturnValue(true);
+
+    await expect(refreshTrackedQuotes(['AAPL', 'MSFT'], 1000, record))
+      .resolves.toEqual({ updatedCount: 2, skipped: false });
+    const firstLoadRequestCount = vi.mocked(fetchLivePriceFromProviders).mock.calls.length;
+
+    await expect(refreshTrackedQuotes(['AAPL', 'MSFT'], 2000, record))
+      .resolves.toEqual({ updatedCount: 0, skipped: true });
+    await expect(refreshTrackedQuotes(['MSFT', 'AAPL'], 3000, record, true))
+      .resolves.toEqual({ updatedCount: 0, skipped: true });
+
+    expect(vi.mocked(fetchLivePriceFromProviders)).toHaveBeenCalledTimes(firstLoadRequestCount);
+    expect(record).toHaveBeenCalledTimes(2);
+  });
+
+  it('only requests newly added tickers after the initial load', async () => {
+    vi.mocked(fetchLivePriceFromProviders).mockImplementation(async (ticker, requestStartedAt = 0) =>
+      quoteResult(190, requestStartedAt, ticker) as never
+    );
+    const record = vi.fn().mockReturnValue(true);
+
+    await refreshTrackedQuotes(['AAPL', 'MSFT'], 100, record);
+    await expect(refreshTrackedQuotes(['AAPL', 'MSFT', 'NVDA'], 200, record))
+      .resolves.toEqual({ updatedCount: 1, skipped: false });
+
+    expect(vi.mocked(fetchLivePriceFromProviders).mock.calls.map(([ticker]) => ticker))
+      .toEqual(['AAPL', 'MSFT', 'NVDA']);
+  });
+
+  it('does not retry a failed first quote-provider attempt on later scheduler ticks', async () => {
+    vi.mocked(fetchLivePriceFromProviders).mockRejectedValue(new Error('429 rate limited'));
+
+    await expect(refreshTrackedQuotes(['AAPL'], 100, vi.fn())).rejects.toThrow('429 rate limited');
+    await expect(refreshTrackedQuotes(['AAPL'], 200, vi.fn()))
+      .resolves.toEqual({ updatedCount: 0, skipped: true });
+
+    expect(fetchLivePriceFromProviders).toHaveBeenCalledTimes(1);
   });
 
   it('propagates an unexpected provider error to the caller', async () => {

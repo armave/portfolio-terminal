@@ -1,4 +1,5 @@
 import { emitBrokerEvent } from './brokerEventBus';
+import { normalizeFreedomOrderFills } from './freedomTradeContracts';
 import {
   fetchFreedomTradeNetActiveOrders,
   fetchFreedomTradeNetPositions,
@@ -25,6 +26,10 @@ import {
   preservePersistedBrokerFeeAllocations
 } from '../domain/closedHistoryFees';
 import { getLatestClosedTradeDate } from '../domain/tradeHistorySync';
+import {
+  getFreedomAccountStreamSnapshotRevision,
+  hasFreedomAccountStreamSnapshot
+} from './freedomAccountStreamHealth';
 
 export interface PortfolioBrokerDataRuntimeDependencies {
   /** Current account ID is captured by the caller for the active React session. */
@@ -45,6 +50,7 @@ export interface PortfolioBrokerDataRuntimeDependencies {
   setBrokerExecutions: (executions: FreedomExecutedTrade[]) => void;
   fetchActiveOrders?: () => Promise<unknown>;
   normalizeActiveOrders?: (response: unknown) => FreedomActiveOrder[];
+  normalizeOrderFills?: (response: unknown) => FreedomExecutedTrade[];
   refreshOrders?: (
     dependencies: ActiveOrdersRefreshDependencies<unknown, FreedomActiveOrder>
   ) => Promise<void>;
@@ -83,14 +89,23 @@ export function createPortfolioBrokerDataRuntime(
   const markHistoryBaseline = dependencies.markHistoryBaseline || markFreedomTradeHistoryBaseline;
   const fetchActiveOrders = dependencies.fetchActiveOrders || fetchFreedomTradeNetActiveOrders;
   const normalizeActiveOrders = dependencies.normalizeActiveOrders || normalizeFreedomActiveOrders;
+  const normalizeOrderFills = dependencies.normalizeOrderFills || normalizeFreedomOrderFills;
   const logError = dependencies.logError || ((message, error) => console.error(message, error));
 
   const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
+    if (hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')) {
+      // The account stream already applied a current snapshot. Notify mounted
+      // desks waiting for the request lifecycle even though no new payload or
+      // REST request is needed.
+      emit('broker:account-info-refresh-complete');
+      return true;
+    }
     const requestKey = getSessionIdentityRequestKey(session);
     const existing = accountRequests.get(requestKey);
     if (existing) return existing;
 
+    const streamRevisionAtStart = getFreedomAccountStreamSnapshotRevision(session.identity, 'portfolio');
     emit('broker:account-info-refreshing');
     const request = (async () => {
       const secret = await restoreSecret();
@@ -99,9 +114,25 @@ export function createPortfolioBrokerDataRuntime(
 
       const response = await fetchAccountInfo();
       if (!dependencies.isSessionCurrent(session)) return false;
+      // A valid live event that arrived during the request is newer than this
+      // one-shot snapshot, even if the stream disconnects before the request ends.
+      if (
+        getFreedomAccountStreamSnapshotRevision(session.identity, 'portfolio') > streamRevisionAtStart ||
+        hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')
+      ) {
+        emit('broker:account-info-refresh-complete');
+        return true;
+      }
 
       const snapshot = normalizeAccountInfo(response);
       if (!dependencies.isSessionCurrent(session)) return false;
+      if (
+        getFreedomAccountStreamSnapshotRevision(session.identity, 'portfolio') > streamRevisionAtStart ||
+        hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')
+      ) {
+        emit('broker:account-info-refresh-complete');
+        return true;
+      }
 
       emit('broker:account-info', snapshot);
       return snapshot.loaded === true;
@@ -202,21 +233,63 @@ export function createPortfolioBrokerDataRuntime(
 
   const loadActiveOrders = async (session: SessionIdentityToken): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
+    if (hasFreedomAccountStreamSnapshot(session.identity, 'orders')) return true;
     const requestKey = getSessionIdentityRequestKey(session);
     const existing = activeOrdersRequests.get(requestKey);
     if (existing) return existing;
 
+    const streamRevisionAtStart = getFreedomAccountStreamSnapshotRevision(session.identity, 'orders');
     let succeeded = false;
+    let orderStreamFills: FreedomExecutedTrade[] = [];
+    const fetchActiveOrdersAndCaptureFills = async (): Promise<unknown> => {
+      const response = await fetchActiveOrders();
+      if (dependencies.isSessionCurrent(session)) {
+        orderStreamFills = normalizeOrderFills(response);
+      }
+      return response;
+    };
     const request = (async () => {
       await refreshOrders({
         restoreGatewaySecret: restoreSecret,
         isCurrent: () => dependencies.isSessionCurrent(session),
-        fetchActiveOrders,
+        fetchActiveOrders: fetchActiveOrdersAndCaptureFills,
         normalizeActiveOrders,
         onSuccess: (orders) => {
           if (!dependencies.isSessionCurrent(session)) return;
           succeeded = true;
+          // Do not replay a cached one-shot snapshot after a newer live orders
+          // event has already updated the canonical order and fill stores.
+          if (
+            getFreedomAccountStreamSnapshotRevision(session.identity, 'orders') > streamRevisionAtStart ||
+            hasFreedomAccountStreamSnapshot(session.identity, 'orders')
+          ) return;
           emit('broker:active-orders', orders);
+
+          // The authenticated orders event embeds completed executions in each
+          // order's trade[] list. Merge only new TradeNet trade IDs into the
+          // canonical history, preserving app-calculated fee allocations.
+          if (orderStreamFills.length > 0 && dependencies.isSessionCurrent(session)) {
+            const retainedExecutions = [
+              ...loadSavedBrokerExecutions(),
+              ...dependencies.getCurrentBrokerExecutions()
+            ];
+            const knownIds = new Set(retainedExecutions.map((trade) => String(trade.id)));
+            const newFills = orderStreamFills.filter((trade) => !knownIds.has(String(trade.id)));
+            if (newFills.length > 0) {
+              const fillsWithPersistedFees = preservePersistedBrokerFeeAllocations(
+                newFills,
+                retainedExecutions
+              );
+              const mergedTrades = mergeBrokerExecutionHistory(
+                retainedExecutions,
+                fillsWithPersistedFees
+              );
+              if (dependencies.isSessionCurrent(session)) {
+                dependencies.setBrokerExecutions(mergedTrades);
+                emit('broker:executed-trades', mergedTrades);
+              }
+            }
+          }
         },
         onError: () => {
           if (!dependencies.isSessionCurrent(session)) return;

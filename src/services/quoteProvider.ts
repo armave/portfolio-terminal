@@ -1,5 +1,5 @@
 import { fetchYahooQuoteData, fetchFallbackQuote } from './api';
-import { fetchFreedomQuote } from './freedomMarketData';
+import { fetchFreedomQuote, fetchFreedomQuoteWebSocket } from './freedomMarketData';
 import { resolveMarketSessionChange, resolveMarketSessionPrice } from '../domain/quotes';
 import type { QuoteDetails } from '../types/portfolio';
 
@@ -18,7 +18,7 @@ function usableQuoteNumber(value: unknown): number | null {
 // Time-anchored and monotonic, including requests started in the same millisecond.
 // Anchoring to epoch time keeps persisted ordering comparable after ordinary reloads.
 let lastQuoteRequestSequence = 0;
-function nextQuoteRequestSequence(): number {
+export function nextLiveQuoteRequestSequence(): number {
   lastQuoteRequestSequence = Math.max(Date.now() * 1000, lastQuoteRequestSequence + 1);
   return lastQuoteRequestSequence;
 }
@@ -89,123 +89,127 @@ export async function fetchLivePriceFromProviders(
   requestStartedAt = Date.now(),
   force = false
 ) {
-  const requestSequence = nextQuoteRequestSequence();
+  const requestSequence = nextLiveQuoteRequestSequence();
   symbol = symbol.toUpperCase();
   let price: number | null = null;
   let sourceName = "";
   let quoteDetails: QuoteDetails | null = null;
-
-  // Start both providers together; selection below is based on source timestamps,
-  // not request completion order or a hard-coded vendor preference.
-  const [freedomResult, yahooResult] = await Promise.allSettled([
-    force ? fetchFreedomQuote(symbol, true) : fetchFreedomQuote(symbol),
-    force ? fetchYahooQuoteData(symbol, true) : fetchYahooQuoteData(symbol)
-  ]);
   let freedomQuote: Awaited<ReturnType<typeof fetchFreedomQuote>> | null = null;
-  if (freedomResult.status === 'fulfilled') {
-    freedomQuote = freedomResult.value;
-  } else {
-    console.warn(`[Freedom Quote Error for ${symbol}]:`, describeProviderError(freedomResult.reason));
-  }
+  let freedomTransport: 'websocket' | 'rest' | null = null;
 
+  // TradeNet q is authoritative when it returns a valid quote. Do not launch
+  // Yahoo in parallel: that was creating a redundant REST quote on every load.
+  // The Freedom REST quote is requested only when the q snapshot fails.
   try {
-    if (yahooResult.status === 'rejected') throw yahooResult.reason;
-    const data = yahooResult.value;
-
-    if (data?.price && typeof data.price === 'object') {
-      const regularPrice = data.price.current ?? data.price.regularMarketPrice ?? data.regularMarketPrice;
-      const prevClose = data.price.previousClose ??
-        data.price.regularMarketPreviousClose ??
-        data.regularMarketPreviousClose;
-      const marketState = data.price.marketState;
-      const current = resolveMarketSessionPrice({
-        regularPrice,
-        preMarketPrice: data.price.preMarketPrice,
-        postMarketPrice: data.price.postMarketPrice,
-        marketState
-      });
-
-      if (current !== null) {
-        price = current;
-        sourceName = "Yahoo";
-        const change = resolveMarketSessionChange({
-          currentPrice: current,
-          previousClose: prevClose,
-          suppliedChange: data.price.change ?? data.price.regularMarketChange ?? data.regularMarketChange,
-          marketState
-        });
-
-        const previousClose = usableQuoteNumber(prevClose);
-        const hasPreviousClose = previousClose !== null && previousClose > 0;
-        const suppliedChangePercent = usableQuoteNumber(
-          data.price.changePercent ??
-          data.price.regularMarketChangePercent ??
-          data.regularMarketChangePercent
-        );
-        const changePercent = hasPreviousClose && change !== null
-          ? (change / previousClose) * 100
-          : suppliedChangePercent;
-        const sourceTime = marketState === 'PRE'
-          ? (data.price.preMarketTime ?? data.price.regularMarketTime)
-          : marketState === 'POST'
-            ? (data.price.postMarketTime ?? data.price.regularMarketTime)
-            : data.price.regularMarketTime;
-        const provenance = resolveQuoteProvenance(marketState, sourceTime);
-        quoteDetails = {
-          marketState,
-          ...provenance,
-          receivedAt: Date.now(),
-          requestSequence,
-          requestStartedAt,
-          price: current,
-          ...(change !== null ? { change } : {}),
-          ...(changePercent !== null ? { changePercent } : {})
-        };
-      }
+    freedomQuote = await fetchFreedomQuoteWebSocket(symbol);
+    freedomTransport = 'websocket';
+  } catch (websocketError) {
+    console.warn(
+      `[Freedom WebSocket Quote Error for ${symbol}]:`,
+      describeProviderError(websocketError)
+    );
+    try {
+      freedomQuote = await fetchFreedomQuote(symbol, true);
+      freedomTransport = 'rest';
+    } catch (restError) {
+      console.warn(`[Freedom REST Quote Error for ${symbol}]:`, describeProviderError(restError));
     }
-  } catch (error: unknown) {
-    console.warn(`[Proxy Quote Error for ${symbol}]:`, describeProviderError(error));
   }
 
   if (freedomQuote && Number.isFinite(freedomQuote.price) && freedomQuote.price > 0) {
-    const freedomAge = freedomQuote.sourceTimestamp === null ? null : Date.now() - freedomQuote.sourceTimestamp;
+    const freedomAge = freedomQuote.sourceTimestamp === null
+      ? null
+      : Date.now() - freedomQuote.sourceTimestamp;
     const freedomFreshness = freedomAge === null ? 'unknown' as const
       : freedomAge < 0 ? 'stale' as const
         : freedomAge > 5 * 60 * 1000 ? 'stale' as const : 'fresh' as const;
-    const yahooFreshness = quoteDetails?.freshness;
-    const yahooTimestamp = quoteDetails?.sourceTimestamp;
-    const yahooIsFresh = yahooFreshness === 'fresh';
-    const freedomIsFresh = freedomFreshness === 'fresh';
-    const freedomTimestamp = freedomQuote.sourceTimestamp;
-    const hasFreedomTimestamp = typeof freedomTimestamp === 'number' && Number.isFinite(freedomTimestamp);
-    const hasYahooTimestamp = typeof yahooTimestamp === 'number' && Number.isFinite(yahooTimestamp);
-    const bothHaveSourceTimestamps = hasFreedomTimestamp && hasYahooTimestamp;
-    const yahooIsNewer = hasYahooTimestamp && (!hasFreedomTimestamp || yahooTimestamp > freedomTimestamp!);
 
-    // When both providers give observation timestamps, compare those timestamps
-    // directly. Freshness labels are useful metadata, but must not override the
-    // relative age of two otherwise valid quotes.
-    const chooseFreedom = price === null || (bothHaveSourceTimestamps
-      ? freedomTimestamp! >= yahooTimestamp!
-      : freedomIsFresh && (!yahooIsFresh || !yahooIsNewer));
-    if (chooseFreedom) {
-      price = freedomQuote.price;
-      sourceName = 'Freedom TradeNet';
-      quoteDetails = {
-        marketState: 'UNKNOWN',
-        freshness: freedomFreshness,
-        sourceTimestamp: freedomQuote.sourceTimestamp ?? undefined,
-        receivedAt: Date.now(),
-        requestSequence,
-        requestStartedAt,
-        price: freedomQuote.price,
-        ...(typeof freedomQuote.change === 'number' && Number.isFinite(freedomQuote.change)
-          ? { change: freedomQuote.change }
-          : {}),
-        ...(typeof freedomQuote.changePercent === 'number' && Number.isFinite(freedomQuote.changePercent)
-          ? { changePercent: freedomQuote.changePercent }
-          : {})
-      };
+    price = freedomQuote.price;
+    sourceName = 'Freedom TradeNet';
+    quoteDetails = {
+      marketState: freedomQuote.marketState || 'UNKNOWN',
+      freshness: freedomFreshness,
+      sourceTimestamp: freedomQuote.sourceTimestamp ?? undefined,
+      transport: freedomTransport,
+      receivedAt: Date.now(),
+      requestSequence,
+      requestStartedAt,
+      price: freedomQuote.price,
+      ...(freedomQuote.bid !== null && freedomQuote.bid !== undefined ? { bid: freedomQuote.bid } : {}),
+      ...(freedomQuote.ask !== null && freedomQuote.ask !== undefined ? { ask: freedomQuote.ask } : {}),
+      ...(freedomQuote.volume !== null && freedomQuote.volume !== undefined ? { volume: freedomQuote.volume } : {}),
+      ...(freedomQuote.lastTradeTime ? { lastTradeTime: freedomQuote.lastTradeTime } : {}),
+      ...(freedomQuote.utcOffset !== null && freedomQuote.utcOffset !== undefined ? { utcOffset: freedomQuote.utcOffset } : {}),
+      ...(freedomQuote.serverTime ? { serverTime: freedomQuote.serverTime } : {}),
+      ...(typeof freedomQuote.change === 'number' && Number.isFinite(freedomQuote.change)
+        ? { change: freedomQuote.change }
+        : {}),
+      ...(typeof freedomQuote.changePercent === 'number' && Number.isFinite(freedomQuote.changePercent)
+        ? { changePercent: freedomQuote.changePercent }
+        : {})
+    };
+  }
+
+  // Only if both authenticated TradeNet paths failed do we try the external
+  // Yahoo quote endpoint, followed by Finnhub/Twelve Data. These are true
+  // fallbacks now, not parallel requests competing with a successful q event.
+  if (price === null) {
+    try {
+      const data = force
+        ? await fetchYahooQuoteData(symbol, true)
+        : await fetchYahooQuoteData(symbol);
+      if (data?.price && typeof data.price === 'object') {
+        const regularPrice = data.price.current ?? data.price.regularMarketPrice ?? data.regularMarketPrice;
+        const prevClose = data.price.previousClose ??
+          data.price.regularMarketPreviousClose ??
+          data.regularMarketPreviousClose;
+        const marketState = data.price.marketState;
+        const current = resolveMarketSessionPrice({
+          regularPrice,
+          preMarketPrice: data.price.preMarketPrice,
+          postMarketPrice: data.price.postMarketPrice,
+          marketState
+        });
+
+        if (current !== null) {
+          price = current;
+          sourceName = 'Yahoo';
+          const change = resolveMarketSessionChange({
+            currentPrice: current,
+            previousClose: prevClose,
+            suppliedChange: data.price.change ?? data.price.regularMarketChange ?? data.regularMarketChange,
+            marketState
+          });
+          const previousClose = usableQuoteNumber(prevClose);
+          const hasPreviousClose = previousClose !== null && previousClose > 0;
+          const suppliedChangePercent = usableQuoteNumber(
+            data.price.changePercent ??
+            data.price.regularMarketChangePercent ??
+            data.regularMarketChangePercent
+          );
+          const changePercent = hasPreviousClose && change !== null
+            ? (change / previousClose) * 100
+            : suppliedChangePercent;
+          const sourceTime = marketState === 'PRE'
+            ? (data.price.preMarketTime ?? data.price.regularMarketTime)
+            : marketState === 'POST'
+              ? (data.price.postMarketTime ?? data.price.regularMarketTime)
+              : data.price.regularMarketTime;
+          const provenance = resolveQuoteProvenance(marketState, sourceTime);
+          quoteDetails = {
+            marketState,
+            ...provenance,
+            receivedAt: Date.now(),
+            requestSequence,
+            requestStartedAt,
+            price: current,
+            ...(change !== null ? { change } : {}),
+            ...(changePercent !== null ? { changePercent } : {})
+          };
+        }
+      }
+    } catch (error: unknown) {
+      console.warn(`[Proxy Quote Error for ${symbol}]:`, describeProviderError(error));
     }
   }
 
