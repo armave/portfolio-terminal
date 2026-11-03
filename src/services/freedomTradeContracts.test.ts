@@ -133,7 +133,7 @@ describe('Freedom execution contract normalization', () => {
       tradeValue: 705,
       profit: 12.5
     });
-    expect(fills[0].raw).toMatchObject({ order_id: '8757875', id: 13446624 });
+    expect(fills[0].raw).toMatchObject({ order_id: 8757875, id: 13446624 });
     expect(fills[1]).toMatchObject({ id: '13446625', side: 'BUY', quantity: 1, price: 350 });
   });
 
