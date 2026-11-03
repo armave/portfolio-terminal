@@ -592,6 +592,14 @@ try {
     { timeout: 20_000 }
   );
 
+  const workspaceIsIsolated = await page.locator('#mainTerminalView').evaluate((element) => {
+    const inertAncestor = element.closest('[inert]');
+    return Boolean(inertAncestor && inertAncestor.getAttribute('aria-hidden') === 'true');
+  });
+  if (!workspaceIsIsolated) {
+    throw new Error('The open authentication dialog did not make the background workspace inert and aria-hidden.');
+  }
+
   // Confirm the shared authentication dialog traps keyboard focus at its boundaries.
   await page.locator('#authUserName').focus();
   await page.keyboard.press('Shift+Tab');
@@ -613,6 +621,12 @@ try {
   const sharedWorkspaceReadsBeforeGuest = worker.count('GET', '/api/state');
   await submitAuth(page, { name: 'Smoke Guest', password: 'valid-smoke-password' });
   await waitForAuthOverlay(page, false);
+  const workspaceRestored = await page.locator('#mainTerminalView').evaluate((element) =>
+    !element.closest('[inert]') && !element.closest('[aria-hidden="true"]')
+  );
+  if (!workspaceRestored) {
+    throw new Error('Closing the authentication dialog did not restore background workspace interaction.');
+  }
   if (worker.count('GET', '/api/guest-portfolio') < 1) {
     throw new Error('Guest login did not request the authenticated guest projection.');
   }

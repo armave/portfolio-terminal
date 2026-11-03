@@ -14,6 +14,67 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])'
 ].join(', ');
 
+const isolatedBackgroundElements = new Map<HTMLElement, {
+  count: number;
+  inert: boolean;
+  ariaHidden: string | null;
+}>();
+
+/**
+ * Makes every element outside the dialog's ancestor path inert and unavailable
+ * to assistive technology. The prior state is restored exactly when the dialog
+ * closes; reference counts keep overlapping dialog effects from restoring a
+ * background element while another active dialog still needs it isolated.
+ */
+export function isolateDialogBackground(dialog: HTMLElement): () => void {
+  const body = dialog.ownerDocument?.body;
+  const background: HTMLElement[] = [];
+  let branch: HTMLElement = dialog;
+  let parent = branch.parentElement;
+
+  while (parent) {
+    for (const sibling of Array.from(parent.children)) {
+      if (sibling !== branch) background.push(sibling as HTMLElement);
+    }
+    if (parent === body) break;
+    branch = parent;
+    parent = parent.parentElement;
+  }
+
+  for (const element of background) {
+    let state = isolatedBackgroundElements.get(element);
+    if (!state) {
+      state = {
+        count: 0,
+        inert: element.inert,
+        ariaHidden: element.getAttribute('aria-hidden')
+      };
+      isolatedBackgroundElements.set(element, state);
+    }
+    state.count += 1;
+    element.inert = true;
+    element.setAttribute('aria-hidden', 'true');
+  }
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+
+    for (const element of background) {
+      const state = isolatedBackgroundElements.get(element);
+      if (!state) continue;
+      state.count -= 1;
+      if (state.count > 0) continue;
+
+      element.inert = state.inert;
+      if (state.ariaHidden === null) element.removeAttribute('aria-hidden');
+      else element.setAttribute('aria-hidden', state.ariaHidden);
+      isolatedBackgroundElements.delete(element);
+    }
+  };
+}
+
 export function getDialogFocusableElements(dialog: Pick<HTMLElement, 'querySelectorAll'>): HTMLElement[] {
   return Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
     .filter(element => element.tabIndex >= 0 && element.getClientRects().length > 0 && !element.closest('[hidden], [inert], [aria-hidden="true"]'));
@@ -106,6 +167,7 @@ export function useDialogFocus(
 
     const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousFocus = resolveDialogRestoreTarget(restoreFocusRef?.current, activeElement);
+    const restoreDialogBackground = isolateDialogBackground(dialog);
     const body = document.body;
     const documentElement = document.documentElement;
     const previousBodyStyles = {
@@ -143,6 +205,7 @@ export function useDialogFocus(
 
     return () => {
       document.removeEventListener('keydown', onKeyDown);
+      restoreDialogBackground();
       body.style.overflow = previousBodyStyles.overflow;
       body.style.position = previousBodyStyles.position;
       body.style.top = previousBodyStyles.top;

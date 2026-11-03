@@ -1,10 +1,58 @@
 import { describe, expect, it } from 'vitest';
-import { focusElementWithoutScrolling, getDialogFocusableElements, resolveDialogRestoreTarget, restoreScrollPositionImmediately, trapDialogTabKey } from './dialogFocus';
+import { focusElementWithoutScrolling, getDialogFocusableElements, isolateDialogBackground, resolveDialogRestoreTarget, restoreScrollPositionImmediately, trapDialogTabKey } from './dialogFocus';
 
 interface FocusableOptions {
   rendered?: boolean;
   hiddenAncestor?: boolean;
   tabIndex?: number;
+}
+
+
+interface FakeTreeElement {
+  children: FakeTreeElement[];
+  parentElement: FakeTreeElement | null;
+  ownerDocument: { body: FakeTreeElement } | null;
+  inert: boolean;
+  attributes: Map<string, string>;
+  appendChild(child: FakeTreeElement): void;
+  getAttribute(name: string): string | null;
+  setAttribute(name: string, value: string): void;
+  removeAttribute(name: string): void;
+}
+
+function makeTreeElement(name: string): FakeTreeElement {
+  const element = {
+    name,
+    children: [] as FakeTreeElement[],
+    parentElement: null as FakeTreeElement | null,
+    ownerDocument: null as { body: FakeTreeElement } | null,
+    inert: false,
+    attributes: new Map<string, string>(),
+    appendChild(child: FakeTreeElement) {
+      child.parentElement = this as unknown as FakeTreeElement;
+      this.children.push(child);
+    },
+    getAttribute(attribute: string) {
+      return this.attributes.get(attribute) ?? null;
+    },
+    setAttribute(attribute: string, value: string) {
+      this.attributes.set(attribute, value);
+    },
+    removeAttribute(attribute: string) {
+      this.attributes.delete(attribute);
+    }
+  } as FakeTreeElement;
+  return element;
+}
+
+function connectTreeToBody(body: FakeTreeElement, root: FakeTreeElement): void {
+  const document = { body };
+  const visit = (element: FakeTreeElement) => {
+    element.ownerDocument = document;
+    element.children.forEach(visit);
+  };
+  visit(root);
+  body.ownerDocument = document;
 }
 
 let focused: string[] = [];
@@ -41,6 +89,68 @@ function makeEvent(shiftKey = false) {
 }
 
 describe('dialog focus management', () => {
+  it('makes every background branch inert and restores its prior accessibility state', () => {
+    const body = makeTreeElement('body');
+    const appRoot = makeTreeElement('app-root');
+    const workspace = makeTreeElement('workspace');
+    const authOverlay = makeTreeElement('auth-overlay');
+    const dialog = makeTreeElement('dialog');
+    const unrelatedBodyWidget = makeTreeElement('widget-host');
+    body.appendChild(appRoot);
+    body.appendChild(unrelatedBodyWidget);
+    appRoot.appendChild(workspace);
+    appRoot.appendChild(authOverlay);
+    authOverlay.appendChild(dialog);
+    connectTreeToBody(body, appRoot);
+    unrelatedBodyWidget.ownerDocument = { body };
+
+    workspace.setAttribute('aria-hidden', 'false');
+    const restore = isolateDialogBackground(dialog as unknown as HTMLElement);
+
+    expect(workspace.inert).toBe(true);
+    expect(workspace.getAttribute('aria-hidden')).toBe('true');
+    expect(unrelatedBodyWidget.inert).toBe(true);
+    expect(unrelatedBodyWidget.getAttribute('aria-hidden')).toBe('true');
+    expect(dialog.inert).toBe(false);
+
+    restore();
+
+    expect(workspace.inert).toBe(false);
+    expect(workspace.getAttribute('aria-hidden')).toBe('false');
+    expect(unrelatedBodyWidget.inert).toBe(false);
+    expect(unrelatedBodyWidget.getAttribute('aria-hidden')).toBeNull();
+  });
+
+  it('reference-counts shared background branches and restores them only after the last dialog closes', () => {
+    const body = makeTreeElement('body');
+    const appRoot = makeTreeElement('app-root');
+    const workspace = makeTreeElement('workspace');
+    const overlayOne = makeTreeElement('overlay-one');
+    const overlayTwo = makeTreeElement('overlay-two');
+    const dialogOne = makeTreeElement('dialog-one');
+    const dialogTwo = makeTreeElement('dialog-two');
+    body.appendChild(appRoot);
+    appRoot.appendChild(workspace);
+    appRoot.appendChild(overlayOne);
+    appRoot.appendChild(overlayTwo);
+    overlayOne.appendChild(dialogOne);
+    overlayTwo.appendChild(dialogTwo);
+    connectTreeToBody(body, appRoot);
+
+    const restoreOne = isolateDialogBackground(dialogOne as unknown as HTMLElement);
+    const restoreTwo = isolateDialogBackground(dialogTwo as unknown as HTMLElement);
+    expect(workspace.inert).toBe(true);
+
+    restoreOne();
+    expect(workspace.inert).toBe(true);
+    expect(overlayOne.inert).toBe(true);
+    expect(overlayTwo.inert).toBe(false);
+
+    restoreTwo();
+    expect(workspace.inert).toBe(false);
+    expect(overlayOne.inert).toBe(false);
+  });
+
   it('focuses dialog controls without allowing the browser to scroll the page', () => {
     let options: FocusOptions | undefined;
     const element = {
