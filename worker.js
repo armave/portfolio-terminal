@@ -560,6 +560,27 @@ async function diagnoseFreedomOrdersStream(env) {
  * return only schema metadata. Portfolio numbers, tickers, login names, IDs,
  * credentials, and the SID never leave the Worker in this diagnostic.
  */
+function describeRedactedValueType(value, depth = 0) {
+    if (value === null) return "null";
+    if (Array.isArray(value)) {
+        return {
+            type: "array",
+            length: value.length,
+            item: value.length && depth < 2 ? describeRedactedValueType(value[0], depth + 1) : null
+        };
+    }
+    if (typeof value !== "object") return typeof value;
+    if (depth >= 2) return "object";
+    const fields = {};
+    for (const key of Object.keys(value)
+        .filter(key => /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) && !/^(?:id|_id|login|owner_login|account_id|acc_id)$/i.test(key))
+        .sort()
+        .slice(0, 24)) {
+        fields[key] = describeRedactedValueType(value[key], depth + 1);
+    }
+    return { type: "object", fields };
+}
+
 function summarizeFreedomStreamEvent(eventName, payload) {
     const isRecord = value => value !== null && typeof value === "object" && !Array.isArray(value);
     const payloadType = Array.isArray(payload) ? "array"
@@ -580,14 +601,26 @@ function summarizeFreedomStreamEvent(eventName, payload) {
             "i", "t", "k", "s", "q", "curr", "currval", "name", "name2",
             "open_bal", "mkt_price", "vm", "go", "profit_close", "acc_pos_id", "trade"
         ]);
+        const accountSample = accounts[0];
+        const positionSample = positions[0];
         return {
             event: eventName,
             payloadType,
             topLevelKeys: keys(payload),
+            topLevelFieldTypes: Object.fromEntries(
+                ["acc", "acc_srv_t", "loaded", "pos"].filter(key => Object.prototype.hasOwnProperty.call(root || {}, key))
+                    .map(key => [key, describeRedactedValueType(root[key])])
+            ),
             accountsCount: accounts.length,
-            accountItemKeys: accounts.length ? keys(accounts[0]).filter(key => accountKeys.has(key)) : [],
+            accountItemKeys: accountSample ? keys(accountSample).filter(key => accountKeys.has(key)) : [],
+            accountItemTypes: accountSample && isRecord(accountSample)
+                ? Object.fromEntries(Object.keys(accountSample).filter(key => accountKeys.has(key)).sort().map(key => [key, describeRedactedValueType(accountSample[key])]))
+                : {},
             positionsCount: positions.length,
-            positionItemKeys: positions.length ? keys(positions[0]).filter(key => positionKeys.has(key)) : []
+            positionItemKeys: positionSample ? keys(positionSample).filter(key => positionKeys.has(key)) : [],
+            positionItemTypes: positionSample && isRecord(positionSample)
+                ? Object.fromEntries(Object.keys(positionSample).filter(key => positionKeys.has(key)).sort().map(key => [key, describeRedactedValueType(positionSample[key])]))
+                : {}
         };
     }
     if (eventName === "markets") {
@@ -595,12 +628,20 @@ function summarizeFreedomStreamEvent(eventName, payload) {
             : Array.isArray(payload?.m) ? payload.m
                 : Array.isArray(payload?.markets) ? payload.markets : [];
         const marketKeys = new Set(["n", "n2", "s", "o", "c", "dt"]);
+        const marketSample = rows[0];
         return {
             event: eventName,
             payloadType,
             topLevelKeys: keys(payload),
+            topLevelFieldTypes: Object.fromEntries(
+                ["m", "t"].filter(key => Object.prototype.hasOwnProperty.call(payload || {}, key))
+                    .map(key => [key, describeRedactedValueType(payload[key])])
+            ),
             marketsCount: rows.length,
-            marketItemKeys: rows.length ? keys(rows[0]).filter(key => marketKeys.has(key)) : []
+            marketItemKeys: marketSample ? keys(marketSample).filter(key => marketKeys.has(key)) : [],
+            marketItemTypes: marketSample && isRecord(marketSample)
+                ? Object.fromEntries(Object.keys(marketSample).filter(key => marketKeys.has(key)).sort().map(key => [key, describeRedactedValueType(marketSample[key])]))
+                : {}
         };
     }
     throw new Error("Unsupported TradeNet stream event.");
