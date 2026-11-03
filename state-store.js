@@ -650,8 +650,13 @@ export class PortfolioStateDO {
       : Array.isArray(payload?.orders?.order) ? payload.orders.order
         : Array.isArray(payload?.orders) ? payload.orders
           : Array.isArray(payload?.order) ? payload.order
-            : [];
-    if (!rows.length) return null;
+            : null;
+    if (!rows) return null;
+    if (rows.length === 0) {
+      this.freedomAccountOrdersById.clear();
+      this.freedomAccountOrdersSnapshotReceived = true;
+      return { data: { orders: { order: [] }, trades: { trade: [] } } };
+    }
     const numberOrNull = (value) => {
       if (value === null || value === undefined || value === "") return null;
       const number = Number(value);
