@@ -144,7 +144,7 @@ Freedom TradeNet account data is the preferred source for the broker-reported US
 
 If Freedom account data is unavailable or the Gateway Secret has not been configured, locally saved portfolio data remains available and the app surfaces a warning. A previously loaded broker snapshot is marked stale after a failed refresh; it must not be presented as a current broker balance. Quote freshness is marked unknown when the broker snapshot does not provide a verifiable market observation timestamp.
 
-### TradeNet authenticated orders-stream diagnostic
+### TradeNet authenticated WebSocket active-orders snapshots
 
 The Worker provides an administrator-only, read-only active-orders snapshot at `?action=freedom-orders-stream`. It uses Worker-only `FREEDOM_LOGIN` and `FREEDOM_PASSWORD` secrets, obtains a short-lived TradeNet SID, opens the production WebSocket through Cloudflare, and subscribes to `orders`. The sanitized order list is returned to the app's existing active-order normalizer after both production-session events arrive. It is requested on the normal 60-second active-order refresh cadence; this is a request-driven snapshot, not a permanently open browser socket. The existing REST `freedom-orders` endpoint remains the fallback if the WebSocket snapshot fails. The Worker never returns account identifiers, credentials, arbitrary broker payload fields, or the SID; the diagnostic preview omits order IDs. The SID is not persisted, and the socket closes after the required events arrive or the eight-second observation window ends.
 
