@@ -48,6 +48,16 @@ describe('app localization', () => {
       .toBe('Не удалось обновить данные; показаны ранее загруженные рыночные данные.');
   });
 
+  it('localizes all remaining Market Insights status labels and provider sentiment', () => {
+    expect(translateText('Failed to load news:', 'ru')).toBe('Не удалось загрузить новости:');
+    expect(translateText('Est:', 'ru')).toBe('Прогноз:');
+    expect(translateText('Act:', 'ru')).toBe('Факт:');
+    expect(translateText('Bullish', 'ru')).toBe('Бычий');
+    expect(translateText('Bearish', 'ru')).toBe('Медвежий');
+    expect(translateText('Neutral', 'ru')).toBe('Нейтральный');
+    expect(translateText('Stocktwits unavailable: connection lost', 'ru')).toBe('Stocktwits недоступен: connection lost');
+  });
+
   it('localizes unpriced cash holding guidance', () => {
     expect(translateText('Unpriced holdings', 'ru')).toBe('Позиции без котировки');
     expect(translateText('Their market value and allocation are unavailable until a valid quote is received.', 'ru'))

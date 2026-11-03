@@ -523,7 +523,7 @@ function MarketInsightsPanelView() {
                 >
                   <span class="text-slate-300 font-bold">{e.quarter}</span>
                   <span class="text-[10px]">
-                    Est: {e.epsEstimate} | Act:{' '}
+                    <span>Est:</span> {e.epsEstimate} <span>|</span> <span>Act:</span>{' '}
                     <span
                       class={`${(e.epsDifference ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
                         } font-bold`}
