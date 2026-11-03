@@ -2,15 +2,15 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 function readSource(): string {
-  return readFileSync(new URL('./ClosedHistoryDesk.tsx', import.meta.url), 'utf8');
+  return readFileSync(new URL('./ClosedHistoryDesk.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 }
 
 function readAppSource(): string {
-  return readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+  return readFileSync(new URL('../App.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 }
 
 function readBrokerRuntimeSource(): string {
-  return readFileSync(new URL('../services/portfolioBrokerDataRuntime.ts', import.meta.url), 'utf8');
+  return readFileSync(new URL('../services/portfolioBrokerDataRuntime.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 }
 
 describe('Trades cache-first rendering', () => {

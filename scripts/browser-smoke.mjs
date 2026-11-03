@@ -595,12 +595,6 @@ try {
     await assertResponsiveLayout(page, width);
   }
 
-  if (await page.locator('#tickerTabs #syncPortfolioButton').count() !== 0) {
-    throw new Error('Portfolio sync action must not be nested inside workspace navigation.');
-  }
-  if (await page.locator('#syncPortfolioButton').count() !== 1) {
-    throw new Error('Administrator workspace must expose one independent portfolio sync action.');
-  }
   await assertManyTickerNavigation(page);
   await page.setViewportSize({ width: 1440, height: 900 });
 
@@ -666,14 +660,6 @@ try {
   // source. A second sync must reuse those results and create no backup traffic.
   worker.failNextStateConflict();
   const previousConflicts = worker.stateConflictCount();
-  const previousStateWrites = worker.count('POST', '/api/state');
-  const syncButton = page.locator('#syncPortfolioButton');
-  await syncButton.waitFor({ state: 'visible', timeout: 20_000 });
-  await syncButton.click();
-  await waitForCondition(
-    () => worker.count('POST', '/api/state') > previousStateWrites,
-    'initial manual sync cloud push'
-  );
   await waitForCondition(
     () => worker.stateConflictCount() > previousConflicts,
     'cloud state revision conflict response'

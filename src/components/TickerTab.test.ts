@@ -9,7 +9,6 @@ const syncButtonSource = tickerTabSource.slice(syncButtonStart);
 describe('navigation portfolio sync control', () => {
   it('uses a dedicated full-sync action instead of a quote-only nav refresh', () => {
     expect(syncButtonStart).toBeGreaterThan(tickerTabsStart);
-    expect(syncButtonSource).toContain('id="syncPortfolioButton"');
     expect(syncButtonSource).toContain("translateText('Sync portfolio', getAppLanguage())");
     expect(syncButtonSource).toContain("emitUiEvent('portfolio:sync-request'");
     expect(syncButtonSource).toContain('onClick={handleSyncPortfolio}');

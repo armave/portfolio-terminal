@@ -3,22 +3,22 @@ import { describe, expect, it } from 'vitest';
 
 const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
 const navigationComponent = readFileSync(new URL('../components/TickerTab.tsx', import.meta.url), 'utf8');
-const marker = '/* Mobile workspace navigation keeps ticker selection in its own scrollable strip. */';
+const marker = '/* Keep the ticker strip independent on desktop and merge it into the centered';
 const markerIndex = stylesheet.lastIndexOf(marker);
 const mobileNavigationStyles = markerIndex >= 0 ? stylesheet.slice(markerIndex) : '';
 
 describe('mobile workspace navigation styles', () => {
-  it('keeps fixed destinations visible while the ticker list receives its own scroll area', () => {
+  it('centers all destinations together in one wrapping group on small screens', () => {
     expect(mobileNavigationStyles).toMatch(/@media\s*\(max-width:\s*768px\)/);
     expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*flex-wrap:\s*wrap;/);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*justify-content:\s*center;/);
     expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*overflow-x:\s*visible;/);
-    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*overflow-x:\s*auto;/s);
-    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*flex:\s*1\s+1\s+100%;/s);
-    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*max-width:\s*100%;/s);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{\s*display:\s*contents;/);
   });
 
-  it('gives the nested ticker strip enough specificity to override the generic nav-item flex rule', () => {
+  it('keeps the ticker strip independently scrollable on larger screens', () => {
     expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*flex:\s*0\s+1\s+min\(52vw,\s*52rem\)/s);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*overflow-x:\s*auto;/s);
     expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*min-width:\s*0;/s);
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-ticker-list>\*\s*\{[^}]*flex:\s*0\s+0\s+auto;/s);
     expect(stylesheet.match(/#tickerTabs\s*\{/g) || []).toHaveLength(3);

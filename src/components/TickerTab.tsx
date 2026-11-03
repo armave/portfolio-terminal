@@ -79,87 +79,87 @@ export const TickerTabs = memo(function TickerTabs({
           role="group"
           aria-label={translateText('MARGIN DESK', getAppLanguage())}
         >
-      {isAdmin && tickers.length === 0 && (
-        <button
-          type="button"
-          data-nav-tab="true"
-          data-nav-index={0}
-          ref={(element) => { tabButtonRefs.current[0] = element; }}
-          onKeyDown={handleTabKeyDown}
-          onClick={() => selectView('COMBINED')}
-          aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
-          aria-pressed={isMarginDeskActive}
-          class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
-            ? 'bg-emerald-600 text-black'
-            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-            }`}
-        >
-          <span class="workspace-nav-label--desktop">{translateText('MARGIN DESK', getAppLanguage())}</span>
-          <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
-        </button>
-      )}
-
-      {isAdmin && tickers.length === 1 && (
-        <button
-          type="button"
-          onClick={() => selectView(tickers[0])}
-          aria-label={`${translateText('Margin', getAppLanguage())}: ${tickers[0]}`}
-          aria-pressed={activeView === tickers[0]}
-          class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === tickers[0] && isMarginDeskActive
-            ? 'bg-emerald-600 text-black'
-            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-            }`}
-          data-nav-tab="true"
-          data-nav-index={0}
-          ref={(element) => { tabButtonRefs.current[0] = element; }}
-          onKeyDown={handleTabKeyDown}
-        >
-          <span class="workspace-nav-label--desktop">{translateText('MARGIN', getAppLanguage())}: {tickers[0]}</span>
-          <span class="workspace-nav-label--mobile">{tickers[0]}</span>
-        </button>
-      )}
-
-      {isAdmin && tickers.length > 1 && (
-        <>
-          <button
-            type="button"
-            onClick={() => selectView('COMBINED')}
-            aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
-            aria-pressed={activeView === 'COMBINED'}
-            class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === 'COMBINED' && isMarginDeskActive
-              ? 'bg-emerald-600 text-black'
-              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-              }`}
-          data-nav-tab="true"
-          data-nav-index={0}
-          ref={(element) => { tabButtonRefs.current[0] = element; }}
-          onKeyDown={handleTabKeyDown}
-          >
-            <span class="workspace-nav-label--desktop">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
-            <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
-          </button>
-
-          {tickers.map((t, index) => (
+          {isAdmin && tickers.length === 0 && (
             <button
-              key={t}
               type="button"
-              onClick={() => selectView(t)}
-              aria-label={`${translateText('Margin', getAppLanguage())}: ${t}`}
-              aria-pressed={activeView === t}
-              class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === t && isMarginDeskActive
+              data-nav-tab="true"
+              data-nav-index={0}
+              ref={(element) => { tabButtonRefs.current[0] = element; }}
+              onKeyDown={handleTabKeyDown}
+              onClick={() => selectView('COMBINED')}
+              aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
+              aria-pressed={isMarginDeskActive}
+              class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
                 ? 'bg-emerald-600 text-black'
                 : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
                 }`}
-          data-nav-tab="true"
-          data-nav-index={index + 1}
-          ref={(element) => { tabButtonRefs.current[index + 1] = element; }}
-          onKeyDown={handleTabKeyDown}
             >
-              {t}
+              <span class="workspace-nav-label--desktop">{translateText('MARGIN DESK', getAppLanguage())}</span>
+              <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
             </button>
-          ))}
-        </>
-      )}
+          )}
+
+          {isAdmin && tickers.length === 1 && (
+            <button
+              type="button"
+              onClick={() => selectView(tickers[0])}
+              aria-label={`${translateText('Margin', getAppLanguage())}: ${tickers[0]}`}
+              aria-pressed={activeView === tickers[0]}
+              class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === tickers[0] && isMarginDeskActive
+                ? 'bg-emerald-600 text-black'
+                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                }`}
+              data-nav-tab="true"
+              data-nav-index={0}
+              ref={(element) => { tabButtonRefs.current[0] = element; }}
+              onKeyDown={handleTabKeyDown}
+            >
+              <span class="workspace-nav-label--desktop">{translateText('MARGIN', getAppLanguage())}: {tickers[0]}</span>
+              <span class="workspace-nav-label--mobile">{tickers[0]}</span>
+            </button>
+          )}
+
+          {isAdmin && tickers.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={() => selectView('COMBINED')}
+                aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
+                aria-pressed={activeView === 'COMBINED'}
+                class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === 'COMBINED' && isMarginDeskActive
+                  ? 'bg-emerald-600 text-black'
+                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                  }`}
+                data-nav-tab="true"
+                data-nav-index={0}
+                ref={(element) => { tabButtonRefs.current[0] = element; }}
+                onKeyDown={handleTabKeyDown}
+              >
+                <span class="workspace-nav-label--desktop">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
+                <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
+              </button>
+
+              {tickers.map((t, index) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => selectView(t)}
+                  aria-label={`${translateText('Margin', getAppLanguage())}: ${t}`}
+                  aria-pressed={activeView === t}
+                  class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === t && isMarginDeskActive
+                    ? 'bg-emerald-600 text-black'
+                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                    }`}
+                  data-nav-tab="true"
+                  data-nav-index={index + 1}
+                  ref={(element) => { tabButtonRefs.current[index + 1] = element; }}
+                  onKeyDown={handleTabKeyDown}
+                >
+                  {t}
+                </button>
+              ))}
+            </>
+          )}
 
         </div>
       )}
@@ -172,10 +172,10 @@ export const TickerTabs = memo(function TickerTabs({
           ? 'bg-cyan-500 text-black'
           : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
           }`}
-          data-nav-tab="true"
-          data-nav-index={balanceNavIndex}
-          ref={(element) => { tabButtonRefs.current[balanceNavIndex] = element; }}
-          onKeyDown={handleTabKeyDown}
+        data-nav-tab="true"
+        data-nav-index={balanceNavIndex}
+        ref={(element) => { tabButtonRefs.current[balanceNavIndex] = element; }}
+        onKeyDown={handleTabKeyDown}
       >
         <span>{translateText('BALANCE', getAppLanguage())}</span>
         <BalanceEquityBadge isAdmin={isAdmin} userId={userId} isActive={isCushionActive} />
@@ -206,10 +206,10 @@ export const TickerTabs = memo(function TickerTabs({
           ? 'bg-purple-500 text-black'
           : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
           }`}
-          data-nav-tab="true"
-          data-nav-index={balanceNavIndex + 1}
-          ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
-          onKeyDown={handleTabKeyDown}
+        data-nav-tab="true"
+        data-nav-index={balanceNavIndex + 1}
+        ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
+        onKeyDown={handleTabKeyDown}
       >
         {translateText('TRADES', getAppLanguage())}
       </button>}
@@ -224,10 +224,10 @@ export const TickerTabs = memo(function TickerTabs({
             ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
             : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition'
         }
-          data-nav-tab="true"
-          data-nav-index={settingsNavIndex}
-          ref={(element) => { tabButtonRefs.current[settingsNavIndex] = element; }}
-          onKeyDown={handleTabKeyDown}
+        data-nav-tab="true"
+        data-nav-index={settingsNavIndex}
+        ref={(element) => { tabButtonRefs.current[settingsNavIndex] = element; }}
+        onKeyDown={handleTabKeyDown}
         aria-label={translateText('Settings', getAppLanguage())}
         title={translateText('Settings', getAppLanguage())}
       >

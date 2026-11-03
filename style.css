@@ -2773,7 +2773,8 @@ summary:focus-visible {
   }
 }
 
-/* Mobile workspace navigation keeps ticker selection in its own scrollable strip. */
+/* Keep the ticker strip independent on desktop and merge it into the centered
+   workspace navigation flow on small screens. */
 #tickerTabs {
   display: flex;
   flex-wrap: nowrap;
@@ -2822,6 +2823,7 @@ summary:focus-visible {
     min-width: 0;
     max-width: 100%;
     flex-wrap: wrap;
+    justify-content: center;
     overflow-x: visible;
     overflow-y: visible;
     scroll-snap-type: none;
@@ -2835,12 +2837,7 @@ summary:focus-visible {
   }
 
   #tickerTabs>.workspace-nav-ticker-list {
-    flex: 1 1 100%;
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    justify-content: flex-start;
-    padding: 0.125rem 0.125rem 0.375rem;
+    display: contents;
   }
 }
 
@@ -3835,7 +3832,7 @@ table tbody tr:hover {
   }
 }
 
-/* Keep the mobile header flex row shrinkable so the nested ticker strip owns overflow. */
+/* Keep the mobile header flex row shrinkable around the centered navigation. */
 @media (max-width: 768px) {
   .board-header-banner > .flex {
     width: 100%;

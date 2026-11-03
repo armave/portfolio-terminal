@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preac
 import { lazy, memo, Suspense } from 'preact/compat';
 import { AuthModal } from './components/AuthModal';
 import { DeskLoading } from './components/DeskLoading';
-import { PortfolioSyncButton, TickerTabs } from './components/TickerTab';
+import { TickerTabs } from './components/TickerTab';
 import { MarketStatusBadge } from './components/MarketStatusBadge';
 import { CloudSyncIndicator } from './components/CloudSyncIndicator';
 import { ProjectionsTable } from './components/ProjectionsTable';
@@ -28,7 +28,6 @@ import { createSessionIdentityGuard } from './utils/sessionIdentityGuard';
 
 
 const MemoTickerTabs = memo(TickerTabs);
-const MemoPortfolioSyncButton = memo(PortfolioSyncButton);
 const MemoSummaryMetricsGrid = lazy(() =>
   import('./components/SummaryMetricsGrid').then(({ SummaryMetricsGrid }) => ({
     default: memo(SummaryMetricsGrid)
@@ -480,7 +479,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         >
           <div class="flex flex-wrap items-center gap-2 justify-center">
             <div id="tickerTabs" role="group" aria-label={translateText('Workspace navigation', getAppLanguage())}><MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
-            <MemoPortfolioSyncButton isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} />
             <MarketStatusBadge isAdmin={permissions.isAdmin} />
             {permissions.canViewKvStatus && <CloudSyncIndicator cloudStatus={cloudStatus} cloudSyncStatus={cloudSyncStatus} />}
           </div>

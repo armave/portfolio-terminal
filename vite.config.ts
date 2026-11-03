@@ -125,6 +125,9 @@ export default defineConfig({
         // entry chunk. The browser loads this shared chunk when api.ts imports
         // its adapters, and it remains independently cacheable across UI edits.
         manualChunks(id) {
+          if (id.includes('/node_modules/crypto-js/')) {
+            return 'legacy-crypto';
+          }
           if (/\/src\/services\/(authTransportRuntime|freedomBrokerTransportRuntime|marketDataTransportRuntime)\.ts$/.test(id)) {
             return 'transport-runtime';
           }

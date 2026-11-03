@@ -116,9 +116,9 @@ describe('Balance cache-first history retention', () => {
 });
 
 describe('Balance cache-first rendering wiring', () => {
-  const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
-  const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
-  const brokerDataSource = readFileSync(new URL('../services/portfolioBrokerDataRuntime.ts', import.meta.url), 'utf8');
+  const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const brokerDataSource = readFileSync(new URL('../services/portfolioBrokerDataRuntime.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
   it('uses the saved broker snapshot before showing a blocking first-load state', () => {
     expect(deskSource).toContain('createBalanceSyncState(Boolean(state.brokerAccountInfo?.loaded), isAdmin)');
