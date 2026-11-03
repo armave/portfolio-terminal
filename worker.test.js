@@ -2549,7 +2549,7 @@ describe('guest data isolation at the Worker boundary', () => {
     expect(stateStub.fetch.mock.calls.filter(([request]) => {
       const requestUrl = typeof request === 'string' ? request : request.url;
       return new URL(requestUrl).pathname === '/api/auth/verify';
-    })).toHaveLength(2);
+    })).toHaveLength(3);
   });
 
   it('routes the guest endpoint without exposing the shared-state route', async () => {
