@@ -362,8 +362,9 @@ async function createFreedomDiagnosticSession(env) {
 }
 
 /**
- * Verify the authenticated TradeNet orders stream without returning order data.
- * The connection is deliberately short-lived and the SID is never persisted.
+ * Fetch one production active-orders snapshot over the authenticated TradeNet stream.
+ * Only the normalized allowlisted order fields leave the Worker; the SID and raw
+ * broker payload stay server-side. The socket is deliberately short-lived.
  */
 async function diagnoseFreedomOrdersStream(env) {
     const sid = await createFreedomDiagnosticSession(env);
@@ -825,8 +826,8 @@ export default {
                 }), { headers: corsHeaders });
             }
 
-            // Diagnostic-only authenticated TradeNet WebSocket orders probe.
-            // It returns event metadata only; broker order payloads and the SID never leave the Worker.
+            // Authenticated read-only TradeNet WebSocket orders snapshot.
+            // The response includes sanitized normalized order rows plus preview metadata; the SID and raw payload never leave the Worker.
             if (action === "freedom-orders-stream") {
                 if (request.method !== "GET") {
                     return jsonError("Freedom orders stream diagnostic only supports GET.", 405, corsHeaders);
