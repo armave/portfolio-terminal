@@ -77,7 +77,7 @@ describe('Freedom persistent quote stream runtime', () => {
     sockets[0].receive({ type: 'ready', symbols: ['AAPL.US', 'MSFT.US'] });
     await expect(start).resolves.toBe(true);
     expect(runtime.isConnected()).toBe(true);
-    expect(onStatus).toHaveBeenCalledWith('connected');
+    expect(onStatus).toHaveBeenCalledWith('connected', undefined);
 
     sockets[0].receive({
       type: 'quote',
