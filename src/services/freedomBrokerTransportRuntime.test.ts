@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createFreedomBrokerTransportRuntime } from './freedomBrokerTransportRuntime';
+import { normalizeFreedomPortfolio } from './freedomAccountContracts';
 
 function createRuntime(options: { token?: string; now?: () => number; resolve?: (action: string, params: unknown, init: unknown) => unknown } = {}) {
   const proxyFetch = vi.fn((action?: string, params?: unknown, init?: unknown) =>
@@ -61,7 +62,13 @@ describe('Freedom broker transport runtime', () => {
         : undefined
     });
 
-    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(data);
+    const response = { ok: true, source: 'authenticated_websocket', data };
+    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(response);
+    expect(normalizeFreedomPortfolio(response)).toMatchObject({
+      loaded: true,
+      balances: [{ currency: 'USD', amount: -22299.41 }],
+      positions: [{ ticker: 'GOOGL.US', quantity: 106, marketPrice: 280.49 }]
+    });
     expect(proxyFetch).toHaveBeenCalledTimes(1);
     expect(proxyFetch).toHaveBeenCalledWith('freedom-portfolio-snapshot', undefined, { cache: 'no-store' });
     expect(recordMetric).toHaveBeenCalledWith('broker_portfolio_source', {
