@@ -494,8 +494,9 @@ export function classifyFreedomPortfolio(
     const prior = sourcePositions[tranche.ticker];
     const priorCash = previousCash.get(tranche.ticker);
     // Freedom account snapshots expose mkt_price without an observation timestamp.
-    // Do not let that unprovable value overwrite a quote already backed by a
-    // timestamped market observation; the next live quote refresh can supersede it.
+    // Do not let that unprovable value overwrite a locally observed quote: use
+    // the provider timestamp when available, or q's browser receive time when
+    // TradeNet sends an ISO ltt that cannot be normalized numerically.
     const preservedQuote = getLatestPreservedQuote(prior, priorCash);
     const snapshotPrice = positiveFinite(tranche.marketPrice);
     const currentPrice = preservedQuote?.price ?? getPositiveMarketPrice(
