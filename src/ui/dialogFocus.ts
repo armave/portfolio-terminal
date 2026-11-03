@@ -14,6 +14,27 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])'
 ].join(', ');
 
+const activeDialogStack: HTMLElement[] = [];
+
+/** Registers a modal as the topmost keyboard owner and restores the previous layer on cleanup. */
+export function registerActiveDialog(dialog: HTMLElement): () => void {
+  const previousIndex = activeDialogStack.indexOf(dialog);
+  if (previousIndex >= 0) activeDialogStack.splice(previousIndex, 1);
+  activeDialogStack.push(dialog);
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const index = activeDialogStack.lastIndexOf(dialog);
+    if (index >= 0) activeDialogStack.splice(index, 1);
+  };
+}
+
+export function isTopmostActiveDialog(dialog: HTMLElement): boolean {
+  return activeDialogStack[activeDialogStack.length - 1] === dialog;
+}
+
 const isolatedBackgroundElements = new Map<HTMLElement, {
   count: number;
   inert: boolean;
@@ -167,6 +188,7 @@ export function useDialogFocus(
 
     const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousFocus = resolveDialogRestoreTarget(restoreFocusRef?.current, activeElement);
+    const unregisterDialog = registerActiveDialog(dialog);
     const restoreDialogBackground = isolateDialogBackground(dialog);
     const body = document.body;
     const documentElement = document.documentElement;
@@ -192,6 +214,7 @@ export function useDialogFocus(
     body.style.width = '100%';
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!isTopmostActiveDialog(dialog)) return;
       if (event.key === 'Escape' && onEscapeRef.current) {
         event.preventDefault();
         onEscapeRef.current();
@@ -205,6 +228,8 @@ export function useDialogFocus(
 
     return () => {
       document.removeEventListener('keydown', onKeyDown);
+      const wasTopmostDialog = isTopmostActiveDialog(dialog);
+      unregisterDialog();
       restoreDialogBackground();
       body.style.overflow = previousBodyStyles.overflow;
       body.style.position = previousBodyStyles.position;
@@ -214,7 +239,7 @@ export function useDialogFocus(
       body.style.width = previousBodyStyles.width;
       documentElement.style.overflow = previousDocumentOverflow;
       restoreScrollPositionImmediately(documentElement, (x, y) => window.scrollTo(x, y), scrollX, scrollY);
-      if (previousFocus?.isConnected) focusElementWithoutScrolling(previousFocus);
+      if (wasTopmostDialog && previousFocus?.isConnected) focusElementWithoutScrolling(previousFocus);
     };
   }, [active, dialogRef, initialFocusRef, restoreFocusRef]);
 }
