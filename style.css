@@ -3678,6 +3678,10 @@ table tbody tr:hover {
 
 
 /* Cloud state stays beside workspace navigation so sync failures are never buried below the desk. */
+#cloudStatus.cloud-sync-indicator {
+  margin-top: 0;
+}
+
 .cloud-sync-indicator {
   display: inline-flex;
   align-items: center;
