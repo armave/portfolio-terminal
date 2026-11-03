@@ -43,6 +43,11 @@ describe('temporary TradeNet diagnostics controls', () => {
     expect(source).toContain("runTradeNetTest('websocket')");
     expect(source).toContain('testFreedomTradeNetConnection()');
     expect(source).toContain('testFreedomTradeNetOrdersStream()');
+    expect(source).toContain("runTradeNetTest('portfolio')");
+    expect(source).toContain("runTradeNetTest('markets')");
+    expect(source).toContain('testFreedomTradeNetEventStream(kind)');
+    expect(source).toContain('Test portfolio updates');
+    expect(source).toContain('Test market status updates');
     expect(source).toContain("JSON.stringify(tradeNetTest.result, null, 2)");
     expect(source).toContain('Temporary test controls — remove after verification.');
   });
