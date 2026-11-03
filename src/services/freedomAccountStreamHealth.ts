@@ -109,6 +109,19 @@ export function consumeFreedomAccountStreamRecovery(sessionKey: string): boolean
   return true;
 }
 
+export type FreedomAccountRefreshMode = 'inactive' | 'live' | 'recover' | 'fallback';
+
+/**
+ * Resolve the admin's supplemental broker-data policy once per scheduled
+ * checkpoint. Until both private channels have delivered validated snapshots,
+ * REST snapshots remain the fallback; a recovered stream gets one catch-up.
+ */
+export function resolveFreedomAccountRefreshMode(sessionKey: string): FreedomAccountRefreshMode {
+  if (!sessionKey) return 'inactive';
+  if (consumeFreedomAccountStreamRecovery(sessionKey)) return 'recover';
+  return isFreedomAccountStreamHealthy(sessionKey) ? 'live' : 'fallback';
+}
+
 /** Test isolation and explicit account-session teardown. */
 export function resetFreedomAccountStreamHealth(): void {
   state = emptyState();
