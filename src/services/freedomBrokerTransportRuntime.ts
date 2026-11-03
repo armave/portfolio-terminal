@@ -11,6 +11,7 @@ export interface FreedomBrokerTransportRuntimeDependencies {
 
 export interface FreedomBrokerTransportRuntime {
   testFreedomTradeNetConnection: () => Promise<unknown>;
+  testFreedomTradeNetOrdersStream: () => Promise<unknown>;
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
@@ -28,7 +29,10 @@ export function createFreedomBrokerTransportRuntime(
   let freedomCashflowRequest: { secret: string; fromDate?: string; promise: Promise<unknown> } | null = null;
 
   const testFreedomTradeNetConnection = (): Promise<unknown> =>
-    dependencies.proxyFetch('freedom-test');
+    dependencies.proxyFetch('freedom-test', undefined, { cache: 'no-store' });
+
+  const testFreedomTradeNetOrdersStream = (): Promise<unknown> =>
+    dependencies.proxyFetch('freedom-orders-stream', undefined, { cache: 'no-store' });
 
   const fetchFreedomTradeNetPositions = (): Promise<unknown> =>
     dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
@@ -38,8 +42,38 @@ export function createFreedomBrokerTransportRuntime(
     return dependencies.proxyFetch('freedom-trades', startDate ? { fromDate: startDate } : undefined, { cache: 'no-store' });
   };
 
-  const fetchFreedomTradeNetActiveOrders = (): Promise<unknown> =>
-    dependencies.proxyFetch('freedom-orders', { active_only: 1 }, { cache: 'no-store' });
+  const fetchFreedomTradeNetActiveOrders = async (): Promise<unknown> => {
+    try {
+      // Prefer the SID-authenticated orders event. The Worker returns a
+      // sanitized snapshot in the same envelope as the REST normalizer expects.
+      const snapshot = await dependencies.proxyFetch(
+        'freedom-orders-stream',
+        undefined,
+        { cache: 'no-store' }
+      );
+      if (snapshot?.ok !== true || !Array.isArray(snapshot?.data?.orders?.order)) {
+        throw new Error('TradeNet WebSocket did not return a valid active-orders snapshot.');
+      }
+      dependencies.recordMetric?.('broker_orders_source', {
+        source: 'websocket_snapshot',
+        order_count: snapshot.data.orders.order.length
+      });
+      return snapshot.data;
+    } catch {
+      // Preserve the existing signed REST endpoint as the recovery path if login,
+      // WebSocket upgrade, or event delivery fails for this refresh.
+      dependencies.recordMetric?.('provider_fallback', {
+        operation: 'freedom_active_orders',
+        from: 'websocket_snapshot',
+        to: 'rest'
+      });
+      return dependencies.proxyFetch(
+        'freedom-orders',
+        { active_only: 1 },
+        { cache: 'no-store' }
+      );
+    }
+  };
 
   const fetchFreedomCashflows = (fromDate?: string): Promise<unknown> => {
     const secret = dependencies.getActiveGatewaySecret().trim();
@@ -90,6 +124,7 @@ export function createFreedomBrokerTransportRuntime(
 
   return {
     testFreedomTradeNetConnection,
+    testFreedomTradeNetOrdersStream,
     fetchFreedomTradeNetPositions,
     fetchFreedomTradeNetTrades,
     fetchFreedomTradeNetActiveOrders,
