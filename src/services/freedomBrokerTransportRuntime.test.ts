@@ -214,7 +214,7 @@ describe('Freedom broker transport runtime', () => {
     const restSnapshot = { orders: { order: [{ order_id: 'rest-1', instr: 'GOOGL.US' }] } };
     const proxyFetch = vi.fn()
       .mockResolvedValueOnce({ ok: false, error: 'WebSocket snapshot timed out.' })
-      .mockResolvedValueOnce(restSnapshot);
+      .mockResolvedValue(restSnapshot);
     const recordMetric = vi.fn();
     const runtime = createFreedomBrokerTransportRuntime({
       proxyFetch: proxyFetch as never,
