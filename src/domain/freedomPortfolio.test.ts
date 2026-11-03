@@ -1,5 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { CashStockHolding } from '../types/portfolio';
+import type { FreedomPortfolioClassificationResult, FreedomReconciliationPosition, FreedomReconciliationResult } from './freedomPortfolio';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveBrokerTranches, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix, reconcileFreedomPortfolio, resolveActiveTrancheMixInput } from './freedomPortfolio';
+
+
+describe('Freedom portfolio type contracts', () => {
+  it('keeps broker classification and reconciliation outputs aligned with portfolio types', () => {
+    expectTypeOf<ReturnType<typeof classifyFreedomPortfolio>>()
+      .toEqualTypeOf<FreedomPortfolioClassificationResult>();
+    expectTypeOf<FreedomReconciliationResult['cashStocks']>()
+      .toEqualTypeOf<CashStockHolding[]>();
+    expectTypeOf<FreedomReconciliationResult['positions']>()
+      .toEqualTypeOf<Record<string, FreedomReconciliationPosition>>();
+  });
+});
 
 describe('resolveActiveTrancheMixInput', () => {
   it('keeps the previous split when an input is cleared or invalid', () => {

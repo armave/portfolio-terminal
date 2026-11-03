@@ -213,11 +213,11 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
     resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding: any) => {
+  const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
     return { ...holding, ...(price !== null ? { price } : {}) };
   });
-  const usdBalance = snapshot.balances.find((item: any) =>
+  const usdBalance = snapshot.balances.find((item) =>
     String(item.currency ?? '').toUpperCase() === 'USD' && Number.isFinite(Number(item.amount))
   );
 
@@ -270,7 +270,7 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     resolveCommissionConfig(TRADERNET_RULES),
     current.activeTrancheMixes || {}
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding: any) => {
+  const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
     return { ...holding, ...(price !== null ? { price } : {}) };
   });
@@ -339,7 +339,7 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
     resolveCommissionConfig(TRADERNET_RULES),
     activeTrancheMixes
   );
-  const brokerCashHoldings = classified.cashStocks.map((holding: any) => {
+  const brokerCashHoldings = classified.cashStocks.map((holding) => {
     const price = getPositiveMarketPrice(holding.currentPrice, holding.price);
     return { ...holding, ...(price !== null ? { price } : {}) };
   });
