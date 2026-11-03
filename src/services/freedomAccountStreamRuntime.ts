@@ -176,6 +176,7 @@ export function createFreedomAccountStreamRuntime(
 
       nextSocket.addEventListener('error', () => {
         finish(new Error('The TradeNet account stream encountered a connection error.'));
+        try { nextSocket.close(1011, 'Account stream connection error'); } catch { /* close event may already be pending */ }
       });
 
       nextSocket.addEventListener('close', (event: any) => {
