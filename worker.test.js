@@ -79,7 +79,7 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
         queueMicrotask(() => {
           for (const callback of listeners.get('message') || []) {
             callback({ data: JSON.stringify(['userData', { isDemo: false, mode: 'prod', account: 'private-account' }]) });
-            callback({ data: JSON.stringify(['orders', [{ order_id: 77, instr: 'GOOGL.US', oper: 3, type: 2, price: 353, quantity: 2, account: 'private-account' }]]) });
+            callback({ data: JSON.stringify(['orders', [{ id: 77, instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 2, leaves_qty: 2, stat: 'active', account: 'private-account' }]]) });
           }
         });
       }),
@@ -119,10 +119,10 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
     });
     expect(body.diagnostics).toMatchObject({
       ordersPayloadType: 'array',
-      ordersPayloadItemKeys: ['instr', 'oper', 'price', 'quantity', 'type'],
+      ordersPayloadItemKeys: ['id', 'instr', 'leaves_qty', 'oper', 'p', 'q', 'stat', 'type'],
       ordersPreviewCount: 1,
       ordersPreview: [{
-        instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 2, leaves_qty: 2, stat: ''
+        instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 2, leaves_qty: 2, stat: 'active'
       }]
     });
     expect(JSON.stringify(body)).not.toContain('private-account');
@@ -150,6 +150,16 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
 });
 
 describe('sanitizeFreedomActiveOrders', () => {
+  it('accepts the top-level array used by the authenticated WebSocket orders event', () => {
+    const result = sanitizeFreedomActiveOrders([
+      { id: 77, instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 50, leaves_qty: 12, stat: 'active', account: 'private' }
+    ]);
+    expect(result.orders.order).toEqual([
+      { order_id: '77', instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 50, leaves_qty: 12, stat: 'active' }
+    ]);
+    expect(JSON.stringify(result)).not.toContain('private');
+  });
+
   it('returns only safe order fields and preserves remaining quantity for partial fills', () => {
     const result = sanitizeFreedomActiveOrders({
       data: { result: { orders: { order: [
