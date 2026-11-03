@@ -91,7 +91,7 @@ describe('compareFreedomPortfolioSnapshots', () => {
           acc: [{ curr: 'USD', s: amount, currval: amount + 10, forecast_in: 2, forecast_out: 1, t2_in: 3, t2_out: 4 }],
           pos: [{
             curr: 'USD', i: 'GOOGL.US', name: 'Alphabet', q: quantity,
-            mkt_price: marketPrice, market_value: quantity * marketPrice,
+            mkt_price: marketPrice, market_value: 9300,
             bal_price_a: 280, profit_close: 100, acc_pos_id: 7
           }]
         }
