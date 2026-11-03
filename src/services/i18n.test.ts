@@ -98,7 +98,7 @@ describe('app localization', () => {
   });
 
   it('translates known UI copy into Russian and leaves unknown text unchanged', () => {
-    expect(translateText('Temporary TradeNet diagnostics', 'ru')).toBe('Временная диагностика TradeNet');
+    expect(translateText('TradeNet market status probe', 'ru')).toBe('Проверка статуса рынка TradeNet');
     expect(translateText('Test authenticated WebSocket', 'ru')).toBe('Проверить авторизованный WebSocket');
     expect(translateText('User management', 'ru')).toBe('Управление пользователями');
     expect(translateText('Settings', 'ru')).toBe('Настройки');
@@ -382,27 +382,10 @@ describe('app localization', () => {
       .toBe('[Симуляция AAPL @ $205.00 через 14 дн.]: Валовая прибыль: $200.00 | Комиссии: -$4.00 | Маржинальные проценты: -$3.00 → Чистая прибыль/убыток: +$193.00');
   });
 
-  it('localizes the new TradeNet portfolio and market event diagnostic controls', () => {
-    expect(translateText('Test portfolio updates', 'ru')).toBe('Проверить обновления портфеля');
+  it('localizes the remaining TradeNet market status preview', () => {
+    expect(translateText('TradeNet market status probe', 'ru')).toBe('Проверка статуса рынка TradeNet');
     expect(translateText('Test market status updates', 'ru')).toBe('Проверить статусы рынка');
-    expect(translateText('Testing portfolio event…', 'ru')).toBe('Проверка события портфеля…');
     expect(translateText('Testing market event…', 'ru')).toBe('Проверка события рынка…');
-  });
-
-  it('localizes the TradeNet live quote diagnostic control', () => {
-    expect(translateText('Quote symbol', 'ru')).toBe('Тикер котировки');
-    expect(translateText('Testing live quote…', 'ru')).toBe('Проверка живой котировки…');
-    expect(translateText('Test live quote stream', 'ru')).toBe('Проверить поток котировок');
-  });
-
-  it('localizes the TradeNet quote comparison control', () => {
-    expect(translateText('Comparing quote sources…', 'ru')).toBe('Сравнение источников котировок…');
-    expect(translateText('Compare quote WebSocket vs REST', 'ru')).toBe('Сравнить котировку WebSocket и REST');
-  });
-
-  it('localizes the TradeNet portfolio reconciliation control', () => {
-    expect(translateText('Compare WebSocket vs REST portfolio', 'ru')).toBe('Сравнить портфель WebSocket и REST');
-    expect(translateText('Comparing portfolio snapshots…', 'ru')).toBe('Сравнение снимков портфеля…');
   });
 
   it('notifies the app when the selected language changes', () => {
