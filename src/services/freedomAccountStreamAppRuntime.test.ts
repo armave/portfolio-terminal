@@ -122,35 +122,24 @@ describe('Freedom account stream app adapter', () => {
     }
   });
 
-  it('ignores account data unless the current browser session is an administrator', async () => {
+  it('does not request a ticket or open a socket for a guest session', async () => {
     vi.stubGlobal('WebSocket', FakeWebSocket);
-    let admin = false;
-    const portfolioEvents: unknown[] = [];
-    const off = addBrokerEventListener('broker:account-info', (value) => portfolioEvents.push(value));
+    const createTicket = vi.fn(async () => ({ ticket: 'f'.repeat(64) }));
     const runtime = createFreedomAccountStreamAppRuntime({
-      createTicket: async () => ({ ticket: 'f'.repeat(64) }),
+      createTicket,
       buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
       getCurrentSessionKey: () => 'guest:account-1',
-      isAdmin: () => admin,
+      isAdmin: () => false,
       loadSavedBrokerExecutions: () => [],
       getCurrentBrokerExecutions: () => []
     });
     try {
-      const start = runtime.start('guest:account-1');
-      await Promise.resolve();
-      const socket = FakeWebSocket.latest!;
-      socket.open();
-      socket.receive({ type: 'ready' });
-      await start;
-      admin = true;
-      socket.receive({
-        type: 'portfolio',
-        data: { data: { result: { ps: { loaded: true, acc: [], pos: [] } } } }
-      });
-      expect(portfolioEvents).toHaveLength(0);
+      await expect(runtime.start('guest:account-1')).resolves.toBe(false);
+      expect(createTicket).not.toHaveBeenCalled();
+      expect(FakeWebSocket.latest).toBeNull();
+      expect(runtime.isConnected()).toBe(false);
     } finally {
       runtime.stop();
-      off();
     }
   });
 });
