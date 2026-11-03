@@ -44,17 +44,12 @@ describe('portfolio automatic refresh policy', () => {
       await vi.advanceTimersByTimeAsync(60_000);
 
       expect(refreshQuotes).toHaveBeenCalledTimes(4);
-      expect(syncState).toHaveBeenCalledTimes(role === 'admin' ? 4 : 0);
+      expect(syncState).toHaveBeenCalledTimes(role === 'admin' ? 5 : 0);
       expect(syncHistory).toHaveBeenCalledTimes(role === 'admin' ? 1 : 0);
       expect(refreshSupplemental).toHaveBeenCalledTimes(1);
       if (role === 'admin') {
-        expect(sequence.filter((value) => value !== 'supplemental')).toEqual([
-          'quotes', 'state-sync',
-          'quotes', 'state-sync',
-          'quotes', 'state-sync',
-          'quotes', 'state-sync',
-          'history-sync'
-        ]);
+        expect(sequence.filter((value) => value === 'history-sync')).toHaveLength(1);
+        expect(sequence.filter((value) => value === 'state-sync')).toHaveLength(5);
       }
       scheduler.stop();
     }
@@ -72,13 +67,15 @@ describe('portfolio automatic refresh policy', () => {
         sequence.push('guest snapshot and LOTS ledger');
         sequence.push('quotes for the updated assignment set');
       },
-      syncState
+      syncState,
+      syncHistory
     });
 
     scheduler.configure(30_000, 'guest');
     await expect(scheduler.refreshNow()).resolves.toBe(true);
     expect(sequence).toEqual(['guest snapshot and LOTS ledger', 'quotes for the updated assignment set']);
     expect(syncState).not.toHaveBeenCalled();
+    expect(syncHistory).not.toHaveBeenCalled();
     scheduler.stop();
   });
 
@@ -95,9 +92,9 @@ describe('portfolio automatic refresh policy', () => {
 
     scheduler.configure(60_000, 'admin');
     await expect(scheduler.refreshNow()).resolves.toBe(true);
-    expect(completed).toHaveLength(4);
+    expect(completed).toHaveLength(5);
     expect(completed).toContain('quotes');
-    expect(completed).toContain('state sync');
+    expect(completed.filter((value) => value === 'state sync')).toHaveLength(2);
     expect(completed).toContain('closed history cloud record');
     expect(completed).toContain('broker balances, trades and orders');
     scheduler.stop();
@@ -129,7 +126,7 @@ describe('portfolio automatic refresh policy', () => {
     await scheduler.onVisibilityChange();
     expect(refreshQuotes).toHaveBeenCalledTimes(1);
     expect(refreshSupplemental).toHaveBeenCalledTimes(1);
-    expect(syncState).toHaveBeenCalledTimes(1);
+    expect(syncState).toHaveBeenCalledTimes(2);
     expect(syncHistory).toHaveBeenCalledTimes(1);
     scheduler.stop();
   });
@@ -152,7 +149,7 @@ describe('portfolio automatic refresh policy', () => {
     expect(scheduler.configure(0, 'admin')).toBe(DEFAULT_ADMIN_REFRESH_INTERVAL_MS);
     await vi.advanceTimersByTimeAsync(DEFAULT_ADMIN_REFRESH_INTERVAL_MS);
     expect(refreshQuotes).toHaveBeenCalledTimes(1);
-    expect(syncState).toHaveBeenCalledTimes(1);
+    expect(syncState).toHaveBeenCalledTimes(2);
     expect(syncHistory).toHaveBeenCalledTimes(1);
     expect(refreshSupplemental).toHaveBeenCalledTimes(1);
     scheduler.stop();
