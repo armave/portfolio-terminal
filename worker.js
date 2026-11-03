@@ -779,7 +779,7 @@ function describeRedactedValueType(value, depth = 0) {
  * expose the exchanges separately, in which case report MIXED when they differ.
  */
 export function normalizeFreedomUsMarketPhase(value) {
-    const code = String(value || "").trim().toUpperCase().replace(/[\\s_-]+/g, "");
+    const code = String(value || "").trim().toUpperCase().replaceAll(" ", "").replaceAll("_", "").replaceAll("-", "");
     if (["PREV", "PRE", "PREPRE", "PREMARKET"].includes(code)) return "PREMARKET";
     if (["OPEN", "REGULAR", "MARKET", "TRADING"].includes(code)) return "MARKET";
     if (["POST", "POSTPOST", "POSTMARKET", "AFTER", "AFTERHOURS"].includes(code)) return "POSTMARKET";
