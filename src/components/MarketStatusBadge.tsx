@@ -13,9 +13,9 @@ export function getMarketStatusRoleLabel(isAdmin: boolean): string {
 export function getMarketStatusLabel(status: string | null | undefined): string {
   const normalized = String(status || '').trim().toUpperCase();
   switch (normalized) {
-    case 'OPEN': return translateText('Open');
+    case 'OPEN': return translateText('Market open');
     case 'CLOSE':
-    case 'CLOSED': return translateText('Closed');
+    case 'CLOSED': return translateText('Market closed');
     case 'PRE': return translateText('Pre-market');
     case 'POST': return translateText('After-hours');
     case 'MIXED': return translateText('Mixed');
