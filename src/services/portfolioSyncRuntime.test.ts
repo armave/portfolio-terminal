@@ -12,6 +12,7 @@ function createDependencies(
     refreshExecutedTrades: vi.fn(async () => true),
     refreshActiveOrders: vi.fn(async () => true),
     pushCloud: vi.fn(async () => true),
+    syncClosedHistory: vi.fn(async () => true),
     pullGuestSnapshot: vi.fn(async () => true),
     translateText: vi.fn((message: string) => `translated:${message}`),
     showToast: vi.fn(),
@@ -51,6 +52,7 @@ describe('portfolio sync runtime bindings', () => {
     expect(dependencies.refreshActiveOrders).toHaveBeenCalledTimes(1);
     expect(dependencies.refreshQuotes).toHaveBeenCalledTimes(1);
     expect(dependencies.pushCloud).toHaveBeenCalledTimes(1);
+    expect(dependencies.syncClosedHistory).toHaveBeenCalledTimes(1);
     expect(dependencies.pullGuestSnapshot).not.toHaveBeenCalled();
     expect(dependencies.translateText).toHaveBeenCalledWith('Portfolio sync completed.');
     expect(dependencies.showToast).toHaveBeenCalledWith(
@@ -58,7 +60,7 @@ describe('portfolio sync runtime bindings', () => {
       'success'
     );
     expect(dependencies.logTerminal).toHaveBeenCalledWith(
-      '[Sync]: Broker data, market quotes and cloud snapshot are up to date.'
+      '[Sync]: Broker data, market quotes, portfolio snapshot and Closed History are up to date.'
     );
   });
 
@@ -83,6 +85,7 @@ describe('portfolio sync runtime bindings', () => {
     expect(dependencies.refreshExecutedTrades).not.toHaveBeenCalled();
     expect(dependencies.refreshActiveOrders).not.toHaveBeenCalled();
     expect(dependencies.pushCloud).not.toHaveBeenCalled();
+    expect(dependencies.syncClosedHistory).not.toHaveBeenCalled();
     expect(dependencies.showToast).toHaveBeenCalledWith(
       'translated:Portfolio sync completed.',
       'success'
