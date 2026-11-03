@@ -42,10 +42,10 @@ export function getMarketStatusRoleLabel(isAdmin: boolean): string {
 export function getMarketStatusLabel(status: string | null | undefined): string {
   const normalized = normalizeMarketSessionStatus(status);
   switch (normalized) {
-    case 'PREMARKET': return translateText('Premarket session');
-    case 'MARKET': return translateText('Market session');
-    case 'POSTMARKET': return translateText('Postmarket session');
-    case 'CLOSED': return translateText('Closed session');
+    case 'PREMARKET': return translateText('Premarket');
+    case 'MARKET': return translateText('Market');
+    case 'POSTMARKET': return translateText('Postmarket');
+    case 'CLOSED': return translateText('Closed');
     default: return translateText('Unavailable');
   }
 }
