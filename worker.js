@@ -1169,7 +1169,12 @@ export default {
                             diagnostics: Object.fromEntries(Object.entries(result).filter(([key]) => !["eventSummary", "eventPayload"].includes(key)))
                         }), { status: 502, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                     }
-                    const sanitized = sanitizeFreedomPositions({ data: { result: { ps: result.eventPayload } } });
+                    const portfolioPayload = result.eventPayload?.portfolio ?? result.eventPayload?.ps ?? result.eventPayload;
+                    if (!portfolioPayload || portfolioPayload.loaded !== true ||
+                        !Array.isArray(portfolioPayload.acc) || !Array.isArray(portfolioPayload.pos)) {
+                        throw new Error("TradeNet portfolio WebSocket snapshot is not fully loaded.");
+                    }
+                    const sanitized = sanitizeFreedomPositions({ data: { result: { ps: portfolioPayload } } });
                     return new Response(JSON.stringify({
                         ok: true,
                         provider: "Freedom TradeNet",
