@@ -21,8 +21,7 @@ import {
   calculateTargetUpsidePercent,
 } from './src/features/quotes/sentiment';
 import { fetchLivePriceFromProviders, nextLiveQuoteRequestSequence } from './src/services/quoteProvider';
-import { normalizeFreedomQuote } from './src/services/freedomMarketData';
-import { createFreedomQuoteStreamRuntime } from './src/services/freedomQuoteStreamRuntime';
+import type { FreedomQuoteStreamRuntime } from './src/services/freedomQuoteStreamRuntime';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { createQuoteRefreshCoordinator } from './src/services/quoteRefreshCoordinator';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
@@ -949,64 +948,85 @@ function recordTrackedPrice(
   });
 }
 
-const freedomQuoteStreamRuntime = createFreedomQuoteStreamRuntime({
-  createTicket: async (tickers) => {
-    const result = await createFreedomQuoteStreamTicket(tickers);
-    return { ticket: result.ticket };
-  },
-  buildSocketUrl: buildFreedomQuoteStreamSocketUrl,
-  onQuote: (message, sessionKey) => {
-    const currentSessionKey = currentAccountRole && currentAccountId
-      ? `${currentAccountRole}:${currentAccountId}`
-      : '';
-    if (!currentSessionKey || sessionKey !== currentSessionKey) return;
+let freedomQuoteStreamRuntimePromise: Promise<FreedomQuoteStreamRuntime> | null = null;
 
-    const wireSymbol = message.symbol.trim().toUpperCase();
-    const ticker = wireSymbol.endsWith('.US') ? wireSymbol.slice(0, -3) : wireSymbol;
-    const quote = normalizeFreedomQuote({ q: [message.data] }, ticker);
-    if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) return;
-
-    const receivedAt = Number(message.receivedAt) || Date.now();
-    const sourceTimestamp = quote.sourceTimestamp ?? undefined;
-    const ageMs = sourceTimestamp === undefined ? null : receivedAt - sourceTimestamp;
-    const freshness = ageMs === null ? 'unknown' as const
-      : ageMs < 0 ? 'stale' as const
-        : ageMs > 5 * 60 * 1000
-          ? quote.marketState === 'CLOSED' ? 'delayed' as const : 'stale' as const
-          : 'fresh' as const;
-    const requestSequence = nextLiveQuoteRequestSequence();
-    const quoteDetails: QuoteDetails = {
-      marketState: quote.marketState || 'UNKNOWN',
-      freshness,
-      receivedAt,
-      requestSequence,
-      requestStartedAt: receivedAt,
-      sourceTimestamp,
-      transport: 'websocket',
-      price: quote.price,
-      ...(quote.change !== null ? { change: quote.change } : {}),
-      ...(quote.changePercent !== null ? { changePercent: quote.changePercent } : {}),
-      ...(quote.bid !== null && quote.bid !== undefined ? { bid: quote.bid } : {}),
-      ...(quote.ask !== null && quote.ask !== undefined ? { ask: quote.ask } : {}),
-      ...(quote.volume !== null && quote.volume !== undefined ? { volume: quote.volume } : {}),
-      ...(quote.lastTradeTime ? { lastTradeTime: quote.lastTradeTime } : {}),
-      ...(quote.utcOffset !== null && quote.utcOffset !== undefined ? { utcOffset: quote.utcOffset } : {}),
-      ...(quote.serverTime ? { serverTime: quote.serverTime } : {})
-    };
-    if (recordTrackedPrice(ticker, quote.price, 'Freedom TradeNet', receivedAt, quoteDetails, receivedAt)) {
-      state = portfolioStore.getState();
-      saveState(state);
-      renderBoard();
+function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
+  if (!freedomQuoteStreamRuntimePromise) {
+    freedomQuoteStreamRuntimePromise = Promise.all([
+      import('./src/services/freedomMarketData'),
+      import('./src/services/freedomQuoteStreamRuntime')
+    ]).then(([marketData, streamRuntime]) => streamRuntime.createFreedomQuoteStreamRuntime({
+    createTicket: async (tickers) => {
+      const result = await createFreedomQuoteStreamTicket(tickers);
+      return { ticket: result.ticket };
+    },
+    buildSocketUrl: buildFreedomQuoteStreamSocketUrl,
+    onQuote: (message, sessionKey) => {
+      const currentSessionKey = currentAccountRole && currentAccountId
+        ? `${currentAccountRole}:${currentAccountId}`
+        : '';
+      if (!currentSessionKey || sessionKey !== currentSessionKey) return;
+  
+      const wireSymbol = message.symbol.trim().toUpperCase();
+      const ticker = wireSymbol.endsWith('.US') ? wireSymbol.slice(0, -3) : wireSymbol;
+      const quote = normalizeFreedomQuote({ q: [message.data] }, ticker);
+      if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) return;
+  
+      const receivedAt = Number(message.receivedAt) || Date.now();
+      const sourceTimestamp = quote.sourceTimestamp ?? undefined;
+      const ageMs = sourceTimestamp === undefined ? null : receivedAt - sourceTimestamp;
+      const freshness = ageMs === null ? 'unknown' as const
+        : ageMs < 0 ? 'stale' as const
+          : ageMs > 5 * 60 * 1000
+            ? quote.marketState === 'CLOSED' ? 'delayed' as const : 'stale' as const
+            : 'fresh' as const;
+      const requestSequence = nextLiveQuoteRequestSequence();
+      const quoteDetails: QuoteDetails = {
+        marketState: quote.marketState || 'UNKNOWN',
+        freshness,
+        receivedAt,
+        requestSequence,
+        requestStartedAt: receivedAt,
+        sourceTimestamp,
+        transport: 'websocket',
+        price: quote.price,
+        ...(quote.change !== null ? { change: quote.change } : {}),
+        ...(quote.changePercent !== null ? { changePercent: quote.changePercent } : {}),
+        ...(quote.bid !== null && quote.bid !== undefined ? { bid: quote.bid } : {}),
+        ...(quote.ask !== null && quote.ask !== undefined ? { ask: quote.ask } : {}),
+        ...(quote.volume !== null && quote.volume !== undefined ? { volume: quote.volume } : {}),
+        ...(quote.lastTradeTime ? { lastTradeTime: quote.lastTradeTime } : {}),
+        ...(quote.utcOffset !== null && quote.utcOffset !== undefined ? { utcOffset: quote.utcOffset } : {}),
+        ...(quote.serverTime ? { serverTime: quote.serverTime } : {})
+      };
+      if (recordTrackedPrice(ticker, quote.price, 'Freedom TradeNet', receivedAt, quoteDetails, receivedAt)) {
+        state = portfolioStore.getState();
+        saveState(state);
+        renderBoard();
+      }
+    },
+    onStatus: (status, message) => {
+      if (status === 'connected') {
+        console.info('[Freedom Quote Stream]: Persistent TradeNet socket connected.');
+      } else if (status === 'reconnecting' && message) {
+        console.warn('[Freedom Quote Stream]: Reconnecting after upstream status change:', message);
+      }
     }
-  },
-  onStatus: (status, message) => {
-    if (status === 'connected') {
-      console.info('[Freedom Quote Stream]: Persistent TradeNet socket connected.');
-    } else if (status === 'reconnecting' && message) {
-      console.warn('[Freedom Quote Stream]: Reconnecting after upstream status change:', message);
-    }
+    })).catch((error) => {
+      freedomQuoteStreamRuntimePromise = null;
+      throw error;
+    });
   }
-});
+  return freedomQuoteStreamRuntimePromise;
+}
+
+function stopFreedomQuoteStreamRuntime(): void {
+  if (freedomQuoteStreamRuntimePromise) {
+    void freedomQuoteStreamRuntimePromise.then((runtime) => runtime.stop()).catch(() => undefined);
+  }
+}
+
+
 
 function addCashHolding(ticker: string, shares: number, givenPrice = 0) {
   const symbol = ticker.trim().toUpperCase();
@@ -1113,7 +1133,7 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
       ]))
       : [];
   if (tickersArray.length === 0) {
-    freedomQuoteStreamRuntime.stop();
+    stopFreedomQuoteStreamRuntime();
     return true;
   }
 
@@ -1121,7 +1141,7 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     ? `${currentAccountRole}:${currentAccountId}`
     : '';
   if (!sessionKey) {
-    freedomQuoteStreamRuntime.stop();
+    stopFreedomQuoteStreamRuntime();
     return true;
   }
 
@@ -1129,7 +1149,8 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     // The persistent TradeNet q socket is the primary quote source. It remains
     // open after the first q payload and pushes later price changes directly
     // into the portfolio store; routine scheduler ticks only maintain it.
-    const connected = await freedomQuoteStreamRuntime.start(tickersArray, sessionKey);
+    const quoteStreamRuntime = await getFreedomQuoteStreamRuntime();
+    const connected = await quoteStreamRuntime.start(tickersArray, sessionKey);
     if (connected) return true;
     throw new Error('TradeNet quote socket did not become ready.');
   } catch (streamError) {
@@ -1747,11 +1768,11 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
   getAccountRole: () => currentAccountRole,
   getAccountId: () => currentAccountId,
   setAccountRole: (role) => {
-    if (currentAccountRole !== role) freedomQuoteStreamRuntime.stop();
+    if (currentAccountRole !== role) stopFreedomQuoteStreamRuntime();
     currentAccountRole = role;
   },
   setAccountId: (accountId) => {
-    if (currentAccountId !== accountId) freedomQuoteStreamRuntime.stop();
+    if (currentAccountId !== accountId) stopFreedomQuoteStreamRuntime();
     currentAccountId = accountId;
   },
   setCloudWritePermission: (allowed) => { canWriteCloudState = allowed; },
@@ -1823,7 +1844,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   loadBrokerRules: loadTradernetRules,
   publishCurrentUser,
   clearAccountIdentity: () => {
-    freedomQuoteStreamRuntime.stop();
+    stopFreedomQuoteStreamRuntime();
     currentAccountRole = null;
     currentAccountId = null;
     canWriteCloudState = false;
