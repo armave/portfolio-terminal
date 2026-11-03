@@ -326,7 +326,7 @@ export function sanitizeFreedomActiveOrders(response) {
 function sanitizeFreedomLoginError(value) {
     if (typeof value !== "string") return null;
     const sanitized = value
-        .replace(/(password|passwd|pwd|login|username|email|sid|token|signature|secret)\s*[:=]\s*[^,\s;]+/gi, "$1=[redacted]")
+        .replace(/(password|passwd|pwd|login|username|email|sid|token|signature|secret)\s*[:=]\s*[^,\s;)]+/gi, "$1=[redacted]")
         .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email redacted]")
         .replace(/\+?\d[\d\s().-]{7,}\d/g, "[phone redacted]")
         .replace(/\s+/g, " ")
