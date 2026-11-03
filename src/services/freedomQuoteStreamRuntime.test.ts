@@ -69,6 +69,7 @@ describe('Freedom persistent quote stream runtime', () => {
     });
 
     const start = runtime.start(['aapl', 'MSFT', 'AAPL'], 'admin:account-1');
+    await Promise.resolve();
     expect(createTicket).toHaveBeenCalledWith(['AAPL', 'MSFT']);
     expect(sockets).toHaveLength(1);
 
@@ -120,6 +121,7 @@ describe('Freedom persistent quote stream runtime', () => {
     });
 
     const firstStart = runtime.start(['GOOGL'], 'guest:guest-1');
+    await Promise.resolve();
     sockets[0].open();
     sockets[0].receive({ type: 'ready' });
     await expect(firstStart).resolves.toBe(true);
@@ -151,11 +153,13 @@ describe('Freedom persistent quote stream runtime', () => {
     });
 
     const first = runtime.start(['AAPL'], 'admin:account-1');
+    await Promise.resolve();
     sockets[0].open();
     sockets[0].receive({ type: 'ready' });
     await first;
 
     const second = runtime.start(['AAPL', 'MSFT'], 'guest:guest-2');
+    await Promise.resolve();
     expect(sockets[0].closed).toBe(true);
     expect(createTicket).toHaveBeenCalledTimes(2);
     sockets[1].open();
@@ -179,6 +183,7 @@ describe('Freedom persistent quote stream runtime', () => {
     });
 
     const start = runtime.start(['GOOGL'], 'admin:account-1');
+    await Promise.resolve();
     sockets[0].open();
     sockets[0].receive({ type: 'ready' });
     await start;
