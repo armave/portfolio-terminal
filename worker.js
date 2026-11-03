@@ -656,10 +656,11 @@ function summarizeFreedomStreamEvent(eventName, payload) {
     throw new Error("Unsupported TradeNet stream event.");
 }
 
-async function diagnoseFreedomEventStream(env, eventName) {
+async function diagnoseFreedomEventStream(env, eventName, includePayload = false) {
     const sid = await createFreedomDiagnosticSession(env);
     const startedAt = Date.now();
     let eventSummary = null;
+    let eventPayload = null;
     const diagnostics = {
         endpoint: "wss.tradernet.com",
         requestedEvent: eventName,
@@ -683,6 +684,7 @@ async function diagnoseFreedomEventStream(env, eventName) {
         ...diagnostics,
         eventCounts: { ...diagnostics.eventCounts },
         eventSummary,
+        ...(includePayload ? { eventPayload } : {}),
         elapsedMs: Date.now() - startedAt
     });
 
@@ -765,6 +767,7 @@ async function diagnoseFreedomEventStream(env, eventName) {
                         }
                     } else if (name === eventName) {
                         diagnostics.eventReceived = true;
+                        eventPayload = includePayload ? packet[1] : null;
                         eventSummary = summarizeFreedomStreamEvent(eventName, packet[1]);
                     } else if (name === "error") {
                         const text = typeof packet[1] === "string" ? packet[1] : "";
@@ -1149,6 +1152,42 @@ export default {
                         error: error instanceof Error ? error.message : "TradeNet event diagnostic failed.",
                         diagnostics: error?.diagnostics || null
                     }), { status: 200, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                }
+            }
+
+            // Admin-only sanitized portfolio event snapshot for read-only REST reconciliation.
+            if (action === "freedom-portfolio-snapshot") {
+                try {
+                    const result = await diagnoseFreedomEventStream(env, "portfolio", true);
+                    const eventsConfirmed = result.connectionOpened &&
+                        result.userDataReceived && result.eventReceived &&
+                        result.isDemo !== true && result.sessionMode === "prod";
+                    if (!eventsConfirmed) {
+                        return new Response(JSON.stringify({
+                            ok: false,
+                            error: "TradeNet portfolio WebSocket snapshot was not confirmed.",
+                            diagnostics: Object.fromEntries(Object.entries(result).filter(([key]) => !["eventSummary", "eventPayload"].includes(key)))
+                        }), { status: 502, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                    }
+                    const sanitized = sanitizeFreedomPositions({ data: { result: { ps: result.eventPayload } } });
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Freedom TradeNet",
+                        source: "authenticated_websocket",
+                        data: sanitized.data,
+                        diagnostics: {
+                            phase: result.phase,
+                            handshakeStatus: result.handshakeStatus,
+                            elapsedMs: result.elapsedMs,
+                            accountsCount: sanitized.data.result.ps.acc.length,
+                            positionsCount: sanitized.data.result.ps.pos.length
+                        }
+                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                } catch (error) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: error instanceof Error ? error.message : "TradeNet portfolio snapshot failed."
+                    }), { status: 502, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 }
             }
 
