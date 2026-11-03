@@ -108,6 +108,16 @@ describe('dialog focus management', () => {
     expect(isTopmostActiveDialog(firstDialog)).toBe(false);
   });
 
+  it('makes dialog registration cleanup idempotent', () => {
+    const dialog = {} as HTMLElement;
+    const release = registerActiveDialog(dialog);
+
+    release();
+    release();
+
+    expect(isTopmostActiveDialog(dialog)).toBe(false);
+  });
+
   it('keeps an upper dialog active when a lower dialog is removed first', () => {
     const firstDialog = {} as HTMLElement;
     const secondDialog = {} as HTMLElement;
