@@ -10,9 +10,9 @@ Configure these in the Worker environment (never in Vite/browser variables):
 
 - `FREEDOM_PUBLIC_KEY`
 - `FREEDOM_PRIVATE_KEY`
-- `FREEDOM_LOGIN` and `FREEDOM_PASSWORD` (required only for the authenticated WebSocket diagnostic)
+- `FREEDOM_LOGIN` and `FREEDOM_PASSWORD` (required only for the authenticated WebSocket diagnostic; these must be the broker's login/password, not the API-key pair)
 
-The Worker still requires the existing `GATEWAY_SECRET` for all app requests. After adding secrets, use the existing read-only `freedom-test` action to confirm TradeNet authentication.
+The Worker still requires the existing `GATEWAY_SECRET` for all app requests. After adding secrets, use the existing read-only `freedom-test` action to confirm TradeNet authentication. For failed `authByLogin` responses, diagnostics expose only the provider's bounded, sanitized `errMsg` and safe `code`/`errorCode` value (if present); credentials, email addresses, phone numbers, session IDs, and challenge tokens are never returned. A `{ errMsg, code }` response is an API-level login failure, not a WebSocket quote event failure. The Worker continues to require `success === true`, `logged === true`, a valid SID, and `real === true` before opening the socket.
 
 ## Authenticated WebSocket active-orders snapshots
 
