@@ -102,7 +102,22 @@ describe('portfolio broker data runtime', () => {
 
     expect(fixture.dependencies.fetchAccountInfo).not.toHaveBeenCalled();
     expect(fixture.dependencies.fetchActiveOrders).not.toHaveBeenCalled();
-    expect(fixture.events).toEqual([]);
+    expect(fixture.events).toEqual([
+      { type: 'broker:account-info-refresh-complete', payload: undefined }
+    ]);
+  });
+
+  it('completes the balance refresh lifecycle when the live portfolio snapshot is already applied', async () => {
+    const fixture = createFixture();
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+    markFreedomAccountStreamSnapshot(fixture.session.identity, 'portfolio');
+
+    await expect(fixture.runtime.refreshAccountInfo(fixture.session)).resolves.toBe(true);
+
+    expect(fixture.dependencies.fetchAccountInfo).not.toHaveBeenCalled();
+    expect(fixture.events).toEqual([
+      { type: 'broker:account-info-refresh-complete', payload: undefined }
+    ]);
   });
 
   it('discards a portfolio snapshot that resolves after a newer live portfolio event', async () => {
@@ -118,7 +133,10 @@ describe('portfolio broker data runtime', () => {
     resolveFetch?.({ raw: 'stale one-shot snapshot' });
 
     await expect(request).resolves.toBe(true);
-    expect(fixture.events).toEqual([{ type: 'broker:account-info-refreshing' }]);
+    expect(fixture.events).toEqual([
+      { type: 'broker:account-info-refreshing', payload: undefined },
+      { type: 'broker:account-info-refresh-complete', payload: undefined }
+    ]);
   });
 
   it('discards an orders snapshot and embedded fills that resolve after a newer live orders event', async () => {
