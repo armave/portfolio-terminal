@@ -30,16 +30,79 @@ export function createFreedomBrokerTransportRuntime(
   const testFreedomTradeNetConnection = (): Promise<unknown> =>
     dependencies.proxyFetch('freedom-test');
 
-  const fetchFreedomTradeNetPositions = (): Promise<unknown> =>
-    dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
+  const fetchFreedomTradeNetPositions = async (): Promise<unknown> => {
+    try {
+      // Prefer the tested production portfolio event. The Worker returns the
+      // existing normalized USD envelope expected by normalizeFreedomPortfolio.
+      const snapshot = await dependencies.proxyFetch(
+        'freedom-portfolio-snapshot',
+        undefined,
+        { cache: 'no-store' }
+      );
+      const portfolio = snapshot?.data?.result?.ps;
+      if (
+        snapshot?.ok !== true ||
+        snapshot?.source !== 'authenticated_websocket' ||
+        portfolio?.loaded !== true ||
+        !Array.isArray(portfolio?.acc) ||
+        !Array.isArray(portfolio?.pos)
+      ) {
+        throw new Error(snapshot?.error || 'TradeNet WebSocket portfolio snapshot is unavailable or incomplete.');
+      }
+      dependencies.recordMetric?.('broker_portfolio_source', {
+        source: 'websocket_snapshot',
+        account_count: portfolio.acc.length,
+        position_count: portfolio.pos.length
+      });
+      return snapshot.data;
+    } catch {
+      // Preserve getPositionJson as the recovery path for authentication,
+      // handshake, timeout, incomplete payload, and Worker transport failures.
+      dependencies.recordMetric?.('provider_fallback', {
+        operation: 'freedom_portfolio',
+        from: 'websocket_snapshot',
+        to: 'rest'
+      });
+      return dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
+    }
+  };
 
   const fetchFreedomTradeNetTrades = (fromDate?: string): Promise<unknown> => {
     const startDate = typeof fromDate === 'string' && fromDate.trim() ? fromDate.trim() : undefined;
     return dependencies.proxyFetch('freedom-trades', startDate ? { fromDate: startDate } : undefined, { cache: 'no-store' });
   };
 
-  const fetchFreedomTradeNetActiveOrders = (): Promise<unknown> =>
-    dependencies.proxyFetch('freedom-orders', { active_only: 1 }, { cache: 'no-store' });
+  const fetchFreedomTradeNetActiveOrders = async (): Promise<unknown> => {
+    try {
+      // Prefer the verified production orders event. Its sanitized envelope is
+      // already compatible with normalizeFreedomActiveOrders.
+      const snapshot = await dependencies.proxyFetch(
+        'freedom-orders-stream',
+        undefined,
+        { cache: 'no-store' }
+      );
+      if (snapshot?.ok !== true || !Array.isArray(snapshot?.data?.orders?.order)) {
+        throw new Error('TradeNet WebSocket did not return a valid active-orders snapshot.');
+      }
+      dependencies.recordMetric?.('broker_orders_source', {
+        source: 'websocket_snapshot',
+        order_count: snapshot.data.orders.order.length
+      });
+      return snapshot.data;
+    } catch {
+      // Keep the signed getNotifyOrderJson endpoint as automatic recovery.
+      dependencies.recordMetric?.('provider_fallback', {
+        operation: 'freedom_active_orders',
+        from: 'websocket_snapshot',
+        to: 'rest'
+      });
+      return dependencies.proxyFetch(
+        'freedom-orders',
+        { active_only: 1 },
+        { cache: 'no-store' }
+      );
+    }
+  };
 
   const fetchFreedomCashflows = (fromDate?: string): Promise<unknown> => {
     const secret = dependencies.getActiveGatewaySecret().trim();

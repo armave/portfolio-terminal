@@ -16,19 +16,92 @@ function createRuntime(options: { token?: string; now?: () => number; resolve?: 
 }
 
 describe('Freedom broker transport runtime', () => {
-  it('routes read-only broker endpoints without changing their query contracts', async () => {
+  it('routes diagnostic and trade-history endpoints without changing their query contracts', async () => {
     const { runtime, proxyFetch } = createRuntime();
     await runtime.testFreedomTradeNetConnection();
-    await runtime.fetchFreedomTradeNetPositions();
     await runtime.fetchFreedomTradeNetTrades(' 2026-01-02 ');
-    await runtime.fetchFreedomTradeNetActiveOrders();
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-test', 'freedom-positions', 'freedom-trades', 'freedom-orders'
+      'freedom-test', 'freedom-trades'
+    ]);
+    expect(proxyFetch.mock.calls[1][1]).toEqual({ fromDate: '2026-01-02' });
+    expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
+  });
+
+  it('uses the authenticated portfolio WebSocket snapshot as the primary account source', async () => {
+    const portfolio = {
+      loaded: true,
+      acc: [{ curr: 'USD', s: 1200 }],
+      pos: [{ i: 'GOOGL.US', q: 4 }]
+    };
+    const snapshot = {
+      ok: true,
+      source: 'authenticated_websocket',
+      data: { result: { ps: portfolio } }
+    };
+    const { runtime, proxyFetch, recordMetric } = createRuntime({
+      resolve: (action) => action === 'freedom-portfolio-snapshot' ? snapshot : undefined
+    });
+    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(snapshot.data);
+    expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual(['freedom-portfolio-snapshot']);
+    expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
+    expect(recordMetric).toHaveBeenCalledWith('broker_portfolio_source', {
+      source: 'websocket_snapshot',
+      account_count: 1,
+      position_count: 1
+    });
+  });
+
+  it('falls back to the existing REST positions endpoint for a failed or incomplete WebSocket snapshot', async () => {
+    const restSnapshot = { ok: true, data: { result: { ps: { loaded: true, acc: [], pos: [] } } } };
+    const { runtime, proxyFetch, recordMetric } = createRuntime({
+      resolve: (action) => action === 'freedom-portfolio-snapshot'
+        ? { ok: false, error: 'TradeNet login failed or requested additional verification.' }
+        : restSnapshot
+    });
+    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(restSnapshot);
+    expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
+      'freedom-portfolio-snapshot', 'freedom-positions'
     ]);
     expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[2][1]).toEqual({ fromDate: '2026-01-02' });
-    expect(proxyFetch.mock.calls[2][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[3][1]).toEqual({ active_only: 1 });
+    expect(recordMetric).toHaveBeenCalledWith('provider_fallback', {
+      operation: 'freedom_portfolio',
+      from: 'websocket_snapshot',
+      to: 'rest'
+    });
+  });
+
+  it('uses the authenticated orders WebSocket snapshot as the primary active-orders source, including empty snapshots', async () => {
+    const snapshot = { ok: true, data: { orders: { order: [] } } };
+    const { runtime, proxyFetch, recordMetric } = createRuntime({
+      resolve: (action) => action === 'freedom-orders-stream' ? snapshot : undefined
+    });
+    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(snapshot.data);
+    expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual(['freedom-orders-stream']);
+    expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
+    expect(recordMetric).toHaveBeenCalledWith('broker_orders_source', {
+      source: 'websocket_snapshot',
+      order_count: 0
+    });
+  });
+
+  it('falls back to REST active orders when the authenticated orders WebSocket is unavailable', async () => {
+    const restOrders = { ok: true, data: { orders: { order: [{ order_id: '17' }] } } };
+    const { runtime, proxyFetch, recordMetric } = createRuntime({
+      resolve: (action) => action === 'freedom-orders-stream'
+        ? { ok: false, error: 'TradeNet authentication failed.' }
+        : restOrders
+    });
+    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(restOrders);
+    expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
+      'freedom-orders-stream', 'freedom-orders'
+    ]);
+    expect(proxyFetch.mock.calls[1][1]).toEqual({ active_only: 1 });
+    expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
+    expect(recordMetric).toHaveBeenCalledWith('provider_fallback', {
+      operation: 'freedom_active_orders',
+      from: 'websocket_snapshot',
+      to: 'rest'
+    });
   });
 
   it('caches cashflows by token and normalized date range for five minutes', async () => {
