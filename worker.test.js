@@ -379,7 +379,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(socket.close).toHaveBeenCalled();
   });
 
-  it('reports a TradeNet login rejection as an authentication failure, not a gateway outage', async () => {
+  it('reports redacted TradeNet login validation diagnostics without exposing challenge data', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
       success: false,
       logged: false,
@@ -388,7 +388,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
     const response = await worker.fetch(new Request(
-      'https://worker.test/?action=freedom-portfolio-snapshot',
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
       { headers: { 'X-App-Auth': 'test-secret' } }
     ), {
       GATEWAY_SECRET: 'test-secret',
@@ -397,11 +397,30 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     });
     expect(response.status).toBe(401);
     const body = await response.json();
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       ok: false,
-      error: 'TradeNet login failed or requested additional verification.'
+      error: 'TradeNet login failed or requested additional verification.',
+      diagnostics: {
+        phase: 'login_response_validation',
+        loginResponseReceived: true,
+        loginHttpStatus: 200,
+        payloadReceived: true,
+        success: false,
+        logged: false,
+        sidPresent: false,
+        productionSession: null,
+        verificationChallengeIndicated: true,
+        failedChecks: [
+          'success_not_true', 'logged_not_true', 'sid_missing_or_invalid',
+          'production_session_not_confirmed'
+        ]
+      }
     });
-    expect(JSON.stringify(body)).not.toContain('must-not-leak');
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('must-not-leak');
+    expect(serialized).not.toContain('challengeToken');
+    expect(serialized).not.toContain('broker-login');
+    expect(serialized).not.toContain('broker-password');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
