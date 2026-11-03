@@ -30,7 +30,7 @@ describe('mobile workspace navigation styles', () => {
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-label--mobile\s*\{\s*display:\s*inline;/);
     expect(navigationComponent).toContain('class="workspace-nav-ticker-list"');
     expect(navigationComponent).toContain("aria-label={translateText('Margin ticker navigation', getAppLanguage())}");
-    expect(navigationComponent).toContain("translateText('COMBINED', getAppLanguage())");
+    expect(navigationComponent).toContain("translateText('COMBINED PORTFOLIO', getAppLanguage())");
     expect(navigationComponent).toContain("translateText('COMBINED PORTFOLIO', getAppLanguage())");
     expect(navigationComponent).toContain("translateText('MARGIN DESK', getAppLanguage())");
     expect(navigationComponent).toContain("translateText('BALANCE', getAppLanguage())");

@@ -43,16 +43,11 @@ export const TickerTabs = memo(function TickerTabs({
     if (isMarginDeskActive) emitBrokerEvent('broker:request-active-orders');
   }, [isMarginDeskActive]);
 
-  const marginDeskViews = tickers.length === 0
-    ? ['COMBINED']
-    : tickers.length === 1
-      ? [tickers[0]]
-      : ['COMBINED', ...tickers];
   const canViewGuestHistory = !isAdmin && Boolean(userId);
   const navigationViews = getWorkspaceNavigationViews(tickers, isAdmin, canViewGuestHistory);
-  const balanceNavIndex = isAdmin ? marginDeskViews.length : 0;
+  const balanceNavIndex = isAdmin ? navigationViews.length - 3 : 0;
   const guestHistoryNavIndex = balanceNavIndex + 1;
-  const settingsNavIndex = balanceNavIndex + (isAdmin || canViewGuestHistory ? 2 : 1);
+  const settingsNavIndex = navigationViews.length - 1;
   const tabButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   const handleTabKeyDown = (event: KeyboardEvent) => {
@@ -92,7 +87,7 @@ export const TickerTabs = memo(function TickerTabs({
           ref={(element) => { tabButtonRefs.current[0] = element; }}
           onKeyDown={handleTabKeyDown}
           onClick={() => selectView('COMBINED')}
-          aria-label={translateText('Combined portfolio', getAppLanguage())}
+          aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
           aria-pressed={isMarginDeskActive}
           class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
             ? 'bg-emerald-600 text-black'
@@ -100,7 +95,7 @@ export const TickerTabs = memo(function TickerTabs({
             }`}
         >
           <span class="workspace-nav-label--desktop">{translateText('MARGIN DESK', getAppLanguage())}</span>
-          <span class="workspace-nav-label--mobile">{translateText('COMBINED', getAppLanguage())}</span>
+          <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
         </button>
       )}
 
@@ -129,7 +124,7 @@ export const TickerTabs = memo(function TickerTabs({
           <button
             type="button"
             onClick={() => selectView('COMBINED')}
-            aria-label={translateText('Combined portfolio', getAppLanguage())}
+            aria-label={translateText('COMBINED PORTFOLIO', getAppLanguage())}
             aria-pressed={activeView === 'COMBINED'}
             class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === 'COMBINED' && isMarginDeskActive
               ? 'bg-emerald-600 text-black'
@@ -141,7 +136,7 @@ export const TickerTabs = memo(function TickerTabs({
           onKeyDown={handleTabKeyDown}
           >
             <span class="workspace-nav-label--desktop">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
-            <span class="workspace-nav-label--mobile">{translateText('COMBINED', getAppLanguage())}</span>
+            <span class="workspace-nav-label--mobile">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
           </button>
 
           {tickers.map((t, index) => (

@@ -58,20 +58,9 @@ export function shouldRefreshQuotesOnNavigation(
 }
 
 
-/** Build workspace destinations in the same order used by keyboard navigation. */
-export function getWorkspaceNavigationViews(
-  tickers: string[],
-  isAdmin: boolean,
-  canViewGuestHistory: boolean
-): string[] {
-  const marginViews = tickers.length === 0
-    ? ['COMBINED']
-    : tickers.length === 1
-      ? [tickers[0]]
-      : ['COMBINED', ...tickers];
-
-  if (isAdmin) return [...marginViews, 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'];
-  return canViewGuestHistory
-    ? ['BALANCE', 'GUEST_HISTORY', 'SETTINGS']
-    : ['BALANCE', 'SETTINGS'];
+export function getWorkspaceNavigationViews(tickers: string[], isAdmin: boolean, canViewGuestHistory: boolean): string[] {
+  const margin = tickers.length > 1 ? ['COMBINED', ...tickers] : [tickers[0] || 'COMBINED'];
+  return isAdmin
+    ? [...margin, 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']
+    : ['BALANCE', ...(canViewGuestHistory ? ['GUEST_HISTORY'] : []), 'SETTINGS'];
 }
