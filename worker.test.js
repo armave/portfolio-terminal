@@ -876,6 +876,62 @@ describe('Freedom authenticated quote WebSocket stream', () => {
     expect(JSON.stringify(body)).not.toContain('280.50');
   });
 
+  it('accepts the production q event as one direct quote object and retains the documented ltp field', async () => {
+    const directQuote = {
+      c: 'GOOGL.US', n: 17, name: 'Alphabet Inc.',
+      bbp: 280.40, bap: 280.50, bbs: 10, bas: 12,
+      pp: 274.00, op: 276.10, ltp: 280.49, lts: 3,
+      ltt: '2026-11-03T09:40:00', chg: 6.49, pcp: 2.3686,
+      vol: 12345, vlt: 345678,
+      ClosePrice: 274.00, TradingReferencePrice: 276.10,
+      UTCOffset: '+00:00', Volatility: 0.25, TradingSessionSubID: 'REGULAR',
+      acc_srv_tm: '2026-11-03T09:40:01Z', acd: 0,
+      base_contract_code: 'GOOGL', base_currency: 'USD', base_ltr: 'NASDAQ',
+      bat: 0, bbt: 0, codesub_nm: 'NASDAQ', cpn: 0, cpp: 0, delta: 0,
+      dpb: 0, dps: 0, emitent_type: 'STOCK', fv: 0, gamma: 0, indap: 0, indbp: 0,
+      later_field_1: 'ignored', later_field_2: 'ignored', later_field_3: 'ignored',
+      later_field_4: 'ignored', later_field_5: 'ignored', later_field_6: 'ignored',
+      later_field_7: 'ignored', later_field_8: 'ignored', later_field_9: 'ignored',
+      later_field_10: 'ignored'
+    };
+    const socket = makeQuoteSocket('GOOGL.US', directQuote);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce({ status: 101, headers: new Headers(), webSocket: socket });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      source: 'authenticated_websocket',
+      symbol: 'GOOGL.US',
+      data: { q: [{
+        c: 'GOOGL.US', ltp: 280.49, pp: 274, op: 276.1,
+        bbp: 280.4, bap: 280.5, chg: 6.49, pcp: 2.3686, vol: 12345
+      }] },
+      diagnostics: {
+        responseEvent: 'q',
+        requestedSymbol: 'GOOGL.US',
+        handshakeStatus: 101,
+        quoteFieldCount: expect.any(Number)
+      }
+    });
+    expect(body.data.q[0]).not.toHaveProperty('later_field_1');
+    expect(body.data.q[0]).not.toHaveProperty('TradingReferencePrice');
+    expect(socket.send).toHaveBeenCalledWith(JSON.stringify(['quotes', ['GOOGL.US']]));
+    expect(socket.close).toHaveBeenCalled();
+  });
+
   it('rejects invalid or multiple symbols before authentication', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
