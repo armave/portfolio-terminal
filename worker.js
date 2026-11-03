@@ -348,14 +348,49 @@ async function createFreedomDiagnosticSession(env) {
     if (!response.ok) {
         const error = new Error("TradeNet login endpoint returned HTTP " + response.status + ".");
         error.status = response.status >= 500 ? 502 : 401;
+        error.diagnostics = {
+            phase: "login_http_response",
+            loginResponseReceived: true,
+            loginHttpStatus: response.status,
+            payloadReceived: Boolean(payload)
+        };
         throw error;
     }
     if (!payload || payload.success !== true || payload.logged !== true ||
         typeof payload.SID !== "string" || payload.SID.length < 10 || payload.real !== true) {
+        const hasFlag = (names) => names.some(name => payload &&
+            Object.prototype.hasOwnProperty.call(payload, name) &&
+            payload[name] !== false && payload[name] !== null && payload[name] !== "");
+        const failedChecks = [];
+        if (!payload) failedChecks.push("login_payload_missing_or_invalid_json");
+        if (payload?.success !== true) failedChecks.push("success_not_true");
+        if (payload?.logged !== true) failedChecks.push("logged_not_true");
+        if (typeof payload?.SID !== "string" || payload.SID.length < 10) failedChecks.push("sid_missing_or_invalid");
+        if (payload?.real !== true) failedChecks.push("production_session_not_confirmed");
         const error = new Error(payload?.real === false
             ? "TradeNet returned a demo or non-production account session."
             : "TradeNet login failed or requested additional verification.");
         error.status = payload?.real === false ? 403 : 401;
+        error.diagnostics = {
+            phase: "login_response_validation",
+            loginResponseReceived: true,
+            loginHttpStatus: response.status,
+            payloadReceived: Boolean(payload),
+            success: payload?.success === true,
+            logged: payload?.logged === true,
+            sidPresent: typeof payload?.SID === "string" && payload.SID.length >= 10,
+            productionSession: payload?.real === true ? true : payload?.real === false ? false : null,
+            verificationChallengeIndicated: hasFlag([
+                "verificationRequired", "needVerification", "challengeRequired",
+                "captchaRequired", "twoFactorRequired", "otpRequired", "smsRequired"
+            ]),
+            providerErrorFieldPresent: Boolean(payload && (
+                Object.prototype.hasOwnProperty.call(payload, "error") ||
+                Object.prototype.hasOwnProperty.call(payload, "errorCode") ||
+                Object.prototype.hasOwnProperty.call(payload, "message")
+            )),
+            failedChecks
+        };
         throw error;
     }
     return payload.SID;
