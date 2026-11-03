@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  createFreedomQuoteStreamAppRuntime,
-  type FreedomQuoteSocketLike
-} from './freedomQuoteStreamAppRuntime';
+import { createFreedomQuoteStreamAppRuntime } from './freedomQuoteStreamAppRuntime';
+import type { FreedomQuoteSocketLike } from './freedomQuoteStreamRuntime';
 
 class FakeSocket implements FreedomQuoteSocketLike {
   readyState = 0;
