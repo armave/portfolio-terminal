@@ -17,18 +17,84 @@ function createRuntime(options: { token?: string; now?: () => number; resolve?: 
 
 describe('Freedom broker transport runtime', () => {
   it('routes read-only broker endpoints without changing their query contracts', async () => {
-    const { runtime, proxyFetch } = createRuntime();
+    const { runtime, proxyFetch } = createRuntime({
+      resolve: (action) => action === 'freedom-orders-stream'
+        ? { ok: true, data: { orders: { order: [] } } }
+        : undefined
+    });
     await runtime.testFreedomTradeNetConnection();
+    await runtime.testFreedomTradeNetOrdersStream();
     await runtime.fetchFreedomTradeNetPositions();
     await runtime.fetchFreedomTradeNetTrades(' 2026-01-02 ');
     await runtime.fetchFreedomTradeNetActiveOrders();
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-test', 'freedom-positions', 'freedom-trades', 'freedom-orders'
+      'freedom-test', 'freedom-orders-stream', 'freedom-positions', 'freedom-trades', 'freedom-orders-stream'
     ]);
+    expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
     expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[2][1]).toEqual({ fromDate: '2026-01-02' });
-    expect(proxyFetch.mock.calls[2][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[3][1]).toEqual({ active_only: 1 });
+    expect(proxyFetch.mock.calls[3][1]).toEqual({ fromDate: '2026-01-02' });
+    expect(proxyFetch.mock.calls[3][2]).toEqual({ cache: 'no-store' });
+    expect(proxyFetch.mock.calls[4][2]).toEqual({ cache: 'no-store' });
+  });
+
+  it('falls back to the existing REST active-orders endpoint when the WebSocket snapshot fails', async () => {
+    const restSnapshot = { orders: { order: [{ order_id: 'rest-1', instr: 'GOOGL.US' }] } };
+    const proxyFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false, error: 'WebSocket snapshot timed out.' })
+      .mockResolvedValueOnce(restSnapshot);
+    const recordMetric = vi.fn();
+    const runtime = createFreedomBrokerTransportRuntime({
+      proxyFetch: proxyFetch as never,
+      getActiveGatewaySecret: () => 'token-A',
+      recordMetric
+    });
+
+    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(restSnapshot);
+    expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
+      'freedom-orders-stream', 'freedom-orders'
+    ]);
+    expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
+    expect(proxyFetch.mock.calls[1][1]).toEqual({ active_only: 1 });
+    expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
+    expect(recordMetric).toHaveBeenCalledWith('provider_fallback', {
+      operation: 'freedom_active_orders',
+      from: 'websocket_snapshot',
+      to: 'rest'
+    });
+  });
+
+  it('returns the sanitized WebSocket order snapshot for the existing normalizer', async () => {
+    const data = { orders: { order: [{
+      order_id: 'active-1', instr: 'GOOGL.US', oper: 3, type: 4,
+      p: 335, q: 68, leaves_qty: 68, stat: '10'
+    }] } };
+    const proxyFetch = vi.fn().mockResolvedValue({ ok: true, data });
+    const recordMetric = vi.fn();
+    const runtime = createFreedomBrokerTransportRuntime({
+      proxyFetch: proxyFetch as never,
+      getActiveGatewaySecret: () => 'token-A',
+      recordMetric
+    });
+
+    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(data);
+    expect(proxyFetch).toHaveBeenCalledWith('freedom-orders-stream', undefined, { cache: 'no-store' });
+    expect(recordMetric).toHaveBeenCalledWith('broker_orders_source', {
+      source: 'websocket_snapshot',
+      order_count: 1
+    });
+  });
+
+  it('uses a valid empty WebSocket order snapshot without treating it as a failure', async () => {
+    const emptySnapshot = { ok: true, data: { orders: { order: [] } } };
+    const proxyFetch = vi.fn().mockResolvedValue(emptySnapshot);
+    const runtime = createFreedomBrokerTransportRuntime({
+      proxyFetch: proxyFetch as never,
+      getActiveGatewaySecret: () => 'token-A'
+    });
+
+    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(emptySnapshot.data);
+    expect(proxyFetch).toHaveBeenCalledTimes(1);
+    expect(proxyFetch).toHaveBeenCalledWith('freedom-orders-stream', undefined, { cache: 'no-store' });
   });
 
   it('caches cashflows by token and normalized date range for five minutes', async () => {
