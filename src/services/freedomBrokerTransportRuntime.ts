@@ -12,6 +12,7 @@ export interface FreedomBrokerTransportRuntimeDependencies {
 export interface FreedomBrokerTransportRuntime {
   testFreedomTradeNetConnection: () => Promise<unknown>;
   testFreedomTradeNetOrdersStream: () => Promise<unknown>;
+  testFreedomTradeNetEventStream: (event: 'portfolio' | 'markets') => Promise<unknown>;
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
@@ -33,6 +34,13 @@ export function createFreedomBrokerTransportRuntime(
 
   const testFreedomTradeNetOrdersStream = (): Promise<unknown> =>
     dependencies.proxyFetch('freedom-orders-stream', undefined, { cache: 'no-store' });
+
+  const testFreedomTradeNetEventStream = (event: 'portfolio' | 'markets'): Promise<unknown> => {
+    if (event !== 'portfolio' && event !== 'markets') {
+      return Promise.reject(new Error('Unsupported TradeNet stream event.'));
+    }
+    return dependencies.proxyFetch('freedom-event-stream', { event }, { cache: 'no-store' });
+  };
 
   const fetchFreedomTradeNetPositions = (): Promise<unknown> =>
     dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
@@ -125,6 +133,7 @@ export function createFreedomBrokerTransportRuntime(
   return {
     testFreedomTradeNetConnection,
     testFreedomTradeNetOrdersStream,
+    testFreedomTradeNetEventStream,
     fetchFreedomTradeNetPositions,
     fetchFreedomTradeNetTrades,
     fetchFreedomTradeNetActiveOrders,
