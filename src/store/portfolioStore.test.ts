@@ -1693,7 +1693,7 @@ describe('canonical trade lifecycle and persistence', () => {
       price: 101,
       quoteDetails: { change: -1, changePercent: -0.9803921568627451 }
     });
-    expect(state.cashStocks[0]).toMatchObject({
+    expect(state.cashStocks?.[0]).toMatchObject({
       currentPrice: 101,
       quoteDetails: { change: -1, changePercent: -0.9803921568627451 }
     });
