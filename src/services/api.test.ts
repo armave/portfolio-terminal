@@ -25,6 +25,7 @@ import {
   fetchYahooQuoteData,
   createFreedomQuoteStreamTicket,
   buildFreedomQuoteStreamSocketUrl,
+  fetchFreedomMarketStatus,
   fetchMarketNews,
   fetchStocktwitsStream,
   rememberYahooDeepStockData,
@@ -124,6 +125,36 @@ describe('authenticated read request deduplication', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     resolvers[1](response());
     await expect(nextRead).resolves.toEqual({ updatedAt: 10, tranches: [], ledger: [], ledgerUpdatedAt: 0 });
+  });
+});
+
+describe('public Freedom US market status', () => {
+  it('requests only the compact status endpoint without caching', async () => {
+    const updatedAt = 1_800_000_000_000;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      marketStatus: { market: 'US equities', code: 'FIX', status: 'OPEN', source: 'FIX' },
+      updatedAt
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchFreedomMarketStatus()).resolves.toEqual({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      marketStatus: { market: 'US equities', code: 'FIX', status: 'OPEN', source: 'FIX' },
+      updatedAt
+    });
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new URL(requestUrl).searchParams.get('action')).toBe('freedom-market-status');
+    expect(requestInit.cache).toBe('no-store');
+  });
+
+  it('rejects an absent US-equities status instead of showing an unsupported placeholder', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: false, error: 'US equity market status is temporarily unavailable.'
+    }), { status: 502, headers: { 'Content-Type': 'application/json' } })));
+    await expect(fetchFreedomMarketStatus()).rejects.toThrow();
   });
 });
 
