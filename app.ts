@@ -973,8 +973,12 @@ function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
         onStatus: (status, message) => {
           if (status === 'connected') {
             console.info('[Freedom Quote Stream]: Persistent TradeNet socket connected.');
-          } else if (status === 'reconnecting' && message) {
-            console.warn('[Freedom Quote Stream]: Reconnecting after upstream status change:', message);
+            logTerminal('[System]: Live TradeNet quote stream connected.');
+          } else if (status === 'reconnecting') {
+            console.warn('[Freedom Quote Stream]: Reconnecting after upstream status change:', message || 'Upstream quote connection interrupted.');
+            logTerminal('[Warning]: Live TradeNet quote stream reconnecting; the browser socket remains open.');
+          } else if (status === 'disconnected') {
+            console.info('[Freedom Quote Stream]: Browser quote socket disconnected.');
           }
         }
       })).catch((error) => {
