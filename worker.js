@@ -1350,7 +1350,9 @@ export default {
                         provider: "Freedom TradeNet",
                         event: eventName,
                         message: eventsConfirmed
-                            ? "Authenticated " + eventName + " event received; schema summary only."
+                            ? eventName === "markets"
+                                ? "Authenticated market status and schedule received; public fields only."
+                                : "Authenticated portfolio event received; schema summary only."
                             : "TradeNet event diagnostic completed; inspect the event flags and phase.",
                         data: result.eventSummary,
                         diagnostics: Object.fromEntries(Object.entries(result).filter(([key]) => key !== "eventSummary"))

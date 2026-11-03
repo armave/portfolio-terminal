@@ -337,13 +337,15 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
       }
     });
     const serialized = JSON.stringify(body);
-    for (const privateValue of ['America/New_York', 'redacted', 'pre', 'post', 'private-market-value']) {
+    for (const privateValue of ['America/New_York', 'redacted', 'private-market-value']) {
       expect(serialized).not.toContain(privateValue);
     }
     expect(body.data.marketPreview[0]).toEqual({
       n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN',
       o: '09:30:00', c: '16:00:00', dt: -420
     });
+    expect(body.data.marketPreview[0]).not.toHaveProperty('post');
+    expect(body.message).toContain('market status and schedule');
     expect(socket.close).toHaveBeenCalled();
   });
 
