@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 import type { FreedomPortfolioSnapshot } from './freedomAccountContracts';
 import type { SessionIdentityToken } from '../utils/sessionIdentityGuard';
@@ -6,6 +6,13 @@ import {
   createPortfolioBrokerDataRuntime,
   type PortfolioBrokerDataRuntimeDependencies
 } from './portfolioBrokerDataRuntime';
+import {
+  markFreedomAccountStreamSnapshot,
+  resetFreedomAccountStreamHealth,
+  setFreedomAccountStreamStatus
+} from './freedomAccountStreamHealth';
+
+afterEach(() => resetFreedomAccountStreamHealth());
 
 function trade(
   id: string,
@@ -82,6 +89,59 @@ function createFixture(overrides: Partial<PortfolioBrokerDataRuntimeDependencies
 }
 
 describe('portfolio broker data runtime', () => {
+  it('skips one-shot account and orders snapshots after both live channels are current', async () => {
+    const fixture = createFixture();
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+    markFreedomAccountStreamSnapshot(fixture.session.identity, 'portfolio');
+    markFreedomAccountStreamSnapshot(fixture.session.identity, 'orders');
+
+    await expect(Promise.all([
+      fixture.runtime.loadFreedomAccount(fixture.session),
+      fixture.runtime.loadActiveOrders(fixture.session)
+    ])).resolves.toEqual([true, true]);
+
+    expect(fixture.dependencies.fetchAccountInfo).not.toHaveBeenCalled();
+    expect(fixture.dependencies.fetchActiveOrders).not.toHaveBeenCalled();
+    expect(fixture.events).toEqual([]);
+  });
+
+  it('discards a portfolio snapshot that resolves after a newer live portfolio event', async () => {
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    const fixture = createFixture({
+      fetchAccountInfo: vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }))
+    });
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+
+    const request = fixture.runtime.loadFreedomAccount(fixture.session);
+    await vi.waitFor(() => expect(fixture.dependencies.fetchAccountInfo).toHaveBeenCalledTimes(1));
+    markFreedomAccountStreamSnapshot(fixture.session.identity, 'portfolio');
+    resolveFetch?.({ raw: 'stale one-shot snapshot' });
+
+    await expect(request).resolves.toBe(true);
+    expect(fixture.events).toEqual([{ type: 'broker:account-info-refreshing' }]);
+  });
+
+  it('discards an orders snapshot and embedded fills that resolve after a newer live orders event', async () => {
+    let resolveFetch: ((value: unknown) => void) | undefined;
+    const fixture = createFixture({
+      fetchActiveOrders: vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; }))
+    });
+    setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
+
+    const request = fixture.runtime.loadActiveOrders(fixture.session);
+    await vi.waitFor(() => expect(fixture.dependencies.fetchActiveOrders).toHaveBeenCalledTimes(1));
+    markFreedomAccountStreamSnapshot(fixture.session.identity, 'orders');
+    resolveFetch?.({
+      orders: { order: [{ order_id: 'stale-order' }] },
+      trades: { trade: [{ id: 'stale-fill' }] }
+    });
+
+    await expect(request).resolves.toBe(true);
+    expect(fixture.events).not.toContainEqual(expect.objectContaining({ type: 'broker:active-orders' }));
+    expect(fixture.events).not.toContainEqual(expect.objectContaining({ type: 'broker:executed-trades' }));
+    expect(fixture.getPortfolioExecutions()).toEqual([]);
+  });
+
   it('coalesces concurrent account-info reads for the same session', async () => {
     let resolveFetch: ((value: unknown) => void) | undefined;
     const fixture = createFixture({
