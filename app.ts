@@ -52,6 +52,8 @@ import {
   createFreedomAccountStreamTicket,
   buildFreedomAccountStreamSocketUrl,
   clearCloudHistory,
+  pullCloudHistory,
+  pushCloudHistory,
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
@@ -76,6 +78,7 @@ import {
   persistGatewaySecret,
   loadSavedState,
   loadSavedHistory,
+  saveSavedHistory,
   savePortfolioSnapshot,
   saveApiKeys,
   saveGatewaySecret,
@@ -96,7 +99,8 @@ import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';
-import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
+import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
+import { mergeFreedomCashflowRows, normalizeSavedFreedomCashflows } from './src/domain/freedomCashflows';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
@@ -1206,7 +1210,7 @@ function refreshAllLivePricesAfterCurrent(force = false): Promise<boolean> {
   return liveQuoteRefreshCoordinator.refreshAfterCurrent(force);
 }
 
-function refreshSupplementalPortfolioData(): Promise<void> | void {
+async function refreshSupplementalPortfolioData(): Promise<void> {
   if (document.hidden) return;
 
   if (currentAccountRole === 'admin') {
@@ -1214,24 +1218,27 @@ function refreshSupplementalPortfolioData(): Promise<void> | void {
     if (!sessionKey) return;
 
     // Both private stream channels must be healthy before periodic REST
-    // snapshots are suppressed. A connection that never becomes healthy still
-    // receives a broker-data fallback every 60 seconds; a recovered connection
-    // gets one catch-up so changes missed during the outage are not lost.
+    // snapshots are suppressed. Until then, wait for all three broker sources
+    // so the following Closed History checkpoint includes refreshed executions.
     const refreshMode = resolveFreedomAccountRefreshMode(sessionKey);
-    if (refreshMode === 'recover') {
-      clearFreedomTradeNetStreamSnapshotCache();
-      portfolioBrokerRefreshRuntime.requestAll();
-      return;
+    if (refreshMode === 'recover') clearFreedomTradeNetStreamSnapshotCache();
+    if (refreshMode === 'recover' || refreshMode === 'fallback') {
+      await Promise.all([
+        portfolioBrokerRefreshRuntime.refreshAccountInfo(),
+        portfolioBrokerRefreshRuntime.refreshExecutedTrades(),
+        portfolioBrokerRefreshRuntime.refreshActiveOrders()
+      ]);
     }
-    if (refreshMode === 'fallback') {
-      portfolioBrokerRefreshRuntime.requestAll();
-    }
+    return;
   }
 
   if (currentAccountRole === 'guest') {
     // Refresh only the authenticated guest's assigned holdings and LOTS ledger.
     // Wait for an older quote batch before fetching prices for the latest assignment set.
-    if (guestCloudRefreshInFlight) return guestCloudRefreshInFlight.then(() => undefined);
+    if (guestCloudRefreshInFlight) {
+      await guestCloudRefreshInFlight;
+      return;
+    }
     const request = pullGuestPortfolioSnapshot()
       .then(() => refreshAllLivePricesAfterCurrent(true))
       .then(() => undefined)
@@ -1244,8 +1251,77 @@ function refreshSupplementalPortfolioData(): Promise<void> | void {
         if (guestCloudRefreshInFlight === request) guestCloudRefreshInFlight = null;
       });
     guestCloudRefreshInFlight = request;
-    return request;
+    await request;
   }
+}
+
+/**
+ * Merge local/admin store history with the separately encrypted cloud history
+ * before writing. A first sync on a new device must never replace a populated
+ * cloud ledger with an empty local snapshot.
+ */
+async function syncAdminClosedHistory(): Promise<boolean> {
+  const session = currentAccountSessionGuard.capture();
+  const isCurrentSession = () =>
+    currentAccountRole === 'admin' &&
+    session !== null &&
+    currentAccountSessionGuard.isCurrent(session);
+  if (!isCurrentSession()) return false;
+
+  const cloudHistory = await pullCloudHistory(undefined, { isCurrentSession });
+  if (!isCurrentSession()) return false;
+
+  const current = portfolioStore.getState();
+  const saved = loadSavedHistory();
+  const cloudExecutions = normalizeFreedomTrades(cloudHistory?.brokerExecutedTrades || []);
+  const savedExecutions = normalizeFreedomTrades(saved.brokerExecutedTrades);
+  const currentExecutions = normalizeFreedomTrades(current.brokerExecutedTrades || []);
+  const mergedExecutions = preservePersistedBrokerFeeAllocations(
+    mergeBrokerExecutionHistory(
+      mergeBrokerExecutionHistory(cloudExecutions, savedExecutions),
+      currentExecutions
+    ),
+    [...savedExecutions, ...cloudExecutions]
+  );
+
+  const cloudCashflows = normalizeSavedFreedomCashflows(cloudHistory?.cashflows || []);
+  const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
+  const currentCashflows = normalizeSavedFreedomCashflows(current.cashflows || []);
+  const mergedCashflows = mergeFreedomCashflowRows(
+    mergeFreedomCashflowRows(cloudCashflows, savedCashflows),
+    currentCashflows
+  );
+  const mergedHistory = {
+    brokerExecutedTrades: mergedExecutions,
+    cashflows: mergedCashflows
+  };
+
+  if (JSON.stringify(mergedHistory) !== JSON.stringify(saved)) {
+    if (!saveSavedHistory(mergedHistory)) return false;
+  }
+  if (!isCurrentSession()) return false;
+
+  if (
+    JSON.stringify(current.brokerExecutedTrades || []) !== JSON.stringify(mergedExecutions) ||
+    JSON.stringify(current.cashflows || []) !== JSON.stringify(mergedCashflows)
+  ) {
+    portfolioStore.setState(mergedHistory);
+    state = portfolioStore.getState();
+  }
+
+  const normalizedCloudHistory = cloudHistory ? {
+    brokerExecutedTrades: cloudExecutions,
+    cashflows: cloudCashflows
+  } : null;
+  if (normalizedCloudHistory && JSON.stringify(mergedHistory) === JSON.stringify(normalizedCloudHistory)) {
+    return true;
+  }
+  if (!mergedExecutions.length && !mergedCashflows.length) return true;
+
+  return pushCloudHistory(mergedHistory, undefined, undefined, {
+    isCurrentSession,
+    force: true
+  });
 }
 
 const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
@@ -1254,6 +1330,7 @@ const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
   refreshQuotes: () => refreshAllLivePrices(),
   refreshSupplemental: () => refreshSupplementalPortfolioData(),
   syncState: () => currentAccountRole === 'admin' ? pushStateToCloud(true) : undefined,
+  syncHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory() : undefined,
   onError: (source, error) => {
     const message = error instanceof Error ? error.message : String(error);
     logTerminal(`[Auto Update Warning]: ${source} refresh failed (${message}).`);
@@ -1983,6 +2060,7 @@ function bindStartupActions() {
       state = portfolioStore.getState();
       return pushStateToCloud(true);
     },
+    syncClosedHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory() : Promise.resolve(false),
     pullGuestSnapshot: async () => {
       await pullGuestPortfolioSnapshot();
       return true;
