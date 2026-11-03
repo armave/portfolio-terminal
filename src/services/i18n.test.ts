@@ -389,6 +389,11 @@ describe('app localization', () => {
     expect(translateText('Testing market event…', 'ru')).toBe('Проверка события рынка…');
   });
 
+  it('localizes the TradeNet portfolio reconciliation control', () => {
+    expect(translateText('Compare WebSocket vs REST portfolio', 'ru')).toBe('Сравнить портфель WebSocket и REST');
+    expect(translateText('Comparing portfolio snapshots…', 'ru')).toBe('Сравнение снимков портфеля…');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
