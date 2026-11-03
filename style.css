@@ -3698,10 +3698,10 @@ table tbody tr:hover {
   .credentials-motion,
   .desk-section-loading,
   .desk-section-loading__bar,
-  .closed-history-page-transition,
   #settingsDesk .settings-broker-rules[open]>div,
   #auth-container .auth-feedback,
-  .desk-content-reveal {
+  .desk-content-reveal,
+  .closed-history-page-transition {
     transform: none !important;
   }
 }
