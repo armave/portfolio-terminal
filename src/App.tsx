@@ -96,6 +96,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedGuestHistory, setHasOpenedGuestHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
+  const shouldRenderClosedHistory = hasOpenedClosedHistory || activeDeskView === 'CLOSED_HISTORY';
   const shouldRenderCashCushion = hasOpenedCashCushion ||
     activeDeskView === 'CASH_CUSHION' ||
     activeDeskView === 'BALANCE';
@@ -621,7 +622,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
 
         class={"desk-view-transition rounded-lg " + (permissions.canViewClosedHistory && activeDeskView === "CLOSED_HISTORY" ? "" : "hidden")}
       >
-        {permissions.canViewClosedHistory && (hasOpenedClosedHistory
+        {permissions.canViewClosedHistory && shouldRenderClosedHistory
           ? <div class="desk-content-reveal"><Suspense fallback={<DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />}>
             <ClosedHistoryDesk
               key={`closed-history-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
@@ -629,7 +630,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               isSessionCurrent={isAccountSessionCurrent}
             />
           </Suspense></div>
-          : <DeskLoading title="Preparing trades" message="Restoring saved trades and broker activity…" accent="purple" />)}
+          : null}
       </div>
 
       {/* Settings */}

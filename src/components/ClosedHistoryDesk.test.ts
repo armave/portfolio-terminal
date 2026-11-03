@@ -14,6 +14,21 @@ function readBrokerRuntimeSource(): string {
 }
 
 describe('Trades cache-first rendering', () => {
+  it('starts lazy rendering in the navigation render instead of waiting for a passive effect', () => {
+    const app = readAppSource();
+    expect(app).toContain("const shouldRenderClosedHistory = hasOpenedClosedHistory || activeDeskView === 'CLOSED_HISTORY';");
+    expect(app).toContain('{permissions.canViewClosedHistory && shouldRenderClosedHistory');
+    expect(app).toContain(': null}');
+  });
+
+  it('subscribes only to state used by Trades and memoizes derived history rows', () => {
+    const source = readSource();
+    expect(source).toContain('usePortfolioSelector(selectTradesPortfolioState, areTradesPortfolioStatesEqual)');
+    expect(source).not.toContain('usePortfolio()');
+    expect(source).toContain('const trades = useMemo(() => {');
+    expect(source).toContain('const tradeSummary = useMemo(() => {');
+  });
+
   it('binds the Trades desk to the active account session and remounts after an identity change', () => {
     const app = readAppSource();
     const source = readSource();

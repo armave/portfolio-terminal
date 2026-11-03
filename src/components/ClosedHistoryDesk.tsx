@@ -1,5 +1,5 @@
-import { useEffect, useReducer, useRef, useState } from 'preact/hooks';
-import { usePortfolio, portfolioStore } from '../store/portfolioStore';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'preact/hooks';
+import { usePortfolioSelector, portfolioStore } from '../store/portfolioStore';
 import { formatUSD } from '../utils/formatters';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage, translateText } from '../services/i18n';
@@ -23,6 +23,34 @@ import { addBrokerEventListener, emitBrokerEvent } from '../services/brokerEvent
 import { TableScrollRegion } from './TableScrollRegion';
 import { brokerExecutionHistoryReducer, createBrokerExecutionHistoryState } from '../domain/brokerExecutionHistoryState';
 import { getLatestClosedTradeDate } from '../domain/tradeHistorySync';
+import type { PortfolioState } from '../types/portfolio';
+
+function selectTradesPortfolioState(state: PortfolioState) {
+  return {
+    brokerExecutedTrades: state.brokerExecutedTrades,
+    cashflows: state.cashflows,
+    closedTrades: state.closedTrades,
+    activeTrancheTypes: state.activeTrancheTypes,
+    activeTrancheMixes: state.activeTrancheMixes,
+    activeTrancheGuestAssignments: state.activeTrancheGuestAssignments,
+    activeTrancheGuestAssignmentDetails: state.activeTrancheGuestAssignmentDetails,
+    closedTradeAllocations: state.closedTradeAllocations
+  };
+}
+
+function areTradesPortfolioStatesEqual(
+  previous: ReturnType<typeof selectTradesPortfolioState>,
+  next: ReturnType<typeof selectTradesPortfolioState>
+): boolean {
+  return previous.brokerExecutedTrades === next.brokerExecutedTrades &&
+    previous.cashflows === next.cashflows &&
+    previous.closedTrades === next.closedTrades &&
+    previous.activeTrancheTypes === next.activeTrancheTypes &&
+    previous.activeTrancheMixes === next.activeTrancheMixes &&
+    previous.activeTrancheGuestAssignments === next.activeTrancheGuestAssignments &&
+    previous.activeTrancheGuestAssignmentDetails === next.activeTrancheGuestAssignmentDetails &&
+    previous.closedTradeAllocations === next.closedTradeAllocations;
+}
 
 /** Restore the local execution snapshot synchronously before the first Trades render. */
 function loadInitialBrokerExecutions(): FreedomExecutedTrade[] {
@@ -35,7 +63,7 @@ function loadInitialBrokerExecutions(): FreedomExecutedTrade[] {
 }
 
 export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: { accountId: string; isSessionCurrent?: () => boolean }) {
-  const state = usePortfolio();
+  const state = usePortfolioSelector(selectTradesPortfolioState, areTradesPortfolioStatesEqual);
   const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
     brokerExecutionHistoryReducer<FreedomExecutedTrade>,
     undefined,
@@ -452,7 +480,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       removeErrorListener();
     };
   }, []);
-  const appTrades = (state.closedTrades || []).map((trade, index) => {
+  const appTrades = useMemo(() => (state.closedTrades || []).map((trade, index) => {
     const feeBreakdown = resolveClosedTradeFeeBreakdown(trade);
     const profit = resolveClosedTradeNetProfit(trade, feeBreakdown);
     return {
@@ -465,15 +493,28 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       guestAllocations: [] as Array<{ guestId: string; quantity: number }>,
       ...feeBreakdown
     };
-  });
-  const brokerTradeMetrics = calculateBrokerExecutionMetrics(brokerTrades);
-  const trancheAttributions = attributeClosedTradeExecutions(brokerTrades, {
+  }), [state.closedTrades]);
+  const brokerTradeMetrics = useMemo(
+    () => calculateBrokerExecutionMetrics(brokerTrades),
+    [brokerTrades]
+  );
+  const trancheAttributions = useMemo(() => attributeClosedTradeExecutions(brokerTrades, {
     trancheTypes: state.activeTrancheTypes,
     trancheMixes: state.activeTrancheMixes,
     guestAssignments: state.activeTrancheGuestAssignments,
     guestAssignmentDetails: state.activeTrancheGuestAssignmentDetails
-  });
-  const guestNameById = new Map(guestUsers.map((user) => [user.id, user.name]));
+  }), [
+    brokerTrades,
+    state.activeTrancheTypes,
+    state.activeTrancheMixes,
+    state.activeTrancheGuestAssignments,
+    state.activeTrancheGuestAssignmentDetails
+  ]);
+  const guestNameById = useMemo(
+    () => new Map(guestUsers.map((user) => [user.id, user.name])),
+    [guestUsers]
+  );
+  const trades = useMemo(() => {
   const brokerRows = brokerTrades.filter((broker) => ['sell', 's', 'sale', 'sold', '2'].includes(String(broker.side ?? '').toLowerCase() )).map((broker, index) => {
     const allocatedMarginFee = Object.values((broker.marginFeeAllocations || {}) as Record<string, number>)
       .reduce((sum, amount) => sum + (Number(amount) || 0), 0);
@@ -588,7 +629,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     const parsed = Date.parse(String(raw ?? ''));
     return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
   };
-  const trades = [...uniqueAppTrades, ...groupedBrokerRows].map((row: any) => {
+  return [...uniqueAppTrades, ...groupedBrokerRows].map((row: any) => {
     const allocation = resolveClosedTradeAllocation(
       row.trade?.shares,
       row.allocationType,
@@ -603,6 +644,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       allocationTypes: [allocation.fundingType]
     };
   }).sort((a, b) => getExitTimestamp(b) - getExitTimestamp(a));
+  }, [brokerTrades, brokerTradeMetrics, trancheAttributions, appTrades, state.closedTradeAllocations]);
   const tradesPageSize = 10;
   const tradesPageCount = Math.max(1, Math.ceil(trades.length / tradesPageSize));
   // Clamp during render so a shrinking refresh never paints an empty, out-of-range page.
@@ -611,15 +653,35 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   useEffect(() => {
     if (tradesPage !== safeTradesPage) setTradesPage(safeTradesPage);
   }, [tradesPage, safeTradesPage]);
-  const realizedNet = trades.reduce((total, row) => total + (row.profit ?? 0), 0);
-  const totalFees = trades.reduce((total, row) => total + (Number.isFinite(row.feesTotal) ? row.feesTotal : ((row.fees || 0) + (row.commissions || 0))), 0);
-  const hasIncompleteCommissions = trades.some((row: any) => row.commissionsComplete === false);
-  const profitKnownTrades = trades.filter((row) => row.profit !== null);
-  const hasUnknownProfit = profitKnownTrades.length < trades.length;
-  const winningTrades = profitKnownTrades.filter((row) => (row.profit ?? 0) > 0).length;
-  const knownDurations = trades.map((row) => Number((row.trade as any).holdingDays ?? (row.trade as any).daysHeld)).filter((days) => Number.isFinite(days) && days >= 0);
-  const averageHoldingDays = knownDurations.length ? knownDurations.reduce((total, days) => total + days, 0) / knownDurations.length : null;
-  const winRate = profitKnownTrades.length ? (winningTrades / profitKnownTrades.length) * 100 : 0;
+  const tradeSummary = useMemo(() => {
+    const profitKnownTrades = trades.filter((row) => row.profit !== null);
+    const winningTrades = profitKnownTrades.filter((row) => (row.profit ?? 0) > 0).length;
+    const knownDurations = trades
+      .map((row) => Number((row.trade as any).holdingDays ?? (row.trade as any).daysHeld))
+      .filter((days) => Number.isFinite(days) && days >= 0);
+    return {
+      realizedNet: trades.reduce((total, row) => total + (row.profit ?? 0), 0),
+      totalFees: trades.reduce((total, row) => total + (Number.isFinite(row.feesTotal) ? row.feesTotal : ((row.fees || 0) + (row.commissions || 0))), 0),
+      hasIncompleteCommissions: trades.some((row: any) => row.commissionsComplete === false),
+      hasUnknownProfit: profitKnownTrades.length < trades.length,
+      knownProfitCount: profitKnownTrades.length,
+      winningTrades,
+      averageHoldingDays: knownDurations.length
+        ? knownDurations.reduce((total, days) => total + days, 0) / knownDurations.length
+        : null,
+      winRate: profitKnownTrades.length ? (winningTrades / profitKnownTrades.length) * 100 : 0
+    };
+  }, [trades]);
+  const {
+    realizedNet,
+    totalFees,
+    hasIncompleteCommissions,
+    hasUnknownProfit,
+    knownProfitCount,
+    winningTrades,
+    averageHoldingDays,
+    winRate
+  } = tradeSummary;
   const backgroundSyncPending = !cashflowHistoryReady || !cashflowSyncReady || !cashflowAllocationReady;
   const isBackgroundUpdating = backgroundSyncPending || brokerTradesRefreshing;
 
@@ -716,7 +778,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Win rate</div>
           <div class="mt-1 font-mono text-lg font-bold text-white">{winRate.toFixed(1)}%</div>
-          <div class="text-[10px] text-slate-500">{translateText(`${winningTrades} of ${profitKnownTrades.length} records with known profit profitable`, getAppLanguage())}</div>
+          <div class="text-[10px] text-slate-500">{translateText(`${winningTrades} of ${knownProfitCount} records with known profit profitable`, getAppLanguage())}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees &amp; commissions</div>
