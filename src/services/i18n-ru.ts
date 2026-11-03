@@ -729,4 +729,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Bullish': 'Бычий',
   'Bearish': 'Медвежий',
   'Neutral': 'Нейтральный',
+  'Mixed': 'Смешанный',
+  'Value shows current market value for open tranches and sale proceeds for closed trades. Net P&L appears only when the closed trade\'s net result is available.': 'Стоимость показывает текущую рыночную стоимость открытых лотов и выручку от закрытых сделок. Чистая прибыль или убыток отображается только при наличии итогового результата закрытой сделки.',
 };
