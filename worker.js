@@ -773,6 +773,40 @@ function describeRedactedValueType(value, depth = 0) {
     return { type: "object", fields };
 }
 
+/**
+ * Resolve one compact US-equities status from the public markets event.
+ * Prefer FIX (the combined NYSE/Nasdaq market); older payload variants may
+ * expose the exchanges separately, in which case report MIXED when they differ.
+ */
+export function selectFreedomUsMarketStatus(eventSummary) {
+    const rows = Array.isArray(eventSummary?.marketPreview) ? eventSummary.marketPreview : [];
+    const normalizedCode = value => String(value || "").trim().toUpperCase();
+    const rawStatus = row => normalizedCode(row?.s);
+    const normalizeStatus = value => value === "CLOSE" ? "CLOSED" : value;
+    const fixRow = rows.find(row =>
+        normalizedCode(row?.n2) === "FIX" || normalizedCode(row?.n) === "FIX"
+    );
+    if (fixRow) {
+        const status = normalizeStatus(rawStatus(fixRow));
+        return status ? { market: "US equities", code: "FIX", status, source: "FIX" } : null;
+    }
+
+    const usRows = rows.filter(row => {
+        const name = normalizedCode(row?.n);
+        const code = normalizedCode(row?.n2);
+        return name === "NASDAQ" || name === "NYSE" || code === "NASDAQ" || code === "NYSE";
+    });
+    if (!usRows.length) return null;
+    const statuses = [...new Set(usRows.map(row => normalizeStatus(rawStatus(row))).filter(Boolean))];
+    if (!statuses.length) return null;
+    return {
+        market: "US equities",
+        code: "US",
+        status: statuses.length === 1 ? statuses[0] : "MIXED",
+        source: "US_EXCHANGES"
+    };
+}
+
 function summarizeFreedomStreamEvent(eventName, payload) {
     const isRecord = value => value !== null && typeof value === "object" && !Array.isArray(value);
     const payloadType = Array.isArray(payload) ? "array"
@@ -1432,19 +1466,19 @@ export default {
             // Guests may use the same server-side authenticated q / markets
             // subscriptions, but never receive account-wide portfolio, order,
             // execution, cashflow, or portfolio-event payloads.
-            const guestPublicMarketStream = action === "freedom-quote-stream" ||
-                action === "freedom-quote-stream-ticket" ||
-                (action === "freedom-event-stream" && url.searchParams.get("event") === "markets");
+            const guestPublicMarketStream = action === "freedom-market-status" ||
+                action === "freedom-quote-stream" ||
+                action === "freedom-quote-stream-ticket";
             const restrictedEventStream = action === "freedom-event-stream" && !guestPublicMarketStream;
             if (sharedDataPath || sharedDataAction || restrictedEventStream) {
                 return jsonError("This data is restricted to administrator accounts.", 403, corsHeaders);
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-status", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -1637,6 +1671,40 @@ export default {
                         error: error instanceof Error ? error.message : "TradeNet event diagnostic failed.",
                         diagnostics: error?.diagnostics || null
                     }), { status: 200, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                }
+            }
+
+            // Compact public US-equities status for admin and guest workspaces.
+            // Raw market rows, schedules, account data, and diagnostics stay server-side.
+            if (action === "freedom-market-status") {
+                try {
+                    const result = await diagnoseFreedomEventStream(env, "markets");
+                    const eventsConfirmed = result.connectionOpened &&
+                        result.userDataReceived && result.eventReceived &&
+                        result.isDemo !== true && result.sessionMode === "prod";
+                    const marketStatus = eventsConfirmed
+                        ? selectFreedomUsMarketStatus(result.eventSummary)
+                        : null;
+                    if (!marketStatus) {
+                        return new Response(JSON.stringify({
+                            ok: false,
+                            error: "US equity market status is temporarily unavailable."
+                        }), { status: 502, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                    }
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Freedom TradeNet",
+                        marketStatus,
+                        updatedAt: Date.now()
+                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                } catch (error) {
+                    if (error?.freedomDiagnosticSid) {
+                        await invalidateFreedomDiagnosticSession(env, error.freedomDiagnosticSid);
+                    }
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: "US equity market status is temporarily unavailable."
+                    }), { status: 502, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 }
             }
 
