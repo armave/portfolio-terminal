@@ -555,6 +555,218 @@ async function diagnoseFreedomOrdersStream(env) {
     });
 }
 
+/**
+ * Subscribe to one allowlisted TradeNet read-only account/market event and
+ * return only schema metadata. Portfolio numbers, tickers, login names, IDs,
+ * credentials, and the SID never leave the Worker in this diagnostic.
+ */
+function summarizeFreedomStreamEvent(eventName, payload) {
+    const isRecord = value => value !== null && typeof value === "object" && !Array.isArray(value);
+    const payloadType = Array.isArray(payload) ? "array"
+        : isRecord(payload) ? "object"
+            : payload === null ? "null" : typeof payload;
+    const keys = value => isRecord(value)
+        ? Object.keys(value).filter(key => /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key)).sort().slice(0, 40)
+        : [];
+    if (eventName === "portfolio") {
+        const root = isRecord(payload?.portfolio) ? payload.portfolio
+            : isRecord(payload?.ps) ? payload.ps : payload;
+        const accounts = Array.isArray(root?.acc) ? root.acc
+            : Array.isArray(root?.accounts) ? root.accounts : [];
+        const positions = Array.isArray(root?.pos) ? root.pos
+            : Array.isArray(root?.positions) ? root.positions : [];
+        const accountKeys = new Set(["curr", "s", "forecast_in", "forecast_out", "currval", "t2_in", "t2_out"]);
+        const positionKeys = new Set([
+            "i", "t", "k", "s", "q", "curr", "currval", "name", "name2",
+            "open_bal", "mkt_price", "vm", "go", "profit_close", "acc_pos_id", "trade"
+        ]);
+        return {
+            event: eventName,
+            payloadType,
+            topLevelKeys: keys(payload),
+            accountsCount: accounts.length,
+            accountItemKeys: accounts.length ? keys(accounts[0]).filter(key => accountKeys.has(key)) : [],
+            positionsCount: positions.length,
+            positionItemKeys: positions.length ? keys(positions[0]).filter(key => positionKeys.has(key)) : []
+        };
+    }
+    if (eventName === "markets") {
+        const rows = Array.isArray(payload) ? payload
+            : Array.isArray(payload?.m) ? payload.m
+                : Array.isArray(payload?.markets) ? payload.markets : [];
+        const marketKeys = new Set(["n", "n2", "s", "o", "c", "dt"]);
+        return {
+            event: eventName,
+            payloadType,
+            topLevelKeys: keys(payload),
+            marketsCount: rows.length,
+            marketItemKeys: rows.length ? keys(rows[0]).filter(key => marketKeys.has(key)) : []
+        };
+    }
+    throw new Error("Unsupported TradeNet stream event.");
+}
+
+async function diagnoseFreedomEventStream(env, eventName) {
+    const sid = await createFreedomDiagnosticSession(env);
+    const startedAt = Date.now();
+    let eventSummary = null;
+    const diagnostics = {
+        endpoint: "wss.tradernet.com",
+        requestedEvent: eventName,
+        phase: "connecting",
+        handshakeResponseReceived: false,
+        handshakeStatus: null,
+        connectionOpened: false,
+        subscriptionSent: false,
+        userDataReceived: false,
+        isDemo: null,
+        sessionMode: null,
+        eventReceived: false,
+        messageCount: 0,
+        parseErrorCount: 0,
+        eventCounts: {},
+        serverErrorCategory: null,
+        socketErrorObserved: false,
+        closeCode: null
+    };
+    const snapshot = () => ({
+        ...diagnostics,
+        eventCounts: { ...diagnostics.eventCounts },
+        eventSummary,
+        elapsedMs: Date.now() - startedAt
+    });
+
+    return await new Promise((resolve, reject) => {
+        let socket = null;
+        let settled = false;
+        let timeoutId;
+        const abortController = new AbortController();
+        const finish = error => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            const result = snapshot();
+            try { socket?.close(1000, "TradeNet event diagnostic finished"); } catch { /* ignore close races */ }
+            if (error) {
+                error.diagnostics = result;
+                reject(error);
+            } else {
+                resolve(result);
+            }
+        };
+        timeoutId = setTimeout(() => {
+            diagnostics.phase = diagnostics.connectionOpened ? "event_timeout" : "handshake_timeout";
+            if (!diagnostics.connectionOpened) abortController.abort();
+            finish(null);
+        }, 8000);
+
+        const url = new URL("https://wss.tradernet.com/");
+        url.searchParams.set("SID", sid);
+        fetch(url.toString(), {
+            headers: { Upgrade: "websocket" },
+            signal: abortController.signal
+        }).then(response => {
+            if (settled) {
+                try { response.webSocket?.close(1000, "Diagnostic already finished"); } catch { /* ignore close races */ }
+                return;
+            }
+            diagnostics.handshakeResponseReceived = true;
+            diagnostics.handshakeStatus = Number.isFinite(Number(response.status)) ? Number(response.status) : null;
+            socket = response.webSocket || null;
+            if (!socket) {
+                const status = diagnostics.handshakeStatus;
+                const error = new Error(status
+                    ? "TradeNet rejected the WebSocket upgrade (HTTP " + status + ")."
+                    : "TradeNet did not accept the WebSocket upgrade.");
+                error.status = status === 401 || status === 403 ? status : 502;
+                diagnostics.phase = "handshake_rejected";
+                finish(error);
+                return;
+            }
+            try {
+                socket.addEventListener("message", event => {
+                    if (settled) return;
+                    diagnostics.messageCount += 1;
+                    let packet;
+                    try {
+                        packet = JSON.parse(String(event?.data || ""));
+                    } catch {
+                        diagnostics.parseErrorCount += 1;
+                        return;
+                    }
+                    if (!Array.isArray(packet) || typeof packet[0] !== "string") return;
+                    const name = packet[0];
+                    if (/^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(name)) {
+                        diagnostics.eventCounts[name] = (diagnostics.eventCounts[name] || 0) + 1;
+                    }
+                    if (name === "userData") {
+                        const userData = packet[1];
+                        diagnostics.userDataReceived = true;
+                        diagnostics.isDemo = typeof userData?.isDemo === "boolean" ? userData.isDemo : null;
+                        const mode = String(userData?.mode || "").trim().toLowerCase();
+                        diagnostics.sessionMode = ["prod", "demo", "test", "paper", "beta"].includes(mode) ? mode : "unknown";
+                        if (diagnostics.isDemo === true || userData?.real === false ||
+                            ["demo", "test", "paper", "beta"].includes(diagnostics.sessionMode)) {
+                            diagnostics.phase = "demo_session";
+                            const error = new Error("TradeNet authenticated a demo or non-production session.");
+                            error.status = 403;
+                            finish(error);
+                            return;
+                        }
+                    } else if (name === eventName) {
+                        diagnostics.eventReceived = true;
+                        eventSummary = summarizeFreedomStreamEvent(eventName, packet[1]);
+                    } else if (name === "error") {
+                        const text = typeof packet[1] === "string" ? packet[1] : "";
+                        diagnostics.serverErrorCategory = /sid|session|auth|login|unauthori[sz]ed|expired/i.test(text)
+                            ? "auth_or_session_rejected" : "upstream_error";
+                        diagnostics.phase = "server_error";
+                        const error = new Error(diagnostics.serverErrorCategory === "auth_or_session_rejected"
+                            ? "TradeNet rejected the authenticated session."
+                            : "TradeNet returned a WebSocket error.");
+                        error.status = diagnostics.serverErrorCategory === "auth_or_session_rejected" ? 401 : 502;
+                        finish(error);
+                        return;
+                    }
+                    if (diagnostics.userDataReceived && diagnostics.eventReceived) {
+                        diagnostics.phase = "event_received";
+                        finish(null);
+                    }
+                });
+                socket.addEventListener("error", () => {
+                    diagnostics.socketErrorObserved = true;
+                    if (!settled) diagnostics.phase = "websocket_error";
+                });
+                socket.addEventListener("close", event => {
+                    if (settled) return;
+                    diagnostics.closeCode = Number.isFinite(Number(event?.code)) ? Number(event.code) : null;
+                    diagnostics.phase = "connection_closed";
+                    finish(null);
+                });
+                socket.accept();
+                diagnostics.connectionOpened = true;
+                diagnostics.phase = "subscribing_" + eventName;
+                socket.send(JSON.stringify([eventName]));
+                diagnostics.subscriptionSent = true;
+                diagnostics.phase = "awaiting_events";
+            } catch {
+                const error = new Error("TradeNet WebSocket opened, but the " + eventName + " subscription could not be sent.");
+                error.status = 502;
+                diagnostics.phase = "subscription_send_failed";
+                finish(error);
+            }
+        }).catch(() => {
+            if (settled) return;
+            diagnostics.phase = abortController.signal.aborted ? "handshake_timeout" : "websocket_handshake_failed";
+            const error = new Error(abortController.signal.aborted
+                ? "TradeNet WebSocket handshake timed out."
+                : "TradeNet WebSocket handshake failed before a connection was opened.");
+            error.status = abortController.signal.aborted ? 504 : 502;
+            finish(error);
+        });
+    });
+}
+
 export function sanitizeFreedomPositions(response) {
     // The upstream API response can be wrapped differently depending on the
     // TradeNet gateway/version. Accept only known position-envelope variants.
@@ -754,16 +966,16 @@ export default {
 
         if (accountRole === "guest") {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest"].includes(pathname);
-            const sharedDataAction = ["state", "history", "freedom-test", "freedom-positions", "freedom-trades", "freedom-orders", "freedom-cashflows", "freedom-orders-stream"].includes(action);
+            const sharedDataAction = ["state", "history", "freedom-test", "freedom-positions", "freedom-trades", "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-event-stream"].includes(action);
             if (sharedDataPath || sharedDataAction) {
                 return jsonError("This data is restricted to administrator accounts.", 403, corsHeaders);
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -856,6 +1068,37 @@ export default {
                         status: 200,
                         headers: { ...corsHeaders, "Cache-Control": "no-store" }
                     });
+                }
+            }
+
+            // Authenticated, read-only diagnostics for allowlisted TradeNet event subscriptions.
+            if (action === "freedom-event-stream") {
+                const eventName = incomingUrl.searchParams.get("event") || "";
+                if (!["portfolio", "markets"].includes(eventName)) {
+                    return jsonError("Unsupported TradeNet stream event. Allowed events: portfolio, markets.", 400, corsHeaders);
+                }
+                try {
+                    const result = await diagnoseFreedomEventStream(env, eventName);
+                    const eventsConfirmed = result.connectionOpened &&
+                        result.userDataReceived && result.eventReceived &&
+                        result.isDemo === false && result.sessionMode === "prod";
+                    return new Response(JSON.stringify({
+                        ok: eventsConfirmed,
+                        provider: "Freedom TradeNet",
+                        event: eventName,
+                        message: eventsConfirmed
+                            ? "Authenticated " + eventName + " event received; schema summary only."
+                            : "TradeNet event diagnostic completed; inspect the event flags and phase.",
+                        data: result.eventSummary,
+                        diagnostics: Object.fromEntries(Object.entries(result).filter(([key]) => key !== "eventSummary"))
+                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                } catch (error) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        event: eventName,
+                        error: error instanceof Error ? error.message : "TradeNet event diagnostic failed.",
+                        diagnostics: error?.diagnostics || null
+                    }), { status: 200, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 }
             }
 
