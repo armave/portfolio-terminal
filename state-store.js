@@ -156,6 +156,15 @@ export class PortfolioStateDO {
     this.freedomQuoteUpstreamWaiter = null;
     this.freedomQuoteSubscribedSymbols = new Set();
     this.freedomQuoteLastBySymbol = new Map();
+    // Private account updates use their own authenticated upstream socket and
+    // a separate hibernatable browser-client group; guests never join this group.
+    this.freedomAccountUpstream = null;
+    this.freedomAccountUpstreamConnectPromise = null;
+    this.freedomAccountUpstreamReady = false;
+    this.freedomAccountUpstreamWaiter = null;
+    this.freedomAccountLastByEvent = new Map();
+    this.freedomAccountOrdersById = new Map();
+    this.freedomAccountOrdersSnapshotReceived = false;
   }
 
   async requestFreedomTradeNetSession() {
@@ -427,6 +436,356 @@ export class PortfolioStateDO {
     return new Response(null, { status: 101, webSocket: client });
   }
 
+  async handleFreedomAccountStreamTicketRequest(request) {
+    if (request.method !== "POST") return authJson({ error: "Method not allowed." }, 405);
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body) ||
+        body.role !== "admin" ||
+        typeof body.accountId !== "string" || !body.accountId.trim() || body.accountId.length > 128) {
+      return authJson({ error: "An administrator account is required for the private TradeNet stream." }, 403);
+    }
+    const ticket = toHex(crypto.getRandomValues(new Uint8Array(32)));
+    const ticketKey = "freedom:account-stream-ticket:" + await digestHex(ticket);
+    const expiresAt = Date.now() + 60_000;
+    await this.ctx.storage.put(ticketKey, { accountId: body.accountId, role: "admin", expiresAt });
+    return authJson({ ok: true, ticket, expiresAt });
+  }
+
+  async consumeFreedomAccountStreamTicket(ticket) {
+    if (typeof ticket !== "string" || !/^[a-f0-9]{64}$/i.test(ticket)) return null;
+    const ticketKey = "freedom:account-stream-ticket:" + await digestHex(ticket);
+    return this.ctx.storage.transaction(async (transaction) => {
+      const stored = await transaction.get(ticketKey);
+      if (!stored) return null;
+      await transaction.delete(ticketKey);
+      if (!Number.isFinite(stored.expiresAt) || stored.expiresAt <= Date.now() ||
+          stored.role !== "admin" || typeof stored.accountId !== "string" || !stored.accountId.trim()) return null;
+      return { accountId: stored.accountId, role: "admin" };
+    });
+  }
+
+  async handleFreedomAccountStreamSocketRequest(request) {
+    if (request.method !== "GET" || request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+      return authJson({ error: "A WebSocket upgrade is required." }, 426);
+    }
+    const url = new URL(request.url);
+    const claims = await this.consumeFreedomAccountStreamTicket(url.searchParams.get("ticket"));
+    if (!claims) return authJson({ error: "Account stream ticket is invalid, expired, or already used." }, 401);
+
+    try {
+      await this.ensureFreedomAccountUpstream();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "TradeNet account stream could not be established.";
+      return authJson({ error: message }, 502);
+    }
+
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    server.serializeAttachment({ ...claims, stream: "account" });
+    this.ctx.acceptWebSocket(server, ["freedom-tradenet-account"]);
+    server.send(JSON.stringify({
+      type: "ready",
+      provider: "Freedom TradeNet",
+      transport: "websocket",
+      events: ["portfolio", "orders"]
+    }));
+    for (const eventName of ["portfolio", "orders"]) {
+      const cached = this.freedomAccountLastByEvent.get(eventName);
+      if (cached) {
+        try { server.send(JSON.stringify(cached)); } catch { /* disconnected client */ }
+      }
+    }
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  getFreedomAccountClients() {
+    if (typeof this.ctx.getWebSockets !== "function") return [];
+    return this.ctx.getWebSockets("freedom-tradenet-account")
+      .filter((socket) => socket.readyState === 1);
+  }
+
+  async ensureFreedomAccountUpstream() {
+    if (this.getFreedomAccountClients().length === 0) return;
+    if (this.freedomAccountUpstream && this.freedomAccountUpstream.readyState === 1 &&
+        this.freedomAccountUpstreamReady) return;
+    if (this.freedomAccountUpstreamConnectPromise) {
+      await this.freedomAccountUpstreamConnectPromise;
+      return;
+    }
+    const pending = this.connectFreedomAccountUpstream();
+    this.freedomAccountUpstreamConnectPromise = pending;
+    try {
+      await pending;
+    } finally {
+      if (this.freedomAccountUpstreamConnectPromise === pending) {
+        this.freedomAccountUpstreamConnectPromise = null;
+      }
+    }
+  }
+
+  async connectFreedomAccountUpstream() {
+    const sid = await this.getFreedomTradeNetSession();
+    const url = new URL("https://wss.tradernet.com/");
+    url.searchParams.set("SID", sid);
+    const response = await fetch(url.toString(), { headers: { Upgrade: "websocket" } });
+    const socket = response.webSocket;
+    if (response.status !== 101 || !socket) {
+      const error = new Error("TradeNet rejected the persistent portfolio/orders WebSocket connection.");
+      error.status = response.status === 401 || response.status === 403 ? response.status : 502;
+      throw error;
+    }
+
+    this.freedomAccountUpstream = socket;
+    this.freedomAccountUpstreamReady = false;
+    this.freedomAccountOrdersById.clear();
+    this.freedomAccountOrdersSnapshotReceived = false;
+
+    const handshake = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        if (this.freedomAccountUpstreamWaiter?.socket === socket) {
+          this.freedomAccountUpstreamWaiter = null;
+        }
+        reject(new Error("TradeNet did not confirm the production portfolio/orders stream."));
+        try { socket.close(1011, "Account stream handshake timeout"); } catch { /* ignore */ }
+      }, 10_000);
+      this.freedomAccountUpstreamWaiter = {
+        socket,
+        resolve: () => {
+          clearTimeout(timeout);
+          this.freedomAccountUpstreamWaiter = null;
+          resolve();
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          this.freedomAccountUpstreamWaiter = null;
+          reject(error);
+        }
+      };
+    });
+
+    socket.addEventListener("message", (event) => {
+      void this.handleFreedomAccountUpstreamMessage(socket, event?.data);
+    });
+    socket.addEventListener("close", () => {
+      if (this.freedomAccountUpstream !== socket) return;
+      this.freedomAccountUpstream = null;
+      this.freedomAccountUpstreamReady = false;
+      if (this.freedomAccountUpstreamWaiter?.socket === socket) {
+        this.freedomAccountUpstreamWaiter.reject(new Error("TradeNet closed the account socket during authentication."));
+      }
+      this.broadcastFreedomAccountStatus("reconnecting");
+    });
+    socket.addEventListener("error", () => {
+      if (this.freedomAccountUpstream !== socket) return;
+      this.freedomAccountUpstream = null;
+      this.freedomAccountUpstreamReady = false;
+      if (this.freedomAccountUpstreamWaiter?.socket === socket) {
+        this.freedomAccountUpstreamWaiter.reject(new Error("TradeNet account socket failed during authentication."));
+      }
+      this.broadcastFreedomAccountStatus("reconnecting");
+      try { socket.close(1011, "TradeNet account socket error"); } catch { /* ignore */ }
+    });
+
+    try {
+      socket.accept();
+      socket.send(JSON.stringify(["portfolio"]));
+      socket.send(JSON.stringify(["orders"]));
+      await handshake;
+    } catch (error) {
+      if (this.freedomAccountUpstream === socket) this.freedomAccountUpstream = null;
+      this.freedomAccountUpstreamReady = false;
+      try { socket.close(1011, "Account stream handshake failed"); } catch { /* ignore */ }
+      throw error;
+    }
+  }
+
+  broadcastFreedomAccountStatus(status, message) {
+    const payload = JSON.stringify({ type: "status", status, ...(message ? { message } : {}) });
+    for (const client of this.getFreedomAccountClients()) {
+      try { client.send(payload); } catch { /* disconnected client */ }
+    }
+  }
+
+  sanitizeFreedomPortfolioStreamPayload(payload) {
+    const source = payload?.portfolio ?? payload?.ps ?? payload?.data?.result?.ps ?? payload?.data?.ps ?? payload;
+    const loaded = source?.loaded === true || source?.loaded === 1 ||
+      source?.loaded === "1" || source?.loaded === "true";
+    if (!source || typeof source !== "object" || !loaded ||
+        !Array.isArray(source.acc) || !Array.isArray(source.pos)) return null;
+    const numberOrNull = (value) => {
+      if (value === null || value === undefined || value === "") return null;
+      const number = Number(value);
+      return Number.isFinite(number) ? number : null;
+    };
+    const usdRows = (rows) => rows.filter((row) =>
+      String(row?.curr ?? row?.base_currency ?? "").toUpperCase() === "USD"
+    );
+    const acc = usdRows(source.acc).map((row) => ({
+      curr: "USD",
+      s: numberOrNull(row.s),
+      currval: numberOrNull(row.currval),
+      forecast_in: numberOrNull(row.forecast_in) ?? 0,
+      forecast_out: numberOrNull(row.forecast_out) ?? 0,
+      t2_in: numberOrNull(row.t2_in) ?? 0,
+      t2_out: numberOrNull(row.t2_out) ?? 0
+    }));
+    const pos = usdRows(source.pos).map((row) => ({
+      i: String(row.i ?? row.base_contract_code ?? ""),
+      name: String(row.name ?? row.name2 ?? row.i ?? "Unknown instrument"),
+      q: numberOrNull(row.q) ?? 0,
+      curr: "USD",
+      mkt_price: numberOrNull(row.mkt_price),
+      market_value: numberOrNull(row.market_value),
+      bal_price_a: numberOrNull(row.bal_price_a),
+      profit_close: numberOrNull(row.profit_close),
+      acc_pos_id: numberOrNull(row.acc_pos_id)
+    })).filter((row) => row.i);
+    return { data: { result: { ps: { loaded: true, acc, pos } } } };
+  }
+
+  sanitizeFreedomOrderStreamPayload(payload) {
+    const rows = Array.isArray(payload) ? payload
+      : Array.isArray(payload?.orders?.order) ? payload.orders.order
+        : Array.isArray(payload?.orders) ? payload.orders
+          : Array.isArray(payload?.order) ? payload.order
+            : [];
+    if (!rows.length) return null;
+    const numberOrNull = (value) => {
+      if (value === null || value === undefined || value === "") return null;
+      const number = Number(value);
+      return Number.isFinite(number) ? number : null;
+    };
+    for (const source of rows.slice(0, 500)) {
+      if (!source || typeof source !== "object" || Array.isArray(source)) continue;
+      const orderId = source.order_id ?? source.id ?? source.orderId;
+      const instrument = source.instr ?? source.instr_nm ?? source.i ?? source.ticker ?? source.symbol;
+      if (orderId === undefined || orderId === null || !instrument) continue;
+      const id = String(orderId).slice(0, 80);
+      const side = Number(source.oper ?? source.operation);
+      const trades = Array.isArray(source.trade) ? source.trade.slice(0, 500).flatMap((trade) => {
+        if (!trade || typeof trade !== "object" || Array.isArray(trade)) return [];
+        const tradeId = trade.id ?? trade.trade_id ?? trade.tradeId;
+        if (tradeId === undefined || tradeId === null) return [];
+        return [{
+          id: String(tradeId).slice(0, 80),
+          order_id: id,
+          instr: String(instrument).slice(0, 64),
+          side: side === 1 || side === 2 ? "BUY" : side === 3 ? "SELL" : side === 4 ? "SELL_SHORT" : "Unknown",
+          curr: String(source.cur ?? source.curr ?? source.currency ?? "").slice(0, 12),
+          date: typeof trade.date === "string" ? trade.date.slice(0, 80) : "",
+          p: numberOrNull(trade.p),
+          q: numberOrNull(trade.q),
+          v: numberOrNull(trade.v),
+          profit: numberOrNull(trade.profit),
+          acd: numberOrNull(trade.acd),
+          fv: numberOrNull(trade.fv),
+          go_sum: numberOrNull(trade.go_sum)
+        }];
+      }) : [];
+      const order = {
+        order_id: id,
+        instr: String(instrument).slice(0, 64),
+        oper: Number.isFinite(side) ? side : null,
+        type: numberOrNull(source.type),
+        p: numberOrNull(source.p),
+        q: numberOrNull(source.q),
+        leaves_qty: numberOrNull(source.leaves_qty ?? source.remaining_qty),
+        stat: source.stat === undefined || source.stat === null ? "" : String(source.stat).slice(0, 32),
+        date: typeof source.date === "string" ? source.date.slice(0, 80) : "",
+        trade: trades
+      };
+      const previous = this.freedomAccountOrdersById.get(id);
+      const mergedTrades = new Map();
+      for (const trade of [...(previous?.trade || []), ...trades]) mergedTrades.set(trade.id, trade);
+      this.freedomAccountOrdersById.set(id, {
+        ...previous,
+        ...order,
+        trade: [...mergedTrades.values()].slice(-1000)
+      });
+    }
+    this.freedomAccountOrdersSnapshotReceived = true;
+    const orders = [...this.freedomAccountOrdersById.values()].slice(-1000);
+    const trades = new Map();
+    for (const order of orders) {
+      for (const trade of order.trade || []) trades.set(trade.id, trade);
+    }
+    return {
+      data: {
+        orders: { order: orders },
+        trades: { trade: [...trades.values()].slice(-5000) }
+      }
+    };
+  }
+
+  async handleFreedomAccountUpstreamMessage(socket, rawMessage) {
+    if (this.freedomAccountUpstream !== socket) return;
+    let packet;
+    try {
+      packet = JSON.parse(typeof rawMessage === "string" ? rawMessage : String(rawMessage || ""));
+    } catch {
+      return;
+    }
+    if (!Array.isArray(packet) || typeof packet[0] !== "string") return;
+    const eventName = packet[0];
+    if (eventName === "userData") {
+      const userData = packet[1];
+      const mode = String(userData?.mode || "").trim().toLowerCase();
+      if (userData?.isDemo === true || userData?.real === false || mode !== "prod") {
+        const error = new Error("TradeNet authenticated a demo or non-production account stream.");
+        this.freedomAccountUpstreamWaiter?.reject(error);
+        this.freedomAccountUpstreamReady = false;
+        try { socket.close(1008, "Production TradeNet session required"); } catch { /* ignore */ }
+        return;
+      }
+      this.freedomAccountUpstreamReady = true;
+      this.freedomAccountUpstreamWaiter?.resolve();
+      this.broadcastFreedomAccountStatus("connected");
+      return;
+    }
+    if (eventName === "error") {
+      const error = new Error("TradeNet rejected the portfolio/orders subscription.");
+      this.freedomAccountUpstreamWaiter?.reject(error);
+      this.freedomAccountUpstreamReady = false;
+      this.broadcastFreedomAccountStatus("reconnecting", error.message);
+      try { socket.close(1011, "TradeNet account subscription rejected"); } catch { /* ignore */ }
+      return;
+    }
+    if (!this.freedomAccountUpstreamReady) return;
+
+    const receivedAt = Date.now();
+    if (eventName === "portfolio") {
+      const data = this.sanitizeFreedomPortfolioStreamPayload(packet[1]);
+      if (!data) return;
+      const message = { type: "portfolio", data, receivedAt };
+      this.freedomAccountLastByEvent.set("portfolio", message);
+      for (const client of this.getFreedomAccountClients()) {
+        try { client.send(JSON.stringify(message)); } catch { /* disconnected client */ }
+      }
+      return;
+    }
+    if (eventName === "orders") {
+      const data = this.sanitizeFreedomOrderStreamPayload(packet[1]);
+      if (!data) return;
+      const message = { type: "orders", data, receivedAt };
+      this.freedomAccountLastByEvent.set("orders", message);
+      for (const client of this.getFreedomAccountClients()) {
+        try { client.send(JSON.stringify(message)); } catch { /* disconnected client */ }
+      }
+    }
+  }
+
+  closeFreedomAccountUpstream(reason = "No account stream clients remain") {
+    const socket = this.freedomAccountUpstream;
+    this.freedomAccountUpstream = null;
+    this.freedomAccountUpstreamReady = false;
+    this.freedomAccountOrdersById.clear();
+    this.freedomAccountOrdersSnapshotReceived = false;
+    this.freedomAccountLastByEvent.clear();
+    if (socket) {
+      try { socket.close(1000, reason); } catch { /* ignore */ }
+    }
+  }
+
   getFreedomQuoteClients() {
     if (typeof this.ctx.getWebSockets !== "function") return [];
     return this.ctx.getWebSockets("freedom-tradenet-quotes")
@@ -652,10 +1011,16 @@ export class PortfolioStateDO {
       void this.ensureFreedomQuoteUpstream().catch(() => {
         try { webSocket.send(JSON.stringify({ type: "status", status: "reconnecting" })); } catch { /* ignore */ }
       });
+      void this.ensureFreedomAccountUpstream().catch(() => {
+        this.broadcastFreedomAccountStatus("reconnecting");
+      });
     }
   }
 
   webSocketClose() {
+    if (this.getFreedomAccountClients().length === 0) {
+      this.closeFreedomAccountUpstream();
+    }
     if (this.getFreedomQuoteClients().length > 0) return;
     const socket = this.freedomQuoteUpstream;
     this.freedomQuoteUpstream = null;
@@ -1690,6 +2055,12 @@ export class PortfolioStateDO {
     }
     if (requestUrl.pathname === "/internal/freedom-quote-stream-socket") {
       return this.handleFreedomQuoteStreamSocketRequest(request);
+    }
+    if (requestUrl.pathname === "/internal/freedom-account-stream-ticket") {
+      return this.handleFreedomAccountStreamTicketRequest(request);
+    }
+    if (requestUrl.pathname === "/internal/freedom-account-stream-socket") {
+      return this.handleFreedomAccountStreamSocketRequest(request);
     }
     if (requestUrl.pathname.startsWith("/internal/freedom-tradenet-session")) {
       const sessionResponse = await this.handleFreedomTradeNetSessionRequest(request);
