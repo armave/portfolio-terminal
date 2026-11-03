@@ -65,7 +65,7 @@ describe('Freedom active orders proxy', () => {
 describe('Freedom authenticated orders WebSocket diagnostic', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('opens the SID-authenticated socket and returns only a sanitized orders preview', async () => {
+  it('opens the SID-authenticated socket and returns a sanitized orders snapshot plus preview', async () => {
     const listeners = new Map();
     const socket = {
       addEventListener: vi.fn((name, callback) => {
