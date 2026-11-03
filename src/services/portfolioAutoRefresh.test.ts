@@ -41,6 +41,7 @@ describe('portfolio automatic refresh policy', () => {
       });
 
       scheduler.configure(15_000, role);
+      expect(vi.getTimerCount()).toBe(1);
       await vi.advanceTimersByTimeAsync(60_000);
 
       expect(refreshSupplemental).toHaveBeenCalledTimes(4);
