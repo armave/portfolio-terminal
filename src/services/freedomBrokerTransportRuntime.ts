@@ -68,7 +68,8 @@ export function createFreedomBrokerTransportRuntime(
         account_count: portfolio.acc.length,
         position_count: portfolio.pos.length
       });
-      return snapshot.data;
+      // Keep the outer Worker envelope: normalizeFreedomPortfolio expects data.result.ps.
+      return snapshot;
     } catch (error) {
       // Keep getPositionJson as the automatic recovery path for SID/login,
       // handshake, timeout, incomplete payload, or Worker transport failures.
