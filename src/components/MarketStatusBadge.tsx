@@ -6,8 +6,8 @@ const MARKET_STATUS_REFRESH_MS = 5 * 60 * 1000;
 
 type MarketStatusTone = 'open' | 'closed' | 'transition' | 'unknown';
 
-export function getMarketStatusRoleLabel(isAdmin: boolean): string {
-  return translateText(isAdmin ? 'Portfolio market' : 'Your market');
+export function getMarketStatusRoleLabel(): string {
+  return translateText('Market');
 }
 
 export function getMarketStatusLabel(status: string | null | undefined): string {
@@ -97,7 +97,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
       minute: '2-digit'
     })
     : '';
-  const roleLabel = getMarketStatusRoleLabel(isAdmin);
+  const roleLabel = getMarketStatusRoleLabel();
   const updatedTitle = updatedAt
     ? `${translateText('Updated at')} ${updatedAt}${failed ? ' · ' + translateText('Refresh failed') : ''}`
     : failed ? translateText('Market status unavailable') : translateText('Loading market status');
@@ -111,9 +111,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
       title={updatedTitle}
     >
       <span class="font-semibold text-slate-400">{roleLabel}</span>
-      <span class="text-slate-600">·</span>
-      <span class="text-slate-300">{translateText('US equities')}</span>
-      <span class={`rounded border px-1.5 py-0.5 font-bold ${toneClass}`}>{statusLabel}</span>
+      <span title={translateText('US equities')} class={`rounded border px-1.5 py-0.5 font-bold ${toneClass}`}>{statusLabel}</span>
     </div>
   );
 }

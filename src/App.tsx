@@ -476,7 +476,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           id="boardHeaderBanner"
           class="board-header-banner border-b border-slate-800 pb-3"
         >
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2 justify-center">
             <div id="tickerTabs" role="group" aria-label="Workspace navigation"><MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
             {currentUser && <MarketStatusBadge isAdmin={permissions.isAdmin} />}
           </div>
