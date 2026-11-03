@@ -75,6 +75,9 @@ interface CashStock {
   ticker: string;
   shares: number;
   currentPrice?: number;
+  quoteUpdatedAt?: number;
+  quoteSource?: string;
+  quoteDetails?: QuoteDetails;
   /** Local request start time used to reject out-of-order quote responses. */
   quoteRequestStartedAt?: number;
   /** Monotonic quote request ordering token, time-anchored for reload compatibility. */
@@ -217,6 +220,8 @@ export interface ActiveBrokerTranche {
   purchasedAt: number | null;
   /** Estimated or broker-reported buy commission allocated to the still-open quantity. */
   buyCommission?: number;
+  /** Latest accepted market quote metadata, including the daily move when available. */
+  quoteDetails?: QuoteDetails;
 }
 
 export type GuestTrancheLedgerStatus = 'active' | 'closed' | 'unassigned';

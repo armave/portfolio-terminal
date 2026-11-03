@@ -138,7 +138,9 @@ export function formatQuoteMetadata(
   const freshness = getQuoteFreshness(holding, Date.now(), refreshIntervalMs);
   if (freshness === 'unavailable') return holding.quoteSource || translateText('Not fetched');
   const source = holding.quoteSource ? `${holding.quoteSource} · ` : '';
-  if (freshness === 'unknown') return `${holding.quoteSource || translateText('Source unavailable')} · ${translateText('Time unknown')}`;
+  // Aggregate quote coverage still reports unknown timestamps. Keep individual
+  // ticker labels focused on the usable source instead of repeating "Time unknown".
+  if (freshness === 'unknown') return holding.quoteSource || translateText('Source unavailable');
 
   const sourceTimestamp = Number(holding.sourceTimestamp ?? holding.quoteDetails?.sourceTimestamp);
   const locale = getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US';

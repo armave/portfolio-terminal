@@ -1621,6 +1621,89 @@ describe('canonical trade lifecycle and persistence', () => {
     })).toBe(false);
   });
 
+  it('preserves and recalculates the daily move when a WebSocket tick omits change fields', () => {
+    vi.stubGlobal('localStorage', localStorageMock);
+    const store = new PortfolioStore();
+    store.buyStock('AAPL', 2, 100, '2026-10-15');
+    store.addCashStock('AAPL', 1, 100);
+    const firstReceivedAt = Date.now() + 1_000;
+    store.setState({
+      cashStocks: [{ ticker: 'AAPL', shares: 1, currentPrice: 100 }],
+      guestPortfolioSnapshot: {
+        updatedAt: firstReceivedAt,
+        tranches: [{
+          id: 'AAPL:cash-1',
+          ticker: 'AAPL',
+          name: 'Apple',
+          quantity: 1,
+          marketPrice: 100,
+          averagePrice: 90,
+          marketValue: 100,
+          purchasedAt: firstReceivedAt
+        }]
+      }
+    });
+
+    expect(store.updateLiveQuote('AAPL', {
+      price: 100,
+      quoteSource: 'Freedom TradeNet',
+      quoteUpdatedAt: firstReceivedAt,
+      requestStartedAt: firstReceivedAt,
+      requestSequence: 100,
+      quoteDetails: {
+        transport: 'websocket',
+        price: 100,
+        change: -2,
+        changePercent: -1.9607843137254901,
+        freshness: 'fresh',
+        sourceTimestamp: firstReceivedAt
+      }
+    })).toBe(true);
+
+    const secondReceivedAt = firstReceivedAt + 1_000;
+    expect(store.updateLiveQuote('AAPL', {
+      price: 101,
+      quoteSource: 'Freedom TradeNet',
+      quoteUpdatedAt: secondReceivedAt,
+      requestStartedAt: secondReceivedAt,
+      requestSequence: 101,
+      quoteDetails: {
+        transport: 'websocket',
+        price: 101,
+        freshness: 'unknown',
+        receivedAt: secondReceivedAt
+      }
+    })).toBe(true);
+
+    const state = store.getState();
+    expect(state.positions.AAPL).toMatchObject({
+      currentPrice: 101,
+      quoteDetails: {
+        transport: 'websocket',
+        price: 101,
+        freshness: 'unknown',
+        receivedAt: secondReceivedAt,
+        change: -1,
+        changePercent: -0.9803921568627451
+      }
+    });
+    expect(state.positions.AAPL.quoteDetails?.sourceTimestamp).toBeUndefined();
+    expect(state.cashCushion.holdings[0]).toMatchObject({
+      currentPrice: 101,
+      price: 101,
+      quoteDetails: { change: -1, changePercent: -0.9803921568627451 }
+    });
+    expect(state.cashStocks?.[0]).toMatchObject({
+      currentPrice: 101,
+      quoteDetails: { change: -1, changePercent: -0.9803921568627451 }
+    });
+    expect(state.guestPortfolioSnapshot?.tranches[0]).toMatchObject({
+      marketPrice: 101,
+      marketValue: 101,
+      quoteDetails: { change: -1, changePercent: -0.9803921568627451 }
+    });
+  });
+
   it('rewrites the matching local ticker for every newly received WebSocket quote even when source time regresses', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
