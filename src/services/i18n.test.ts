@@ -105,10 +105,10 @@ describe('app localization', () => {
     expect(translateText('Market closed', 'ru')).toBe('Рынок закрыт');
     expect(translateText('Pre-market', 'ru')).toBe('До открытия');
     expect(translateText('After-hours', 'ru')).toBe('После закрытия');
-    expect(translateText('Premarket session', 'ru')).toBe('Премаркет');
-    expect(translateText('Market session', 'ru')).toBe('Рынок');
-    expect(translateText('Postmarket session', 'ru')).toBe('Постмаркет');
-    expect(translateText('Closed session', 'ru')).toBe('Закрыт');
+    expect(translateText('Premarket', 'ru')).toBe('Премаркет');
+    expect(translateText('Market', 'ru')).toBe('Рынок');
+    expect(translateText('Postmarket', 'ru')).toBe('Постмаркет');
+    expect(translateText('Closed', 'ru')).toBe('Закрыт');
     expect(translateText('Unavailable', 'ru')).toBe('Недоступно');
     expect(translateText('Updated at', 'ru')).toBe('Обновлено');
     expect(translateText('Market status unavailable', 'ru')).toBe('Статус рынка недоступен');
