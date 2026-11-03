@@ -404,7 +404,7 @@ describe('app localization', () => {
     expect(translateText('WRITING...', 'ru')).toBe('СОХРАНЕНИЕ...');
     expect(translateText('UPDATED', 'ru')).toBe('ОБНОВЛЕНО');
     expect(translateText('FAIL', 'ru')).toBe('ОШИБКА');
-    expect(translateText('Sync failed', 'ru')).toBe('Сбой синхронизации');
+    expect(translateText('Sync failed', 'ru')).toBe('Ошибка синхронизации');
     expect(translateText('Synced', 'ru')).toBe('Синхронизировано');
   });
 
