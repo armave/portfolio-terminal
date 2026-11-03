@@ -129,6 +129,16 @@ describe('Balance cache-first rendering wiring', () => {
     expect(deskSource).toContain("emitBrokerEvent('broker:request-account-info')");
   });
 
+  it('clears the balance spinner when an already-current live stream completes the refresh', () => {
+    expect(deskSource).toContain("'broker:account-info-refresh-complete'");
+    expect(deskSource).toContain("removeRefreshCompleteListener()");
+    const spinnerCondition = deskSource.slice(
+      deskSource.indexOf('const balanceRefreshing ='),
+      deskSource.indexOf(';', deskSource.indexOf('const balanceRefreshing ='))
+    );
+    expect(spinnerCondition).not.toContain('guestUsersLoading');
+  });
+
   it('shows unpriced admin holdings as unavailable instead of zero-valued assets', () => {
     expect(deskSource).toContain('getCashHoldingMarketPrice(h)');
     expect(deskSource).toContain("{price !== null ? formatUSD(price) : '—'}");
