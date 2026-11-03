@@ -165,6 +165,7 @@ export class PortfolioStateDO {
     this.freedomAccountLastByEvent = new Map();
     this.freedomAccountOrdersById = new Map();
     this.freedomAccountOrdersSnapshotReceived = false;
+    this.freedomAccountPendingEvents = [];
   }
 
   async requestFreedomTradeNetSession() {
@@ -473,7 +474,7 @@ export class PortfolioStateDO {
     if (!claims) return authJson({ error: "Account stream ticket is invalid, expired, or already used." }, 401);
 
     try {
-      await this.ensureFreedomAccountUpstream();
+      await this.ensureFreedomAccountUpstream(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "TradeNet account stream could not be established.";
       return authJson({ error: message }, 502);
@@ -504,8 +505,8 @@ export class PortfolioStateDO {
       .filter((socket) => socket.readyState === 1);
   }
 
-  async ensureFreedomAccountUpstream() {
-    if (this.getFreedomAccountClients().length === 0) return;
+  async ensureFreedomAccountUpstream(force = false) {
+    if (!force && this.getFreedomAccountClients().length === 0) return;
     if (this.freedomAccountUpstream && this.freedomAccountUpstream.readyState === 1 &&
         this.freedomAccountUpstreamReady) return;
     if (this.freedomAccountUpstreamConnectPromise) {
@@ -539,6 +540,7 @@ export class PortfolioStateDO {
     this.freedomAccountUpstreamReady = false;
     this.freedomAccountOrdersById.clear();
     this.freedomAccountOrdersSnapshotReceived = false;
+    this.freedomAccountPendingEvents = [];
 
     const handshake = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -740,6 +742,10 @@ export class PortfolioStateDO {
       this.freedomAccountUpstreamReady = true;
       this.freedomAccountUpstreamWaiter?.resolve();
       this.broadcastFreedomAccountStatus("connected");
+      const pendingEvents = this.freedomAccountPendingEvents.splice(0);
+      for (const pending of pendingEvents) {
+        this.processFreedomAccountEvent(pending.eventName, pending.payload);
+      }
       return;
     }
     if (eventName === "error") {
@@ -750,11 +756,20 @@ export class PortfolioStateDO {
       try { socket.close(1011, "TradeNet account subscription rejected"); } catch { /* ignore */ }
       return;
     }
-    if (!this.freedomAccountUpstreamReady) return;
+    if (eventName !== "portfolio" && eventName !== "orders") return;
+    if (!this.freedomAccountUpstreamReady) {
+      if (this.freedomAccountPendingEvents.length < 4) {
+        this.freedomAccountPendingEvents.push({ eventName, payload: packet[1] });
+      }
+      return;
+    }
+    this.processFreedomAccountEvent(eventName, packet[1]);
+  }
 
+  processFreedomAccountEvent(eventName, payload) {
     const receivedAt = Date.now();
     if (eventName === "portfolio") {
-      const data = this.sanitizeFreedomPortfolioStreamPayload(packet[1]);
+      const data = this.sanitizeFreedomPortfolioStreamPayload(payload);
       if (!data) return;
       const message = { type: "portfolio", data, receivedAt };
       this.freedomAccountLastByEvent.set("portfolio", message);
@@ -764,7 +779,7 @@ export class PortfolioStateDO {
       return;
     }
     if (eventName === "orders") {
-      const data = this.sanitizeFreedomOrderStreamPayload(packet[1]);
+      const data = this.sanitizeFreedomOrderStreamPayload(payload);
       if (!data) return;
       const message = { type: "orders", data, receivedAt };
       this.freedomAccountLastByEvent.set("orders", message);
@@ -781,6 +796,7 @@ export class PortfolioStateDO {
     this.freedomAccountOrdersById.clear();
     this.freedomAccountOrdersSnapshotReceived = false;
     this.freedomAccountLastByEvent.clear();
+    this.freedomAccountPendingEvents = [];
     if (socket) {
       try { socket.close(1000, reason); } catch { /* ignore */ }
     }
