@@ -43,7 +43,10 @@ export function createFreedomQuoteStreamAppRuntime(
       const quote = normalizeFreedomQuote({ q: [message.data] }, ticker);
       if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) return;
 
-      const receivedAt = Number(message.receivedAt) || Date.now();
+      // Use this browser's arrival time as the ordering clock for live ticks.
+      // The server-provided receive time may be behind the browser clock; taking
+      // the maximum keeps a newly arrived q event newer than local trade writes.
+      const receivedAt = Math.max(Date.now(), Number(message.receivedAt) || 0);
       const sourceTimestamp = quote.sourceTimestamp ?? undefined;
       const ageMs = sourceTimestamp === undefined ? null : receivedAt - sourceTimestamp;
       const freshness = ageMs === null ? 'unknown'
