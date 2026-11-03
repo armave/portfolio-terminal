@@ -243,7 +243,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
         },
         positionsCount: 1,
         positionItemKeys: [
-          'Yield', 'acc_pos_id', 'acd', 'accruedint_a', 'bal_price_a', 'base_contract_code',
+          'Yield', 'acc_pos_id', 'accruedint_a', 'acd', 'bal_price_a', 'base_contract_code',
           'base_currency', 'close_price', 'curr', 'currval', 'face_val_a', 'fv', 'go',
           'i', 'instr_id', 'issue_nb', 'k', 'ltr', 'market_value', 'mkt_id', 'mkt_price',
           'name', 'name2', 'open_bal', 'profit_close', 'q', 's', 't', 'vm'
@@ -329,7 +329,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
         { curr: 'EUR', s: 900, currval: 910 }
       ],
       pos: [
-        { i: 'GOOGL.US', q: 31, curr: 'USD', mkt_price: 300, market_value: 9300, bal_price_a: 280, profit_close: 620, acc_pos_id: 12, account_id: 'private-account' },
+        { i: 'GOOGL.US', name: 'Google', q: 31, curr: 'USD', mkt_price: 300, market_value: 9300, bal_price_a: 280, profit_close: 620, acc_pos_id: 12, account_id: 'private-account' },
         { i: 'DUMMY.EU', q: 10, curr: 'EUR', mkt_price: 50, market_value: 500 }
       ]
     };
