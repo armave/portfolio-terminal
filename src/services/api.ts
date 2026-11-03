@@ -299,6 +299,8 @@ export const testFreedomTradeNetPortfolioReconciliation = freedomBrokerTransport
 export const fetchFreedomTradeNetPositions = freedomBrokerTransportRuntime.fetchFreedomTradeNetPositions;
 export const fetchFreedomTradeNetTrades = freedomBrokerTransportRuntime.fetchFreedomTradeNetTrades;
 export const fetchFreedomTradeNetActiveOrders = freedomBrokerTransportRuntime.fetchFreedomTradeNetActiveOrders;
+export const fetchFreedomTradeNetQuoteStreamOnce = freedomBrokerTransportRuntime.fetchFreedomTradeNetQuoteStreamOnce;
+export const clearFreedomTradeNetStreamSnapshotCache = freedomBrokerTransportRuntime.clearFreedomStreamSnapshotCache;
 export const fetchFreedomCashflows = freedomBrokerTransportRuntime.fetchFreedomCashflows;
 export const clearFreedomCashflowCache = freedomBrokerTransportRuntime.clearFreedomCashflowCache;
 
@@ -315,6 +317,7 @@ export function clearApiRequestCaches(): void {
   cloudStateSyncRuntime.clearRequestCache();
   clearGuestPortfolioPublicationCache();
   clearFreedomCashflowCache();
+  clearFreedomTradeNetStreamSnapshotCache();
   resetMarketRequestGate();
 }
 
