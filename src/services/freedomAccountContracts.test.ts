@@ -138,6 +138,26 @@ describe('normalizeFreedomActiveOrders', () => {
     ]);
   });
 
+  it('normalizes the observed authenticated WebSocket order fields without losing status or remaining quantity', () => {
+    const orders = normalizeFreedomActiveOrders({
+      data: {
+        orders: {
+          order: [
+            { order_id: 'active-1', instr: 'GOOGL.US', oper: 3, type: 4, p: 335, q: 68, leaves_qty: 68, stat: '10' },
+            { order_id: 'history-1', instr: 'GOOGL.US', oper: 3, type: 4, p: 353, q: 50, leaves_qty: 50, stat: '31' },
+            { order_id: 'filled-1', instr: 'GOOGL.US', oper: 1, type: 2, p: 282, q: 20, leaves_qty: 0, stat: '21' }
+          ]
+        }
+      }
+    });
+
+    expect(orders).toMatchObject([
+      { id: 'active-1', ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 335, remainingQuantity: 68, status: '10' },
+      { id: 'history-1', ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 353, remainingQuantity: 50, status: '31' },
+      { id: 'filled-1', ticker: 'GOOGL.US', operation: 1, orderType: 2, limitPrice: 282, remainingQuantity: 0, status: '21' }
+    ]);
+  });
+
   it('returns an empty list for unknown envelope shapes and ignores non-record list entries', () => {
     expect(normalizeFreedomActiveOrders(null)).toEqual([]);
     expect(normalizeFreedomActiveOrders({ data: { orders: 'invalid' } })).toEqual([]);
