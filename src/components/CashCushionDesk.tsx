@@ -17,6 +17,8 @@ import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domai
 import { getAppLanguage, translateText } from '../services/i18n';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
+import { MarketStatusBadge } from './MarketStatusBadge';
+import { getAccountPermissions } from '../domain/accountPermissions';
 
 const BADGE_STYLES: Record<string, string> = {
   bullish: 'border-emerald-800 bg-emerald-950/50 text-emerald-300',
@@ -43,7 +45,7 @@ type ActiveTrancheQuoteRecord = {
   currentPrice?: unknown;
   price?: unknown;
   quoteUpdatedAt?: unknown;
-  quoteDetails?: { sourceTimestamp?: unknown; receivedAt?: unknown; transport?: unknown; [key: string]: unknown };
+  quoteDetails?: { sourceTimestamp?: unknown; receivedAt?: unknown; transport?: unknown;[key: string]: unknown };
 };
 
 export function getActiveTrancheMarketPrice(
@@ -373,6 +375,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
     }))
   );
 
+  const [currentUser] = useState<AuthUser | null>(null);
+  const permissions = getAccountPermissions(currentUser?.role);
+
   if (isAdmin && balanceSync.status === 'loading' && !balanceSync.hasSnapshot) {
     return <DeskLoading
       title="Preparing balance"
@@ -410,6 +415,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 {translateText('Syncing…', getAppLanguage())}
               </span>
             )}
+            <MarketStatusBadge isAdmin={permissions.isAdmin} />
           </div>
         </div>
       </div>
