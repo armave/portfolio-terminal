@@ -1115,6 +1115,13 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
     // open after the first q payload and pushes later price changes directly
     // into the portfolio store; routine scheduler ticks only maintain it.
     const quoteStreamRuntime = await getFreedomQuoteStreamRuntime();
+    const currentSessionKey = currentAccountRole && currentAccountId
+      ? `${currentAccountRole}:${currentAccountId}`
+      : '';
+    if (currentSessionKey !== sessionKey) {
+      quoteStreamRuntime.stop();
+      return true;
+    }
     const connected = await quoteStreamRuntime.start(tickersArray, sessionKey);
     if (connected) return true;
     throw new Error('TradeNet quote socket did not become ready.');
