@@ -104,7 +104,7 @@ describe("Freedom cashflow refresh cursor", () => {
 
   it("supports legacy day-month-year and Excel serial dates", () => {
     expect(getFreedomCashflowRefreshStartDate([
-      { id: "legacy", date: "03.11.2026", amount: -1 }
+      { id: "legacy", date: "03-11-2026", amount: -1 }
     ])).toBe("2026-11-02");
     const excelDate = String((Date.UTC(2026, 10, 3) - Date.UTC(1899, 11, 30)) / 86_400_000);
     expect(getFreedomCashflowRefreshStartDate([
