@@ -25,6 +25,7 @@ import {
   fetchYahooQuoteData,
   createFreedomQuoteStreamTicket,
   buildFreedomQuoteStreamSocketUrl,
+  fetchFreedomMarketStatus,
   fetchMarketNews,
   fetchStocktwitsStream,
   rememberYahooDeepStockData,
@@ -124,6 +125,46 @@ describe('authenticated read request deduplication', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     resolvers[1](response());
     await expect(nextRead).resolves.toEqual({ updatedAt: 10, tranches: [], ledger: [], ledgerUpdatedAt: 0 });
+  });
+});
+
+describe('public Freedom US market status', () => {
+  it('requests only the compact status endpoint without caching', async () => {
+    const updatedAt = 1_800_000_000_000;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      marketStatus: { market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX' },
+      updatedAt
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchFreedomMarketStatus()).resolves.toEqual({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      marketStatus: { market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX' },
+      updatedAt
+    });
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new URL(requestUrl).searchParams.get('action')).toBe('freedom-market-status');
+    expect(requestInit.cache).toBe('no-store');
+  });
+
+  it.each(['PREV', 'PRE', 'OPEN', 'POST', 'MIXED'])('rejects raw provider state %s until the Worker maps it to a UI phase', async (status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      marketStatus: { market: 'US equities', code: 'FIX', status, source: 'FIX' },
+      updatedAt: 1_800_000_000_000
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    await expect(fetchFreedomMarketStatus()).rejects.toThrow();
+  });
+
+  it('rejects an absent US-equities status instead of showing an unsupported placeholder', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: false, error: 'US equity market status is temporarily unavailable.'
+    }), { status: 502, headers: { 'Content-Type': 'application/json' } })));
+    await expect(fetchFreedomMarketStatus()).rejects.toThrow();
   });
 });
 
@@ -1640,8 +1681,9 @@ describe('closed-history request deduplication', () => {
 
     await expect(pushCloudHistory(first, 'same-history-secret')).resolves.toBe(true);
     await expect(pushCloudHistory(second, 'same-history-secret')).resolves.toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(['GET', 'POST']);
+    await expect(pushCloudHistory(second, 'same-history-secret', undefined, { force: true })).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(['GET', 'POST', 'GET', 'POST']);
   });
 
   it('upgrades legacy Closed History to AES-GCM and verifies the stored record', async () => {

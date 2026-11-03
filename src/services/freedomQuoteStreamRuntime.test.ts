@@ -101,7 +101,47 @@ describe('Freedom persistent quote stream runtime', () => {
 
     await vi.advanceTimersByTimeAsync(20_000);
     expect(sockets[0].sent).toContain('ping');
+    sockets[0].receive({ type: 'pong' });
     expect(runtime.isConnected()).toBe(true);
+  });
+
+  it('reconnects with a fresh ticket when the quote heartbeat pong is lost', async () => {
+    const sockets: FakeSocket[] = [];
+    const createTicket = vi.fn()
+      .mockResolvedValueOnce({ ticket: 'p'.repeat(64) })
+      .mockResolvedValueOnce({ ticket: 'q'.repeat(64) });
+    const onStatus = vi.fn();
+    const runtime = createFreedomQuoteStreamRuntime({
+      createTicket,
+      buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      onQuote: vi.fn(),
+      onStatus
+    });
+
+    const start = runtime.start(['GOOGL'], 'guest:guest-1');
+    await Promise.resolve();
+    sockets[0].open();
+    sockets[0].receive({ type: 'ready' });
+    await expect(start).resolves.toBe(true);
+
+    await vi.advanceTimersByTimeAsync(61_000);
+
+    expect(sockets[0].closed).toBe(true);
+    expect(onStatus).toHaveBeenCalledWith(
+      'disconnected',
+      'The live TradeNet quote stream heartbeat timed out.'
+    );
+    expect(createTicket).toHaveBeenCalledTimes(2);
+    expect(sockets).toHaveLength(2);
+    sockets[1].open();
+    sockets[1].receive({ type: 'ready' });
+    expect(runtime.isConnected()).toBe(true);
+    runtime.stop();
   });
 
   it('keeps one browser socket while the upstream recovers and accepts the connected status', async () => {

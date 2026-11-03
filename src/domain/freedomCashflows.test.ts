@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isFreedomCashflowRow,
+  getFreedomCashflowRefreshStartDate,
   mergeFreedomCashflowRows,
   normalizeFreedomCashflowRows,
   normalizeSavedFreedomCashflows,
@@ -90,6 +91,36 @@ describe("Freedom cashflow normalization", () => {
     });
 
     expect(rows.map(row => row.amount)).toEqual([-7.5, 125]);
+  });
+});
+
+describe("Freedom cashflow refresh cursor", () => {
+  it("uses the latest saved cashflow date with a one-day overlap", () => {
+    expect(getFreedomCashflowRefreshStartDate([
+      { id: "older", date: "2026-10-01", amount: -2 },
+      { id: "newer", date: "2026-11-03T16:30:00.000Z", amount: -1 }
+    ])).toBe("2026-11-02");
+  });
+
+  it("supports legacy day-month-year and Excel serial dates", () => {
+    expect(getFreedomCashflowRefreshStartDate([
+      { id: "legacy", date: "03-11-2026", amount: -1 }
+    ])).toBe("2026-11-02");
+    const excelDate = String((Date.UTC(2026, 10, 3) - Date.UTC(1899, 11, 30)) / 86_400_000);
+    expect(getFreedomCashflowRefreshStartDate([
+      { id: "excel", date: excelDate, amount: -1 }
+    ])).toBe("2026-11-02");
+  });
+
+  it("returns no cursor when there is no valid saved cashflow", () => {
+    expect(getFreedomCashflowRefreshStartDate([])).toBeUndefined();
+    expect(getFreedomCashflowRefreshStartDate([{ id: "invalid", date: "bad", amount: -1 }])).toBeUndefined();
+  });
+
+  it("allows an exact latest-day cursor when the requested overlap is zero", () => {
+    expect(getFreedomCashflowRefreshStartDate([
+      { id: "today", date: "2026-11-03", amount: -1 }
+    ], 0)).toBe("2026-11-03");
   });
 });
 

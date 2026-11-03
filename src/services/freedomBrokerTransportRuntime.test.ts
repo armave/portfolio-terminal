@@ -17,61 +17,24 @@ function createRuntime(options: { token?: string; now?: () => number; resolve?: 
 }
 
 describe('Freedom broker transport runtime', () => {
-  it('routes read-only broker endpoints without changing their query contracts', async () => {
+  it('routes the remaining read-only broker endpoints without changing their query contracts', async () => {
     const { runtime, proxyFetch } = createRuntime({
-      resolve: (action) => action === 'freedom-orders-stream'
-        ? { ok: true, data: { orders: { order: [] } } }
-        : action === 'freedom-portfolio-snapshot'
-          ? { ok: true, source: 'authenticated_websocket', data: { result: { ps: { loaded: true, acc: [], pos: [] } } } }
+      resolve: (action) => action === 'freedom-portfolio-snapshot'
+        ? { ok: true, source: 'authenticated_websocket', data: { result: { ps: { loaded: true, acc: [], pos: [] } } } }
+        : action === 'freedom-orders-stream'
+          ? { ok: true, data: { orders: { order: [] } } }
           : undefined
     });
-    await runtime.testFreedomTradeNetConnection();
-    await runtime.testFreedomTradeNetOrdersStream();
-    await runtime.testFreedomTradeNetEventStream('portfolio');
-    await runtime.testFreedomTradeNetEventStream('markets');
     await runtime.fetchFreedomTradeNetPositions();
     await runtime.fetchFreedomTradeNetTrades(' 2026-01-02 ');
     await runtime.fetchFreedomTradeNetActiveOrders();
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-test', 'freedom-orders-stream', 'freedom-event-stream', 'freedom-event-stream', 'freedom-portfolio-snapshot', 'freedom-trades', 'freedom-orders-stream'
+      'freedom-portfolio-snapshot', 'freedom-trades', 'freedom-orders-stream'
     ]);
     expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
+    expect(proxyFetch.mock.calls[1][1]).toEqual({ fromDate: '2026-01-02' });
     expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[2][1]).toEqual({ event: 'portfolio' });
     expect(proxyFetch.mock.calls[2][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[3][1]).toEqual({ event: 'markets' });
-    expect(proxyFetch.mock.calls[3][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[5][1]).toEqual({ fromDate: '2026-01-02' });
-    expect(proxyFetch.mock.calls[5][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[6][2]).toEqual({ cache: 'no-store' });
-  });
-
-  it('requests one authenticated raw TradeNet quote stream for the normalized ticker', async () => {
-    const { runtime, proxyFetch } = createRuntime();
-    await runtime.testFreedomTradeNetQuoteStream(' googl.us ');
-    expect(proxyFetch).toHaveBeenCalledWith(
-      'freedom-quote-stream',
-      { symbol: 'GOOGL.US' },
-      { cache: 'no-store' }
-    );
-  });
-
-  it('defaults unsuffixed quote symbols to the existing .US TradeNet mapping', async () => {
-    const { runtime, proxyFetch } = createRuntime();
-    await runtime.testFreedomTradeNetQuoteStream('aapl');
-    expect(proxyFetch).toHaveBeenCalledWith(
-      'freedom-quote-stream',
-      { symbol: 'AAPL.US' },
-      { cache: 'no-store' }
-    );
-  });
-
-  it('rejects empty, invalid, or multiple quote symbols before making a request', async () => {
-    const { runtime, proxyFetch } = createRuntime();
-    await expect(runtime.testFreedomTradeNetQuoteStream('')).rejects.toThrow('one valid TradeNet ticker');
-    await expect(runtime.testFreedomTradeNetQuoteStream('GOOGL.US,META.US')).rejects.toThrow('one valid TradeNet ticker');
-    await expect(runtime.testFreedomTradeNetQuoteStream('GOOGL US')).rejects.toThrow('one valid TradeNet ticker');
-    expect(proxyFetch).not.toHaveBeenCalled();
   });
 
   it('uses the authenticated portfolio WebSocket as primary and returns the normalizer envelope', async () => {
@@ -167,45 +130,6 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
       'freedom-portfolio-snapshot', 'freedom-positions'
     ]);
-  });
-
-  it('fetches loaded WebSocket and REST portfolio snapshots for a read-only comparison', async () => {
-    const wsData = { result: { ps: { loaded: true, acc: [], pos: [] } } };
-    const restData = { result: { ps: { loaded: true, acc: [], pos: [] } } };
-    const { runtime, proxyFetch } = createRuntime({
-      resolve: (action) => action === 'freedom-portfolio-snapshot'
-        ? { ok: true, source: 'authenticated_websocket', data: wsData }
-        : action === 'freedom-positions'
-          ? { ok: true, data: restData }
-          : undefined
-    });
-
-    await expect(runtime.testFreedomTradeNetPortfolioReconciliation()).resolves.toEqual({
-      websocket: wsData,
-      rest: restData
-    });
-    expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-portfolio-snapshot', 'freedom-positions'
-    ]);
-    expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
-  });
-
-  it('rejects unavailable or unloaded snapshots rather than comparing incomplete data', async () => {
-    const { runtime } = createRuntime({
-      resolve: (action) => action === 'freedom-portfolio-snapshot'
-        ? { ok: true, data: { result: { ps: { loaded: false, acc: [], pos: [] } } } }
-        : { ok: true, data: { result: { ps: { loaded: true, acc: [], pos: [] } } } }
-    });
-    await expect(runtime.testFreedomTradeNetPortfolioReconciliation())
-      .rejects.toThrow('WebSocket portfolio snapshot is unavailable or not loaded.');
-  });
-
-  it('rejects unapproved event names before making a broker request', async () => {
-    const { runtime, proxyFetch } = createRuntime();
-    await expect(runtime.testFreedomTradeNetEventStream('orders' as never))
-      .rejects.toThrow('Unsupported TradeNet stream event.');
-    expect(proxyFetch).not.toHaveBeenCalled();
   });
 
   it('uses the REST active-orders fallback only once when the initial WebSocket snapshot fails', async () => {

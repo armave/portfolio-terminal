@@ -236,6 +236,41 @@ export function normalizeSavedFreedomCashflows(values: readonly unknown[]): Norm
 }
 
 /**
+ * Return an overlapping incremental cursor for the latest persisted broker
+ * cashflow. Keeping the previous calendar day in the query captures late
+ * corrections without re-downloading the complete account history every minute.
+ */
+export function getFreedomCashflowRefreshStartDate(
+  values: readonly unknown[],
+  overlapDays = 1
+): string | undefined {
+  const rows = normalizeSavedFreedomCashflows(values);
+  let latestDay = Number.NEGATIVE_INFINITY;
+  for (const row of rows) {
+    const text = String(row.date || '').trim();
+    let timestamp = NaN;
+    const excelSerial = Number(text);
+    if (/^\d{4,6}(?:\.\d+)?$/.test(text) && excelSerial > 20000 && excelSerial < 100000) {
+      timestamp = Date.UTC(1899, 11, 30) + excelSerial * 86_400_000;
+    } else {
+      const dmy = text.match(/^(\d{1,2})[.-](\d{1,2})[.-](\d{4})$/);
+      if (dmy) {
+        timestamp = Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+      } else {
+        timestamp = Date.parse(text);
+      }
+    }
+    if (!Number.isFinite(timestamp)) continue;
+    const date = new Date(timestamp);
+    const utcDay = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    if (utcDay > latestDay) latestDay = utcDay;
+  }
+  if (!Number.isFinite(latestDay)) return undefined;
+  const days = Number.isFinite(overlapDays) ? Math.max(0, Math.floor(overlapDays)) : 1;
+  return new Date(latestDay - days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
  * Older saved rows may predate raw-field persistence. Normalize those at the
  * merge boundary while keeping broker rows fully typed.
  */

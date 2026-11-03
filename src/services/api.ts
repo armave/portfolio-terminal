@@ -6,14 +6,14 @@ import { createAuthTransportRuntime } from './authTransportRuntime';
 import { createFreedomBrokerTransportRuntime } from './freedomBrokerTransportRuntime';
 import { createMarketDataTransportRuntime } from './marketDataTransportRuntime';
 export type { AuthUser, AuthSession } from './authTransportRuntime';
-export type { SyncOptions } from './cloudStateSyncRuntime';
+export type { SyncOptions, CloudHistoryPushOptions } from './cloudStateSyncRuntime';
 import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '../types/portfolio';
 import { normalizeFreedomTrades } from './freedomTradeContracts';
 export { normalizeFreedomTrades } from './freedomTradeContracts';
 export type { FreedomExecutedTrade } from '../types/freedomTrade';
-export { compareFreedomPortfolioSnapshots, normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
+export { normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
 export type { FreedomActiveOrder, FreedomCashBalance, FreedomOpenPosition, FreedomPortfolioSnapshot } from './freedomAccountContracts';
 export type { MarketNewsItem, StocktwitsMessage, StocktwitsStream } from './marketInsightsProviders';
 export type { YahooDeepStockData, YahooDeepAnalystTargets, YahooDeepFinancialHealth, YahooDeepPrice, YahooDeepValuation, YahooEarningsHistoryItem, YahooUpgradeDowngrade } from './yahooDeepDataContracts';
@@ -291,11 +291,6 @@ const freedomBrokerTransportRuntime = createFreedomBrokerTransportRuntime({
   recordMetric: recordApiMetric
 });
 
-export const testFreedomTradeNetConnection = freedomBrokerTransportRuntime.testFreedomTradeNetConnection;
-export const testFreedomTradeNetOrdersStream = freedomBrokerTransportRuntime.testFreedomTradeNetOrdersStream;
-export const testFreedomTradeNetEventStream = freedomBrokerTransportRuntime.testFreedomTradeNetEventStream;
-export const testFreedomTradeNetQuoteStream = freedomBrokerTransportRuntime.testFreedomTradeNetQuoteStream;
-export const testFreedomTradeNetPortfolioReconciliation = freedomBrokerTransportRuntime.testFreedomTradeNetPortfolioReconciliation;
 export const fetchFreedomTradeNetPositions = freedomBrokerTransportRuntime.fetchFreedomTradeNetPositions;
 export const fetchFreedomTradeNetTrades = freedomBrokerTransportRuntime.fetchFreedomTradeNetTrades;
 export const fetchFreedomTradeNetActiveOrders = freedomBrokerTransportRuntime.fetchFreedomTradeNetActiveOrders;
@@ -303,6 +298,46 @@ export const fetchFreedomTradeNetQuoteStreamOnce = freedomBrokerTransportRuntime
 export const clearFreedomTradeNetStreamSnapshotCache = freedomBrokerTransportRuntime.clearFreedomStreamSnapshotCache;
 export const fetchFreedomCashflows = freedomBrokerTransportRuntime.fetchFreedomCashflows;
 export const clearFreedomCashflowCache = freedomBrokerTransportRuntime.clearFreedomCashflowCache;
+
+export type FreedomMarketPhase = 'PREMARKET' | 'MARKET' | 'POSTMARKET' | 'CLOSED';
+
+export interface FreedomUsMarketStatus {
+  market: string;
+  code: string;
+  status: FreedomMarketPhase;
+  source: string;
+}
+
+export interface FreedomMarketStatusResponse {
+  ok: true;
+  provider: string;
+  marketStatus: FreedomUsMarketStatus;
+  updatedAt: number;
+}
+
+/** Fetch a compact public US-equities status; no exchange list or private account data is returned. */
+export async function fetchFreedomMarketStatus(): Promise<FreedomMarketStatusResponse> {
+  const response = await proxyFetch('freedom-market-status', undefined, { cache: 'no-store' });
+  const phase = typeof response?.marketStatus?.status === 'string'
+    ? response.marketStatus.status.trim().toUpperCase()
+    : '';
+  if (response?.ok !== true || !['PREMARKET', 'MARKET', 'POSTMARKET', 'CLOSED'].includes(phase)) {
+    throw new Error(response?.error || 'US equity market status is unavailable.');
+  }
+  return {
+    ok: true,
+    provider: typeof response.provider === 'string' ? response.provider : 'Freedom TradeNet',
+    marketStatus: {
+      market: typeof response.marketStatus.market === 'string' ? response.marketStatus.market : 'US equities',
+      code: typeof response.marketStatus.code === 'string' ? response.marketStatus.code : 'US',
+      status: phase as FreedomMarketPhase,
+      source: typeof response.marketStatus.source === 'string' ? response.marketStatus.source : 'US_EXCHANGES'
+    },
+    updatedAt: Number.isFinite(Number(response.updatedAt)) && Number(response.updatedAt) > 0
+      ? Number(response.updatedAt)
+      : Date.now()
+  };
+}
 
 export interface FreedomQuoteStreamTicket {
   ticket: string;

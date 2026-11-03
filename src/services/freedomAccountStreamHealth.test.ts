@@ -6,6 +6,7 @@ import {
   isFreedomAccountStreamHealthy,
   markFreedomAccountStreamSnapshot,
   resetFreedomAccountStreamHealth,
+  resolveFreedomAccountRefreshMode,
   setFreedomAccountStreamStatus
 } from './freedomAccountStreamHealth';
 
@@ -58,6 +59,39 @@ describe('Freedom account stream health', () => {
     setFreedomAccountStreamStatus(session, 'connecting');
     setFreedomAccountStreamStatus(session, 'reconnecting');
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(false);
+  });
+
+  it('requests a REST fallback whenever the stream is absent or has not delivered both channels', () => {
+    const session = 'admin:account-1';
+    expect(resolveFreedomAccountRefreshMode(session)).toBe('fallback');
+
+    setFreedomAccountStreamStatus(session, 'connecting');
+    expect(resolveFreedomAccountRefreshMode(session)).toBe('fallback');
+
+    setFreedomAccountStreamStatus(session, 'connected');
+    markFreedomAccountStreamSnapshot(session, 'portfolio');
+    expect(resolveFreedomAccountRefreshMode(session)).toBe('fallback');
+
+    markFreedomAccountStreamSnapshot(session, 'orders');
+    expect(resolveFreedomAccountRefreshMode(session)).toBe('live');
+  });
+
+  it('requests one broker catch-up after a healthy stream disconnects and recovers', () => {
+    const session = 'admin:account-1';
+    setFreedomAccountStreamStatus(session, 'connected');
+    markFreedomAccountStreamSnapshot(session, 'portfolio');
+    markFreedomAccountStreamSnapshot(session, 'orders');
+    setFreedomAccountStreamStatus(session, 'reconnecting');
+    setFreedomAccountStreamStatus(session, 'connected');
+    markFreedomAccountStreamSnapshot(session, 'portfolio');
+    markFreedomAccountStreamSnapshot(session, 'orders');
+
+    expect(resolveFreedomAccountRefreshMode(session)).toBe('recover');
+    expect(resolveFreedomAccountRefreshMode(session)).toBe('live');
+  });
+
+  it('does not activate broker refresh work without an account session', () => {
+    expect(resolveFreedomAccountRefreshMode('')).toBe('inactive');
   });
 
   it('keeps event revisions across disconnects so late snapshots can be discarded', () => {

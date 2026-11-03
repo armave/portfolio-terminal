@@ -23,10 +23,7 @@ import {
 import { fetchLivePriceFromProviders, nextLiveQuoteRequestSequence } from './src/services/quoteProvider';
 import type { FreedomQuoteStreamRuntime } from './src/services/freedomQuoteStreamRuntime';
 import type { FreedomAccountStreamRuntime } from './src/services/freedomAccountStreamRuntime';
-import {
-  consumeFreedomAccountStreamRecovery,
-  isFreedomAccountStreamHealthy
-} from './src/services/freedomAccountStreamHealth';
+import { resolveFreedomAccountRefreshMode } from './src/services/freedomAccountStreamHealth';
 import { refreshTrackedQuotes } from './src/services/quotePolling';
 import { createQuoteRefreshCoordinator } from './src/services/quoteRefreshCoordinator';
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
@@ -55,6 +52,10 @@ import {
   createFreedomAccountStreamTicket,
   buildFreedomAccountStreamSocketUrl,
   clearCloudHistory,
+  clearFreedomCashflowCache,
+  fetchFreedomCashflows,
+  pullCloudHistory,
+  pushCloudHistory,
   proxyFetch,
   setSecretGetter,
   syncCloudState as syncCloudStateService,
@@ -79,6 +80,8 @@ import {
   persistGatewaySecret,
   loadSavedState,
   loadSavedHistory,
+  hasFreedomCashflowHistoryBaseline,
+  markFreedomCashflowHistoryBaseline,
   savePortfolioSnapshot,
   saveApiKeys,
   saveGatewaySecret,
@@ -99,7 +102,20 @@ import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';
-import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
+import {
+  applyCashflowAllocationsToBrokerExecutions,
+  applyCashflowAllocationsToClosedTrades,
+  mergeBrokerExecutionHistory,
+  preservePersistedBrokerFeeAllocations
+} from './src/domain/closedHistoryFees';
+import {
+  getFreedomCashflowRefreshStartDate,
+  mergeFreedomCashflowRows,
+  normalizeFreedomCashflowRows,
+  normalizeSavedFreedomCashflows
+} from './src/domain/freedomCashflows';
+import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
+import { getLatestClosedTradeDate } from './src/domain/tradeHistorySync';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
@@ -1209,42 +1225,211 @@ function refreshAllLivePricesAfterCurrent(force = false): Promise<boolean> {
   return liveQuoteRefreshCoordinator.refreshAfterCurrent(force);
 }
 
-function refreshSupplementalPortfolioData(): Promise<void> | void {
-  if (document.hidden) return;
+async function refreshSupplementalPortfolioData(): Promise<boolean> {
+  if (document.hidden) return false;
 
   if (currentAccountRole === 'admin') {
     const sessionKey = currentAccountId ? `admin:${currentAccountId}` : '';
-    if (!sessionKey) return;
+    if (!sessionKey) return false;
 
-    // Consume recovery before checking current health: a short outage can end
-    // between scheduler ticks, but its missed execution window still needs one
-    // incremental history catch-up after the stream has reconnected.
-    if (consumeFreedomAccountStreamRecovery(sessionKey)) {
-      clearFreedomTradeNetStreamSnapshotCache();
-      portfolioBrokerRefreshRuntime.requestAll();
-      return;
+    // Both private stream channels must be healthy before periodic REST
+    // snapshots are suppressed. Until then, wait for all three broker sources
+    // so the following Closed History checkpoint includes refreshed executions.
+    const refreshMode = resolveFreedomAccountRefreshMode(sessionKey);
+    if (refreshMode === 'recover') clearFreedomTradeNetStreamSnapshotCache();
+    if (refreshMode === 'recover' || refreshMode === 'fallback') {
+      const results = await Promise.all([
+        portfolioBrokerRefreshRuntime.refreshAccountInfo(),
+        portfolioBrokerRefreshRuntime.refreshExecutedTrades(),
+        portfolioBrokerRefreshRuntime.refreshActiveOrders()
+      ]);
+      return results.every(Boolean);
     }
-    if (isFreedomAccountStreamHealthy(sessionKey)) return;
-    return;
+    return true;
   }
 
   if (currentAccountRole === 'guest') {
     // Refresh only the authenticated guest's assigned holdings and LOTS ledger.
     // Wait for an older quote batch before fetching prices for the latest assignment set.
-    if (guestCloudRefreshInFlight) return guestCloudRefreshInFlight.then(() => undefined);
+    if (guestCloudRefreshInFlight) {
+      const existingResult = await guestCloudRefreshInFlight;
+      return existingResult !== false;
+    }
     const request = pullGuestPortfolioSnapshot()
       .then(() => refreshAllLivePricesAfterCurrent(true))
-      .then(() => undefined)
+      .then((result) => result !== false)
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         console.warn('[Guest Auto Update Warning]: Unable to refresh assigned holdings and LOTS history.', error);
         logTerminal(`[Guest Auto Update Warning]: Assigned holdings and LOTS history were not refreshed (${message}).`);
+        return false;
       })
       .finally(() => {
         if (guestCloudRefreshInFlight === request) guestCloudRefreshInFlight = null;
       });
     guestCloudRefreshInFlight = request;
-    return request;
+    return await request;
+  }
+
+  return false;
+}
+
+/**
+ * Merge local/admin store history with the separately encrypted cloud history
+ * before writing. A first sync on a new device must never replace a populated
+ * cloud ledger with an empty local snapshot.
+ */
+async function syncAdminClosedHistory(): Promise<boolean> {
+  const accountId = currentAccountId || '';
+  const session = currentAccountSessionGuard.capture();
+  const isCurrentSession = () =>
+    currentAccountRole === 'admin' &&
+    Boolean(accountId) &&
+    session !== null &&
+    currentAccountSessionGuard.isCurrent(session);
+  if (!isCurrentSession()) return false;
+
+  try {
+    // Pull the remote history first; never let an empty/new device overwrite a
+    // populated Closed History record before local and broker data are merged.
+    const cloudHistory = await pullCloudHistory(undefined, { isCurrentSession });
+    if (!isCurrentSession()) return false;
+    const savedAtStart = loadSavedHistory();
+    const currentAtStart = portfolioStore.getState();
+    const cloudExecutions = normalizeFreedomTrades(cloudHistory?.brokerExecutedTrades || []);
+    const savedExecutions = normalizeFreedomTrades(savedAtStart.brokerExecutedTrades);
+    const currentExecutions = normalizeFreedomTrades(currentAtStart.brokerExecutedTrades || []);
+    const baselineExecutions = mergeBrokerExecutionHistory(
+      mergeBrokerExecutionHistory(cloudExecutions, savedExecutions),
+      currentExecutions
+    );
+    const executionsWithFees = preservePersistedBrokerFeeAllocations(
+      baselineExecutions,
+      [...savedExecutions, ...cloudExecutions, ...currentExecutions]
+    );
+    const priorCashflows = [
+      ...normalizeSavedFreedomCashflows(cloudHistory?.cashflows || []),
+      ...normalizeSavedFreedomCashflows(savedAtStart.cashflows),
+      ...normalizeSavedFreedomCashflows(currentAtStart.cashflows || [])
+    ];
+    const latestCashflowDate = hasFreedomCashflowHistoryBaseline(accountId)
+      ? getFreedomCashflowRefreshStartDate(priorCashflows) ||
+        getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])
+      : undefined;
+
+    // Bypass the brief quote-side cache: every 60-second checkpoint and manual
+    // sync must ask Freedom for the latest cashflow rows (full baseline once,
+    // then an overlapping incremental window).
+    clearFreedomCashflowCache();
+    const cashflowResponse = await fetchFreedomCashflows(latestCashflowDate);
+    if (!isCurrentSession()) return false;
+    const fetchedCashflows = normalizeFreedomCashflowRows(cashflowResponse);
+
+    // Broker executions may have completed while the cashflow request was in
+    // flight. Re-read the canonical store and sidecar before calculating fees.
+    const current = portfolioStore.getState();
+    const saved = loadSavedHistory();
+    const latestSavedExecutions = normalizeFreedomTrades(saved.brokerExecutedTrades);
+    const latestCurrentExecutions = normalizeFreedomTrades(current.brokerExecutedTrades || []);
+    const mergedExecutions = preservePersistedBrokerFeeAllocations(
+      mergeBrokerExecutionHistory(
+        mergeBrokerExecutionHistory(cloudExecutions, latestSavedExecutions),
+        latestCurrentExecutions
+      ),
+      [...latestSavedExecutions, ...cloudExecutions, ...latestCurrentExecutions]
+    );
+    const cloudCashflows = normalizeSavedFreedomCashflows(cloudHistory?.cashflows || []);
+    const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
+    const currentCashflows = normalizeSavedFreedomCashflows(current.cashflows || []);
+    const mergedCashflows = mergeFreedomCashflowRows(
+      mergeFreedomCashflowRows(
+        mergeFreedomCashflowRows(cloudCashflows, savedCashflows),
+        currentCashflows
+      ),
+      fetchedCashflows
+    );
+
+    const appClosedTrades = [...(current.closedTrades || [])];
+    const allocations = calculateFreedomMarginFeeAllocations(
+      mergedCashflows,
+      mergedExecutions,
+      appClosedTrades
+    );
+    const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(
+      mergedExecutions,
+      allocations.brokerAllocations
+    );
+    const updatedClosedTrades = applyCashflowAllocationsToClosedTrades(
+      appClosedTrades,
+      allocations.appAllocations
+    );
+    const nextState: Partial<PortfolioState> = {};
+    if (JSON.stringify(current.brokerExecutedTrades || []) !== JSON.stringify(updatedExecutions)) {
+      nextState.brokerExecutedTrades = updatedExecutions;
+    }
+    if (JSON.stringify(current.cashflows || []) !== JSON.stringify(mergedCashflows)) {
+      nextState.cashflows = mergedCashflows;
+    }
+    if (JSON.stringify(appClosedTrades) !== JSON.stringify(updatedClosedTrades)) {
+      nextState.closedTrades = updatedClosedTrades;
+    }
+
+    const previousState = current;
+    if (Object.keys(nextState).length) portfolioStore.setState(nextState, false);
+    if (!isCurrentSession()) {
+      portfolioStore.update(() => previousState, false);
+      state = portfolioStore.getState();
+      return false;
+    }
+
+    const persisted = savePortfolioSnapshot(portfolioStore.getState(), {
+      brokerExecutedTrades: updatedExecutions,
+      cashflows: mergedCashflows
+    });
+    if (!persisted) {
+      portfolioStore.update(() => previousState, false);
+      state = portfolioStore.getState();
+      logTerminal('[Closed History Sync Error]: Could not persist broker executions and cashflows locally; cloud history was not changed.');
+      return false;
+    }
+    state = portfolioStore.getState();
+    if (!isCurrentSession()) return false;
+
+    const mergedHistory = {
+      brokerExecutedTrades: updatedExecutions,
+      cashflows: mergedCashflows
+    };
+    const normalizedCloudHistory = cloudHistory ? {
+      brokerExecutedTrades: cloudExecutions,
+      cashflows: cloudCashflows
+    } : null;
+    if (
+      (!normalizedCloudHistory || JSON.stringify(mergedHistory) !== JSON.stringify(normalizedCloudHistory)) &&
+      (updatedExecutions.length > 0 || mergedCashflows.length > 0)
+    ) {
+      const pushed = await pushCloudHistory(mergedHistory, undefined, undefined, {
+        isCurrentSession,
+        force: true
+      });
+      if (!isCurrentSession()) return false;
+      if (!pushed) {
+        logTerminal('[Closed History Sync Warning]: Local cashflows and trades are saved, but the cloud history checkpoint was not confirmed.');
+        return false;
+      }
+    }
+
+    if (!hasFreedomCashflowHistoryBaseline(accountId) &&
+        !markFreedomCashflowHistoryBaseline(accountId)) {
+      logTerminal('[Closed History Sync Warning]: Cashflows are saved, but the completed-history baseline could not be recorded; the next sync will retry a full read.');
+      return false;
+    }
+    return true;
+  } catch (error) {
+    if (isCurrentSession()) {
+      const message = error instanceof Error ? error.message : String(error);
+      logTerminal(`[Closed History Sync Warning]: Freedom cashflow or cloud history refresh failed (${message}).`);
+    }
+    return false;
   }
 }
 
@@ -1254,6 +1439,7 @@ const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
   refreshQuotes: () => refreshAllLivePrices(),
   refreshSupplemental: () => refreshSupplementalPortfolioData(),
   syncState: () => currentAccountRole === 'admin' ? pushStateToCloud(true) : undefined,
+  syncHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory() : undefined,
   onError: (source, error) => {
     const message = error instanceof Error ? error.message : String(error);
     logTerminal(`[Auto Update Warning]: ${source} refresh failed (${message}).`);
@@ -1983,6 +2169,7 @@ function bindStartupActions() {
       state = portfolioStore.getState();
       return pushStateToCloud(true);
     },
+    syncClosedHistory: () => currentAccountRole === 'admin' ? syncAdminClosedHistory() : Promise.resolve(false),
     pullGuestSnapshot: async () => {
       await pullGuestPortfolioSnapshot();
       return true;

@@ -12,6 +12,7 @@ export interface PortfolioSyncRuntimeDependencies {
   refreshExecutedTrades: ManualPortfolioSyncOperations['refreshExecutedTrades'];
   refreshActiveOrders: ManualPortfolioSyncOperations['refreshActiveOrders'];
   pushCloud: ManualPortfolioSyncOperations['pushCloud'];
+  syncClosedHistory: ManualPortfolioSyncOperations['syncClosedHistory'];
   pullGuestSnapshot: ManualPortfolioSyncOperations['pullGuestSnapshot'];
   translateText: (message: string) => string;
   showToast: (message: string, tone: 'success' | 'warning' | 'error') => void;
@@ -27,12 +28,12 @@ function notifySyncResult(
   dependencies: PortfolioSyncRuntimeDependencies
 ): void {
   const anySourceSucceeded = result.role === 'admin'
-    ? Boolean(result.brokerAccount || result.executedTrades || result.activeOrders || result.quotes || result.cloud)
+    ? Boolean(result.brokerAccount || result.executedTrades || result.activeOrders || result.quotes || result.cloud || result.cloudHistory)
     : Boolean(result.guestSnapshot || result.quotes);
 
   if (result.success) {
     dependencies.showToast(dependencies.translateText('Portfolio sync completed.'), 'success');
-    dependencies.logTerminal('[Sync]: Broker data, market quotes and cloud snapshot are up to date.');
+    dependencies.logTerminal('[Sync]: Broker data, market quotes, portfolio snapshot and Closed History are up to date.');
   } else if (anySourceSucceeded) {
     dependencies.showToast(
       dependencies.translateText('Portfolio sync completed with issues. Check the activity log.'),
@@ -67,6 +68,7 @@ export function bindPortfolioSyncRuntime(
           refreshActiveOrders: dependencies.refreshActiveOrders,
           refreshQuotes: dependencies.refreshQuotes,
           pushCloud: dependencies.pushCloud,
+          syncClosedHistory: dependencies.syncClosedHistory,
           pullGuestSnapshot: dependencies.pullGuestSnapshot
         });
         notifySyncResult(result, dependencies);

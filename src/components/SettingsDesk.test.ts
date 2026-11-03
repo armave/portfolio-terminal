@@ -29,39 +29,34 @@ describe('automatic update settings', () => {
     expect(source).toContain('DEFAULT_GUEST_REFRESH_INTERVAL_MS');
     expect(source).toContain('DEFAULT_ADMIN_REFRESH_INTERVAL_MS');
     expect(source).toContain('refreshNow: true');
-    expect(source).toContain('Your assigned holdings and LOTS history refresh every 60 seconds.');
-    expect(source).toContain('Broker balances, positions, trades and orders refresh every 60 seconds.');
-    expect(source).toContain('Automatic updates are paused. Manual Sync remains available.');
+    expect(source).toContain('Your assigned holdings, LOTS history and their market quotes refresh at the selected interval.');
+    expect(source).toContain('Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval.');
+    expect(source).toContain('Mandatory Sync Interval');
+    expect(source).not.toContain('<option value="0">');
+    expect(source).not.toContain('Automatic updates are paused. Manual Sync remains available.');
+    expect(source).toContain('<option value="15000">');
+    expect(source).toContain('<option value="30000">');
+    expect(source).toContain('<option value="60000">');
   });
 });
 
-describe('temporary TradeNet diagnostics controls', () => {
-  it('keeps the test controls administrator-only and exposes both read-only probes', () => {
+describe('manual sync in Settings', () => {
+  it('exposes the same full role-specific manual sync action to admins and guests', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("account?.role === \"admin\" && <section class=\"settings-panel settings-tradenet-diagnostics");
-    expect(source).toContain("runTradeNetTest('rest')");
-    expect(source).toContain("runTradeNetTest('websocket')");
-    expect(source).toContain('testFreedomTradeNetConnection()');
-    expect(source).toContain('testFreedomTradeNetOrdersStream()');
-    expect(source).toContain("runTradeNetTest('portfolio')");
-    expect(source).toContain("runTradeNetTest('markets')");
-    expect(source).toContain('testFreedomTradeNetEventStream(kind)');
-    expect(source).toContain('Test portfolio updates');
-    expect(source).toContain('Test market status updates');
-    expect(source).toContain("runTradeNetTest('quotes')");
-    expect(source).toContain("runTradeNetTest('quote-comparison')");
-    expect(source).toContain('Compare quote WebSocket vs REST');
-    expect(source).toContain('fetchFreedomQuote(normalizedSymbol, true)');
-    expect(source).toContain('normalizeFreedomQuote(websocketPayload.data, normalizedSymbol)');
-    expect(source).toContain('lastPriceWithinOneCent');
-    expect(source).toContain('testFreedomTradeNetQuoteStream(tradeNetQuoteSymbol)');
-    expect(source).toContain('Test live quote stream');
-    expect(source).toContain("useState('GOOGL.US')");
-    expect(source).toContain("runTradeNetTest('reconciliation')");
-    expect(source).toContain('testFreedomTradeNetPortfolioReconciliation()');
-    expect(source).toContain('compareFreedomPortfolioSnapshots(snapshots.websocket, snapshots.rest)');
-    expect(source).toContain('Compare WebSocket vs REST portfolio');
-    expect(source).toContain("JSON.stringify(tradeNetTest.result, null, 2)");
-    expect(source).toContain('Temporary test controls — remove after verification.');
+    expect(source).toContain('id="settingsSyncPortfolioButton"');
+    expect(source).toContain("account?.role === \"admin\" || account?.role === \"guest\"");
+    expect(source).toContain("emitUiEvent('portfolio:sync-request'");
+    expect(source).toContain("translateText('Sync portfolio')");
+    expect(source).toContain("translateText('Syncing…')");
+  });
+});
+
+describe('integrated market status', () => {
+  it('removes the temporary TradeNet market probe from Settings', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).not.toContain('TradeNet market status probe');
+    expect(source).not.toContain('testFreedomTradeNetEventStream');
+    expect(source).not.toContain('Test market status updates');
+    expect(source).not.toContain('marketStatusTest');
   });
 });

@@ -12,19 +12,21 @@ describe('app localization', () => {
 
   it('localizes the role-specific automatic refresh descriptions', () => {
     expect(translateText(
-      'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes all data.',
+      'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.',
       'ru'
-    )).toContain('Котировки и состояние портфеля синхронизируются с облаком с выбранным интервалом.');
+    )).toContain('Котировки, состояние портфеля в облаке, резервные данные брокера, сделки, заявки, денежные операции и история закрытых сделок обновляются с выбранным интервалом.');
     expect(translateText(
-      'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.',
+      'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.',
       'ru'
-    )).toContain('Назначенные вам активы и история ЛОТОВ обновляются каждые 60 секунд.');
-    expect(translateText('Automatic updates are paused. Manual Sync remains available.', 'ru'))
-      .toBe('Автоматические обновления приостановлены. Ручная синхронизация по-прежнему доступна.');
+    )).toContain('Назначенные вам активы, история ЛОТОВ и их рыночные котировки обновляются с выбранным интервалом.');
   });
 
   it('localizes the full portfolio sync button and outcome messages', () => {
+    expect(translateText('Mandatory automatic portfolio sync interval', 'ru')).toBe('Обязательный интервал автоматической синхронизации портфеля');
     expect(translateText('Sync portfolio', 'ru')).toBe('Синхронизировать портфель');
+    expect(translateText('Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.', 'ru'))
+      .toContain('Котировки, состояние портфеля в облаке, резервные данные брокера, сделки, заявки, денежные операции и история закрытых сделок обновляются с выбранным интервалом.');
+
     expect(translateText('Portfolio sync completed.', 'ru')).toBe('Синхронизация портфеля завершена.');
     expect(translateText('Portfolio sync completed with issues. Check the activity log.', 'ru'))
       .toBe('Синхронизация портфеля завершена не полностью. Проверьте журнал действий.');
@@ -98,8 +100,21 @@ describe('app localization', () => {
   });
 
   it('translates known UI copy into Russian and leaves unknown text unchanged', () => {
-    expect(translateText('Temporary TradeNet diagnostics', 'ru')).toBe('Временная диагностика TradeNet');
-    expect(translateText('Test authenticated WebSocket', 'ru')).toBe('Проверить авторизованный WebSocket');
+    expect(translateText('Portfolio market', 'ru')).toBe('Рынок портфеля');
+    expect(translateText('Your market', 'ru')).toBe('Ваш рынок');
+    expect(translateText('US equities', 'ru')).toBe('Акции США');
+    expect(translateText('Market open', 'ru')).toBe('Рынок открыт');
+    expect(translateText('Market closed', 'ru')).toBe('Рынок закрыт');
+    expect(translateText('Pre-market', 'ru')).toBe('До открытия');
+    expect(translateText('After-hours', 'ru')).toBe('После закрытия');
+    expect(translateText('Premarket', 'ru')).toBe('Премаркет');
+    expect(translateText('Market', 'ru')).toBe('Рынок открыт');
+    expect(translateText('Postmarket', 'ru')).toBe('Постмаркет');
+    expect(translateText('Unavailable', 'ru')).toBe('Недоступно');
+    expect(translateText('Updated at', 'ru')).toBe('Обновлено');
+    expect(translateText('Market status unavailable', 'ru')).toBe('Статус рынка недоступен');
+    expect(translateText('Loading market status', 'ru')).toBe('Загрузка статуса рынка');
+    expect(translateText('Refresh failed', 'ru')).toBe('Ошибка обновления');
     expect(translateText('User management', 'ru')).toBe('Управление пользователями');
     expect(translateText('Settings', 'ru')).toBe('Настройки');
     expect(translateText('Unknown market symbol', 'ru')).toBe('Unknown market symbol');
@@ -380,29 +395,6 @@ describe('app localization', () => {
       .toBe('• bought <shares> <ticker> for <price> (например, bought 10 AAPL for $185.50)');
     expect(translateText('[Sim AAPL @ $205.00 in 14d]: Gross $200.00 | Comms -$4.00 | Margin -$3.00 → Net P&L: +$193.00', 'ru'))
       .toBe('[Симуляция AAPL @ $205.00 через 14 дн.]: Валовая прибыль: $200.00 | Комиссии: -$4.00 | Маржинальные проценты: -$3.00 → Чистая прибыль/убыток: +$193.00');
-  });
-
-  it('localizes the new TradeNet portfolio and market event diagnostic controls', () => {
-    expect(translateText('Test portfolio updates', 'ru')).toBe('Проверить обновления портфеля');
-    expect(translateText('Test market status updates', 'ru')).toBe('Проверить статусы рынка');
-    expect(translateText('Testing portfolio event…', 'ru')).toBe('Проверка события портфеля…');
-    expect(translateText('Testing market event…', 'ru')).toBe('Проверка события рынка…');
-  });
-
-  it('localizes the TradeNet live quote diagnostic control', () => {
-    expect(translateText('Quote symbol', 'ru')).toBe('Тикер котировки');
-    expect(translateText('Testing live quote…', 'ru')).toBe('Проверка живой котировки…');
-    expect(translateText('Test live quote stream', 'ru')).toBe('Проверить поток котировок');
-  });
-
-  it('localizes the TradeNet quote comparison control', () => {
-    expect(translateText('Comparing quote sources…', 'ru')).toBe('Сравнение источников котировок…');
-    expect(translateText('Compare quote WebSocket vs REST', 'ru')).toBe('Сравнить котировку WebSocket и REST');
-  });
-
-  it('localizes the TradeNet portfolio reconciliation control', () => {
-    expect(translateText('Compare WebSocket vs REST portfolio', 'ru')).toBe('Сравнить портфель WebSocket и REST');
-    expect(translateText('Comparing portfolio snapshots…', 'ru')).toBe('Сравнение снимков портфеля…');
   });
 
   it('notifies the app when the selected language changes', () => {

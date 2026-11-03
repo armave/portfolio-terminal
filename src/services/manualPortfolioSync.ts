@@ -9,6 +9,7 @@ export interface ManualPortfolioSyncResult {
   activeOrders?: boolean;
   guestSnapshot?: boolean;
   cloud?: boolean;
+  cloudHistory?: boolean;
 }
 
 export interface ManualPortfolioSyncOperations {
@@ -18,6 +19,7 @@ export interface ManualPortfolioSyncOperations {
   refreshExecutedTrades: () => Promise<boolean>;
   refreshActiveOrders: () => Promise<boolean>;
   pushCloud: () => Promise<boolean>;
+  syncClosedHistory: () => Promise<boolean>;
   pullGuestSnapshot: () => Promise<boolean>;
 }
 
@@ -41,6 +43,9 @@ export async function runManualPortfolioSync(
       trySync(operations.refreshActiveOrders)
     ]);
     const quotes = await trySync(operations.refreshQuotes);
+    const cloudHistory = await trySync(operations.syncClosedHistory);
+    // History fee allocation can update app-owned closed-trade totals in the
+    // shared portfolio record, so checkpoint the portfolio after history.
     const cloud = await trySync(operations.pushCloud);
     return {
       role: 'admin',
@@ -49,7 +54,8 @@ export async function runManualPortfolioSync(
       activeOrders,
       quotes,
       cloud,
-      success: brokerAccount && executedTrades && activeOrders && quotes && cloud
+      cloudHistory,
+      success: brokerAccount && executedTrades && activeOrders && quotes && cloud && cloudHistory
     };
   }
 

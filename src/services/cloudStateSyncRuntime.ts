@@ -30,11 +30,16 @@ export interface CloudStateSyncRuntimeDependencies {
   storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
   now?: () => number;
 }
+export interface CloudHistoryPushOptions {
+  isCurrentSession?: () => boolean;
+  /** Re-check the latest encrypted-history revision and write even if this tab has pushed the same payload before. */
+  force?: boolean;
+}
 export interface CloudStateSyncRuntime {
   pullCloudState: (options?: SyncOptions | ((state: any) => void), reportResult?: (success: boolean) => void) => Promise<any>;
   pushCloudState: (state?: any, options?: SyncOptions) => Promise<boolean>;
   syncCloudState: (mode?: string, options?: SyncOptions) => Promise<boolean>;
-  pushCloudHistory: (history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] }, secret?: string, knownRevision?: number, options?: Pick<SyncOptions, 'isCurrentSession'>) => Promise<boolean>;
+  pushCloudHistory: (history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] }, secret?: string, knownRevision?: number, options?: CloudHistoryPushOptions) => Promise<boolean>;
   clearCloudHistory: (secret?: string, options?: Pick<SyncOptions, 'isCurrentSession'>) => Promise<boolean>;
   pullCloudHistory: (secret?: string, options?: Pick<SyncOptions, 'isCurrentSession' | 'onEncryptionMigrationFailure'>) => Promise<{ brokerExecutedTrades: unknown[]; cashflows: unknown[] } | null>;
   clearRequestCache: () => void;
@@ -371,9 +376,9 @@ function pushCloudHistory(
   history: { brokerExecutedTrades?: unknown[]; cashflows?: unknown[] },
   secret = getActiveGatewaySecret(),
   knownRevision?: number,
-  options: Pick<SyncOptions, 'isCurrentSession'> = {}
+  options: CloudHistoryPushOptions = {}
 ): Promise<boolean> {
-  return enqueueCloudHistoryWrite(history, secret, knownRevision, false, options.isCurrentSession);
+  return enqueueCloudHistoryWrite(history, secret, knownRevision, options.force === true, options.isCurrentSession);
 }
 
 /**

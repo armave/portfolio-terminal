@@ -10,11 +10,6 @@ export interface FreedomBrokerTransportRuntimeDependencies {
 }
 
 export interface FreedomBrokerTransportRuntime {
-  testFreedomTradeNetConnection: () => Promise<unknown>;
-  testFreedomTradeNetOrdersStream: () => Promise<unknown>;
-  testFreedomTradeNetQuoteStream: (symbol: string) => Promise<unknown>;
-  testFreedomTradeNetEventStream: (event: 'portfolio' | 'markets') => Promise<unknown>;
-  testFreedomTradeNetPortfolioReconciliation: () => Promise<{ websocket: unknown; rest: unknown }>;
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
@@ -104,31 +99,6 @@ export function createFreedomBrokerTransportRuntime(
     return request;
   };
 
-  const testFreedomTradeNetConnection = (): Promise<unknown> =>
-    dependencies.proxyFetch('freedom-test', undefined, { cache: 'no-store' });
-
-  const testFreedomTradeNetOrdersStream = (): Promise<unknown> =>
-    dependencies.proxyFetch('freedom-orders-stream', undefined, { cache: 'no-store' });
-
-  const testFreedomTradeNetEventStream = (event: 'portfolio' | 'markets'): Promise<unknown> => {
-    if (event !== 'portfolio' && event !== 'markets') {
-      return Promise.reject(new Error('Unsupported TradeNet stream event.'));
-    }
-    return dependencies.proxyFetch('freedom-event-stream', { event }, { cache: 'no-store' });
-  };
-
-  const testFreedomTradeNetQuoteStream = (symbol: string): Promise<unknown> => {
-    const normalized = symbol.trim().toUpperCase();
-    if (!normalized) {
-      return Promise.reject(new Error('Enter one valid TradeNet ticker symbol.'));
-    }
-    const ticker = normalized.includes('.') ? normalized : `${normalized}.US`;
-    if (!/^[A-Z0-9.^=-]{1,32}$/.test(ticker)) {
-      return Promise.reject(new Error('Enter one valid TradeNet ticker symbol.'));
-    }
-    return dependencies.proxyFetch('freedom-quote-stream', { symbol: ticker }, { cache: 'no-store' });
-  };
-
   const fetchFreedomTradeNetPositions = (): Promise<unknown> =>
     runStreamSnapshotOnce(
       'portfolio',
@@ -158,25 +128,6 @@ export function createFreedomBrokerTransportRuntime(
       () => dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' }),
       'freedom_portfolio'
     );
-
-  const testFreedomTradeNetPortfolioReconciliation = async (): Promise<{ websocket: unknown; rest: unknown }> => {
-    const [websocketResponse, restResponse] = await Promise.all([
-      dependencies.proxyFetch('freedom-portfolio-snapshot', undefined, { cache: 'no-store' }),
-      dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' })
-    ]);
-    const isLoadedSnapshot = (response: any) =>
-      response?.ok === true &&
-      response?.data?.result?.ps?.loaded === true &&
-      Array.isArray(response?.data?.result?.ps?.acc) &&
-      Array.isArray(response?.data?.result?.ps?.pos);
-    if (!isLoadedSnapshot(websocketResponse)) {
-      throw new Error(websocketResponse?.error || 'TradeNet WebSocket portfolio snapshot is unavailable or not loaded.');
-    }
-    if (!isLoadedSnapshot(restResponse)) {
-      throw new Error(restResponse?.error || 'TradeNet REST portfolio snapshot is unavailable or not loaded.');
-    }
-    return { websocket: websocketResponse.data, rest: restResponse.data };
-  };
 
   const fetchFreedomTradeNetTrades = (fromDate?: string): Promise<unknown> => {
     const startDate = typeof fromDate === 'string' && fromDate.trim() ? fromDate.trim() : undefined;
@@ -257,11 +208,6 @@ export function createFreedomBrokerTransportRuntime(
   };
 
   return {
-    testFreedomTradeNetConnection,
-    testFreedomTradeNetOrdersStream,
-    testFreedomTradeNetEventStream,
-    testFreedomTradeNetQuoteStream,
-    testFreedomTradeNetPortfolioReconciliation,
     fetchFreedomTradeNetPositions,
     fetchFreedomTradeNetTrades,
     fetchFreedomTradeNetActiveOrders,

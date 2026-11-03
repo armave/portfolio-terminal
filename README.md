@@ -94,7 +94,7 @@ npm run build
 3. **Monitor Active Positions:** Use ticker tabs to inspect tranches, unrealized profit/loss, daily carry costs, and breakeven horizons.
 
 
-4. **Fetch Live Market Data:** Click **Quotes** to pull fresh market data, or configure automatic refresh intervals (15s, 30s, 60s).
+4. **Automatic Portfolio Sync:** Each signed-in admin or guest has a mandatory 15s, 30s, or 60s refresh cadence in Settings. The selected interval refreshes that role's important data; **Sync portfolio** remains available for immediate manual sync.
 
 
 5. **Run Scenarios in Terminal:** Use plain-language prompts in the Trading Console to simulate staged exits, compare multiple price targets across dates, or log trades.

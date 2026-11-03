@@ -12,9 +12,10 @@ describe('portfolio automatic refresh policy', () => {
     vi.useRealTimers();
   });
 
-  it('uses safe role defaults and rejects unsupported persisted intervals', () => {
+  it('enforces a supported non-zero role default for legacy or invalid values', () => {
     expect(normalizeQuoteRefreshInterval('15000')).toBe(15_000);
-    expect(normalizeQuoteRefreshInterval('0', DEFAULT_GUEST_REFRESH_INTERVAL_MS)).toBe(0);
+    expect(normalizeQuoteRefreshInterval('0', DEFAULT_GUEST_REFRESH_INTERVAL_MS)).toBe(DEFAULT_GUEST_REFRESH_INTERVAL_MS);
+    expect(normalizeQuoteRefreshInterval(0, DEFAULT_ADMIN_REFRESH_INTERVAL_MS)).toBe(DEFAULT_ADMIN_REFRESH_INTERVAL_MS);
     expect(normalizeQuoteRefreshInterval('20000', DEFAULT_GUEST_REFRESH_INTERVAL_MS)).toBe(15_000);
     expect(normalizeQuoteRefreshInterval('', DEFAULT_GUEST_REFRESH_INTERVAL_MS)).toBe(15_000);
     expect(normalizeQuoteRefreshInterval('invalid', DEFAULT_ADMIN_REFRESH_INTERVAL_MS)).toBe(60_000);
@@ -23,91 +24,93 @@ describe('portfolio automatic refresh policy', () => {
   });
 
   it.each(['admin', 'guest'] as const)(
-    'runs live quotes at the selected cadence and supplemental data once a minute for %s accounts',
+    'runs the complete %s sync on every selected interval',
     async (role) => {
       vi.useFakeTimers();
-      const sequence: string[] = [];
-      const refreshQuotes = vi.fn(() => { sequence.push('quotes'); });
-      const refreshSupplemental = vi.fn(() => { sequence.push('supplemental'); });
-      const syncState = vi.fn(() => { sequence.push('state-sync'); });
+      const refreshQuotes = vi.fn();
+      const refreshSupplemental = vi.fn();
+      const syncState = vi.fn();
+      const syncHistory = vi.fn();
       const scheduler = createPortfolioAutoRefreshScheduler({
         getRole: () => role,
         isVisible: () => true,
         refreshQuotes,
         refreshSupplemental,
-        syncState
+        syncState,
+        syncHistory
       });
 
       scheduler.configure(15_000, role);
+      expect(vi.getTimerCount()).toBe(1);
       await vi.advanceTimersByTimeAsync(60_000);
 
-      expect(refreshQuotes).toHaveBeenCalledTimes(4);
-      expect(syncState).toHaveBeenCalledTimes(role === 'admin' ? 4 : 0);
-      expect(refreshSupplemental).toHaveBeenCalledTimes(1);
+      expect(refreshSupplemental).toHaveBeenCalledTimes(4);
       if (role === 'admin') {
-        expect(sequence.filter((value) => value !== 'supplemental')).toEqual([
-          'quotes', 'state-sync',
-          'quotes', 'state-sync',
-          'quotes', 'state-sync',
-          'quotes', 'state-sync'
-        ]);
+        expect(refreshQuotes).toHaveBeenCalledTimes(4);
+        expect(syncHistory).toHaveBeenCalledTimes(4);
+        expect(syncState).toHaveBeenCalled();
+      } else {
+        // Guest refreshSupplemental performs snapshot hydration then quotes the new assigned tickers.
+        expect(refreshQuotes).not.toHaveBeenCalled();
+        expect(syncState).not.toHaveBeenCalled();
+        expect(syncHistory).not.toHaveBeenCalled();
       }
       scheduler.stop();
     }
   );
 
-  it('runs a guest refresh as one snapshot-first operation when requested immediately', async () => {
+  it('runs guest hydration before quoting the newly assigned holdings on manual refresh', async () => {
     const sequence: string[] = [];
-    const syncState = vi.fn();
     const scheduler = createPortfolioAutoRefreshScheduler({
       getRole: () => 'guest',
       isVisible: () => true,
-      refreshQuotes: () => { sequence.push('quotes'); },
+      refreshQuotes: () => { sequence.push('generic quotes'); },
       refreshSupplemental: async () => {
         sequence.push('guest snapshot and LOTS ledger');
-        sequence.push('quotes for the updated assignment set');
-      },
-      syncState
+        sequence.push('quotes for updated assignments');
+      }
     });
 
     scheduler.configure(30_000, 'guest');
     await expect(scheduler.refreshNow()).resolves.toBe(true);
-    expect(sequence).toEqual(['guest snapshot and LOTS ledger', 'quotes for the updated assignment set']);
-    expect(syncState).not.toHaveBeenCalled();
+    expect(sequence).toEqual(['guest snapshot and LOTS ledger', 'quotes for updated assignments']);
     scheduler.stop();
   });
 
-  it('refreshes both admin sources immediately when enabled', async () => {
+  it('refreshes all admin sources on manual refresh', async () => {
     const completed: string[] = [];
     const scheduler = createPortfolioAutoRefreshScheduler({
       getRole: () => 'admin',
       isVisible: () => true,
       refreshQuotes: async () => { completed.push('quotes'); },
-      refreshSupplemental: async () => { completed.push('broker balances, trades and orders'); },
-      syncState: async () => { completed.push('state sync'); }
+      refreshSupplemental: async () => { completed.push('broker fallback, trades and orders'); },
+      syncState: async () => { completed.push('portfolio cloud state'); },
+      syncHistory: async () => { completed.push('closed history and cashflows'); }
     });
 
     scheduler.configure(60_000, 'admin');
     await expect(scheduler.refreshNow()).resolves.toBe(true);
-    expect(completed).toHaveLength(3);
     expect(completed).toContain('quotes');
-    expect(completed).toContain('state sync');
-    expect(completed).toContain('broker balances, trades and orders');
+    expect(completed).toContain('broker fallback, trades and orders');
+    expect(completed).toContain('closed history and cashflows');
+    expect(completed).toContain('portfolio cloud state');
     scheduler.stop();
   });
 
-  it('pauses hidden-tab requests and refreshes after the tab becomes visible', async () => {
+  it('refreshes both roles immediately after a hidden tab becomes visible', async () => {
     vi.useFakeTimers();
     let visible = false;
     const refreshQuotes = vi.fn();
     const refreshSupplemental = vi.fn();
     const syncState = vi.fn();
+    const syncHistory = vi.fn();
     const scheduler = createPortfolioAutoRefreshScheduler({
       getRole: () => 'admin',
       isVisible: () => visible,
       refreshQuotes,
       refreshSupplemental,
-      syncState
+      syncState,
+      syncHistory
     });
 
     scheduler.configure(15_000, 'admin');
@@ -115,50 +118,79 @@ describe('portfolio automatic refresh policy', () => {
     expect(refreshQuotes).not.toHaveBeenCalled();
     expect(refreshSupplemental).not.toHaveBeenCalled();
     expect(syncState).not.toHaveBeenCalled();
+    expect(syncHistory).not.toHaveBeenCalled();
 
     visible = true;
     await scheduler.onVisibilityChange();
     expect(refreshQuotes).toHaveBeenCalledTimes(1);
     expect(refreshSupplemental).toHaveBeenCalledTimes(1);
-    expect(syncState).toHaveBeenCalledTimes(1);
+    expect(syncHistory).toHaveBeenCalledTimes(1);
+    expect(syncState).toHaveBeenCalled();
     scheduler.stop();
   });
 
-  it('does no automatic work when disabled or when no role is active', async () => {
+  it('treats an explicit false result as an incomplete sync rather than a successful no-op', async () => {
+    const scheduler = createPortfolioAutoRefreshScheduler({
+      getRole: () => 'guest',
+      isVisible: () => true,
+      refreshQuotes: vi.fn(),
+      refreshSupplemental: async () => false
+    });
+    scheduler.configure(15_000, 'guest');
+    await expect(scheduler.refreshNow()).resolves.toBe(false);
+    scheduler.stop();
+  });
+
+  it('keeps automatic sync enabled when a legacy Off value is loaded', async () => {
     vi.useFakeTimers();
     const refreshQuotes = vi.fn();
     const refreshSupplemental = vi.fn();
-    let role: 'admin' | 'guest' | null = 'admin';
     const scheduler = createPortfolioAutoRefreshScheduler({
-      getRole: () => role,
+      getRole: () => 'guest',
       isVisible: () => true,
       refreshQuotes,
       refreshSupplemental
     });
 
-    scheduler.configure(0, 'admin');
-    await vi.advanceTimersByTimeAsync(120_000);
-    expect(await scheduler.refreshNow()).toBe(false);
-    role = null;
+    expect(scheduler.configure(0, 'guest')).toBe(DEFAULT_GUEST_REFRESH_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(DEFAULT_GUEST_REFRESH_INTERVAL_MS);
+    expect(refreshSupplemental).toHaveBeenCalledTimes(1);
+    scheduler.stop();
+  });
+
+  it('does no automatic work when no account role is active', async () => {
+    vi.useFakeTimers();
+    const refreshQuotes = vi.fn();
+    const refreshSupplemental = vi.fn();
+    const scheduler = createPortfolioAutoRefreshScheduler({
+      getRole: () => null,
+      isVisible: () => true,
+      refreshQuotes,
+      refreshSupplemental
+    });
+
     scheduler.configure(15_000, null);
     await vi.advanceTimersByTimeAsync(120_000);
+    expect(await scheduler.refreshNow()).toBe(false);
     expect(refreshQuotes).not.toHaveBeenCalled();
     expect(refreshSupplemental).not.toHaveBeenCalled();
     scheduler.stop();
   });
 
-  it('replaces old role timers and ignores callbacks after an account-role change', async () => {
+  it('replaces role timers and never runs the previous role after account switching', async () => {
     vi.useFakeTimers();
     let role: 'admin' | 'guest' = 'admin';
     const refreshQuotes = vi.fn();
     const refreshSupplemental = vi.fn();
     const syncState = vi.fn();
+    const syncHistory = vi.fn();
     const scheduler = createPortfolioAutoRefreshScheduler({
       getRole: () => role,
       isVisible: () => true,
       refreshQuotes,
       refreshSupplemental,
-      syncState
+      syncState,
+      syncHistory
     });
 
     scheduler.configure(15_000, 'admin');
@@ -166,33 +198,34 @@ describe('portfolio automatic refresh policy', () => {
     scheduler.configure(30_000, 'guest');
     await vi.advanceTimersByTimeAsync(30_000);
 
-    expect(refreshQuotes).toHaveBeenCalledTimes(1);
-    expect(refreshSupplemental).toHaveBeenCalledTimes(0);
+    expect(refreshSupplemental).toHaveBeenCalledTimes(1);
+    expect(refreshQuotes).not.toHaveBeenCalled();
     expect(syncState).not.toHaveBeenCalled();
+    expect(syncHistory).not.toHaveBeenCalled();
     scheduler.stop();
   });
 
-  it('coalesces overlapping refresh work and reports task errors without unhandled rejections', async () => {
-    let resolveQuote: (() => void) | undefined;
-    const refreshQuotes = vi.fn(() => new Promise<void>((resolve) => { resolveQuote = resolve; }));
+  it('coalesces overlapping complete cycles and reports task errors', async () => {
+    let resolveSupplemental: (() => void) | undefined;
+    const refreshSupplemental = vi.fn(() => new Promise<void>((resolve) => { resolveSupplemental = resolve; }));
     const errors: unknown[] = [];
     const scheduler = createPortfolioAutoRefreshScheduler({
-      getRole: () => 'admin',
+      getRole: () => 'guest',
       isVisible: () => true,
-      refreshQuotes,
-      refreshSupplemental: async () => { throw new Error('Broker unavailable'); },
+      refreshQuotes: vi.fn(),
+      refreshSupplemental,
       onError: (_source, error) => errors.push(error)
     });
 
-    scheduler.configure(15_000, 'admin');
+    scheduler.configure(15_000, 'guest');
     const first = scheduler.refreshNow();
     const second = scheduler.refreshNow();
     await Promise.resolve();
-    expect(refreshQuotes).toHaveBeenCalledTimes(1);
-    resolveQuote?.();
-    await expect(first).resolves.toBe(false);
-    await expect(second).resolves.toBe(false);
-    expect(errors).toHaveLength(1);
+    expect(refreshSupplemental).toHaveBeenCalledTimes(1);
+    resolveSupplemental?.();
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(true);
+    expect(errors).toHaveLength(0);
     scheduler.stop();
   });
 });
