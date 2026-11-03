@@ -19,16 +19,18 @@ describe('Freedom broker transport runtime', () => {
   it('routes read-only broker endpoints without changing their query contracts', async () => {
     const { runtime, proxyFetch } = createRuntime();
     await runtime.testFreedomTradeNetConnection();
+    await runtime.testFreedomTradeNetOrdersStream();
     await runtime.fetchFreedomTradeNetPositions();
     await runtime.fetchFreedomTradeNetTrades(' 2026-01-02 ');
     await runtime.fetchFreedomTradeNetActiveOrders();
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-test', 'freedom-positions', 'freedom-trades', 'freedom-orders'
+      'freedom-test', 'freedom-orders-stream', 'freedom-positions', 'freedom-trades', 'freedom-orders'
     ]);
+    expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
     expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[2][1]).toEqual({ fromDate: '2026-01-02' });
-    expect(proxyFetch.mock.calls[2][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[3][1]).toEqual({ active_only: 1 });
+    expect(proxyFetch.mock.calls[3][1]).toEqual({ fromDate: '2026-01-02' });
+    expect(proxyFetch.mock.calls[3][2]).toEqual({ cache: 'no-store' });
+    expect(proxyFetch.mock.calls[4][1]).toEqual({ active_only: 1 });
   });
 
   it('caches cashflows by token and normalized date range for five minutes', async () => {
