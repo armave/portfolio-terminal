@@ -1,4 +1,5 @@
 import { emitBrokerEvent } from './brokerEventBus';
+import { normalizeFreedomOrderFills } from './freedomTradeContracts';
 import {
   fetchFreedomTradeNetActiveOrders,
   fetchFreedomTradeNetPositions,
@@ -45,6 +46,7 @@ export interface PortfolioBrokerDataRuntimeDependencies {
   setBrokerExecutions: (executions: FreedomExecutedTrade[]) => void;
   fetchActiveOrders?: () => Promise<unknown>;
   normalizeActiveOrders?: (response: unknown) => FreedomActiveOrder[];
+  normalizeOrderFills?: (response: unknown) => FreedomExecutedTrade[];
   refreshOrders?: (
     dependencies: ActiveOrdersRefreshDependencies<unknown, FreedomActiveOrder>
   ) => Promise<void>;
@@ -83,6 +85,7 @@ export function createPortfolioBrokerDataRuntime(
   const markHistoryBaseline = dependencies.markHistoryBaseline || markFreedomTradeHistoryBaseline;
   const fetchActiveOrders = dependencies.fetchActiveOrders || fetchFreedomTradeNetActiveOrders;
   const normalizeActiveOrders = dependencies.normalizeActiveOrders || normalizeFreedomActiveOrders;
+  const normalizeOrderFills = dependencies.normalizeOrderFills || normalizeFreedomOrderFills;
   const logError = dependencies.logError || ((message, error) => console.error(message, error));
 
   const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
@@ -207,16 +210,50 @@ export function createPortfolioBrokerDataRuntime(
     if (existing) return existing;
 
     let succeeded = false;
+    let orderStreamFills: FreedomExecutedTrade[] = [];
+    const fetchActiveOrdersAndCaptureFills = async (): Promise<unknown> => {
+      const response = await fetchActiveOrders();
+      if (dependencies.isSessionCurrent(session)) {
+        orderStreamFills = normalizeOrderFills(response);
+      }
+      return response;
+    };
     const request = (async () => {
       await refreshOrders({
         restoreGatewaySecret: restoreSecret,
         isCurrent: () => dependencies.isSessionCurrent(session),
-        fetchActiveOrders,
+        fetchActiveOrders: fetchActiveOrdersAndCaptureFills,
         normalizeActiveOrders,
         onSuccess: (orders) => {
           if (!dependencies.isSessionCurrent(session)) return;
           succeeded = true;
           emit('broker:active-orders', orders);
+
+          // The authenticated orders event embeds completed executions in each
+          // order's trade[] list. Merge only new TradeNet trade IDs into the
+          // canonical history, preserving app-calculated fee allocations.
+          if (orderStreamFills.length > 0 && dependencies.isSessionCurrent(session)) {
+            const retainedExecutions = [
+              ...loadSavedBrokerExecutions(),
+              ...dependencies.getCurrentBrokerExecutions()
+            ];
+            const knownIds = new Set(retainedExecutions.map((trade) => String(trade.id)));
+            const newFills = orderStreamFills.filter((trade) => !knownIds.has(String(trade.id)));
+            if (newFills.length > 0) {
+              const fillsWithPersistedFees = preservePersistedBrokerFeeAllocations(
+                newFills,
+                retainedExecutions
+              );
+              const mergedTrades = mergeBrokerExecutionHistory(
+                retainedExecutions,
+                fillsWithPersistedFees
+              );
+              if (dependencies.isSessionCurrent(session)) {
+                dependencies.setBrokerExecutions(mergedTrades);
+                emit('broker:executed-trades', mergedTrades);
+              }
+            }
+          }
         },
         onError: () => {
           if (!dependencies.isSessionCurrent(session)) return;
