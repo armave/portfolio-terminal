@@ -34,6 +34,7 @@ export interface FreedomQuoteStreamRuntime {
 }
 
 const QUOTE_STREAM_HEARTBEAT_MS = 20_000;
+const QUOTE_STREAM_PONG_TIMEOUT_MS = 45_000;
 const QUOTE_STREAM_CONNECT_TIMEOUT_MS = 12_000;
 const QUOTE_STREAM_RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 15_000, 30_000];
 
@@ -78,6 +79,7 @@ export function createFreedomQuoteStreamRuntime(
   let reconnectHandle: ReturnType<typeof setTimeout> | null = null;
   let reconnectAttempt = 0;
   let connected = false;
+  let lastPongAt = 0;
 
   const reportStatus = (status: FreedomQuoteStreamStatus, message?: string): void => {
     dependencies.onStatus?.(status, message);
@@ -150,10 +152,16 @@ export function createFreedomQuoteStreamRuntime(
           return;
         }
         clearHeartbeat();
+        lastPongAt = now();
         heartbeatHandle = scheduleInterval(() => {
-          if (nextSocket.readyState === 1) {
-            try { nextSocket.send('ping'); } catch { /* close event will reconnect */ }
+          if (nextSocket.readyState !== 1) return;
+          if (lastPongAt > 0 && now() - lastPongAt > QUOTE_STREAM_PONG_TIMEOUT_MS) {
+            connected = false;
+            reportStatus('disconnected', 'The live TradeNet quote stream heartbeat timed out.');
+            try { nextSocket.close(4000, 'Quote stream heartbeat timeout'); } catch { /* close event may already be pending */ }
+            return;
           }
+          try { nextSocket.send('ping'); } catch { /* close event will reconnect */ }
         }, QUOTE_STREAM_HEARTBEAT_MS);
       });
 
@@ -161,8 +169,13 @@ export function createFreedomQuoteStreamRuntime(
         if (!active || runGeneration !== generation || socket !== nextSocket) return;
         const message = parseStreamMessage(event?.data);
         if (!message) return;
+        if (message.type === 'pong') {
+          lastPongAt = now();
+          return;
+        }
         if (message.type === 'ready' || (message.type === 'status' && message.status === 'connected')) {
           connected = true;
+          lastPongAt = now();
           reconnectAttempt = 0;
           reportStatus('connected');
           if (message.type === 'ready') finish();
@@ -197,6 +210,7 @@ export function createFreedomQuoteStreamRuntime(
       nextSocket.addEventListener('close', (event: any) => {
         clearHeartbeat();
         connected = false;
+        lastPongAt = 0;
         if (socket === nextSocket) socket = null;
         if (!settled) finish(new Error('The live TradeNet quote socket closed before it became ready.'));
         if (active && runGeneration === generation) {
@@ -206,6 +220,7 @@ export function createFreedomQuoteStreamRuntime(
       });
     }).catch((error: unknown) => {
       clearHeartbeat();
+      lastPongAt = 0;
       if (socket === nextSocket) socket = null;
       if (active && runGeneration === generation) scheduleReconnect(runGeneration);
       throw error instanceof Error ? error : new Error(String(error));
@@ -245,6 +260,7 @@ export function createFreedomQuoteStreamRuntime(
       }
       active = true;
       connected = false;
+      lastPongAt = 0;
       requestedTickers = normalized;
       activeSessionKey = sessionKey;
       reconnectAttempt = 0;
@@ -264,6 +280,7 @@ export function createFreedomQuoteStreamRuntime(
     active = false;
     generation += 1;
     connected = false;
+    lastPongAt = 0;
     requestedTickers = [];
     activeSessionKey = '';
     reconnectAttempt = 0;
@@ -281,6 +298,6 @@ export function createFreedomQuoteStreamRuntime(
   return {
     start,
     stop,
-    isConnected: () => connected && socket?.readyState === 1
+    isConnected: () => connected && socket?.readyState === 1 && lastPongAt > 0 && now() - lastPongAt <= QUOTE_STREAM_PONG_TIMEOUT_MS
   };
 }
