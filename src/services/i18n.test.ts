@@ -14,7 +14,7 @@ describe('app localization', () => {
     expect(translateText(
       'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.',
       'ru'
-    )).toContain('Котировки и общий снимок портфеля синхронизируются с облаком с выбранным интервалом.');
+    )).toContain('Котировки, состояние портфеля в облаке, резервные данные брокера, сделки, заявки, денежные операции и история закрытых сделок обновляются с выбранным интервалом.');
     expect(translateText(
       'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.',
       'ru'
