@@ -35,11 +35,18 @@ describe('Freedom account stream health', () => {
     setFreedomAccountStreamStatus(session, 'reconnecting');
     expect(isFreedomAccountStreamHealthy(session)).toBe(false);
     expect(hasFreedomAccountStreamSnapshot(session, 'portfolio')).toBe(false);
+
+    // A brief outage still needs history catch-up even if both channels recover
+    // before the next 60-second scheduler tick.
+    setFreedomAccountStreamStatus(session, 'connected');
+    markFreedomAccountStreamSnapshot(session, 'portfolio');
+    markFreedomAccountStreamSnapshot(session, 'orders');
+    expect(isFreedomAccountStreamHealthy(session)).toBe(true);
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(true);
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(false);
+
     setFreedomAccountStreamStatus(session, 'reconnecting');
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(false);
-
     setFreedomAccountStreamStatus(session, 'connected');
     markFreedomAccountStreamSnapshot(session, 'portfolio');
     markFreedomAccountStreamSnapshot(session, 'orders');
