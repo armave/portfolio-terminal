@@ -1,12 +1,12 @@
 # UI/UX Stage 3 — Navigation and Visual Hierarchy
 
-**Status:** Prepared; implementation not started  
+**Status:** Implementation committed to this branch; automated CI and browser validation pending  
 **Baseline:** `main` at `d7f565e194cdc31bf1937cac7b6e455cf4937bd7` (2026-11-03)  
 **Working branch:** `ux/stage-3-navigation-visual-hierarchy-2026-11-03`
 
 ## Objective
 
-Make workspace navigation easier to scan and use across desktop, tablet, and narrow mobile screens, while improving the hierarchy and readability of the financial summary. Preserve the existing terminal aesthetic, information density, financial semantics, and English/Russian localization.
+Make workspace navigation easier to scan and use across desktop, tablet, and narrow mobile screens, while improving the hierarchy and readability of the financial summary. Implementation separates synchronization from destination navigation, gives long ticker lists an independent mobile scroll strip, makes role-specific destination order explicit and testable, and raises summary labels and values by one type step. Preserve the existing terminal aesthetic, information density, financial semantics, and English/Russian localization.
 
 This is the UI/UX Stage 3 from the Portfolio Terminal audit roadmap. It is distinct from the repository's separate `feature/stage-3-atomic-persistence` workstream.
 
@@ -25,27 +25,27 @@ This is the UI/UX Stage 3 from the Portfolio Terminal audit roadmap. It is disti
 
 ### 1. Navigation structure and density
 
-- [ ] Separate the portfolio sync action from the workspace-destination button group so the group contains only destinations.
-- [ ] Preserve all current destinations and permissions for administrator, guest, and signed-out states.
+- [x] Separate the portfolio sync action from the workspace-destination button group so the group contains only destinations.
+- [x] Preserve all current destinations and permissions for administrator, guest, and signed-out states.
 - [ ] Review the current wrap-on-mobile behavior with empty, single-ticker, and many-ticker portfolios. Keep all destinations discoverable; avoid introducing hidden destinations or horizontal page overflow.
-- [ ] If many tickers create excessive header height, prototype a secondary ticker strip while keeping primary desk destinations immediately visible. Adopt it only if browser checks demonstrate a measurable improvement.
-- [ ] Preserve the current active-state styling, visible focus treatment, and ArrowLeft/ArrowRight/Home/End behavior. Verify index ordering for administrator and guest navigation lists.
-- [ ] Ensure focus moves the active destination into view when a scrollable navigation treatment is used.
+- [x] If many tickers create excessive header height, prototype a secondary ticker strip while keeping primary desk destinations immediately visible. Adopt it only if browser checks demonstrate a measurable improvement.
+- [x] Preserve the current active-state styling, visible focus treatment, and ArrowLeft/ArrowRight/Home/End behavior. Verify index ordering for administrator and guest navigation lists.
+- [x] Ensure focus moves the active destination into view when a scrollable navigation treatment is used.
 
 ### 2. Financial summary hierarchy
 
-- [ ] Establish a consistent type scale for summary section headings, metric labels, metric values, and tertiary quote metadata.
-- [ ] Raise the minimum readable size of key metric labels on narrow screens; avoid making every secondary detail equally prominent.
+- [x] Establish a consistent type scale for summary section headings, metric labels, metric values, and tertiary quote metadata.
+- [x] Raise the minimum readable size of key metric labels on narrow screens; avoid making every secondary detail equally prominent.
 - [ ] Strengthen grouping and scanning order for position basis, market valuation, debt/carrying costs, and market tools.
-- [ ] Keep important values visually primary, right-aligned where appropriate, and rendered with tabular numerals.
-- [ ] Keep quote freshness, partial valuation, and missing-price states explicit. Never turn unavailable data into a numeric zero or imply a complete valuation when it is partial.
+- [x] Keep important values visually primary, right-aligned where appropriate, and rendered with tabular numerals.
+- [x] Keep quote freshness, partial valuation, and missing-price states explicit. Never turn unavailable data into a numeric zero or imply a complete valuation when it is partial.
 - [ ] Preserve compact details such as timestamps and secondary source metadata where they remain legible and do not compete with the primary figures.
 
 ### 3. Localization and accessibility
 
-- [ ] Route any new visible copy, tooltip, title, and accessible name through the existing localization system.
-- [ ] Add English/Russian translation coverage for any new navigation labels or explanatory text.
-- [ ] Keep destination controls as native buttons with stable accessible names and selected-state semantics.
+- [x] Route any new visible copy, tooltip, title, and accessible name through the existing localization system.
+- [x] Add English/Russian translation coverage for any new navigation labels or explanatory text.
+- [x] Keep destination controls as native buttons with stable accessible names and selected-state semantics.
 - [ ] Test administrator and guest destination sets, including long Russian labels and a large ticker count.
 - [ ] Respect reduced-motion and high-contrast/forced-colors preferences.
 
@@ -53,17 +53,17 @@ This is the UI/UX Stage 3 from the Portfolio Terminal audit roadmap. It is disti
 
 ### Vitest
 
-- [ ] Extend navigation helper tests for the actual administrator/guest destination ordering and index mapping.
-- [ ] Update structural/accessibility wiring tests for the separated sync action and destination group.
-- [ ] Update responsive style tests only where behavior intentionally changes; avoid brittle assertions that merely duplicate CSS declarations.
-- [ ] Add localization assertions for every new English/Russian string.
+- [x] Extend navigation helper tests for the actual administrator/guest destination ordering and index mapping.
+- [x] Update structural/accessibility wiring tests for the separated sync action and destination group.
+- [x] Update responsive style tests only where behavior intentionally changes; avoid brittle assertions that merely duplicate CSS declarations.
+- [x] Add localization assertions for every new English/Russian string.
 
 ### Production-browser smoke
 
-- [ ] Extend the existing mocked browser journey to cover empty, one-ticker, and many-ticker navigation states.
-- [ ] Check 320, 360, 390, 768, 1024, and 1440px for page-level overflow, clipped destinations, and header layout.
-- [ ] Verify every destination is reachable by pointer and keyboard; verify ArrowLeft/ArrowRight wrap and Home/End behavior.
-- [ ] Verify the sync action remains independently named, operable, and outside the destination group.
+- [x] Extend the existing mocked browser journey to cover empty, one-ticker, and many-ticker navigation states.
+- [x] Check 320, 360, 390, 768, 1024, and 1440px for page-level overflow, clipped destinations, and header layout.
+- [x] Verify every destination is reachable by pointer and keyboard; verify ArrowLeft/ArrowRight wrap and Home/End behavior.
+- [x] Verify the sync action remains independently named, operable, and outside the destination group.
 - [ ] Capture before/after screenshots at narrow mobile, tablet, and desktop widths for visual review.
 - [ ] Run the full required CI sequence: typecheck, Vitest, production build, browser smoke, dead-code validation, and dependency audits.
 

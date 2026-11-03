@@ -1,5 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { isBalanceDeskView, isMarginDeskView, resolveTabNavigationIndex, shouldRefreshQuotesOnNavigation, shouldRefreshQuotesWhenEnteringBalance } from './tabNavigation';
+import { getWorkspaceNavigationViews, isBalanceDeskView, isMarginDeskView, resolveTabNavigationIndex, shouldRefreshQuotesOnNavigation, shouldRefreshQuotesWhenEnteringBalance } from './tabNavigation';
+
+describe('workspace destination ordering', () => {
+  it('keeps administrator destinations after zero, one, or many ticker choices', () => {
+    expect(getWorkspaceNavigationViews([], true, false))
+      .toEqual(['COMBINED', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
+    expect(getWorkspaceNavigationViews(['AAPL'], true, false))
+      .toEqual(['AAPL', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
+    expect(getWorkspaceNavigationViews(['AAPL', 'MSFT'], true, false))
+      .toEqual(['COMBINED', 'AAPL', 'MSFT', 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']);
+  });
+
+  it('keeps guest destinations limited to Balance, assigned LOTS history, and Settings', () => {
+    expect(getWorkspaceNavigationViews(['AAPL'], false, true))
+      .toEqual(['BALANCE', 'GUEST_HISTORY', 'SETTINGS']);
+    expect(getWorkspaceNavigationViews(['AAPL'], false, false))
+      .toEqual(['BALANCE', 'SETTINGS']);
+  });
+});
 
 describe('resolveTabNavigationIndex', () => {
   it('wraps left and right navigation across the tab list', () => {

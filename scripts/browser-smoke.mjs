@@ -361,7 +361,14 @@ async function assertResponsiveLayout(page, width) {
       .filter((element) => element.getClientRects().length > 0)
       .map((element) => {
         const bounds = element.getBoundingClientRect();
-        return { left: bounds.left, right: bounds.right };
+        const tickerStrip = element.closest('.workspace-nav-ticker-list');
+        const tickerStripBounds = tickerStrip?.getBoundingClientRect();
+        return {
+          left: bounds.left,
+          right: bounds.right,
+          inScrollableTickerStrip: Boolean(tickerStrip),
+          tickerStripWidth: tickerStripBounds?.width || 0
+        };
       });
     return {
       viewportWidth,
@@ -379,9 +386,59 @@ async function assertResponsiveLayout(page, width) {
     throw new Error(`The portfolio workspace is clipped at ${width}px.`);
   }
   if (!layout.navBounds || layout.navControls.some((control) =>
-    control.left < layout.navBounds.left - 1 || control.right > layout.navBounds.right + 1
+    !control.inScrollableTickerStrip &&
+    (control.left < layout.navBounds.left - 1 || control.right > layout.navBounds.right + 1)
   )) {
-    throw new Error(`Workspace navigation contains a clipped destination at ${width}px.`);
+    throw new Error(`Workspace navigation contains a clipped fixed destination at ${width}px.`);
+  }
+  if (layout.navControls.some((control) =>
+    control.inScrollableTickerStrip && control.tickerStripWidth < 1
+  )) {
+    throw new Error(`The ticker navigation strip is not visible at ${width}px.`);
+  }
+}
+
+async function assertManyTickerNavigation(page) {
+  await page.setViewportSize({ width: 360, height: 844 });
+  const measurements = await page.locator('.workspace-nav-ticker-list').evaluate((strip) => {
+    const template = strip.querySelector('button');
+    if (!template) throw new Error('The ticker navigation strip has no destination to extend.');
+    const clones = [];
+    for (let index = 0; index < 12; index += 1) {
+      const ticker = 'SMK' + String(index + 1).padStart(2, '0');
+      const clone = template.cloneNode(true);
+      clone.removeAttribute('id');
+      clone.removeAttribute('data-nav-tab');
+      clone.removeAttribute('data-nav-index');
+      clone.classList.add('stage3-nav-smoke-clone');
+      clone.textContent = ticker;
+      clone.setAttribute('aria-label', 'Margin: ' + ticker);
+      strip.appendChild(clone);
+      clones.push(clone);
+    }
+    const result = {
+      clientWidth: strip.clientWidth,
+      scrollWidth: strip.scrollWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+      stripWidth: strip.getBoundingClientRect().width,
+      fixedDestinationVisible: Boolean(document.querySelector('#settingsBtn')?.getClientRects().length)
+    };
+    clones.forEach((clone) => clone.remove());
+    return result;
+  });
+
+  if (measurements.stripWidth < 200 || measurements.clientWidth < 200) {
+    throw new Error('The narrow-screen ticker strip does not receive usable width.');
+  }
+  if (measurements.scrollWidth <= measurements.clientWidth + 20) {
+    throw new Error('A long ticker list did not become independently scrollable.');
+  }
+  if (measurements.documentWidth > measurements.viewportWidth + 1) {
+    throw new Error('A long ticker list caused page-level horizontal overflow.');
+  }
+  if (!measurements.fixedDestinationVisible) {
+    throw new Error('Fixed workspace destinations disappeared beside a long ticker list.');
   }
 }
 
@@ -512,6 +569,14 @@ try {
   for (const width of [320, 360, 390, 768, 1024, 1440]) {
     await assertResponsiveLayout(page, width);
   }
+
+  if (await page.locator('#tickerTabs #syncPortfolioButton').count() !== 0) {
+    throw new Error('Portfolio sync action must not be nested inside workspace navigation.');
+  }
+  if (await page.locator('#syncPortfolioButton').count() !== 1) {
+    throw new Error('Administrator workspace must expose one independent portfolio sync action.');
+  }
+  await assertManyTickerNavigation(page);
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // Exercise roving keyboard navigation through the full destination list.

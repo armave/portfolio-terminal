@@ -1,6 +1,6 @@
 import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { isMarginDeskView, resolveTabNavigationIndex, shouldRefreshQuotesOnNavigation } from '../ui/tabNavigation';
+import { getWorkspaceNavigationViews, isMarginDeskView, resolveTabNavigationIndex, shouldRefreshQuotesOnNavigation } from '../ui/tabNavigation';
 import { useActiveView, usePortfolioSelector } from '../store/portfolioStore';
 import { calculatePortfolioValuation } from '../domain/portfolioValuation';
 import { emitBrokerEvent } from '../services/brokerEventBus';
@@ -20,8 +20,6 @@ export const TickerTabs = memo(function TickerTabs({
 } = {}) {
   const tickers = usePortfolioSelector(selectPositionTickers, areTickerListsEqual);
   const activeView = useActiveView();
-  const [isSyncingPortfolio, setIsSyncingPortfolio] = useState(false);
-  const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
   const selectView = (view: string) => {
     if (!isAdmin && view !== 'BALANCE' && view !== 'SETTINGS' && !(userId && view === 'GUEST_HISTORY')) return;
     // Refresh the latest portfolio quotes whenever a different Margin section
@@ -51,9 +49,7 @@ export const TickerTabs = memo(function TickerTabs({
       ? [tickers[0]]
       : ['COMBINED', ...tickers];
   const canViewGuestHistory = !isAdmin && Boolean(userId);
-  const navigationViews = isAdmin
-    ? [...marginDeskViews, 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS']
-    : canViewGuestHistory ? ['BALANCE', 'GUEST_HISTORY', 'SETTINGS'] : ['BALANCE', 'SETTINGS'];
+  const navigationViews = getWorkspaceNavigationViews(tickers, isAdmin, canViewGuestHistory);
   const balanceNavIndex = isAdmin ? marginDeskViews.length : 0;
   const guestHistoryNavIndex = balanceNavIndex + 1;
   const settingsNavIndex = balanceNavIndex + (isAdmin || canViewGuestHistory ? 2 : 1);
@@ -66,7 +62,9 @@ export const TickerTabs = memo(function TickerTabs({
     if (nextIndex === null) return;
 
     event.preventDefault();
-    tabButtonRefs.current[nextIndex]?.focus();
+    const nextButton = tabButtonRefs.current[nextIndex];
+    nextButton?.focus({ preventScroll: true });
+    nextButton?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     selectView(navigationViews[nextIndex]);
   };
 
@@ -77,6 +75,186 @@ export const TickerTabs = memo(function TickerTabs({
       emitUiEvent('portfolio:refresh-live-prices', { resolve });
     });
   };
+
+  return (
+    <>
+      {isAdmin && (
+        <div
+          class="workspace-nav-ticker-list"
+          role="group"
+          aria-label={translateText('Margin ticker navigation', getAppLanguage())}
+        >
+      {isAdmin && tickers.length === 0 && (
+        <button
+          type="button"
+          data-nav-tab="true"
+          data-nav-index={0}
+          ref={(element) => { tabButtonRefs.current[0] = element; }}
+          onKeyDown={handleTabKeyDown}
+          onClick={() => selectView('COMBINED')}
+          aria-label={translateText('Combined portfolio', getAppLanguage())}
+          aria-pressed={isMarginDeskActive}
+          class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
+            ? 'bg-emerald-600 text-black'
+            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            }`}
+        >
+          <span class="workspace-nav-label--desktop">{translateText('MARGIN DESK', getAppLanguage())}</span>
+          <span class="workspace-nav-label--mobile">{translateText('COMBINED', getAppLanguage())}</span>
+        </button>
+      )}
+
+      {isAdmin && tickers.length === 1 && (
+        <button
+          type="button"
+          onClick={() => selectView(tickers[0])}
+          aria-label={`${translateText('Margin', getAppLanguage())}: ${tickers[0]}`}
+          aria-pressed={activeView === tickers[0]}
+          class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === tickers[0] && isMarginDeskActive
+            ? 'bg-emerald-600 text-black'
+            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            }`}
+          data-nav-tab="true"
+          data-nav-index={0}
+          ref={(element) => { tabButtonRefs.current[0] = element; }}
+          onKeyDown={handleTabKeyDown}
+        >
+          <span class="workspace-nav-label--desktop">{translateText('MARGIN', getAppLanguage())}: {tickers[0]}</span>
+          <span class="workspace-nav-label--mobile">{tickers[0]}</span>
+        </button>
+      )}
+
+      {isAdmin && tickers.length > 1 && (
+        <>
+          <button
+            type="button"
+            onClick={() => selectView('COMBINED')}
+            aria-label={translateText('Combined portfolio', getAppLanguage())}
+            aria-pressed={activeView === 'COMBINED'}
+            class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === 'COMBINED' && isMarginDeskActive
+              ? 'bg-emerald-600 text-black'
+              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              }`}
+          data-nav-tab="true"
+          data-nav-index={0}
+          ref={(element) => { tabButtonRefs.current[0] = element; }}
+          onKeyDown={handleTabKeyDown}
+          >
+            <span class="workspace-nav-label--desktop">{translateText('COMBINED PORTFOLIO', getAppLanguage())}</span>
+            <span class="workspace-nav-label--mobile">{translateText('COMBINED', getAppLanguage())}</span>
+          </button>
+
+          {tickers.map((t, index) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => selectView(t)}
+              aria-label={`${translateText('Margin', getAppLanguage())}: ${t}`}
+              aria-pressed={activeView === t}
+              class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === t && isMarginDeskActive
+                ? 'bg-emerald-600 text-black'
+                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                }`}
+          data-nav-tab="true"
+          data-nav-index={index + 1}
+          ref={(element) => { tabButtonRefs.current[index + 1] = element; }}
+          onKeyDown={handleTabKeyDown}
+            >
+              {t}
+            </button>
+          ))}
+        </>
+      )}
+
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => selectView('BALANCE')}
+        aria-pressed={isCushionActive}
+        class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
+          ? 'bg-cyan-500 text-black'
+          : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
+          }`}
+          data-nav-tab="true"
+          data-nav-index={balanceNavIndex}
+          ref={(element) => { tabButtonRefs.current[balanceNavIndex] = element; }}
+          onKeyDown={handleTabKeyDown}
+      >
+        <span>{translateText('BALANCE', getAppLanguage())}</span>
+        <BalanceEquityBadge isAdmin={isAdmin} userId={userId} isActive={isCushionActive} />
+      </button>
+
+      {canViewGuestHistory && <button
+        type="button"
+        onClick={() => selectView('GUEST_HISTORY')}
+        aria-pressed={isGuestHistoryActive}
+        class={`px-3 py-1 rounded text-xs font-bold transition ${isGuestHistoryActive
+          ? 'bg-indigo-500 text-white'
+          : 'bg-slate-900 border border-indigo-800/60 text-indigo-300 hover:bg-slate-800'
+          }`}
+        data-nav-tab="true"
+        data-nav-index={guestHistoryNavIndex}
+        ref={(element) => { tabButtonRefs.current[guestHistoryNavIndex] = element; }}
+        onKeyDown={handleTabKeyDown}
+      >
+        {translateText('LOTS', getAppLanguage())}
+      </button>}
+
+      {isAdmin && <button
+        type="button"
+        onClick={() => selectView('CLOSED_HISTORY')}
+        aria-label={translateText('Trades', getAppLanguage())}
+        aria-pressed={isClosedHistoryActive}
+        class={`px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive
+          ? 'bg-purple-500 text-black'
+          : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
+          }`}
+          data-nav-tab="true"
+          data-nav-index={balanceNavIndex + 1}
+          ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
+          onKeyDown={handleTabKeyDown}
+      >
+        {translateText('TRADES', getAppLanguage())}
+      </button>}
+
+      <button
+        id="settingsBtn"
+        type="button"
+        aria-pressed={isSettingsActive}
+        onClick={() => selectView('SETTINGS')}
+        class={
+          isSettingsActive
+            ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
+            : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition'
+        }
+          data-nav-tab="true"
+          data-nav-index={settingsNavIndex}
+          ref={(element) => { tabButtonRefs.current[settingsNavIndex] = element; }}
+          onKeyDown={handleTabKeyDown}
+        aria-label={translateText('Settings', getAppLanguage())}
+        title={translateText('Settings', getAppLanguage())}
+      >
+        <span aria-hidden="true">⚙️</span>
+      </button>
+    </>
+  );
+});
+
+
+/** Portfolio synchronization is an action, not a workspace destination. */
+export function PortfolioSyncButton({
+  isAdmin = false,
+  userId
+}: {
+  isAdmin?: boolean;
+  userId?: string;
+}) {
+  const [isSyncingPortfolio, setIsSyncingPortfolio] = useState(false);
+  const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
+
+  if (!isAdmin && !userId) return null;
 
   const handleSyncPortfolio = async (): Promise<void> => {
     if (portfolioSyncPromise.current) {
@@ -98,176 +276,20 @@ export const TickerTabs = memo(function TickerTabs({
   };
 
   return (
-    <>
-      {(isAdmin || Boolean(userId)) && (
-        <button
-          id="syncPortfolioButton"
-          type="button"
-          title={translateText('Sync portfolio', getAppLanguage())}
-          aria-label={translateText('Sync portfolio', getAppLanguage())}
-          aria-busy={isSyncingPortfolio}
-          disabled={isSyncingPortfolio}
-          onClick={handleSyncPortfolio}
-          class="h-8 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
-        >
-          <span class={isSyncingPortfolio ? 'animate-spin' : ''} aria-hidden="true">↻</span>
-        </button>
-      )}
-
-      {isAdmin && tickers.length === 0 && (
-        <button
-          type="button"
-          data-nav-tab="true"
-          data-nav-index={0}
-          ref={(element) => { tabButtonRefs.current[0] = element; }}
-          onKeyDown={handleTabKeyDown}
-          onClick={() => selectView('COMBINED')}
-          aria-label="Combined portfolio"
-          aria-pressed={isMarginDeskActive}
-          class={`px-3 py-1 rounded text-xs font-bold transition ${isMarginDeskActive
-            ? 'bg-emerald-600 text-black'
-            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-            }`}
-        >
-          <span class="workspace-nav-label--desktop">MARGIN DESK</span>
-          <span class="workspace-nav-label--mobile">COMBINED</span>
-        </button>
-      )}
-
-      {isAdmin && tickers.length === 1 && (
-        <button
-          type="button"
-          onClick={() => selectView(tickers[0])}
-          aria-label={`Margin: ${tickers[0]}`}
-          aria-pressed={activeView === tickers[0]}
-          class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === tickers[0] && isMarginDeskActive
-            ? 'bg-emerald-600 text-black'
-            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-            }`}
-          data-nav-tab="true"
-          data-nav-index={0}
-          ref={(element) => { tabButtonRefs.current[0] = element; }}
-          onKeyDown={handleTabKeyDown}
-        >
-          <span class="workspace-nav-label--desktop">MARGIN: {tickers[0]}</span>
-          <span class="workspace-nav-label--mobile">{tickers[0]}</span>
-        </button>
-      )}
-
-      {isAdmin && tickers.length > 1 && (
-        <>
-          <button
-            type="button"
-            onClick={() => selectView('COMBINED')}
-            aria-label="Combined portfolio"
-            aria-pressed={activeView === 'COMBINED'}
-            class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === 'COMBINED' && isMarginDeskActive
-              ? 'bg-emerald-600 text-black'
-              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-              }`}
-          data-nav-tab="true"
-          data-nav-index={0}
-          ref={(element) => { tabButtonRefs.current[0] = element; }}
-          onKeyDown={handleTabKeyDown}
-          >
-            <span class="workspace-nav-label--desktop">COMBINED PORTFOLIO</span>
-            <span class="workspace-nav-label--mobile">COMBINED</span>
-          </button>
-
-          {tickers.map((t, index) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => selectView(t)}
-              aria-label={`Margin: ${t}`}
-              aria-pressed={activeView === t}
-              class={`px-3 py-1 rounded text-xs font-bold transition ${activeView === t && isMarginDeskActive
-                ? 'bg-emerald-600 text-black'
-                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                }`}
-          data-nav-tab="true"
-          data-nav-index={index + 1}
-          ref={(element) => { tabButtonRefs.current[index + 1] = element; }}
-          onKeyDown={handleTabKeyDown}
-            >
-              {t}
-            </button>
-          ))}
-        </>
-      )}
-
-      <button
-        type="button"
-        onClick={() => selectView('BALANCE')}
-        aria-pressed={isCushionActive}
-        class={`px-3 py-1 rounded text-xs font-bold transition flex items-center gap-1.5 ${isCushionActive
-          ? 'bg-cyan-500 text-black'
-          : 'bg-slate-900 border border-cyan-800/60 text-cyan-400 hover:bg-slate-800'
-          }`}
-          data-nav-tab="true"
-          data-nav-index={balanceNavIndex}
-          ref={(element) => { tabButtonRefs.current[balanceNavIndex] = element; }}
-          onKeyDown={handleTabKeyDown}
-      >
-        <span>BALANCE</span>
-        <BalanceEquityBadge isAdmin={isAdmin} userId={userId} isActive={isCushionActive} />
-      </button>
-
-      {canViewGuestHistory && <button
-        type="button"
-        onClick={() => selectView('GUEST_HISTORY')}
-        aria-pressed={isGuestHistoryActive}
-        class={`px-3 py-1 rounded text-xs font-bold transition ${isGuestHistoryActive
-          ? 'bg-indigo-500 text-white'
-          : 'bg-slate-900 border border-indigo-800/60 text-indigo-300 hover:bg-slate-800'
-          }`}
-        data-nav-tab="true"
-        data-nav-index={guestHistoryNavIndex}
-        ref={(element) => { tabButtonRefs.current[guestHistoryNavIndex] = element; }}
-        onKeyDown={handleTabKeyDown}
-      >
-        LOTS
-      </button>}
-
-      {isAdmin && <button
-        type="button"
-        onClick={() => selectView('CLOSED_HISTORY')}
-        aria-label="Trades"
-        aria-pressed={isClosedHistoryActive}
-        class={`px-3 py-1 rounded text-xs font-bold transition ${isClosedHistoryActive
-          ? 'bg-purple-500 text-black'
-          : 'bg-slate-900 border border-purple-800/60 text-purple-300 hover:bg-slate-800'
-          }`}
-          data-nav-tab="true"
-          data-nav-index={balanceNavIndex + 1}
-          ref={(element) => { tabButtonRefs.current[balanceNavIndex + 1] = element; }}
-          onKeyDown={handleTabKeyDown}
-      >
-        TRADES
-      </button>}
-
-      <button
-        id="settingsBtn"
-        type="button"
-        aria-pressed={isSettingsActive}
-        onClick={() => selectView('SETTINGS')}
-        class={
-          isSettingsActive
-            ? 'px-3 py-1.5 rounded text-xs font-bold bg-blue-600 text-white transition'
-            : 'px-3 py-1.5 rounded text-xs font-bold border-blue-600 text-white border border-slate-700 hover:bg-slate-800 transition'
-        }
-          data-nav-tab="true"
-          data-nav-index={settingsNavIndex}
-          ref={(element) => { tabButtonRefs.current[settingsNavIndex] = element; }}
-          onKeyDown={handleTabKeyDown}
-        aria-label="Settings"
-        title="Settings"
-      >
-        <span aria-hidden="true">⚙️</span>
-      </button>
-    </>
+    <button
+      id="syncPortfolioButton"
+      type="button"
+      title={translateText('Sync portfolio', getAppLanguage())}
+      aria-label={translateText('Sync portfolio', getAppLanguage())}
+      aria-busy={isSyncingPortfolio}
+      disabled={isSyncingPortfolio}
+      onClick={handleSyncPortfolio}
+      class="h-8 bg-slate-800 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 border border-slate-600 text-cyan-300 text-xs font-bold px-2.5 py-1 rounded transition flex items-center justify-center text-center gap-1"
+    >
+      <span class={isSyncingPortfolio ? 'animate-spin' : ''} aria-hidden="true">↻</span>
+    </button>
   );
-});
+}
 
 
 type BalanceBadgeSnapshot = Pick<

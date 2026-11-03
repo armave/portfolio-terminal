@@ -56,3 +56,22 @@ export function shouldRefreshQuotesOnNavigation(
 ): boolean {
   return currentView !== nextView && isMarginDeskView(nextView, isAdmin);
 }
+
+
+/** Build workspace destinations in the same order used by keyboard navigation. */
+export function getWorkspaceNavigationViews(
+  tickers: string[],
+  isAdmin: boolean,
+  canViewGuestHistory: boolean
+): string[] {
+  const marginViews = tickers.length === 0
+    ? ['COMBINED']
+    : tickers.length === 1
+      ? [tickers[0]]
+      : ['COMBINED', ...tickers];
+
+  if (isAdmin) return [...marginViews, 'BALANCE', 'CLOSED_HISTORY', 'SETTINGS'];
+  return canViewGuestHistory
+    ? ['BALANCE', 'GUEST_HISTORY', 'SETTINGS']
+    : ['BALANCE', 'SETTINGS'];
+}
