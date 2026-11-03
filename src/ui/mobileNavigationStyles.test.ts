@@ -39,7 +39,7 @@ describe('mobile workspace navigation styles', () => {
 
   it('retains the Balance equity badge and its partial-valuation accessible name', () => {
     expect(navigationComponent).toContain("isAdmin ? 'workspace-nav-equity-badge--admin' : ''");
-    expect(navigationComponent).toContain("aria-label={`Balance: ${equityBadgeText}. ${equityBadgeTitle}`}");
+    expect(navigationComponent).toContain("aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}");
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-equity-badge--admin\s*\{\s*display:\s*none;/);
   });
 });
