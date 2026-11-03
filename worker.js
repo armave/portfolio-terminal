@@ -320,6 +320,29 @@ export function sanitizeFreedomActiveOrders(response) {
 
 
 /**
+ * Return a bounded login error description without exposing identifiers or secrets.
+ * TradeNet's documented authByLogin failure shape is { errMsg, code }.
+ */
+function sanitizeFreedomLoginError(value) {
+    if (typeof value !== "string") return null;
+    const sanitized = value
+        .replace(/(password|passwd|pwd|login|username|email|sid|token|signature|secret)\s*[:=]\s*[^,\s;]+/gi, "$1=[redacted]")
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email redacted]")
+        .replace(/\+?\d[\d\s().-]{7,}\d/g, "[phone redacted]")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 160);
+    return sanitized || null;
+}
+
+function getFreedomLoginErrorCode(payload) {
+    const value = payload?.errorCode ?? payload?.code;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && /^[A-Za-z0-9_.-]{1,32}$/.test(value)) return value;
+    return null;
+}
+
+/**
  * Obtain a short-lived TradeNet account SID for a single diagnostic request.
  * Credentials and SID remain inside the Worker; neither is logged or returned.
  */
@@ -361,15 +384,21 @@ async function createFreedomDiagnosticSession(env) {
         const hasFlag = (names) => names.some(name => payload &&
             Object.prototype.hasOwnProperty.call(payload, name) &&
             payload[name] !== false && payload[name] !== null && payload[name] !== "");
+        const providerErrorValue = payload?.errMsg ?? payload?.error ?? payload?.message;
+        const providerErrorMessage = sanitizeFreedomLoginError(providerErrorValue);
+        const providerErrorCode = getFreedomLoginErrorCode(payload);
         const failedChecks = [];
         if (!payload) failedChecks.push("login_payload_missing_or_invalid_json");
         if (payload?.success !== true) failedChecks.push("success_not_true");
         if (payload?.logged !== true) failedChecks.push("logged_not_true");
         if (typeof payload?.SID !== "string" || payload.SID.length < 10) failedChecks.push("sid_missing_or_invalid");
         if (payload?.real !== true) failedChecks.push("production_session_not_confirmed");
+        if (providerErrorMessage || providerErrorCode !== null) failedChecks.push("provider_returned_login_error");
         const error = new Error(payload?.real === false
             ? "TradeNet returned a demo or non-production account session."
-            : "TradeNet login failed or requested additional verification.");
+            : providerErrorMessage
+                ? "TradeNet rejected the login request: " + providerErrorMessage
+                : "TradeNet login failed or requested additional verification.");
         error.status = payload?.real === false ? 403 : 401;
         error.diagnostics = {
             phase: "login_response_validation",
@@ -385,10 +414,14 @@ async function createFreedomDiagnosticSession(env) {
                 "captchaRequired", "twoFactorRequired", "otpRequired", "smsRequired"
             ]),
             providerErrorFieldPresent: Boolean(payload && (
+                Object.prototype.hasOwnProperty.call(payload, "errMsg") ||
                 Object.prototype.hasOwnProperty.call(payload, "error") ||
                 Object.prototype.hasOwnProperty.call(payload, "errorCode") ||
+                Object.prototype.hasOwnProperty.call(payload, "code") ||
                 Object.prototype.hasOwnProperty.call(payload, "message")
             )),
+            providerErrorCode,
+            providerErrorMessage,
             failedChecks
         };
         throw error;
