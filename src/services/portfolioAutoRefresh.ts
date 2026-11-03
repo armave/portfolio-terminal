@@ -2,7 +2,6 @@ const SUPPORTED_QUOTE_REFRESH_INTERVALS = [15_000, 30_000, 60_000] as const;
 
 export const DEFAULT_ADMIN_REFRESH_INTERVAL_MS = 60_000;
 export const DEFAULT_GUEST_REFRESH_INTERVAL_MS = 15_000;
-const SUPPLEMENTAL_REFRESH_INTERVAL_MS = 60_000;
 
 type PortfolioAutoRefreshRole = 'admin' | 'guest' | null;
 type QuoteRefreshSource = 'quotes' | 'supplemental' | 'state-sync' | 'history-sync';
@@ -16,7 +15,7 @@ export function isSupportedQuoteRefreshInterval(value: unknown): boolean {
     SUPPORTED_QUOTE_REFRESH_INTERVALS.includes(parsed as typeof SUPPORTED_QUOTE_REFRESH_INTERVALS[number]);
 }
 
-/** Invalid persisted values fall back rather than breaking application startup. */
+/** A mandatory supported cadence is always selected, including for legacy Off values. */
 export function normalizeQuoteRefreshInterval(value: unknown, fallback = DEFAULT_ADMIN_REFRESH_INTERVAL_MS): number {
   if (isSupportedQuoteRefreshInterval(value)) return Number(value);
   if (isSupportedQuoteRefreshInterval(fallback)) return Number(fallback);
@@ -30,7 +29,7 @@ interface PortfolioAutoRefreshSchedulerOptions {
   refreshSupplemental: () => void | Promise<unknown>;
   /** Sync the current admin portfolio snapshot after each scheduled quote cycle. */
   syncState?: () => void | Promise<unknown>;
-  /** Checkpoint the independent admin Closed History record during the 60-second supplemental cycle. */
+  /** Checkpoint the independent admin Closed History record during each full cycle. */
   syncHistory?: () => void | Promise<unknown>;
   onError?: (source: QuoteRefreshSource, error: unknown) => void;
   setIntervalFn?: (callback: () => void, intervalMs: number) => ReturnType<typeof setInterval>;
@@ -51,20 +50,18 @@ export function createPortfolioAutoRefreshScheduler(
     options.setIntervalFn ?? ((callback, intervalMs) => setInterval(callback, intervalMs));
   const clearIntervalFn: NonNullable<PortfolioAutoRefreshSchedulerOptions['clearIntervalFn']> =
     options.clearIntervalFn ?? ((timer) => clearInterval(timer));
-  let quoteTimer: ReturnType<typeof setInterval> | null = null;
-  let supplementalTimer: ReturnType<typeof setInterval> | null = null;
+  let timer: ReturnType<typeof setInterval> | null = null;
   let activeInterval = 0;
   let activeRole: PortfolioAutoRefreshRole = null;
   let quoteInFlight: Promise<boolean> | null = null;
   let supplementalInFlight: Promise<boolean> | null = null;
   let stateSyncInFlight: Promise<boolean> | null = null;
   let historySyncInFlight: Promise<boolean> | null = null;
+  let cycleInFlight: Promise<boolean> | null = null;
 
-  const stopTimers = () => {
-    if (quoteTimer !== null) clearIntervalFn(quoteTimer);
-    if (supplementalTimer !== null) clearIntervalFn(supplementalTimer);
-    quoteTimer = null;
-    supplementalTimer = null;
+  const stopTimer = () => {
+    if (timer !== null) clearIntervalFn(timer);
+    timer = null;
   };
 
   const canRefresh = () =>
@@ -106,9 +103,6 @@ export function createPortfolioAutoRefreshScheduler(
 
   const refreshQuotesAndSyncState = async (): Promise<boolean> => {
     const quotes = await runTask('quotes', options.refreshQuotes);
-
-    // Only administrators own the shared portfolio cloud record. Guests refresh
-    // their own server-scoped snapshot through the supplemental path, read-only.
     if (activeRole !== 'admin' || !options.syncState || !canRefresh()) return quotes;
     const synced = await runTask('state-sync', options.syncState);
     return quotes && synced;
@@ -116,39 +110,39 @@ export function createPortfolioAutoRefreshScheduler(
 
   const refreshSupplementalAndSyncHistory = async (): Promise<boolean> => {
     const supplemental = await runTask('supplemental', options.refreshSupplemental);
-    // The independent encrypted Closed History record is admin-owned; guest data
-    // remains exclusively in the authenticated guest assignment snapshot.
     if (activeRole !== 'admin' || !options.syncHistory || !canRefresh()) return supplemental;
     const history = await runTask('history-sync', options.syncHistory);
-    if (!canRefresh()) return supplemental && history;
-
-    // Broker cashflow allocation can update app-owned closed-trade fields that
-    // live in the shared portfolio state record. Wait for any quote-cycle state
-    // write that started before this history calculation, then checkpoint again.
-    if (stateSyncInFlight) await stateSyncInFlight;
     if (!canRefresh() || !options.syncState) return supplemental && history;
+    if (stateSyncInFlight) await stateSyncInFlight;
+    if (!canRefresh()) return supplemental && history;
     const state = await runTask('state-sync', options.syncState);
     return supplemental && history && state;
   };
 
   const refreshNow = async (): Promise<boolean> => {
     if (!canRefresh()) return false;
+    if (cycleInFlight) return cycleInFlight;
 
-    // Guest supplemental refresh fetches the authenticated assignment snapshot
-    // and then quotes the newly hydrated ticker set. Do not race it with old tickers.
+    let cycle: Promise<boolean>;
     if (activeRole === 'guest') {
-      return runTask('supplemental', options.refreshSupplemental);
+      // The guest snapshot is fetched first; its newly assigned tickers are then quoted.
+      cycle = runTask('supplemental', options.refreshSupplemental);
+    } else {
+      cycle = Promise.all([
+        refreshQuotesAndSyncState(),
+        refreshSupplementalAndSyncHistory()
+      ]).then(([quotesAndSync, supplemental]) => quotesAndSync && supplemental);
     }
 
-    const [quotesAndSync, supplemental] = await Promise.all([
-      refreshQuotesAndSyncState(),
-      refreshSupplementalAndSyncHistory()
-    ]);
-    return quotesAndSync && supplemental;
+    cycleInFlight = cycle.finally(() => {
+      if (cycleInFlight === wrappedCycle) cycleInFlight = null;
+    });
+    const wrappedCycle = cycleInFlight;
+    return wrappedCycle;
   };
 
   const configure = (interval: unknown, role: PortfolioAutoRefreshRole): number => {
-    stopTimers();
+    stopTimer();
     activeRole = role;
     const fallback = role === 'guest'
       ? DEFAULT_GUEST_REFRESH_INTERVAL_MS
@@ -157,15 +151,10 @@ export function createPortfolioAutoRefreshScheduler(
 
     if (!role) return activeInterval;
 
-    // One selected cadence controls both quote refresh/stream maintenance and
-    // the cloud-state checkpoint that follows it.
-    quoteTimer = setIntervalFn(() => {
-      if (canRefresh()) void refreshQuotesAndSyncState();
+    // Every selected interval runs the complete role-specific sync, not just quotes.
+    timer = setIntervalFn(() => {
+      if (canRefresh()) void refreshNow();
     }, activeInterval);
-    supplementalTimer = setIntervalFn(() => {
-      if (canRefresh()) void refreshSupplementalAndSyncHistory();
-    }, SUPPLEMENTAL_REFRESH_INTERVAL_MS);
-
     return activeInterval;
   };
 
@@ -175,9 +164,10 @@ export function createPortfolioAutoRefreshScheduler(
   };
 
   const stop = () => {
-    stopTimers();
+    stopTimer();
     activeInterval = 0;
     activeRole = null;
+    cycleInFlight = null;
   };
 
   return { configure, refreshNow, onVisibilityChange, stop };
