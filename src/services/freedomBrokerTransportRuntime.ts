@@ -18,7 +18,7 @@ export interface FreedomBrokerTransportRuntime {
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
-  fetchFreedomTradeNetQuoteStreamOnce: (symbol: string) => Promise<unknown | null>;
+  fetchFreedomTradeNetQuoteStreamOnce: (symbol: string, fetchOptions?: RequestInit) => Promise<unknown | null>;
   fetchFreedomCashflows: (fromDate?: string) => Promise<unknown>;
   clearFreedomCashflowCache: () => void;
   clearFreedomStreamSnapshotCache: () => void;
@@ -88,7 +88,7 @@ export function createFreedomBrokerTransportRuntime(
     return request;
   };
 
-  const fetchFreedomTradeNetQuoteStreamOnce = (symbol: string): Promise<unknown | null> => {
+  const fetchFreedomTradeNetQuoteStreamOnce = (symbol: string, fetchOptions: RequestInit = {}): Promise<unknown | null> => {
     const normalized = symbol.trim().toUpperCase();
     if (!normalized) return Promise.reject(new Error('A ticker symbol is required.'));
     const ticker = normalized.includes('.') ? normalized : `${normalized}.US`;
@@ -108,7 +108,7 @@ export function createFreedomBrokerTransportRuntime(
     request = dependencies.proxyFetch(
       'freedom-quote-stream',
       { symbol: ticker },
-      { cache: 'no-store' }
+      { ...fetchOptions, cache: 'no-store' }
     ).finally(() => {
       if (streamSnapshotRequests.get(key) === request) streamSnapshotRequests.delete(key);
     });
