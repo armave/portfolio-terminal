@@ -2312,6 +2312,48 @@ describe('guest data isolation at the Worker boundary', () => {
     expect(stateStub.fetch.mock.calls.every(([request]) => new URL(request.url).pathname === '/api/auth/verify')).toBe(true);
   });
 
+  it('issues a one-use public quote socket ticket for the authenticated guest account', async () => {
+    const stateStub = {
+      fetch: vi.fn(async (request) => {
+        const url = new URL(request.url);
+        if (url.pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'guest-7', role: 'guest' } }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        if (url.pathname === '/internal/freedom-quote-stream-ticket') {
+          const body = await request.json();
+          expect(body).toEqual({
+            accountId: 'guest-7',
+            role: 'guest',
+            symbols: ['GOOGL.US', 'AAPL.US']
+          });
+          return new Response(JSON.stringify({
+            ok: true, ticket: 'a'.repeat(64), expiresAt: Date.now() + 60_000
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        throw new Error('Unexpected Durable Object path: ' + url.pathname);
+      })
+    };
+    const namespace = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn(() => stateStub)
+    };
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream-ticket&symbols=GOOGL.US%2CAAPL.US',
+      { headers: { 'X-App-Auth': 'guest-session-token', Authorization: 'Bearer guest-session-token' } }
+    ), { PORTFOLIO_STATE_DO: namespace });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      ticket: 'a'.repeat(64),
+      symbols: ['GOOGL.US', 'AAPL.US']
+    });
+    expect(namespace.idFromName).toHaveBeenCalledWith('portfolio_state');
+  });
+
   it('allows guests to receive the sanitized public q quote stream through the server-side broker session', async () => {
     const listeners = new Map();
     const socket = {
@@ -2486,6 +2528,116 @@ describe('guest data isolation at the Worker boundary', () => {
     expect(stateStub.fetch.mock.calls.map(([request]) => new URL(request.url).pathname)).toEqual([
       '/api/auth/verify', '/api/guest-portfolio'
     ]);
+  });
+});
+
+describe('Durable Object persistent quote stream tickets and q forwarding', () => {
+  function createStorage() {
+    const values = new Map();
+    const storage = {
+      get: vi.fn(async (key) => values.get(key)),
+      put: vi.fn(async (key, value) => values.set(key, value)),
+      delete: vi.fn(async (key) => values.delete(key)),
+      transaction: vi.fn(async (callback) => callback({
+        get: async (key) => values.get(key),
+        put: async (key, value) => values.set(key, value),
+        delete: async (key) => values.delete(key)
+      }))
+    };
+    return { storage, values };
+  }
+
+  it('consumes quote tickets exactly once and rejects a replay', async () => {
+    const { storage } = createStorage();
+    const store = new PortfolioStateDO({ storage }, {});
+    const issuedResponse = await store.handleFreedomQuoteStreamTicketRequest(new Request(
+      'https://state.test/internal/freedom-quote-stream-ticket',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: 'guest-1', role: 'guest', symbols: ['GOOGL.US', 'AAPL.US']
+        })
+      }
+    ));
+    expect(issuedResponse.status).toBe(200);
+    const issued = await issuedResponse.json();
+    expect(issued.ok).toBe(true);
+    expect(issued.ticket).toMatch(/^[a-f0-9]{64}$/);
+
+    await expect(store.consumeFreedomQuoteStreamTicket(issued.ticket)).resolves.toEqual({
+      accountId: 'guest-1',
+      role: 'guest',
+      symbols: ['GOOGL.US', 'AAPL.US']
+    });
+    await expect(store.consumeFreedomQuoteStreamTicket(issued.ticket)).resolves.toBeNull();
+  });
+
+  it('shares one authenticated upstream q connection and forwards only allowlisted quote fields', async () => {
+    const listeners = new Map();
+    const upstream = {
+      addEventListener: vi.fn((name, callback) => {
+        const callbacks = listeners.get(name) || [];
+        callbacks.push(callback);
+        listeners.set(name, callbacks);
+      }),
+      accept: vi.fn(),
+      send: vi.fn((message) => {
+        expect(JSON.parse(message)).toEqual(['quotes', ['GOOGL.US']]);
+        queueMicrotask(() => {
+          for (const callback of listeners.get('message') || []) {
+            callback({ data: JSON.stringify(['userData', { isDemo: false, mode: 'prod' }]) });
+            callback({ data: JSON.stringify(['q', {
+              c: 'GOOGL.US', ltp: 280.55, pp: 279.84, chg: 0.71,
+              bbp: 280.5, bap: 280.6, ltt: '2026-11-03T10:00:00',
+              UTCOffset: -300, owner_login: 'private-login',
+              account: 'private-account', raw_secret: 'must-not-forward'
+            }]) });
+          }
+        });
+      }),
+      close: vi.fn(),
+      readyState: 1
+    };
+    const browserMessages = [];
+    const browserClient = {
+      readyState: 1,
+      deserializeAttachment: () => ({ symbols: ['GOOGL.US'], role: 'guest', accountId: 'guest-1' }),
+      send: vi.fn((message) => browserMessages.push(JSON.parse(message)))
+    };
+    const sockets = [browserClient];
+    const { storage } = createStorage();
+    const ctx = {
+      storage,
+      getWebSockets: vi.fn(() => sockets)
+    };
+    const store = new PortfolioStateDO(ctx, {
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce({ status: 101, webSocket: upstream, headers: new Headers() });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await store.ensureFreedomQuoteUpstream(['GOOGL.US']);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(upstream.accept).toHaveBeenCalled();
+      expect(browserMessages).toContainEqual(expect.objectContaining({
+        type: 'quote',
+        symbol: 'GOOGL.US',
+        data: expect.objectContaining({ c: 'GOOGL.US', ltp: 280.55, bbp: 280.5, bap: 280.6 })
+      }));
+      const serialized = JSON.stringify(browserMessages);
+      expect(serialized).not.toContain('private-login');
+      expect(serialized).not.toContain('private-account');
+      expect(serialized).not.toContain('must-not-forward');
+      expect(store.freedomQuoteUpstreamReady).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
