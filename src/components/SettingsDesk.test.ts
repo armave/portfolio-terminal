@@ -34,3 +34,16 @@ describe('automatic update settings', () => {
     expect(source).toContain('Automatic updates are paused. Manual Sync remains available.');
   });
 });
+
+describe('temporary TradeNet diagnostics controls', () => {
+  it('keeps the test controls administrator-only and exposes both read-only probes', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+    expect(source).toContain("account?.role === \"admin\" && <section class=\"settings-panel settings-tradenet-diagnostics");
+    expect(source).toContain("runTradeNetTest('rest')");
+    expect(source).toContain("runTradeNetTest('websocket')");
+    expect(source).toContain('testFreedomTradeNetConnection()');
+    expect(source).toContain('testFreedomTradeNetOrdersStream()');
+    expect(source).toContain("JSON.stringify(tradeNetTest.result, null, 2)");
+    expect(source).toContain('Temporary test controls — remove after verification.');
+  });
+});
