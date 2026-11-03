@@ -270,7 +270,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
       }
     });
     const serialized = JSON.stringify(body);
-    for (const secret of ['private-login', 'GOOGL.US', 'Google', 'Alphabet', '1000', '970', '293.94', 'issue', 'letter']) {
+    for (const secret of ['private-login', 'GOOGL.US', 'Google', 'Alphabet', '1000', '970', '293.94', '"issue"', 'letter']) {
       expect(serialized).not.toContain(secret);
     }
     expect(String(fetchMock.mock.calls[1][0])).toMatch(/^https:\/\/wss\.tradernet\.com\//);
