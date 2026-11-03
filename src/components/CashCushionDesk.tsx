@@ -42,7 +42,8 @@ export function getCashHoldingMarketPrice(holding: { currentPrice?: unknown; pri
 type ActiveTrancheQuoteRecord = {
   currentPrice?: unknown;
   price?: unknown;
-  quoteDetails?: { sourceTimestamp?: unknown };
+  quoteUpdatedAt?: unknown;
+  quoteDetails?: { sourceTimestamp?: unknown; receivedAt?: unknown; transport?: unknown };
 };
 
 export function getActiveTrancheMarketPrice(
@@ -55,6 +56,8 @@ export function getActiveTrancheMarketPrice(
   const position = positions[ticker];
 
   // Prefer the newest verifiable observation across cash and margin ledgers.
+  // q events may carry an ISO ltt value that the provider cannot normalize into
+  // a numeric sourceTimestamp; their local receive time is still authoritative.
   // The broker tranche snapshot has no observation timestamp and is last resort.
   let latestTimestamp = 0;
   let latestPrice: number | null = null;
@@ -62,12 +65,16 @@ export function getActiveTrancheMarketPrice(
     if (!candidate) continue;
     const price = getCashHoldingMarketPrice(candidate);
     const sourceTimestamp = Number(candidate.quoteDetails?.sourceTimestamp);
-    if (
-      price !== null &&
-      Number.isFinite(sourceTimestamp) &&
-      sourceTimestamp > latestTimestamp
-    ) {
-      latestTimestamp = sourceTimestamp;
+    const arrivalTimestamp = candidate.quoteDetails?.transport === 'websocket'
+      ? Number(candidate.quoteDetails?.receivedAt) || Number(candidate.quoteUpdatedAt)
+      : 0;
+    const orderingTimestamp = Number.isFinite(sourceTimestamp) && sourceTimestamp > 0
+      ? sourceTimestamp
+      : Number.isFinite(arrivalTimestamp) && arrivalTimestamp > 0
+        ? arrivalTimestamp
+        : 0;
+    if (price !== null && orderingTimestamp > latestTimestamp) {
+      latestTimestamp = orderingTimestamp;
       latestPrice = price;
     }
   }
