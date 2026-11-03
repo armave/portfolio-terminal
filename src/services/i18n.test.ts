@@ -98,6 +98,8 @@ describe('app localization', () => {
   });
 
   it('translates known UI copy into Russian and leaves unknown text unchanged', () => {
+    expect(translateText('Temporary TradeNet diagnostics', 'ru')).toBe('Временная диагностика TradeNet');
+    expect(translateText('Test authenticated WebSocket', 'ru')).toBe('Проверить авторизованный WebSocket');
     expect(translateText('User management', 'ru')).toBe('Управление пользователями');
     expect(translateText('Settings', 'ru')).toBe('Настройки');
     expect(translateText('Unknown market symbol', 'ru')).toBe('Unknown market symbol');
