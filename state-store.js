@@ -833,12 +833,32 @@ export class PortfolioStateDO {
 
     if (this.freedomQuoteUpstream && this.freedomQuoteUpstream.readyState === 1 &&
         this.freedomQuoteUpstreamReady) {
-      const missing = symbols.filter((symbol) => !this.freedomQuoteSubscribedSymbols.has(symbol));
-      if (missing.length) {
-        this.freedomQuoteUpstream.send(JSON.stringify(["quotes", missing]));
-        missing.forEach((symbol) => this.freedomQuoteSubscribedSymbols.add(symbol));
+      const desired = new Set(symbols);
+      const hasObsoleteSubscriptions = [...this.freedomQuoteSubscribedSymbols]
+        .some((symbol) => !desired.has(symbol));
+      if (hasObsoleteSubscriptions) {
+        // TradeNet's quote subscription has no verified unsubscribe contract.
+        // Rebuild the shared upstream only when active browser clients have
+        // dropped a symbol, so old tickers stop consuming provider bandwidth.
+        const previous = this.freedomQuoteUpstream;
+        this.freedomQuoteUpstream = null;
+        this.freedomQuoteUpstreamReady = false;
+        this.freedomQuoteSubscribedSymbols.clear();
+        for (const symbol of this.freedomQuoteLastBySymbol.keys()) {
+          if (!desired.has(symbol)) this.freedomQuoteLastBySymbol.delete(symbol);
+        }
+        for (const client of this.getFreedomQuoteClients()) {
+          try { client.send(JSON.stringify({ type: "status", status: "reconnecting" })); } catch { /* disconnected client */ }
+        }
+        try { previous.close(1000, "Quote subscription set changed"); } catch { /* ignore close races */ }
+      } else {
+        const missing = symbols.filter((symbol) => !this.freedomQuoteSubscribedSymbols.has(symbol));
+        if (missing.length) {
+          this.freedomQuoteUpstream.send(JSON.stringify(["quotes", missing]));
+          missing.forEach((symbol) => this.freedomQuoteSubscribedSymbols.add(symbol));
+        }
+        return;
       }
-      return;
     }
 
     if (this.freedomQuoteUpstreamConnectPromise) {
