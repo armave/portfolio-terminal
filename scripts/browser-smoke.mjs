@@ -438,7 +438,7 @@ try {
   const navigationTabs = page.locator('#tickerTabs [data-nav-tab="true"]');
   await navigationTabs.first().focus();
   await page.keyboard.press('End');
-  if (await page.evaluate(() => (document.activeElement as HTMLElement | null)?.id) !== 'settingsBtn') {
+  if (await page.evaluate(() => document.activeElement?.id) !== 'settingsBtn') {
     throw new Error('End did not move focus to the final workspace destination.');
   }
   await page.keyboard.press('Enter');
@@ -595,11 +595,11 @@ try {
   // Confirm the shared authentication dialog traps keyboard focus at its boundaries.
   await page.locator('#authUserName').focus();
   await page.keyboard.press('Shift+Tab');
-  if (await page.evaluate(() => (document.activeElement as HTMLElement | null)?.type) !== 'submit') {
+  if (await page.evaluate(() => document.activeElement?.type) !== 'submit') {
     throw new Error('Shift+Tab escaped the authentication dialog instead of wrapping to Submit.');
   }
   await page.keyboard.press('Tab');
-  if (await page.evaluate(() => (document.activeElement as HTMLElement | null)?.id) !== 'authUserName') {
+  if (await page.evaluate(() => document.activeElement?.id) !== 'authUserName') {
     throw new Error('Tab did not wrap to the first authentication field.');
   }
 
