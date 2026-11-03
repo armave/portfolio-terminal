@@ -12,6 +12,10 @@ Configure these in the Worker environment (never in Vite/browser variables):
 - `FREEDOM_PRIVATE_KEY`
 - `FREEDOM_LOGIN` and `FREEDOM_PASSWORD` (required only for the authenticated WebSocket diagnostic; these must be the broker's login/password, not the API-key pair)
 
+The Worker obtains authenticated WebSocket SIDs through the existing `PORTFOLIO_STATE_DO` Durable Object. It caches one production SID in that object's memory for 30 minutes and coalesces concurrent quote, portfolio, markets, and orders requests into one `authByLogin` request. The SID is never written to Durable Object storage, KV, logs, or browser responses. A WebSocket authentication rejection (HTTP 401/403, explicit demo session, or server auth/session error) invalidates only the matching cached SID.
+
+TradeNet login rate limits are handled centrally. An application-level `{ errMsg, code: 429 }` or HTTP 429 starts an in-memory cooldown with exponential backoff (60 seconds initially, capped at 15 minutes); requests during the cooldown do not call `authByLogin` again. The cooldown and SID cache are intentionally memory-only and recover after Durable Object restart. The browser quote provider still falls back to the signed REST quote action when the authenticated WebSocket path is rate-limited or otherwise unavailable.
+
 The Worker still requires the existing `GATEWAY_SECRET` for all app requests. After adding secrets, use the existing read-only `freedom-test` action to confirm TradeNet authentication. For failed `authByLogin` responses, diagnostics expose only the provider's bounded, sanitized `errMsg` and safe `code`/`errorCode` value (if present); credentials, email addresses, phone numbers, session IDs, and challenge tokens are never returned. A `{ errMsg, code }` response is an API-level login failure, not a WebSocket quote event failure. The Worker continues to require `success === true`, `logged === true`, a valid SID, and `real === true` before opening the socket.
 
 ## Authenticated WebSocket active-orders snapshots
