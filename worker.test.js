@@ -198,12 +198,27 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     return { response, socket, fetchMock };
   }
 
-  it('confirms the portfolio event and returns schema counts without account values or identifiers', async () => {
-    const { response, socket, fetchMock } = await runEventDiagnostic('portfolio', {
-      key: '%private-login',
-      acc: [{ curr: 'USD', s: -17081.55, forecast_in: 10 }],
-      pos: [{ i: 'GOOGL.US', q: 31, mkt_price: 293.94, owner_login: 'private-login' }]
-    });
+  it('reports the full observed portfolio field schema without returning financial values or identifiers', async () => {
+    const portfolio = {
+      acc_srv_tm: '2026-11-03T09:00:00',
+      loaded: true,
+      m_id: 17,
+      acc: [{
+        curr: 'USD', currval: 1000, forecast_in: 10, forecast_out: 20,
+        k: 1, s: 970, sql_exec_tm: '0.01', t: 2, t2_in: 3, t2_out: 4
+      }],
+      pos: [{
+        Yield: 1, acc_pos_id: 99, accruedint_a: 2, acd: 3, bal_price_a: 4,
+        base_contract_code: 'USD', base_currency: 'USD', close_price: 5,
+        curr: 'USD', currval: 6, face_val_a: 7, fv: 8, go: 9, i: 'GOOGL.US',
+        instr_id: 10, issue_nb: 'issue', k: 11, ltr: 'letter', market_value: 12,
+        mkt_id: 13, mkt_price: 14, name: 'Google', name2: 'Alphabet',
+        open_bal: 15, profit_close: 16, q: 17, s: 18, t: 19, vm: 20,
+        owner_login: 'private-login'
+      }],
+      owner_login: 'private-login'
+    };
+    const { response, socket, fetchMock } = await runEventDiagnostic('portfolio', portfolio);
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toMatchObject({
@@ -212,17 +227,36 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
       data: {
         event: 'portfolio',
         payloadType: 'object',
-        topLevelKeys: ['acc', 'key', 'pos'],
+        topLevelKeys: ['acc', 'acc_srv_tm', 'loaded', 'm_id', 'owner_login', 'pos'],
         topLevelFieldTypes: {
-          acc: { type: 'array', length: 1, item: { type: 'object', fields: { curr: 'string', forecast_in: 'number', s: 'number' } } },
-          pos: { type: 'array', length: 1, item: { type: 'object', fields: { i: 'string', mkt_price: 'number', q: 'number' } } }
+          acc: { type: 'array', length: 1, item: { type: 'object' } },
+          acc_srv_tm: 'string',
+          loaded: 'boolean',
+          m_id: 'number',
+          pos: { type: 'array', length: 1, item: { type: 'object' } }
         },
         accountsCount: 1,
-        accountItemKeys: ['curr', 'forecast_in', 's'],
-        accountItemTypes: { curr: 'string', forecast_in: 'number', s: 'number' },
+        accountItemKeys: ['curr', 'currval', 'forecast_in', 'forecast_out', 'k', 's', 'sql_exec_tm', 't', 't2_in', 't2_out'],
+        accountItemTypes: {
+          curr: 'string', currval: 'number', forecast_in: 'number', forecast_out: 'number',
+          k: 'number', s: 'number', sql_exec_tm: 'string', t: 'number', t2_in: 'number', t2_out: 'number'
+        },
         positionsCount: 1,
-        positionItemKeys: ['i', 'mkt_price', 'q'],
-        positionItemTypes: { i: 'string', mkt_price: 'number', q: 'number' }
+        positionItemKeys: [
+          'Yield', 'acc_pos_id', 'acd', 'accruedint_a', 'bal_price_a', 'base_contract_code',
+          'base_currency', 'close_price', 'curr', 'currval', 'face_val_a', 'fv', 'go',
+          'i', 'instr_id', 'issue_nb', 'k', 'ltr', 'market_value', 'mkt_id', 'mkt_price',
+          'name', 'name2', 'open_bal', 'profit_close', 'q', 's', 't', 'vm'
+        ],
+        positionItemTypes: {
+          Yield: 'number', acc_pos_id: 'number', acd: 'number', accruedint_a: 'number',
+          bal_price_a: 'number', base_contract_code: 'string', base_currency: 'string',
+          close_price: 'number', curr: 'string', currval: 'number', face_val_a: 'number',
+          fv: 'number', go: 'number', i: 'string', instr_id: 'number', issue_nb: 'string',
+          k: 'number', ltr: 'string', market_value: 'number', mkt_id: 'number',
+          mkt_price: 'number', name: 'string', name2: 'string', open_bal: 'number',
+          profit_close: 'number', q: 'number', s: 'number', t: 'number', vm: 'number'
+        }
       },
       diagnostics: {
         requestedEvent: 'portfolio',
@@ -235,17 +269,22 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
         phase: 'event_received'
       }
     });
-    expect(JSON.stringify(body)).not.toContain('private-login');
-    expect(JSON.stringify(body)).not.toContain('-17081.55');
-    expect(JSON.stringify(body)).not.toContain('293.94');
+    const serialized = JSON.stringify(body);
+    for (const secret of ['private-login', 'GOOGL.US', 'Google', 'Alphabet', '1000', '970', '293.94', 'issue', 'letter']) {
+      expect(serialized).not.toContain(secret);
+    }
     expect(String(fetchMock.mock.calls[1][0])).toMatch(/^https:\/\/wss\.tradernet\.com\//);
     expect(socket.close).toHaveBeenCalled();
   });
 
-  it('confirms market-status updates and exposes only the documented field names', async () => {
+  it('reports all observed market metadata types without returning market names, schedules, or statuses', async () => {
     const { response, socket } = await runEventDiagnostic('markets', {
       t: '2026-11-03 09:00:00',
-      m: [{ n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN', o: '09:30:00', c: '16:00:00', dt: '-420' }]
+      m: [{
+        c: '16:00', date: Array(12).fill('redacted'), dt: -420,
+        ev: Array(8).fill('redacted'), mkt_id: 1, n: 'NASDAQ', n2: 'NASDAQ',
+        o: '09:30', p: 'pre', post: 'post', s: 'OPEN', tz: 'America/New_York'
+      }]
     }, { isDemo: false, mode: 'prod' });
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -257,16 +296,26 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
         payloadType: 'object',
         topLevelKeys: ['m', 't'],
         topLevelFieldTypes: {
-          m: { type: 'array', length: 1, item: { type: 'object', fields: { c: 'string', dt: 'string', n: 'string', n2: 'string', o: 'string', s: 'string' } } },
+          m: { type: 'array', length: 1, item: { type: 'object' } },
           t: 'string'
         },
         marketsCount: 1,
-        marketItemKeys: ['c', 'dt', 'n', 'n2', 'o', 's'],
-        marketItemTypes: { c: 'string', dt: 'string', n: 'string', n2: 'string', o: 'string', s: 'string' }
+        marketItemKeys: ['c', 'date', 'dt', 'ev', 'mkt_id', 'n', 'n2', 'o', 'p', 'post', 's', 'tz'],
+        marketItemTypes: {
+          c: 'string',
+          date: { type: 'array', length: 12, item: 'string' },
+          dt: 'number',
+          ev: { type: 'array', length: 8, item: 'string' },
+          mkt_id: 'number',
+          n: 'string', n2: 'string', o: 'string', p: 'string',
+          post: 'string', s: 'string', tz: 'string'
+        }
       }
     });
-    expect(JSON.stringify(body)).not.toContain('NASDAQ');
-    expect(JSON.stringify(body)).not.toContain('OPEN');
+    const serialized = JSON.stringify(body);
+    for (const secret of ['NASDAQ', 'OPEN', '09:30', '16:00', 'America/New_York', 'redacted']) {
+      expect(serialized).not.toContain(secret);
+    }
     expect(socket.close).toHaveBeenCalled();
   });
 
