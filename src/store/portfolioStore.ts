@@ -853,7 +853,15 @@ export class PortfolioStore {
       }
       // Request order protects against async races; source time separately
       // protects against a later response carrying an older market observation.
+      // A persistent WebSocket delivers quote events in connection order.
+      // Once a new q event arrives, its local arrival order is authoritative:
+      // provider ltt timestamps can repeat or regress across reconnects/timezone
+      // boundaries, but must not prevent the latest received tick rewriting the
+      // ticker's local price and quote metadata. Keep source-time rejection for
+      // one-shot HTTP/provider responses, where responses can complete out of order.
+      const isLiveWebSocketTick = quote.quoteDetails?.transport === 'websocket';
       if (
+        !isLiveWebSocketTick &&
         incomingSourceTimestamp > 0 &&
         latestSourceTimestamp > 0 &&
         incomingSourceTimestamp < latestSourceTimestamp
