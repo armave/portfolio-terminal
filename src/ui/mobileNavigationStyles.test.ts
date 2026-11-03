@@ -21,7 +21,7 @@ describe('mobile workspace navigation styles', () => {
     expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*flex:\s*0\s+1\s+min\(52vw,\s*52rem\)/s);
     expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*min-width:\s*0;/s);
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-ticker-list>\*\s*\{[^}]*flex:\s*0\s+0\s+auto;/s);
-    expect(stylesheet.match(/#tickerTabs\s*\{/g) || []).toHaveLength(2);
+    expect(stylesheet.match(/#tickerTabs\s*\{/g) || []).toHaveLength(3);
   });
 
   it('keeps compact phone captions and groups ticker choices separately from fixed destinations', () => {
@@ -43,8 +43,8 @@ describe('mobile workspace navigation styles', () => {
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-equity-badge--admin\s*\{\s*display:\s*none;/);
   });
   it('allows the mobile header flex row and workspace container to shrink around the ticker scroll region', () => {
-    expect(stylesheet).toMatch(/@media\\s*\\(max-width:\\s*768px\\)[\\s\\S]*?\\.board-header-banner\\s*>\\s*\\.flex\\s*\\{[^}]*width:\\s*100%;[^}]*min-width:\\s*0;[^}]*max-width:\\s*100%;/);
-    expect(stylesheet).toMatch(/@media\\s*\\(max-width:\\s*768px\\)[\\s\\S]*?#tickerTabs\\s*\\{[^}]*width:\\s*100%;[^}]*min-width:\\s*0;[^}]*max-width:\\s*100%;/);
+    expect(stylesheet).toMatch(/@media\s*\\(max-width:\s*768px\\)[\s\S]*?\\.board-header-banner\s*>\s*\\.flex\s*\\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/);
+    expect(stylesheet).toMatch(/@media\s*\\(max-width:\s*768px\\)[\s\S]*?#tickerTabs\s*\\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/);
   });
 
 });
