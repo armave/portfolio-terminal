@@ -1627,6 +1627,22 @@ describe('canonical trade lifecycle and persistence', () => {
     store.buyStock('AAPL', 2, 100, '2026-10-15');
     store.addCashStock('AAPL', 1, 100);
     const firstReceivedAt = Date.now() + 1_000;
+    store.setState({
+      cashStocks: [{ ticker: 'AAPL', shares: 1, currentPrice: 100 }],
+      guestPortfolioSnapshot: {
+        updatedAt: firstReceivedAt,
+        tranches: [{
+          id: 'AAPL:cash-1',
+          ticker: 'AAPL',
+          name: 'Apple',
+          quantity: 1,
+          marketPrice: 100,
+          averagePrice: 90,
+          marketValue: 100,
+          purchasedAt: firstReceivedAt
+        }]
+      }
+    });
 
     expect(store.updateLiveQuote('AAPL', {
       price: 100,
@@ -1675,6 +1691,15 @@ describe('canonical trade lifecycle and persistence', () => {
     expect(state.cashCushion.holdings[0]).toMatchObject({
       currentPrice: 101,
       price: 101,
+      quoteDetails: { change: -1, changePercent: -0.9803921568627451 }
+    });
+    expect(state.cashStocks[0]).toMatchObject({
+      currentPrice: 101,
+      quoteDetails: { change: -1, changePercent: -0.9803921568627451 }
+    });
+    expect(state.guestPortfolioSnapshot?.tranches[0]).toMatchObject({
+      marketPrice: 101,
+      marketValue: 101,
       quoteDetails: { change: -1, changePercent: -0.9803921568627451 }
     });
   });
