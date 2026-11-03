@@ -147,6 +147,15 @@ export class PortfolioStateDO {
     this.freedomTradeNetLoginPromise = null;
     this.freedomTradeNetRateLimitUntil = 0;
     this.freedomTradeNetRateLimitAttempts = 0;
+    // One authenticated upstream q socket is shared by all browser clients in
+    // this account workspace. Browser sockets are hibernatable; TradeNet's SID
+    // and upstream socket are never exposed to the browser.
+    this.freedomQuoteUpstream = null;
+    this.freedomQuoteUpstreamConnectPromise = null;
+    this.freedomQuoteUpstreamReady = false;
+    this.freedomQuoteUpstreamWaiter = null;
+    this.freedomQuoteSubscribedSymbols = new Set();
+    this.freedomQuoteLastBySymbol = new Map();
   }
 
   async requestFreedomTradeNetSession() {
@@ -318,6 +327,339 @@ export class PortfolioStateDO {
       return authJson({ ok: true, invalidated });
     }
     return null;
+  }
+
+
+  normalizeFreedomQuoteSymbols(input) {
+    const values = Array.isArray(input) ? input : [];
+    const symbols = [...new Set(values.map((value) => {
+      const normalized = String(value || "").trim().toUpperCase();
+      return normalized && !normalized.includes(".") ? normalized + ".US" : normalized;
+    }))];
+    if (symbols.length < 1 || symbols.length > 10 ||
+        symbols.some((symbol) => !/^[A-Z0-9.^=-]{1,32}$/.test(symbol))) {
+      throw new Error("Quote stream requires 1–10 valid ticker symbols.");
+    }
+    return symbols;
+  }
+
+  async handleFreedomQuoteStreamTicketRequest(request) {
+    if (request.method !== "POST") return authJson({ error: "Method not allowed." }, 405);
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body) ||
+        !["admin", "guest"].includes(body.role) ||
+        typeof body.accountId !== "string" || !body.accountId.trim() || body.accountId.length > 128) {
+      return authJson({ error: "Invalid quote stream ticket request." }, 400);
+    }
+    let symbols;
+    try {
+      symbols = this.normalizeFreedomQuoteSymbols(body.symbols);
+    } catch (error) {
+      return authJson({ error: error instanceof Error ? error.message : "Invalid quote stream symbols." }, 400);
+    }
+    const ticket = toHex(crypto.getRandomValues(new Uint8Array(32)));
+    const ticketKey = "freedom:quote-stream-ticket:" + await digestHex(ticket);
+    const expiresAt = Date.now() + 60_000;
+    await this.ctx.storage.put(ticketKey, {
+      accountId: body.accountId,
+      role: body.role,
+      symbols,
+      expiresAt
+    });
+    return authJson({ ok: true, ticket, expiresAt });
+  }
+
+  async consumeFreedomQuoteStreamTicket(ticket) {
+    if (typeof ticket !== "string" || !/^[a-f0-9]{64}$/i.test(ticket)) return null;
+    const ticketKey = "freedom:quote-stream-ticket:" + await digestHex(ticket);
+    return this.ctx.storage.transaction(async (transaction) => {
+      const stored = await transaction.get(ticketKey);
+      if (!stored) return null;
+      await transaction.delete(ticketKey);
+      if (!Number.isFinite(stored.expiresAt) || stored.expiresAt <= Date.now()) return null;
+      if (!["admin", "guest"].includes(stored.role) ||
+          typeof stored.accountId !== "string" || !Array.isArray(stored.symbols)) return null;
+      try {
+        return {
+          accountId: stored.accountId,
+          role: stored.role,
+          symbols: this.normalizeFreedomQuoteSymbols(stored.symbols)
+        };
+      } catch {
+        return null;
+      }
+    });
+  }
+
+  async handleFreedomQuoteStreamSocketRequest(request) {
+    if (request.method !== "GET" || request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+      return authJson({ error: "A WebSocket upgrade is required." }, 426);
+    }
+    const url = new URL(request.url);
+    const claims = await this.consumeFreedomQuoteStreamTicket(url.searchParams.get("ticket"));
+    if (!claims) return authJson({ error: "Quote stream ticket is invalid, expired, or already used." }, 401);
+
+    try {
+      await this.ensureFreedomQuoteUpstream(claims.symbols);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "TradeNet quote stream could not be established.";
+      return authJson({ error: message }, 502);
+    }
+
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    server.serializeAttachment({
+      accountId: claims.accountId,
+      role: claims.role,
+      symbols: claims.symbols
+    });
+    this.ctx.acceptWebSocket(server, ["freedom-tradenet-quotes"]);
+    server.send(JSON.stringify({
+      type: "ready",
+      provider: "Freedom TradeNet",
+      transport: "websocket",
+      symbols: claims.symbols
+    }));
+    for (const symbol of claims.symbols) {
+      const cached = this.freedomQuoteLastBySymbol.get(symbol);
+      if (cached) server.send(JSON.stringify(cached));
+    }
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  getFreedomQuoteClients() {
+    if (typeof this.ctx.getWebSockets !== "function") return [];
+    return this.ctx.getWebSockets("freedom-tradenet-quotes")
+      .filter((socket) => socket.readyState === 1);
+  }
+
+  getConnectedFreedomQuoteSymbols() {
+    const symbols = new Set();
+    for (const socket of this.getFreedomQuoteClients()) {
+      const attachment = socket.deserializeAttachment?.();
+      for (const symbol of Array.isArray(attachment?.symbols) ? attachment.symbols : []) {
+        if (typeof symbol === "string") symbols.add(symbol);
+      }
+    }
+    return [...symbols].sort();
+  }
+
+  async ensureFreedomQuoteUpstream(requiredSymbols = []) {
+    const symbols = [...new Set([
+      ...this.getConnectedFreedomQuoteSymbols(),
+      ...(Array.isArray(requiredSymbols) ? requiredSymbols : [])
+    ])].sort();
+    if (!symbols.length) return;
+
+    if (this.freedomQuoteUpstream && this.freedomQuoteUpstream.readyState === 1 &&
+        this.freedomQuoteUpstreamReady) {
+      const missing = symbols.filter((symbol) => !this.freedomQuoteSubscribedSymbols.has(symbol));
+      if (missing.length) {
+        this.freedomQuoteUpstream.send(JSON.stringify(["quotes", missing]));
+        missing.forEach((symbol) => this.freedomQuoteSubscribedSymbols.add(symbol));
+      }
+      return;
+    }
+
+    if (this.freedomQuoteUpstreamConnectPromise) {
+      await this.freedomQuoteUpstreamConnectPromise;
+      return this.ensureFreedomQuoteUpstream(symbols);
+    }
+
+    const pending = this.connectFreedomQuoteUpstream(symbols);
+    this.freedomQuoteUpstreamConnectPromise = pending;
+    try {
+      await pending;
+    } finally {
+      if (this.freedomQuoteUpstreamConnectPromise === pending) {
+        this.freedomQuoteUpstreamConnectPromise = null;
+      }
+    }
+  }
+
+  async connectFreedomQuoteUpstream(symbols) {
+    const sid = await this.getFreedomTradeNetSession();
+    const url = new URL("https://wss.tradernet.com/");
+    url.searchParams.set("SID", sid);
+    const response = await fetch(url.toString(), {
+      headers: { Upgrade: "websocket" }
+    });
+    const socket = response.webSocket;
+    if (response.status !== 101 || !socket) {
+      const error = new Error("TradeNet rejected the persistent quote WebSocket connection.");
+      error.status = response.status === 401 || response.status === 403 ? response.status : 502;
+      throw error;
+    }
+
+    this.freedomQuoteUpstream = socket;
+    this.freedomQuoteUpstreamReady = false;
+    this.freedomQuoteSubscribedSymbols = new Set(symbols);
+    socket.accept();
+
+    const handshake = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        if (this.freedomQuoteUpstreamWaiter?.socket === socket) {
+          this.freedomQuoteUpstreamWaiter = null;
+        }
+        reject(new Error("TradeNet did not confirm the production quote stream."));
+        try { socket.close(1011, "Quote stream handshake timeout"); } catch { /* ignore */ }
+      }, 10_000);
+      this.freedomQuoteUpstreamWaiter = {
+        socket,
+        resolve: () => {
+          clearTimeout(timeout);
+          this.freedomQuoteUpstreamWaiter = null;
+          resolve();
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          this.freedomQuoteUpstreamWaiter = null;
+          reject(error);
+        }
+      };
+    });
+
+    socket.addEventListener("message", (event) => {
+      void this.handleFreedomQuoteUpstreamMessage(socket, event?.data);
+    });
+    socket.addEventListener("close", () => {
+      if (this.freedomQuoteUpstream !== socket) return;
+      this.freedomQuoteUpstream = null;
+      this.freedomQuoteUpstreamReady = false;
+      this.freedomQuoteSubscribedSymbols.clear();
+      for (const client of this.getFreedomQuoteClients()) {
+        try { client.send(JSON.stringify({ type: "status", status: "reconnecting" })); } catch { /* ignore */ }
+      }
+    });
+    socket.addEventListener("error", () => {
+      if (this.freedomQuoteUpstream !== socket) return;
+      this.freedomQuoteUpstreamReady = false;
+      for (const client of this.getFreedomQuoteClients()) {
+        try { client.send(JSON.stringify({ type: "status", status: "reconnecting" })); } catch { /* ignore */ }
+      }
+    });
+
+    try {
+      socket.send(JSON.stringify(["quotes", symbols]));
+      await handshake;
+    } catch (error) {
+      if (this.freedomQuoteUpstream === socket) this.freedomQuoteUpstream = null;
+      this.freedomQuoteUpstreamReady = false;
+      this.freedomQuoteSubscribedSymbols.clear();
+      try { socket.close(1011, "Quote stream handshake failed"); } catch { /* ignore */ }
+      throw error;
+    }
+  }
+
+  async handleFreedomQuoteUpstreamMessage(socket, rawMessage) {
+    if (this.freedomQuoteUpstream !== socket) return;
+    let packet;
+    try {
+      packet = JSON.parse(typeof rawMessage === "string" ? rawMessage : String(rawMessage || ""));
+    } catch {
+      return;
+    }
+    if (!Array.isArray(packet) || typeof packet[0] !== "string") return;
+    const eventName = packet[0];
+    if (eventName === "userData") {
+      const userData = packet[1];
+      const mode = String(userData?.mode || "").trim().toLowerCase();
+      if (userData?.isDemo === true || userData?.real === false || mode !== "prod") {
+        const error = new Error("TradeNet authenticated a demo or non-production quote session.");
+        this.freedomQuoteUpstreamWaiter?.reject(error);
+        this.freedomQuoteUpstreamReady = false;
+        try { socket.close(1008, "Production TradeNet session required"); } catch { /* ignore */ }
+        return;
+      }
+      this.freedomQuoteUpstreamReady = true;
+      this.freedomQuoteUpstreamWaiter?.resolve();
+      for (const client of this.getFreedomQuoteClients()) {
+        try { client.send(JSON.stringify({ type: "status", status: "connected" })); } catch { /* ignore */ }
+      }
+      return;
+    }
+    if (eventName === "error") {
+      const error = new Error("TradeNet rejected the persistent quote subscription.");
+      this.freedomQuoteUpstreamWaiter?.reject(error);
+      this.freedomQuoteUpstreamReady = false;
+      try { socket.close(1011, "TradeNet quote subscription rejected"); } catch { /* ignore */ }
+      return;
+    }
+    if (eventName !== "q" || !this.freedomQuoteUpstreamReady) return;
+
+    const payload = packet[1];
+    const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+    const identifierKeys = ["c", "symbol", "ticker", "code", "i", "instr", "instrument"];
+    let rows = Array.isArray(payload?.q) ? payload.q
+      : Array.isArray(payload) ? payload : [];
+    if (rows.length === 0 && isRecord(payload)) {
+      if (identifierKeys.some((key) => typeof payload[key] === "string")) rows = [payload];
+      else {
+        const values = Object.values(payload);
+        if (values.length && values.every(isRecord)) rows = values;
+      }
+    }
+    const allowedFields = new Set([
+      "c", "n", "mrg", "ltr", "kind", "type", "name", "name2", "bbp", "bbc",
+      "bbs", "bbf", "bap", "bac", "bas", "baf", "pp", "op", "ltp", "lts",
+      "ltt", "chg", "pcp", "ltc", "mintp", "maxtp", "vol", "vlt", "trades",
+      "min_step", "step_price", "p5", "chg5", "p22", "chg22", "p110",
+      "chg110", "p220", "chg220", "x_curr", "x_lot", "x_istrade", "UTCOffset", "acc_srv_tm"
+    ]);
+    for (const row of rows) {
+      if (!isRecord(row)) continue;
+      const identifier = identifierKeys.find((key) => typeof row[key] === "string");
+      if (!identifier) continue;
+      const symbol = String(row[identifier]).trim().toUpperCase();
+      if (!this.freedomQuoteSubscribedSymbols.has(symbol)) continue;
+      const data = {};
+      for (const [key, value] of Object.entries(row)) {
+        if (!allowedFields.has(key)) continue;
+        if (typeof value === "string") data[key] = value.slice(0, 160);
+        else if (typeof value === "number" && Number.isFinite(value)) data[key] = value;
+        else if (typeof value === "boolean" || value === null) data[key] = value;
+      }
+      const price = Number(data.ltp);
+      if (!Number.isFinite(price) || price <= 0) continue;
+      const message = {
+        type: "quote",
+        symbol,
+        data,
+        receivedAt: Date.now()
+      };
+      this.freedomQuoteLastBySymbol.set(symbol, message);
+      for (const client of this.getFreedomQuoteClients()) {
+        const attachment = client.deserializeAttachment?.();
+        if (!attachment?.symbols?.includes(symbol)) continue;
+        try { client.send(JSON.stringify(message)); } catch { /* disconnected client */ }
+      }
+    }
+  }
+
+  webSocketMessage(webSocket, message) {
+    const text = typeof message === "string" ? message : String(message || "");
+    if (text === "ping") {
+      try { webSocket.send(JSON.stringify({ type: "pong", at: Date.now() })); } catch { /* ignore */ }
+      void this.ensureFreedomQuoteUpstream().catch(() => {
+        try { webSocket.send(JSON.stringify({ type: "status", status: "reconnecting" })); } catch { /* ignore */ }
+      });
+    }
+  }
+
+  webSocketClose() {
+    if (this.getFreedomQuoteClients().length > 0) return;
+    const socket = this.freedomQuoteUpstream;
+    this.freedomQuoteUpstream = null;
+    this.freedomQuoteUpstreamReady = false;
+    this.freedomQuoteSubscribedSymbols.clear();
+    this.freedomQuoteLastBySymbol.clear();
+    if (socket) {
+      try { socket.close(1000, "No quote stream clients remain"); } catch { /* ignore */ }
+    }
+  }
+
+  webSocketError(webSocket) {
+    this.webSocketClose(webSocket);
   }
 
   async clearRetiredTradeNetSession() {
@@ -1334,6 +1676,12 @@ export class PortfolioStateDO {
     }
 
     const requestUrl = new URL(request.url);
+    if (requestUrl.pathname === "/internal/freedom-quote-stream-ticket") {
+      return this.handleFreedomQuoteStreamTicketRequest(request);
+    }
+    if (requestUrl.pathname === "/internal/freedom-quote-stream-socket") {
+      return this.handleFreedomQuoteStreamSocketRequest(request);
+    }
     if (requestUrl.pathname.startsWith("/internal/freedom-tradenet-session")) {
       const sessionResponse = await this.handleFreedomTradeNetSessionRequest(request);
       if (sessionResponse) return sessionResponse;
