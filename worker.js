@@ -1189,10 +1189,12 @@ export default {
                         }
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
+                    const upstreamStatus = Number(error?.status);
+                    const status = [401, 403, 503].includes(upstreamStatus) ? upstreamStatus : 502;
                     return new Response(JSON.stringify({
                         ok: false,
                         error: error instanceof Error ? error.message : "TradeNet portfolio snapshot failed."
-                    }), { status: 502, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                    }), { status, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 }
             }
 
