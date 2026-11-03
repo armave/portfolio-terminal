@@ -730,12 +730,20 @@ describe('Gateway Secret validation', () => {
   });
 
   it('accepts valid credentials when cloud state exists', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ user: { id: 'admin-1', name: 'Admin', role: 'admin', createdAt: '2026-01-01T00:00:00.000Z' } })
+    }));
     await expect((await import('./api')).validateGatewaySecret('valid-secret')).resolves.toBe(true);
   });
 
   it('validates a guest session without requesting the shared portfolio endpoint', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ user: { id: 'guest-1', name: 'Guest', role: 'guest', createdAt: '2026-01-01T00:00:00.000Z' } })
+    });
     vi.stubGlobal('fetch', fetchMock);
     await expect((await import('./api')).validateGatewaySecret('valid-secret')).resolves.toBe(true);
     expect(String(fetchMock.mock.calls[0][0])).toContain('/api/auth/me');
@@ -1158,8 +1166,10 @@ describe('abortable market-data transport', () => {
     ]);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0][1]?.signal).toBe(firstController.signal);
-    expect(fetchMock.mock.calls[1][1]?.signal).toBe(secondController.signal);
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(fetchMock.mock.calls[1][1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(fetchMock.mock.calls[0][1]?.signal).not.toBe(firstController.signal);
+    expect(fetchMock.mock.calls[1][1]?.signal).not.toBe(secondController.signal);
   });
 });
 
@@ -1250,7 +1260,12 @@ describe('Gateway validation response reuse', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const pathname = new URL(String(input)).pathname;
       if (pathname === '/api/auth/me') {
-        return new Response(JSON.stringify({ user: { id: 'admin-1', role: 'admin' } }), {
+        return new Response(JSON.stringify({ user: {
+          id: 'admin-1',
+          name: 'Administrator',
+          role: 'admin',
+          createdAt: '2026-01-01T00:00:00.000Z'
+        } }), {
           status: 200, headers: { 'Content-Type': 'application/json' }
         });
       }
