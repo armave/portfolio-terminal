@@ -31,10 +31,10 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
       'freedom-portfolio-snapshot', 'freedom-trades', 'freedom-orders-stream'
     ]);
+    expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
+    expect(proxyFetch.mock.calls[1][1]).toEqual({ fromDate: '2026-01-02' });
     expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[2][1]).toEqual({ fromDate: '2026-01-02' });
     expect(proxyFetch.mock.calls[2][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[3][2]).toEqual({ cache: 'no-store' });
   });
 
   it('uses the authenticated portfolio WebSocket as primary and returns the normalizer envelope', async () => {
