@@ -2445,9 +2445,10 @@ describe('guest data isolation at the Worker boundary', () => {
     ), { PORTFOLIO_STATE_DO: namespace });
     expect(portfolioResponse.status).toBe(403);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(stateStub.fetch.mock.calls.filter(([request]) =>
-      new URL(request.url).pathname === '/api/auth/verify'
-    )).toHaveLength(2);
+    expect(stateStub.fetch.mock.calls.filter(([request]) => {
+      const requestUrl = typeof request === 'string' ? request : request.url;
+      return new URL(requestUrl).pathname === '/api/auth/verify';
+    })).toHaveLength(2);
   });
 
   it('routes the guest endpoint without exposing the shared-state route', async () => {
