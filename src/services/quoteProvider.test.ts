@@ -109,7 +109,7 @@ describe('fetchLivePriceFromProviders', () => {
     });
   });
 
-  it('uses Yahoo market-session price data when available', async () => {
+  it('uses Yahoo market-session quote data only after both Freedom quote paths fail', async () => {
     vi.mocked(fetchYahooQuoteData).mockResolvedValue({
       price: {
         current: 100,
