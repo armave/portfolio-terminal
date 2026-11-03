@@ -13,7 +13,7 @@ import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '.
 import { normalizeFreedomTrades } from './freedomTradeContracts';
 export { normalizeFreedomTrades } from './freedomTradeContracts';
 export type { FreedomExecutedTrade } from '../types/freedomTrade';
-export { normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
+export { compareFreedomPortfolioSnapshots, normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
 export type { FreedomActiveOrder, FreedomCashBalance, FreedomOpenPosition, FreedomPortfolioSnapshot } from './freedomAccountContracts';
 export type { MarketNewsItem, StocktwitsMessage, StocktwitsStream } from './marketInsightsProviders';
 export type { YahooDeepStockData, YahooDeepAnalystTargets, YahooDeepFinancialHealth, YahooDeepPrice, YahooDeepValuation, YahooEarningsHistoryItem, YahooUpgradeDowngrade } from './yahooDeepDataContracts';
@@ -294,6 +294,7 @@ const freedomBrokerTransportRuntime = createFreedomBrokerTransportRuntime({
 export const testFreedomTradeNetConnection = freedomBrokerTransportRuntime.testFreedomTradeNetConnection;
 export const testFreedomTradeNetOrdersStream = freedomBrokerTransportRuntime.testFreedomTradeNetOrdersStream;
 export const testFreedomTradeNetEventStream = freedomBrokerTransportRuntime.testFreedomTradeNetEventStream;
+export const testFreedomTradeNetPortfolioReconciliation = freedomBrokerTransportRuntime.testFreedomTradeNetPortfolioReconciliation;
 export const fetchFreedomTradeNetPositions = freedomBrokerTransportRuntime.fetchFreedomTradeNetPositions;
 export const fetchFreedomTradeNetTrades = freedomBrokerTransportRuntime.fetchFreedomTradeNetTrades;
 export const fetchFreedomTradeNetActiveOrders = freedomBrokerTransportRuntime.fetchFreedomTradeNetActiveOrders;
