@@ -1052,7 +1052,9 @@ async function performRefreshAllLivePrices(force = false): Promise<boolean> {
   if (tickersArray.length === 0) return true;
 
   try {
-    const updatedCount = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice, force);
+    const refreshResult = await refreshTrackedQuotes(tickersArray, Date.now(), recordTrackedPrice, force);
+    if (refreshResult.skipped) return true;
+    const updatedCount = refreshResult.updatedCount;
     if (updatedCount > 0) {
       // Automatic quote polling remains local; explicit sync pushes the final snapshot.
       state = portfolioStore.getState();
