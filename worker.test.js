@@ -2639,6 +2639,85 @@ describe('Durable Object persistent quote stream tickets and q forwarding', () =
       vi.unstubAllGlobals();
     }
   });
+
+  it('rebuilds the shared q connection when active browser clients drop previously subscribed tickers', async () => {
+    let activeSymbols = ['GOOGL.US', 'AAPL.US'];
+    const browserClient = {
+      readyState: 1,
+      deserializeAttachment: () => ({ symbols: activeSymbols, role: 'guest', accountId: 'guest-1' }),
+      send: vi.fn()
+    };
+    const sockets = [browserClient];
+    const upstreams = [];
+    const makeUpstream = (expectedSymbols) => {
+      const listeners = new Map();
+      const upstream = {
+        addEventListener: vi.fn((name, callback) => {
+          const callbacks = listeners.get(name) || [];
+          callbacks.push(callback);
+          listeners.set(name, callbacks);
+        }),
+        accept: vi.fn(),
+        send: vi.fn((message) => {
+          expect(JSON.parse(message)).toEqual(['quotes', expectedSymbols]);
+          queueMicrotask(() => {
+            const callbacks = listeners.get('message') || [];
+            const deliver = (packet) => callbacks.forEach((callback) =>
+              callback({ data: JSON.stringify(packet) })
+            );
+            deliver(['userData', { isDemo: false, real: true, mode: 'prod' }]);
+            expectedSymbols.forEach((symbol, index) => deliver(['q', {
+              c: symbol, ltp: 280 + index, pp: 279, chg: 1
+            }]));
+          });
+        }),
+        close: vi.fn(),
+        readyState: 1
+      };
+      upstreams.push(upstream);
+      return upstream;
+    };
+    const { storage } = createStorage();
+    const ctx = {
+      storage,
+      getWebSockets: vi.fn(() => sockets)
+    };
+    const store = new PortfolioStateDO(ctx, {
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockImplementationOnce(async () => ({
+        status: 101, webSocket: makeUpstream(['AAPL.US', 'GOOGL.US']), headers: new Headers()
+      }))
+      .mockImplementationOnce(async () => ({
+        status: 101, webSocket: makeUpstream(['AAPL.US']), headers: new Headers()
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await store.ensureFreedomQuoteUpstream(activeSymbols);
+      expect(store.freedomQuoteSubscribedSymbols).toEqual(new Set(['AAPL.US', 'GOOGL.US']));
+      expect(store.freedomQuoteLastBySymbol.has('GOOGL.US')).toBe(true);
+      expect(store.freedomQuoteLastBySymbol.has('AAPL.US')).toBe(true);
+
+      activeSymbols = ['AAPL.US'];
+      await store.ensureFreedomQuoteUpstream();
+
+      expect(upstreams).toHaveLength(2);
+      expect(upstreams[0].close).toHaveBeenCalledWith(1000, 'Quote subscription set changed');
+      expect(upstreams[1].send).toHaveBeenCalledWith(JSON.stringify(['quotes', ['AAPL.US']]));
+      expect(store.freedomQuoteSubscribedSymbols).toEqual(new Set(['AAPL.US']));
+      expect(store.freedomQuoteLastBySymbol.has('GOOGL.US')).toBe(false);
+      expect(store.freedomQuoteLastBySymbol.has('AAPL.US')).toBe(true);
+      expect(store.freedomQuoteUpstreamReady).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('Durable Object private portfolio and orders stream', () => {
