@@ -1,64 +1,139 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createFreedomQuoteStreamAppRuntime } from './freedomQuoteStreamAppRuntime';
+import {
+  createFreedomQuoteStreamAppRuntime,
+  type FreedomQuoteSocketLike
+} from './freedomQuoteStreamAppRuntime';
+
+class FakeSocket implements FreedomQuoteSocketLike {
+  readyState = 0;
+  private listeners = new Map<string, Array<(event: any) => void>>();
+
+  addEventListener(type: string, listener: (event: any) => void): void {
+    this.listeners.set(type, [...(this.listeners.get(type) || []), listener]);
+  }
+
+  send(): void {}
+
+  close(): void {
+    this.readyState = 3;
+    this.emit('close', {});
+  }
+
+  open(): void {
+    this.readyState = 1;
+    this.emit('open', {});
+  }
+
+  receive(value: unknown): void {
+    this.emit('message', { data: JSON.stringify(value) });
+  }
+
+  private emit(type: string, event: any): void {
+    for (const listener of this.listeners.get(type) || []) listener(event);
+  }
+}
 
 describe('Freedom quote stream app adapter', () => {
   it('applies every accepted q update to the current portfolio session and persists the new price', async () => {
-    const onQuote = vi.fn();
-    let currentSessionKey = 'admin:account-1';
     const recordQuote = vi.fn().mockReturnValue(true);
     const persistAndRender = vi.fn();
+    const socket = new FakeSocket();
+    let currentSessionKey = 'admin:account-1';
     const runtime = createFreedomQuoteStreamAppRuntime({
       createTicket: vi.fn(async () => ({ ticket: 'a'.repeat(64) })),
       buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      createSocket: () => socket,
       getCurrentSessionKey: () => currentSessionKey,
       nextRequestSequence: () => 123,
       recordQuote,
       persistAndRender
     });
-    const socketListeners = new Map<string, Array<(event: any) => void>>();
-    const socket = {
-      readyState: 0,
-      addEventListener(type: string, listener: (event: any) => void) {
-        socketListeners.set(type, [...(socketListeners.get(type) || []), listener]);
-      },
-      send: vi.fn(),
-      close: vi.fn()
-    };
-    // The browser socket factory is injectable at the lower runtime layer. Here
-    // we use a test cast to provide the same ready/message events.
+
     const start = runtime.start(['GOOGL'], 'admin:account-1');
     await Promise.resolve();
-    (socket as any).readyState = 1;
-    for (const listener of socketListeners.get('open') || []) listener({});
-    for (const listener of socketListeners.get('message') || []) {
-      listener({ data: JSON.stringify({ type: 'ready' }) });
-    }
+    socket.open();
+    socket.receive({ type: 'ready' });
     await expect(start).resolves.toBe(true);
-    expect(recordQuote).not.toHaveBeenCalled();
-    expect(persistAndRender).not.toHaveBeenCalled();
+    expect(runtime.isConnected()).toBe(true);
+
+    socket.receive({
+      type: 'quote',
+      symbol: 'GOOGL.US',
+      data: {
+        c: 'GOOGL.US',
+        ltp: 280.55,
+        pp: 279.84,
+        chg: 0.71,
+        pcp: 0.25,
+        bbp: 280.51,
+        bap: 280.6,
+        vol: 123456,
+        ltt: '2026-11-03T10:00:00',
+        UTCOffset: -300,
+        owner_login: 'must-not-forward'
+      },
+      receivedAt: 1_800_000_000_000
+    });
+
+    expect(recordQuote).toHaveBeenCalledTimes(1);
+    expect(recordQuote).toHaveBeenCalledWith(
+      'GOOGL',
+      280.55,
+      'Freedom TradeNet',
+      1_800_000_000_000,
+      expect.objectContaining({
+        transport: 'websocket',
+        price: 280.55,
+        bid: 280.51,
+        ask: 280.6,
+        freshness: 'unknown',
+        requestSequence: 123
+      }),
+      1_800_000_000_000
+    );
+    expect(persistAndRender).toHaveBeenCalledTimes(1);
 
     currentSessionKey = 'guest:guest-2';
-    // A stale quote from the previous identity is rejected before it reaches
-    // the shared store or triggers persistence.
-    expect(onQuote).not.toHaveBeenCalled();
+    socket.receive({
+      type: 'quote',
+      symbol: 'GOOGL.US',
+      data: { c: 'GOOGL.US', ltp: 281 },
+      receivedAt: 1_800_000_001_000
+    });
+    expect(recordQuote).toHaveBeenCalledTimes(1);
+    expect(persistAndRender).toHaveBeenCalledTimes(1);
+
     runtime.stop();
-    expect(recordQuote).not.toHaveBeenCalled();
   });
 
-  it('keeps account-scoped event validation in the adapter and exposes only sanitized quote fields', async () => {
-    const recordQuote = vi.fn().mockReturnValue(true);
+  it('does not persist a quote rejected by the canonical portfolio store', async () => {
+    const recordQuote = vi.fn().mockReturnValue(false);
     const persistAndRender = vi.fn();
-    const createTicket = vi.fn(async () => ({ ticket: 'b'.repeat(64) }));
+    const socket = new FakeSocket();
     const runtime = createFreedomQuoteStreamAppRuntime({
-      createTicket,
+      createTicket: vi.fn(async () => ({ ticket: 'b'.repeat(64) })),
       buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      createSocket: () => socket,
       getCurrentSessionKey: () => 'guest:guest-1',
       nextRequestSequence: () => 456,
       recordQuote,
       persistAndRender
     });
 
-    expect(typeof runtime.start).toBe('function');
-    expect(runtime.isConnected()).toBe(false);
+    const start = runtime.start(['AAPL'], 'guest:guest-1');
+    await Promise.resolve();
+    socket.open();
+    socket.receive({ type: 'ready' });
+    await start;
+    socket.receive({
+      type: 'quote',
+      symbol: 'AAPL.US',
+      data: { c: 'AAPL.US', ltp: 210 },
+      receivedAt: 1_800_000_000_000
+    });
+
+    expect(recordQuote).toHaveBeenCalledTimes(1);
+    expect(persistAndRender).not.toHaveBeenCalled();
+    runtime.stop();
   });
 });
