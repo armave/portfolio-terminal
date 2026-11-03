@@ -103,6 +103,8 @@ describe('app localization', () => {
     expect(translateText('US equities', 'ru')).toBe('Акции США');
     expect(translateText('Market open', 'ru')).toBe('Рынок открыт');
     expect(translateText('Market closed', 'ru')).toBe('Рынок закрыт');
+    expect(translateText('Pre-market', 'ru')).toBe('До открытия');
+    expect(translateText('After-hours', 'ru')).toBe('После закрытия');
     expect(translateText('Premarket session', 'ru')).toBe('Премаркет');
     expect(translateText('Market session', 'ru')).toBe('Рынок');
     expect(translateText('Postmarket session', 'ru')).toBe('Постмаркет');
