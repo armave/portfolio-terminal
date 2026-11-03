@@ -104,6 +104,41 @@ describe('Freedom persistent quote stream runtime', () => {
     expect(runtime.isConnected()).toBe(true);
   });
 
+  it('keeps one browser socket while the upstream recovers and accepts the connected status', async () => {
+    const sockets: FakeSocket[] = [];
+    const createTicket = vi.fn(async () => ({ ticket: 'd'.repeat(64) }));
+    const onStatus = vi.fn();
+    const runtime = createFreedomQuoteStreamRuntime({
+      createTicket,
+      buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      onQuote: vi.fn(),
+      onStatus
+    });
+
+    const start = runtime.start(['GOOGL'], 'guest:guest-3');
+    await Promise.resolve();
+    sockets[0].open();
+    sockets[0].receive({ type: 'ready' });
+    await start;
+    expect(runtime.isConnected()).toBe(true);
+
+    sockets[0].receive({ type: 'status', status: 'reconnecting' });
+    expect(runtime.isConnected()).toBe(false);
+    await expect(runtime.start(['GOOGL'], 'guest:guest-3')).resolves.toBe(true);
+    expect(createTicket).toHaveBeenCalledTimes(1);
+    expect(sockets).toHaveLength(1);
+
+    sockets[0].receive({ type: 'status', status: 'connected' });
+    expect(runtime.isConnected()).toBe(true);
+    expect(onStatus).toHaveBeenCalledWith('connected', undefined);
+    expect(createTicket).toHaveBeenCalledTimes(1);
+  });
+
   it('reconnects with a fresh one-use ticket when the server closes the socket', async () => {
     const sockets: FakeSocket[] = [];
     const createTicket = vi.fn()
