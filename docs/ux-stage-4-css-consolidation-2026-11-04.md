@@ -1,6 +1,6 @@
 # UI/UX Stage 4 — Stylesheet Consolidation
 
-**Status:** Implemented on a focused frontend branch; exact-head CI pending  
+**Status:** Implemented; exact-head CI and production-browser validation passed  
 **Baseline:** `main` at `16e3ae5d69049fde37ee276471ee3f014b59b8b4` (2026-11-04)  
 **Working branch:** `ux/stage-4-css-consolidation-2026-11-04`
 
@@ -30,13 +30,13 @@ Reduce CSS override drift and repeated global policies without changing the term
 
 ## Validation plan
 
-- [ ] TypeScript typecheck.
-- [ ] Full Vitest suite.
-- [ ] Production build and unchanged entry bundle budget.
-- [ ] Production-browser smoke at 320, 360, 390, 768, 1024, and 1440px.
-- [ ] Knip dead-code validation.
-- [ ] Full dependency audit.
-- [ ] Production dependency audit.
+- [x] TypeScript typecheck.
+- [x] Full Vitest suite.
+- [x] Production build and unchanged entry bundle budget.
+- [x] Production-browser smoke at 320, 360, 390, 768, 1024, and 1440px.
+- [x] Knip dead-code validation.
+- [x] Full dependency audit.
+- [x] Production dependency audit.
 
 ## Non-goals
 
@@ -45,3 +45,16 @@ Reduce CSS override drift and repeated global policies without changing the term
 - No changes to Tailwind/PostCSS configuration.
 - No startup-critical CSS extraction or inlining changes.
 - No changes to portfolio calculations, quote freshness, broker behavior, cloud sync, APIs, or Worker code.
+
+
+## Final validation — 2026-11-04
+
+Validated on exact implementation head `03fbc6ac4bb13042d577cc79619dd9809a691dda` in [CI run #2343](https://github.com/armave/portfolio-terminal/actions/runs/41727462760):
+
+- [x] TypeScript typecheck.
+- [x] Vitest — 116 test files passed.
+- [x] Production build and bundle budget — entry bundle 429,516 / 500,000 bytes; gzip 133,335 / 165,000 bytes.
+- [x] Production-browser smoke test across the configured viewport set.
+- [x] Knip dead-code validation.
+- [x] Full dependency audit — configured high-severity threshold passed; 4 low-severity advisories remain.
+- [x] Production dependency audit — 0 vulnerabilities reported.
