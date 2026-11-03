@@ -126,6 +126,39 @@ describe('Freedom persistent account stream runtime', () => {
     expect(onPortfolio).not.toHaveBeenCalled();
   });
 
+  it('closes a half-open socket when the heartbeat pong stops arriving', async () => {
+    const sockets: FakeSocket[] = [];
+    const statuses: Array<[string, string?]> = [];
+    const runtime = createFreedomAccountStreamRuntime({
+      createTicket: async () => ({ ticket: 'g'.repeat(64) }),
+      buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      getCurrentSessionKey: () => 'admin:account-1',
+      onPortfolio: vi.fn(),
+      onOrders: vi.fn(),
+      onStatus: (status, message) => statuses.push([status, message])
+    });
+    const start = runtime.start('admin:account-1');
+    await Promise.resolve();
+    sockets[0].open();
+    sockets[0].receive({ type: 'ready' });
+    await expect(start).resolves.toBe(true);
+
+    await vi.advanceTimersByTimeAsync(45_000);
+
+    expect(sockets[0].readyState).toBe(3);
+    expect(runtime.isConnected()).toBe(false);
+    expect(statuses).toContainEqual([
+      'disconnected',
+      'TradeNet account stream heartbeat timed out.'
+    ]);
+    runtime.stop();
+  });
+
   it('reconnects with a new one-use ticket after the browser socket closes', async () => {
     const sockets: FakeSocket[] = [];
     const createTicket = vi.fn()
