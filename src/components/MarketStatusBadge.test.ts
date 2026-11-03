@@ -1,26 +1,52 @@
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setAppLanguage } from '../services/i18n';
-import { getMarketStatusLabel, getMarketStatusRoleLabel, getMarketStatusTone } from './MarketStatusBadge';
+import {
+  getMarketStatusLabel,
+  getMarketStatusRoleLabel,
+  getMarketStatusTone,
+  normalizeMarketSessionStatus
+} from './MarketStatusBadge';
 
 beforeEach(() => setAppLanguage('en'));
 
 describe('US-equities market status presentation', () => {
-
-  it('maps the documented provider states without guessing unknown codes', () => {
-    expect(getMarketStatusLabel('OPEN')).toBe('Market open');
-    expect(getMarketStatusLabel('CLOSE')).toBe('Market closed');
-    expect(getMarketStatusLabel('PRE')).toBe('Pre-market');
-    expect(getMarketStatusLabel('POST')).toBe('After-hours');
-    expect(getMarketStatusLabel('MIXED')).toBe('Mixed');
-    expect(getMarketStatusLabel('PREV')).toBe('PREV');
-    expect(getMarketStatusLabel(null)).toBe('Unavailable');
+  it('uses different labels for administrator and guest workspaces', () => {
+    expect(getMarketStatusRoleLabel(true)).toBe('Portfolio market');
+    expect(getMarketStatusRoleLabel(false)).toBe('Your market');
   });
 
-  it('uses role-neutral tones for known, transition, and unrecognized states', () => {
-    expect(getMarketStatusTone('OPEN')).toBe('open');
+  it.each([
+    ['PREV', 'PREMARKET', 'Premarket'],
+    ['PRE', 'PREMARKET', 'Premarket'],
+    ['PREPRE', 'PREMARKET', 'Premarket'],
+    ['OPEN', 'MARKET', 'Market'],
+    ['REGULAR', 'MARKET', 'Market'],
+    ['POST', 'POSTMARKET', 'Postmarket'],
+    ['POSTPOST', 'POSTMARKET', 'Postmarket'],
+    ['CLOSE', 'CLOSED', 'Closed'],
+    ['CLOSED', 'CLOSED', 'Closed']
+  ])('normalizes provider state %s to %s', (providerValue, expectedState, expectedLabel) => {
+    expect(normalizeMarketSessionStatus(providerValue)).toBe(expectedState);
+    expect(getMarketStatusLabel(providerValue)).toBe(expectedLabel);
+  });
+
+  it('does not display unknown provider codes as if they were a supported market phase', () => {
+    expect(normalizeMarketSessionStatus('PREV_UNKNOWN')).toBeNull();
+    expect(getMarketStatusLabel('PREV_UNKNOWN')).toBe('Unavailable');
+    expect(getMarketStatusTone('PREV_UNKNOWN')).toBe('unknown');
+  });
+
+  it('uses distinct tones for premarket, regular market, postmarket, and closed', () => {
+    expect(getMarketStatusTone('PREMARKET')).toBe('premarket');
+    expect(getMarketStatusTone('MARKET')).toBe('open');
+    expect(getMarketStatusTone('POSTMARKET')).toBe('postmarket');
     expect(getMarketStatusTone('CLOSED')).toBe('closed');
-    expect(getMarketStatusTone('PRE')).toBe('transition');
-    expect(getMarketStatusTone('MIXED')).toBe('transition');
-    expect(getMarketStatusTone('PREV')).toBe('unknown');
+  });
+
+  it('keeps the status badge in the shared header without gating it on currentUser state', () => {
+    const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+    expect(appSource).toContain('<MarketStatusBadge isAdmin={permissions.isAdmin} />');
+    expect(appSource).not.toContain('{currentUser && <MarketStatusBadge');
   });
 });
