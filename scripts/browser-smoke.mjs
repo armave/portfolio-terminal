@@ -220,7 +220,14 @@ async function mockWorkerApi(page) {
           return;
         }
         case 'news':
-          await json(route, 200, [], {}, call);
+          await json(route, 200, [{
+            id: 'smoke-news-1',
+            url: 'https://example.com/smoke-news',
+            headline: 'Smoke Test Market Update',
+            datetime: 1_799_999_940,
+            source: 'Smoke Test Wire',
+            summary: 'Deterministic news content for modal accessibility coverage.'
+          }], {}, call);
           return;
         case 'stocktwits':
           await json(route, 200, { messages: [] }, {}, call);
@@ -507,6 +514,51 @@ try {
     await assertResponsiveLayout(page, width);
   }
   await page.setViewportSize({ width: 1440, height: 900 });
+
+  // Exercise the real Market Insights news dialog using the deterministic news
+  // response from the mocked Worker. Verify initial focus, background isolation,
+  // Escape dismissal, and focus restoration to the exact triggering article.
+  const marketInsights = page.locator('#marketInsightsPanel');
+  await marketInsights.waitFor({ state: 'visible', timeout: 20_000 });
+  await waitForCondition(
+    () => worker.calls.some((call) => call.action === 'news'),
+    'Market Insights company news request'
+  );
+  const newsTrigger = page.getByRole('button', { name: 'Read news: Smoke Test Market Update' });
+  await newsTrigger.waitFor({ state: 'visible', timeout: 20_000 });
+  await newsTrigger.click();
+
+  const newsDialog = page.getByRole('dialog', { name: 'Smoke Test Market Update' });
+  await newsDialog.waitFor({ state: 'visible', timeout: 10_000 });
+  await assertVisibleControlsHaveNames(page, 'Market Insights news dialog');
+
+  const newsDialogInitialFocus = await page.evaluate(() =>
+    document.activeElement?.matches('[data-news-dialog-close]') === true
+  );
+  if (!newsDialogInitialFocus) {
+    throw new Error('Opening a news article did not focus its Close button.');
+  }
+
+  const newsBackgroundIsolated = await page.locator('#root').evaluate((element) =>
+    element.hasAttribute('inert') && element.getAttribute('aria-hidden') === 'true'
+  );
+  if (!newsBackgroundIsolated) {
+    throw new Error('The news dialog did not isolate the application root from focus and assistive technology.');
+  }
+
+  await page.keyboard.press('Escape');
+  await newsDialog.waitFor({ state: 'hidden', timeout: 10_000 });
+  const newsTriggerRestored = await newsTrigger.evaluate((element) => element === document.activeElement);
+  if (!newsTriggerRestored) {
+    throw new Error('Closing the news dialog with Escape did not restore focus to its article trigger.');
+  }
+  const newsBackgroundRestored = await page.locator('#root').evaluate((element) =>
+    !element.hasAttribute('inert') && !element.hasAttribute('aria-hidden')
+  );
+  if (!newsBackgroundRestored) {
+    throw new Error('Closing the news dialog did not restore the application root accessibility state.');
+  }
+
 
   // Exercise roving keyboard navigation through the full destination list.
   const navigationTabs = page.locator('#tickerTabs [data-nav-tab="true"]');
