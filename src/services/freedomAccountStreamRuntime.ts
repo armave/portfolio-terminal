@@ -12,8 +12,8 @@ export interface FreedomAccountStreamRuntimeDependencies {
   buildSocketUrl: (ticket: string) => string;
   createSocket?: (url: string) => FreedomAccountSocketLike;
   getCurrentSessionKey: () => string;
-  onPortfolio: (data: unknown, sessionKey: string, receivedAt: number) => void;
-  onOrders: (data: unknown, sessionKey: string, receivedAt: number) => void;
+  onPortfolio: (data: unknown, sessionKey: string, receivedAt: number) => boolean | void;
+  onOrders: (data: unknown, sessionKey: string, receivedAt: number) => boolean | void;
   onStatus?: (status: FreedomAccountStreamStatus, message?: string) => void;
   scheduleTimeout?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   clearScheduledTimeout?: (handle: ReturnType<typeof setTimeout>) => void;
@@ -28,7 +28,8 @@ export interface FreedomAccountStreamRuntime {
   isConnected: () => boolean;
 }
 
-const HEARTBEAT_MS = 20_000;
+const HEARTBEAT_MS = 15_000;
+const PONG_TIMEOUT_MS = 40_000;
 const CONNECT_TIMEOUT_MS = 12_000;
 const RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 15_000, 30_000];
 
@@ -64,6 +65,7 @@ export function createFreedomAccountStreamRuntime(
   let reconnectHandle: ReturnType<typeof setTimeout> | null = null;
   let reconnectAttempt = 0;
   let connected = false;
+  let lastPongAt = 0;
 
   const reportStatus = (status: FreedomAccountStreamStatus, message?: string): void => {
     dependencies.onStatus?.(status, message);
@@ -135,20 +137,35 @@ export function createFreedomAccountStreamRuntime(
           return;
         }
         clearHeartbeat();
+        lastPongAt = now();
         heartbeatHandle = scheduleInterval(() => {
-          if (nextSocket.readyState === 1) {
-            try { nextSocket.send('ping'); } catch { /* close event will reconnect */ }
+          if (nextSocket.readyState !== 1) return;
+          if (lastPongAt > 0 && now() - lastPongAt > PONG_TIMEOUT_MS) {
+            connected = false;
+            reportStatus('disconnected', 'TradeNet account stream heartbeat timed out.');
+            try { nextSocket.close(4000, 'Account stream heartbeat timeout'); } catch { /* close event may already be pending */ }
+            return;
           }
+          try { nextSocket.send('ping'); } catch { /* close event will reconnect */ }
         }, HEARTBEAT_MS);
       });
 
       nextSocket.addEventListener('message', (event: any) => {
         if (!active || runGeneration !== generation || socket !== nextSocket) return;
+        if (event?.data === 'pong') {
+          lastPongAt = now();
+          return;
+        }
         const message = parseMessage(event?.data);
         if (!message) return;
+        if (message.type === 'pong') {
+          lastPongAt = now();
+          return;
+        }
         if (message.type === 'ready' ||
             (message.type === 'status' && message.status === 'connected')) {
           connected = true;
+          lastPongAt = now();
           reconnectAttempt = 0;
           reportStatus('connected');
           if (message.type === 'ready') finish();
@@ -160,6 +177,7 @@ export function createFreedomAccountStreamRuntime(
           return;
         }
         if (message.type === 'error') {
+          connected = false;
           reportStatus('reconnecting', typeof message.message === 'string' ? message.message : undefined);
           return;
         }
@@ -182,6 +200,7 @@ export function createFreedomAccountStreamRuntime(
       nextSocket.addEventListener('close', (event: any) => {
         clearHeartbeat();
         connected = false;
+        lastPongAt = 0;
         if (socket === nextSocket) socket = null;
         if (!settled) finish(new Error('The TradeNet account stream closed before it became ready.'));
         if (active && runGeneration === generation) {
@@ -234,6 +253,7 @@ export function createFreedomAccountStreamRuntime(
     active = false;
     generation += 1;
     connected = false;
+    lastPongAt = 0;
     activeSessionKey = '';
     reconnectAttempt = 0;
     clearReconnect();
@@ -247,5 +267,9 @@ export function createFreedomAccountStreamRuntime(
     reportStatus('disconnected');
   }
 
-  return { start, stop, isConnected: () => connected && socket?.readyState === 1 };
+  return {
+    start,
+    stop,
+    isConnected: () => connected && socket?.readyState === 1 && lastPongAt > 0 && now() - lastPongAt <= PONG_TIMEOUT_MS
+  };
 }
