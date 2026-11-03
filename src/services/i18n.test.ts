@@ -382,6 +382,13 @@ describe('app localization', () => {
       .toBe('[Симуляция AAPL @ $205.00 через 14 дн.]: Валовая прибыль: $200.00 | Комиссии: -$4.00 | Маржинальные проценты: -$3.00 → Чистая прибыль/убыток: +$193.00');
   });
 
+  it('localizes the new TradeNet portfolio and market event diagnostic controls', () => {
+    expect(translateText('Test portfolio updates', 'ru')).toBe('Проверить обновления портфеля');
+    expect(translateText('Test market status updates', 'ru')).toBe('Проверить статусы рынка');
+    expect(translateText('Testing portfolio event…', 'ru')).toBe('Проверка события портфеля…');
+    expect(translateText('Testing market event…', 'ru')).toBe('Проверка события рынка…');
+  });
+
   it('notifies the app when the selected language changes', () => {
     const changes: string[] = [];
     const unsubscribe = subscribeAppLanguage((language) => changes.push(language));
