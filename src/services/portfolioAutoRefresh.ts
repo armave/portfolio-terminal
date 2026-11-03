@@ -120,7 +120,15 @@ export function createPortfolioAutoRefreshScheduler(
     // remains exclusively in the authenticated guest assignment snapshot.
     if (activeRole !== 'admin' || !options.syncHistory || !canRefresh()) return supplemental;
     const history = await runTask('history-sync', options.syncHistory);
-    return supplemental && history;
+    if (!canRefresh()) return supplemental && history;
+
+    // Broker cashflow allocation can update app-owned closed-trade fields that
+    // live in the shared portfolio state record. Wait for any quote-cycle state
+    // write that started before this history calculation, then checkpoint again.
+    if (stateSyncInFlight) await stateSyncInFlight;
+    if (!canRefresh() || !options.syncState) return supplemental && history;
+    const state = await runTask('state-sync', options.syncState);
+    return supplemental && history && state;
   };
 
   const refreshNow = async (): Promise<boolean> => {
