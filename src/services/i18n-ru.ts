@@ -29,7 +29,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Test market status updates': 'Проверить статусы рынка',
   'Comparing portfolio snapshots…': 'Сравнение снимков портфеля…',
   'Compare WebSocket vs REST portfolio': 'Сравнить портфель WebSocket и REST',
-  'Run read-only authenticated TradeNet checks. Portfolio reconciliation compares normalized WebSocket and REST snapshots without changing saved holdings.': 'Запускает проверки TradeNet только для чтения. Сверка портфеля сравнивает нормализованные снимки WebSocket и REST без изменения сохранённых активов.
+  'Run read-only authenticated TradeNet checks. Portfolio reconciliation compares normalized WebSocket and REST snapshots without changing saved holdings.': 'Запускает проверки TradeNet только для чтения. Сверка портфеля сравнивает нормализованные снимки WebSocket и REST без изменения сохранённых активов.',
   'Contacting TradeNet. Please wait…': 'Подключение к TradeNet. Подождите…',
   'Diagnostic result': 'Результат диагностики',
   'TradeNet diagnostic response': 'Ответ диагностики TradeNet',
