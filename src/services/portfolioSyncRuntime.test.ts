@@ -45,6 +45,7 @@ describe('portfolio sync runtime bindings', () => {
       activeOrders: true,
       quotes: true,
       cloud: true,
+      cloudHistory: true,
       success: true
     });
     expect(dependencies.refreshBrokerAccount).toHaveBeenCalledTimes(1);
