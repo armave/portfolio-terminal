@@ -4,6 +4,10 @@ import { normalizeFreedomPortfolio, normalizeFreedomActiveOrders } from './freed
 import { normalizeFreedomOrderFills, normalizeFreedomTrades } from './freedomTradeContracts';
 import { createFreedomAccountStreamRuntime } from './freedomAccountStreamRuntime';
 import type { FreedomAccountStreamRuntime } from './freedomAccountStreamRuntime';
+import {
+  markFreedomAccountStreamSnapshot,
+  setFreedomAccountStreamStatus
+} from './freedomAccountStreamHealth';
 import type { FreedomExecutedTrade } from '../types/freedomTrade';
 
 export interface FreedomAccountStreamAppDependencies {
@@ -32,33 +36,48 @@ export function createFreedomAccountStreamAppRuntime(
     emitBrokerEvent('broker:executed-trades', mergedTrades);
   });
 
+  let activeSessionKey = '';
   const runtime = createFreedomAccountStreamRuntime({
     createTicket: dependencies.createTicket,
     buildSocketUrl: dependencies.buildSocketUrl,
     getCurrentSessionKey: dependencies.getCurrentSessionKey,
     onPortfolio: (data, sessionKey) => {
-      if (!dependencies.isAdmin() || dependencies.getCurrentSessionKey() !== sessionKey) return;
+      if (!dependencies.isAdmin() || dependencies.getCurrentSessionKey() !== sessionKey) return false;
       const snapshot = normalizeFreedomPortfolio(data);
-      if (snapshot.loaded) emitBrokerEvent('broker:account-info', snapshot);
+      if (!snapshot.loaded) return false;
+      markFreedomAccountStreamSnapshot(sessionKey, 'portfolio');
+      emitBrokerEvent('broker:account-info', snapshot);
+      return true;
     },
     onOrders: (data, sessionKey) => {
-      if (!dependencies.isAdmin() || dependencies.getCurrentSessionKey() !== sessionKey) return;
-      emitBrokerEvent('broker:active-orders', normalizeFreedomActiveOrders(data));
+      if (!dependencies.isAdmin() || dependencies.getCurrentSessionKey() !== sessionKey) return false;
+      const normalizedOrders = normalizeFreedomActiveOrders(data);
+      markFreedomAccountStreamSnapshot(sessionKey, 'orders');
+      emitBrokerEvent('broker:active-orders', normalizedOrders);
       const fills = normalizeFreedomOrderFills(data);
       if (fills.length > 0) emitBrokerEvent('broker:live-order-fills', fills);
+      return true;
     },
-    onStatus: dependencies.onStatus
+    onStatus: (status, message) => {
+      if (activeSessionKey) setFreedomAccountStreamStatus(activeSessionKey, status);
+      dependencies.onStatus?.(status, message);
+    }
   });
 
   return {
     start: (sessionKey: string) => {
       if (!dependencies.isAdmin() || !sessionKey.startsWith('admin:')) {
         runtime.stop();
+        activeSessionKey = '';
         return Promise.resolve(false);
       }
+      activeSessionKey = sessionKey;
       return runtime.start(sessionKey);
     },
-    stop: () => runtime.stop(),
+    stop: () => {
+      runtime.stop();
+      activeSessionKey = '';
+    },
     isConnected: () => runtime.isConnected()
   };
 }
