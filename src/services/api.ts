@@ -291,11 +291,7 @@ const freedomBrokerTransportRuntime = createFreedomBrokerTransportRuntime({
   recordMetric: recordApiMetric
 });
 
-export const testFreedomTradeNetConnection = freedomBrokerTransportRuntime.testFreedomTradeNetConnection;
-export const testFreedomTradeNetOrdersStream = freedomBrokerTransportRuntime.testFreedomTradeNetOrdersStream;
 export const testFreedomTradeNetEventStream = freedomBrokerTransportRuntime.testFreedomTradeNetEventStream;
-export const testFreedomTradeNetQuoteStream = freedomBrokerTransportRuntime.testFreedomTradeNetQuoteStream;
-export const testFreedomTradeNetPortfolioReconciliation = freedomBrokerTransportRuntime.testFreedomTradeNetPortfolioReconciliation;
 export const fetchFreedomTradeNetPositions = freedomBrokerTransportRuntime.fetchFreedomTradeNetPositions;
 export const fetchFreedomTradeNetTrades = freedomBrokerTransportRuntime.fetchFreedomTradeNetTrades;
 export const fetchFreedomTradeNetActiveOrders = freedomBrokerTransportRuntime.fetchFreedomTradeNetActiveOrders;
