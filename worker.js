@@ -1264,6 +1264,38 @@ export default {
             }
         }
 
+
+        if (incomingUrl.searchParams.get("action") === "freedom-account-socket") {
+            if (request.method !== "GET" || request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+                return jsonError("A WebSocket upgrade is required.", 426, corsHeaders);
+            }
+            const ticket = incomingUrl.searchParams.get("ticket") || "";
+            if (!/^[a-f0-9]{64}$/i.test(ticket)) {
+                return jsonError("A valid one-use account stream ticket is required.", 401, corsHeaders);
+            }
+            if (!env.PORTFOLIO_STATE_DO) return jsonError("PORTFOLIO_STATE_DO binding is missing.", 500, corsHeaders);
+            try {
+                const streamStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
+                const socketUrl = new URL("https://portfolio-state.internal/internal/freedom-account-stream-socket");
+                socketUrl.searchParams.set("ticket", ticket);
+                const response = await streamStub.fetch(new Request(socketUrl.toString(), {
+                    method: "GET",
+                    headers: { Upgrade: "websocket" }
+                }));
+                if (response.status === 101 && response.webSocket) return response;
+                const responseHeaders = new Headers(response.headers);
+                Object.entries(corsHeaders).forEach(([name, value]) => responseHeaders.set(name, value));
+                return new Response(response.body, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: responseHeaders
+                });
+            } catch (error) {
+                console.error("Persistent TradeNet account socket failed", error);
+                return jsonError("Could not establish the TradeNet account socket.", 502, corsHeaders);
+            }
+        }
+
         if (incomingUrl.pathname.startsWith("/api/auth/")) {
             if (request.method === "POST" && AUTH_EDGE_RATE_LIMITED_PATHS.has(incomingUrl.pathname)) {
                 const rateLimitResponse = await enforceAuthEdgeRateLimit(
@@ -1393,7 +1425,8 @@ export default {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest"].includes(pathname);
             const sharedDataAction = [
                 "state", "history", "freedom-test", "freedom-positions", "freedom-trades",
-                "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-portfolio-snapshot"
+                "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-portfolio-snapshot",
+                "freedom-account-stream-ticket"
             ].includes(action);
             // Market quotes and exchange schedules are public, read-only data.
             // Guests may use the same server-side authenticated q / markets
@@ -1408,15 +1441,42 @@ export default {
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
         if (action !== "gemini" && action !== "state" && pathname !== "/api/state" && pathname !== "/api/history" && symbol && !validSymbolList(symbol)) {
             return jsonError("Invalid symbol list. Use up to 10 ticker symbols with letters, numbers, dots, carets, equals signs, or hyphens.", 400, corsHeaders);
+        }
+
+
+        if (action === "freedom-account-stream-ticket") {
+            if (!env.PORTFOLIO_STATE_DO || !accountId || accountRole !== "admin") {
+                return jsonError("An administrator portfolio account is required for private account updates.", 403, corsHeaders);
+            }
+            const streamStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
+            const ticketResponse = await streamStub.fetch(new Request(
+                "https://portfolio-state.internal/internal/freedom-account-stream-ticket",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ accountId, role: "admin" })
+                }
+            ));
+            const ticketPayload = await ticketResponse.json().catch(() => null);
+            if (!ticketResponse.ok || ticketPayload?.ok !== true || typeof ticketPayload.ticket !== "string") {
+                return jsonError(ticketPayload?.error || "Could not create an account stream ticket.", ticketResponse.status || 502, corsHeaders);
+            }
+            return new Response(JSON.stringify({
+                ok: true,
+                provider: "Freedom TradeNet",
+                ticket: ticketPayload.ticket,
+                expiresAt: ticketPayload.expiresAt,
+                events: ["portfolio", "orders"]
+            }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
         }
 
         if (action === "freedom-quote-stream-ticket") {
