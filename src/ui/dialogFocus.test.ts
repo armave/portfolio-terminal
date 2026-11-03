@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { focusElementWithoutScrolling, getDialogFocusableElements, isolateDialogBackground, resolveDialogRestoreTarget, restoreScrollPositionImmediately, trapDialogTabKey } from './dialogFocus';
+import { focusElementWithoutScrolling, getDialogFocusableElements, isolateDialogBackground, isTopmostActiveDialog, registerActiveDialog, resolveDialogRestoreTarget, restoreScrollPositionImmediately, trapDialogTabKey } from './dialogFocus';
 
 interface FocusableOptions {
   rendered?: boolean;
@@ -89,6 +89,38 @@ function makeEvent(shiftKey = false) {
 }
 
 describe('dialog focus management', () => {
+  it('gives keyboard ownership to the newest open dialog and restores the previous layer', () => {
+    const firstDialog = {} as HTMLElement;
+    const secondDialog = {} as HTMLElement;
+
+    const releaseFirst = registerActiveDialog(firstDialog);
+    expect(isTopmostActiveDialog(firstDialog)).toBe(true);
+
+    const releaseSecond = registerActiveDialog(secondDialog);
+    expect(isTopmostActiveDialog(secondDialog)).toBe(true);
+    expect(isTopmostActiveDialog(firstDialog)).toBe(false);
+
+    releaseSecond();
+    expect(isTopmostActiveDialog(firstDialog)).toBe(true);
+    expect(isTopmostActiveDialog(secondDialog)).toBe(false);
+
+    releaseFirst();
+    expect(isTopmostActiveDialog(firstDialog)).toBe(false);
+  });
+
+  it('keeps an upper dialog active when a lower dialog is removed first', () => {
+    const firstDialog = {} as HTMLElement;
+    const secondDialog = {} as HTMLElement;
+    const releaseFirst = registerActiveDialog(firstDialog);
+    const releaseSecond = registerActiveDialog(secondDialog);
+
+    releaseFirst();
+    expect(isTopmostActiveDialog(secondDialog)).toBe(true);
+
+    releaseSecond();
+    expect(isTopmostActiveDialog(secondDialog)).toBe(false);
+  });
+
   it('makes every background branch inert and restores its prior accessibility state', () => {
     const body = makeTreeElement('body');
     const appRoot = makeTreeElement('app-root');
