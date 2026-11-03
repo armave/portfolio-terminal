@@ -43,8 +43,10 @@ export async function runManualPortfolioSync(
       trySync(operations.refreshActiveOrders)
     ]);
     const quotes = await trySync(operations.refreshQuotes);
-    const cloud = await trySync(operations.pushCloud);
     const cloudHistory = await trySync(operations.syncClosedHistory);
+    // History fee allocation can update app-owned closed-trade totals in the
+    // shared portfolio record, so checkpoint the portfolio after history.
+    const cloud = await trySync(operations.pushCloud);
     return {
       role: 'admin',
       brokerAccount,
