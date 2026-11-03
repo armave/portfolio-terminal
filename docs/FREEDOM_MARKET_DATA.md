@@ -10,6 +10,7 @@ Configure these in the Worker environment (never in Vite/browser variables):
 
 - `FREEDOM_PUBLIC_KEY`
 - `FREEDOM_PRIVATE_KEY`
+- `FREEDOM_LOGIN` and `FREEDOM_PASSWORD` (required only for the authenticated WebSocket diagnostic)
 
 The Worker still requires the existing `GATEWAY_SECRET` for all app requests. After adding secrets, use the existing read-only `freedom-test` action to confirm TradeNet authentication.
 
