@@ -27,9 +27,10 @@ export function clearTrackedQuoteSnapshotCache(): void {
 }
 
 /**
- * Fetch the same provider-comparison result used by individual ticker lookups.
- * A small worker pool keeps large portfolios from opening unbounded provider
- * requests while allowing Yahoo's own batch transport to combine same-turn calls.
+ * Fetch one provider-comparison snapshot per ticker during this app page load.
+ * Later scheduler ticks are deliberate no-ops: they must not keep issuing quote
+ * REST fallbacks after the initial WebSocket attempt has completed or failed.
+ * A bounded worker pool limits concurrent first-load requests for large portfolios.
  */
 export async function refreshTrackedQuotes(
   tickers: string[],
