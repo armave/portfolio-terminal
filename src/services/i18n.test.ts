@@ -55,7 +55,7 @@ describe('app localization', () => {
     expect(translateText('Bullish', 'ru')).toBe('Бычий');
     expect(translateText('Bearish', 'ru')).toBe('Медвежий');
     expect(translateText('Neutral', 'ru')).toBe('Нейтральный');
-    expect(translateText('Stocktwits unavailable: connection lost', 'ru')).toBe('Stocktwits unavailable: connection lost');
+    expect(translateText('Stocktwits unavailable: connection lost', 'ru')).toBe('Stocktwits недоступен: connection lost');
   });
 
   it('localizes unpriced cash holding guidance', () => {
