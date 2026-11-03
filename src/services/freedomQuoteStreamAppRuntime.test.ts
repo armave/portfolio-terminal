@@ -32,9 +32,9 @@ class FakeSocket implements FreedomQuoteSocketLike {
 }
 
 describe('Freedom quote stream app adapter', () => {
-  it('applies every accepted q update to the current portfolio session and persists the new price', async () => {
+  it('applies every accepted q update to the current portfolio session without persistence', async () => {
     const recordQuote = vi.fn().mockReturnValue(true);
-    const persistAndRender = vi.fn();
+    const renderAfterUpdate = vi.fn();
     const socket = new FakeSocket();
     let currentSessionKey = 'admin:account-1';
     let requestSequence = 122;
@@ -45,7 +45,7 @@ describe('Freedom quote stream app adapter', () => {
       getCurrentSessionKey: () => currentSessionKey,
       nextRequestSequence: () => ++requestSequence,
       recordQuote,
-      persistAndRender
+      renderAfterUpdate
     });
 
     const start = runtime.start(['GOOGL'], 'admin:account-1');
@@ -90,7 +90,7 @@ describe('Freedom quote stream app adapter', () => {
       }),
       1_800_000_000_000
     );
-    expect(persistAndRender).toHaveBeenCalledTimes(1);
+    expect(renderAfterUpdate).toHaveBeenCalledTimes(1);
 
     // Every subsequent q message for the same ticker must be forwarded as a
     // new local overwrite, even if the provider's ltt timestamp moves backward.
@@ -128,7 +128,7 @@ describe('Freedom quote stream app adapter', () => {
       }),
       1_800_000_001_000
     );
-    expect(persistAndRender).toHaveBeenCalledTimes(2);
+    expect(renderAfterUpdate).toHaveBeenCalledTimes(2);
 
     currentSessionKey = 'guest:guest-2';
     socket.receive({
@@ -138,14 +138,14 @@ describe('Freedom quote stream app adapter', () => {
       receivedAt: 1_800_000_001_000
     });
     expect(recordQuote).toHaveBeenCalledTimes(2);
-    expect(persistAndRender).toHaveBeenCalledTimes(2);
+    expect(renderAfterUpdate).toHaveBeenCalledTimes(2);
 
     runtime.stop();
   });
 
   it('does not persist a quote rejected by the canonical portfolio store', async () => {
     const recordQuote = vi.fn().mockReturnValue(false);
-    const persistAndRender = vi.fn();
+    const renderAfterUpdate = vi.fn();
     const socket = new FakeSocket();
     const runtime = createFreedomQuoteStreamAppRuntime({
       createTicket: vi.fn(async () => ({ ticket: 'b'.repeat(64) })),
@@ -154,7 +154,7 @@ describe('Freedom quote stream app adapter', () => {
       getCurrentSessionKey: () => 'guest:guest-1',
       nextRequestSequence: () => 456,
       recordQuote,
-      persistAndRender
+      renderAfterUpdate
     });
 
     const start = runtime.start(['AAPL'], 'guest:guest-1');
@@ -170,7 +170,7 @@ describe('Freedom quote stream app adapter', () => {
     });
 
     expect(recordQuote).toHaveBeenCalledTimes(1);
-    expect(persistAndRender).not.toHaveBeenCalled();
+    expect(renderAfterUpdate).not.toHaveBeenCalled();
     runtime.stop();
   });
 });

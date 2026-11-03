@@ -19,13 +19,13 @@ export interface FreedomQuoteStreamAppRuntimeDependencies {
     details: Record<string, unknown>,
     requestStartedAt: number
   ) => boolean;
-  persistAndRender: () => void;
+  renderAfterUpdate: () => void;
   onStatus?: (status: string, message?: string) => void;
 }
 
 /**
- * Adapts the persistent public q event to the existing portfolio quote store.
- * Kept in a lazy chunk so it does not increase the application entry bundle.
+ * Adapts persistent public q events to the in-memory portfolio quote projection.
+ * Quote ticks are volatile and must not trigger local or cloud persistence.
  */
 export function createFreedomQuoteStreamAppRuntime(
   dependencies: FreedomQuoteStreamAppRuntimeDependencies
@@ -74,7 +74,7 @@ export function createFreedomQuoteStreamAppRuntime(
         ...(quote.serverTime ? { serverTime: quote.serverTime } : {})
       };
       if (dependencies.recordQuote(ticker, quote.price, 'Freedom TradeNet', receivedAt, quoteDetails, receivedAt)) {
-        dependencies.persistAndRender();
+        dependencies.renderAfterUpdate();
       }
     },
     onStatus: dependencies.onStatus

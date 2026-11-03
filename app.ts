@@ -32,6 +32,7 @@ import { createQuoteRefreshCoordinator } from './src/services/quoteRefreshCoordi
 import { bindPortfolioSyncRuntime } from './src/services/portfolioSyncRuntime';
 import { createPortfolioBrokerRefreshRuntime } from './src/services/portfolioBrokerRefreshRuntime';
 import { createPortfolioStartupLifecycleRuntime } from './src/services/portfolioStartupLifecycleRuntime';
+import { createPortfolioEquitySyncRuntime } from './src/services/portfolioEquitySyncRuntime';
 import { createPortfolioStartupRuntime } from './src/services/portfolioStartupRuntime';
 import { createPortfolioAuthenticatedStartupRuntime } from './src/services/portfolioAuthenticatedStartupRuntime';
 import { createPortfolioSessionRuntime } from './src/services/portfolioSessionRuntime';
@@ -238,6 +239,9 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     [...savedFeeRows, ...(current.brokerExecutedTrades || [])]
   );
   portfolioStore.setState({ brokerExecutedTrades: tradesWithPersistedFees });
+  // Execution-history changes affect active/closed guest lots, independent of
+  // whether the latest broker account snapshot is currently available.
+  void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
   const snapshot = current.brokerAccountInfo;
   if (!snapshot?.loaded || !Array.isArray(snapshot.positions)) return;
   const classified = classifyFreedomPortfolio(
@@ -263,7 +267,6 @@ addBrokerEventListener('broker:executed-trades', (trades) => {
     }
   });
   renderBoard();
-  void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
 });
 
 addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
@@ -339,6 +342,7 @@ addBrokerEventListener('broker:set-active-tranche-type', async (detail) => {
   // Store updates persist locally immediately; push explicitly so the local write doesn't suppress cloud sync.
   saveState(state);
   pushStateToGist();
+  void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
   const ticker = operationId.split(':')[0];
   logTerminal(`[Freedom] ${ticker} purchase operation classified as ${selectedType}.`);
   renderBoard();
@@ -442,34 +446,26 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
 let startupCloudWritesSuppressed = true;
 let startupCloudWritePending = false;
 
-const syncCalculatedPortfolioEquity = (nextStoreState: ReturnType<typeof portfolioStore.getState>) => {
-  state = nextStoreState;
-
-  // Equity is derived from the latest stored cash, holdings, and prices. Persist
-  // it into the canonical snapshot and cloud-sync only when its cent value changes.
-  const valuation = calculatePortfolioValuation({
+const portfolioEquitySyncRuntime = createPortfolioEquitySyncRuntime({
+  subscribe: (listener) => portfolioStore.subscribe((nextStoreState, source) => {
+    state = nextStoreState;
+    listener(nextStoreState, source);
+  }),
+  getState: () => portfolioStore.getState(),
+  calculateEquity: (nextStoreState) => calculatePortfolioValuation({
     signedAccountBalance: nextStoreState.balance,
     freeCash: nextStoreState.cashCushion?.freeCash,
     marginPositions: Object.values(nextStoreState.positions || {}),
     cashHoldings: nextStoreState.cashCushion?.holdings || []
-  });
-  const equity = Number(valuation.equity.toFixed(2));
-  if (
-    Number.isFinite(nextStoreState.portfolioEquity) &&
-    Number(nextStoreState.portfolioEquity) === equity
-  ) return;
-
-  portfolioStore.setState({
-    portfolioEquity: equity,
-    portfolioEquityUpdatedAt: Date.now()
-  });
-  void pushStateToCloud();
-};
-
-portfolioStore.subscribe(syncCalculatedPortfolioEquity);
-// Also calculate/persist the initial snapshot so the first equity value is not
-// left local-only until the next trade or quote refresh.
-syncCalculatedPortfolioEquity(portfolioStore.getState());
+  }).equity,
+  setDerivedEquity: (equity, updatedAt, persist) => {
+    portfolioStore.setDerivedState({
+      portfolioEquity: equity,
+      portfolioEquityUpdatedAt: updatedAt
+    }, persist);
+  },
+  onDurableEquityChanged: () => { void pushStateToCloud(); }
+});
 
 async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
   if (!canWriteCloudState) {
@@ -496,8 +492,6 @@ async function pushStateToCloud(forceImmediate = false): Promise<boolean> {
     try {
       const ok = await syncCloudState('push');
       if (ok) {
-        try { await guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots(); }
-        catch (error) { console.error('Guest portfolio projection sync failed:', error); }
         setCloudStatus('synced', 'UPDATED');
         return true;
       }
@@ -1013,9 +1007,8 @@ function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
         nextRequestSequence: nextLiveQuoteRequestSequence,
         recordQuote: (ticker, price, source, updatedAt, details, requestStartedAt) =>
           recordTrackedPrice(ticker, price, source, updatedAt, details as QuoteDetails, requestStartedAt),
-        persistAndRender: () => {
+        renderAfterUpdate: () => {
           state = portfolioStore.getState();
-          saveState(state);
           renderBoard();
         },
         onStatus: (status, message) => {
