@@ -344,6 +344,40 @@ export function buildFreedomQuoteStreamSocketUrl(ticket: string): string {
   return url.toString();
 }
 
+export interface FreedomAccountStreamTicket {
+  ticket: string;
+  expiresAt: number;
+  events: ['portfolio', 'orders'];
+}
+
+/** Mint an administrator-only, one-use ticket for portfolio and order updates. */
+export async function createFreedomAccountStreamTicket(): Promise<FreedomAccountStreamTicket> {
+  const response = await proxyFetch(
+    'freedom-account-stream-ticket',
+    undefined,
+    { cache: 'no-store' }
+  );
+  if (response?.ok !== true || typeof response.ticket !== 'string' ||
+      !/^[a-f0-9]{64}$/i.test(response.ticket)) {
+    throw new Error(response?.error || 'The server did not issue a valid account stream ticket.');
+  }
+  return {
+    ticket: response.ticket,
+    expiresAt: Number(response.expiresAt) || 0,
+    events: ['portfolio', 'orders']
+  };
+}
+
+/** The browser URL carries only a short-lived ticket, never the broker SID. */
+export function buildFreedomAccountStreamSocketUrl(ticket: string): string {
+  if (!/^[a-f0-9]{64}$/i.test(ticket)) throw new Error('A valid account stream ticket is required.');
+  const url = new URL(WORKER_PROXY_URL);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.searchParams.set('action', 'freedom-account-socket');
+  url.searchParams.set('ticket', ticket);
+  return url.toString();
+}
+
 
 const guestPortfolioPublicationFingerprints = new Map<string, string>();
 const guestPortfolioPublicationRequests = new Map<string, Promise<void>>();
