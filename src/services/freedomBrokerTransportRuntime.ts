@@ -43,8 +43,43 @@ export function createFreedomBrokerTransportRuntime(
     return dependencies.proxyFetch('freedom-event-stream', { event }, { cache: 'no-store' });
   };
 
-  const fetchFreedomTradeNetPositions = (): Promise<unknown> =>
-    dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
+  const fetchFreedomTradeNetPositions = async (): Promise<unknown> => {
+    try {
+      // Use the production portfolio event as the primary account snapshot.
+      // The Worker applies the same USD-only sanitizer as the REST endpoint and
+      // requires loaded === true before returning a snapshot.
+      const snapshot = await dependencies.proxyFetch(
+        'freedom-portfolio-snapshot',
+        undefined,
+        { cache: 'no-store' }
+      );
+      const portfolio = snapshot?.data?.result?.ps;
+      if (
+        snapshot?.ok !== true ||
+        snapshot?.source !== 'authenticated_websocket' ||
+        portfolio?.loaded !== true ||
+        !Array.isArray(portfolio?.acc) ||
+        !Array.isArray(portfolio?.pos)
+      ) {
+        throw new Error(snapshot?.error || 'TradeNet WebSocket portfolio snapshot is unavailable or incomplete.');
+      }
+      dependencies.recordMetric?.('broker_portfolio_source', {
+        source: 'websocket_snapshot',
+        account_count: portfolio.acc.length,
+        position_count: portfolio.pos.length
+      });
+      return snapshot.data;
+    } catch (error) {
+      // Keep getPositionJson as the automatic recovery path for SID/login,
+      // handshake, timeout, incomplete payload, or Worker transport failures.
+      dependencies.recordMetric?.('provider_fallback', {
+        operation: 'freedom_portfolio',
+        from: 'websocket_snapshot',
+        to: 'rest'
+      });
+      return dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
+    }
+  };
 
   const testFreedomTradeNetPortfolioReconciliation = async (): Promise<{ websocket: unknown; rest: unknown }> => {
     const [websocketResponse, restResponse] = await Promise.all([
