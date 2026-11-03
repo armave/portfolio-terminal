@@ -19,12 +19,13 @@ describe('app localization', () => {
       'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.',
       'ru'
     )).toContain('Назначенные вам активы и история ЛОТОВ обновляются каждые 60 секунд.');
-    expect(translateText('Automatic updates are paused. Manual Sync remains available.', 'ru'))
-      .toBe('Автоматические обновления приостановлены. Ручная синхронизация по-прежнему доступна.');
   });
 
   it('localizes the full portfolio sync button and outcome messages', () => {
     expect(translateText('Sync portfolio', 'ru')).toBe('Синхронизировать портфель');
+    expect(translateText('Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the live account stream is not healthy. Returning to the app refreshes all data.', 'ru'))
+      .toBe('Котировки и портфель синхронизируются с облаком с выбранным интервалом. Баланс брокера, позиции, сделки и заявки обновляются каждые 60 секунд, если поток счёта не работает корректно. При возвращении в приложение все данные обновляются.');
+
     expect(translateText('Portfolio sync completed.', 'ru')).toBe('Синхронизация портфеля завершена.');
     expect(translateText('Portfolio sync completed with issues. Check the activity log.', 'ru'))
       .toBe('Синхронизация портфеля завершена не полностью. Проверьте журнал действий.');
