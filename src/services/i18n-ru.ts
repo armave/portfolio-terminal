@@ -27,6 +27,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Market': 'Рынок открыт',
   'Postmarket': 'Постмаркет',
   'Closed': 'Рынок закрыт',
+  'Market closed status': 'Закрыт',
+  'Closed History and Freedom cashflows refresh and sync every 60 seconds.': 'История закрытых сделок и денежные операции Freedom обновляются и синхронизируются каждые 60 секунд.',
   'Unavailable': 'Недоступно',
   'Updated at': 'Обновлено',
   'Market status unavailable': 'Статус рынка недоступен',
