@@ -93,7 +93,7 @@ import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';
-import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
+import { preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
@@ -212,19 +212,6 @@ addBrokerEventListener('broker:account-info', (snapshot) => {
   logTerminal('[Freedom] Active tickers, cash/margin classifications, balance and prices refreshed.');
   renderBoard();
   void guestPortfolioAssignmentRuntime.publishGuestPortfolioSnapshots();
-});
-
-addBrokerEventListener('broker:live-order-fills', (fills) => {
-  if (currentAccountRole !== 'admin' || !Array.isArray(fills) || fills.length === 0) return;
-  const current = portfolioStore.getState();
-  const savedRows = normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades);
-  const retainedRows = [...savedRows, ...(current.brokerExecutedTrades || [])];
-  const knownIds = new Set(retainedRows.map((trade) => String(trade.id)));
-  const newFills = fills.filter((trade) => !knownIds.has(String(trade.id)));
-  if (newFills.length === 0) return;
-  const fillsWithPersistedFees = preservePersistedBrokerFeeAllocations(newFills, retainedRows);
-  const mergedTrades = mergeBrokerExecutionHistory(retainedRows, fillsWithPersistedFees);
-  emitBrokerEvent('broker:executed-trades', mergedTrades);
 });
 
 addBrokerEventListener('broker:executed-trades-error', () => {
@@ -968,14 +955,8 @@ let freedomAccountStreamRuntimePromise: Promise<FreedomAccountStreamRuntime> | n
 
 function getFreedomAccountStreamRuntime(): Promise<FreedomAccountStreamRuntime> {
   if (!freedomAccountStreamRuntimePromise) {
-    freedomAccountStreamRuntimePromise = Promise.all([
-      import('./src/services/freedomAccountStreamRuntime'),
-      import('./src/services/freedomAccountContracts'),
-      import('./src/services/freedomTradeContracts')
-    ]).then(([{ createFreedomAccountStreamRuntime }, {
-      normalizeFreedomPortfolio,
-      normalizeFreedomActiveOrders
-    }, { normalizeFreedomOrderFills }]) => createFreedomAccountStreamRuntime({
+    freedomAccountStreamRuntimePromise = import('./src/services/freedomAccountStreamAppRuntime')
+      .then(({ createFreedomAccountStreamAppRuntime }) => createFreedomAccountStreamAppRuntime({
         createTicket: async () => {
           const result = await createFreedomAccountStreamTicket();
           return { ticket: result.ticket };
@@ -984,23 +965,9 @@ function getFreedomAccountStreamRuntime(): Promise<FreedomAccountStreamRuntime> 
         getCurrentSessionKey: () => currentAccountRole && currentAccountId
           ? `${currentAccountRole}:${currentAccountId}`
           : '',
-        onPortfolio: (data, sessionKey) => {
-          const currentSessionKey = currentAccountRole && currentAccountId
-            ? `${currentAccountRole}:${currentAccountId}`
-            : '';
-          if (currentAccountRole !== 'admin' || currentSessionKey !== sessionKey) return;
-          const snapshot = normalizeFreedomPortfolio(data);
-          if (snapshot.loaded) emitBrokerEvent('broker:account-info', snapshot);
-        },
-        onOrders: (data, sessionKey) => {
-          const currentSessionKey = currentAccountRole && currentAccountId
-            ? `${currentAccountRole}:${currentAccountId}`
-            : '';
-          if (currentAccountRole !== 'admin' || currentSessionKey !== sessionKey) return;
-          emitBrokerEvent('broker:active-orders', normalizeFreedomActiveOrders(data));
-          const fills = normalizeFreedomOrderFills(data);
-          if (fills.length > 0) emitBrokerEvent('broker:live-order-fills', fills);
-        },
+        isAdmin: () => currentAccountRole === 'admin',
+        loadSavedBrokerExecutions: () => normalizeFreedomTrades(loadSavedHistory().brokerExecutedTrades),
+        getCurrentBrokerExecutions: () => portfolioStore.getState().brokerExecutedTrades || [],
         onStatus: (status, message) => {
           if (status === 'connected') {
             logTerminal('[System]: Live TradeNet portfolio and orders streams connected.');
