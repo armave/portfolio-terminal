@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { addBrokerEventListener } from './brokerEventBus';
 import { createFreedomAccountStreamAppRuntime } from './freedomAccountStreamAppRuntime';
+import {
+  isFreedomAccountStreamHealthy,
+  resetFreedomAccountStreamHealth
+} from './freedomAccountStreamHealth';
 
 class FakeWebSocket {
   static latest: FakeWebSocket | null = null;
@@ -43,6 +47,7 @@ describe('Freedom account stream app adapter', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     FakeWebSocket.latest = null;
+    resetFreedomAccountStreamHealth();
   });
 
   it('routes normalized portfolio, orders and deduplicated fills into broker events', async () => {
@@ -111,6 +116,7 @@ describe('Freedom account stream app adapter', () => {
       expect(brokerExecutions[0]).toMatchObject({
         id: 'fill-1', ticker: 'GOOGL.US', side: 'BUY', quantity: 2, price: 352.5
       });
+      expect(isFreedomAccountStreamHealthy('admin:account-1')).toBe(true);
 
       socket!.receive({ type: 'orders', data: orders, receivedAt: 1_800_000_002_000 });
       expect(brokerExecutions).toHaveLength(1);
