@@ -3834,3 +3834,18 @@ table tbody tr:hover {
     font-size: 0.75rem;
   }
 }
+
+/* Keep the mobile header flex row shrinkable so the nested ticker strip owns overflow. */
+@media (max-width: 768px) {
+  .board-header-banner > .flex {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #tickerTabs {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}

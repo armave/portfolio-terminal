@@ -42,4 +42,9 @@ describe('mobile workspace navigation styles', () => {
     expect(navigationComponent).toContain("aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}");
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-equity-badge--admin\s*\{\s*display:\s*none;/);
   });
+  it('allows the mobile header flex row and workspace container to shrink around the ticker scroll region', () => {
+    expect(stylesheet).toMatch(/@media\\s*\\(max-width:\\s*768px\\)[\\s\\S]*?\\.board-header-banner\\s*>\\s*\\.flex\\s*\\{[^}]*width:\\s*100%;[^}]*min-width:\\s*0;[^}]*max-width:\\s*100%;/);
+    expect(stylesheet).toMatch(/@media\\s*\\(max-width:\\s*768px\\)[\\s\\S]*?#tickerTabs\\s*\\{[^}]*width:\\s*100%;[^}]*min-width:\\s*0;[^}]*max-width:\\s*100%;/);
+  });
+
 });
