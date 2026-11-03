@@ -138,6 +138,89 @@ describe('portfolio broker data runtime', () => {
     expect(fixture.events[fixture.events.length - 1]?.type).toBe('broker:executed-trades');
   });
 
+  it('merges executions embedded in the authenticated orders snapshot into canonical history', async () => {
+    const oldTrade = trade('history-existing', 'buy', '2026-10-30T10:00:00.000Z');
+    const fill = {
+      id: 'trade-from-order-1',
+      order_id: 'order-77',
+      instr: 'GOOGL.US',
+      side: 'SELL',
+      curr: 'USD',
+      date: '2026-11-03T09:40:00',
+      p: 352.5,
+      q: 2,
+      v: 705,
+      profit: 12.5
+    };
+    const fixture = createFixture({
+      fetchActiveOrders: vi.fn(async () => ({
+        orders: { order: [{ order_id: 'order-77', instr: 'GOOGL.US' }] },
+        trades: { trade: [fill] }
+      })),
+      normalizeActiveOrders: vi.fn(() => [{ id: 'order-77' }] as never)
+    });
+    fixture.setSaved([oldTrade]);
+
+    await expect(fixture.runtime.loadActiveOrders(fixture.session)).resolves.toBe(true);
+
+    expect(fixture.dependencies.fetchExecutedTrades).not.toHaveBeenCalled();
+    expect(fixture.getPortfolioExecutions()).toHaveLength(2);
+    expect(fixture.getPortfolioExecutions()).toEqual(expect.arrayContaining([
+      oldTrade,
+      expect.objectContaining({
+        id: 'trade-from-order-1',
+        ticker: 'GOOGL.US',
+        side: 'SELL',
+        quantity: 2,
+        price: 352.5,
+        currency: 'USD',
+        executedAt: '2026-11-03T09:40:00',
+        tradeValue: 705,
+        profit: 12.5
+      })
+    ]));
+    expect(fixture.events).toContainEqual({
+      type: 'broker:executed-trades',
+      payload: fixture.getPortfolioExecutions()
+    });
+    expect(fixture.events).toContainEqual({
+      type: 'broker:active-orders',
+      payload: [{ id: 'order-77' }]
+    });
+  });
+
+  it('deduplicates the same TradeNet fill ID when the orders snapshot is replayed', async () => {
+    const fill = {
+      id: 'trade-replayed-1',
+      order_id: 'order-88',
+      instr: 'AAPL.US',
+      side: 'BUY',
+      curr: 'USD',
+      date: '2026-11-03T09:41:00',
+      p: 210,
+      q: 1,
+      v: 210
+    };
+    const fetchActiveOrders = vi.fn(async () => ({
+      orders: { order: [] },
+      trades: { trade: [fill] }
+    }));
+    const fixture = createFixture({
+      fetchActiveOrders,
+      normalizeActiveOrders: vi.fn(() => [] as never)
+    });
+
+    await expect(fixture.runtime.loadActiveOrders(fixture.session)).resolves.toBe(true);
+    const firstHistory = fixture.getPortfolioExecutions();
+    await expect(fixture.runtime.loadActiveOrders(fixture.session)).resolves.toBe(true);
+
+    expect(fetchActiveOrders).toHaveBeenCalledTimes(2);
+    expect(fixture.getPortfolioExecutions()).toHaveLength(1);
+    expect(fixture.getPortfolioExecutions()[0].id).toBe('trade-replayed-1');
+    expect(fixture.events.filter((event) => event.type === 'broker:executed-trades')).toHaveLength(1);
+    expect(firstHistory).toEqual(fixture.getPortfolioExecutions());
+  });
+
   it('marks a missing broker secret as a history error without calling the provider', async () => {
     const fixture = createFixture({
       restoreGatewaySecret: vi.fn(async () => '')
