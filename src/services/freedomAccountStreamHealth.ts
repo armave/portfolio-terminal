@@ -50,7 +50,9 @@ export function setFreedomAccountStreamStatus(
   }
 
   if (status === 'reconnecting' || status === 'disconnected') {
-    if (state.everConnected) state.recoveryPending = true;
+    // Only the connected -> disconnected transition opens a new recovery
+    // window; repeated reconnect notices during one outage must not restart it.
+    if (state.connected && state.everConnected) state.recoveryPending = true;
     state.connected = false;
     state.portfolioReceived = false;
     state.ordersReceived = false;
