@@ -726,11 +726,19 @@ function summarizeFreedomStreamEvent(eventName, payload) {
             "bbs", "bbf", "bap", "bac", "bas", "baf", "pp", "op", "ltp", "lts",
             "ltt", "chg", "pcp", "ltc", "mintp", "maxtp", "vol", "vlt", "trades",
             "min_step", "step_price", "p5", "chg5", "p22", "chg22", "p110",
-            "chg110", "p220", "chg220", "x_curr", "x_lot", "x_istrade"
+            "chg110", "p220", "chg220", "x_curr", "x_lot", "x_istrade",
+            "ClosePrice", "TradingReferencePrice", "UTCOffset", "Volatility",
+            "TradingSessionSubID", "acc_srv_tm", "acd", "base_contract_code",
+            "base_currency", "base_ltr", "bat", "bbt", "codesub_nm", "cpn", "cpp",
+            "delta", "dpb", "dps", "emitent_type", "fv", "gamma", "indap", "indbp"
         ]);
         const identifierKeys = ["c", "symbol", "ticker", "code", "i", "instr", "instrument"];
         const sample = rows[0];
-        const quoteItemKeys = sample ? keys(sample).filter(key => quoteKeys.has(key)) : [];
+        // Do not use keys(), which intentionally truncates general object summaries to 40 keys.
+        // Quote diagnostics need to show later alphabetic fields such as ltp.
+        const quoteItemKeys = sample && isRecord(sample)
+            ? Object.keys(sample).filter(key => /^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(key) && quoteKeys.has(key)).sort().slice(0, 80)
+            : [];
         const returnedSymbols = rows.slice(0, 10).map(row => {
             if (!isRecord(row)) return null;
             const key = identifierKeys.find(candidate => typeof row[candidate] === "string");
@@ -925,10 +933,25 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
 }
 
 function sanitizeFreedomStreamQuote(payload, requestedSymbol) {
-    const rows = Array.isArray(payload?.q) ? payload.q
+    const isRecord = value => value !== null && typeof value === "object" && !Array.isArray(value);
+    const identifierKeys = ["c", "symbol", "ticker", "code", "i", "instr", "instrument"];
+    let rows = Array.isArray(payload?.q) ? payload.q
         : Array.isArray(payload) ? payload : [];
+    if (rows.length === 0 && isRecord(payload)) {
+        // The production raw q event can be a single quote object rather
+        // than the Socket.IO { q: [...] } wrapper used in older examples.
+        if (identifierKeys.some(key => typeof payload[key] === "string")) {
+            rows = [payload];
+        } else {
+            const values = Object.values(payload);
+            if (values.length > 0 && values.every(isRecord)) rows = values;
+        }
+    }
     const target = String(requestedSymbol || "").trim().toUpperCase();
-    const quote = rows.find(row => String(row?.c || "").trim().toUpperCase() === target);
+    const quote = rows.find(row => {
+        const identifier = identifierKeys.find(key => typeof row?.[key] === "string");
+        return identifier && String(row[identifier]).trim().toUpperCase() === target;
+    });
     if (!quote) {
         throw new Error("TradeNet quote stream did not return the requested symbol.");
     }
