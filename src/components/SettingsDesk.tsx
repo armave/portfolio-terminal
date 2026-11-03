@@ -7,7 +7,7 @@ import {
 } from '../services/portfolioAutoRefresh';
 import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
-import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, testFreedomTradeNetEventStream, type AuthUser } from '../services/api';
+import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import { DeskLoading } from './DeskLoading';
@@ -61,7 +61,6 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [savingUser, setSavingUser] = useState(false);
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [languageError, setLanguageError] = useState("");
-  const [marketStatusTest, setMarketStatusTest] = useState<{ loading: boolean; result?: unknown; error?: string } | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
   const refreshUsers = async () => {
@@ -148,20 +147,6 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       setLanguageError(error instanceof Error ? error.message : "Could not update language.");
     } finally {
       setSavingLanguage(false);
-    }
-  };
-
-  const runMarketStatusTest = async () => {
-    if (marketStatusTest?.loading) return;
-    setMarketStatusTest({ loading: true });
-    try {
-      const result = await testFreedomTradeNetEventStream('markets');
-      setMarketStatusTest({ loading: false, result });
-    } catch (error) {
-      setMarketStatusTest({
-        loading: false,
-        error: error instanceof Error ? error.message : translateText('TradeNet diagnostic failed.')
-      });
     }
   };
 
@@ -330,23 +315,6 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       {permissions.canManageBackups && <div class="settings-data-safety-note w-full rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
         <p class="mt-1 font-semibold text-amber-200 text-center">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
       </div>}
-
-      {account?.role === "admin" && <section class="settings-panel settings-tradenet-diagnostics space-y-3 rounded-lg border border-cyan-900/60 bg-slate-950/40 p-3" aria-labelledby="marketStatusProbeTitle">
-        <div>
-          <h3 id="marketStatusProbeTitle" class="text-sm font-bold text-slate-200">{translateText('TradeNet market status probe')}</h3>
-        </div>
-        <div class="flex flex-wrap gap-2">
-          <button type="button" disabled={Boolean(marketStatusTest?.loading)} onClick={() => void runMarketStatusTest()} class="rounded border border-emerald-800 bg-emerald-950/50 px-3 py-2 text-xs font-bold text-emerald-200 hover:bg-emerald-900 disabled:cursor-wait disabled:opacity-50">
-            {marketStatusTest?.loading ? translateText('Testing market event…') : translateText('Test market status updates')}
-          </button>
-        </div>
-        {marketStatusTest?.loading && <p class="text-xs text-cyan-300" role="status">{translateText('Contacting TradeNet. Please wait…')}</p>}
-        {marketStatusTest?.error && <p class="rounded border border-rose-900/60 bg-rose-950/30 p-2 text-xs text-rose-300" role="alert">{marketStatusTest.error}</p>}
-        {marketStatusTest?.result !== undefined && <div class="space-y-1">
-          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400" role="status">{translateText('Diagnostic result')}</p>
-          <pre class="max-h-72 overflow-auto rounded border border-slate-800 bg-slate-950 p-2 text-[10px] leading-relaxed text-slate-300 whitespace-pre-wrap break-all" aria-label={translateText('TradeNet diagnostic response')}>{JSON.stringify(marketStatusTest.result, null, 2)}</pre>
-        </div>}
-      </section>}
 
       {account?.role === "admin" && <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="flex flex-wrap items-center justify-between gap-2">
