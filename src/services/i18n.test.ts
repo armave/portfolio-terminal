@@ -407,6 +407,14 @@ describe('app localization', () => {
       .toBe('[Симуляция AAPL @ $205.00 через 14 дн.]: Валовая прибыль: $200.00 | Комиссии: -$4.00 | Маржинальные проценты: -$3.00 → Чистая прибыль/убыток: +$193.00');
   });
 
+  it('localizes Guest LOTS mixed status and valuation explanation', () => {
+    expect(translateText('Mixed', 'ru')).toBe('Смешанный');
+    expect(translateText(
+      "Value shows current market value for open tranches and sale proceeds for closed trades. Net P&L appears only when the closed trade's net result is available.",
+      'ru'
+    )).toBe('Стоимость показывает текущую рыночную стоимость открытых лотов и выручку от закрытых сделок. Чистая прибыль или убыток отображается только при наличии итогового результата закрытой сделки.');
+  });
+
   it('localizes workspace cloud status labels and sync feedback', () => {
     expect(translateText('Cloud storage', 'ru')).toBe('Облачное хранилище');
     expect(translateText('OFFLINE', 'ru')).toBe('НЕ В СЕТИ');
