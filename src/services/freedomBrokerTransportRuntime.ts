@@ -18,8 +18,10 @@ export interface FreedomBrokerTransportRuntime {
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
+  fetchFreedomTradeNetQuoteStreamOnce: (symbol: string) => Promise<unknown | null>;
   fetchFreedomCashflows: (fromDate?: string) => Promise<unknown>;
   clearFreedomCashflowCache: () => void;
+  clearFreedomStreamSnapshotCache: () => void;
 }
 
 /** Owns the read-only Freedom TradeNet transport and account-scoped cashflow cache. */
@@ -30,6 +32,89 @@ export function createFreedomBrokerTransportRuntime(
   const FREEDOM_CASHFLOW_CACHE_TTL_MS = 5 * 60 * 1000;
   let freedomCashflowCache: { secret: string; fromDate?: string; expiresAt: number; data: unknown } | null = null;
   let freedomCashflowRequest: { secret: string; fromDate?: string; promise: Promise<unknown> } | null = null;
+  let streamScopeSecret = dependencies.getActiveGatewaySecret().trim();
+  const attemptedStreamSnapshots = new Set<string>();
+  const streamSnapshotRequests = new Map<string, Promise<unknown>>();
+
+  const syncStreamSnapshotScope = (): string => {
+    const secret = dependencies.getActiveGatewaySecret().trim();
+    if (secret !== streamScopeSecret) {
+      attemptedStreamSnapshots.clear();
+      streamSnapshotRequests.clear();
+      streamScopeSecret = secret;
+    }
+    return secret;
+  };
+
+  const clearFreedomStreamSnapshotCache = (): void => {
+    attemptedStreamSnapshots.clear();
+    streamSnapshotRequests.clear();
+    streamScopeSecret = dependencies.getActiveGatewaySecret().trim();
+  };
+
+  const runStreamSnapshotOnce = (
+    key: string,
+    requestSnapshot: () => Promise<unknown>,
+    requestRest: () => Promise<unknown>,
+    operation: string
+  ): Promise<unknown> => {
+    syncStreamSnapshotScope();
+    const inFlight = streamSnapshotRequests.get(key);
+    if (inFlight) return inFlight;
+    if (attemptedStreamSnapshots.has(key)) {
+      dependencies.recordMetric?.('stream_snapshot_skipped', { operation, reason: 'already_attempted_this_session' });
+      return requestRest();
+    }
+
+    // Mark before dispatch: failures and provider rate limits must not cause
+    // the scheduler to reopen this one-shot socket on every refresh interval.
+    attemptedStreamSnapshots.add(key);
+    let request: Promise<unknown>;
+    request = (async () => {
+      try {
+        return await requestSnapshot();
+      } catch {
+        dependencies.recordMetric?.('provider_fallback', {
+          operation,
+          from: 'websocket_snapshot',
+          to: 'rest'
+        });
+        return requestRest();
+      }
+    })().finally(() => {
+      if (streamSnapshotRequests.get(key) === request) streamSnapshotRequests.delete(key);
+    });
+    streamSnapshotRequests.set(key, request);
+    return request;
+  };
+
+  const fetchFreedomTradeNetQuoteStreamOnce = (symbol: string): Promise<unknown | null> => {
+    const normalized = symbol.trim().toUpperCase();
+    if (!normalized) return Promise.reject(new Error('A ticker symbol is required.'));
+    const ticker = normalized.includes('.') ? normalized : `${normalized}.US`;
+    if (!/^[A-Z0-9.^=-]{1,32}$/.test(ticker)) {
+      return Promise.reject(new Error('Enter one valid TradeNet ticker symbol.'));
+    }
+    const key = `quote:${ticker}`;
+    syncStreamSnapshotScope();
+    const inFlight = streamSnapshotRequests.get(key);
+    if (inFlight) return inFlight;
+    if (attemptedStreamSnapshots.has(key)) {
+      dependencies.recordMetric?.('stream_snapshot_skipped', { operation: 'freedom_quote', reason: 'already_attempted_this_session' });
+      return Promise.resolve(null);
+    }
+    attemptedStreamSnapshots.add(key);
+    let request: Promise<unknown>;
+    request = dependencies.proxyFetch(
+      'freedom-quote-stream',
+      { symbol: ticker },
+      { cache: 'no-store' }
+    ).finally(() => {
+      if (streamSnapshotRequests.get(key) === request) streamSnapshotRequests.delete(key);
+    });
+    streamSnapshotRequests.set(key, request);
+    return request;
+  };
 
   const testFreedomTradeNetConnection = (): Promise<unknown> =>
     dependencies.proxyFetch('freedom-test', undefined, { cache: 'no-store' });
@@ -56,44 +141,35 @@ export function createFreedomBrokerTransportRuntime(
     return dependencies.proxyFetch('freedom-quote-stream', { symbol: ticker }, { cache: 'no-store' });
   };
 
-  const fetchFreedomTradeNetPositions = async (): Promise<unknown> => {
-    try {
-      // Use the production portfolio event as the primary account snapshot.
-      // The Worker applies the same USD-only sanitizer as the REST endpoint and
-      // requires loaded === true before returning a snapshot.
-      const snapshot = await dependencies.proxyFetch(
-        'freedom-portfolio-snapshot',
-        undefined,
-        { cache: 'no-store' }
-      );
-      const portfolio = snapshot?.data?.result?.ps;
-      if (
-        snapshot?.ok !== true ||
-        snapshot?.source !== 'authenticated_websocket' ||
-        portfolio?.loaded !== true ||
-        !Array.isArray(portfolio?.acc) ||
-        !Array.isArray(portfolio?.pos)
-      ) {
-        throw new Error(snapshot?.error || 'TradeNet WebSocket portfolio snapshot is unavailable or incomplete.');
-      }
-      dependencies.recordMetric?.('broker_portfolio_source', {
-        source: 'websocket_snapshot',
-        account_count: portfolio.acc.length,
-        position_count: portfolio.pos.length
-      });
-      // Keep the outer Worker envelope: normalizeFreedomPortfolio expects data.result.ps.
-      return snapshot;
-    } catch (error) {
-      // Keep getPositionJson as the automatic recovery path for SID/login,
-      // handshake, timeout, incomplete payload, or Worker transport failures.
-      dependencies.recordMetric?.('provider_fallback', {
-        operation: 'freedom_portfolio',
-        from: 'websocket_snapshot',
-        to: 'rest'
-      });
-      return dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
-    }
-  };
+  const fetchFreedomTradeNetPositions = (): Promise<unknown> =>
+    runStreamSnapshotOnce(
+      'portfolio',
+      async () => {
+        const snapshot = await dependencies.proxyFetch(
+          'freedom-portfolio-snapshot',
+          undefined,
+          { cache: 'no-store' }
+        );
+        const portfolio = snapshot?.data?.result?.ps;
+        if (
+          snapshot?.ok !== true ||
+          snapshot?.source !== 'authenticated_websocket' ||
+          portfolio?.loaded !== true ||
+          !Array.isArray(portfolio?.acc) ||
+          !Array.isArray(portfolio?.pos)
+        ) {
+          throw new Error(snapshot?.error || 'TradeNet WebSocket portfolio snapshot is unavailable or incomplete.');
+        }
+        dependencies.recordMetric?.('broker_portfolio_source', {
+          source: 'websocket_snapshot',
+          account_count: portfolio.acc.length,
+          position_count: portfolio.pos.length
+        });
+        return snapshot;
+      },
+      () => dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' }),
+      'freedom_portfolio'
+    );
 
   const testFreedomTradeNetPortfolioReconciliation = async (): Promise<{ websocket: unknown; rest: unknown }> => {
     const [websocketResponse, restResponse] = await Promise.all([
@@ -119,38 +195,31 @@ export function createFreedomBrokerTransportRuntime(
     return dependencies.proxyFetch('freedom-trades', startDate ? { fromDate: startDate } : undefined, { cache: 'no-store' });
   };
 
-  const fetchFreedomTradeNetActiveOrders = async (): Promise<unknown> => {
-    try {
-      // Prefer the SID-authenticated orders event. The Worker returns a
-      // sanitized snapshot in the same envelope as the REST normalizer expects.
-      const snapshot = await dependencies.proxyFetch(
-        'freedom-orders-stream',
-        undefined,
-        { cache: 'no-store' }
-      );
-      if (snapshot?.ok !== true || !Array.isArray(snapshot?.data?.orders?.order)) {
-        throw new Error('TradeNet WebSocket did not return a valid active-orders snapshot.');
-      }
-      dependencies.recordMetric?.('broker_orders_source', {
-        source: 'websocket_snapshot',
-        order_count: snapshot.data.orders.order.length
-      });
-      return snapshot.data;
-    } catch {
-      // Preserve the existing signed REST endpoint as the recovery path if login,
-      // WebSocket upgrade, or event delivery fails for this refresh.
-      dependencies.recordMetric?.('provider_fallback', {
-        operation: 'freedom_active_orders',
-        from: 'websocket_snapshot',
-        to: 'rest'
-      });
-      return dependencies.proxyFetch(
+  const fetchFreedomTradeNetActiveOrders = (): Promise<unknown> =>
+    runStreamSnapshotOnce(
+      'active_orders',
+      async () => {
+        const snapshot = await dependencies.proxyFetch(
+          'freedom-orders-stream',
+          undefined,
+          { cache: 'no-store' }
+        );
+        if (snapshot?.ok !== true || !Array.isArray(snapshot?.data?.orders?.order)) {
+          throw new Error('TradeNet WebSocket did not return a valid active-orders snapshot.');
+        }
+        dependencies.recordMetric?.('broker_orders_source', {
+          source: 'websocket_snapshot',
+          order_count: snapshot.data.orders.order.length
+        });
+        return snapshot.data;
+      },
+      () => dependencies.proxyFetch(
         'freedom-orders',
         { active_only: 1 },
         { cache: 'no-store' }
-      );
-    }
-  };
+      ),
+      'freedom_active_orders'
+    );
 
   const fetchFreedomCashflows = (fromDate?: string): Promise<unknown> => {
     const secret = dependencies.getActiveGatewaySecret().trim();
@@ -208,7 +277,9 @@ export function createFreedomBrokerTransportRuntime(
     fetchFreedomTradeNetPositions,
     fetchFreedomTradeNetTrades,
     fetchFreedomTradeNetActiveOrders,
+    fetchFreedomTradeNetQuoteStreamOnce,
     fetchFreedomCashflows,
-    clearFreedomCashflowCache
+    clearFreedomCashflowCache,
+    clearFreedomStreamSnapshotCache
   };
 }
