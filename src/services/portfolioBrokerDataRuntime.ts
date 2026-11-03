@@ -94,7 +94,13 @@ export function createPortfolioBrokerDataRuntime(
 
   const loadFreedomAccount = async (session: SessionIdentityToken): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
-    if (hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')) return true;
+    if (hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')) {
+      // The account stream already applied a current snapshot. Notify mounted
+      // desks waiting for the request lifecycle even though no new payload or
+      // REST request is needed.
+      emit('broker:account-info-refresh-complete');
+      return true;
+    }
     const requestKey = getSessionIdentityRequestKey(session);
     const existing = accountRequests.get(requestKey);
     if (existing) return existing;
@@ -113,14 +119,20 @@ export function createPortfolioBrokerDataRuntime(
       if (
         getFreedomAccountStreamSnapshotRevision(session.identity, 'portfolio') > streamRevisionAtStart ||
         hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')
-      ) return true;
+      ) {
+        emit('broker:account-info-refresh-complete');
+        return true;
+      }
 
       const snapshot = normalizeAccountInfo(response);
       if (!dependencies.isSessionCurrent(session)) return false;
       if (
         getFreedomAccountStreamSnapshotRevision(session.identity, 'portfolio') > streamRevisionAtStart ||
         hasFreedomAccountStreamSnapshot(session.identity, 'portfolio')
-      ) return true;
+      ) {
+        emit('broker:account-info-refresh-complete');
+        return true;
+      }
 
       emit('broker:account-info', snapshot);
       return snapshot.loaded === true;
