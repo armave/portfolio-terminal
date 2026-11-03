@@ -516,8 +516,11 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // Enter the Margin ticker view explicitly: the smoke account starts on
-  // Balance, where Market Insights is intentionally hidden.
-  await page.getByRole('button', { name: 'Margin: AAPL' }).click();
+  // Balance, where Market Insights is intentionally hidden. Use the UI's
+  // semantic prefix because broker symbols may retain an exchange suffix.
+  const marginTickerTab = page.locator('#tickerTabs [aria-label^="Margin:"]').first();
+  await marginTickerTab.waitFor({ state: 'visible', timeout: 20_000 });
+  await marginTickerTab.click();
 
   // Exercise the real Market Insights news dialog using the deterministic news
   // response from the mocked Worker. Verify initial focus, background isolation,
