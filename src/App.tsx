@@ -478,7 +478,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         >
           <div class="flex flex-wrap items-center gap-2 justify-center">
             <div id="tickerTabs" role="group" aria-label="Workspace navigation"><MemoTickerTabs isAdmin={permissions.isAdmin} userId={currentUser?.role === 'guest' ? currentUser.id : undefined} /></div>
-            {currentUser && <MarketStatusBadge isAdmin={permissions.isAdmin} />}
+            <MarketStatusBadge isAdmin={permissions.isAdmin} />
           </div>
           {permissions.isAdmin && <div
             class={"text-sm font-semibold text-emerald-400 font-mono tracking-tight shrink-0 " + (["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) ? "hidden" : "")}
