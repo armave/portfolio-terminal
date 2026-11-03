@@ -37,6 +37,8 @@ describe('Freedom account stream health', () => {
     expect(hasFreedomAccountStreamSnapshot(session, 'portfolio')).toBe(false);
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(true);
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(false);
+    setFreedomAccountStreamStatus(session, 'reconnecting');
+    expect(consumeFreedomAccountStreamRecovery(session)).toBe(false);
 
     setFreedomAccountStreamStatus(session, 'connected');
     markFreedomAccountStreamSnapshot(session, 'portfolio');
