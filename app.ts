@@ -52,6 +52,8 @@ import {
   createFreedomAccountStreamTicket,
   buildFreedomAccountStreamSocketUrl,
   clearCloudHistory,
+  clearFreedomCashflowCache,
+  fetchFreedomCashflows,
   pullCloudHistory,
   pushCloudHistory,
   proxyFetch,
@@ -78,7 +80,8 @@ import {
   persistGatewaySecret,
   loadSavedState,
   loadSavedHistory,
-  saveSavedHistory,
+  hasFreedomCashflowHistoryBaseline,
+  markFreedomCashflowHistoryBaseline,
   savePortfolioSnapshot,
   saveApiKeys,
   saveGatewaySecret,
@@ -99,8 +102,19 @@ import { calculatePortfolioValuation } from './src/domain/portfolioValuation';
 import { formatUSD } from './src/utils/formatters';
 import { migrateLegacyCloudHoldingsToPositions, PORTFOLIO_PERSISTENCE_ERROR_MESSAGE, portfolioStore } from './src/store/portfolioStore';
 import { createBlankPortfolioState } from './src/store/portfolioDefaults';
-import { mergeBrokerExecutionHistory, preservePersistedBrokerFeeAllocations } from './src/domain/closedHistoryFees';
-import { mergeFreedomCashflowRows, normalizeSavedFreedomCashflows } from './src/domain/freedomCashflows';
+import {
+  applyCashflowAllocationsToBrokerExecutions,
+  applyCashflowAllocationsToClosedTrades,
+  mergeBrokerExecutionHistory,
+  preservePersistedBrokerFeeAllocations
+} from './src/domain/closedHistoryFees';
+import {
+  mergeFreedomCashflowRows,
+  normalizeFreedomCashflowRows,
+  normalizeSavedFreedomCashflows
+} from './src/domain/freedomCashflows';
+import { calculateFreedomMarginFeeAllocations } from './src/domain/freedomMarginFees';
+import { getLatestClosedTradeDate } from './src/domain/tradeHistorySync';
 import { applyActiveLimitSellTargets, classifyFreedomPortfolio, getActiveLimitSellTargets, getActiveTranchesFromTrades, normalizeActiveTrancheMix } from './src/domain/freedomPortfolio';
 import { getAssignableActiveTrancheCashQuantity } from './src/domain/activeTrancheGuestAssignment';
 import { createGuestPortfolioHydrationRuntime } from './src/services/guestPortfolioHydrationRuntime';
@@ -1261,67 +1275,151 @@ async function refreshSupplementalPortfolioData(): Promise<void> {
  * cloud ledger with an empty local snapshot.
  */
 async function syncAdminClosedHistory(): Promise<boolean> {
+  const accountId = currentAccountId || '';
   const session = currentAccountSessionGuard.capture();
   const isCurrentSession = () =>
     currentAccountRole === 'admin' &&
+    Boolean(accountId) &&
     session !== null &&
     currentAccountSessionGuard.isCurrent(session);
   if (!isCurrentSession()) return false;
 
-  const cloudHistory = await pullCloudHistory(undefined, { isCurrentSession });
-  if (!isCurrentSession()) return false;
-
-  const current = portfolioStore.getState();
-  const saved = loadSavedHistory();
-  const cloudExecutions = normalizeFreedomTrades(cloudHistory?.brokerExecutedTrades || []);
-  const savedExecutions = normalizeFreedomTrades(saved.brokerExecutedTrades);
-  const currentExecutions = normalizeFreedomTrades(current.brokerExecutedTrades || []);
-  const mergedExecutions = preservePersistedBrokerFeeAllocations(
-    mergeBrokerExecutionHistory(
+  try {
+    // Pull the remote history first; never let an empty/new device overwrite a
+    // populated Closed History record before local and broker data are merged.
+    const cloudHistory = await pullCloudHistory(undefined, { isCurrentSession });
+    if (!isCurrentSession()) return false;
+    const savedAtStart = loadSavedHistory();
+    const currentAtStart = portfolioStore.getState();
+    const cloudExecutions = normalizeFreedomTrades(cloudHistory?.brokerExecutedTrades || []);
+    const savedExecutions = normalizeFreedomTrades(savedAtStart.brokerExecutedTrades);
+    const currentExecutions = normalizeFreedomTrades(currentAtStart.brokerExecutedTrades || []);
+    const baselineExecutions = mergeBrokerExecutionHistory(
       mergeBrokerExecutionHistory(cloudExecutions, savedExecutions),
       currentExecutions
-    ),
-    [...savedExecutions, ...cloudExecutions]
-  );
+    );
+    const executionsWithFees = preservePersistedBrokerFeeAllocations(
+      baselineExecutions,
+      [...savedExecutions, ...cloudExecutions, ...currentExecutions]
+    );
+    const latestCashflowDate = hasFreedomCashflowHistoryBaseline(accountId)
+      ? getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])
+      : undefined;
 
-  const cloudCashflows = normalizeSavedFreedomCashflows(cloudHistory?.cashflows || []);
-  const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
-  const currentCashflows = normalizeSavedFreedomCashflows(current.cashflows || []);
-  const mergedCashflows = mergeFreedomCashflowRows(
-    mergeFreedomCashflowRows(cloudCashflows, savedCashflows),
-    currentCashflows
-  );
-  const mergedHistory = {
-    brokerExecutedTrades: mergedExecutions,
-    cashflows: mergedCashflows
-  };
+    // Bypass the brief quote-side cache: every 60-second checkpoint and manual
+    // sync must ask Freedom for the latest cashflow rows (full baseline once,
+    // then an overlapping incremental window).
+    clearFreedomCashflowCache();
+    const cashflowResponse = await fetchFreedomCashflows(latestCashflowDate);
+    if (!isCurrentSession()) return false;
+    const fetchedCashflows = normalizeFreedomCashflowRows(cashflowResponse);
 
-  if (JSON.stringify(mergedHistory) !== JSON.stringify(saved)) {
-    if (!saveSavedHistory(mergedHistory)) return false;
-  }
-  if (!isCurrentSession()) return false;
+    // Broker executions may have completed while the cashflow request was in
+    // flight. Re-read the canonical store and sidecar before calculating fees.
+    const current = portfolioStore.getState();
+    const saved = loadSavedHistory();
+    const latestSavedExecutions = normalizeFreedomTrades(saved.brokerExecutedTrades);
+    const latestCurrentExecutions = normalizeFreedomTrades(current.brokerExecutedTrades || []);
+    const mergedExecutions = preservePersistedBrokerFeeAllocations(
+      mergeBrokerExecutionHistory(
+        mergeBrokerExecutionHistory(cloudExecutions, latestSavedExecutions),
+        latestCurrentExecutions
+      ),
+      [...latestSavedExecutions, ...cloudExecutions, ...latestCurrentExecutions]
+    );
+    const cloudCashflows = normalizeSavedFreedomCashflows(cloudHistory?.cashflows || []);
+    const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
+    const currentCashflows = normalizeSavedFreedomCashflows(current.cashflows || []);
+    const mergedCashflows = mergeFreedomCashflowRows(
+      mergeFreedomCashflowRows(
+        mergeFreedomCashflowRows(cloudCashflows, savedCashflows),
+        currentCashflows
+      ),
+      fetchedCashflows
+    );
 
-  if (
-    JSON.stringify(current.brokerExecutedTrades || []) !== JSON.stringify(mergedExecutions) ||
-    JSON.stringify(current.cashflows || []) !== JSON.stringify(mergedCashflows)
-  ) {
-    portfolioStore.setState(mergedHistory);
+    const appClosedTrades = [...(current.closedTrades || [])];
+    const allocations = calculateFreedomMarginFeeAllocations(
+      mergedCashflows,
+      mergedExecutions,
+      appClosedTrades
+    );
+    const updatedExecutions = applyCashflowAllocationsToBrokerExecutions(
+      mergedExecutions,
+      allocations.brokerAllocations
+    );
+    const updatedClosedTrades = applyCashflowAllocationsToClosedTrades(
+      appClosedTrades,
+      allocations.appAllocations
+    );
+    const nextState: Partial<PortfolioState> = {};
+    if (JSON.stringify(current.brokerExecutedTrades || []) !== JSON.stringify(updatedExecutions)) {
+      nextState.brokerExecutedTrades = updatedExecutions;
+    }
+    if (JSON.stringify(current.cashflows || []) !== JSON.stringify(mergedCashflows)) {
+      nextState.cashflows = mergedCashflows;
+    }
+    if (JSON.stringify(appClosedTrades) !== JSON.stringify(updatedClosedTrades)) {
+      nextState.closedTrades = updatedClosedTrades;
+    }
+
+    const previousState = current;
+    if (Object.keys(nextState).length) portfolioStore.setState(nextState, false);
+    if (!isCurrentSession()) {
+      portfolioStore.update(() => previousState, false);
+      state = portfolioStore.getState();
+      return false;
+    }
+
+    const persisted = savePortfolioSnapshot(portfolioStore.getState(), {
+      brokerExecutedTrades: updatedExecutions,
+      cashflows: mergedCashflows
+    });
+    if (!persisted) {
+      portfolioStore.update(() => previousState, false);
+      state = portfolioStore.getState();
+      logTerminal('[Closed History Sync Error]: Could not persist broker executions and cashflows locally; cloud history was not changed.');
+      return false;
+    }
     state = portfolioStore.getState();
-  }
+    if (!isCurrentSession()) return false;
 
-  const normalizedCloudHistory = cloudHistory ? {
-    brokerExecutedTrades: cloudExecutions,
-    cashflows: cloudCashflows
-  } : null;
-  if (normalizedCloudHistory && JSON.stringify(mergedHistory) === JSON.stringify(normalizedCloudHistory)) {
+    const mergedHistory = {
+      brokerExecutedTrades: updatedExecutions,
+      cashflows: mergedCashflows
+    };
+    const normalizedCloudHistory = cloudHistory ? {
+      brokerExecutedTrades: cloudExecutions,
+      cashflows: cloudCashflows
+    } : null;
+    if (
+      (!normalizedCloudHistory || JSON.stringify(mergedHistory) !== JSON.stringify(normalizedCloudHistory)) &&
+      (updatedExecutions.length > 0 || mergedCashflows.length > 0)
+    ) {
+      const pushed = await pushCloudHistory(mergedHistory, undefined, undefined, {
+        isCurrentSession,
+        force: true
+      });
+      if (!isCurrentSession()) return false;
+      if (!pushed) {
+        logTerminal('[Closed History Sync Warning]: Local cashflows and trades are saved, but the cloud history checkpoint was not confirmed.');
+        return false;
+      }
+    }
+
+    if (!hasFreedomCashflowHistoryBaseline(accountId) &&
+        !markFreedomCashflowHistoryBaseline(accountId)) {
+      logTerminal('[Closed History Sync Warning]: Cashflows are saved, but the completed-history baseline could not be recorded; the next sync will retry a full read.');
+      return false;
+    }
     return true;
+  } catch (error) {
+    if (isCurrentSession()) {
+      const message = error instanceof Error ? error.message : String(error);
+      logTerminal(`[Closed History Sync Warning]: Freedom cashflow or cloud history refresh failed (${message}).`);
+    }
+    return false;
   }
-  if (!mergedExecutions.length && !mergedCashflows.length) return true;
-
-  return pushCloudHistory(mergedHistory, undefined, undefined, {
-    isCurrentSession,
-    force: true
-  });
 }
 
 const portfolioAutoRefresh = createPortfolioAutoRefreshScheduler({
