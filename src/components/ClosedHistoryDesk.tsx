@@ -716,7 +716,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Win rate</div>
           <div class="mt-1 font-mono text-lg font-bold text-white">{winRate.toFixed(1)}%</div>
-          <div class="text-[10px] text-slate-500">{winningTrades} of {profitKnownTrades.length} records with known profit profitable</div>
+          <div class="text-[10px] text-slate-500">{translateText(`${winningTrades} of ${profitKnownTrades.length} records with known profit profitable`, getAppLanguage())}</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3 flex flex-col justify-center">
           <div class="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees &amp; commissions</div>
@@ -925,7 +925,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       {trades.length > 0 && (
         <div class="closed-history-pagination flex flex-wrap items-center justify-between gap-3 border-t border-slate-800/70 px-1 pt-3 text-xs" aria-label="Closed history pagination">
           <span class="text-slate-500" aria-live="polite">
-            Showing {(safeTradesPage - 1) * tradesPageSize + 1}–{Math.min(safeTradesPage * tradesPageSize, trades.length)} of {trades.length} trades
+            {translateText(`Showing ${(safeTradesPage - 1) * tradesPageSize + 1}–${Math.min(safeTradesPage * tradesPageSize, trades.length)} of ${trades.length} trades`, getAppLanguage())}
           </span>
           <div class="closed-history-pagination-controls flex items-center gap-2">
             <button type="button" onClick={() => setTradesPage(Math.max(1, safeTradesPage - 1))} disabled={safeTradesPage <= 1} class="table-pagination-button rounded border border-slate-700 px-3 py-1.5 text-slate-300 hover:border-purple-700 hover:text-white disabled:cursor-not-allowed" aria-label="Previous closed history page" aria-controls="closedTradesTableBody">&lt;</button>
