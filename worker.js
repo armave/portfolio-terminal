@@ -283,6 +283,7 @@ async function getYahooCredentials() {
 /** Return only fields required to identify open sell-limit orders. */
 export function sanitizeFreedomActiveOrders(response) {
     const candidates = [
+        response,
         response?.data?.result?.orders,
         response?.result?.orders,
         response?.data?.orders,
