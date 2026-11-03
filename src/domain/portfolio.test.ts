@@ -12,6 +12,7 @@ import {
   calculateProjectedDebt,
   calculateAccruedFees,
   calculateBreakevenDays,
+  findProjectionBreakevenDay,
   processRollovers,
   calculateCommission,
   calculateTrancheCommissions,
@@ -599,6 +600,46 @@ describe('portfolio domain', () => {
     expect(calculateProjectedDebt(principal, dailyRate, 2) - principal).toBeLessThan(0.03);
     expect(calculateProjectedDebt(principal, dailyRate, 3) - principal).toBeGreaterThanOrEqual(0.03);
     expect(calculateBreakevenDays(0.03, principal, dailyRate)).toBe(3);
+  });
+
+  it('finds projection breakeven in one forward debt pass with matching cent rounding', () => {
+    const cases = [
+      { gross: 100, totalComms: 4.25, marginCharged: 2.15, debt: 1000, dailyRate: 0.005, maxDays: 3650 },
+      { gross: 0.03, totalComms: 0, marginCharged: 0, debt: 1.99, dailyRate: 1 / 365, maxDays: 3650 },
+      { gross: 200, totalComms: 1.25, marginCharged: 0.5, debt: 1000, dailyRate: 0.00001, maxDays: 100 }
+    ];
+    const referenceBreakeven = ({
+      gross,
+      totalComms,
+      marginCharged,
+      debt,
+      dailyRate,
+      maxDays
+    }: typeof cases[number]): number | undefined => {
+      const principal = Math.abs(debt);
+      const netAfterDays = (days: number) => {
+        const projectedDebt = calculateProjectedDebt(debt, dailyRate, days);
+        const fees = calculateAccruedFees(totalComms, marginCharged, projectedDebt - principal);
+        return gross - fees;
+      };
+      if (Number(netAfterDays(0).toFixed(2)) <= 0) return 0;
+      if (debt <= 0 || dailyRate <= 0) return undefined;
+      for (let day = 1; day <= maxDays; day++) {
+        if (Number(netAfterDays(day).toFixed(2)) <= 0) return day;
+      }
+      return undefined;
+    };
+
+    for (const parameters of cases) {
+      expect(findProjectionBreakevenDay(
+        parameters.gross,
+        parameters.totalComms,
+        parameters.marginCharged,
+        parameters.debt,
+        parameters.dailyRate,
+        parameters.maxDays
+      )).toBe(referenceBreakeven(parameters));
+    }
   });
 
   it('calculates commission based on rules', () => {

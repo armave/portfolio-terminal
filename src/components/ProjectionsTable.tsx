@@ -2,7 +2,8 @@ import { memo } from 'preact/compat';
 import { useEffect, useState } from 'preact/hooks';
 import {
   calculateAccruedFees,
-  calculateProjectedDebt
+  calculateProjectedDebt,
+  findProjectionBreakevenDay
 } from '../domain/portfolio';
 import { getUsEquityProjectionDates } from '../domain/tradingCalendar';
 import { formatUSD } from '../utils/formatters';
@@ -35,27 +36,16 @@ function ProjectionsTableView() {
     );
   }
 
-  const netAfterDays = (days: number): number => {
-    const projectedDebt = calculateProjectedDebt(debtToUse, dailyRate, days);
-    const additionalAccrual = projectedDebt - Math.abs(debtToUse);
-    const projectedFees = calculateAccruedFees(totalComms, marginChargedToUse, additionalAccrual);
-    return gross - projectedFees;
-  };
-
   // Find the first day projected net reaches or crosses zero. That day is the
   // breakeven milestone; display its net as $0.00 and stop before any negative day.
-  let breakevenDays: number | undefined;
-  const todayNet = Number(netAfterDays(0).toFixed(2));
-  if (todayNet <= 0) {
-    breakevenDays = 0;
-  } else if (debtToUse > 0 && dailyRate > 0) {
-    for (let day = 1; day <= MAX_BREAKEVEN_SEARCH_DAYS; day++) {
-      if (Number(netAfterDays(day).toFixed(2)) <= 0) {
-        breakevenDays = day;
-        break;
-      }
-    }
-  }
+  const breakevenDays = findProjectionBreakevenDay(
+    gross,
+    totalComms,
+    marginChargedToUse,
+    debtToUse,
+    dailyRate,
+    MAX_BREAKEVEN_SEARCH_DAYS
+  );
 
   const projectionItems = getUsEquityProjectionDates(new Date(), entryDate, breakevenDays);
   const pageCount = Math.max(1, Math.ceil(projectionItems.length / ROWS_PER_PAGE));
