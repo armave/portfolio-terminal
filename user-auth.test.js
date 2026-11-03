@@ -23,9 +23,9 @@ class MemoryDurableStorage {
   }
 }
 
-function createStore() {
+function createStore(env = {}) {
   const storage = new MemoryDurableStorage();
-  return { store: new PortfolioStateDO({ storage }, {}), storage };
+  return { store: new PortfolioStateDO({ storage }, env), storage };
 }
 
 function request(store, path, body, token, headers = {}) {
@@ -882,5 +882,142 @@ describe("account language preferences", () => {
       language: "fr"
     }, admin.token);
     expect(invalidUpdate.status).toBe(400);
+  });
+});
+
+
+describe("Durable Object TradeNet SID broker", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const sessionRequest = (store, method = "GET", body = undefined) => store.fetch(new Request(
+    "https://durable.test/internal/freedom-tradenet-session" + (method === "POST" ? "/invalidate" : ""),
+    {
+      method,
+      headers: body === undefined ? {} : { "Content-Type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    }
+  ));
+
+  it("coalesces concurrent logins and reuses the SID from memory without persisting it", async () => {
+    const sid = "s".repeat(48);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true, logged: true, SID: sid, real: true
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { store, storage } = createStore({
+      FREEDOM_LOGIN: "broker-login",
+      FREEDOM_PASSWORD: "broker-password"
+    });
+
+    const [first, second] = await Promise.all([
+      sessionRequest(store),
+      sessionRequest(store)
+    ]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(await first.json()).toMatchObject({ ok: true, sid, expiresInSeconds: 1800 });
+    expect(await second.json()).toMatchObject({ ok: true, sid });
+    const reused = await sessionRequest(store);
+    expect(await reused.json()).toMatchObject({ ok: true, sid });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://tradernet.am/api/");
+    const params = JSON.parse(new URLSearchParams(init.body).get("q"));
+    expect(params).toMatchObject({
+      cmd: "authByLogin",
+      params: { login: "broker-login", password: "broker-password", rememberMe: 1, getAccounts: false }
+    });
+    expect(JSON.stringify([...storage.values.entries()])).not.toContain(sid);
+  });
+
+  it("invalidates only the matching cached SID after TradeNet rejects a session", async () => {
+    const firstSid = "a".repeat(48);
+    const secondSid = "b".repeat(48);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: firstSid, real: true
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: secondSid, real: true
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { store } = createStore({
+      FREEDOM_LOGIN: "broker-login",
+      FREEDOM_PASSWORD: "broker-password"
+    });
+
+    expect((await (await sessionRequest(store)).json()).sid).toBe(firstSid);
+    const ignored = await sessionRequest(
+      store, "POST", { sid: "not-the-cached-sid" }
+    );
+    expect(await ignored.json()).toMatchObject({ ok: true, invalidated: false });
+    expect((await (await sessionRequest(store)).json()).sid).toBe(firstSid);
+
+    const invalidated = await sessionRequest(store, "POST", { sid: firstSid });
+    expect(await invalidated.json()).toMatchObject({ ok: true, invalidated: true });
+    expect((await (await sessionRequest(store)).json()).sid).toBe(secondSid);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("backs off after the provider's 429 login response instead of retrying every request", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      errMsg: "Your request limit has been exceeded. Please try again later",
+      code: 429
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { store } = createStore({
+      FREEDOM_LOGIN: "broker-login",
+      FREEDOM_PASSWORD: "broker-password"
+    });
+
+    const first = await sessionRequest(store);
+    expect(first.status).toBe(429);
+    expect(await first.json()).toMatchObject({
+      ok: false,
+      error: "Your request limit has been exceeded. Please try again later",
+      diagnostics: {
+        phase: "login_rate_limited",
+        providerErrorCode: 429,
+        retryAfterSeconds: 60,
+        failedChecks: expect.arrayContaining(["login_rate_limit_cooldown"])
+      }
+    });
+
+    const second = await sessionRequest(store);
+    expect(second.status).toBe(429);
+    expect(await second.json()).toMatchObject({
+      ok: false,
+      diagnostics: {
+        phase: "login_rate_limit_cooldown",
+        providerErrorCode: 429,
+        retryAfterSeconds: 60
+      }
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renews the in-memory SID after its conservative 30-minute lifetime", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: "a".repeat(48), real: true
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: "b".repeat(48), real: true
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { store } = createStore({
+      FREEDOM_LOGIN: "broker-login",
+      FREEDOM_PASSWORD: "broker-password"
+    });
+
+    expect((await (await sessionRequest(store)).json()).sid).toBe("a".repeat(48));
+    await vi.advanceTimersByTimeAsync(30 * 60 * 1000 + 1);
+    expect((await (await sessionRequest(store)).json()).sid).toBe("b".repeat(48));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

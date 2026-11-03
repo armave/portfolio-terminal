@@ -320,10 +320,33 @@ export function sanitizeFreedomActiveOrders(response) {
 
 
 /**
+ * Return a bounded login error description without exposing identifiers or secrets.
+ * TradeNet's documented authByLogin failure shape is { errMsg, code }.
+ */
+function sanitizeFreedomLoginError(value) {
+    if (typeof value !== "string") return null;
+    const sanitized = value
+        .replace(/(password|passwd|pwd|login|username|email|sid|token|signature|secret)\s*[:=]\s*[^,\s;)]+/gi, "$1=[redacted]")
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email redacted]")
+        .replace(/\+?\d[\d\s().-]{7,}\d/g, "[phone redacted]")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 160);
+    return sanitized || null;
+}
+
+function getFreedomLoginErrorCode(payload) {
+    const value = payload?.errorCode ?? payload?.code;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && /^[A-Za-z0-9_.-]{1,32}$/.test(value)) return value;
+    return null;
+}
+
+/**
  * Obtain a short-lived TradeNet account SID for a single diagnostic request.
  * Credentials and SID remain inside the Worker; neither is logged or returned.
  */
-async function createFreedomDiagnosticSession(env) {
+async function createFreedomDiagnosticSessionDirect(env) {
     if (!env.FREEDOM_LOGIN || !env.FREEDOM_PASSWORD) {
         const error = new Error("FREEDOM_LOGIN and FREEDOM_PASSWORD must be configured as Worker secrets.");
         error.status = 503;
@@ -361,15 +384,21 @@ async function createFreedomDiagnosticSession(env) {
         const hasFlag = (names) => names.some(name => payload &&
             Object.prototype.hasOwnProperty.call(payload, name) &&
             payload[name] !== false && payload[name] !== null && payload[name] !== "");
+        const providerErrorValue = payload?.errMsg ?? payload?.error ?? payload?.message;
+        const providerErrorMessage = sanitizeFreedomLoginError(providerErrorValue);
+        const providerErrorCode = getFreedomLoginErrorCode(payload);
         const failedChecks = [];
         if (!payload) failedChecks.push("login_payload_missing_or_invalid_json");
         if (payload?.success !== true) failedChecks.push("success_not_true");
         if (payload?.logged !== true) failedChecks.push("logged_not_true");
         if (typeof payload?.SID !== "string" || payload.SID.length < 10) failedChecks.push("sid_missing_or_invalid");
         if (payload?.real !== true) failedChecks.push("production_session_not_confirmed");
+        if (providerErrorMessage || providerErrorCode !== null) failedChecks.push("provider_returned_login_error");
         const error = new Error(payload?.real === false
             ? "TradeNet returned a demo or non-production account session."
-            : "TradeNet login failed or requested additional verification.");
+            : providerErrorMessage
+                ? "TradeNet rejected the login request: " + providerErrorMessage
+                : "TradeNet login failed or requested additional verification.");
         error.status = payload?.real === false ? 403 : 401;
         error.diagnostics = {
             phase: "login_response_validation",
@@ -385,15 +414,58 @@ async function createFreedomDiagnosticSession(env) {
                 "captchaRequired", "twoFactorRequired", "otpRequired", "smsRequired"
             ]),
             providerErrorFieldPresent: Boolean(payload && (
+                Object.prototype.hasOwnProperty.call(payload, "errMsg") ||
                 Object.prototype.hasOwnProperty.call(payload, "error") ||
                 Object.prototype.hasOwnProperty.call(payload, "errorCode") ||
+                Object.prototype.hasOwnProperty.call(payload, "code") ||
                 Object.prototype.hasOwnProperty.call(payload, "message")
             )),
+            providerErrorCode,
+            providerErrorMessage,
             failedChecks
         };
         throw error;
     }
     return payload.SID;
+}
+
+async function createFreedomDiagnosticSession(env) {
+    const namespace = env.PORTFOLIO_STATE_DO;
+    if (!namespace || typeof namespace.idFromName !== "function" || typeof namespace.get !== "function") {
+        // Local tests/development may omit the Durable Object binding. Production
+        // Worker deployments always use the shared Durable Object session broker.
+        return createFreedomDiagnosticSessionDirect(env);
+    }
+    const stub = namespace.get(namespace.idFromName("freedom-tradenet-auth-session:v1"));
+    const response = await stub.fetch("https://portfolio-state.internal/internal/freedom-tradenet-session", {
+        method: "GET",
+        headers: { "Cache-Control": "no-store" }
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || payload?.ok !== true || typeof payload.sid !== "string" || payload.sid.length < 10) {
+        const error = new Error(
+            typeof payload?.error === "string" ? payload.error : "TradeNet session broker could not provide an authenticated session."
+        );
+        error.status = response.status || 502;
+        error.diagnostics = payload?.diagnostics || null;
+        throw error;
+    }
+    return payload.sid;
+}
+
+async function invalidateFreedomDiagnosticSession(env, sid) {
+    const namespace = env.PORTFOLIO_STATE_DO;
+    if (!sid || !namespace || typeof namespace.idFromName !== "function" || typeof namespace.get !== "function") return;
+    try {
+        const stub = namespace.get(namespace.idFromName("freedom-tradenet-auth-session:v1"));
+        await stub.fetch("https://portfolio-state.internal/internal/freedom-tradenet-session/invalidate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+            body: JSON.stringify({ sid })
+        });
+    } catch {
+        // The next request can still recover after the in-memory cache expires.
+    }
 }
 
 /**
@@ -420,6 +492,10 @@ async function diagnoseFreedomOrdersStream(env) {
         ordersPayloadItemKeys: [],
         ordersPreviewCount: 0,
         ordersPreview: [],
+        ordersTradeOrdersCount: 0,
+        ordersTradeCount: 0,
+        ordersTradeItemKeys: [],
+        ordersTradePreview: [],
         messageCount: 0,
         parseErrorCount: 0,
         eventCounts: {},
@@ -447,6 +523,11 @@ async function diagnoseFreedomOrdersStream(env) {
             const result = snapshot();
             try { socket?.close(1000, "TradeNet diagnostic finished"); } catch { /* ignore close races */ }
             if (error) {
+                if ([401, 403].includes(Number(error.status)) ||
+                    diagnostics.phase === "demo_session" ||
+                    diagnostics.serverErrorCategory === "auth_or_session_rejected") {
+                    error.freedomDiagnosticSid = sid;
+                }
                 const { ordersSnapshot: _ordersSnapshot, ...safeDiagnostics } = result;
                 error.diagnostics = safeDiagnostics;
                 reject(error);
@@ -531,10 +612,45 @@ async function diagnoseFreedomOrdersStream(env) {
                             const safeKeys = new Set([
                                 "order_id", "id", "instr", "instr_nm", "i", "ticker", "symbol", "instrument",
                                 "oper", "operation", "type", "order_type", "p", "price", "limit_price",
-                                "q", "quantity", "leaves_qty", "remaining_qty", "remainingQuantity", "stat", "status"
+                                "q", "quantity", "leaves_qty", "remaining_qty", "remainingQuantity", "stat", "status", "trade"
                             ]);
                             diagnostics.ordersPayloadItemKeys = Object.keys(firstOrder).filter(key => safeKeys.has(key)).sort();
                         }
+                        const orderRows = Array.isArray(orderPayload) ? orderPayload
+                            : Array.isArray(orderPayload?.order) ? orderPayload.order
+                                : Array.isArray(orderPayload?.orders) ? orderPayload.orders : [];
+                        const tradeKeyAllowlist = new Set(["acd", "date", "fv", "go_sum", "id", "p", "profit", "q", "v"]);
+                        const tradeValueFields = ["acd", "fv", "go_sum", "p", "profit", "q", "v"];
+                        const tradeRows = [];
+                        for (const order of orderRows) {
+                            const executions = Array.isArray(order?.trade) ? order.trade : [];
+                            if (executions.length) diagnostics.ordersTradeOrdersCount += 1;
+                            for (const trade of executions) {
+                                if (trade && typeof trade === "object" && !Array.isArray(trade)) {
+                                    tradeRows.push({
+                                        instrument: String(order?.instr ?? order?.instr_nm ?? order?.i ?? "").slice(0, 64),
+                                        trade
+                                    });
+                                }
+                            }
+                        }
+                        diagnostics.ordersTradeCount = tradeRows.length;
+                        const firstTrade = tradeRows[0]?.trade;
+                        diagnostics.ordersTradeItemKeys = firstTrade
+                            ? Object.keys(firstTrade).filter(key => tradeKeyAllowlist.has(key)).sort()
+                            : [];
+                        diagnostics.ordersTradePreview = tradeRows.slice(0, 10).map(({ instrument, trade }) => {
+                            const preview = {};
+                            if (instrument) preview.instr = instrument;
+                            if (typeof trade.date === "string") preview.date = trade.date.slice(0, 64);
+                            for (const field of tradeValueFields) {
+                                const value = trade[field];
+                                const numeric = typeof value === "number" ? value
+                                    : typeof value === "string" && value.trim() ? Number(value) : NaN;
+                                if (Number.isFinite(numeric)) preview[field] = numeric;
+                            }
+                            return preview;
+                        });
                         sanitizedOrders = sanitizeFreedomActiveOrders(orderPayload).orders;
                         const safeOrders = sanitizedOrders.order;
                         diagnostics.ordersPreviewCount = safeOrders.length;
@@ -673,6 +789,18 @@ function summarizeFreedomStreamEvent(eventName, payload) {
         const marketKeys = new Set(["c", "date", "dt", "ev", "mkt_id", "n", "n2", "o", "p", "post", "s", "tz"]);
         const marketSample = rows[0];
         const marketItemKeys = marketSample ? keys(marketSample).filter(key => marketKeys.has(key)) : [];
+        // Market status and opening/closing times are exchange-level public data.
+        // Return only the documented fields; do not forward arbitrary broker payload fields.
+        const marketValueFields = ["n", "n2", "s", "o", "c", "dt"];
+        const marketPreview = rows.filter(isRecord).slice(0, 50).map(row => {
+            const market = {};
+            for (const field of marketValueFields) {
+                const value = row[field];
+                if (typeof value === "string") market[field] = value.slice(0, 64);
+                else if (typeof value === "number" && Number.isFinite(value)) market[field] = value;
+            }
+            return market;
+        });
         return {
             event: eventName,
             payloadType,
@@ -681,11 +809,13 @@ function summarizeFreedomStreamEvent(eventName, payload) {
                 ["m", "t"].filter(key => Object.prototype.hasOwnProperty.call(payload || {}, key))
                     .map(key => [key, describeRedactedValueType(payload[key])])
             ),
+            serverTime: typeof payload?.t === "string" ? payload.t.slice(0, 40) : null,
             marketsCount: rows.length,
             marketItemKeys,
             marketItemTypes: marketSample && isRecord(marketSample)
                 ? Object.fromEntries(marketItemKeys.map(key => [key, describeRedactedValueType(marketSample[key])]))
-                : {}
+                : {},
+            marketPreview
         };
     }
     if (eventName === "quotes") {
@@ -812,6 +942,11 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
             const result = snapshot();
             try { socket?.close(1000, "TradeNet event diagnostic finished"); } catch { /* ignore close races */ }
             if (error) {
+                if ([401, 403].includes(Number(error.status)) ||
+                    diagnostics.phase === "demo_session" ||
+                    diagnostics.serverErrorCategory === "auth_or_session_rejected") {
+                    error.freedomDiagnosticSid = sid;
+                }
                 error.diagnostics = result;
                 reject(error);
             } else {
@@ -1269,6 +1404,9 @@ export default {
                         ...(eventsConfirmed ? { data: { orders: ordersSnapshot } } : {})
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
+                    if (error?.freedomDiagnosticSid) {
+                        await invalidateFreedomDiagnosticSession(env, error.freedomDiagnosticSid);
+                    }
                     const status = Number(error?.status);
                     return new Response(JSON.stringify({
                         ok: false,
@@ -1297,12 +1435,17 @@ export default {
                         provider: "Freedom TradeNet",
                         event: eventName,
                         message: eventsConfirmed
-                            ? "Authenticated " + eventName + " event received; schema summary only."
+                            ? eventName === "markets"
+                                ? "Authenticated market status and schedule received; public fields only."
+                                : "Authenticated portfolio event received; schema summary only."
                             : "TradeNet event diagnostic completed; inspect the event flags and phase.",
                         data: result.eventSummary,
                         diagnostics: Object.fromEntries(Object.entries(result).filter(([key]) => key !== "eventSummary"))
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
+                    if (error?.freedomDiagnosticSid) {
+                        await invalidateFreedomDiagnosticSession(env, error.freedomDiagnosticSid);
+                    }
                     return new Response(JSON.stringify({
                         ok: false,
                         event: eventName,
@@ -1346,8 +1489,11 @@ export default {
                         }
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
+                    if (error?.freedomDiagnosticSid) {
+                        await invalidateFreedomDiagnosticSession(env, error.freedomDiagnosticSid);
+                    }
                     const upstreamStatus = Number(error?.status);
-                    const status = [401, 403, 503].includes(upstreamStatus) ? upstreamStatus : 502;
+                    const status = [401, 403, 429, 503].includes(upstreamStatus) ? upstreamStatus : 502;
                     return new Response(JSON.stringify({
                         ok: false,
                         error: error instanceof Error ? error.message : "TradeNet portfolio snapshot failed."
@@ -1409,8 +1555,11 @@ export default {
                         }
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
+                    if (error?.freedomDiagnosticSid) {
+                        await invalidateFreedomDiagnosticSession(env, error.freedomDiagnosticSid);
+                    }
                     const upstreamStatus = Number(error?.status);
-                    const status = [401, 403, 503].includes(upstreamStatus) ? upstreamStatus : 502;
+                    const status = [401, 403, 429, 503].includes(upstreamStatus) ? upstreamStatus : 502;
                     return new Response(JSON.stringify({
                         ok: false,
                         provider: "Freedom TradeNet",

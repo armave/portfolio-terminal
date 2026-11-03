@@ -79,7 +79,14 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
         queueMicrotask(() => {
           for (const callback of listeners.get('message') || []) {
             callback({ data: JSON.stringify(['userData', { isDemo: false, mode: 'prod', account: 'private-account' }]) });
-            callback({ data: JSON.stringify(['orders', [{ id: 77, instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 2, leaves_qty: 2, stat: 'active', account: 'private-account' }]]) });
+            callback({ data: JSON.stringify(['orders', [{
+              id: 77, instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 2,
+              leaves_qty: 2, stat: 'active', account: 'private-account',
+              trade: [{
+                id: 999999, date: '2026-11-03T09:40:00', p: 352.5, q: 2, v: 705,
+                profit: 0, acd: 0, fv: 1, go_sum: 100, owner_login: 'private-login'
+              }]
+            }]]) });
           }
         });
       }),
@@ -119,18 +126,29 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
     });
     expect(body.diagnostics).toMatchObject({
       ordersPayloadType: 'array',
-      ordersPayloadItemKeys: ['id', 'instr', 'leaves_qty', 'oper', 'p', 'q', 'stat', 'type'],
+      ordersPayloadItemKeys: ['id', 'instr', 'leaves_qty', 'oper', 'p', 'q', 'stat', 'trade', 'type'],
       ordersPreviewCount: 1,
       ordersPreview: [{
         instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 2, leaves_qty: 2, stat: 'active'
+      }],
+      ordersTradeOrdersCount: 1,
+      ordersTradeCount: 1,
+      ordersTradeItemKeys: ['acd', 'date', 'fv', 'go_sum', 'id', 'p', 'profit', 'q', 'v'],
+      ordersTradePreview: [{
+        instr: 'GOOGL.US', date: '2026-11-03T09:40:00',
+        p: 352.5, q: 2, v: 705, profit: 0, acd: 0, fv: 1, go_sum: 100
       }]
     });
     expect(body.data.orders.order).toEqual([{
       order_id: '77', instr: 'GOOGL.US', oper: 3, type: 2,
       p: 353, q: 2, leaves_qty: 2, stat: 'active'
     }]);
-    expect(JSON.stringify(body)).not.toContain('private-account');
+    const serializedOrders = JSON.stringify(body);
+    for (const privateValue of ['private-account', 'private-login', '999999']) {
+      expect(serializedOrders).not.toContain(privateValue);
+    }
     expect(body.diagnostics.ordersPreview[0]).not.toHaveProperty('order_id');
+    expect(body.diagnostics.ordersTradePreview[0]).not.toHaveProperty('id');
     expect(String(fetchMock.mock.calls[1][0])).toMatch(/^https:\/\/wss\.tradernet\.com\//);
     expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('SID')).toBe('s'.repeat(48));
     expect(socket.close).toHaveBeenCalled();
@@ -277,13 +295,14 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(socket.close).toHaveBeenCalled();
   });
 
-  it('reports all observed market metadata types without returning market names, schedules, or statuses', async () => {
+  it('returns documented public market status and schedule fields while stripping unrelated payload data', async () => {
     const { response, socket } = await runEventDiagnostic('markets', {
       t: '2026-11-03 09:00:00',
       m: [{
-        c: '16:00', date: Array(12).fill('redacted'), dt: -420,
+        c: '16:00:00', date: Array(12).fill('redacted'), dt: -420,
         ev: Array(8).fill('redacted'), mkt_id: 1, n: 'NASDAQ', n2: 'NASDAQ',
-        o: '09:30', p: 'pre', post: 'post', s: 'OPEN', tz: 'America/New_York'
+        o: '09:30:00', p: 'pre', post: 'post', s: 'OPEN',
+        tz: 'America/New_York', private_field: 'private-market-value'
       }]
     }, { isDemo: false, mode: 'prod' });
     expect(response.status).toBe(200);
@@ -299,6 +318,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
           m: { type: 'array', length: 1, item: { type: 'object' } },
           t: 'string'
         },
+        serverTime: '2026-11-03 09:00:00',
         marketsCount: 1,
         marketItemKeys: ['c', 'date', 'dt', 'ev', 'mkt_id', 'n', 'n2', 'o', 'p', 'post', 's', 'tz'],
         marketItemTypes: {
@@ -309,14 +329,39 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
           mkt_id: 'number',
           n: 'string', n2: 'string', o: 'string', p: 'string',
           post: 'string', s: 'string', tz: 'string'
-        }
+        },
+        marketPreview: [{
+          n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN',
+          o: '09:30:00', c: '16:00:00', dt: -420
+        }]
       }
     });
     const serialized = JSON.stringify(body);
-    for (const secret of ['NASDAQ', 'OPEN', '09:30', '16:00', 'America/New_York', 'redacted']) {
-      expect(serialized).not.toContain(secret);
+    for (const privateValue of ['America/New_York', 'redacted', 'private-market-value']) {
+      expect(serialized).not.toContain(privateValue);
     }
+    expect(body.data.marketPreview[0]).toEqual({
+      n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN',
+      o: '09:30:00', c: '16:00:00', dt: -420
+    });
+    expect(body.data.marketPreview[0]).not.toHaveProperty('post');
+    expect(body.message).toContain('market status and schedule');
     expect(socket.close).toHaveBeenCalled();
+  });
+
+  it('does not subscribe to security-session events as a market schedule source', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-event-stream&event=sessions',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), { GATEWAY_SECRET: 'test-secret' });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: 'Unsupported TradeNet stream event. Allowed events: portfolio, markets.'
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('returns a sanitized USD portfolio snapshot for read-only REST reconciliation', async () => {
@@ -422,6 +467,71 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(serialized).not.toContain('broker-login');
     expect(serialized).not.toContain('broker-password');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces TradeNet documented errMsg/code login failures in sanitized diagnostics', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      errMsg: 'Bad json',
+      code: 2
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: false,
+      error: 'TradeNet rejected the login request: Bad json',
+      diagnostics: {
+        phase: 'login_response_validation',
+        providerErrorFieldPresent: true,
+        providerErrorCode: 2,
+        providerErrorMessage: 'Bad json',
+        failedChecks: [
+          'success_not_true',
+          'logged_not_true',
+          'sid_missing_or_invalid',
+          'production_session_not_confirmed',
+          'provider_returned_login_error'
+        ]
+      }
+    });
+    expect(JSON.stringify(body)).not.toContain('broker-login');
+    expect(JSON.stringify(body)).not.toContain('broker-password');
+    expect(JSON.stringify(body)).not.toContain('SID');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('redacts email and credential-like values from provider login errors', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      errMsg: 'Invalid password for private.user@example.com (login: private-user)',
+      code: 'AUTH_DENIED'
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    const body = await response.json();
+    expect(body.diagnostics).toMatchObject({
+      providerErrorCode: 'AUTH_DENIED',
+      providerErrorMessage: 'Invalid password for [email redacted] (login=[redacted])'
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('private.user@example.com');
+    expect(serialized).not.toContain('private-user');
+    expect(serialized).not.toContain('broker-password');
   });
 
   it('rejects an unloaded portfolio WebSocket event instead of fabricating a loaded snapshot', async () => {
@@ -751,7 +861,7 @@ describe('Freedom quote endpoint', () => {
 describe('Freedom authenticated quote WebSocket stream', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  function makeQuoteSocket(expectedSymbol, payload) {
+  function makeQuoteSocket(expectedSymbol, payload, userData = { isDemo: false, mode: 'prod' }) {
     const listeners = new Map();
     const socket = {
       addEventListener: vi.fn((name, callback) => {
@@ -764,7 +874,7 @@ describe('Freedom authenticated quote WebSocket stream', () => {
         expect(JSON.parse(message)).toEqual(['quotes', [expectedSymbol]]);
         queueMicrotask(() => {
           for (const callback of listeners.get('message') || []) {
-            callback({ data: JSON.stringify(['userData', { isDemo: false, mode: 'prod' }]) });
+            callback({ data: JSON.stringify(['userData', userData]) });
             callback({ data: JSON.stringify(['q', payload]) });
           }
         });
@@ -839,6 +949,102 @@ describe('Freedom authenticated quote WebSocket stream', () => {
     expect(socket.close).toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[1][0])).toContain('wss.tradernet.com');
+  });
+
+  it('uses the shared Durable Object SID broker instead of logging in for each quote request', async () => {
+    const sid = 's'.repeat(48);
+    const socket = makeQuoteSocket('GOOGL.US', {
+      q: [{ c: 'GOOGL.US', ltp: 280.55, pp: 279.84 }]
+    });
+    const sessionStub = {
+      fetch: vi.fn().mockResolvedValue(new Response(JSON.stringify({
+        ok: true, sid, expiresInSeconds: 1800
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    };
+    const authStub = {
+      fetch: vi.fn(async (request) => {
+        const url = new URL(request.url);
+        return url.pathname === '/api/auth/status'
+          ? new Response(JSON.stringify({ setupRequired: true }), { status: 200 })
+          : new Response(JSON.stringify({ error: 'Not authenticated yet.' }), { status: 401 });
+      })
+    };
+    const namespace = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn((name) => name === 'portfolio_state' ? authStub : sessionStub)
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      status: 101, headers: new Headers(), webSocket: socket
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      PORTFOLIO_STATE_DO: namespace
+    });
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).ok).toBe(true);
+    expect(namespace.idFromName).toHaveBeenCalledWith('freedom-tradenet-auth-session:v1');
+    expect(sessionStub.fetch).toHaveBeenCalledWith(
+      'https://portfolio-state.internal/internal/freedom-tradenet-session',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('SID')).toBe(sid);
+  });
+
+  it('invalidates the shared cached SID when TradeNet reports a demo session', async () => {
+    const sid = 's'.repeat(48);
+    const socket = makeQuoteSocket(
+      'GOOGL.US',
+      { q: [{ c: 'GOOGL.US', ltp: 280.55 }] },
+      { isDemo: true, mode: 'demo' }
+    );
+    const sessionStub = {
+      fetch: vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, sid }), {
+          status: 200, headers: { 'Content-Type': 'application/json' }
+        }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, invalidated: true }), {
+          status: 200, headers: { 'Content-Type': 'application/json' }
+        }))
+    };
+    const authStub = {
+      fetch: vi.fn(async (request) => {
+        const url = new URL(request.url);
+        return url.pathname === '/api/auth/status'
+          ? new Response(JSON.stringify({ setupRequired: true }), { status: 200 })
+          : new Response(JSON.stringify({ error: 'Not authenticated yet.' }), { status: 401 });
+      })
+    };
+    const namespace = {
+      idFromName: vi.fn((name) => name),
+      get: vi.fn((name) => name === 'portfolio_state' ? authStub : sessionStub)
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      status: 101, headers: new Headers(), webSocket: socket
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      PORTFOLIO_STATE_DO: namespace
+    });
+
+    expect(response.status).toBe(403);
+    expect(sessionStub.fetch).toHaveBeenCalledTimes(2);
+    expect(sessionStub.fetch.mock.calls[1][0]).toBe(
+      'https://portfolio-state.internal/internal/freedom-tradenet-session/invalidate'
+    );
+    expect(JSON.parse(sessionStub.fetch.mock.calls[1][1].body)).toEqual({ sid });
+    expect(JSON.stringify(await response.json())).not.toContain(sid);
   });
 
   it('summarizes nested quote event wrappers without returning quote prices', async () => {
