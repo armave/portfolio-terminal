@@ -1746,8 +1746,14 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
   getCurrentUser,
   getAccountRole: () => currentAccountRole,
   getAccountId: () => currentAccountId,
-  setAccountRole: (role) => { currentAccountRole = role; },
-  setAccountId: (accountId) => { currentAccountId = accountId; },
+  setAccountRole: (role) => {
+    if (currentAccountRole !== role) freedomQuoteStreamRuntime.stop();
+    currentAccountRole = role;
+  },
+  setAccountId: (accountId) => {
+    if (currentAccountId !== accountId) freedomQuoteStreamRuntime.stop();
+    currentAccountId = accountId;
+  },
   setCloudWritePermission: (allowed) => { canWriteCloudState = allowed; },
   setSessionIdentity: (identity) => currentAccountSessionGuard.setIdentity(identity),
   clearCloudEncryptionSecretCache,
@@ -1817,6 +1823,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   loadBrokerRules: loadTradernetRules,
   publishCurrentUser,
   clearAccountIdentity: () => {
+    freedomQuoteStreamRuntime.stop();
     currentAccountRole = null;
     currentAccountId = null;
     canWriteCloudState = false;
