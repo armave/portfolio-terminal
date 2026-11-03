@@ -134,10 +134,11 @@ export function createPortfolioAutoRefreshScheduler(
       ]).then(([quotesAndSync, supplemental]) => quotesAndSync && supplemental);
     }
 
-    cycleInFlight = cycle.finally(() => {
+    let wrappedCycle: Promise<boolean>;
+    wrappedCycle = cycle.finally(() => {
       if (cycleInFlight === wrappedCycle) cycleInFlight = null;
     });
-    const wrappedCycle = cycleInFlight;
+    cycleInFlight = wrappedCycle;
     return wrappedCycle;
   };
 
