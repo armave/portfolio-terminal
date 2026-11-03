@@ -173,7 +173,16 @@ export function createPortfolioBrokerDataRuntime(
 
   const loadExecutedTrades = async (session: SessionIdentityToken): Promise<boolean> => {
     if (!dependencies.isSessionCurrent(session)) return false;
-    if (isFreedomAccountStreamConnected(session.identity)) return true;
+    const publishCachedExecutions = (): boolean => {
+      if (!dependencies.isSessionCurrent(session)) return false;
+      const cachedExecutions = mergeBrokerExecutionHistory(
+        loadSavedBrokerExecutions(),
+        dependencies.getCurrentBrokerExecutions()
+      );
+      emit('broker:executed-trades', cachedExecutions);
+      return true;
+    };
+    if (isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
     const requestKey = getSessionIdentityRequestKey(session);
     const existing = tradesRequests.get(requestKey);
     if (existing) return existing;
@@ -187,7 +196,7 @@ export function createPortfolioBrokerDataRuntime(
           emit('broker:executed-trades-error');
           return false;
         }
-        if (isFreedomAccountStreamConnected(session.identity)) return true;
+        if (isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
 
         const accountId = dependencies.getAccountId();
         const savedExecutions = loadSavedBrokerExecutions();
@@ -202,7 +211,7 @@ export function createPortfolioBrokerDataRuntime(
 
         const response = await fetchExecutedTrades(fromDate);
         if (!dependencies.isSessionCurrent(session)) return false;
-        if (isFreedomAccountStreamConnected(session.identity)) return true;
+        if (isFreedomAccountStreamConnected(session.identity)) return publishCachedExecutions();
 
         const normalizedPage = normalizeExecutedTrades(response);
         if (!dependencies.isSessionCurrent(session)) return false;

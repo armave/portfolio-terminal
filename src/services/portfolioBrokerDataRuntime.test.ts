@@ -122,6 +122,8 @@ describe('portfolio broker data runtime', () => {
 
   it('skips all broker REST backups while the persistent account socket is connected', async () => {
     const fixture = createFixture();
+    const cachedTrade = trade('cached-sell');
+    fixture.setSaved([cachedTrade]);
     setFreedomAccountStreamStatus(fixture.session.identity, 'connected');
     setFreedomAccountStreamStatus(fixture.session.identity, 'reconnecting');
 
@@ -135,7 +137,9 @@ describe('portfolio broker data runtime', () => {
     expect(fixture.dependencies.fetchExecutedTrades).not.toHaveBeenCalled();
     expect(fixture.dependencies.fetchActiveOrders).not.toHaveBeenCalled();
     expect(fixture.dependencies.restoreGatewaySecret).not.toHaveBeenCalled();
-    expect(fixture.events).toEqual([]);
+    expect(fixture.events).toEqual([
+      { type: 'broker:executed-trades', payload: [cachedTrade] }
+    ]);
   });
 
   it('discards a portfolio snapshot that resolves after a newer live portfolio event', async () => {
