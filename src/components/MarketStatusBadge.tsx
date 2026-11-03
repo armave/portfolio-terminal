@@ -45,7 +45,7 @@ export function getMarketStatusLabel(status: string | null | undefined): string 
     case 'PREMARKET': return translateText('Premarket');
     case 'MARKET': return translateText('Market');
     case 'POSTMARKET': return translateText('Postmarket');
-    case 'CLOSED': return getAppLanguage() === 'ru' ? translateText('Market closed status') : 'Closed';
+    case 'CLOSED': return translateText('Market closed');
     default: return translateText('Unavailable');
   }
 }
