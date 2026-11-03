@@ -43,7 +43,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Pull cloud': 'Загрузить из облака',
   'Update Interval': 'Интервал обновления',
   'Automatic portfolio data refresh interval': 'Интервал автоматического обновления данных портфеля',
-  'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes all data.': 'Котировки и состояние портфеля синхронизируются с облаком с выбранным интервалом. Балансы, позиции, сделки и заявки брокера обновляются каждые 60 секунд. При возвращении в приложение все данные обновляются сразу.',
+  'Live quotes and the shared portfolio snapshot sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the private account stream is not healthy. Closed History and Freedom cashflows refresh and sync every 60 seconds. Returning to the app refreshes all data.': 'Котировки и общий снимок портфеля синхронизируются с облаком с выбранным интервалом. Балансы, позиции, сделки и заявки брокера обновляются каждые 60 секунд, если приватный поток счёта не работает корректно. История закрытых сделок и денежные операции Freedom обновляются и синхронизируются каждые 60 секунд. При возвращении в приложение все данные обновляются.',
   'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.': 'Котировки обновляются с выбранным интервалом. Назначенные вам активы и история ЛОТОВ обновляются каждые 60 секунд. При возвращении в приложение оба набора данных обновляются сразу.',
   'Off': 'Выкл.',
   '15 sec': '15 сек.',
