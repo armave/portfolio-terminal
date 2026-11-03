@@ -575,7 +575,7 @@ function describeRedactedValueType(value, depth = 0) {
     for (const key of Object.keys(value)
         .filter(key => /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) && !/^(?:id|_id|login|owner_login|account_id|acc_id)$/i.test(key))
         .sort()
-        .slice(0, 24)) {
+        .slice(0, 64)) {
         fields[key] = describeRedactedValueType(value[key], depth + 1);
     }
     return { type: "object", fields };
@@ -596,30 +596,38 @@ function summarizeFreedomStreamEvent(eventName, payload) {
             : Array.isArray(root?.accounts) ? root.accounts : [];
         const positions = Array.isArray(root?.pos) ? root.pos
             : Array.isArray(root?.positions) ? root.positions : [];
-        const accountKeys = new Set(["curr", "s", "forecast_in", "forecast_out", "currval", "t2_in", "t2_out"]);
+        const accountKeys = new Set([
+            "curr", "currval", "forecast_in", "forecast_out", "k", "s",
+            "sql_exec_tm", "t", "t2_in", "t2_out"
+        ]);
         const positionKeys = new Set([
-            "i", "t", "k", "s", "q", "curr", "currval", "name", "name2",
-            "open_bal", "mkt_price", "vm", "go", "profit_close", "acc_pos_id", "trade"
+            "Yield", "acc_pos_id", "accruedint_a", "acd", "bal_price_a",
+            "base_contract_code", "base_currency", "close_price", "curr", "currval",
+            "face_val_a", "fv", "go", "i", "instr_id", "issue_nb", "k", "ltr",
+            "market_value", "mkt_id", "mkt_price", "name", "name2", "open_bal",
+            "profit_close", "q", "s", "t", "vm"
         ]);
         const accountSample = accounts[0];
         const positionSample = positions[0];
+        const accountItemKeys = accountSample ? keys(accountSample).filter(key => accountKeys.has(key)) : [];
+        const positionItemKeys = positionSample ? keys(positionSample).filter(key => positionKeys.has(key)) : [];
         return {
             event: eventName,
             payloadType,
             topLevelKeys: keys(payload),
             topLevelFieldTypes: Object.fromEntries(
-                ["acc", "acc_srv_t", "loaded", "pos"].filter(key => Object.prototype.hasOwnProperty.call(root || {}, key))
+                ["acc", "acc_srv_tm", "loaded", "m_id", "pos"].filter(key => Object.prototype.hasOwnProperty.call(root || {}, key))
                     .map(key => [key, describeRedactedValueType(root[key])])
             ),
             accountsCount: accounts.length,
-            accountItemKeys: accountSample ? keys(accountSample).filter(key => accountKeys.has(key)) : [],
+            accountItemKeys,
             accountItemTypes: accountSample && isRecord(accountSample)
-                ? Object.fromEntries(Object.keys(accountSample).filter(key => accountKeys.has(key)).sort().map(key => [key, describeRedactedValueType(accountSample[key])]))
+                ? Object.fromEntries(accountItemKeys.map(key => [key, describeRedactedValueType(accountSample[key])]))
                 : {},
             positionsCount: positions.length,
-            positionItemKeys: positionSample ? keys(positionSample).filter(key => positionKeys.has(key)) : [],
+            positionItemKeys,
             positionItemTypes: positionSample && isRecord(positionSample)
-                ? Object.fromEntries(Object.keys(positionSample).filter(key => positionKeys.has(key)).sort().map(key => [key, describeRedactedValueType(positionSample[key])]))
+                ? Object.fromEntries(positionItemKeys.map(key => [key, describeRedactedValueType(positionSample[key])]))
                 : {}
         };
     }
@@ -627,8 +635,9 @@ function summarizeFreedomStreamEvent(eventName, payload) {
         const rows = Array.isArray(payload) ? payload
             : Array.isArray(payload?.m) ? payload.m
                 : Array.isArray(payload?.markets) ? payload.markets : [];
-        const marketKeys = new Set(["n", "n2", "s", "o", "c", "dt"]);
+        const marketKeys = new Set(["c", "date", "dt", "ev", "mkt_id", "n", "n2", "o", "p", "post", "s", "tz"]);
         const marketSample = rows[0];
+        const marketItemKeys = marketSample ? keys(marketSample).filter(key => marketKeys.has(key)) : [];
         return {
             event: eventName,
             payloadType,
@@ -638,9 +647,9 @@ function summarizeFreedomStreamEvent(eventName, payload) {
                     .map(key => [key, describeRedactedValueType(payload[key])])
             ),
             marketsCount: rows.length,
-            marketItemKeys: marketSample ? keys(marketSample).filter(key => marketKeys.has(key)) : [],
+            marketItemKeys,
             marketItemTypes: marketSample && isRecord(marketSample)
-                ? Object.fromEntries(Object.keys(marketSample).filter(key => marketKeys.has(key)).sort().map(key => [key, describeRedactedValueType(marketSample[key])]))
+                ? Object.fromEntries(marketItemKeys.map(key => [key, describeRedactedValueType(marketSample[key])]))
                 : {}
         };
     }
