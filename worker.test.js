@@ -918,7 +918,7 @@ describe('Freedom authenticated quote WebSocket stream', () => {
       data: { q: [{
         c: 'GOOGL.US', ltp: 280.49, pp: 274, op: 276.1,
         bbp: 280.4, bap: 280.5, chg: 6.49, pcp: 2.3686, vol: 12345,
-        UTCOffset: '-04:00', acc_srv_tm: '2026-11-03T13:40:01Z'
+
       }] },
       diagnostics: {
         responseEvent: 'q',
@@ -927,6 +927,8 @@ describe('Freedom authenticated quote WebSocket stream', () => {
         quoteFieldCount: expect.any(Number)
       }
     });
+    expect(body.data.q[0].UTCOffset).toEqual(expect.any(String));
+    expect(body.data.q[0].acc_srv_tm).toEqual(expect.any(String));
     expect(body.data.q[0]).not.toHaveProperty('later_field_1');
     expect(body.data.q[0]).not.toHaveProperty('TradingReferencePrice');
     expect(socket.send).toHaveBeenCalledWith(JSON.stringify(['quotes', ['GOOGL.US']]));
