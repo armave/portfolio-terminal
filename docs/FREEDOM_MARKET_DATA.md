@@ -13,6 +13,10 @@ Configure these in the Worker environment (never in Vite/browser variables):
 
 The Worker still requires the existing `GATEWAY_SECRET` for all app requests. After adding secrets, use the existing read-only `freedom-test` action to confirm TradeNet authentication.
 
+## Authenticated orders-stream diagnostic
+
+The Worker exposes `?action=freedom-orders-stream` as an administrator-only, diagnostic-only probe. It requires the Worker secrets `FREEDOM_LOGIN` and `FREEDOM_PASSWORD`, obtains a short-lived TradeNet SID, connects to `wss://wss.tradernet.com/` through Cloudflare's fetch-based WebSocket upgrade, and sends the read-only `orders` subscription. The SID is not persisted or returned. The response contains handshake status, connection/subscription flags, event names/counts, and whether `userData` and `orders` events arrived; it never returns raw order payloads, account identifiers, credentials, or the SID. The socket is closed after both events arrive or after an eight-second observation window. This endpoint does not restore Market Depth or change portfolio behavior.
+
 ## Read-only actions
 
 - `freedom-trades` retrieves the full TradeNet execution history for FIFO matching when no local closed-trade cursor exists. On a warm cache, the Worker accepts only a validated `fromDate=YYYY-MM-DD` cursor and translates it to `getTradesHistory` `beginDate` at midnight, `endDate` at the current time, and `sort: 0`. The client merges the returned period into persisted executions so older opening buys remain available for FIFO matching. Without a cursor, the Worker requests `sort: 0` and omits `max`; the latest-first `sort: 1` mode defaults to 100 executions and can omit older opening buys.
