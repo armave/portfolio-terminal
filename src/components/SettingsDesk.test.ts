@@ -49,6 +49,11 @@ describe('temporary TradeNet diagnostics controls', () => {
     expect(source).toContain('Test portfolio updates');
     expect(source).toContain('Test market status updates');
     expect(source).toContain("runTradeNetTest('quotes')");
+    expect(source).toContain("runTradeNetTest('quote-comparison')");
+    expect(source).toContain('Compare quote WebSocket vs REST');
+    expect(source).toContain('fetchFreedomQuote(normalizedSymbol, true)');
+    expect(source).toContain('normalizeFreedomQuote(websocketPayload?.data, normalizedSymbol)');
+    expect(source).toContain('lastPriceWithinOneCent');
     expect(source).toContain('testFreedomTradeNetQuoteStream(tradeNetQuoteSymbol)');
     expect(source).toContain('Test live quote stream');
     expect(source).toContain("useState('GOOGL.US')");

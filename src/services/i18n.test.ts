@@ -395,6 +395,11 @@ describe('app localization', () => {
     expect(translateText('Test live quote stream', 'ru')).toBe('Проверить поток котировок');
   });
 
+  it('localizes the TradeNet quote comparison control', () => {
+    expect(translateText('Comparing quote sources…', 'ru')).toBe('Сравнение источников котировок…');
+    expect(translateText('Compare quote WebSocket vs REST', 'ru')).toBe('Сравнить котировку WebSocket и REST');
+  });
+
   it('localizes the TradeNet portfolio reconciliation control', () => {
     expect(translateText('Compare WebSocket vs REST portfolio', 'ru')).toBe('Сравнить портфель WebSocket и REST');
     expect(translateText('Comparing portfolio snapshots…', 'ru')).toBe('Сравнение снимков портфеля…');

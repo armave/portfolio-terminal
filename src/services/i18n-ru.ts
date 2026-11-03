@@ -30,6 +30,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Quote symbol': 'Тикер котировки',
   'Testing live quote…': 'Проверка живой котировки…',
   'Test live quote stream': 'Проверить поток котировок',
+  'Comparing quote sources…': 'Сравнение источников котировок…',
+  'Compare quote WebSocket vs REST': 'Сравнить котировку WebSocket и REST',
   'Comparing portfolio snapshots…': 'Сравнение снимков портфеля…',
   'Compare WebSocket vs REST portfolio': 'Сравнить портфель WebSocket и REST',
   'Run read-only authenticated TradeNet checks. Portfolio reconciliation compares normalized WebSocket and REST snapshots without changing saved holdings.': 'Запускает проверки TradeNet только для чтения. Сверка портфеля сравнивает нормализованные снимки WebSocket и REST без изменения сохранённых активов.',
