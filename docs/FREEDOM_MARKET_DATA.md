@@ -108,6 +108,16 @@ The Balance desk restores the last persisted portfolio snapshot immediately and 
 
 The Balance page does not wait for the separate execution-history request before rendering cached account holdings. It restores and merges the saved execution history with the current portfolio-store copy so the Active Tranches view does not lose older opening purchases if one source is incomplete. Background account/trade refresh activity is shown beside the Balance heading; a blocking loading view is used only when an administrator has no cached broker account snapshot yet. Guest Balance remains scoped to the guest portfolio projection and does not request account-wide broker data.
 
+## Role-specific mandatory synchronization
+
+Each signed-in role has its own saved refresh cadence (15, 30, or 60 seconds); automatic sync cannot be disabled. The same selected cadence now triggers the complete role-scoped refresh rather than running quotes and account data on separate timers.
+
+- **Admin:** refresh quotes and the shared portfolio cloud snapshot; refresh broker balances/positions, executions and active orders when the authenticated account stream is not healthy; merge and sync Closed History and cashflows; checkpoint the portfolio after history allocation changes.
+- **Guest:** fetch only that guest's authenticated assigned-holdings snapshot and LOTS ledger, then refresh quotes for the latest assigned tickers. Guest sessions never request administrator broker balances, orders, trades or shared private history.
+- **Both roles:** the Settings **Sync portfolio** action remains available for an immediate full role-specific sync. Returning to a visible tab also triggers a full refresh. Hidden tabs pause scheduled network work and catch up when visible again.
+
+Legacy saved `Off` values are migrated to the account role's safe default (admin: 60 seconds; guest: 15 seconds). Admin and guest cadence preferences remain stored separately on the device.
+
 ## Account stream health and REST recovery policy
 
 The administrator's persistent account stream is considered healthy only after the browser socket has completed its ready handshake, the heartbeat pong watchdog remains current, and valid portfolio **and** orders events have both been applied to the active account session. Once healthy, scheduled refreshes do not request recurring `freedom-positions`, `freedom-orders`, or `freedom-trades` REST data. The live orders channel continues to feed active orders and embedded fills.
