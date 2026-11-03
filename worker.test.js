@@ -961,9 +961,17 @@ describe('Freedom authenticated quote WebSocket stream', () => {
         ok: true, sid, expiresInSeconds: 1800
       }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     };
+    const authStub = {
+      fetch: vi.fn(async (request) => {
+        const url = new URL(request.url);
+        return url.pathname === '/api/auth/status'
+          ? new Response(JSON.stringify({ setupRequired: true }), { status: 200 })
+          : new Response(JSON.stringify({ error: 'Not authenticated yet.' }), { status: 401 });
+      })
+    };
     const namespace = {
       idFromName: vi.fn((name) => name),
-      get: vi.fn(() => sessionStub)
+      get: vi.fn((name) => name === 'portfolio_state' ? authStub : sessionStub)
     };
     const fetchMock = vi.fn().mockResolvedValueOnce({
       status: 101, headers: new Headers(), webSocket: socket
@@ -1005,9 +1013,17 @@ describe('Freedom authenticated quote WebSocket stream', () => {
           status: 200, headers: { 'Content-Type': 'application/json' }
         }))
     };
+    const authStub = {
+      fetch: vi.fn(async (request) => {
+        const url = new URL(request.url);
+        return url.pathname === '/api/auth/status'
+          ? new Response(JSON.stringify({ setupRequired: true }), { status: 200 })
+          : new Response(JSON.stringify({ error: 'Not authenticated yet.' }), { status: 401 });
+      })
+    };
     const namespace = {
       idFromName: vi.fn((name) => name),
-      get: vi.fn(() => sessionStub)
+      get: vi.fn((name) => name === 'portfolio_state' ? authStub : sessionStub)
     };
     const fetchMock = vi.fn().mockResolvedValueOnce({
       status: 101, headers: new Headers(), webSocket: socket
