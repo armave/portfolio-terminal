@@ -108,6 +108,9 @@ describe('app localization', () => {
     expect(translateText('Mixed', 'ru')).toBe('Разные статусы');
     expect(translateText('Unavailable', 'ru')).toBe('Недоступно');
     expect(translateText('Updated at', 'ru')).toBe('Обновлено');
+    expect(translateText('Market status unavailable', 'ru')).toBe('Статус рынка недоступен');
+    expect(translateText('Loading market status', 'ru')).toBe('Загрузка статуса рынка');
+    expect(translateText('Refresh failed', 'ru')).toBe('Ошибка обновления');
     expect(translateText('User management', 'ru')).toBe('Управление пользователями');
     expect(translateText('Settings', 'ru')).toBe('Настройки');
     expect(translateText('Unknown market symbol', 'ru')).toBe('Unknown market symbol');
