@@ -179,6 +179,9 @@ export function createFreedomAccountStreamRuntime(
         if (message.type === 'error') {
           connected = false;
           reportStatus('reconnecting', typeof message.message === 'string' ? message.message : undefined);
+          // Do not leave an authenticated but unusable browser socket open:
+          // close triggers the bounded reconnect path with a fresh one-use ticket.
+          try { nextSocket.close(1011, 'TradeNet account stream reported an error'); } catch { /* close event may already be pending */ }
           return;
         }
 
