@@ -969,7 +969,7 @@ function getFreedomQuoteStreamRuntime(): Promise<FreedomQuoteStreamRuntime> {
   
       const wireSymbol = message.symbol.trim().toUpperCase();
       const ticker = wireSymbol.endsWith('.US') ? wireSymbol.slice(0, -3) : wireSymbol;
-      const quote = normalizeFreedomQuote({ q: [message.data] }, ticker);
+      const quote = marketData.normalizeFreedomQuote({ q: [message.data] }, ticker);
       if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) return;
   
       const receivedAt = Number(message.receivedAt) || Date.now();
