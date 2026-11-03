@@ -1681,8 +1681,9 @@ describe('closed-history request deduplication', () => {
 
     await expect(pushCloudHistory(first, 'same-history-secret')).resolves.toBe(true);
     await expect(pushCloudHistory(second, 'same-history-secret')).resolves.toBe(false);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(['GET', 'POST']);
+    await expect(pushCloudHistory(second, 'same-history-secret', undefined, { force: true })).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).method)).toEqual(['GET', 'POST', 'GET', 'POST']);
   });
 
   it('upgrades legacy Closed History to AES-GCM and verifies the stored record', async () => {
