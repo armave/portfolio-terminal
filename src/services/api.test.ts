@@ -173,7 +173,7 @@ describe('persistent Freedom quote stream transport', () => {
     await expect(createFreedomQuoteStreamTicket(['AAPL'])).rejects.toThrow('server did not issue a valid quote stream ticket');
     await expect(createFreedomQuoteStreamTicket(
       Array.from({ length: 11 }, (_, index) => `TICKER${index}`)
-    )).rejects.toThrow('at most 10');
+    )).rejects.toThrow('between 1 and 10');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
