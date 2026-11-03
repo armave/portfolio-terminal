@@ -129,6 +129,18 @@ describe('portfolio automatic refresh policy', () => {
     scheduler.stop();
   });
 
+  it('treats an explicit false result as an incomplete sync rather than a successful no-op', async () => {
+    const scheduler = createPortfolioAutoRefreshScheduler({
+      getRole: () => 'guest',
+      isVisible: () => true,
+      refreshQuotes: vi.fn(),
+      refreshSupplemental: async () => false
+    });
+    scheduler.configure(15_000, 'guest');
+    await expect(scheduler.refreshNow()).resolves.toBe(false);
+    scheduler.stop();
+  });
+
   it('keeps automatic sync enabled when a legacy Off value is loaded', async () => {
     vi.useFakeTimers();
     const refreshQuotes = vi.fn();
