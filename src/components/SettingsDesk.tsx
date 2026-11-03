@@ -245,8 +245,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         </h2>
         <p class="text-xs text-slate-400">
           {account?.role === 'guest'
-            ? 'Manage your account and quote refresh preferences.'
-            : 'Configure broker assumptions, cloud synchronization, quote polling, and account access.'}
+            ? 'Manage your account and mandatory portfolio sync preferences.'
+            : 'Configure broker assumptions, mandatory portfolio synchronization, and account access.'}
         </p>
       </div>
 
@@ -280,15 +280,15 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         {/* Cluster 2: Polling & Backups */}
         <div class="flex-1 w-full flex flex-wrap items-center justify-center gap-1.5 lg:px-2" aria-label="Portfolio data refresh and backup controls">
           <label class="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
-            {translateText('Update Interval')}
+            {translateText('Mandatory Sync Interval')}
             <select
               id="quoteRefreshInterval"
               value={refreshInterval}
               onChange={handleIntervalChange}
-              aria-label={translateText('Automatic portfolio data refresh interval')}
+              aria-label={translateText('Mandatory automatic portfolio sync interval')}
               title={translateText(account?.role === 'guest'
-                ? 'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.'
-                : 'Live quotes and the shared portfolio snapshot sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the private account stream is not healthy. Closed History and Freedom cashflows refresh and sync every 60 seconds. Returning to the app refreshes all data.')}
+                ? 'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.'
+                : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
               class="h-8 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
             >
               <option value="15000">{translateText('15 sec')}</option>
@@ -299,7 +299,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <p class="basis-full text-center text-[10px] leading-relaxed text-slate-500">
             {translateText(account?.role === 'guest'
               ? 'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.'
-              : 'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the live account stream is not healthy. Returning to the app refreshes all data.')}
+              : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
           </p>
           {permissions.canManageBackups && <>
             <button
