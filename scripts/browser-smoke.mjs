@@ -427,26 +427,35 @@ try {
     'guest snapshot and active assignment ledger publication'
   );
 
-  // Fail the broker account snapshot once; executions, active orders, quotes
-  // and cloud sync should still complete and report a partial-success warning.
-  worker.failNextBrokerAccount();
+  // A manual sync must reuse the load-time broker/quote snapshots instead of
+  // reopening WebSocket or backup REST endpoints. Executed-trade history remains
+  // on its canonical REST source and is still refreshed by the explicit sync.
   worker.failNextStateConflict();
-  const previousBrokerFailures = worker.brokerAccountFailures();
   const previousConflicts = worker.stateConflictCount();
   const previousStateWrites = worker.count('POST', '/api/state');
+  const previousPortfolioSnapshotRequests =
+    worker.countAction('freedom-portfolio-snapshot') + worker.countAction('freedom-positions');
+  const previousOrderSnapshotRequests =
+    worker.countAction('freedom-orders-stream') + worker.countAction('freedom-orders');
+  const previousQuoteSnapshotRequests =
+    worker.countAction('freedom-quote-stream') + worker.countAction('freedom-quote');
+  const previousTradeHistoryRequests = worker.countAction('freedom-trades');
   const syncButton = page.locator('#syncPortfolioButton');
   await syncButton.waitFor({ state: 'visible', timeout: 20_000 });
   await syncButton.click();
   await waitForCondition(
-    () => worker.brokerAccountFailures() > previousBrokerFailures,
-    'one-shot TradeNet account-info failure'
-  );
-  await waitForCondition(
     () => worker.count('POST', '/api/state') > previousStateWrites,
-    'manual sync cloud push despite broker account failure'
+    'manual sync cloud push using the load-time snapshots'
   );
-  if (worker.countAction('freedom-trades') < 2 || worker.countAction('freedom-orders') < 2) {
-    throw new Error('Partial broker failure prevented other TradeNet sources from refreshing.');
+  if (
+    worker.countAction('freedom-portfolio-snapshot') + worker.countAction('freedom-positions') !== previousPortfolioSnapshotRequests ||
+    worker.countAction('freedom-orders-stream') + worker.countAction('freedom-orders') !== previousOrderSnapshotRequests ||
+    worker.countAction('freedom-quote-stream') + worker.countAction('freedom-quote') !== previousQuoteSnapshotRequests
+  ) {
+    throw new Error('Manual sync reopened a one-shot WebSocket snapshot or its REST backup.');
+  }
+  if (worker.countAction('freedom-trades') <= previousTradeHistoryRequests) {
+    throw new Error('Manual sync did not refresh canonical executed-trade history over REST.');
   }
   await waitForCondition(
     () => worker.stateConflictCount() > previousConflicts,
