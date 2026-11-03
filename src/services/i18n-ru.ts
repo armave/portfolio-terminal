@@ -723,4 +723,10 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'ADD SECRET': 'ДОБАВЬТЕ СЕКРЕТ',
   'WRITING...': 'СОХРАНЕНИЕ...',
   'UPDATED': 'ОБНОВЛЕНО',
+  'Failed to load news:': 'Не удалось загрузить новости:',
+  'Est:': 'Прогноз:',
+  'Act:': 'Факт:',
+  'Bullish': 'Бычий',
+  'Bearish': 'Медвежий',
+  'Neutral': 'Нейтральный',
 };
