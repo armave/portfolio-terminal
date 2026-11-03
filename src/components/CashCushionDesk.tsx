@@ -43,7 +43,7 @@ type ActiveTrancheQuoteRecord = {
   currentPrice?: unknown;
   price?: unknown;
   quoteUpdatedAt?: unknown;
-  quoteDetails?: { sourceTimestamp?: unknown; receivedAt?: unknown; transport?: unknown };
+  quoteDetails?: { sourceTimestamp?: unknown; receivedAt?: unknown; transport?: unknown; [key: string]: unknown };
 };
 
 export function getActiveTrancheMarketPrice(
