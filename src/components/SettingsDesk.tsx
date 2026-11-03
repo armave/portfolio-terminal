@@ -7,7 +7,7 @@ import {
 } from '../services/portfolioAutoRefresh';
 import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
-import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
+import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, testFreedomTradeNetConnection, testFreedomTradeNetOrdersStream, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import { DeskLoading } from './DeskLoading';
@@ -61,6 +61,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [savingUser, setSavingUser] = useState(false);
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [languageError, setLanguageError] = useState("");
+  const [tradeNetTest, setTradeNetTest] = useState<{ kind: 'rest' | 'websocket'; loading: boolean; result?: unknown; error?: string } | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
   const refreshUsers = async () => {
@@ -147,6 +148,23 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       setLanguageError(error instanceof Error ? error.message : "Could not update language.");
     } finally {
       setSavingLanguage(false);
+    }
+  };
+
+  const runTradeNetTest = async (kind: 'rest' | 'websocket') => {
+    if (tradeNetTest?.loading) return;
+    setTradeNetTest({ kind, loading: true });
+    try {
+      const result = kind === 'rest'
+        ? await testFreedomTradeNetConnection()
+        : await testFreedomTradeNetOrdersStream();
+      setTradeNetTest({ kind, loading: false, result });
+    } catch (error) {
+      setTradeNetTest({
+        kind,
+        loading: false,
+        error: error instanceof Error ? error.message : translateText('TradeNet diagnostic failed.')
+      });
     }
   };
 
@@ -315,6 +333,28 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       {permissions.canManageBackups && <div class="settings-data-safety-note w-full rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
         <p class="mt-1 font-semibold text-amber-200 text-center">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>
       </div>}
+
+      {account?.role === "admin" && <section class="settings-panel settings-tradenet-diagnostics space-y-3 rounded-lg border border-cyan-900/60 bg-slate-950/40 p-3" aria-labelledby="tradeNetDiagnosticsTitle">
+        <div>
+          <h3 id="tradeNetDiagnosticsTitle" class="text-sm font-bold text-slate-200">{translateText('Temporary TradeNet diagnostics')}</h3>
+          <p class="text-[10px] leading-relaxed text-slate-500">{translateText('Run read-only connectivity checks. The WebSocket test checks the authenticated orders stream; no orders are placed or modified.')}</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" disabled={Boolean(tradeNetTest?.loading)} onClick={() => void runTradeNetTest('rest')} class="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-slate-700 disabled:cursor-wait disabled:opacity-50">
+            {tradeNetTest?.loading && tradeNetTest.kind === 'rest' ? translateText('Testing REST…') : translateText('Test REST connection')}
+          </button>
+          <button type="button" disabled={Boolean(tradeNetTest?.loading)} onClick={() => void runTradeNetTest('websocket')} class="rounded border border-cyan-800 bg-cyan-950/60 px-3 py-2 text-xs font-bold text-cyan-200 hover:bg-cyan-900 disabled:cursor-wait disabled:opacity-50">
+            {tradeNetTest?.loading && tradeNetTest.kind === 'websocket' ? translateText('Testing WebSocket…') : translateText('Test authenticated WebSocket')}
+          </button>
+        </div>
+        {tradeNetTest?.loading && <p class="text-xs text-cyan-300" role="status">{translateText('Contacting TradeNet. Please wait…')}</p>}
+        {tradeNetTest?.error && <p class="rounded border border-rose-900/60 bg-rose-950/30 p-2 text-xs text-rose-300" role="alert">{tradeNetTest.error}</p>}
+        {tradeNetTest?.result !== undefined && <div class="space-y-1">
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400" role="status">{translateText('Diagnostic result')} · {tradeNetTest.kind === 'rest' ? 'REST' : 'WebSocket'}</p>
+          <pre class="max-h-72 overflow-auto rounded border border-slate-800 bg-slate-950 p-2 text-[10px] leading-relaxed text-slate-300 whitespace-pre-wrap break-all" aria-label={translateText('TradeNet diagnostic response')}>{JSON.stringify(tradeNetTest.result, null, 2)}</pre>
+        </div>}
+        <p class="text-[10px] text-slate-500">{translateText('Temporary test controls — remove after verification.')}</p>
+      </section>}
 
       {account?.role === "admin" && <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="flex flex-wrap items-center justify-between gap-2">
