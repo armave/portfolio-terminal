@@ -95,7 +95,6 @@ export function createFreedomBrokerTransportRuntime(
       dependencies.recordMetric?.('stream_snapshot_cache_hit', { operation: 'freedom_quote' });
       return cached;
     }
-    attemptedStreamSnapshots.add(key);
     const request = dependencies.proxyFetch(
       'freedom-quote-stream',
       { symbol: ticker },
