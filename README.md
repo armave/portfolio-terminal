@@ -25,6 +25,8 @@ It is **not** a broker connection, order-entry system, source of official accoun
 
 * **Multi-Provider Market Data:** Streams live prices, premarket indicators, and analyst targets via Finnhub, Twelve Data, Alpha Vantage, RapidAPI Yahoo Finance, and Stooq.
 
+* **TradeNet WebSocket Account Refresh:** Active orders and USD balances/positions use authenticated short-lived WebSocket snapshots as their primary source, with the existing REST endpoints retained as automatic fallbacks. The tested `markets` event provides exchange-level status/schedule metadata, not security quote prices; the `getStockQuotesJson` quote path remains REST/provider-backed until a separate quote (`q`) stream is verified.
+
 * **Freedom Broker Account Reconciliation:** When the authenticated read-only Freedom TradeNet account API returns a valid snapshot, the app prioritizes the broker's USD balance, aggregate share quantities, and available broker-reported prices. App-owned trade lots and cost basis remain separate; quantity mismatches are surfaced instead of silently rewriting lots.
 
 
@@ -147,6 +149,10 @@ If Freedom account data is unavailable or the Gateway Secret has not been config
 ### TradeNet authenticated WebSocket active-orders snapshots
 
 The Worker provides an administrator-only, read-only active-orders snapshot at `?action=freedom-orders-stream`. It uses Worker-only `FREEDOM_LOGIN` and `FREEDOM_PASSWORD` secrets, obtains a short-lived TradeNet SID, opens the production WebSocket through Cloudflare, and subscribes to `orders`. The sanitized order list is returned to the app's existing active-order normalizer after both production-session events arrive. It is requested on the normal 60-second active-order refresh cadence; this is a request-driven snapshot, not a permanently open browser socket. The existing REST `freedom-orders` endpoint remains the fallback if the WebSocket snapshot fails. The Worker never returns account identifiers, credentials, arbitrary broker payload fields, or the SID; the diagnostic preview omits order IDs. The SID is not persisted, and the socket closes after the required events arrive or the eight-second observation window ends.
+
+The Worker also offers administrator-only, value-redacted schema probes for the authenticated `portfolio` and `markets` WebSocket events through `?action=freedom-event-stream&event=portfolio|markets`. They report field names, row counts, primitive value types, and bounded nested shapes, but no actual account numbers, holdings, prices, market statuses, session identifiers, or credentials. They do not change portfolio data. The real payloads must be verified before implementing either event in app state.
+
+The active account refresh now uses `?action=freedom-portfolio-snapshot` as its primary source for sanitized, loaded USD balances and positions from the authenticated `portfolio` event; REST `freedom-positions` (`getPositionJson`) is the automatic fallback. Both use the same portfolio normalizer. The admin Settings comparison remains available to reconcile the WebSocket and REST values with a 0.01 numeric tolerance without changing saved holdings or portfolio state.
 
 The signed REST market-data endpoints continue to use `FREEDOM_PUBLIC_KEY` and `FREEDOM_PRIVATE_KEY`. `GATEWAY_SECRET` remains the Worker gateway/bootstrap secret. This diagnostic does not restore Market Depth or affect portfolio data.
 
