@@ -13,6 +13,7 @@ export interface FreedomBrokerTransportRuntime {
   testFreedomTradeNetConnection: () => Promise<unknown>;
   testFreedomTradeNetOrdersStream: () => Promise<unknown>;
   testFreedomTradeNetEventStream: (event: 'portfolio' | 'markets') => Promise<unknown>;
+  testFreedomTradeNetPortfolioReconciliation: () => Promise<{ websocket: unknown; rest: unknown }>;
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
@@ -44,6 +45,25 @@ export function createFreedomBrokerTransportRuntime(
 
   const fetchFreedomTradeNetPositions = (): Promise<unknown> =>
     dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' });
+
+  const testFreedomTradeNetPortfolioReconciliation = async (): Promise<{ websocket: unknown; rest: unknown }> => {
+    const [websocketResponse, restResponse] = await Promise.all([
+      dependencies.proxyFetch('freedom-portfolio-snapshot', undefined, { cache: 'no-store' }),
+      dependencies.proxyFetch('freedom-positions', undefined, { cache: 'no-store' })
+    ]);
+    const isLoadedSnapshot = (response: any) =>
+      response?.ok === true &&
+      response?.data?.result?.ps?.loaded === true &&
+      Array.isArray(response?.data?.result?.ps?.acc) &&
+      Array.isArray(response?.data?.result?.ps?.pos);
+    if (!isLoadedSnapshot(websocketResponse)) {
+      throw new Error(websocketResponse?.error || 'TradeNet WebSocket portfolio snapshot is unavailable or not loaded.');
+    }
+    if (!isLoadedSnapshot(restResponse)) {
+      throw new Error(restResponse?.error || 'TradeNet REST portfolio snapshot is unavailable or not loaded.');
+    }
+    return { websocket: websocketResponse.data, rest: restResponse.data };
+  };
 
   const fetchFreedomTradeNetTrades = (fromDate?: string): Promise<unknown> => {
     const startDate = typeof fromDate === 'string' && fromDate.trim() ? fromDate.trim() : undefined;
@@ -134,6 +154,7 @@ export function createFreedomBrokerTransportRuntime(
     testFreedomTradeNetConnection,
     testFreedomTradeNetOrdersStream,
     testFreedomTradeNetEventStream,
+    testFreedomTradeNetPortfolioReconciliation,
     fetchFreedomTradeNetPositions,
     fetchFreedomTradeNetTrades,
     fetchFreedomTradeNetActiveOrders,
