@@ -1,7 +1,15 @@
-import { describe, expect, it } from 'vitest';
-import { getMarketStatusLabel, getMarketStatusTone } from './MarketStatusBadge';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { setAppLanguage } from '../services/i18n';
+import { getMarketStatusLabel, getMarketStatusRoleLabel, getMarketStatusTone } from './MarketStatusBadge';
+
+beforeEach(() => setAppLanguage('en'));
 
 describe('US-equities market status presentation', () => {
+  it('uses distinct labels for administrators and guests', () => {
+    expect(getMarketStatusRoleLabel(true)).toBe('Portfolio market');
+    expect(getMarketStatusRoleLabel(false)).toBe('Your market');
+  });
+
   it('maps the documented provider states without guessing unknown codes', () => {
     expect(getMarketStatusLabel('OPEN')).toBe('Open');
     expect(getMarketStatusLabel('CLOSE')).toBe('Closed');
