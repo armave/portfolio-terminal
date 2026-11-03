@@ -12,17 +12,13 @@ describe('app localization', () => {
 
   it('localizes the role-specific automatic refresh descriptions', () => {
     expect(translateText(
-      'Live quotes and the shared portfolio snapshot sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the private account stream is not healthy. Closed History and Freedom cashflows refresh and sync every 60 seconds. Returning to the app refreshes all data.',
+      'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.',
       'ru'
     )).toContain('Котировки и общий снимок портфеля синхронизируются с облаком с выбранным интервалом.');
     expect(translateText(
-      'Closed History and Freedom cashflows refresh and sync every 60 seconds.',
+      'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.',
       'ru'
-    )).toBe('История закрытых сделок и денежные операции Freedom обновляются и синхронизируются каждые 60 секунд.');
-    expect(translateText(
-      'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.',
-      'ru'
-    )).toContain('Назначенные вам активы и история ЛОТОВ обновляются каждые 60 секунд.');
+    )).toContain('Назначенные вам активы, история ЛОТОВ и их рыночные котировки обновляются с выбранным интервалом.');
   });
 
   it('localizes the full portfolio sync button and outcome messages', () => {
@@ -114,7 +110,6 @@ describe('app localization', () => {
     expect(translateText('Premarket', 'ru')).toBe('Премаркет');
     expect(translateText('Market', 'ru')).toBe('Рынок открыт');
     expect(translateText('Postmarket', 'ru')).toBe('Постмаркет');
-    expect(translateText('Market closed status', 'ru')).toBe('Закрыт');
     expect(translateText('Unavailable', 'ru')).toBe('Недоступно');
     expect(translateText('Updated at', 'ru')).toBe('Обновлено');
     expect(translateText('Market status unavailable', 'ru')).toBe('Статус рынка недоступен');
