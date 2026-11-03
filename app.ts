@@ -446,7 +446,7 @@ async function pullGuestPortfolioSnapshot(): Promise<void> {
 let startupCloudWritesSuppressed = true;
 let startupCloudWritePending = false;
 
-const portfolioEquitySyncRuntime = createPortfolioEquitySyncRuntime({
+createPortfolioEquitySyncRuntime({
   subscribe: (listener) => portfolioStore.subscribe((nextStoreState, source) => {
     state = nextStoreState;
     listener(nextStoreState, source);
