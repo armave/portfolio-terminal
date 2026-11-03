@@ -494,7 +494,6 @@ export class PortfolioStateDO {
     this.freedomQuoteUpstream = socket;
     this.freedomQuoteUpstreamReady = false;
     this.freedomQuoteSubscribedSymbols = new Set(symbols);
-    socket.accept();
 
     const handshake = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -540,6 +539,7 @@ export class PortfolioStateDO {
     });
 
     try {
+      socket.accept();
       socket.send(JSON.stringify(["quotes", symbols]));
       await handshake;
     } catch (error) {
