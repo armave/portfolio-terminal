@@ -2,14 +2,15 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
-const marker = '/* Fluid workspace system: adapt to the space each desk actually receives. */';
+const marker = '/* Fluid workspace layout: adapt to the space each desk actually receives. */';
 const fluidStyles = stylesheet.slice(stylesheet.lastIndexOf(marker));
+const baseTokens = stylesheet.match(/^:root\s*\{([\s\S]*?)^\}/m)?.[1] ?? '';
 
 describe('fluid workspace styles', () => {
   it('uses fluid layout tokens instead of a single fixed page rhythm', () => {
-    expect(fluidStyles).toMatch(/--layout-gutter:\s*clamp\(/);
-    expect(fluidStyles).toMatch(/--layout-stack-gap:\s*clamp\(/);
-    expect(fluidStyles).toMatch(/--surface-radius:\s*clamp\(/);
+    expect(baseTokens).toMatch(/--layout-gutter:\s*clamp\(/);
+    expect(baseTokens).toMatch(/--layout-stack-gap:\s*clamp\(/);
+    expect(baseTokens).toMatch(/--surface-radius:\s*clamp\(/);
     expect(fluidStyles).toMatch(/#root\s*\{[^}]*padding:\s*clamp\(/s);
   });
 

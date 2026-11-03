@@ -21,7 +21,7 @@ describe('mobile workspace navigation styles', () => {
     expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*overflow-x:\s*auto;/s);
     expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*min-width:\s*0;/s);
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-ticker-list>\*\s*\{[^}]*flex:\s*0\s+0\s+auto;/s);
-    expect(stylesheet.match(/#tickerTabs\s*\{/g) || []).toHaveLength(3);
+    expect(stylesheet.match(/#tickerTabs\s*\{/g) || []).toHaveLength(2);
   });
 
   it('allows the mobile header flex row and workspace container to shrink around the ticker scroll region', () => {

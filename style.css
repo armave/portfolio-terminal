@@ -29,6 +29,16 @@
 
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  /* Shared control, layout, surface, and motion tokens. */
+  --control-height: 2.75rem;
+  --surface-hover: rgba(148, 163, 184, 0.08);
+  --layout-gutter: clamp(0.75rem, 1.6vw, 1.5rem);
+  --layout-stack-gap: clamp(0.75rem, 1.35vw, 1.25rem);
+  --surface-radius: clamp(0.75rem, 1vw, 1rem);
+  --surface-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.2);
+  --surface-shadow-hover: 0 1rem 2.5rem rgba(0, 0, 0, 0.26);
+  --motion-fluid: cubic-bezier(0.2, 0.75, 0.25, 1);
 }
 
 html {
@@ -784,17 +794,7 @@ summary:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
 
 
 
@@ -1091,13 +1091,7 @@ summary:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  #scenarioComparisonModal,
-  #scenarioComparisonModal>[role="dialog"] {
-    animation: none;
-  }
-}
 
 /* Smoothly reveal content as modal data arrives, not just when the dialog opens. */
 .margin-intelligence-overlay {
@@ -1130,20 +1124,7 @@ summary:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  .margin-intelligence-overlay,
-  .margin-intelligence-dialog,
-  [role="dialog"] [data-animate-content],
-  [role="dialog"] [aria-live="polite"]>*,
-  [role="dialog"] article,
-  [role="dialog"] .news-feed-item,
-  [role="dialog"] .stocktwits-feed-item,
-  [role="dialog"] .digest-content,
-  [role="dialog"] .digest-article {
-    animation: none !important;
-  }
-}
 
 /* Modal financial figures: prioritize legibility over compact density. */
 #scenarioComparisonModal table {
@@ -1325,20 +1306,7 @@ summary:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
 
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-  }
-}
 
 
 /* Margin risk visual gauges */
@@ -1600,13 +1568,7 @@ summary:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  .news-article-modal,
-  .news-article-dialog {
-    animation: none;
-  }
-}
 
 
 /* Portfolio micro-summary: one compact surface above account equity health. */
@@ -1947,20 +1909,7 @@ textarea {
   }
 }
 
-@media (prefers-contrast: more) {
-  :root {
-    --border-card: rgba(203, 213, 225, 0.38);
-    --border-subtle: rgba(203, 213, 225, 0.28);
-    --text-muted: #cbd5e1;
-    --text-dim: #a8b4c5;
-  }
-}
-
 /* UX refinement follow-up — readable density, predictable controls, and mobile navigation. */
-:root {
-  --control-height: 2.75rem;
-  --surface-hover: rgba(148, 163, 184, 0.08);
-}
 
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--border-focus);
@@ -2252,29 +2201,7 @@ textarea {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation: none !important;
-    transition: none !important;
-  }
-
-  .ui-view-enter,
-  .ui-toast-enter,
-  .ui-toast-exit,
-  #marketInsightsContent,
-  #auth-container,
-  #auth-container .auth-card,
-  .quote-flash-up,
-  .quote-flash-down {
-    animation: none !important;
-    transition: none !important;
-    transform: none !important;
-  }
-}
 
 
 /* Keep the auth overlay mounted so its exit transition can finish cleanly. */
@@ -2347,17 +2274,7 @@ table tbody tr:hover {
   transform: translateY(0) scale(1);
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  .desk-view-transition:not(.hidden),
-  table tbody tr,
-  #auth-container.auth-overlay,
-  #auth-container.auth-overlay .auth-card {
-    animation: none !important;
-    transition: none !important;
-    transform: none !important;
-  }
-}
 
 
 /* Scenario comparison modal: preserve the closing frame until the exit finishes. */
@@ -2381,14 +2298,7 @@ table tbody tr:hover {
   transform: translateY(4px) scale(0.985);
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  .scenario-modal-backdrop,
-  .scenario-modal-dialog {
-    animation: none !important;
-    transition: none !important;
-  }
-}
 
 
 /* News and Stocktwits: animate feed entry and item hover without affecting layout. */
@@ -2420,19 +2330,7 @@ table tbody tr:hover {
   animation: auth-dialog-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  .news-feed-enter,
-  .stocktwits-feed-enter,
-  .news-feed-item,
-  .stocktwits-feed-item,
-  .news-modal-enter,
-  .news-dialog-enter {
-    animation: none !important;
-    transition: none !important;
-    transform: none !important;
-  }
-}
 
 #activeTranches,
 #cloudStatus {
@@ -2491,18 +2389,7 @@ summary:focus-visible {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  .expandable-motion,
-  .expandable-motion__inner,
-  .credentials-motion,
-  table tbody tr {
-    animation: none !important;
-    transition: none !important;
-    transform: none !important;
-    scroll-behavior: auto !important;
-  }
-}
 
 
 /* Responsive portfolio desk: give the data area priority without crowding the console. */
@@ -2764,14 +2651,7 @@ summary:focus-visible {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  .desk-section-loading,
-  .desk-section-loading__bar {
-    animation: none !important;
-    transform: none !important;
-  }
-}
 
 /* Keep the ticker strip independent on desktop and merge it into the centered
    workspace navigation flow on small screens. */
@@ -2818,6 +2698,12 @@ summary:focus-visible {
 }
 
 @media (max-width: 768px) {
+  .board-header-banner > .flex {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
   #tickerTabs {
     width: 100%;
     min-width: 0;
@@ -2863,15 +2749,7 @@ summary:focus-visible {
   }
 }
 
-/* Fluid workspace system: adapt to the space each desk actually receives. */
-:root {
-  --layout-gutter: clamp(0.75rem, 1.6vw, 1.5rem);
-  --layout-stack-gap: clamp(0.75rem, 1.35vw, 1.25rem);
-  --surface-radius: clamp(0.75rem, 1vw, 1rem);
-  --surface-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.2);
-  --surface-shadow-hover: 0 1rem 2.5rem rgba(0, 0, 0, 0.26);
-  --motion-fluid: cubic-bezier(0.2, 0.75, 0.25, 1);
-}
+/* Fluid workspace layout: adapt to the space each desk actually receives. */
 
 #root {
   width: 100%;
@@ -3157,17 +3035,7 @@ table tbody tr:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  .border-card,
-  .portfolio-micro-summary,
-  .margin-risk-gauge-card,
-  .portfolio-metric,
-  #tradingConsoleCard,
-  #marketInsightsPanel {
-    transition: none !important;
-  }
-}
 
 
 /* Margin desk: align the projection table and market insights as a single data row. */
@@ -3518,23 +3386,7 @@ table tbody tr:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  .closed-history-page-transition,
-  #settingsDesk .settings-broker-rules[open]>div,
-  #auth-container .auth-feedback {
-    animation: none !important;
-    transform: none !important;
-  }
-
-  .table-pagination-button,
-  #settingsDesk .settings-panel,
-  #settingsDesk .settings-broker-rules>summary,
-  #auth-container .auth-input,
-  #auth-container .auth-submit-button {
-    transition: none !important;
-  }
-}
 
 
 /* Page changes animate a normal block wrapper around the table, not the tbody. */
@@ -3582,14 +3434,7 @@ table tbody tr:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
 
-  .desk-content-reveal,
-  .closed-history-page-transition {
-    animation: none !important;
-    transform: none !important;
-  }
-}
 
 /* Margin projection pagination: animate newly keyed rows without transforming table internals. */
 #projectionTableContainer .projection-page-row {
@@ -3650,15 +3495,7 @@ table tbody tr:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  #projectionTableContainer .projection-page-row {
-    animation: none !important;
-  }
 
-  #projectionTableContainer .projection-pagination-button {
-    transition: none !important;
-  }
-}
 
 #marginDataWorkspace {
   margin-top: .75rem;
@@ -3793,11 +3630,7 @@ table tbody tr:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .cloud-sync-indicator--pending .cloud-sync-indicator__dot {
-    animation: none;
-  }
-}
+
 
 /* Stage 3: keep summary labels readable without competing with primary values. */
 .portfolio-micro-heading {
@@ -3832,17 +3665,43 @@ table tbody tr:hover {
   }
 }
 
-/* Keep the mobile header flex row shrinkable around the centered navigation. */
-@media (max-width: 768px) {
-  .board-header-banner > .flex {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
+/* One reduced-motion policy for the entire terminal. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
   }
 
-  #tickerTabs {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
+  .ui-view-enter,
+  .ui-toast-enter,
+  .ui-toast-exit,
+  #marketInsightsContent,
+  #auth-container,
+  #auth-container .auth-card,
+  .quote-flash-up,
+  .quote-flash-down,
+  .desk-view-transition:not(.hidden),
+  table tbody tr,
+  #auth-container.auth-overlay,
+  #auth-container.auth-overlay .auth-card,
+  .news-feed-enter,
+  .stocktwits-feed-enter,
+  .news-feed-item,
+  .stocktwits-feed-item,
+  .news-modal-enter,
+  .news-dialog-enter,
+  .expandable-motion,
+  .expandable-motion__inner,
+  .credentials-motion,
+  .desk-section-loading,
+  .desk-section-loading__bar,
+  #settingsDesk .settings-broker-rules[open]>div,
+  #auth-container .auth-feedback,
+  .desk-content-reveal,
+  .closed-history-page-transition {
+    transform: none !important;
   }
 }
