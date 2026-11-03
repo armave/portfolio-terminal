@@ -35,33 +35,17 @@ describe('automatic update settings', () => {
   });
 });
 
-describe('temporary TradeNet diagnostics controls', () => {
-  it('keeps the test controls administrator-only and exposes both read-only probes', () => {
+describe('TradeNet market status probe', () => {
+  it('retains only the not-yet-integrated public markets event preview', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
-    expect(source).toContain("account?.role === \"admin\" && <section class=\"settings-panel settings-tradenet-diagnostics");
-    expect(source).toContain("runTradeNetTest('rest')");
-    expect(source).toContain("runTradeNetTest('websocket')");
-    expect(source).toContain('testFreedomTradeNetConnection()');
-    expect(source).toContain('testFreedomTradeNetOrdersStream()');
-    expect(source).toContain("runTradeNetTest('portfolio')");
-    expect(source).toContain("runTradeNetTest('markets')");
-    expect(source).toContain('testFreedomTradeNetEventStream(kind)');
-    expect(source).toContain('Test portfolio updates');
+    expect(source).toContain("testFreedomTradeNetEventStream('markets')");
+    expect(source).toContain('TradeNet market status probe');
     expect(source).toContain('Test market status updates');
-    expect(source).toContain("runTradeNetTest('quotes')");
-    expect(source).toContain("runTradeNetTest('quote-comparison')");
-    expect(source).toContain('Compare quote WebSocket vs REST');
-    expect(source).toContain('fetchFreedomQuote(normalizedSymbol, true)');
-    expect(source).toContain('normalizeFreedomQuote(websocketPayload.data, normalizedSymbol)');
-    expect(source).toContain('lastPriceWithinOneCent');
-    expect(source).toContain('testFreedomTradeNetQuoteStream(tradeNetQuoteSymbol)');
-    expect(source).toContain('Test live quote stream');
-    expect(source).toContain("useState('GOOGL.US')");
-    expect(source).toContain("runTradeNetTest('reconciliation')");
-    expect(source).toContain('testFreedomTradeNetPortfolioReconciliation()');
-    expect(source).toContain('compareFreedomPortfolioSnapshots(snapshots.websocket, snapshots.rest)');
-    expect(source).toContain('Compare WebSocket vs REST portfolio');
-    expect(source).toContain("JSON.stringify(tradeNetTest.result, null, 2)");
-    expect(source).toContain('Temporary test controls — remove after verification.');
+    expect(source).not.toContain('Temporary TradeNet diagnostics');
+    expect(source).not.toContain('Test portfolio updates');
+    expect(source).not.toContain('Test live quote stream');
+    expect(source).not.toContain('Compare quote WebSocket vs REST');
+    expect(source).not.toContain('Compare WebSocket vs REST portfolio');
+    expect(source).not.toContain('Test authenticated WebSocket');
   });
 });
