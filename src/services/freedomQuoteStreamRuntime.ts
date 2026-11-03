@@ -199,7 +199,11 @@ export function createFreedomQuoteStreamRuntime(
           reportStatus('reconnecting');
         }
         if (message.type === 'error') {
+          connected = false;
           reportStatus('reconnecting', typeof message.message === 'string' ? message.message : undefined);
+          // Closing triggers the bounded reconnect path with a fresh one-use ticket.
+          try { nextSocket.close(1011, 'TradeNet quote stream reported an error'); } catch { /* close event may already be pending */ }
+          return;
         }
       });
 

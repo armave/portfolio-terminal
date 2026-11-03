@@ -2697,6 +2697,8 @@ describe('Durable Object persistent quote stream tickets and q forwarding', () =
     try {
       await store.ensureFreedomQuoteUpstream(['GOOGL.US']);
       expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1][1].signal).toBeInstanceOf(AbortSignal);
+      expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(false);
       expect(upstream.accept).toHaveBeenCalled();
       expect(browserMessages).toContainEqual(expect.objectContaining({
         type: 'quote',
@@ -2904,6 +2906,8 @@ describe('Durable Object private portfolio and orders stream', () => {
     try {
       await store.ensureFreedomAccountUpstream();
       expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1][1].signal).toBeInstanceOf(AbortSignal);
+      expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(false);
       expect(upstream.accept).toHaveBeenCalled();
       expect(upstream.send.mock.calls.map(([payload]) => JSON.parse(payload))).toEqual([
         ['portfolio'], ['orders']

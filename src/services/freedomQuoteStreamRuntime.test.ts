@@ -213,6 +213,40 @@ describe('Freedom persistent quote stream runtime', () => {
     expect(runtime.isConnected()).toBe(true);
   });
 
+  it('closes an errored quote socket and reconnects with a fresh ticket', async () => {
+    const sockets: FakeSocket[] = [];
+    const createTicket = vi.fn()
+      .mockResolvedValueOnce({ ticket: 'e'.repeat(64) })
+      .mockResolvedValueOnce({ ticket: 'f'.repeat(64) });
+    const runtime = createFreedomQuoteStreamRuntime({
+      createTicket,
+      buildSocketUrl: (ticket) => `wss://worker.test/?ticket=${ticket}`,
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      onQuote: vi.fn()
+    });
+
+    const initial = runtime.start(['GOOGL'], 'guest:guest-4');
+    await Promise.resolve();
+    sockets[0].open();
+    sockets[0].receive({ type: 'ready' });
+    await initial;
+
+    sockets[0].receive({ type: 'error', message: 'Upstream quote subscription failed.' });
+    expect(sockets[0].closed).toBe(true);
+    expect(runtime.isConnected()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(createTicket).toHaveBeenCalledTimes(2);
+    expect(sockets).toHaveLength(2);
+    sockets[1].open();
+    sockets[1].receive({ type: 'ready' });
+    expect(runtime.isConnected()).toBe(true);
+    runtime.stop();
+  });
+
   it('replaces the subscription when the account or ticker set changes', async () => {
     const sockets: FakeSocket[] = [];
     const createTicket = vi.fn(async () => ({ ticket: String(createTicket.mock.calls.length).padStart(64, '0') }));
