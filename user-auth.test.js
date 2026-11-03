@@ -893,7 +893,7 @@ describe("Durable Object TradeNet SID broker", () => {
   });
 
   const sessionRequest = (store, method = "GET", body = undefined) => store.fetch(new Request(
-    "https://durable.test/internal/freedom-tradenet-session",
+    "https://durable.test/internal/freedom-tradenet-session" + (method === "POST" ? "/invalidate" : ""),
     {
       method,
       headers: body === undefined ? {} : { "Content-Type": "application/json" },
