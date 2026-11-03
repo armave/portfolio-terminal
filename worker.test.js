@@ -213,10 +213,16 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
         event: 'portfolio',
         payloadType: 'object',
         topLevelKeys: ['acc', 'key', 'pos'],
+        topLevelFieldTypes: {
+          acc: { type: 'array', length: 1, item: { type: 'object', fields: { curr: 'string', forecast_in: 'number', s: 'number' } } },
+          pos: { type: 'array', length: 1, item: { type: 'object', fields: { i: 'string', mkt_price: 'number', q: 'number' } } }
+        },
         accountsCount: 1,
         accountItemKeys: ['curr', 'forecast_in', 's'],
+        accountItemTypes: { curr: 'string', forecast_in: 'number', s: 'number' },
         positionsCount: 1,
-        positionItemKeys: ['i', 'mkt_price', 'q']
+        positionItemKeys: ['i', 'mkt_price', 'q'],
+        positionItemTypes: { i: 'string', mkt_price: 'number', q: 'number' }
       },
       diagnostics: {
         requestedEvent: 'portfolio',
@@ -250,8 +256,13 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
         event: 'markets',
         payloadType: 'object',
         topLevelKeys: ['m', 't'],
+        topLevelFieldTypes: {
+          m: { type: 'array', length: 1, item: { type: 'object', fields: { c: 'string', dt: 'string', n: 'string', n2: 'string', o: 'string', s: 'string' } } },
+          t: 'string'
+        },
         marketsCount: 1,
-        marketItemKeys: ['c', 'dt', 'n', 'n2', 'o', 's']
+        marketItemKeys: ['c', 'dt', 'n', 'n2', 'o', 's'],
+        marketItemTypes: { c: 'string', dt: 'string', n: 'string', n2: 'string', o: 'string', s: 'string' }
       }
     });
     expect(JSON.stringify(body)).not.toContain('NASDAQ');
