@@ -62,6 +62,85 @@ describe('Freedom active orders proxy', () => {
   });
 });
 
+describe('Freedom authenticated orders WebSocket diagnostic', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('opens the SID-authenticated socket, subscribes to orders, and returns event metadata only', async () => {
+    const listeners = new Map();
+    const socket = {
+      addEventListener: vi.fn((name, callback) => {
+        const callbacks = listeners.get(name) || [];
+        callbacks.push(callback);
+        listeners.set(name, callbacks);
+      }),
+      accept: vi.fn(),
+      send: vi.fn((message) => {
+        expect(JSON.parse(message)).toEqual(['orders']);
+        queueMicrotask(() => {
+          for (const callback of listeners.get('message') || []) {
+            callback({ data: JSON.stringify(['userData', { isDemo: false, mode: 'prod', account: 'private-account' }]) });
+            callback({ data: JSON.stringify(['orders', [{ order_id: 77, account: 'private-account', price: 353 }]]) });
+          }
+        });
+      }),
+      close: vi.fn()
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce({ status: 101, headers: new Headers(), webSocket: socket });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-orders-stream', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      diagnostics: {
+        handshakeResponseReceived: true,
+        handshakeStatus: 101,
+        connectionOpened: true,
+        ordersSubscriptionSent: true,
+        userDataReceived: true,
+        isDemo: false,
+        sessionMode: 'prod',
+        ordersEventReceived: true,
+        phase: 'orders_event_received'
+      }
+    });
+    expect(JSON.stringify(body)).not.toContain('private-account');
+    expect(JSON.stringify(body)).not.toContain('353');
+    expect(String(fetchMock.mock.calls[1][0])).toMatch(/^https:\/\/wss\.tradernet\.com\//);
+    expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('SID')).toBe('s'.repeat(48));
+    expect(socket.close).toHaveBeenCalled();
+  });
+
+  it('does not expose broker credentials or attempt a socket when login secrets are missing', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-orders-stream', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), { GATEWAY_SECRET: 'test-secret' });
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: 'FREEDOM_LOGIN and FREEDOM_PASSWORD must be configured as Worker secrets.',
+      diagnostics: null
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('sanitizeFreedomActiveOrders', () => {
   it('returns only safe order fields and preserves remaining quantity for partial fills', () => {
     const result = sanitizeFreedomActiveOrders({
