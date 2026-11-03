@@ -497,6 +497,23 @@ describe('active limit sell target synchronization', () => {
     expect(targets).toEqual({ GOOGL: 333 });
   });
 
+  it('uses only the live GOOGL sell order from the observed WebSocket snapshot rows', () => {
+    const targets = getActiveLimitSellTargets([
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 353, remainingQuantity: 50, status: '31' },
+      { ticker: 'GOOGL.US', operation: 1, orderType: 2, limitPrice: 285, remainingQuantity: 20, status: '31' },
+      { ticker: 'GOOGL.US', operation: 1, orderType: 2, limitPrice: 282, remainingQuantity: 0, status: '21' },
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 333, remainingQuantity: 70, status: '31' },
+      { ticker: 'META.US', operation: 3, orderType: 2, limitPrice: 632, remainingQuantity: 0, status: '21' },
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 333, remainingQuantity: 64, status: '31' },
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 335, remainingQuantity: 64, status: '31' },
+      { ticker: 'GOOGL.US', operation: 1, orderType: 2, limitPrice: 282, remainingQuantity: 0, status: '21' },
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 335, remainingQuantity: 69, status: '31' },
+      { ticker: 'GOOGL.US', operation: 3, orderType: 4, limitPrice: 335, remainingQuantity: 68, status: '10' }
+    ]);
+
+    expect(targets).toEqual({ GOOGL: 335 });
+  });
+
   it('ignores non-sell, non-limit, and fully filled orders', () => {
     expect(getActiveLimitSellTargets([
       { ticker: 'AAPL', operation: 1, orderType: 2, limitPrice: 353, remainingQuantity: 50 },
