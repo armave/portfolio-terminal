@@ -109,6 +109,7 @@ import {
   preservePersistedBrokerFeeAllocations
 } from './src/domain/closedHistoryFees';
 import {
+  getFreedomCashflowRefreshStartDate,
   mergeFreedomCashflowRows,
   normalizeFreedomCashflowRows,
   normalizeSavedFreedomCashflows
@@ -1302,8 +1303,14 @@ async function syncAdminClosedHistory(): Promise<boolean> {
       baselineExecutions,
       [...savedExecutions, ...cloudExecutions, ...currentExecutions]
     );
+    const priorCashflows = [
+      ...normalizeSavedFreedomCashflows(cloudHistory?.cashflows || []),
+      ...normalizeSavedFreedomCashflows(savedAtStart.cashflows),
+      ...normalizeSavedFreedomCashflows(currentAtStart.cashflows || [])
+    ];
     const latestCashflowDate = hasFreedomCashflowHistoryBaseline(accountId)
-      ? getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])
+      ? getFreedomCashflowRefreshStartDate(priorCashflows) ||
+        getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])
       : undefined;
 
     // Bypass the brief quote-side cache: every 60-second checkpoint and manual
