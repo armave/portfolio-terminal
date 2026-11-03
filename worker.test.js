@@ -125,8 +125,12 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
         instr: 'GOOGL.US', oper: 3, type: 2, p: 353, q: 2, leaves_qty: 2, stat: 'active'
       }]
     });
+    expect(body.data.orders.order).toEqual([{
+      order_id: '77', instr: 'GOOGL.US', oper: 3, type: 2,
+      p: 353, q: 2, leaves_qty: 2, stat: 'active'
+    }]);
     expect(JSON.stringify(body)).not.toContain('private-account');
-    expect(JSON.stringify(body)).not.toContain('order_id');
+    expect(body.diagnostics.ordersPreview[0]).not.toHaveProperty('order_id');
     expect(String(fetchMock.mock.calls[1][0])).toMatch(/^https:\/\/wss\.tradernet\.com\//);
     expect(new URL(String(fetchMock.mock.calls[1][0])).searchParams.get('SID')).toBe('s'.repeat(48));
     expect(socket.close).toHaveBeenCalled();
