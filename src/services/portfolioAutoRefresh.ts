@@ -82,7 +82,7 @@ export function createPortfolioAutoRefreshScheduler(
     let request: Promise<boolean>;
     request = Promise.resolve()
       .then(task)
-      .then(() => true)
+      .then((result) => result !== false)
       .catch((error) => {
         options.onError?.(source, error);
         return false;
