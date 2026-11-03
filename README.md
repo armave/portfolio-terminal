@@ -150,6 +150,8 @@ The Worker provides an administrator-only, read-only active-orders snapshot at `
 
 The Worker also offers administrator-only, value-redacted schema probes for the authenticated `portfolio` and `markets` WebSocket events through `?action=freedom-event-stream&event=portfolio|markets`. They report field names, row counts, primitive value types, and bounded nested shapes, but no actual account numbers, holdings, prices, market statuses, session identifiers, or credentials. They do not change portfolio data. The real payloads must be verified before implementing either event in app state.
 
+For value-level verification, the admin-only `?action=freedom-portfolio-snapshot` returns one sanitized, loaded USD portfolio snapshot from the authenticated `portfolio` event. Settings compares it with the existing REST `freedom-positions` response using the application's current portfolio normalizer and reports field-level differences (0.01 numeric tolerance). It is read-only and never updates saved holdings or portfolio state.
+
 The signed REST market-data endpoints continue to use `FREEDOM_PUBLIC_KEY` and `FREEDOM_PRIVATE_KEY`. `GATEWAY_SECRET` remains the Worker gateway/bootstrap secret. This diagnostic does not restore Market Depth or affect portfolio data.
 
 If TradeNet requires an additional SMS or verification challenge during password login, the diagnostic login will fail safely; interactive challenge handling is not implemented.
