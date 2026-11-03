@@ -411,10 +411,12 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     ['PREV', 'PREMARKET'],
     ['PRE', 'PREMARKET'],
     ['PREPRE', 'PREMARKET'],
+    ['PRE-MARKET', 'PREMARKET'],
     ['OPEN', 'MARKET'],
     ['REGULAR', 'MARKET'],
     ['POST', 'POSTMARKET'],
     ['POSTPOST', 'POSTMARKET'],
+    ['POST-MARKET', 'POSTMARKET'],
     ['CLOSE', 'CLOSED'],
     ['CLOSED', 'CLOSED']
   ])('normalizes TradeNet market phase %s to %s', (providerStatus, expected) => {
