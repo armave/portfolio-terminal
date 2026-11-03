@@ -378,6 +378,10 @@ async function diagnoseFreedomOrdersStream(env) {
         isDemo: null,
         sessionMode: null,
         ordersEventReceived: false,
+        ordersPayloadType: null,
+        ordersPayloadItemKeys: [],
+        ordersPreviewCount: 0,
+        ordersPreview: [],
         messageCount: 0,
         parseErrorCount: 0,
         eventCounts: {},
@@ -471,6 +475,25 @@ async function diagnoseFreedomOrdersStream(env) {
                         }
                     } else if (eventName === "orders") {
                         diagnostics.ordersEventReceived = true;
+                        const orderPayload = packet[1];
+                        diagnostics.ordersPayloadType = Array.isArray(orderPayload)
+                            ? "array"
+                            : orderPayload && typeof orderPayload === "object" ? "object"
+                                : orderPayload === null ? "null" : typeof orderPayload;
+                        const firstOrder = Array.isArray(orderPayload) ? orderPayload[0]
+                            : orderPayload && typeof orderPayload === "object" ? orderPayload.order?.[0] ?? orderPayload.orders?.[0] ?? null
+                                : null;
+                        if (firstOrder && typeof firstOrder === "object" && !Array.isArray(firstOrder)) {
+                            const safeKeys = new Set([
+                                "order_id", "id", "instr", "instr_nm", "i", "ticker", "symbol", "instrument",
+                                "oper", "operation", "type", "order_type", "p", "price", "limit_price",
+                                "q", "quantity", "leaves_qty", "remaining_qty", "remainingQuantity", "stat", "status"
+                            ]);
+                            diagnostics.ordersPayloadItemKeys = Object.keys(firstOrder).filter(key => safeKeys.has(key)).sort();
+                        }
+                        const safeOrders = sanitizeFreedomActiveOrders(orderPayload).orders.order;
+                        diagnostics.ordersPreviewCount = safeOrders.length;
+                        diagnostics.ordersPreview = safeOrders.slice(0, 10).map(({ order_id, ...order }) => order);
                     } else if (eventName === "error") {
                         const payloadText = typeof packet[1] === "string" ? packet[1] : "";
                         diagnostics.serverErrorCategory = /sid|session|auth|login|unauthori[sz]ed|expired/i.test(payloadText)
