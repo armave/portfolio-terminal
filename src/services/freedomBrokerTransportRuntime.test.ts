@@ -139,15 +139,19 @@ describe('Freedom broker transport runtime', () => {
     });
 
     await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(rest);
+    await expect(runtime.fetchFreedomTradeNetPositions()).resolves.toEqual(rest);
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-portfolio-snapshot', 'freedom-positions'
+      'freedom-portfolio-snapshot', 'freedom-positions', 'freedom-positions'
     ]);
-    expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
+    expect(proxyFetch.mock.calls.every(([, , options]) => options?.cache === 'no-store')).toBe(true);
     expect(recordMetric).toHaveBeenCalledWith('provider_fallback', {
       operation: 'freedom_portfolio',
       from: 'websocket_snapshot',
       to: 'rest'
+    });
+    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_skipped', {
+      operation: 'freedom_portfolio',
+      reason: 'already_attempted_this_session'
     });
   });
 
@@ -217,16 +221,22 @@ describe('Freedom broker transport runtime', () => {
     });
 
     await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(restSnapshot);
+    await expect(runtime.fetchFreedomTradeNetActiveOrders()).resolves.toEqual(restSnapshot);
     expect(proxyFetch.mock.calls.map(([action]) => action)).toEqual([
-      'freedom-orders-stream', 'freedom-orders'
+      'freedom-orders-stream', 'freedom-orders', 'freedom-orders'
     ]);
     expect(proxyFetch.mock.calls[0][2]).toEqual({ cache: 'no-store' });
-    expect(proxyFetch.mock.calls[1][1]).toEqual({ active_only: 1 });
-    expect(proxyFetch.mock.calls[1][2]).toEqual({ cache: 'no-store' });
+    expect(proxyFetch.mock.calls.slice(1).every(([action, params, options]) =>
+      action === 'freedom-orders' && params?.active_only === 1 && options?.cache === 'no-store'
+    )).toBe(true);
     expect(recordMetric).toHaveBeenCalledWith('provider_fallback', {
       operation: 'freedom_active_orders',
       from: 'websocket_snapshot',
       to: 'rest'
+    });
+    expect(recordMetric).toHaveBeenCalledWith('stream_snapshot_skipped', {
+      operation: 'freedom_active_orders',
+      reason: 'already_attempted_this_session'
     });
   });
 
