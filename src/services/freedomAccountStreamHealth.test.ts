@@ -35,6 +35,8 @@ describe('Freedom account stream health', () => {
     setFreedomAccountStreamStatus(session, 'reconnecting');
     expect(isFreedomAccountStreamHealthy(session)).toBe(false);
     expect(hasFreedomAccountStreamSnapshot(session, 'portfolio')).toBe(false);
+    // Repeated reconnect notices before the connection recovers are one outage.
+    setFreedomAccountStreamStatus(session, 'reconnecting');
 
     // A brief outage still needs history catch-up even if both channels recover
     // before the next 60-second scheduler tick.
@@ -45,13 +47,10 @@ describe('Freedom account stream health', () => {
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(true);
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(false);
 
+    // A later disconnect is a distinct outage and opens exactly one new recovery.
     setFreedomAccountStreamStatus(session, 'reconnecting');
-    expect(consumeFreedomAccountStreamRecovery(session)).toBe(false);
-    setFreedomAccountStreamStatus(session, 'connected');
-    markFreedomAccountStreamSnapshot(session, 'portfolio');
-    markFreedomAccountStreamSnapshot(session, 'orders');
-    setFreedomAccountStreamStatus(session, 'disconnected');
     expect(consumeFreedomAccountStreamRecovery(session)).toBe(true);
+    expect(consumeFreedomAccountStreamRecovery(session)).toBe(false);
   });
 
   it('does not schedule recovery for a stream that never connected', () => {
