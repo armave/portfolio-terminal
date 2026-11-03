@@ -435,6 +435,17 @@ describe('app localization', () => {
     expect(changes).toEqual(['ru', 'en']);
   });
 
+  it('localizes dynamic Closed History profit and pagination summaries', () => {
+    expect(translateText('6 of 9 records with known profit profitable', 'ru'))
+      .toBe('Прибыльные сделки: 6 из 9');
+    expect(translateText('1 of 1 records with known profit profitable', 'ru'))
+      .toBe('Прибыльные сделки: 1 из 1');
+    expect(translateText('Showing 1–25 of 30 trades', 'ru'))
+      .toBe('Показано 1–25 из 30 сделок');
+    expect(translateText('Showing 1–25 of 1,250 trades', 'ru'))
+      .toBe('Показано 1–25 из 1,250 сделок');
+  });
+
   it('localizes incomplete margin valuation guidance', () => {
     expect(translateText('Account balance unavailable', 'ru')).toBe('Баланс счёта недоступен');
     expect(translateText(
