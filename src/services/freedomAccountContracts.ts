@@ -110,7 +110,7 @@ export function normalizeFreedomActiveOrders(response: unknown): FreedomActiveOr
   });
 }
 
-export interface FreedomPortfolioDifference {
+interface FreedomPortfolioDifference {
   path: string;
   websocketValue: string | number | null;
   restValue: string | number | null;
