@@ -1352,8 +1352,18 @@ export default {
 
         if (accountRole === "guest") {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest"].includes(pathname);
-            const sharedDataAction = ["state", "history", "freedom-test", "freedom-positions", "freedom-trades", "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream"].includes(action);
-            if (sharedDataPath || sharedDataAction) {
+            const sharedDataAction = [
+                "state", "history", "freedom-test", "freedom-positions", "freedom-trades",
+                "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-portfolio-snapshot"
+            ].includes(action);
+            // Market quotes and exchange schedules are public, read-only data.
+            // Guests may use the same server-side authenticated q / markets
+            // subscriptions, but never receive account-wide portfolio, order,
+            // execution, cashflow, or portfolio-event payloads.
+            const guestPublicMarketStream = action === "freedom-quote-stream" ||
+                (action === "freedom-event-stream" && url.searchParams.get("event") === "markets");
+            const restrictedEventStream = action === "freedom-event-stream" && !guestPublicMarketStream;
+            if (sharedDataPath || sharedDataAction || restrictedEventStream) {
                 return jsonError("This data is restricted to administrator accounts.", 403, corsHeaders);
             }
         }
