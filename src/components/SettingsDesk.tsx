@@ -298,7 +298,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </label>
           <p class="basis-full text-center text-[10px] leading-relaxed text-slate-500">
             {translateText(account?.role === 'guest'
-              ? 'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.'
+              ? 'Your assigned holdings, LOTS history and their market quotes refresh at the selected interval. Returning to the app refreshes them immediately.'
               : 'Quotes, portfolio cloud state, broker recovery data, trades, orders, cashflows and Closed History refresh on the selected interval. Returning to the app refreshes all data immediately.')}
           </p>
           {permissions.canManageBackups && <>
