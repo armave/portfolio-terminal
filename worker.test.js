@@ -319,6 +319,66 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(socket.close).toHaveBeenCalled();
   });
 
+  it('returns a sanitized USD portfolio snapshot for read-only REST reconciliation', async () => {
+    const payload = {
+      loaded: true,
+      acc_srv_tm: '2026-11-03T09:00:00',
+      m_id: 77,
+      acc: [
+        { curr: 'USD', s: 10000, currval: 10020, forecast_in: 50, forecast_out: 10, t2_in: 20, t2_out: 5, login: 'private-user' },
+        { curr: 'EUR', s: 900, currval: 910 }
+      ],
+      pos: [
+        { i: 'GOOGL.US', q: 31, curr: 'USD', mkt_price: 300, market_value: 9300, bal_price_a: 280, profit_close: 620, acc_pos_id: 12, account_id: 'private-account' },
+        { i: 'DUMMY.EU', q: 10, curr: 'EUR', mkt_price: 50, market_value: 500 }
+      ]
+    };
+    const socket = makeEventSocket('portfolio', payload);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce({ status: 101, headers: new Headers(), webSocket: socket });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-portfolio-snapshot',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      source: 'authenticated_websocket',
+      data: {
+        result: {
+          ps: {
+            loaded: true,
+            acc: [{
+              curr: 'USD', s: 10000, currval: 10020,
+              forecast_in: 50, forecast_out: 10, t2_in: 20, t2_out: 5
+            }],
+            pos: [{
+              i: 'GOOGL.US', name: 'Google', q: 31, curr: 'USD',
+              mkt_price: 300, market_value: 9300, bal_price_a: 280,
+              profit_close: 620, acc_pos_id: 12
+            }]
+          }
+        }
+      }
+    });
+    expect(body.data.result.ps.acc).toHaveLength(1);
+    expect(body.data.result.ps.pos).toHaveLength(1);
+    const serialized = JSON.stringify(body);
+    for (const secret of ['private-user', 'private-account', 'DUMMY.EU', 'EUR', 'acc_srv_tm', 'm_id', 'SID']) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(socket.close).toHaveBeenCalled();
+  });
+
   it('rejects event names outside the read-only allowlist before login or socket access', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
