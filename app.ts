@@ -1221,14 +1221,17 @@ function refreshSupplementalPortfolioData(): Promise<void> | void {
 
   if (currentAccountRole === 'admin') {
     const sessionKey = currentAccountId ? `admin:${currentAccountId}` : '';
-    if (!sessionKey || isFreedomAccountStreamHealthy(sessionKey)) return;
+    if (!sessionKey) return;
 
-    // Startup already performs the complete historical baseline. Once a
-    // previously connected stream drops, allow one fresh REST catch-up; do not
-    // poll broker REST every minute while the push stream is still unavailable.
-    if (!consumeFreedomAccountStreamRecovery(sessionKey)) return;
-    clearFreedomTradeNetStreamSnapshotCache();
-    portfolioBrokerRefreshRuntime.requestAll();
+    // Consume recovery before checking current health: a short outage can end
+    // between scheduler ticks, but its missed execution window still needs one
+    // incremental history catch-up after the stream has reconnected.
+    if (consumeFreedomAccountStreamRecovery(sessionKey)) {
+      clearFreedomTradeNetStreamSnapshotCache();
+      portfolioBrokerRefreshRuntime.requestAll();
+      return;
+    }
+    if (isFreedomAccountStreamHealthy(sessionKey)) return;
     return;
   }
 
