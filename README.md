@@ -146,7 +146,7 @@ If Freedom account data is unavailable or the Gateway Secret has not been config
 
 ### TradeNet authenticated orders-stream diagnostic
 
-The Worker provides an administrator-only diagnostic endpoint at `?action=freedom-orders-stream`. It uses the Worker-only `FREEDOM_LOGIN` and `FREEDOM_PASSWORD` secrets to obtain a short-lived TradeNet SID, opens the production WebSocket through Cloudflare, and subscribes to the read-only `orders` event. It reports connection and event metadata only; it never returns order payloads, account identifiers, credentials, or the SID. The SID is not persisted, and the socket closes after the required events arrive or the eight-second observation window ends.
+The Worker provides an administrator-only diagnostic endpoint at `?action=freedom-orders-stream`. It uses the Worker-only `FREEDOM_LOGIN` and `FREEDOM_PASSWORD` secrets to obtain a short-lived TradeNet SID, opens the production WebSocket through Cloudflare, and subscribes to the read-only `orders` event. It reports connection metadata and a preview of up to ten orders containing only allowlisted instrument, side/type, price, quantity, and status fields; order IDs, account identifiers, credentials, arbitrary payload fields, and the SID are never returned. The preview is diagnostic-only and is not persisted or applied to the portfolio. The SID is not persisted, and the socket closes after the required events arrive or the eight-second observation window ends.
 
 The signed REST market-data endpoints continue to use `FREEDOM_PUBLIC_KEY` and `FREEDOM_PRIVATE_KEY`. `GATEWAY_SECRET` remains the Worker gateway/bootstrap secret. This diagnostic does not restore Market Depth or affect portfolio data.
 
