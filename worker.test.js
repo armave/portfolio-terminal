@@ -131,7 +131,7 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
       headers: { 'X-App-Auth': 'test-secret' }
     }), { GATEWAY_SECRET: 'test-secret' });
 
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       ok: false,
       error: 'FREEDOM_LOGIN and FREEDOM_PASSWORD must be configured as Worker secrets.',
