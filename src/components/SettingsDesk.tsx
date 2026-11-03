@@ -7,7 +7,7 @@ import {
 } from '../services/portfolioAutoRefresh';
 import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
-import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, testFreedomTradeNetConnection, testFreedomTradeNetOrdersStream, testFreedomTradeNetEventStream, type AuthUser } from '../services/api';
+import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, testFreedomTradeNetConnection, testFreedomTradeNetOrdersStream, testFreedomTradeNetEventStream, testFreedomTradeNetPortfolioReconciliation, compareFreedomPortfolioSnapshots, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import { DeskLoading } from './DeskLoading';
@@ -61,7 +61,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [savingUser, setSavingUser] = useState(false);
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [languageError, setLanguageError] = useState("");
-  const [tradeNetTest, setTradeNetTest] = useState<{ kind: 'rest' | 'websocket' | 'portfolio' | 'markets'; loading: boolean; result?: unknown; error?: string } | null>(null);
+  const [tradeNetTest, setTradeNetTest] = useState<{ kind: 'rest' | 'websocket' | 'portfolio' | 'markets' | 'reconciliation'; loading: boolean; result?: unknown; error?: string } | null>(null);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
   const refreshUsers = async () => {
@@ -151,7 +151,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     }
   };
 
-  const runTradeNetTest = async (kind: 'rest' | 'websocket' | 'portfolio' | 'markets') => {
+  const runTradeNetTest = async (kind: 'rest' | 'websocket' | 'portfolio' | 'markets' | 'reconciliation') => {
     if (tradeNetTest?.loading) return;
     setTradeNetTest({ kind, loading: true });
     try {
@@ -159,7 +159,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         ? await testFreedomTradeNetConnection()
         : kind === 'websocket'
           ? await testFreedomTradeNetOrdersStream()
-          : await testFreedomTradeNetEventStream(kind);
+          : kind === 'reconciliation'
+            ? (() => testFreedomTradeNetPortfolioReconciliation().then((snapshots) =>
+                compareFreedomPortfolioSnapshots(snapshots.websocket, snapshots.rest)))()
+            : await testFreedomTradeNetEventStream(kind);
       setTradeNetTest({ kind, loading: false, result });
     } catch (error) {
       setTradeNetTest({
@@ -339,7 +342,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       {account?.role === "admin" && <section class="settings-panel settings-tradenet-diagnostics space-y-3 rounded-lg border border-cyan-900/60 bg-slate-950/40 p-3" aria-labelledby="tradeNetDiagnosticsTitle">
         <div>
           <h3 id="tradeNetDiagnosticsTitle" class="text-sm font-bold text-slate-200">{translateText('Temporary TradeNet diagnostics')}</h3>
-          <p class="text-[10px] leading-relaxed text-slate-500">{translateText('Run read-only authenticated TradeNet event checks. Portfolio and market tests return schema summaries only; they do not change portfolio data.')}</p>
+          <p class="text-[10px] leading-relaxed text-slate-500">{translateText('Run read-only authenticated TradeNet checks. Portfolio reconciliation compares normalized WebSocket and REST snapshots without changing saved holdings.')}</p>
         </div>
         <div class="flex flex-wrap gap-2">
           <button type="button" disabled={Boolean(tradeNetTest?.loading)} onClick={() => void runTradeNetTest('rest')} class="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-bold text-slate-200 hover:bg-slate-700 disabled:cursor-wait disabled:opacity-50">
@@ -354,11 +357,14 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <button type="button" disabled={Boolean(tradeNetTest?.loading)} onClick={() => void runTradeNetTest('markets')} class="rounded border border-emerald-800 bg-emerald-950/50 px-3 py-2 text-xs font-bold text-emerald-200 hover:bg-emerald-900 disabled:cursor-wait disabled:opacity-50">
             {tradeNetTest?.loading && tradeNetTest.kind === 'markets' ? translateText('Testing market event…') : translateText('Test market status updates')}
           </button>
+          <button type="button" disabled={Boolean(tradeNetTest?.loading)} onClick={() => void runTradeNetTest('reconciliation')} class="rounded border border-amber-800 bg-amber-950/50 px-3 py-2 text-xs font-bold text-amber-200 hover:bg-amber-900 disabled:cursor-wait disabled:opacity-50">
+            {tradeNetTest?.loading && tradeNetTest.kind === 'reconciliation' ? translateText('Comparing portfolio snapshots…') : translateText('Compare WebSocket vs REST portfolio')}
+          </button>
         </div>
         {tradeNetTest?.loading && <p class="text-xs text-cyan-300" role="status">{translateText('Contacting TradeNet. Please wait…')}</p>}
         {tradeNetTest?.error && <p class="rounded border border-rose-900/60 bg-rose-950/30 p-2 text-xs text-rose-300" role="alert">{tradeNetTest.error}</p>}
         {tradeNetTest?.result !== undefined && <div class="space-y-1">
-          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400" role="status">{translateText('Diagnostic result')} · {tradeNetTest.kind === 'rest' ? 'REST' : tradeNetTest.kind === 'websocket' ? 'WebSocket' : tradeNetTest.kind === 'portfolio' ? 'Portfolio' : 'Markets'}</p>
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400" role="status">{translateText('Diagnostic result')} · {tradeNetTest.kind === 'rest' ? 'REST' : tradeNetTest.kind === 'websocket' ? 'WebSocket' : tradeNetTest.kind === 'portfolio' ? 'Portfolio' : tradeNetTest.kind === 'markets' ? 'Markets' : 'Reconciliation'}</p>
           <pre class="max-h-72 overflow-auto rounded border border-slate-800 bg-slate-950 p-2 text-[10px] leading-relaxed text-slate-300 whitespace-pre-wrap break-all" aria-label={translateText('TradeNet diagnostic response')}>{JSON.stringify(tradeNetTest.result, null, 2)}</pre>
         </div>}
         <p class="text-[10px] text-slate-500">{translateText('Temporary test controls — remove after verification.')}</p>
