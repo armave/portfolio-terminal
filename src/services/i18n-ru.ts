@@ -21,6 +21,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'US equities': 'Акции США',
   'Market open': 'Рынок открыт',
   'Market closed': 'Рынок закрыт',
+  'Pre-market': 'До открытия',
+  'After-hours': 'После закрытия',
   'Premarket session': 'Премаркет',
   'Market session': 'Рынок',
   'Postmarket session': 'Постмаркет',
