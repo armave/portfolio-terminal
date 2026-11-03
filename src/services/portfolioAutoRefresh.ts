@@ -144,6 +144,12 @@ export function createPortfolioAutoRefreshScheduler(
 
   const configure = (interval: unknown, role: PortfolioAutoRefreshRole): number => {
     stopTimer();
+    // A role switch must not make the new account await a previous account's cycle.
+    quoteInFlight = null;
+    supplementalInFlight = null;
+    stateSyncInFlight = null;
+    historySyncInFlight = null;
+    cycleInFlight = null;
     activeRole = role;
     const fallback = role === 'guest'
       ? DEFAULT_GUEST_REFRESH_INTERVAL_MS
