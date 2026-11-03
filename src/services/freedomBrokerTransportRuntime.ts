@@ -10,7 +10,6 @@ export interface FreedomBrokerTransportRuntimeDependencies {
 }
 
 export interface FreedomBrokerTransportRuntime {
-  testFreedomTradeNetEventStream: (event: 'markets') => Promise<unknown>;
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
   fetchFreedomTradeNetTrades: (fromDate?: string) => Promise<unknown>;
   fetchFreedomTradeNetActiveOrders: () => Promise<unknown>;
@@ -98,13 +97,6 @@ export function createFreedomBrokerTransportRuntime(
     );
     streamSnapshotRequests.set(key, request);
     return request;
-  };
-
-  const testFreedomTradeNetEventStream = (event: 'markets'): Promise<unknown> => {
-    if (event !== 'markets') {
-      return Promise.reject(new Error('Only the not-yet-integrated markets event can be probed.'));
-    }
-    return dependencies.proxyFetch('freedom-event-stream', { event }, { cache: 'no-store' });
   };
 
   const fetchFreedomTradeNetPositions = (): Promise<unknown> =>
@@ -216,7 +208,6 @@ export function createFreedomBrokerTransportRuntime(
   };
 
   return {
-    testFreedomTradeNetEventStream,
     fetchFreedomTradeNetPositions,
     fetchFreedomTradeNetTrades,
     fetchFreedomTradeNetActiveOrders,
