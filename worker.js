@@ -315,7 +315,44 @@ export function sanitizeFreedomActiveOrders(response) {
         leaves_qty: numberOrNull(row?.leaves_qty ?? row?.remaining_qty ?? row?.remainingQuantity ?? row?.q ?? row?.quantity),
         stat: String(row?.stat ?? row?.status ?? "")
     })).filter(row => row.order_id && row.instr);
-    return { orders: { order } };
+
+    // The documented orders event embeds actual executions in each order's
+    // trade array. Forward only the execution contract consumed by
+    // normalizeFreedomTrades; never expose owner/login/account/raw order fields.
+    const sideForOrderOperation = value => {
+        const operation = numberOrNull(value);
+        if (operation === 1 || operation === 2) return "BUY";
+        if (operation === 3) return "SELL";
+        if (operation === 4) return "SELL_SHORT";
+        return "Unknown";
+    };
+    const trade = rows.flatMap(row => {
+        const executions = Array.isArray(row?.trade) ? row.trade : [];
+        const instrument = String(row?.instr ?? row?.instr_nm ?? row?.i ?? row?.ticker ?? row?.symbol ?? row?.instrument ?? "").slice(0, 64);
+        if (!instrument) return [];
+        return executions.flatMap(execution => {
+            if (!execution || typeof execution !== "object" || Array.isArray(execution)) return [];
+            const normalized = {
+                order_id: String(row?.order_id ?? row?.id ?? ""),
+                instr: instrument,
+                side: sideForOrderOperation(row?.oper ?? row?.operation),
+                curr: String(row?.cur ?? row?.currency ?? ""),
+                date: typeof execution.date === "string" ? execution.date.slice(0, 64) : "",
+                p: numberOrNull(execution.p),
+                q: numberOrNull(execution.q),
+                v: numberOrNull(execution.v),
+                profit: numberOrNull(execution.profit),
+                acd: numberOrNull(execution.acd),
+                fv: numberOrNull(execution.fv),
+                go_sum: numberOrNull(execution.go_sum)
+            };
+            if (execution.id !== null && execution.id !== undefined && String(execution.id).trim() !== "") {
+                normalized.id = String(execution.id);
+            }
+            return [normalized];
+        });
+    });
+    return { orders: { order }, trades: { trade } };
 }
 
 
@@ -477,6 +514,7 @@ async function diagnoseFreedomOrdersStream(env) {
     const sid = await createFreedomDiagnosticSession(env);
     const startedAt = Date.now();
     let sanitizedOrders = { order: [] };
+    let sanitizedTrades = { trade: [] };
     const diagnostics = {
         endpoint: "wss.tradernet.com",
         phase: "connecting",
@@ -507,6 +545,7 @@ async function diagnoseFreedomOrdersStream(env) {
         ...diagnostics,
         eventCounts: { ...diagnostics.eventCounts },
         ordersSnapshot: sanitizedOrders,
+        tradesSnapshot: sanitizedTrades,
         elapsedMs: Date.now() - startedAt
     });
 
@@ -651,7 +690,9 @@ async function diagnoseFreedomOrdersStream(env) {
                             }
                             return preview;
                         });
-                        sanitizedOrders = sanitizeFreedomActiveOrders(orderPayload).orders;
+                        const sanitizedSnapshot = sanitizeFreedomActiveOrders(orderPayload);
+                        sanitizedOrders = sanitizedSnapshot.orders;
+                        sanitizedTrades = sanitizedSnapshot.trades;
                         const safeOrders = sanitizedOrders.order;
                         diagnostics.ordersPreviewCount = safeOrders.length;
                         diagnostics.ordersPreview = safeOrders.slice(0, 10).map(({ order_id, ...order }) => order);
@@ -1391,7 +1432,7 @@ export default {
                 }
                 try {
                     const result = await diagnoseFreedomOrdersStream(env);
-                    const { ordersSnapshot, ...diagnostics } = result;
+                    const { ordersSnapshot, tradesSnapshot, ...diagnostics } = result;
                     const eventsConfirmed = diagnostics.connectionOpened &&
                         diagnostics.userDataReceived && diagnostics.ordersEventReceived;
                     return new Response(JSON.stringify({
@@ -1401,7 +1442,7 @@ export default {
                             ? "Authenticated orders snapshot delivered by the TradeNet WebSocket."
                             : "WebSocket snapshot completed; inspect the event flags and phase.",
                         diagnostics,
-                        ...(eventsConfirmed ? { data: { orders: ordersSnapshot } } : {})
+                        ...(eventsConfirmed ? { data: { orders: ordersSnapshot, trades: tradesSnapshot } } : {})
                     }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 } catch (error) {
                     if (error?.freedomDiagnosticSid) {

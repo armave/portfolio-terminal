@@ -143,8 +143,23 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
       order_id: '77', instr: 'GOOGL.US', oper: 3, type: 2,
       p: 353, q: 2, leaves_qty: 2, stat: 'active'
     }]);
+    expect(body.data.trades.trade).toEqual([{
+      order_id: '77',
+      instr: 'GOOGL.US',
+      side: 'SELL',
+      curr: '',
+      date: '2026-11-03T09:40:00',
+      p: 352.5,
+      q: 2,
+      v: 705,
+      profit: 0,
+      acd: 0,
+      fv: 1,
+      go_sum: 100,
+      id: '999999'
+    }]);
     const serializedOrders = JSON.stringify(body);
-    for (const privateValue of ['private-account', 'private-login', '999999']) {
+    for (const privateValue of ['private-account', 'private-login', 'owner_login']) {
       expect(serializedOrders).not.toContain(privateValue);
     }
     expect(body.diagnostics.ordersPreview[0]).not.toHaveProperty('order_id');
@@ -615,7 +630,10 @@ describe('sanitizeFreedomActiveOrders', () => {
   });
 
   it('returns an empty order list for an unrecognized response shape', () => {
-    expect(sanitizeFreedomActiveOrders({ unexpected: true })).toEqual({ orders: { order: [] } });
+    expect(sanitizeFreedomActiveOrders({ unexpected: true })).toEqual({
+      orders: { order: [] },
+      trades: { trade: [] }
+    });
   });
 });
 
