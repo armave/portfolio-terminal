@@ -92,3 +92,8 @@ This is the UI/UX Stage 3 from the Portfolio Terminal audit roadmap. It is disti
 - [ ] Extend the existing Playwright smoke test and capture responsive evidence.
 - [ ] Track each acceptance item in the PR description.
 - [ ] Do not merge until the full validation suite passes on the final head.
+
+
+## Responsive regression found during browser validation
+
+The many-ticker Playwright scenario exposed a specificity collision: the generic `#tickerTabs > *` flex rule overrode the nested ticker strip's original class-only flex sizing. The strip now uses the more specific `#tickerTabs > .workspace-nav-ticker-list` selector on desktop and mobile, so its own bounded viewport wins while ticker buttons scroll inside it. The mobile style test asserts this selector specificity, and the browser smoke test verifies both strip overflow and document-level overflow.
