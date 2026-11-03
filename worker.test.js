@@ -2641,6 +2641,144 @@ describe('Durable Object persistent quote stream tickets and q forwarding', () =
   });
 });
 
+describe('Durable Object private portfolio and orders stream', () => {
+  function createStorage() {
+    const values = new Map();
+    return {
+      values,
+      storage: {
+        get: vi.fn(async (key) => values.get(key)),
+        put: vi.fn(async (key, value) => values.set(key, value)),
+        delete: vi.fn(async (key) => values.delete(key)),
+        transaction: vi.fn(async (callback) => callback({
+          get: async (key) => values.get(key),
+          put: async (key, value) => values.set(key, value),
+          delete: async (key) => values.delete(key)
+        }))
+      }
+    };
+  }
+
+  it('issues admin-only, single-use account stream tickets', async () => {
+    const { storage } = createStorage();
+    const store = new PortfolioStateDO({ storage }, {});
+    const guest = await store.handleFreedomAccountStreamTicketRequest(new Request(
+      'https://state.test/internal/freedom-account-stream-ticket',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: 'guest-1', role: 'guest' }) }
+    ));
+    expect(guest.status).toBe(403);
+
+    const response = await store.handleFreedomAccountStreamTicketRequest(new Request(
+      'https://state.test/internal/freedom-account-stream-ticket',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: 'admin-1', role: 'admin' }) }
+    ));
+    expect(response.status).toBe(200);
+    const { ticket } = await response.json();
+    expect(ticket).toMatch(/^[a-f0-9]{64}$/);
+    await expect(store.consumeFreedomAccountStreamTicket(ticket)).resolves.toEqual({
+      accountId: 'admin-1', role: 'admin'
+    });
+    await expect(store.consumeFreedomAccountStreamTicket(ticket)).resolves.toBeNull();
+  });
+
+  it('subscribes to portfolio and order updates and forwards sanitized snapshots and fills', async () => {
+    const listeners = new Map();
+    const upstream = {
+      addEventListener: vi.fn((name, callback) => {
+        const callbacks = listeners.get(name) || [];
+        callbacks.push(callback);
+        listeners.set(name, callbacks);
+      }),
+      accept: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+      readyState: 1
+    };
+    upstream.send.mockImplementation(() => {
+      queueMicrotask(() => {
+        const callbacks = listeners.get('message') || [];
+        const sendEvent = (packet) => callbacks.forEach((callback) =>
+          callback({ data: JSON.stringify(packet) })
+        );
+        sendEvent(['userData', { isDemo: false, real: true, mode: 'prod', owner_login: 'private-login' }]);
+        sendEvent(['portfolio', {
+          loaded: true,
+          acc: [
+            { curr: 'USD', s: '9000', forecast_in: '10', forecast_out: '5', t2_in: '0', t2_out: '0' },
+            { curr: 'EUR', s: '500', private_account: 'hidden' }
+          ],
+          pos: [{
+            i: 'GOOGL.US', name: 'Alphabet', q: 50, curr: 'USD',
+            mkt_price: 294, market_value: 14700, bal_price_a: 337.7,
+            profit_close: -2185, acc_pos_id: 77, owner_login: 'private-login'
+          }]
+        }]);
+        sendEvent(['orders', [{
+          order_id: 7001, instr: 'GOOGL.US', oper: 2, type: 2, p: 353,
+          q: 10, leaves_qty: 10, stat: 10, date: '2026-11-03T09:30:00',
+          owner_login: 'private-login',
+          trade: [{
+            id: 9001, date: '2026-11-03T09:31:00', p: 352.5, q: 2,
+            v: 705, profit: 0, acd: 0, fv: 1, go_sum: 100,
+            owner_login: 'private-login'
+          }]
+        }]]);
+      });
+    });
+
+    const browserMessages = [];
+    const accountClient = {
+      readyState: 1,
+      deserializeAttachment: () => ({ accountId: 'admin-1', role: 'admin', stream: 'account' }),
+      send: vi.fn((message) => browserMessages.push(JSON.parse(message)))
+    };
+    const { storage } = createStorage();
+    const ctx = {
+      storage,
+      getWebSockets: vi.fn((tag) => tag === 'freedom-tradenet-account' ? [accountClient] : [])
+    };
+    const store = new PortfolioStateDO(ctx, {
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce({ status: 101, webSocket: upstream, headers: new Headers() });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await store.ensureFreedomAccountUpstream();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(upstream.accept).toHaveBeenCalled();
+      expect(upstream.send.mock.calls.map(([payload]) => JSON.parse(payload))).toEqual([
+        ['portfolio'], ['orders']
+      ]);
+      const portfolio = browserMessages.find((message) => message.type === 'portfolio');
+      expect(portfolio.data.data.result.ps).toMatchObject({
+        loaded: true,
+        acc: [{ curr: 'USD', s: 9000 }],
+        pos: [{ i: 'GOOGL.US', q: 50 }]
+      });
+      const orders = browserMessages.find((message) => message.type === 'orders');
+      expect(orders.data.data.orders.order[0]).toMatchObject({
+        order_id: '7001', instr: 'GOOGL.US', oper: 2, p: 353
+      });
+      expect(orders.data.data.trades.trade[0]).toMatchObject({
+        id: '9001', order_id: '7001', instr: 'GOOGL.US', side: 'BUY', p: 352.5, q: 2
+      });
+      const serialized = JSON.stringify(browserMessages);
+      expect(serialized).not.toContain('private-login');
+      expect(serialized).not.toContain('hidden');
+      expect(store.freedomAccountUpstreamReady).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe('Durable Object guest portfolio ownership', () => {
   async function makeScopedStore() {
     const values = new Map();
