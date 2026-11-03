@@ -77,7 +77,7 @@ export const TickerTabs = memo(function TickerTabs({
         <div
           class="workspace-nav-ticker-list"
           role="group"
-          aria-label={translateText('Margin ticker navigation', getAppLanguage())}
+          aria-label={translateText('MARGIN DESK', getAppLanguage())}
         >
       {isAdmin && tickers.length === 0 && (
         <button

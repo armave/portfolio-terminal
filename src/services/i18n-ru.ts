@@ -2,7 +2,6 @@
 export const RU_TRANSLATIONS: Record<string, string> = {
   'MARGIN DESK': 'МАРЖИНАЛЬНЫЙ РАЗДЕЛ',
   'COMBINED PORTFOLIO': 'ОБЩИЙ ПОРТФЕЛЬ',
-  'Margin ticker navigation': 'Навигация по маржинальным тикерам',
   'BALANCE': 'БАЛАНС',
   'Refreshing balance…': 'Обновление баланса…',
   'Syncing…': 'Синхронизация…',

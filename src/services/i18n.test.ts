@@ -456,7 +456,6 @@ describe('app localization', () => {
   
   it('localizes workspace navigation labels and accessible names', () => {
     expect(translateText('Workspace navigation', 'ru')).toBe('Навигация по разделам');
-    expect(translateText('Margin ticker navigation', 'ru')).toBe('Навигация по маржинальным тикерам');
     expect(translateText('MARGIN DESK', 'ru')).toBe('МАРЖИНАЛЬНЫЙ РАЗДЕЛ');
     expect(translateText('COMBINED PORTFOLIO', 'ru')).toBe('ОБЩИЙ ПОРТФЕЛЬ');
     expect(translateText('MARGIN', 'ru')).toBe('МАРЖА');
