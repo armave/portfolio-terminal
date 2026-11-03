@@ -1,6 +1,6 @@
-export type FreedomQuoteStreamStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+type FreedomQuoteStreamStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
-export interface FreedomQuoteStreamMessage {
+interface FreedomQuoteStreamMessage {
   type: 'quote';
   symbol: string;
   data: Record<string, unknown>;
