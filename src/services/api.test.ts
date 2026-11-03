@@ -134,7 +134,7 @@ describe('public Freedom US market status', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       ok: true,
       provider: 'Freedom TradeNet',
-      marketStatus: { market: 'US equities', code: 'FIX', status: 'OPEN', source: 'FIX' },
+      marketStatus: { market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX' },
       updatedAt
     }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
     vi.stubGlobal('fetch', fetchMock);
@@ -142,7 +142,7 @@ describe('public Freedom US market status', () => {
     await expect(fetchFreedomMarketStatus()).resolves.toEqual({
       ok: true,
       provider: 'Freedom TradeNet',
-      marketStatus: { market: 'US equities', code: 'FIX', status: 'OPEN', source: 'FIX' },
+      marketStatus: { market: 'US equities', code: 'FIX', status: 'MARKET', source: 'FIX' },
       updatedAt
     });
     const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
