@@ -30,7 +30,8 @@ describe('automatic update settings', () => {
     expect(source).toContain('DEFAULT_ADMIN_REFRESH_INTERVAL_MS');
     expect(source).toContain('refreshNow: true');
     expect(source).toContain('Your assigned holdings and LOTS history refresh every 60 seconds.');
-    expect(source).toContain('Broker balances, positions, trades and orders refresh every 60 seconds when the live account stream is not healthy.');
+    expect(source).toContain('Broker balances, positions, trades and orders refresh every 60 seconds when the private account stream is not healthy.');
+    expect(source).toContain('Closed History and Freedom cashflows refresh and sync every 60 seconds.');
     expect(source).not.toContain('<option value="0">');
     expect(source).not.toContain('Automatic updates are paused. Manual Sync remains available.');
   });
