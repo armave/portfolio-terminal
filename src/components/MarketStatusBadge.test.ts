@@ -20,10 +20,12 @@ describe('US-equities market status presentation', () => {
     ['PREV', 'PREMARKET', 'Premarket'],
     ['PRE', 'PREMARKET', 'Premarket'],
     ['PREPRE', 'PREMARKET', 'Premarket'],
+    ['PRE-MARKET', 'PREMARKET', 'Premarket'],
     ['OPEN', 'MARKET', 'Market'],
     ['REGULAR', 'MARKET', 'Market'],
     ['POST', 'POSTMARKET', 'Postmarket'],
     ['POSTPOST', 'POSTMARKET', 'Postmarket'],
+    ['POST-MARKET', 'POSTMARKET', 'Postmarket'],
     ['CLOSE', 'CLOSED', 'Closed'],
     ['CLOSED', 'CLOSED', 'Closed']
   ])('normalizes provider state %s to %s', (providerValue, expectedState, expectedLabel) => {
