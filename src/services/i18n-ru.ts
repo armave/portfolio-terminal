@@ -723,7 +723,4 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'ADD SECRET': 'ДОБАВЬТЕ СЕКРЕТ',
   'WRITING...': 'СОХРАНЕНИЕ...',
   'UPDATED': 'ОБНОВЛЕНО',
-  'FAIL': 'ОШИБКА',
-  'Sync failed': 'Сбой синхронизации',
-  'Synced': 'Синхронизировано',
 };
