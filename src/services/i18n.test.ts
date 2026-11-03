@@ -12,9 +12,13 @@ describe('app localization', () => {
 
   it('localizes the role-specific automatic refresh descriptions', () => {
     expect(translateText(
-      'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds. Returning to the app refreshes all data.',
+      'Live quotes and the shared portfolio snapshot sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the private account stream is not healthy. Closed History and Freedom cashflows refresh and sync every 60 seconds. Returning to the app refreshes all data.',
       'ru'
-    )).toContain('Котировки и состояние портфеля синхронизируются с облаком с выбранным интервалом.');
+    )).toContain('Котировки и общий снимок портфеля синхронизируются с облаком с выбранным интервалом.');
+    expect(translateText(
+      'Closed History and Freedom cashflows refresh and sync every 60 seconds.',
+      'ru'
+    )).toBe('История закрытых сделок и денежные операции Freedom обновляются и синхронизируются каждые 60 секунд.');
     expect(translateText(
       'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.',
       'ru'
