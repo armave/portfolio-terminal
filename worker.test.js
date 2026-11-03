@@ -729,6 +729,134 @@ describe('Freedom quote endpoint', () => {
   });
 });
 
+describe('Freedom authenticated quote WebSocket stream', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function makeQuoteSocket(expectedSymbol, payload) {
+    const listeners = new Map();
+    const socket = {
+      addEventListener: vi.fn((name, callback) => {
+        const callbacks = listeners.get(name) || [];
+        callbacks.push(callback);
+        listeners.set(name, callbacks);
+      }),
+      accept: vi.fn(),
+      send: vi.fn((message) => {
+        expect(JSON.parse(message)).toEqual(['quotes', [expectedSymbol]]);
+        queueMicrotask(() => {
+          for (const callback of listeners.get('message') || []) {
+            callback({ data: JSON.stringify(['userData', { isDemo: false, mode: 'prod' }]) });
+            callback({ data: JSON.stringify(['q', payload]) });
+          }
+        });
+      }),
+      close: vi.fn()
+    };
+    return socket;
+  }
+
+  it('subscribes with the raw quotes event and returns only the requested allowlisted quote fields', async () => {
+    const payload = {
+      q: [{
+        c: 'GOOGL.US', n: 17, name: 'Alphabet', name2: 'Alphabet Inc.',
+        pp: '274.00', op: '276.10', ltp: '280.49', lts: 3,
+        ltt: '2026-11-03T09:40:00', chg: '6.49', pcp: '2.3686',
+        bbp: '280.40', bap: '280.50', bbs: 10, bas: 12,
+        mintp: '276.00', maxtp: '281.00', vol: 12345, vlt: 345678,
+        trades: 121, mrg: 'M', x_curr: 'USD',
+        private_login: 'must-not-leak',
+        private_account: 'must-not-leak',
+        x_descr: 'omit long unneeded descriptor'
+      }]
+    };
+    const socket = makeQuoteSocket('GOOGL.US', payload);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce({ status: 101, headers: new Headers(), webSocket: socket });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      source: 'authenticated_websocket',
+      symbol: 'GOOGL.US',
+      data: {
+        q: [{
+          c: 'GOOGL.US',
+          ltp: '280.49',
+          pp: '274.00',
+          chg: '6.49',
+          pcp: '2.3686',
+          bbp: '280.40',
+          bap: '280.50',
+          vol: 12345,
+          x_curr: 'USD'
+        }]
+      },
+      diagnostics: {
+        requestedEvent: 'quotes',
+        responseEvent: 'q',
+        requestedSymbol: 'GOOGL.US',
+        handshakeStatus: 101
+      }
+    });
+    const serialized = JSON.stringify(body);
+    for (const secret of ['must-not-leak', 'private_login', 'private_account', 'x_descr', 'SID']) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(socket.close).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toContain('wss.tradernet.com');
+  });
+
+  it('rejects invalid or multiple symbols before authentication', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US%2CMETA.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), { GATEWAY_SECRET: 'test-secret' });
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('fails safely when the quote event does not contain the requested ticker', async () => {
+    const socket = makeQuoteSocket('GOOGL.US', { q: [{ c: 'META.US', ltp: 500 }] });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce({ status: 101, headers: new Headers(), webSocket: socket });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-quote-stream&symbol=GOOGL.US',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body.ok).toBe(false);
+    expect(body.error).toContain('did not return the requested symbol');
+    expect(JSON.stringify(body)).not.toContain('META.US');
+  });
+});
+
 describe('Freedom trades Worker action', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

@@ -653,12 +653,36 @@ function summarizeFreedomStreamEvent(eventName, payload) {
                 : {}
         };
     }
+    if (eventName === "quotes") {
+        const rows = Array.isArray(payload?.q) ? payload.q
+            : Array.isArray(payload) ? payload : [];
+        const quoteKeys = new Set([
+            "c", "n", "mrg", "ltr", "kind", "type", "name", "name2", "bbp", "bbc",
+            "bbs", "bbf", "bap", "bac", "bas", "baf", "pp", "op", "ltp", "lts",
+            "ltt", "chg", "pcp", "ltc", "mintp", "maxtp", "vol", "vlt", "trades",
+            "min_step", "step_price", "p5", "chg5", "p22", "chg22", "p110",
+            "chg110", "p220", "chg220", "x_curr", "x_lot", "x_istrade"
+        ]);
+        const sample = rows[0];
+        const quoteItemKeys = sample ? keys(sample).filter(key => quoteKeys.has(key)) : [];
+        return {
+            event: eventName,
+            payloadType,
+            topLevelKeys: keys(payload),
+            quotesCount: rows.length,
+            quoteItemKeys,
+            quoteItemTypes: sample && isRecord(sample)
+                ? Object.fromEntries(quoteItemKeys.map(key => [key, describeRedactedValueType(sample[key])]))
+                : {}
+        };
+    }
     throw new Error("Unsupported TradeNet stream event.");
 }
 
-async function diagnoseFreedomEventStream(env, eventName, includePayload = false) {
+async function diagnoseFreedomEventStream(env, eventName, includePayload = false, subscriptionData = undefined) {
     const sid = await createFreedomDiagnosticSession(env);
     const startedAt = Date.now();
+    const responseEventName = eventName === "quotes" ? "q" : eventName;
     let eventSummary = null;
     let eventPayload = null;
     const diagnostics = {
@@ -765,7 +789,7 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
                             finish(error);
                             return;
                         }
-                    } else if (name === eventName) {
+                    } else if (name === responseEventName) {
                         diagnostics.eventReceived = true;
                         eventPayload = includePayload ? packet[1] : null;
                         eventSummary = summarizeFreedomStreamEvent(eventName, packet[1]);
@@ -799,7 +823,7 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
                 socket.accept();
                 diagnostics.connectionOpened = true;
                 diagnostics.phase = "subscribing_" + eventName;
-                socket.send(JSON.stringify([eventName]));
+                socket.send(JSON.stringify(subscriptionData === undefined ? [eventName] : [eventName, subscriptionData]));
                 diagnostics.subscriptionSent = true;
                 diagnostics.phase = "awaiting_events";
             } catch {
@@ -818,6 +842,34 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
             finish(error);
         });
     });
+}
+
+function sanitizeFreedomStreamQuote(payload, requestedSymbol) {
+    const rows = Array.isArray(payload?.q) ? payload.q
+        : Array.isArray(payload) ? payload : [];
+    const target = String(requestedSymbol || "").trim().toUpperCase();
+    const quote = rows.find(row => String(row?.c || "").trim().toUpperCase() === target);
+    if (!quote) {
+        throw new Error("TradeNet quote stream did not return the requested symbol.");
+    }
+    const allowedFields = new Set([
+        "c", "n", "mrg", "ltr", "kind", "type", "name", "name2", "bbp", "bbc",
+        "bbs", "bbf", "bap", "bac", "bas", "baf", "pp", "op", "ltp", "lts",
+        "ltt", "chg", "pcp", "ltc", "mintp", "maxtp", "vol", "vlt", "trades",
+        "min_step", "step_price", "p5", "chg5", "p22", "chg22", "p110",
+        "chg110", "p220", "chg220", "x_curr", "x_lot", "x_istrade"
+    ]);
+    const sanitized = {};
+    for (const [key, value] of Object.entries(quote)) {
+        if (!allowedFields.has(key)) continue;
+        if (typeof value === "string") sanitized[key] = value.slice(0, 160);
+        else if (typeof value === "number" && Number.isFinite(value)) sanitized[key] = value;
+        else if (typeof value === "boolean" || value === null) sanitized[key] = value;
+    }
+    if (typeof sanitized.ltp !== "number" && !(typeof sanitized.ltp === "string" && Number.isFinite(Number(sanitized.ltp)))) {
+        throw new Error("TradeNet quote stream returned no valid last-trade price.");
+    }
+    return sanitized;
 }
 
 export function sanitizeFreedomPositions(response) {
@@ -1019,16 +1071,16 @@ export default {
 
         if (accountRole === "guest") {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest"].includes(pathname);
-            const sharedDataAction = ["state", "history", "freedom-test", "freedom-positions", "freedom-trades", "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot"].includes(action);
+            const sharedDataAction = ["state", "history", "freedom-test", "freedom-positions", "freedom-trades", "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream"].includes(action);
             if (sharedDataPath || sharedDataAction) {
                 return jsonError("This data is restricted to administrator accounts.", 403, corsHeaders);
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -1194,6 +1246,59 @@ export default {
                     return new Response(JSON.stringify({
                         ok: false,
                         error: error instanceof Error ? error.message : "TradeNet portfolio snapshot failed."
+                    }), { status, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                }
+            }
+
+            // Authenticated one-shot quote stream diagnostic. This does not replace REST quote retrieval.
+            if (action === "freedom-quote-stream") {
+                const quoteSymbol = symbol.trim().toUpperCase();
+                if (!quoteSymbol || !/^[A-Z0-9.^=-]{1,32}$/.test(quoteSymbol)) {
+                    return jsonError("Provide exactly one valid TradeNet ticker symbol.", 400, corsHeaders);
+                }
+                try {
+                    const result = await diagnoseFreedomEventStream(env, "quotes", true, [quoteSymbol]);
+                    const eventsConfirmed = result.connectionOpened &&
+                        result.userDataReceived && result.eventReceived &&
+                        result.isDemo !== true && result.sessionMode === "prod";
+                    if (!eventsConfirmed) {
+                        return new Response(JSON.stringify({
+                            ok: false,
+                            provider: "Freedom TradeNet",
+                            symbol: quoteSymbol,
+                            error: "Authenticated TradeNet quote event was not confirmed.",
+                            diagnostics: Object.fromEntries(Object.entries(result).filter(([key]) => !["eventSummary", "eventPayload"].includes(key)))
+                        }), { status: 502, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                    }
+                    const quote = sanitizeFreedomStreamQuote(result.eventPayload, quoteSymbol);
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Freedom TradeNet",
+                        source: "authenticated_websocket",
+                        symbol: quoteSymbol,
+                        message: "Authenticated TradeNet quote event received.",
+                        data: { q: [quote] },
+                        diagnostics: {
+                            phase: result.phase,
+                            requestedEvent: "quotes",
+                            responseEvent: "q",
+                            requestedSymbol: quoteSymbol,
+                            handshakeStatus: result.handshakeStatus,
+                            elapsedMs: result.elapsedMs,
+                            quoteFieldCount: Object.keys(quote).length
+                        }
+                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                } catch (error) {
+                    const upstreamStatus = Number(error?.status);
+                    const status = [401, 403, 503].includes(upstreamStatus) ? upstreamStatus : 502;
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        provider: "Freedom TradeNet",
+                        symbol: quoteSymbol,
+                        error: error instanceof Error ? error.message : "TradeNet quote stream failed.",
+                        diagnostics: error?.diagnostics
+                            ? Object.fromEntries(Object.entries(error.diagnostics).filter(([key]) => !["eventSummary", "eventPayload"].includes(key)))
+                            : null
                     }), { status, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 }
             }
