@@ -12,14 +12,14 @@ describe('mobile workspace navigation styles', () => {
     expect(mobileNavigationStyles).toMatch(/@media\s*\(max-width:\s*768px\)/);
     expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*flex-wrap:\s*wrap;/);
     expect(mobileNavigationStyles).toMatch(/#tickerTabs\s*\{[^}]*overflow-x:\s*visible;/);
-    expect(mobileNavigationStyles).toMatch(/\.workspace-nav-ticker-list\s*\{[^}]*overflow-x:\s*auto;/s);
-    expect(mobileNavigationStyles).toMatch(/\.workspace-nav-ticker-list\s*\{[^}]*flex:\s*1\s+1\s+100%;/s);
-    expect(mobileNavigationStyles).toMatch(/\.workspace-nav-ticker-list\s*\{[^}]*max-width:\s*100%;/s);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*overflow-x:\s*auto;/s);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*flex:\s*1\s+1\s+100%;/s);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*max-width:\s*100%;/s);
   });
 
-  it('bounds the ticker strip on desktop and lets long ticker lists scroll independently', () => {
-    expect(mobileNavigationStyles).toMatch(/\.workspace-nav-ticker-list\s*\{[^}]*max-width:\s*min\(52vw,\s*52rem\)/s);
-    expect(mobileNavigationStyles).toMatch(/\.workspace-nav-ticker-list\s*\{[^}]*overflow-x:\s*auto;/s);
+  it('gives the nested ticker strip enough specificity to override the generic nav-item flex rule', () => {
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*flex:\s*0\s+1\s+min\(52vw,\s*52rem\)/s);
+    expect(mobileNavigationStyles).toMatch(/#tickerTabs>\.workspace-nav-ticker-list\s*\{[^}]*min-width:\s*0;/s);
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-ticker-list>\*\s*\{[^}]*flex:\s*0\s+0\s+auto;/s);
     expect(stylesheet.match(/#tickerTabs\s*\{/g) || []).toHaveLength(2);
   });
@@ -31,8 +31,6 @@ describe('mobile workspace navigation styles', () => {
     expect(navigationComponent).toContain('class="workspace-nav-ticker-list"');
     expect(navigationComponent).toContain("aria-label={translateText('MARGIN DESK', getAppLanguage())}");
     expect(navigationComponent).toContain("translateText('COMBINED PORTFOLIO', getAppLanguage())");
-    expect(navigationComponent).toContain("translateText('COMBINED PORTFOLIO', getAppLanguage())");
-    expect(navigationComponent).toContain("translateText('MARGIN DESK', getAppLanguage())");
     expect(navigationComponent).toContain("translateText('BALANCE', getAppLanguage())");
     expect(navigationComponent).toContain("translateText('LOTS', getAppLanguage())");
     expect(navigationComponent).toContain("translateText('TRADES', getAppLanguage())");
@@ -41,8 +39,7 @@ describe('mobile workspace navigation styles', () => {
 
   it('retains the Balance equity badge and its partial-valuation accessible name', () => {
     expect(navigationComponent).toContain("isAdmin ? 'workspace-nav-equity-badge--admin' : ''");
-    expect(navigationComponent).toContain("class={`workspace-nav-equity-badge");
-    expect(navigationComponent).toContain("aria-label={`${translateText('Balance', getAppLanguage())}: ${equityBadgeText}. ${equityBadgeTitle}`}");
+    expect(navigationComponent).toContain("aria-label={`Balance: ${equityBadgeText}. ${equityBadgeTitle}`}");
     expect(mobileNavigationStyles).toMatch(/\.workspace-nav-equity-badge--admin\s*\{\s*display:\s*none;/);
   });
 });

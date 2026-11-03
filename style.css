@@ -2797,7 +2797,7 @@ summary:focus-visible {
   flex: 0 0 auto;
 }
 
-.workspace-nav-ticker-list {
+#tickerTabs>.workspace-nav-ticker-list {
   display: flex;
   flex: 0 1 min(52vw, 52rem);
   align-items: center;
@@ -2834,7 +2834,7 @@ summary:focus-visible {
     scroll-snap-align: unset;
   }
 
-  .workspace-nav-ticker-list {
+  #tickerTabs>.workspace-nav-ticker-list {
     flex: 1 1 100%;
     width: 100%;
     max-width: 100%;
