@@ -299,10 +299,12 @@ export const clearFreedomTradeNetStreamSnapshotCache = freedomBrokerTransportRun
 export const fetchFreedomCashflows = freedomBrokerTransportRuntime.fetchFreedomCashflows;
 export const clearFreedomCashflowCache = freedomBrokerTransportRuntime.clearFreedomCashflowCache;
 
+export type FreedomMarketPhase = 'PREMARKET' | 'MARKET' | 'POSTMARKET' | 'CLOSED';
+
 export interface FreedomUsMarketStatus {
   market: string;
   code: string;
-  status: string;
+  status: FreedomMarketPhase;
   source: string;
 }
 
@@ -316,9 +318,10 @@ export interface FreedomMarketStatusResponse {
 /** Fetch a compact public US-equities status; no exchange list or private account data is returned. */
 export async function fetchFreedomMarketStatus(): Promise<FreedomMarketStatusResponse> {
   const response = await proxyFetch('freedom-market-status', undefined, { cache: 'no-store' });
-  if (response?.ok !== true || !response.marketStatus ||
-      typeof response.marketStatus.status !== 'string' ||
-      !response.marketStatus.status.trim()) {
+  const phase = typeof response?.marketStatus?.status === 'string'
+    ? response.marketStatus.status.trim().toUpperCase()
+    : '';
+  if (response?.ok !== true || !['PREMARKET', 'MARKET', 'POSTMARKET', 'CLOSED'].includes(phase)) {
     throw new Error(response?.error || 'US equity market status is unavailable.');
   }
   return {
@@ -327,7 +330,7 @@ export async function fetchFreedomMarketStatus(): Promise<FreedomMarketStatusRes
     marketStatus: {
       market: typeof response.marketStatus.market === 'string' ? response.marketStatus.market : 'US equities',
       code: typeof response.marketStatus.code === 'string' ? response.marketStatus.code : 'US',
-      status: response.marketStatus.status.trim().toUpperCase(),
+      status: phase as FreedomMarketPhase,
       source: typeof response.marketStatus.source === 'string' ? response.marketStatus.source : 'US_EXCHANGES'
     },
     updatedAt: Number.isFinite(Number(response.updatedAt)) && Number(response.updatedAt) > 0
