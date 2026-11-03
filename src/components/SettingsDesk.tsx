@@ -288,7 +288,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
               aria-label={translateText('Automatic portfolio data refresh interval')}
               title={translateText(account?.role === 'guest'
                 ? 'Live quotes update at the selected interval. Your assigned holdings and LOTS history refresh every 60 seconds. Returning to the app refreshes both.'
-                : 'Live quotes and your portfolio state sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the live account stream is not healthy. Returning to the app refreshes all data.')}
+                : 'Live quotes and the shared portfolio snapshot sync to the cloud at the selected interval. Broker balances, positions, trades and orders refresh every 60 seconds when the private account stream is not healthy. Closed History and Freedom cashflows refresh and sync every 60 seconds. Returning to the app refreshes all data.')}
               class="h-8 bg-slate-900 border border-slate-700 text-xs px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-cyan-500"
             >
               <option value="15000">{translateText('15 sec')}</option>
