@@ -532,10 +532,13 @@ export class PortfolioStateDO {
     });
     socket.addEventListener("error", () => {
       if (this.freedomQuoteUpstream !== socket) return;
+      this.freedomQuoteUpstream = null;
       this.freedomQuoteUpstreamReady = false;
+      this.freedomQuoteSubscribedSymbols.clear();
       for (const client of this.getFreedomQuoteClients()) {
         try { client.send(JSON.stringify({ type: "status", status: "reconnecting" })); } catch { /* ignore */ }
       }
+      try { socket.close(1011, "TradeNet quote socket error"); } catch { /* ignore */ }
     });
 
     try {
