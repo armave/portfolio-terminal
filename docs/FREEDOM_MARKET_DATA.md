@@ -24,6 +24,13 @@ The administrator-only `?action=freedom-event-stream&event=portfolio` and `event
 
 The tested `markets` event carries exchange-level status and schedule metadata; it is not a quote-price feed and does not replace `getStockQuotesJson` / `freedom-quote`. Keep per-symbol quote prices on the existing REST/provider path until a separate quote (`q`) WebSocket subscription has been tested and its symbol/price/timestamp contract verified.
 
+## Authenticated live quote WebSocket probe
+
+The administrator-only `?action=freedom-quote-stream&symbol=GOOGL.US` probe uses the raw `wss://wss.tradernet.com/` protocol and the existing short-lived production SID. It sends `["quotes", ["GOOGL.US"]]`, waits for the `q` response plus production `userData`, verifies the returned ticker, and returns only an allowlist of quote fields (last trade, previous close, bid/ask, change, volume, timestamp, instrument and currency metadata). It closes the socket after the first matching quote or the eight-second observation timeout. It is a one-shot verification probe, not a persistent streaming client; no REST quote calls are replaced until a live quote payload has been confirmed and compared. The raw protocol and event names follow the [TradeNet WebSocket documentation](https://tradernet.am/tradernet-api/websocket?site_lang=en).
+
+The Settings diagnostic added in PR #287 lets an administrator select one ticker (defaults to `GOOGL.US`) and run the probe. The existing `freedom-quote` REST call and Yahoo/Finnhub/Twelve Data fallback remain unchanged. Market Depth (`b`) is intentionally excluded and must not be added as part of this quote work.
+
+
 ## Portfolio WebSocket versus REST reconciliation
 
 The administrator-only `?action=freedom-portfolio-snapshot` action obtains one authenticated production `portfolio` event, requires `loaded === true`, and returns only the same normalized USD account and position fields exposed by the existing `freedom-positions` REST action. Non-USD rows, broker IDs unrelated to the app's existing position contract, timestamps, session identifiers, credentials, and raw payload fields are omitted. The application now uses this authenticated WebSocket snapshot as the primary source for account balances and positions. The existing `freedom-positions` REST action (`getPositionJson`) is the automatic fallback when the socket is unavailable, times out, returns an incomplete/unloaded snapshot, or fails validation. Both sources pass through the same `normalizeFreedomPortfolio` contract. The admin Settings reconciliation check can still request both sources independently and compare field-level values with a 0.01 numeric tolerance; that comparison is read-only and never writes to the portfolio store or changes saved holdings.
