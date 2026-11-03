@@ -7,7 +7,7 @@ import {
 } from '../services/portfolioAutoRefresh';
 import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
-import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, testFreedomTradeNetConnection, testFreedomTradeNetOrdersStream, testFreedomTradeNetEventStream, testFreedomTradeNetPortfolioReconciliation, compareFreedomPortfolioSnapshots, type AuthUser } from '../services/api';
+import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, testFreedomTradeNetConnection, testFreedomTradeNetOrdersStream, testFreedomTradeNetEventStream, testFreedomTradeNetPortfolioReconciliation, testFreedomTradeNetQuoteStream, compareFreedomPortfolioSnapshots, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import { DeskLoading } from './DeskLoading';
@@ -61,7 +61,8 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [savingUser, setSavingUser] = useState(false);
   const [savingLanguage, setSavingLanguage] = useState(false);
   const [languageError, setLanguageError] = useState("");
-  const [tradeNetTest, setTradeNetTest] = useState<{ kind: 'rest' | 'websocket' | 'portfolio' | 'markets' | 'reconciliation'; loading: boolean; result?: unknown; error?: string } | null>(null);
+  const [tradeNetTest, setTradeNetTest] = useState<{ kind: 'rest' | 'websocket' | 'portfolio' | 'markets' | 'reconciliation' | 'quotes'; loading: boolean; result?: unknown; error?: string } | null>(null);
+  const [tradeNetQuoteSymbol, setTradeNetQuoteSymbol] = useState('GOOGL.US');
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
   const refreshUsers = async () => {
@@ -151,7 +152,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     }
   };
 
-  const runTradeNetTest = async (kind: 'rest' | 'websocket' | 'portfolio' | 'markets' | 'reconciliation') => {
+  const runTradeNetTest = async (kind: 'rest' | 'websocket' | 'portfolio' | 'markets' | 'reconciliation' | 'quotes') => {
     if (tradeNetTest?.loading) return;
     setTradeNetTest({ kind, loading: true });
     try {
@@ -162,7 +163,9 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           : kind === 'reconciliation'
           ? await testFreedomTradeNetPortfolioReconciliation().then((snapshots) =>
               compareFreedomPortfolioSnapshots(snapshots.websocket, snapshots.rest))
-          : await testFreedomTradeNetEventStream(kind);
+          : kind === 'quotes'
+            ? await testFreedomTradeNetQuoteStream(tradeNetQuoteSymbol)
+            : await testFreedomTradeNetEventStream(kind);
       setTradeNetTest({ kind, loading: false, result });
     } catch (error) {
       setTradeNetTest({
@@ -357,6 +360,21 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           <button type="button" disabled={Boolean(tradeNetTest?.loading)} onClick={() => void runTradeNetTest('markets')} class="rounded border border-emerald-800 bg-emerald-950/50 px-3 py-2 text-xs font-bold text-emerald-200 hover:bg-emerald-900 disabled:cursor-wait disabled:opacity-50">
             {tradeNetTest?.loading && tradeNetTest.kind === 'markets' ? translateText('Testing market event…') : translateText('Test market status updates')}
           </button>
+          <label class="flex items-center gap-2 rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs text-slate-300">
+            <span>{translateText('Quote symbol')}</span>
+            <input
+              type="text"
+              value={tradeNetQuoteSymbol}
+              onInput={(event) => setTradeNetQuoteSymbol((event.currentTarget as HTMLInputElement).value)}
+              disabled={Boolean(tradeNetTest?.loading)}
+              maxlength={32}
+              aria-label={translateText('Quote symbol')}
+              class="w-28 bg-transparent px-1 py-1 font-mono text-slate-100 outline-none"
+            />
+          </label>
+          <button type="button" disabled={Boolean(tradeNetTest?.loading) || !tradeNetQuoteSymbol.trim()} onClick={() => void runTradeNetTest('quotes')} class="rounded border border-sky-800 bg-sky-950/50 px-3 py-2 text-xs font-bold text-sky-200 hover:bg-sky-900 disabled:cursor-wait disabled:opacity-50">
+            {tradeNetTest?.loading && tradeNetTest.kind === 'quotes' ? translateText('Testing live quote…') : translateText('Test live quote stream')}
+          </button>
           <button type="button" disabled={Boolean(tradeNetTest?.loading)} onClick={() => void runTradeNetTest('reconciliation')} class="rounded border border-amber-800 bg-amber-950/50 px-3 py-2 text-xs font-bold text-amber-200 hover:bg-amber-900 disabled:cursor-wait disabled:opacity-50">
             {tradeNetTest?.loading && tradeNetTest.kind === 'reconciliation' ? translateText('Comparing portfolio snapshots…') : translateText('Compare WebSocket vs REST portfolio')}
           </button>
@@ -364,7 +382,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         {tradeNetTest?.loading && <p class="text-xs text-cyan-300" role="status">{translateText('Contacting TradeNet. Please wait…')}</p>}
         {tradeNetTest?.error && <p class="rounded border border-rose-900/60 bg-rose-950/30 p-2 text-xs text-rose-300" role="alert">{tradeNetTest.error}</p>}
         {tradeNetTest?.result !== undefined && <div class="space-y-1">
-          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400" role="status">{translateText('Diagnostic result')} · {tradeNetTest.kind === 'rest' ? 'REST' : tradeNetTest.kind === 'websocket' ? 'WebSocket' : tradeNetTest.kind === 'portfolio' ? 'Portfolio' : tradeNetTest.kind === 'markets' ? 'Markets' : 'Reconciliation'}</p>
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400" role="status">{translateText('Diagnostic result')} · {tradeNetTest.kind === 'rest' ? 'REST' : tradeNetTest.kind === 'websocket' ? 'WebSocket' : tradeNetTest.kind === 'portfolio' ? 'Portfolio' : tradeNetTest.kind === 'markets' ? 'Markets' : tradeNetTest.kind === 'quotes' ? 'Live quote' : 'Reconciliation'}</p>
           <pre class="max-h-72 overflow-auto rounded border border-slate-800 bg-slate-950 p-2 text-[10px] leading-relaxed text-slate-300 whitespace-pre-wrap break-all" aria-label={translateText('TradeNet diagnostic response')}>{JSON.stringify(tradeNetTest.result, null, 2)}</pre>
         </div>}
         <p class="text-[10px] text-slate-500">{translateText('Temporary test controls — remove after verification.')}</p>

@@ -46,6 +46,34 @@ describe('Freedom broker transport runtime', () => {
     expect(proxyFetch.mock.calls[6][2]).toEqual({ cache: 'no-store' });
   });
 
+  it('requests one authenticated raw TradeNet quote stream for the normalized ticker', async () => {
+    const { runtime, proxyFetch } = createRuntime();
+    await runtime.testFreedomTradeNetQuoteStream(' googl.us ');
+    expect(proxyFetch).toHaveBeenCalledWith(
+      'freedom-quote-stream',
+      { symbol: 'GOOGL.US' },
+      { cache: 'no-store' }
+    );
+  });
+
+  it('defaults unsuffixed quote symbols to the existing .US TradeNet mapping', async () => {
+    const { runtime, proxyFetch } = createRuntime();
+    await runtime.testFreedomTradeNetQuoteStream('aapl');
+    expect(proxyFetch).toHaveBeenCalledWith(
+      'freedom-quote-stream',
+      { symbol: 'AAPL.US' },
+      { cache: 'no-store' }
+    );
+  });
+
+  it('rejects empty, invalid, or multiple quote symbols before making a request', async () => {
+    const { runtime, proxyFetch } = createRuntime();
+    await expect(runtime.testFreedomTradeNetQuoteStream('')).rejects.toThrow('one valid TradeNet ticker');
+    await expect(runtime.testFreedomTradeNetQuoteStream('GOOGL.US,META.US')).rejects.toThrow('one valid TradeNet ticker');
+    await expect(runtime.testFreedomTradeNetQuoteStream('GOOGL US')).rejects.toThrow('one valid TradeNet ticker');
+    expect(proxyFetch).not.toHaveBeenCalled();
+  });
+
   it('uses the authenticated portfolio WebSocket as primary and returns the normalizer envelope', async () => {
     const data = {
       result: {

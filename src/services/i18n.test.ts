@@ -389,6 +389,12 @@ describe('app localization', () => {
     expect(translateText('Testing market event…', 'ru')).toBe('Проверка события рынка…');
   });
 
+  it('localizes the TradeNet live quote diagnostic control', () => {
+    expect(translateText('Quote symbol', 'ru')).toBe('Тикер котировки');
+    expect(translateText('Testing live quote…', 'ru')).toBe('Проверка живой котировки…');
+    expect(translateText('Test live quote stream', 'ru')).toBe('Проверить поток котировок');
+  });
+
   it('localizes the TradeNet portfolio reconciliation control', () => {
     expect(translateText('Compare WebSocket vs REST portfolio', 'ru')).toBe('Сравнить портфель WebSocket и REST');
     expect(translateText('Comparing portfolio snapshots…', 'ru')).toBe('Сравнение снимков портфеля…');

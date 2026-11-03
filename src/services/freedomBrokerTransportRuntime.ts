@@ -12,6 +12,7 @@ export interface FreedomBrokerTransportRuntimeDependencies {
 export interface FreedomBrokerTransportRuntime {
   testFreedomTradeNetConnection: () => Promise<unknown>;
   testFreedomTradeNetOrdersStream: () => Promise<unknown>;
+  testFreedomTradeNetQuoteStream: (symbol: string) => Promise<unknown>;
   testFreedomTradeNetEventStream: (event: 'portfolio' | 'markets') => Promise<unknown>;
   testFreedomTradeNetPortfolioReconciliation: () => Promise<{ websocket: unknown; rest: unknown }>;
   fetchFreedomTradeNetPositions: () => Promise<unknown>;
@@ -41,6 +42,15 @@ export function createFreedomBrokerTransportRuntime(
       return Promise.reject(new Error('Unsupported TradeNet stream event.'));
     }
     return dependencies.proxyFetch('freedom-event-stream', { event }, { cache: 'no-store' });
+  };
+
+  const testFreedomTradeNetQuoteStream = (symbol: string): Promise<unknown> => {
+    const normalized = symbol.trim().toUpperCase();
+    const ticker = normalized.includes('.') ? normalized : `${normalized}.US`;
+    if (!/^[A-Z0-9.^=-]{1,32}$/.test(ticker)) {
+      return Promise.reject(new Error('Enter one valid TradeNet ticker symbol.'));
+    }
+    return dependencies.proxyFetch('freedom-quote-stream', { symbol: ticker }, { cache: 'no-store' });
   };
 
   const fetchFreedomTradeNetPositions = async (): Promise<unknown> => {
@@ -190,6 +200,7 @@ export function createFreedomBrokerTransportRuntime(
     testFreedomTradeNetConnection,
     testFreedomTradeNetOrdersStream,
     testFreedomTradeNetEventStream,
+    testFreedomTradeNetQuoteStream,
     testFreedomTradeNetPortfolioReconciliation,
     fetchFreedomTradeNetPositions,
     fetchFreedomTradeNetTrades,
