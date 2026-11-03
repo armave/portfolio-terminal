@@ -5,7 +5,7 @@ export const DEFAULT_GUEST_REFRESH_INTERVAL_MS = 15_000;
 const SUPPLEMENTAL_REFRESH_INTERVAL_MS = 60_000;
 
 type PortfolioAutoRefreshRole = 'admin' | 'guest' | null;
-type QuoteRefreshSource = 'quotes' | 'supplemental' | 'state-sync';
+type QuoteRefreshSource = 'quotes' | 'supplemental' | 'state-sync' | 'history-sync';
 
 export function isSupportedQuoteRefreshInterval(value: unknown): boolean {
   if (value === null || value === undefined) return false;
@@ -30,6 +30,8 @@ interface PortfolioAutoRefreshSchedulerOptions {
   refreshSupplemental: () => void | Promise<unknown>;
   /** Sync the current admin portfolio snapshot after each scheduled quote cycle. */
   syncState?: () => void | Promise<unknown>;
+  /** Checkpoint the independent admin Closed History record during the 60-second supplemental cycle. */
+  syncHistory?: () => void | Promise<unknown>;
   onError?: (source: QuoteRefreshSource, error: unknown) => void;
   setIntervalFn?: (callback: () => void, intervalMs: number) => ReturnType<typeof setInterval>;
   clearIntervalFn?: (timer: ReturnType<typeof setInterval>) => void;
@@ -56,6 +58,7 @@ export function createPortfolioAutoRefreshScheduler(
   let quoteInFlight: Promise<boolean> | null = null;
   let supplementalInFlight: Promise<boolean> | null = null;
   let stateSyncInFlight: Promise<boolean> | null = null;
+  let historySyncInFlight: Promise<boolean> | null = null;
 
   const stopTimers = () => {
     if (quoteTimer !== null) clearIntervalFn(quoteTimer);
@@ -75,7 +78,8 @@ export function createPortfolioAutoRefreshScheduler(
     task: () => void | Promise<unknown>
   ): Promise<boolean> => {
     const existing = source === 'quotes' ? quoteInFlight
-      : source === 'supplemental' ? supplementalInFlight : stateSyncInFlight;
+      : source === 'supplemental' ? supplementalInFlight
+        : source === 'state-sync' ? stateSyncInFlight : historySyncInFlight;
     if (existing) return existing;
 
     let request: Promise<boolean>;
@@ -90,11 +94,13 @@ export function createPortfolioAutoRefreshScheduler(
         if (source === 'quotes' && quoteInFlight === request) quoteInFlight = null;
         if (source === 'supplemental' && supplementalInFlight === request) supplementalInFlight = null;
         if (source === 'state-sync' && stateSyncInFlight === request) stateSyncInFlight = null;
+        if (source === 'history-sync' && historySyncInFlight === request) historySyncInFlight = null;
       });
 
     if (source === 'quotes') quoteInFlight = request;
     else if (source === 'supplemental') supplementalInFlight = request;
-    else stateSyncInFlight = request;
+    else if (source === 'state-sync') stateSyncInFlight = request;
+    else historySyncInFlight = request;
     return request;
   };
 
@@ -108,6 +114,15 @@ export function createPortfolioAutoRefreshScheduler(
     return quotes && synced;
   };
 
+  const refreshSupplementalAndSyncHistory = async (): Promise<boolean> => {
+    const supplemental = await runTask('supplemental', options.refreshSupplemental);
+    // The independent encrypted Closed History record is admin-owned; guest data
+    // remains exclusively in the authenticated guest assignment snapshot.
+    if (activeRole !== 'admin' || !options.syncHistory || !canRefresh()) return supplemental;
+    const history = await runTask('history-sync', options.syncHistory);
+    return supplemental && history;
+  };
+
   const refreshNow = async (): Promise<boolean> => {
     if (!canRefresh()) return false;
 
@@ -119,7 +134,7 @@ export function createPortfolioAutoRefreshScheduler(
 
     const [quotesAndSync, supplemental] = await Promise.all([
       refreshQuotesAndSyncState(),
-      runTask('supplemental', options.refreshSupplemental)
+      refreshSupplementalAndSyncHistory()
     ]);
     return quotesAndSync && supplemental;
   };
@@ -140,7 +155,7 @@ export function createPortfolioAutoRefreshScheduler(
       if (canRefresh()) void refreshQuotesAndSyncState();
     }, activeInterval);
     supplementalTimer = setIntervalFn(() => {
-      if (canRefresh()) void runTask('supplemental', options.refreshSupplemental);
+      if (canRefresh()) void refreshSupplementalAndSyncHistory();
     }, SUPPLEMENTAL_REFRESH_INTERVAL_MS);
 
     return activeInterval;
