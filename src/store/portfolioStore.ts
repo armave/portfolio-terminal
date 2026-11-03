@@ -41,6 +41,70 @@ function todayIso(): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Preserve the last known daily move when a live tick omits change fields.
+ * Recalculate it against the prior quote's implied previous close so the move
+ * follows the latest price. Freshness and timestamps always come from the
+ * incoming quote, never from the older observation.
+ */
+function mergeLiveQuoteDetails(
+  previous: Record<string, unknown> | undefined,
+  incoming: Record<string, unknown> | undefined,
+  previousPrice: unknown,
+  nextPrice: number
+): Record<string, unknown> | undefined {
+  if (!incoming) return previous;
+
+  const next = { ...incoming };
+  const incomingChange = Number(incoming.change);
+  const incomingChangePercent = Number(incoming.changePercent);
+  const hasIncomingChange =
+    incoming.change !== null &&
+    incoming.change !== undefined &&
+    incoming.change !== '' &&
+    Number.isFinite(incomingChange) &&
+    incoming.changePercent !== null &&
+    incoming.changePercent !== undefined &&
+    incoming.changePercent !== '' &&
+    Number.isFinite(incomingChangePercent);
+  if (hasIncomingChange) {
+    next.change = incomingChange;
+    next.changePercent = incomingChangePercent;
+    return next;
+  }
+
+  if (!previous) return next;
+  const previousChange = Number(previous.change);
+  const previousChangePercent = Number(previous.changePercent);
+  const hasPreviousChange =
+    previous.change !== null &&
+    previous.change !== undefined &&
+    previous.change !== '' &&
+    Number.isFinite(previousChange) &&
+    previous.changePercent !== null &&
+    previous.changePercent !== undefined &&
+    previous.changePercent !== '' &&
+    Number.isFinite(previousChangePercent);
+  if (!hasPreviousChange) return next;
+
+  const priorQuotePrice = Number(previous.price);
+  const fallbackPrice = Number(previousPrice);
+  const baselinePrice = Number.isFinite(priorQuotePrice) && priorQuotePrice > 0
+    ? priorQuotePrice
+    : fallbackPrice;
+  const previousClose = baselinePrice - previousChange;
+  if (!Number.isFinite(previousClose) || previousClose <= 0) {
+    return { ...next, change: previousChange, changePercent: previousChangePercent };
+  }
+
+  const change = nextPrice - previousClose;
+  return {
+    ...next,
+    change,
+    changePercent: (change / previousClose) * 100
+  };
+}
+
 export class PortfolioStore {
   private state: PortfolioState;
   private listeners: Set<(state: PortfolioState, source: PortfolioStoreChangeSource) => void> = new Set();
@@ -891,6 +955,9 @@ export class PortfolioStore {
         return latestState;
       }
 
+      const positionQuoteDetails = position
+        ? mergeLiveQuoteDetails(position.quoteDetails, quote.quoteDetails, position.currentPrice, price)
+        : undefined;
       if (position) {
         positions[clean] = {
           ...position,
@@ -902,40 +969,68 @@ export class PortfolioStore {
           ...(quote.requestStartedAt === undefined && quote.quoteSource === 'Manual'
             ? { lastTradeAt: requestStartedAt }
             : {}),
-          ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {})
+          ...(positionQuoteDetails ? { quoteDetails: positionQuoteDetails } : {})
         };
       }
 
-      const updatedCashHoldings = cashHoldings.map((holding) =>
-        holding.ticker.toUpperCase() === clean
-          ? { ...holding, currentPrice: price, price, quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
-              quoteRequestStartedAt: requestStartedAt,
-              ...(requestSequence !== undefined ? { quoteRequestSequence: requestSequence } : {}),
-              quoteSource: quote.quoteSource ?? 'Live quote',
-              ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {}) }
-          : holding
-      );
-      const updatedCashStocks = cashStocks.map((holding) =>
-        holding.ticker.toUpperCase() === clean
-          ? { ...holding, currentPrice: price, quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
-              quoteRequestStartedAt: requestStartedAt,
-              ...(requestSequence !== undefined ? { quoteRequestSequence: requestSequence } : {}),
-              quoteSource: quote.quoteSource ?? 'Live quote',
-              ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {}) }
-          : holding
-      );
+      const updatedCashHoldings = cashHoldings.map((holding) => {
+        if (holding.ticker.toUpperCase() !== clean) return holding;
+        const quoteDetails = mergeLiveQuoteDetails(
+          holding.quoteDetails,
+          quote.quoteDetails,
+          holding.currentPrice ?? holding.price,
+          price
+        );
+        return {
+          ...holding,
+          currentPrice: price,
+          price,
+          quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
+          quoteRequestStartedAt: requestStartedAt,
+          ...(requestSequence !== undefined ? { quoteRequestSequence: requestSequence } : {}),
+          quoteSource: quote.quoteSource ?? 'Live quote',
+          ...(quoteDetails ? { quoteDetails } : {})
+        };
+      });
+      const updatedCashStocks = cashStocks.map((holding) => {
+        if (holding.ticker.toUpperCase() !== clean) return holding;
+        const quoteDetails = mergeLiveQuoteDetails(
+          holding.quoteDetails,
+          quote.quoteDetails,
+          holding.currentPrice,
+          price
+        );
+        return {
+          ...holding,
+          currentPrice: price,
+          quoteUpdatedAt: quote.quoteUpdatedAt ?? Date.now(),
+          quoteRequestStartedAt: requestStartedAt,
+          ...(requestSequence !== undefined ? { quoteRequestSequence: requestSequence } : {}),
+          quoteSource: quote.quoteSource ?? 'Live quote',
+          ...(quoteDetails ? { quoteDetails } : {})
+        };
+      });
       // Guest Balance cards read cashCushion.holdings, while the standalone LOTS
       // desk reads guestPortfolioSnapshot.tranches. Keep both projections on the
       // same accepted quote so LOTS market values do not remain at admin-publish time.
       const updatedGuestPortfolioSnapshot = hasMatchingGuestTranche && guestPortfolioSnapshot
         ? {
           ...guestPortfolioSnapshot,
-          tranches: guestPortfolioSnapshot.tranches.map((tranche) =>
-            tranche.ticker.trim().toUpperCase() === clean
-              ? { ...tranche, marketPrice: price, marketValue: price * tranche.quantity,
-                  ...(quote.quoteDetails ? { quoteDetails: quote.quoteDetails } : {}) }
-              : tranche
-          )
+          tranches: guestPortfolioSnapshot.tranches.map((tranche) => {
+            if (tranche.ticker.trim().toUpperCase() !== clean) return tranche;
+            const quoteDetails = mergeLiveQuoteDetails(
+              tranche.quoteDetails,
+              quote.quoteDetails,
+              tranche.marketPrice,
+              price
+            );
+            return {
+              ...tranche,
+              marketPrice: price,
+              marketValue: price * tranche.quantity,
+              ...(quoteDetails ? { quoteDetails } : {})
+            };
+          })
         }
         : guestPortfolioSnapshot;
 

@@ -78,9 +78,9 @@ describe('display formatters', () => {
       .toBe('Fresh: 1 · Stale: 1 · Delayed: 1 · Time unknown: 1 · Not fetched: 2');
   });
 
-  it('reports missing and unverified quote timestamps honestly', () => {
-    expect(formatQuoteMetadata({ quoteSource: 'Yahoo' })).toBe('Yahoo · Time unknown');
-    expect(formatQuoteMetadata({ quoteSource: 'Twelve Data', quoteUpdatedAt: 1_800_000_000_000 })).toBe('Twelve Data · Time unknown');
+  it('omits an unverified timestamp from individual quote labels', () => {
+    expect(formatQuoteMetadata({ quoteSource: 'Yahoo' })).toBe('Yahoo');
+    expect(formatQuoteMetadata({ quoteSource: 'Twelve Data', quoteUpdatedAt: 1_800_000_000_000 })).toBe('Twelve Data');
     expect(formatQuoteMetadata({})).toBe('Not fetched');
   });
 });
