@@ -385,6 +385,78 @@ async function assertResponsiveLayout(page, width) {
   }
 }
 
+async function assertVisibleControlsHaveNames(page, surface) {
+  const unnamed = await page.evaluate(() => {
+    const selectors = [
+      'button',
+      'a[href]',
+      'input:not([type="hidden"])',
+      'select',
+      'textarea',
+      '[role="button"]',
+      '[role="tab"]',
+      '[role="checkbox"]',
+      '[role="radio"]',
+      '[role="switch"]',
+      '[role="combobox"]'
+    ].join(', ');
+    const controls = Array.from(document.querySelectorAll(selectors));
+    const getText = (element) => String(element?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const isVisible = (element) =>
+      element.getClientRects().length > 0 &&
+      !element.closest('[hidden], [inert], [aria-hidden="true"]') &&
+      getComputedStyle(element).visibility !== 'hidden';
+    const getName = (element) => {
+      const ariaLabel = element.getAttribute('aria-label')?.trim();
+      if (ariaLabel) return ariaLabel;
+      const labelledBy = element.getAttribute('aria-labelledby')
+        ?.split(/\\s+/)
+        .map((id) => document.getElementById(id))
+        .filter(Boolean)
+        .map(getText)
+        .filter(Boolean)
+        .join(' ');
+      if (labelledBy) return labelledBy;
+      if ('labels' in element && element.labels?.length) {
+        const labels = Array.from(element.labels).map(getText).filter(Boolean).join(' ');
+        if (labels) return labels;
+      }
+      const alt = element.getAttribute('alt') ||
+        element.querySelector('img[alt]')?.getAttribute('alt') ||
+        element.querySelector('[role="img"][aria-label]')?.getAttribute('aria-label') ||
+        getText(element.querySelector('svg title'));
+      if (alt) return alt;
+      const value = element.matches('input[type="submit"], input[type="button"], input[type="reset"]')
+        ? element.value
+        : '';
+      if (value) return value;
+      const content = getText(element);
+      if (content) return content;
+      return element.getAttribute('title')?.trim() || '';
+    };
+
+    return controls
+      .filter(isVisible)
+      .map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        id: element.id || '',
+        role: element.getAttribute('role') || '',
+        name: getName(element),
+        markup: element.outerHTML.slice(0, 240)
+      }))
+      .filter((control) => !control.name || !/[a-zA-ZА-Яа-яЁё0-9]/u.test(control.name));
+  });
+
+  if (unnamed.length > 0) {
+    throw new Error(
+      `Visible controls without a meaningful accessible name in ${surface}: ` +
+      unnamed.map((control) =>
+        `<${control.tag}${control.id ? ' id="' + control.id + '"' : ''}> ${control.markup}`
+      ).join(' | ')
+    );
+  }
+}
+
 try {
   await waitForPreview();
   browser = await chromium.launch({ headless: true });
@@ -416,6 +488,7 @@ try {
     null,
     { timeout: 20_000 }
   );
+  await assertVisibleControlsHaveNames(page, 'administrator bootstrap dialog');
 
   await submitAuth(page, {
     name: 'Smoke Admin',
@@ -426,6 +499,7 @@ try {
 
   // Verify page geometry rather than treating successful mounting as responsive QA.
   await page.locator('#boardHeaderBanner #cloudStatus').waitFor({ state: 'visible', timeout: 10_000 });
+  await assertVisibleControlsHaveNames(page, 'administrator dashboard');
   if (await page.locator('#cloudStatus').count() !== 1) {
     throw new Error('Cloud synchronization health must have one persistent header indicator.');
   }
@@ -463,6 +537,7 @@ try {
   // Worker receives both the guest projection and durable LOTS ledger record.
   await page.getByRole('button', { name: /BALANCE/ }).click();
   await page.locator('#activeTranches').waitFor({ state: 'visible', timeout: 20_000 });
+  await assertVisibleControlsHaveNames(page, 'Balance desk before expanding tranches');
   await page.locator('#activeTranches').getByRole('button', { name: 'Expand' }).click();
   await page.locator('#activeTranchesTable .active-tranche-row').first().waitFor({ state: 'visible', timeout: 20_000 });
   const guestAssignment = page.locator('#activeTranchesTable select').first();
@@ -538,6 +613,7 @@ try {
   // backup and confirm a reset of local portfolio plus revisioned cloud history.
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  await assertVisibleControlsHaveNames(page, 'administrator Settings desk');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export portfolio backup as JSON' }).click();
   const download = await downloadPromise;
@@ -591,6 +667,7 @@ try {
     null,
     { timeout: 20_000 }
   );
+  await assertVisibleControlsHaveNames(page, 'sign-in dialog');
 
   const workspaceIsIsolated = await page.locator('#mainTerminalView').evaluate((element) => {
     const inertAncestor = element.closest('[inert]');
@@ -640,6 +717,7 @@ try {
 
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  await assertVisibleControlsHaveNames(page, 'guest Settings desk');
   if (!(await page.locator('#settingsDesk').innerText()).includes('Smoke Guest')) {
     throw new Error('The guest identity was not reflected in Settings after account switching.');
   }
