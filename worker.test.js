@@ -153,6 +153,127 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
   });
 });
 
+describe('Freedom authenticated portfolio and market WebSocket event diagnostics', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function makeEventSocket(expectedEvent, payload, userData = { mode: 'prod' }) {
+    const listeners = new Map();
+    const socket = {
+      addEventListener: vi.fn((name, callback) => {
+        const callbacks = listeners.get(name) || [];
+        callbacks.push(callback);
+        listeners.set(name, callbacks);
+      }),
+      accept: vi.fn(),
+      send: vi.fn((message) => {
+        expect(JSON.parse(message)).toEqual([expectedEvent]);
+        queueMicrotask(() => {
+          for (const callback of listeners.get('message') || []) {
+            callback({ data: JSON.stringify(['userData', userData]) });
+            callback({ data: JSON.stringify([expectedEvent, payload]) });
+          }
+        });
+      }),
+      close: vi.fn()
+    };
+    return socket;
+  }
+
+  async function runEventDiagnostic(eventName, payload, userData) {
+    const socket = makeEventSocket(eventName, payload, userData);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce({ status: 101, headers: new Headers(), webSocket: socket });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-event-stream&event=' + eventName,
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    return { response, socket, fetchMock };
+  }
+
+  it('confirms the portfolio event and returns schema counts without account values or identifiers', async () => {
+    const { response, socket, fetchMock } = await runEventDiagnostic('portfolio', {
+      key: '%private-login',
+      acc: [{ curr: 'USD', s: -17081.55, forecast_in: 10 }],
+      pos: [{ i: 'GOOGL.US', q: 31, mkt_price: 293.94, owner_login: 'private-login' }]
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      event: 'portfolio',
+      data: {
+        event: 'portfolio',
+        payloadType: 'object',
+        topLevelKeys: ['acc', 'key', 'pos'],
+        accountsCount: 1,
+        accountItemKeys: ['curr', 'forecast_in', 's'],
+        positionsCount: 1,
+        positionItemKeys: ['i', 'mkt_price', 'q']
+      },
+      diagnostics: {
+        requestedEvent: 'portfolio',
+        handshakeStatus: 101,
+        connectionOpened: true,
+        subscriptionSent: true,
+        userDataReceived: true,
+        sessionMode: 'prod',
+        eventReceived: true,
+        phase: 'event_received'
+      }
+    });
+    expect(JSON.stringify(body)).not.toContain('private-login');
+    expect(JSON.stringify(body)).not.toContain('-17081.55');
+    expect(JSON.stringify(body)).not.toContain('293.94');
+    expect(String(fetchMock.mock.calls[1][0])).toMatch(/^https:\/\/wss\.tradernet\.com\//);
+    expect(socket.close).toHaveBeenCalled();
+  });
+
+  it('confirms market-status updates and exposes only the documented field names', async () => {
+    const { response, socket } = await runEventDiagnostic('markets', {
+      t: '2026-11-03 09:00:00',
+      m: [{ n: 'NASDAQ', n2: 'NASDAQ', s: 'OPEN', o: '09:30:00', c: '16:00:00', dt: '-420' }]
+    }, { isDemo: false, mode: 'prod' });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      event: 'markets',
+      data: {
+        event: 'markets',
+        payloadType: 'object',
+        topLevelKeys: ['m', 't'],
+        marketsCount: 1,
+        marketItemKeys: ['c', 'dt', 'n', 'n2', 'o', 's']
+      }
+    });
+    expect(JSON.stringify(body)).not.toContain('NASDAQ');
+    expect(JSON.stringify(body)).not.toContain('OPEN');
+    expect(socket.close).toHaveBeenCalled();
+  });
+
+  it('rejects event names outside the read-only allowlist before login or socket access', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-event-stream&event=orders',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), { GATEWAY_SECRET: 'test-secret' });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: 'Unsupported TradeNet stream event. Allowed events: portfolio, markets.'
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('sanitizeFreedomActiveOrders', () => {
   it('accepts the top-level array used by the authenticated WebSocket orders event', () => {
     const result = sanitizeFreedomActiveOrders([
