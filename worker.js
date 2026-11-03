@@ -818,7 +818,7 @@ export default {
                         error: error instanceof Error ? error.message : "TradeNet orders stream diagnostic failed.",
                         diagnostics: error?.diagnostics || null
                     }), {
-                        status: Number.isInteger(status) && status >= 400 && status <= 599 ? status : 502,
+                        status: 200,
                         headers: { ...corsHeaders, "Cache-Control": "no-store" }
                     });
                 }
