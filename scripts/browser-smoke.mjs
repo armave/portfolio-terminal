@@ -416,13 +416,38 @@ async function assertManyTickerNavigation(page) {
       strip.appendChild(clone);
       clones.push(clone);
     }
+    const rectOf = (element) => {
+      if (!element) return null;
+      const bounds = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        id: element.id || '',
+        className: typeof element.className === 'string' ? element.className : '',
+        left: Math.round(bounds.left * 10) / 10,
+        right: Math.round(bounds.right * 10) / 10,
+        width: Math.round(bounds.width * 10) / 10,
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        overflowX: style.overflowX,
+        minWidth: style.minWidth,
+        maxWidth: style.maxWidth,
+        flex: style.flex
+      };
+    };
+    const ancestors = [];
+    let ancestor = strip;
+    while (ancestor && ancestors.length < 7) {
+      ancestors.push(rectOf(ancestor));
+      ancestor = ancestor.parentElement;
+    }
     const result = {
       clientWidth: strip.clientWidth,
       scrollWidth: strip.scrollWidth,
       documentWidth: document.documentElement.scrollWidth,
       viewportWidth: document.documentElement.clientWidth,
       stripWidth: strip.getBoundingClientRect().width,
-      fixedDestinationVisible: Boolean(document.querySelector('#settingsBtn')?.getClientRects().length)
+      fixedDestinationVisible: Boolean(document.querySelector('#settingsBtn')?.getClientRects().length),
+      ancestors
     };
     clones.forEach((clone) => clone.remove());
     return result;
@@ -435,7 +460,7 @@ async function assertManyTickerNavigation(page) {
     throw new Error('A long ticker list did not become independently scrollable.');
   }
   if (measurements.documentWidth > measurements.viewportWidth + 1) {
-    throw new Error('A long ticker list caused page-level horizontal overflow.');
+    throw new Error('A long ticker list caused page-level horizontal overflow: ' + JSON.stringify(measurements));
   }
   if (!measurements.fixedDestinationVisible) {
     throw new Error('Fixed workspace destinations disappeared beside a long ticker list.');
