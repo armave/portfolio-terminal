@@ -354,6 +354,29 @@ describe('canonical portfolio-state migration', () => {
 
 
 describe('legacy cloud snapshot migration safety', () => {
+  it('normalizes prototype-sensitive legacy ticker keys without mutating object prototypes', () => {
+    const store = new PortfolioStore();
+    const importedPositions = JSON.parse(`{
+      "__proto__": {
+        "ticker": "__proto__", "shares": 1, "currentPrice": 10, "pt": 12, "commBuy": 0,
+        "tranches": [{ "qty": 1, "price": 9, "date": "2026-10-01" }]
+      },
+      "constructor": {
+        "ticker": "constructor", "shares": 2, "currentPrice": 20, "pt": 22, "commBuy": 0,
+        "tranches": [{ "qty": 2, "price": 19, "date": "2026-10-02" }]
+      }
+    }`);
+
+    expect(store.importState({ positions: importedPositions })).toBe(true);
+    const positions = store.getState().positions;
+
+    expect(Object.getPrototypeOf(positions)).toBe(Object.prototype);
+    expect(Object.prototype.hasOwnProperty.call(positions, '__PROTO__')).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(positions, 'CONSTRUCTOR')).toBe(true);
+    expect(positions.__PROTO__.ticker).toBe('__PROTO__');
+    expect(positions.CONSTRUCTOR.ticker).toBe('CONSTRUCTOR');
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
   const legacyHolding: Holding = {
     ticker: 'AAPL',
     isMargin: true,
@@ -890,6 +913,24 @@ describe('canonical trade lifecycle and persistence', () => {
   });
 
 
+  it('rejects non-finite cash-balance inputs without changing committed state or storage', () => {
+    const store = new PortfolioStore();
+    expect(store.setCashBalance(500)).toBe(true);
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(store.setCashBalance(Number.NaN)).toBe(false);
+    expect(store.setCashBalance(Number.POSITIVE_INFINITY)).toBe(false);
+    expect(store.setCashBalance(Number.NEGATIVE_INFINITY)).toBe(false);
+
+    expect(store.getState()).toBe(previousState);
+    expect(store.getState().cashCushion.freeCash).toBe(500);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it('ignores non-finite trade inputs without corrupting financial state', () => {
     vi.stubGlobal('localStorage', localStorageMock);
     const store = new PortfolioStore();
@@ -1269,6 +1310,48 @@ describe('canonical trade lifecycle and persistence', () => {
 
     expect(store.getState().cashCushion.holdings).toEqual([]);
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not commit invalid tranche, cash-holding, or closed-trade removals', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL', shares: 2, currentPrice: 110, pt: 125, commBuy: 0,
+          tranches: [
+            { qty: 1, price: 100, date: '2026-10-01' },
+            { qty: 1, price: 105, date: '2026-10-02' }
+          ]
+        }
+      },
+      cashCushion: { freeCash: 0, holdings: [{ ticker: 'MSFT', shares: 1, price: 20 }] },
+      closedTrades: [{ ticker: 'AAPL', shares: 1, netProfit: 10 }]
+    });
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.removeTranche('AAPL', 'MSFT-0');
+    store.removeTranche('AAPL', 'AAPL-invalid');
+    store.removeTranche('AAPL', 'AAPL-9');
+    expect(store.removeCashStock('GOOG')).toBe(false);
+    expect(store.removeCashStock(-1)).toBe(false);
+    expect(store.removeCashStock(3)).toBe(false);
+    store.deleteClosedTrade(-1);
+    store.deleteClosedTrade(3);
+
+    expect(store.getState()).toBe(previousState);
+    expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    expect(listener).not.toHaveBeenCalled();
+
+    store.removeTranche('AAPL', 'AAPL-0');
+    expect(store.getState().positions.AAPL.shares).toBe(1);
+    expect(store.getState().positions.AAPL.tranches).toHaveLength(1);
+
+    store.deleteClosedTrade(0);
+    expect(store.getState().closedTrades).toEqual([]);
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 
   it('sells cash-cushion shares atomically, paying debt before adding surplus cash', () => {
@@ -2110,6 +2193,27 @@ describe('atomic portfolio-store persistence', () => {
     expect(storageMock.setItem).not.toHaveBeenCalled();
   });
 
+  it('recovers cleanly after a failed storage commit', () => {
+    const store = new PortfolioStore();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    storageMock.setItem.mockImplementation(() => {
+      throw new Error('temporary quota failure');
+    });
+    expect(store.setState({ balance: -200 })).toBe(false);
+    expect(store.getState().balance).toBe(0);
+    expect(listener).not.toHaveBeenCalled();
+
+    storageMock.setItem.mockImplementation((key, value) => {
+      values.set(key, String(value));
+    });
+    expect(store.setState({ balance: -300 })).toBe(true);
+    expect(store.getState().balance).toBe(-300);
+    expect(JSON.parse(values.get('margin_portfolio_state_dynamic_v2') || '{}').balance).toBe(-300);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it('returns failed commits for debt, rollover, and broker-assumption mutations', () => {
     const store = new PortfolioStore();
     store.setState({
@@ -2127,6 +2231,30 @@ describe('atomic portfolio-store persistence', () => {
     expect(store.updateAssumptions({ annualBorrowRate: 0.2 })).toBe(false);
     expect(store.getState()).toBe(previous);
     expect(store.getState().balance).toBe(-100);
+  });
+
+  it('rolls back the portfolio snapshot when broker rules cannot be saved', () => {
+    const store = new PortfolioStore();
+    expect(store.updateAssumptions({ annualBorrowRate: 0.12 })).toBe(true);
+    const previousState = store.getState();
+    const previousPortfolioSnapshot = values.get('margin_portfolio_state_dynamic_v2');
+    const previousBrokerRules = values.get('tradernet_rules_v1');
+    const listener = vi.fn();
+    const persistenceErrorListener = vi.fn();
+    store.subscribe(listener);
+    store.subscribePersistenceErrors(persistenceErrorListener);
+
+    storageMock.setItem.mockImplementation((key, value) => {
+      if (key === 'tradernet_rules_v1') throw new Error('broker rules quota exceeded');
+      values.set(key, String(value));
+    });
+
+    expect(store.updateAssumptions({ annualBorrowRate: 0.2 })).toBe(false);
+    expect(store.getState()).toBe(previousState);
+    expect(values.get('margin_portfolio_state_dynamic_v2')).toBe(previousPortfolioSnapshot);
+    expect(values.get('tradernet_rules_v1')).toBe(previousBrokerRules);
+    expect(listener).not.toHaveBeenCalled();
+    expect(persistenceErrorListener).toHaveBeenCalledTimes(1);
   });
 
   it('does not publish a portfolio update when the closed-history sidecar write fails', () => {
@@ -2154,5 +2282,154 @@ describe('atomic portfolio-store persistence', () => {
     expect(persistenceErrorListener).toHaveBeenCalledTimes(1);
     expect(values.has('margin_portfolio_state_dynamic_v2')).toBe(false);
     expect(values.has('portfolio_closed_history_v1')).toBe(false);
+  });
+});
+
+describe('portfolio store subscriber failure isolation', () => {
+  it('publishes pending confirmation state as transient without writing a portfolio snapshot', () => {
+    const setItem = vi.spyOn(sharedLocalStorage, 'setItem');
+    const store = new PortfolioStore();
+    const listener = vi.fn();
+    store.subscribe(listener);
+    setItem.mockClear();
+
+    store.setPendingMutation(null);
+
+    expect(setItem).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][1]).toBe('derived');
+    setItem.mockRestore();
+  });
+
+  it('continues notifying state subscribers when an earlier subscriber throws', () => {
+    const store = new PortfolioStore();
+    const error = new Error('broken state subscriber');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const laterSubscriber = vi.fn();
+
+    store.subscribe(() => {
+      throw error;
+    });
+    store.subscribe(laterSubscriber);
+
+    try {
+      expect(store.setState({ balance: -125 })).toBe(true);
+      expect(store.getState().balance).toBe(-125);
+      expect(laterSubscriber).toHaveBeenCalledTimes(1);
+      expect(laterSubscriber).toHaveBeenCalledWith(store.getState(), 'durable');
+      expect(consoleError).toHaveBeenCalledWith(
+        'Failed to notify a portfolio state subscriber:',
+        error
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it('continues notifying active-view subscribers when an earlier subscriber throws', () => {
+    const store = new PortfolioStore();
+    const error = new Error('broken active-view subscriber');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const laterSubscriber = vi.fn();
+
+    store.subscribeActiveView(() => {
+      throw error;
+    });
+    store.subscribeActiveView(laterSubscriber);
+
+    try {
+      expect(() => store.setActiveView('SETTINGS')).not.toThrow();
+      expect(store.getState().activeView).toBe('SETTINGS');
+      expect(laterSubscriber).toHaveBeenCalledTimes(1);
+      expect(laterSubscriber).toHaveBeenCalledWith('SETTINGS');
+      expect(consoleError).toHaveBeenCalledWith(
+        'Failed to notify a portfolio active-view subscriber:',
+        error
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+});
+
+describe('portfolio import boundary validation', () => {
+  it('rejects malformed top-level containers without replacing the committed portfolio', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 2,
+          currentPrice: 190,
+          pt: 210,
+          commBuy: 1,
+          tranches: [{ qty: 2, price: 180, date: '2026-10-01' }]
+        }
+      },
+      balance: -250,
+      closedTrades: [{ ticker: 'MSFT', shares: 1, netProfit: 20 }]
+    });
+
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    const malformedImports: unknown[] = [
+      null,
+      [],
+      { positions: null },
+      { positions: [] },
+      { positions: undefined },
+      { cashCushion: null },
+      { cashCushion: undefined },
+      { closedTrades: undefined },
+      { apiKeys: undefined },
+      { brokerAssumptions: undefined },
+      { cashCushion: { holdings: {} } },
+      { closedTrades: {} },
+      { brokerExecutedTrades: {} },
+      { cashflows: {} },
+      { apiKeys: [] },
+      { guestPortfolioSnapshot: { updatedAt: 1, tranches: {} } },
+      { brokerAccountInfo: { balances: {}, positions: [] } }
+    ];
+
+    for (const malformed of malformedImports) {
+      expect(store.importState(malformed as Partial<import('../types/portfolio').PortfolioState>)).toBe(false);
+      expect(store.getState()).toBe(previousState);
+      expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    }
+
+    expect(store.getState().positions.AAPL.shares).toBe(2);
+    expect(store.getState().closedTrades).toEqual([
+      { ticker: 'MSFT', shares: 1, netProfit: 20 }
+    ]);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('continues to support valid partial imports without clearing omitted portfolio fields', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        GOOGL: {
+          ticker: 'GOOGL',
+          shares: 3,
+          currentPrice: 300,
+          pt: 350,
+          commBuy: 0,
+          tranches: [{ qty: 3, price: 280, date: '2026-10-02' }]
+        }
+      },
+      closedTrades: [{ ticker: 'AAPL', shares: 1, netProfit: 15 }]
+    });
+
+    expect(store.importState({ balance: -75 })).toBe(true);
+
+    expect(store.getState().balance).toBe(-75);
+    expect(store.getState().positions.GOOGL.shares).toBe(3);
+    expect(store.getState().closedTrades).toEqual([
+      { ticker: 'AAPL', shares: 1, netProfit: 15 }
+    ]);
   });
 });
