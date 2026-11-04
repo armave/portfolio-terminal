@@ -728,6 +728,12 @@ try {
   await assertVisibleControlsHaveNames(page, 'Balance desk before expanding tranches');
   await assertResponsiveSurface(page, '#cashCushionContainer', 'Balance desk');
   await page.locator('#activeTranches').getByRole('button', { name: 'Expand' }).click();
+  await page.waitForFunction(() => {
+    const panel = document.querySelector('#activeTranchesPanel');
+    if (!panel?.classList.contains('is-expanded')) return false;
+    const bounds = panel.getBoundingClientRect();
+    return bounds.height > 100 && Number(getComputedStyle(panel).opacity) >= 0.99;
+  }, null, { timeout: 10_000 });
   await page.locator('#activeTranchesTable .active-tranche-row').first().waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'Expanded Balance tranche table');
 
