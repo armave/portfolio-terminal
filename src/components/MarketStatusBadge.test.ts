@@ -5,12 +5,23 @@ import {
   getMarketStatusLabel,
   getMarketStatusRoleLabel,
   getMarketStatusTone,
+  isCurrentMarketStatusRequest,
   normalizeMarketSessionStatus
 } from './MarketStatusBadge';
 
 beforeEach(() => setAppLanguage('en'));
 
 describe('US-equities market status presentation', () => {
+
+  it('ignores a market-status response started before an authentication transition', () => {
+    const requestGeneration = 4;
+    expect(isCurrentMarketStatusRequest(true, requestGeneration, requestGeneration)).toBe(true);
+
+    // A logout or account switch increments the generation before the request resolves.
+    expect(isCurrentMarketStatusRequest(true, requestGeneration, requestGeneration + 1)).toBe(false);
+    expect(isCurrentMarketStatusRequest(false, requestGeneration, requestGeneration)).toBe(false);
+  });
+
   it('uses different labels for administrator and guest workspaces', () => {
     expect(getMarketStatusRoleLabel(true)).toBe('Portfolio market');
     expect(getMarketStatusRoleLabel(false)).toBe('Your market');
