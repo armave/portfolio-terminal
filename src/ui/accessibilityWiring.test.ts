@@ -57,6 +57,21 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('role="region" aria-label="Stocktwits messages" tabIndex={0}');
   });
 
+  it('keeps common scenario, empty-state, auth, and quote-link actions touch-sized with visible keyboard focus', () => {
+    const comparison = readSource('../components/ScenarioComparisonModal.tsx');
+    const report = readSource('../components/ScenarioReportModal.tsx');
+    const auth = readSource('../components/AuthModal.tsx');
+    const emptyState = readSource('../components/EmptyStatePanel.tsx');
+    const externalLinks = readSource('../components/BoardExternalLinks.tsx');
+
+    for (const source of [comparison, report, emptyState, externalLinks]) {
+      expect(source).toContain('min-h-11');
+      expect(source).toContain('focus-visible:ring-2');
+    }
+    expect(auth).toContain('focus-visible:ring-2');
+    expect(externalLinks).toContain('inline-flex min-h-11 min-w-11 items-center justify-center');
+  });
+
   it('makes long modal content keyboard-scrollable and labelled by its dialog title', () => {
     const news = readSource('../components/MarketInsightsPanel.tsx');
     const report = readSource('../components/ScenarioReportModal.tsx');
