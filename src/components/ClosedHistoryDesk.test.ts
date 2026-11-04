@@ -51,6 +51,18 @@ describe('Trades cache-first rendering', () => {
     expect(source).toContain('setCashflowSyncReady(true)');
   });
 
+  it('ignores fee-allocation completion after its effect is disposed', () => {
+    const source = readSource();
+    const allocationEffect = source.slice(
+      source.indexOf('// Recalculate once per distinct cashflow/execution snapshot.'),
+      source.indexOf('const processCashflowRows')
+    );
+
+    expect(allocationEffect).toContain('let active = true;');
+    expect(allocationEffect).toContain('if (!active || !isSessionCurrent()) return;');
+    expect(allocationEffect).toContain('return () => {\n      active = false;\n    };');
+  });
+
   it('allows retrying a failed automatic cashflow refresh without remounting Trades', () => {
     const source = readSource();
     const retry = source.slice(source.indexOf('const syncCashflowsFromFreedom'), source.indexOf('useEffect(() => {', source.indexOf('const syncCashflowsFromFreedom')));
