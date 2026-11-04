@@ -772,6 +772,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Best bid": "Лучшая цена покупки",
   "Best ask": "Лучшая цена продажи",
   "Visible size": "Видимый объём",
+  "Crossed order book: highest bid is above lowest ask. Treat this snapshot as inconsistent and do not rely on its displayed liquidity.": "Пересечённый стакан: лучшая цена покупки выше лучшей цены продажи. Снимок противоречив, не полагайтесь на показанную ликвидность.",
   "Book balance": "Баланс стакана",
   "Visible size imbalance": "Дисбаланс видимого объёма",
   "Price-grouped liquidity ladder": "Распределение ликвидности по ценам",
