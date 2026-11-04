@@ -103,7 +103,9 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
         setSnapshot(result);
         setFailed(false);
       } catch {
-        if (active && authenticated) setFailed(true);
+        if (isCurrentMarketStatusRequest(active, requestGeneration, authGeneration) && authenticated) {
+          setFailed(true);
+        }
       } finally {
         inFlight = false;
         if (active) setLoading(false);
@@ -118,15 +120,17 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
       authGeneration += 1;
       authenticated = Boolean(event.detail.user);
       setHasAuthenticatedSession(authenticated);
+      hasLoaded = false;
+      setSnapshot(null);
+      setFailed(false);
+
       if (!authenticated) {
-        hasLoaded = false;
-        setSnapshot(null);
-        setFailed(false);
         setLoading(false);
         refreshPending = false;
         return;
       }
-      setFailed(false);
+
+      setLoading(true);
       void refresh();
     };
     const handleVisibilityChange = () => {
