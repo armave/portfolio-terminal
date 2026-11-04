@@ -65,6 +65,10 @@ async function mockWorkerApi(page) {
         curr: 'USD', i: 'AAPL.US', name: 'Apple', q: '5',
         mkt_price: '11', market_value: '55', bal_price_a: '10',
         profit_close: '5', acc_pos_id: 7001
+      }, {
+        curr: 'USD', i: 'MSFT.US', name: 'Microsoft', q: '2',
+        mkt_price: '21', market_value: '42', bal_price_a: '20',
+        profit_close: '2', acc_pos_id: 7002
       }]
     } } }
   };
@@ -77,6 +81,17 @@ async function mockWorkerApi(page) {
       p: '10',
       date: '2026-11-02T09:00:00.000Z',
       v: '50',
+      curr_c: 'USD',
+      commiss: '0.10',
+      profit: '0'
+    }, {
+      trade_id: 'smoke-buy-msft-1',
+      instr_nm: 'MSFT.US',
+      operation: '1',
+      quantity: '2',
+      p: '20',
+      date: '2026-11-02T10:00:00.000Z',
+      v: '40',
       curr_c: 'USD',
       commiss: '0.10',
       profit: '0'
@@ -677,10 +692,55 @@ try {
     await assertResponsiveLayout(page, width);
   }
 
-  // Exercise the real News dialog with a deterministic provider response.
-  const marginTickerTab = page.locator('#tickerTabs [aria-label^="Margin:"]').first();
+
+
+  // Exercise roving keyboard navigation through the full destination list.
+  const navigationTabs = page.locator('#tickerTabs [data-nav-tab="true"]');
+  await navigationTabs.first().focus();
+  await page.keyboard.press('End');
+  if (await page.evaluate(() => document.activeElement?.id) !== 'settingsBtn') {
+    throw new Error('End did not move focus to the final workspace destination.');
+  }
+  await page.keyboard.press('Enter');
+  await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  await assertVisibleControlsHaveNames(page, 'administrator Settings desk navigation');
+  await assertResponsiveSurface(page, '#settings', 'administrator Settings desk');
+  await page.locator('#settingsBtn').focus();
+  await page.keyboard.press('ArrowRight');
+  if (!(await navigationTabs.first().evaluate((element) => element === document.activeElement))) {
+    throw new Error('ArrowRight did not wrap from the final destination to the first.');
+  }
+
+  if (worker.count('POST', '/api/auth/bootstrap') !== 1) {
+    throw new Error('Administrator bootstrap did not reach the mocked Worker exactly once.');
+  }
+  if (worker.count('GET', '/api/state') < 1) {
+    throw new Error('Administrator startup did not request the shared workspace.');
+  }
+  if (worker.count('GET', '/api/guest-portfolio') !== 0) {
+    throw new Error('Administrator startup unexpectedly requested the guest-scoped projection.');
+  }
+
+  // Assign the active cash tranche through the admin UI and verify that the
+  // Worker receives both the guest projection and durable LOTS ledger record.
+  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.locator('#activeTranches').waitFor({ state: 'visible', timeout: 20_000 });
+  await assertVisibleControlsHaveNames(page, 'Balance desk before expanding tranches');
+  await assertResponsiveSurface(page, '#cashCushionContainer', 'Balance desk');
+  await page.locator('#activeTranches').getByRole('button', { name: 'Expand' }).click();
+  await page.locator('#activeTranchesTable .active-tranche-row').first().waitFor({ state: 'visible', timeout: 20_000 });
+  await assertVisibleControlsHaveNames(page, 'Expanded Balance tranche table');
+
+  // Keep AAPL cash-funded for the guest assignment journey, while exercising
+  // News against a second operation explicitly classified as Margin.
+  const msftRow = page.locator('#activeTranchesTable .active-tranche-row').filter({ hasText: 'MSFT' });
+  await msftRow.waitFor({ state: 'visible', timeout: 20_000 });
+  await msftRow.getByRole('button', { name: 'Margin' }).click();
+  const marginTickerTab = page.locator('#tickerTabs [aria-label="Margin: MSFT"]');
   await marginTickerTab.waitFor({ state: 'visible', timeout: 20_000 });
   await marginTickerTab.click();
+
+  // Exercise the real News dialog with a deterministic provider response.
   const marketInsights = page.locator('#marketInsightsPanel');
   await marketInsights.waitFor({ state: 'visible', timeout: 20_000 });
   await waitForCondition(
@@ -726,51 +786,17 @@ try {
 
   await assertManyTickerNavigation(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-
-  // Exercise roving keyboard navigation through the full destination list.
-  const navigationTabs = page.locator('#tickerTabs [data-nav-tab="true"]');
-  await navigationTabs.first().focus();
-  await page.keyboard.press('End');
-  if (await page.evaluate(() => document.activeElement?.id) !== 'settingsBtn') {
-    throw new Error('End did not move focus to the final workspace destination.');
-  }
-  await page.keyboard.press('Enter');
-  await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
-  await assertVisibleControlsHaveNames(page, 'administrator Settings desk navigation');
-  await assertResponsiveSurface(page, '#settings', 'administrator Settings desk');
-  await page.locator('#settingsBtn').focus();
-  await page.keyboard.press('ArrowRight');
-  if (!(await navigationTabs.first().evaluate((element) => element === document.activeElement))) {
-    throw new Error('ArrowRight did not wrap from the final destination to the first.');
-  }
-
-  if (worker.count('POST', '/api/auth/bootstrap') !== 1) {
-    throw new Error('Administrator bootstrap did not reach the mocked Worker exactly once.');
-  }
-  if (worker.count('GET', '/api/state') < 1) {
-    throw new Error('Administrator startup did not request the shared workspace.');
-  }
-  if (worker.count('GET', '/api/guest-portfolio') !== 0) {
-    throw new Error('Administrator startup unexpectedly requested the guest-scoped projection.');
-  }
-
-  // Assign the active cash tranche through the admin UI and verify that the
-  // Worker receives both the guest projection and durable LOTS ledger record.
-  await page.getByRole('button', { name: /BALANCE/ }).click();
-  await page.locator('#activeTranches').waitFor({ state: 'visible', timeout: 20_000 });
-  await assertVisibleControlsHaveNames(page, 'Balance desk before expanding tranches');
-  await assertResponsiveSurface(page, '#cashCushionContainer', 'Balance desk');
-  await page.locator('#activeTranches').getByRole('button', { name: 'Expand' }).click();
-  await page.locator('#activeTranchesTable .active-tranche-row').first().waitFor({ state: 'visible', timeout: 20_000 });
-  await assertVisibleControlsHaveNames(page, 'Expanded Balance tranche table');
-  const guestAssignment = page.locator('#activeTranchesTable select').first();
+  const aaplRow = page.locator('#activeTranchesTable .active-tranche-row').filter({ hasText: 'AAPL' });
+  const guestAssignment = aaplRow.locator('select').first();
   await guestAssignment.waitFor({ state: 'visible', timeout: 20_000 });
   await waitForCondition(
     () => worker.calls.some((call) => call.method === 'GET' && call.pathname === '/api/auth/users'),
     'administrator guest directory request'
   );
   await page.waitForFunction(() => {
-    const select = document.querySelector('#activeTranchesTable select');
+    const aaplRow = Array.from(document.querySelectorAll('#activeTranchesTable .active-tranche-row'))
+      .find((row) => row.querySelector('[data-label="Ticker"]')?.textContent?.trim() === 'AAPL');
+    const select = aaplRow?.querySelector('select');
     return Boolean(select && Array.from(select.options).some((option) => option.value === 'guest-smoke'));
   }, null, { timeout: 20_000 });
   await guestAssignment.selectOption('guest-smoke');
