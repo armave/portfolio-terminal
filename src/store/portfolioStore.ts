@@ -302,7 +302,15 @@ export class PortfolioStore {
 
   private notifyActiveView(): void {
     const activeView = this.state.activeView;
-    this.activeViewListeners.forEach((listener) => listener(activeView));
+    this.activeViewListeners.forEach((listener) => {
+      try {
+        listener(activeView);
+      } catch (error) {
+        // A faulty view subscriber must not prevent other subscribers from
+        // observing a committed navigation change.
+        console.error('Failed to notify a portfolio active-view subscriber:', error);
+      }
+    });
   }
 
   public subscribePersistenceErrors(listener: (message: string) => void): () => void {
@@ -311,7 +319,17 @@ export class PortfolioStore {
   }
 
   private notify(source: PortfolioStoreChangeSource = 'durable'): void {
-    this.listeners.forEach((listener) => listener(this.state, source));
+    const state = this.state;
+    this.listeners.forEach((listener) => {
+      try {
+        listener(state, source);
+      } catch (error) {
+        // State is already committed before notification. Isolate subscriber
+        // failures so one consumer cannot starve the remaining subscribers or
+        // make a successful mutation appear to have failed.
+        console.error('Failed to notify a portfolio state subscriber:', error);
+      }
+    });
   }
 
   private notifyPersistenceFailure(): void {
