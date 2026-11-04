@@ -1,6 +1,6 @@
 # PR 2 — Portfolio store atomicity and persistence boundaries
 
-**Status:** Draft planning scaffold. This initial commit contains the implementation specification only; production-code changes and regression tests are still to be added.
+**Status:** Draft implementation in progress. The branch now includes portfolio import-container validation and subscriber-notification isolation, with focused Vitest regression tests. The remaining audit and validation checklist is still open.
 
 **Proposed PR title:** `refactor(store): harden portfolio mutations and persistence boundaries`
 
@@ -37,10 +37,11 @@ Do not modify Cloudflare Worker routes, Durable Object storage, encrypted cloud 
 - [ ] Ensure persistence failures are observable and do not leave in-memory state falsely marked as durably saved.
 - [ ] Verify notification behavior: durable mutations notify with the correct source; rejected/no-op quote updates do not persist or notify unnecessarily.
 - [ ] Verify quote updates apply to the latest state and reject stale request sequences/timestamps; a quote must not recreate a closed position or overwrite a later trade.
-- [ ] Verify import validates top-level containers before committing; malformed data must not silently become an empty portfolio.
+- [x] Validate import top-level containers before committing; malformed collection/object containers are rejected without replacing the committed snapshot. Focused tests cover malformed positions, cash holdings, history arrays, API-key maps, guest snapshots, and broker-account containers.
 - [ ] Verify reset preserves established device/account configuration and role-specific settings while clearing only intended portfolio-owned fields.
 - [ ] Verify legacy snapshot migrations and current exports remain compatible, including aliases and prototype-sensitive position keys.
-- [ ] Add failure-injection tests for storage read/write errors, import failure, rejected partial mutation, subscription cleanup, and recovery after failure.
+- [x] Add focused failure/edge-case regression coverage for malformed imports and subscriber exceptions; existing atomic-persistence tests already cover storage write failures and closed-history sidecar rollback.
+- [ ] Extend any remaining uncovered failure-injection cases for subscription cleanup and recovery after failure.
 - [ ] Keep cloud revision coordination, encryption, guest/admin authorization, and session identity in their existing service/runtime owners.
 - [ ] Record compatibility decisions and migration scenarios in the PR description and architecture tracker.
 
