@@ -359,6 +359,9 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
               <p class="text-[10px] text-slate-500">{depthText('Visible size imbalance')}</p>
             </div>
           </div>
+          {summary.spread !== null && summary.spread < 0 && <p role="alert" class="mb-4 rounded-lg border border-rose-800/70 bg-rose-950/30 px-3 py-2 text-xs font-semibold text-rose-200">
+            {depthText('Crossed order book: highest bid is above lowest ask. Treat this snapshot as inconsistent and do not rely on its displayed liquidity.')}
+          </p>}
 
           {hasLevels ? <section aria-label={depthText('Proportional market depth ladder')} class="mb-4">
             <div class="mb-2 flex flex-wrap items-end justify-between gap-2">
