@@ -222,3 +222,21 @@ The remaining work is the final repository diff review and compatibility audit. 
  
 
 **Latest cleanup change:** removed the empty Closed History callback passed from `app.ts` to `renderBoardUI`. `renderBoardUI` already communicates active desk state through `terminal:active-view`, and `App` mounts `ClosedHistoryDesk` from that state. The callback body was empty, so deleting the no-op callback contract does not change the desk lifecycle. CI is required to validate this change on the new head.
+
+## Frontend runtime and UI lifecycle invariants — PR #305
+
+The browser runtime keeps `app.ts` as its composition root and `src/App.tsx` as the Preact shell. Startup, authentication/session, navigation, broker refresh, quote refresh, portfolio synchronization, and equity synchronization already have dedicated runtime modules with injected dependencies. The shell registers startup/auth/navigation UI events and the language subscription in a layout effect, then removes those listeners during cleanup. Additional wrappers should be introduced only for a cohesive lifecycle with a distinct owner and disposer contract.
+
+The shared UI lifecycle layer has the following verified behavior:
+
+- `useDialogFocus` owns topmost-dialog keyboard handling, focus containment/restoration, background isolation, and document-scoped scroll locking. Background isolation and scroll locks are reference-counted so nested dialogs do not release shared state prematurely.
+- Scenario modal exit-animation callbacks use a cancellable scheduler and are cancelled by component cleanup.
+- Market-status responses are guarded by an auth-session generation. A result from a previous account identity cannot restore stale status after logout or account switching.
+- Closed History fee-allocation completion checks the owning effect's active flag and current session before updating readiness state.
+- The i18n service translates Preact text nodes and accessible text attributes at VNode creation; tests cover Russian authentication/scenario/market labels and accessible names.
+- Wide table content uses named, keyboard-scrollable regions; dialogs label long-content regions by their visible title; data tables retain scoped row/column headers.
+- High-use action controls in scenario dialogs, authentication, empty state, and external quote links use at least a 44px hit target and visible keyboard-focus styling.
+
+The existing lazy-loaded desk and modal chunks remain dynamically imported and are guarded by `appCodeSplitting.test.ts`. The entry bundle budget remains 500,000 raw bytes / 165,000 gzip bytes, enforced by `bundleBudget.test.ts`. Root design tokens and the single reduced-motion policy remain under the completed CSS Stage 4 contract; `startup-critical.css` remains separate.
+
+**Known limitations:** this frontend PR adds targeted cleanup, not a wholesale accessibility recertification. A broader viewport-by-viewport UX review and the final rebase/integration after the portfolio-store PR remain outstanding. No financial formulas, portfolio persistence contracts, Worker endpoints, or Durable Object behavior are changed here.
