@@ -749,19 +749,19 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
       {
         i: 'AAPL.US', n: 1, cnt: 2,
         ins: [
-          { k: 0, p: 205.5, q: 3, s: 'B', owner_login: 'private-login' },
-          { k: 0, p: 205.75, q: 4, s: 'S' }
+          { k: 0, p: 205.75, q: 4, s: 'S' },
+          { k: 1, p: 205.5, q: 3, s: 'B', owner_login: 'private-login' }
         ],
         account: 'private-value'
       },
       {
         i: 'AAPL.US', n: 2, cnt: 3,
-        ins: [{ k: 1, p: 205.25, q: 7, s: 'B' }],
-        upd: [{ k: 0, p: 205.6, q: 5, s: 'B' }]
+        ins: [{ k: 1, p: 205.6, q: 7, s: 'B' }],
+        upd: [{ k: 2, p: 205.55, q: 5, s: 'B' }]
       },
       {
         i: 'AAPL.US', n: 3, cnt: 2,
-        del: [{ k: 1, s: 'B' }]
+        del: [{ k: 2, s: 'B' }]
       }
     ];
     const { response, socket } = await runEventDiagnostic(
@@ -782,7 +782,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
         rowUpdatesApplied: 1,
         deletionsApplied: 1,
         captureDurationMs: 8000,
-        bids: [{ position: 0, price: 205.6, quantity: 5 }],
+        bids: [{ position: 1, price: 205.6, quantity: 7 }],
         asks: [{ position: 0, price: 205.75, quantity: 4 }]
       }
     });
@@ -3353,9 +3353,9 @@ describe('Durable Object administrator Market Depth live stream', () => {
             n: 1,
             cnt: 2,
             ins: [
-              { k: 0, p: 287.72, q: 10, s: 'B', owner_login: 'private-login' },
-              { k: 1, p: 287.72, q: 5, s: 'B' },
-              { k: 0, p: 287.79, q: 20, s: 'S', account_id: 'private-account' }
+              { k: 0, p: 287.79, q: 20, s: 'S', account_id: 'private-account' },
+              { k: 1, p: 287.72, q: 10, s: 'B', owner_login: 'private-login' },
+              { k: 2, p: 287.72, q: 5, s: 'B' }
             ]
           }]) });
         }
@@ -3402,8 +3402,8 @@ describe('Durable Object administrator Market Depth live stream', () => {
         symbol: 'GOOGL.US',
         data: expect.objectContaining({
           bids: [
-            { position: 0, price: 287.72, quantity: 10 },
-            { position: 1, price: 287.72, quantity: 5 }
+            { position: 1, price: 287.72, quantity: 10 },
+            { position: 2, price: 287.72, quantity: 5 }
           ],
           asks: [{ position: 0, price: 287.79, quantity: 20 }]
         })

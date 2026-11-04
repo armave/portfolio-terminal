@@ -89,7 +89,6 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
         }
       }
 
-      if (Number.isSafeInteger(update.n)) sequence = update.n;
       updateCount += 1;
       applied += 1;
       if (Number.isSafeInteger(update.cnt) && update.cnt >= 0) reportedDepth = update.cnt;
@@ -151,6 +150,9 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
         levels.set(row.position, row);
         rowUpdatesApplied += 1;
       }
+
+      // Commit the ordinal only after the entire delta was applied successfully.
+      if (Number.isSafeInteger(update.n)) sequence = update.n;
     }
     return applied;
   };
