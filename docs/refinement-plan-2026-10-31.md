@@ -527,3 +527,25 @@ The pre-PR main build emitted a 603.27 kB minified JavaScript entry chunk (184.5
 - [ ] Smoke-test on-demand desk/dialog loading and fallback presentation at phone, tablet, and desktop widths.
 
 These require a real browser session and network panel; no manual browser pass is claimed by the repository/API-only execution environment. Automated regression tests and exact PR-head CI remain the validation source for this branch.
+
+
+## Stage 15 — Market Depth live-only UX refinement (2026-11-04)
+
+**Finding**
+
+The modal could retain a previous order-book snapshot after a socket error or disconnect. It also treated the WebSocket `ready` event as a LIVE order book before any depth payload had arrived. The browser runtime substituted its own current time when a depth message omitted its update timestamp, making an incomplete message look fresh.
+
+**Implementation**
+
+- [x] Gate every rendered price, metric, ladder and detailed row behind both a connected session and a validated depth snapshot.
+- [x] Clear the displayed snapshot on connecting, disconnect, socket error and invalid depth payload; never retain data across stream sessions.
+- [x] Distinguish socket readiness from a live book: show LIVE only after the first validated depth payload.
+- [x] Reject missing, non-finite and non-positive update timestamps; never synthesize a browser timestamp for provider data.
+- [x] Show the last depth update time separately from connection status and provide an explicit retry action after stream errors.
+- [x] Localize refreshed modal labels and status states in English/Russian using the existing application i18n service.
+- [x] Add Vitest coverage for live-state gating, timestamp validation, disconnect cleanup wiring, retry wiring and translation coverage.
+- [ ] Verify live TradeNet disconnect/reconnect and no-data states in a real browser against the production Worker.
+
+**Scope**
+
+Frontend Market Depth presentation and stream-message validation only. No Worker routes, broker credentials, order placement, account permissions, portfolio calculations, persisted schemas or dependencies changed.
