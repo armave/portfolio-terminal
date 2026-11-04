@@ -22,11 +22,13 @@ The repository already contains dedicated domain modules and Vitest suites for F
 - Non-finite proceeds, invalid day-count basis, invalid account balance, and invalid calculation clock.
 - Selected-position investment missing from the portfolio ledger.
 - Non-finite tranche investment used for margin allocation.
+- Legacy tranche alias fallback when canonical quantity/price fields contain zero placeholders.
 - Non-finite settlement amounts while retaining negative-value clamping.
 
 ## Compatibility and invariants
 
 - FIFO ordering and allocation formulas are unchanged.
+- Portfolio margin-debt weighting follows the same positive-value legacy alias precedence as cost-basis validation, so zero/empty canonical placeholders do not mask a valid legacy quantity or entry price.
 - Normal commission calculation still uses the shared commission calculation and cent rounding.
 - Margin-interest formula, debt allocation basis, and position-level recorded-charge floor are unchanged for valid inputs.
 - Sale proceeds continue to repay debt before contributing cash (store ownership unchanged).
@@ -54,3 +56,10 @@ Final PR-head run: [Pull Request CI #41773089776](https://github.com/armave/port
 Both runs concluded **success** with all workflow steps passed.
 
 Audit interpretation: `npm audit --audit-level=high` exits successfully because no high-or-higher findings were reported, but it still prints four low-severity vulnerabilities in the full dependency tree. `npm audit --omit=dev --audit-level=high` reports zero production vulnerabilities. This PR does not change dependencies.
+
+
+## Final review follow-up — legacy tranche alias parity
+
+The final code review identified that the investment-weighting helper initially used nullish selection (`qty ?? shares`, `price ?? entryPrice`) while the established cost-basis validator deliberately skips empty, zero, and invalid placeholders before selecting a later positive alias. For legacy snapshots containing a zero canonical placeholder and a valid alias, the two paths could disagree on invested value and therefore margin-debt weight.
+
+The weighting helper now uses the same ordered positive-finite alias precedence as cost-basis validation, including `qty / shares / quantity` and `price / entryPrice / averagePrice`. A regression test verifies the alias path and expected sale accounting result.
