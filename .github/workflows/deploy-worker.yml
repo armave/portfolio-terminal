@@ -8,6 +8,7 @@ on:
       - "worker.js"
       - "src/services/freedomTradeNet.ts"
       - "state-store.js"
+      - "src/services/freedomMarketDepth.js"
       - "wrangler.jsonc"
   workflow_dispatch:
 

@@ -1,3 +1,4 @@
+// Shared with the Cloudflare Worker live Market Depth stream; keep this path in deploy-worker.yml.
 import { createFreedomMarketDepthBook } from "./src/services/freedomMarketDepth.js";
 
 const CORS_HEADERS = {
