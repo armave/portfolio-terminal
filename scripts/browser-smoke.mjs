@@ -792,6 +792,8 @@ try {
 
   await assertManyTickerNavigation(page);
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
   const aaplRow = page.locator('#activeTranchesTable .active-tranche-row').filter({ hasText: 'AAPL' });
   const guestAssignment = aaplRow.locator('select').first();
   await guestAssignment.waitFor({ state: 'visible', timeout: 20_000 });
