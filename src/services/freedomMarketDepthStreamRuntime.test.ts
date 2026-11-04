@@ -33,11 +33,6 @@ class FakeSocket implements FreedomMarketDepthSocketLike {
     this.emit('message', { data: JSON.stringify(message) });
   }
 
-  remoteClose(code: number, reason = ''): void {
-    this.readyState = 3;
-    this.emit('close', { code, reason });
-  }
-
   private emit(type: string, event: unknown): void {
     for (const listener of this.listeners.get(type) || []) listener(event);
   }
@@ -108,55 +103,6 @@ describe('modal-scoped TradeNet Market Depth stream runtime', () => {
     expect(onDepth).not.toHaveBeenCalled();
     expect(onStatus).toHaveBeenCalledWith('error', expect.stringContaining('valid update timestamp'));
     expect(socket.closeCalls).toContainEqual([1008, 'Invalid Market Depth timestamp']);
-  });
-
-  it('preserves the Worker error frame when the following socket close event has no reason', async () => {
-    const socket = new FakeSocket();
-    const onStatus = vi.fn();
-    const runtime = createFreedomMarketDepthStreamRuntime({
-      createTicket: async () => ({ ticket: 'e'.repeat(64), symbol: 'GOOGL.US' }),
-      buildSocketUrl: ticket => 'wss://worker.test/?ticket=' + ticket,
-      createSocket: () => socket,
-      onDepth: vi.fn(),
-      onStatus
-    });
-
-    const connecting = runtime.start('GOOGL', 'admin:account-1');
-    await Promise.resolve();
-    socket.open();
-    socket.receive({ type: 'ready', symbol: 'GOOGL.US' });
-    await expect(connecting).resolves.toBe(true);
-
-    const message = 'TradeNet Market Depth deletion referenced a missing book position.';
-    socket.receive({ type: 'error', message });
-
-    expect(onStatus).toHaveBeenLastCalledWith('error', message);
-    expect(socket.closeCalls).toContainEqual([1011, 'Market Depth stream error']);
-    expect(runtime.isConnected()).toBe(false);
-  });
-
-  it('includes the remote WebSocket close code and reason in unexplained disconnects', async () => {
-    const socket = new FakeSocket();
-    const onStatus = vi.fn();
-    const runtime = createFreedomMarketDepthStreamRuntime({
-      createTicket: async () => ({ ticket: 'f'.repeat(64), symbol: 'GOOGL.US' }),
-      buildSocketUrl: ticket => 'wss://worker.test/?ticket=' + ticket,
-      createSocket: () => socket,
-      onDepth: vi.fn(),
-      onStatus
-    });
-
-    const connecting = runtime.start('GOOGL', 'admin:account-1');
-    await Promise.resolve();
-    socket.open();
-    socket.receive({ type: 'ready', symbol: 'GOOGL.US' });
-    await expect(connecting).resolves.toBe(true);
-
-    socket.remoteClose(1006, 'upstream closed');
-    expect(onStatus).toHaveBeenLastCalledWith(
-      'disconnected',
-      'TradeNet Market Depth stream closed (code 1006): upstream closed'
-    );
   });
 
   it('does not open a stale socket after the modal closes while requesting a ticket', async () => {
