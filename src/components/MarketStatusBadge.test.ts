@@ -7,6 +7,7 @@ import {
   getMarketStatusTone,
   formatMarketCountdown,
   getMarketStatusCountdown,
+  reconcileMarketStatusWithCalendar,
   isCurrentMarketStatusRequest,
   normalizeMarketSessionStatus
 } from './MarketStatusBadge';
@@ -69,6 +70,21 @@ describe('US-equities market status presentation', () => {
     expect(getMarketStatusTone('CLOSED')).toBe('closed');
   });
 
+  it('corrects provider phases that conflict with the actual New York market session', () => {
+    expect(reconcileMarketStatusWithCalendar('CLOSED', new Date('2026-11-02T09:00:00.000Z')))
+      .toBe('PREMARKET');
+    expect(reconcileMarketStatusWithCalendar('CLOSED', new Date('2026-11-02T15:00:00.000Z')))
+      .toBe('MARKET');
+    expect(reconcileMarketStatusWithCalendar('MARKET', new Date('2026-11-02T22:00:00.000Z')))
+      .toBe('POSTMARKET');
+    expect(reconcileMarketStatusWithCalendar('MARKET', new Date('2026-11-03T02:00:00.000Z')))
+      .toBe('CLOSED');
+    expect(reconcileMarketStatusWithCalendar('CLOSED', new Date('2026-11-27T19:00:00.000Z')))
+      .toBe('POSTMARKET');
+    expect(reconcileMarketStatusWithCalendar('UNKNOWN', new Date('2026-11-02T08:00:00.000Z')))
+      .toBeNull();
+  });
+
   it('shows the next transition and includes days for waits longer than 24 hours', () => {
     expect(getMarketStatusCountdown('CLOSED', new Date('2026-11-02T07:00:00.000Z')))
       .toBe('Premarket in 2h');
@@ -81,6 +97,12 @@ describe('US-equities market status presentation', () => {
     expect(getMarketStatusCountdown('CLOSED', new Date('2026-11-06T22:00:00.000Z')))
       .toBe('Premarket in 2d 11h');
     expect(getMarketStatusCountdown('UNKNOWN', new Date('2026-11-02T13:00:00.000Z'))).toBeNull();
+  });
+
+  it('uses the reconciled phase for the countdown when provider status is stale', () => {
+    const now = new Date('2026-11-02T09:00:00.000Z');
+    const effectiveStatus = reconcileMarketStatusWithCalendar('CLOSED', now);
+    expect(getMarketStatusCountdown(effectiveStatus, now)).toBe('Opens in 5h 30m');
   });
 
   it('formats countdowns in minutes, hours, and day-aware durations', () => {

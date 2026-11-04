@@ -3,7 +3,11 @@ import { fetchFreedomMarketStatus, type FreedomMarketStatusResponse } from '../s
 import { getAppLanguage, translateText } from '../services/i18n';
 import { addUiEventListener, removeUiEventListener, type UiEvent } from '../ui/uiEventBus';
 import type { AuthUser } from '../services/api';
-import { getUsEquityNextTransitionAt, type UsEquityMarketSession } from '../services/marketSession';
+import {
+  getUsEquityMarketSession,
+  getUsEquityNextTransitionAt,
+  type UsEquityMarketSession
+} from '../services/marketSession';
 
 const MARKET_STATUS_REFRESH_MS = 5 * 60 * 1000;
 
@@ -71,6 +75,24 @@ export function getMarketStatusTone(status: string | null | undefined): 'open' |
   }
 }
 
+export function reconcileMarketStatusWithCalendar(
+  providerStatus: string | null | undefined,
+  now = new Date()
+): MarketSessionStatus | null {
+  const normalized = normalizeMarketSessionStatus(providerStatus);
+  if (!normalized) return null;
+
+  const session = getUsEquityMarketSession(now);
+  const calendarStatus: MarketSessionStatus = session === 'PRE'
+    ? 'PREMARKET'
+    : session === 'REGULAR'
+      ? 'MARKET'
+      : session === 'POST'
+        ? 'POSTMARKET'
+        : 'CLOSED';
+  return normalized === calendarStatus ? normalized : calendarStatus;
+}
+
 export function formatMarketCountdown(remainingMs: number): string {
   const totalMinutes = Math.ceil(Math.max(0, remainingMs) / 60_000);
   const minutes = totalMinutes % 60;
@@ -130,6 +152,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const status = reconcileMarketStatusWithCalendar(snapshot?.marketStatus.status, now);
 
   useEffect(() => {
     let active = true;
@@ -191,7 +214,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') void refresh();
     };
-    const transitionAt = getMarketStatusTransitionAt(snapshot?.marketStatus.status);
+    const transitionAt = getMarketStatusTransitionAt(status, now);
     if (transitionAt) {
       const delay = transitionAt.getTime() - Date.now();
       if (delay > 0) {
@@ -211,7 +234,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       removeUiEventListener('auth:user-changed', handleUserChanged);
     };
-  }, [snapshot?.marketStatus.status]);
+  }, [snapshot?.marketStatus.status, status]);
 
   useEffect(() => {
     if (!hasAuthenticatedSession) return;
@@ -221,7 +244,6 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
 
   if (!hasAuthenticatedSession) return null;
 
-  const status = snapshot?.marketStatus.status;
   const countdown = getMarketStatusCountdown(status, now);
   const tone = getMarketStatusTone(status);
   const statusLabel = loading && !snapshot
