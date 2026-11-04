@@ -1,6 +1,6 @@
 # PR 3 — Frontend runtime, UI, localization, and accessibility cleanup
 
-**Status:** Draft — targeted runtime lifecycle, stale-session, stylesheet, localization, and accessibility fixes are implemented and exact-head CI passes after PRs #303 and #304 were merged and integrated. The wider component-by-component responsive/accessibility review remains open.
+**Status:** Focused implementation complete — targeted runtime lifecycle, stale-session, stylesheet, localization, and accessibility fixes are implemented and exact-head CI passes after PRs #303 and #304 were merged and integrated. The wider component-by-component responsive/accessibility review remains a separate follow-up and is not claimed as complete.
 
 ## Implementation progress — 2026-11-04
 
