@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setAppLanguage } from '../services/i18n';
-import { decodeHtmlEntities, formatQuoteFreshnessSummary, formatQuoteMetadata, formatRiskTrigger, formatTrancheDate, formatUSD, getQuoteFreshness, summarizeQuoteFreshness } from './formatters';
+import { decodeHtmlEntities, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, formatTrancheDate, formatUSD, getQuoteFreshness, summarizeQuoteFreshness } from './formatters';
 
 afterEach(() => setAppLanguage('en'));
 
@@ -19,6 +19,15 @@ describe('display formatters', () => {
     expect(formatUSD(1234.5)).toBe('1,234.50');
     expect(formatUSD('12')).toBe('12.00');
     expect(formatUSD(Number.NaN)).toBe('0.00');
+  });
+
+  it('formats provider-reported volume compactly and omits invalid values', () => {
+    expect(formatQuoteVolume(1234)).toBe('1.2K');
+    expect(formatQuoteVolume(0)).toBe('0');
+    expect(formatQuoteVolume(null)).toBeNull();
+    expect(formatQuoteVolume('1234')).toBeNull();
+    expect(formatQuoteVolume(-1)).toBeNull();
+    expect(formatQuoteVolume(Number.POSITIVE_INFINITY)).toBeNull();
   });
 
   it('formats supported tranche date inputs', () => {

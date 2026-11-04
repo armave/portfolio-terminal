@@ -1,6 +1,6 @@
 import { useState, useEffect, useReducer, useRef, useMemo } from 'preact/hooks';
 import { usePortfolioSelector } from '../store/portfolioStore';
-import { formatUSD, formatQuoteMetadata } from '../utils/formatters';
+import { formatUSD, formatQuoteMetadata, formatQuoteVolume } from '../utils/formatters';
 import { sentimentLabel, SentimentDirection } from '../features/quotes/sentiment';
 import type { ActiveTrancheMix, ActiveTrancheType, PortfolioState, QuoteDetails } from '../types/portfolio';
 import { getActiveTranchesFromTrades, normalizeActiveTrancheMix, resolveActiveTrancheMixInput, FreedomExecutedTradeLike } from '../domain/freedomPortfolio';
@@ -562,6 +562,10 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     <p class="text-[10px] uppercase tracking-wider text-slate-500">Current market value</p>
                     <p class="mt-1 text-2xl font-black tabular-nums text-white">{marketValue !== null ? formatUSD(marketValue) : '—'}</p>
                     {!hasMarketPrice && <p class="mt-1 text-[10px] leading-relaxed text-amber-300" role="status">Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.</p>}
+                    {renderDailyQuoteSubtext(holding.quoteDetails)}
+                    <p class="mt-1 text-[10px] text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
+                      {translateText('Volume', getAppLanguage())} {formatQuoteVolume(holding.quoteDetails?.volume) ?? '—'} · {formatQuoteMetadata(holding, refreshIntervalMs)}
+                    </p>
                   </div>
                   <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-800 pt-3">
                     <div><p class="text-[10px] text-slate-500">Total shares</p><p class="mt-1 font-mono text-lg font-bold text-slate-200">{shares.toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', { maximumFractionDigits: 3 })}</p></div>
@@ -683,6 +687,9 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                           <td data-label="Market price" class="py-2 px-3 text-right text-emerald-400 font-semibold tabular-nums whitespace-nowrap">
                             <span>{price !== null ? formatUSD(price) : '—'}</span>
                             {renderDailyQuoteSubtext(h.quoteDetails)}
+                            <span class="mt-0.5 block text-[9px] font-normal text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
+                              {translateText('Volume', getAppLanguage())} {formatQuoteVolume(h.quoteDetails?.volume) ?? '—'}
+                            </span>
                             <span class="mt-0.5 block text-[9px] font-normal text-slate-500">
                               {quoteMeta}
                             </span>

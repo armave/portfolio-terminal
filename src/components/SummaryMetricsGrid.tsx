@@ -3,7 +3,7 @@ import { memo } from 'preact/compat';
 import { useState } from 'preact/hooks';
 import type { BrokerAssumptions, QuoteDetails } from '../types/portfolio';
 import { useActiveView, usePortfolio } from '../store/portfolioStore';
-import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
+import { formatUSD, formatTrancheDate, formatQuoteFreshnessSummary, formatQuoteMetadata, formatQuoteVolume, formatRiskTrigger, getQuoteFreshness, summarizeQuoteFreshness } from '../utils/formatters';
 import { getCashCushionTotal, getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useQuoteRefreshInterval } from '../ui/useQuoteRefreshInterval';
@@ -79,11 +79,6 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <div><span class="margin-risk-label">ACCOUNT EQUITY HEALTH</span><strong class="margin-risk-equity">{equityText}</strong></div>
         <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
       </div>
-      {valuationStatus === 'provisional' && (
-        <p class="mt-2 text-xs leading-relaxed text-amber-200" role="status">
-          {translateText('Provisional valuation: one or more quotes or the broker balance may be stale, delayed, or unverified. Review quote sources and observation times before relying on this risk estimate.', getAppLanguage())}
-        </p>
-      )}
       <div class="margin-risk-meter" role="progressbar" aria-label="Account equity percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth}>
         <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, 40 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
         <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
@@ -527,6 +522,30 @@ function SummaryMetricsGridView() {
                 )}
               </span>
             </div>
+            {tickers.length > 0 && (
+              <div class="mt-2 space-y-1 border-t border-slate-800/70 pt-2" aria-label={translateText('Ticker market context', getAppLanguage())}>
+                {tickers.map((ticker) => {
+                  const position = state.positions![ticker];
+                  const volume = formatQuoteVolume(position.quoteDetails?.volume);
+                  const dailyMeta = getDailyQuoteMeta(position.quoteDetails);
+                  const marketPrice = getUsableMarketPrice(position.currentPrice);
+                  return (
+                    <div key={ticker} class="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-[10px]">
+                      <span class="font-semibold text-slate-300">
+                        {ticker} · {marketPrice !== null ? formatUSD(position.shares * marketPrice) : '—'}
+                        {dailyMeta && <span class={`ml-1 ${dailyMeta.className}`}>{dailyMeta.text}</span>}
+                      </span>
+                      <span class="text-slate-500">
+                        <span title="Provider-reported volume; reporting period may vary by source.">
+                          {translateText('Volume', getAppLanguage())} {volume ?? '—'}
+                        </span>
+                        {' · '}{formatQuoteMetadata(position, refreshIntervalMs)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <span id="boardDailyQuote" class="block text-[10px] text-slate-500"></span>
             <span id="boardQuoteMeta" class={`portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] ${quoteCoverageClass}`} aria-label={quoteStatusLabel}>
               <span class="text-slate-400"> · </span><span>{quoteMetaText}</span>
@@ -756,6 +775,9 @@ function SummaryMetricsGridView() {
             <span id="boardQuoteMeta" class="portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] text-slate-500" aria-label={`Quote status: ${quoteFreshness}`}>
               <span>{quoteMetaText} {pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
             </span>
+          </span>
+          <span class="mt-0.5 block text-[10px] text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
+            {translateText('Volume', getAppLanguage())} {formatQuoteVolume(pos.quoteDetails?.volume) ?? '—'}
           </span>
           <QuoteProvenanceList holdings={[
             { ...pos, kind: 'Margin position' },

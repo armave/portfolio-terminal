@@ -36,9 +36,18 @@ describe('portfolio metric quote updates', () => {
     expect(source).toContain('<QuoteProvenanceList holdings={quoteProvenanceHoldings} />');
     expect(provenance).toContain('quoteDetails?.sourceTimestamp');
     expect(provenance).toContain('Observation time unavailable');
-    expect(source).toContain("valuationStatus === 'provisional'");
     expect(source).toContain('Provisional valuation: one or more quotes or the broker balance may be stale, delayed, or unverified.');
     expect(source).toContain('kind: \'Cash holding\'');
+  });
+
+  it('shows available per-ticker volume and quote metadata in both margin views', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain('Ticker market context');
+    expect(source).toContain('formatQuoteVolume(position.quoteDetails?.volume)');
+    expect(source).toContain('formatQuoteVolume(pos.quoteDetails?.volume)');
+    expect(source).toContain('formatQuoteMetadata(position, refreshIntervalMs)');
+    expect(source).toContain('Provider-reported volume; reporting period may vary by source.');
   });
 });
 

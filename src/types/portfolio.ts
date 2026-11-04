@@ -25,6 +25,8 @@ export interface QuoteDetails {
   changePercent?: number;
   high?: number;
   low?: number;
+  /** Provider-reported volume; the reporting period may vary by quote source. */
+  volume?: number;
   marketState?: string;
   price?: number;
   /** Freshness is unknown unless the provider supplies a verifiable observation timestamp. */

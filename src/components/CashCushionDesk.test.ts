@@ -108,6 +108,18 @@ describe('cash holdings daily quote range', () => {
   });
 });
 
+describe('cash holdings quote context', () => {
+  const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+
+  it('shows provider volume and quote metadata on guest cards and admin holdings rows', () => {
+    expect(deskSource).toContain('formatQuoteVolume(holding.quoteDetails?.volume)');
+    expect(deskSource).toContain('formatQuoteVolume(h.quoteDetails?.volume)');
+    expect(deskSource).toContain('formatQuoteMetadata(holding, refreshIntervalMs)');
+    expect(deskSource).toContain('renderDailyQuoteSubtext(holding.quoteDetails)');
+    expect(deskSource).toContain('Provider-reported volume; reporting period may vary by source.');
+  });
+});
+
 describe('Balance cache-first history retention', () => {
   it('keeps all cached executions when a refresh returns only one newer row', () => {
     const cached = Array.from({ length: 77 }, (_, index) => ({

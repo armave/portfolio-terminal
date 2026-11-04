@@ -54,6 +54,14 @@ export function formatUSD(val: unknown): string {
   return num.toLocaleString(currentNumberLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+export function formatQuoteVolume(value: unknown): string | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
+  return new Intl.NumberFormat(currentNumberLocale(), {
+    notation: 'compact',
+    maximumFractionDigits: 1
+  }).format(value);
+}
+
 
 export type QuoteFreshness = 'fresh' | 'stale' | 'delayed' | 'unknown' | 'unavailable';
 

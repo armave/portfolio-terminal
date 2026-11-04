@@ -59,6 +59,13 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes ticker market-volume labels and context', () => {
+    expect(translateText('Volume', 'ru')).toBe('Объём');
+    expect(translateText('Ticker market context', 'ru')).toBe('Рыночные данные по тикерам');
+    expect(translateText('Provider-reported volume; reporting period may vary by source.', 'ru'))
+      .toBe('Объём указан поставщиком котировок; период данных зависит от источника.');
+  });
+
   it('defaults to English', () => {
     expect(getAppLanguage()).toBe('en');
     expect(translateText('Sign out')).toBe('Sign out');
