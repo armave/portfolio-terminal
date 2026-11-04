@@ -86,6 +86,39 @@ describe('TradeNet Market Depth accumulator', () => {
     ]);
   });
 
+  it('preserves position ordering across batched deletes, inserts, and row updates', () => {
+    const book = createFreedomMarketDepthBook('AAPL.US');
+    book.apply({
+      i: 'AAPL.US',
+      ins: [
+        { k: 0, p: 100, q: 10, s: 'B' },
+        { k: 1, p: 99, q: 20, s: 'B' },
+        { k: 2, p: 98, q: 30, s: 'B' },
+        { k: 3, p: 97, q: 40, s: 'B' },
+        { k: 0, p: 101, q: 11, s: 'S' },
+        { k: 1, p: 102, q: 22, s: 'S' },
+        { k: 2, p: 103, q: 33, s: 'S' }
+      ]
+    });
+    book.apply({
+      i: 'AAPL.US',
+      del: [{ k: 1, s: 'B' }, { k: 3, s: 'B' }, { k: 1, s: 'S' }],
+      ins: [{ k: 1, p: 99.5, q: 15, s: 'B' }, { k: 3, p: 97.5, q: 45, s: 'B' }],
+      upd: [{ k: 2, p: 98.25, q: 35, s: 'B' }]
+    });
+
+    expect(book.snapshot().bids).toEqual([
+      { position: 0, price: 100, quantity: 10 },
+      { position: 1, price: 99.5, quantity: 15 },
+      { position: 2, price: 98.25, quantity: 35 },
+      { position: 3, price: 97.5, quantity: 45 }
+    ]);
+    expect(book.snapshot().asks).toEqual([
+      { position: 0, price: 101, quantity: 11 },
+      { position: 1, price: 103, quantity: 33 }
+    ]);
+  });
+
   it('keeps the existing sanitized snapshot contract and returns all levels up to the cap', () => {
     const sanitized = sanitizeFreedomMarketDepth({
       i: 'AAPL.US',

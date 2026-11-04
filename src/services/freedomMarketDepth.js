@@ -44,11 +44,26 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
     };
   };
 
+  const maxPositionBySide = { B: -1, S: -1 };
+
+  // Position indices are contiguous in normal TradeNet books. Track each side's
+  // upper bound so inserts/deletes can shift map keys directly instead of
+  // allocating, filtering, and sorting the entire book for every provider row.
   const trimSide = side => {
-    const overflow = [...levels].filter(([, level]) =>
-      level.side === side && level.position >= MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE
-    ).sort((left, right) => right[1].position - left[1].position);
-    for (const [key] of overflow) levels.delete(key);
+    const maxPosition = maxPositionBySide[side];
+    for (let position = MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE; position <= maxPosition; position += 1) {
+      levels.delete(`${side}:${position}`);
+    }
+    maxPositionBySide[side] = Math.min(maxPosition, MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE - 1);
+  };
+
+  const refreshMaxPosition = side => {
+    let position = Math.min(
+      maxPositionBySide[side],
+      MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE - 1
+    );
+    while (position >= 0 && !levels.has(`${side}:${position}`)) position -= 1;
+    maxPositionBySide[side] = position;
   };
 
   const apply = payload => {
@@ -81,35 +96,53 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
         const key = `${row.side}:${row.position}`;
         if (!levels.has(key)) continue;
         levels.delete(key);
-        const following = [...levels].filter(([, level]) =>
-          level.side === row.side && level.position > row.position
-        ).sort((left, right) => right[1].position - left[1].position);
-        for (const [followingKey, level] of following) {
+        const maxPosition = maxPositionBySide[row.side];
+        for (let position = row.position + 1; position <= maxPosition; position += 1) {
+          const followingKey = `${row.side}:${position}`;
+          const following = levels.get(followingKey);
+          if (!following) continue;
           levels.delete(followingKey);
-          level.position -= 1;
-          levels.set(`${level.side}:${level.position}`, level);
+          following.position = position - 1;
+          levels.set(`${row.side}:${following.position}`, following);
         }
+        maxPositionBySide[row.side] = Math.min(
+          maxPosition - 1,
+          MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE - 1
+        );
+        refreshMaxPosition(row.side);
         deletionsApplied += 1;
       }
 
       insertions.sort((left, right) => left.side.localeCompare(right.side) || left.position - right.position);
       for (const row of insertions) {
-        const displaced = [...levels].filter(([, level]) =>
-          level.side === row.side && level.position >= row.position
-        ).sort((left, right) => right[1].position - left[1].position);
-        for (const [displacedKey, level] of displaced) {
+        const maxPosition = maxPositionBySide[row.side];
+        for (let position = maxPosition; position >= row.position; position -= 1) {
+          const displacedKey = `${row.side}:${position}`;
+          const displaced = levels.get(displacedKey);
+          if (!displaced) continue;
           levels.delete(displacedKey);
-          level.position += 1;
-          levels.set(`${level.side}:${level.position}`, level);
+          const nextPosition = position + 1;
+          if (nextPosition >= MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE) continue;
+          displaced.position = nextPosition;
+          levels.set(`${row.side}:${nextPosition}`, displaced);
         }
-        levels.set(`${row.side}:${row.position}`, row);
-        trimSide(row.side);
+        if (row.position < MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE) {
+          levels.set(`${row.side}:${row.position}`, row);
+          maxPositionBySide[row.side] = Math.min(
+            Math.max(maxPosition + 1, row.position),
+            MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE - 1
+          );
+          trimSide(row.side);
+        }
         insertionsApplied += 1;
       }
 
       for (const row of rowUpdates) {
-        levels.set(`${row.side}:${row.position}`, row);
-        trimSide(row.side);
+        if (row.position < MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE) {
+          levels.set(`${row.side}:${row.position}`, row);
+          maxPositionBySide[row.side] = Math.max(maxPositionBySide[row.side], row.position);
+          trimSide(row.side);
+        }
         rowUpdatesApplied += 1;
       }
     }
@@ -117,9 +150,18 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
   };
 
   const snapshot = (captureDurationMs = undefined) => {
-    const ordered = [...levels.values()].sort((left, right) =>
-      left.position - right.position || left.side.localeCompare(right.side)
-    );
+    const collectSide = side => {
+      const result = [];
+      for (let position = 0; position <= maxPositionBySide[side]; position += 1) {
+        const level = levels.get(`${side}:${position}`);
+        if (level) result.push({
+          position: level.position,
+          price: level.price,
+          quantity: level.quantity
+        });
+      }
+      return result;
+    };
     return {
       symbol,
       ...(Number.isSafeInteger(sequence) ? { sequence } : {}),
@@ -131,10 +173,8 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
       rowUpdatesApplied,
       deletionsApplied,
       ...(Number.isFinite(captureDurationMs) && captureDurationMs >= 0 ? { captureDurationMs } : {}),
-      bids: ordered.filter(level => level.side === "B")
-        .map(({ position, price, quantity }) => ({ position, price, quantity })),
-      asks: ordered.filter(level => level.side === "S")
-        .map(({ position, price, quantity }) => ({ position, price, quantity }))
+      bids: collectSide("B"),
+      asks: collectSide("S")
     };
   };
 
