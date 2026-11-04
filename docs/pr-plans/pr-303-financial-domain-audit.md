@@ -39,9 +39,9 @@ The repository already contains dedicated domain modules and Vitest suites for F
 ## Validation status
 
 - [x] Implementation and focused regression tests committed to the PR branch.
-- [x] TypeScript check on exact implementation commit `0363ff79b710aa88f4f91f669ed34e006f2590a8`.
-- [x] Full Vitest suite on exact implementation commit: 116 test files / 1,371 tests passed.
-- [x] Production build and bundle budget passed: 432,253 bytes / 500,000 bytes; 134,028 gzip bytes / 165,000 bytes.
+- [x] TypeScript check on final PR head `ee1d4b2011b3c11d9cced6c2ee97a74f85460d88`.
+- [x] Full Vitest suite on final PR head: 116 test files / 1,372 tests passed.
+- [x] Production build and bundle budget passed: 432,014 bytes / 500,000 bytes; 133,992 gzip bytes / 165,000 bytes.
 - [x] Production browser smoke passed: responsive mount, admin bootstrap, broker partial failure, cloud revision conflict, backup export/import/reset, guest assignment, sign-out/account switch, failed sign-in recovery, and guest-only workspace hydration.
 - [x] Dead-code validation passed. Full dependency audit passed at the configured high-severity threshold; it still reports four low-severity vulnerabilities. Production dependency audit passed with zero vulnerabilities.
 - [x] Final scoped diff reviewed: changes are confined to the finance-domain sale helpers/tests and PR documentation.
@@ -51,9 +51,8 @@ Validation is provided by GitHub Actions on the exact PR head; no local test exe
 
 ## GitHub Actions result
 
-Implementation run: [Pull Request CI #41772930576](https://github.com/armave/portfolio-terminal/actions/runs/41772930576) passed on `0363ff79b710aa88f4f91f669ed34e006f2590a8`.  
-Final PR-head run: [Pull Request CI #41773089776](https://github.com/armave/portfolio-terminal/actions/runs/41773089776) passed on `74a75d3bdb3742e774bf3306ca9369ec0522f68c`.  
-Both runs concluded **success** with all workflow steps passed.
+Final PR-head run: [Pull Request CI #41773542771](https://github.com/armave/portfolio-terminal/actions/runs/41773542771) passed on `ee1d4b2011b3c11d9cced6c2ee97a74f85460d88`.  
+The run concluded **success** with all workflow steps passed, including the legacy tranche-alias regression test.
 
 Audit interpretation: `npm audit --audit-level=high` exits successfully because no high-or-higher findings were reported, but it still prints four low-severity vulnerabilities in the full dependency tree. `npm audit --omit=dev --audit-level=high` reports zero production vulnerabilities. This PR does not change dependencies.
 
