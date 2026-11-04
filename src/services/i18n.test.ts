@@ -115,7 +115,7 @@ describe('app localization', () => {
   it('localizes Market Insights article controls and dynamic accessible headlines', () => {
     const expected: Array<[string, string]> = [
       ['Read full article ↗', 'Читать статью полностью ↗'],
-      ['Untitled article', 'Новость без заголовка'],
+      ['Untitled article', 'Статья без названия'],
       ['Company news articles', 'Новости компаний'],
       ['Refresh company news', 'Обновить новости компании'],
       ['Market insight categories', 'Категории рыночной аналитики'],
@@ -131,7 +131,7 @@ describe('app localization', () => {
     expect(translateText('Read news: Smoke Test Market Update', 'ru'))
       .toBe('Читать новость: Smoke Test Market Update');
     expect(translateText('Read news: Untitled article', 'ru'))
-      .toBe('Читать новость: Новость без заголовка');
+      .toBe('Читать новость: Статья без названия');
   });
 
   it('localizes unpriced cash holding guidance', () => {
