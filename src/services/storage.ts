@@ -484,7 +484,8 @@ export function savePortfolioSnapshot<TState extends object>(
  */
 export function saveState<TState extends object>(
   state?: TState | null,
-  onPushToGist?: (forcePrompt?: boolean) => void
+  onPushToGist?: (forcePrompt?: boolean) => void,
+  options: PortfolioSnapshotOptions = {}
 ): boolean {
   if (!state || typeof state !== 'object' || Array.isArray(state)) return false;
   const mutableState = state as TState & Record<string, any>;
@@ -500,7 +501,8 @@ export function saveState<TState extends object>(
 
   const result = persistPortfolioSnapshot(
     mutableState,
-    historyChanged ? { brokerExecutedTrades, cashflows } : null
+    historyChanged ? { brokerExecutedTrades, cashflows } : null,
+    options
   );
   if (!result.success) return false;
 
