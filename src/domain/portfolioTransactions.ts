@@ -26,9 +26,32 @@ function roundMoney(value: number, label: string): number {
 type InvestmentTrancheLike = {
   qty?: unknown;
   shares?: unknown;
+  quantity?: unknown;
   price?: unknown;
   entryPrice?: unknown;
+  averagePrice?: unknown;
 };
+
+/**
+ * Match the cost-basis validator's legacy-alias precedence: empty, zero, and
+ * invalid placeholders do not mask a later positive canonical/legacy value.
+ */
+function resolvePositiveFiniteAlias(values: unknown[], label: string): number {
+  for (const value of values) {
+    if (
+      value === undefined ||
+      value === null ||
+      value === '' ||
+      typeof value === 'boolean' ||
+      (typeof value === 'string' && value.trim() === '')
+    ) continue;
+
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+
+  throw new RangeError(`${label} must be a finite positive number.`);
+}
 
 function sumTrancheInvestment(
   tranches: readonly InvestmentTrancheLike[],
@@ -39,32 +62,14 @@ function sumTrancheInvestment(
       throw new RangeError(`${label} tranche ${index + 1} is invalid.`);
     }
 
-    const rawQuantity = tranche.qty ?? tranche.shares;
-    const rawPrice = tranche.price ?? tranche.entryPrice;
-    if (
-      rawQuantity === undefined ||
-      rawQuantity === null ||
-      typeof rawQuantity === 'boolean' ||
-      (typeof rawQuantity === 'string' && rawQuantity.trim() === '')
-    ) {
-      throw new RangeError(`${label} tranche ${index + 1} quantity must be finite and non-negative.`);
-    }
-    if (
-      rawPrice === undefined ||
-      rawPrice === null ||
-      typeof rawPrice === 'boolean' ||
-      (typeof rawPrice === 'string' && rawPrice.trim() === '')
-    ) {
-      throw new RangeError(`${label} tranche ${index + 1} entry price must be finite and non-negative.`);
-    }
-    const quantity = Number(rawQuantity);
-    const price = Number(rawPrice);
-    if (!Number.isFinite(quantity) || quantity < 0) {
-      throw new RangeError(`${label} tranche ${index + 1} quantity must be finite and non-negative.`);
-    }
-    if (!Number.isFinite(price) || price < 0) {
-      throw new RangeError(`${label} tranche ${index + 1} entry price must be finite and non-negative.`);
-    }
+    const quantity = resolvePositiveFiniteAlias(
+      [tranche.qty, tranche.shares, tranche.quantity],
+      `${label} tranche ${index + 1} quantity`
+    );
+    const price = resolvePositiveFiniteAlias(
+      [tranche.price, tranche.entryPrice, tranche.averagePrice],
+      `${label} tranche ${index + 1} entry price`
+    );
 
     const invested = quantity * price;
     if (!Number.isFinite(invested)) {
