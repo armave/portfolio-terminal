@@ -7,6 +7,63 @@ import {
 } from './freedomMarketDepth.js';
 
 describe('TradeNet Market Depth accumulator', () => {
+
+  it('unwraps the documented dom envelope and seeds the initial combined book before deltas', () => {
+    const book = createFreedomMarketDepthBook('GOOGL.US');
+    const initialRows = [
+      ...Array.from({ length: 10 }, (_, k) => ({
+        k, p: 291.2 + k * 0.01, q: 10 + k, s: 'S'
+      })),
+      ...Array.from({ length: 10 }, (_, index) => ({
+        k: index + 10, p: 291.1 - index * 0.01, q: 20 + index, s: 'B'
+      }))
+    ];
+
+    expect(book.apply({
+      dom: [{
+        n: 0,
+        i: 'GOOGL.US',
+        min_step: 0.01,
+        step_price: 0,
+        del: [],
+        ins: initialRows,
+        upd: [],
+        cnt: 20
+      }]
+    })).toBe(1);
+
+    // The next provider message is wrapped in the same dom[] envelope.
+    expect(book.apply({
+      dom: [{
+        n: 1,
+        i: 'GOOGL.US',
+        del: [{ k: 9, p: 291.29, q: 19, s: 'S' }],
+        ins: [{ k: 0, p: 291.21, q: 25, s: 'S' }],
+        upd: [{ k: 10, p: 291.11, q: 28, s: 'B' }],
+        cnt: 20
+      }]
+    })).toBe(1);
+
+    const snapshot = book.snapshot();
+    expect(snapshot.sequence).toBe(1);
+    expect(snapshot.updateCount).toBe(2);
+    expect(snapshot.asks[0]).toMatchObject({ position: 0, price: 291.21, quantity: 25 });
+    expect(snapshot.bids[0]).toMatchObject({ position: 10, price: 291.11, quantity: 28 });
+    expect(snapshot.bids).toHaveLength(10);
+    expect(snapshot.asks).toHaveLength(10);
+  });
+
+  it('supports an array containing one or more dom envelopes', () => {
+    const book = createFreedomMarketDepthBook('AAPL.US');
+    const applied = book.apply([
+      { dom: [{ n: 0, i: 'AAPL.US', ins: [{ k: 0, p: 101, q: 5, s: 'S' }] }] },
+      { dom: [{ n: 1, i: 'AAPL.US', ins: [{ k: 1, p: 100, q: 4, s: 'B' }] }] }
+    ]);
+    expect(applied).toBe(2);
+    expect(book.snapshot().asks).toEqual([{ position: 0, price: 101, quantity: 5 }]);
+    expect(book.snapshot().bids).toEqual([{ position: 1, price: 100, quantity: 4 }]);
+  });
+
   it('uses one global position space and shifts both sides on insertions and deletions', () => {
     const book = createFreedomMarketDepthBook('AAPL.US');
     book.apply({

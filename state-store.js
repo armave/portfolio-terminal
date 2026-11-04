@@ -743,11 +743,13 @@ export class PortfolioStateDO {
       session.lastUpdatedAt = session.lastActivityAt;
       this.sendFreedomMarketDepthSnapshot(session);
     } catch (error) {
-      this.sendFreedomMarketDepthError(
-        session,
-        error instanceof Error ? error.message : "TradeNet Market Depth update could not be processed."
-      );
-      this.closeFreedomMarketDepthSession(session.streamId, "Invalid Market Depth update");
+      const message = error instanceof Error
+        ? error.message
+        : "TradeNet Market Depth update could not be processed.";
+      this.sendFreedomMarketDepthError(session, message);
+      // Preserve the actionable reason in the browser close event as well;
+      // otherwise the generic close reason masks the provider/validation error.
+      this.closeFreedomMarketDepthSession(session.streamId, message.slice(0, 120));
     }
   }
 

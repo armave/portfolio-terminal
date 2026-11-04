@@ -64,7 +64,21 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
   };
 
   const apply = payload => {
-    const updates = Array.isArray(payload) ? payload : [payload];
+    const updates = [];
+    const collectUpdates = value => {
+      if (Array.isArray(value)) {
+        for (const item of value) collectUpdates(item);
+        return;
+      }
+      if (!isRecord(value)) return;
+      // TradeNet's documented "b" event wraps its per-ticker update blocks in dom[].
+      if (Array.isArray(value.dom)) {
+        collectUpdates(value.dom);
+        return;
+      }
+      updates.push(value);
+    };
+    collectUpdates(payload);
     let applied = 0;
 
     for (const update of updates) {
