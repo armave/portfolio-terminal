@@ -300,7 +300,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 
 ## PR #305 — frontend runtime, UI lifecycle, and accessibility follow-up
 
-**Status:** Open draft. The work is isolated from PR #304 store/persistence files and is sequenced after that PR merges.
+**Status:** Open draft. PRs #303 and #304 have both merged, and their mainline changes are integrated into this branch at `8242ae2`; the branch is zero commits behind `main`.
 
 - [x] Preserve `app.ts` as the runtime composition root; the audit confirmed existing dedicated startup, authentication/session, navigation, broker-refresh, quote-refresh, portfolio-sync, and equity-sync runtimes.
 - [x] Reference-count nested-dialog background isolation and page scroll locking; restore the original styles and scroll position only after the final dialog closes.
@@ -312,7 +312,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Add 44px minimum hit targets and visible keyboard focus rings to common scenario, auth-submit, empty-state, and external-quote actions.
 - [x] Preserve existing lazy desk/modal imports and entry bundle budgets; existing Vitest architecture tests continue to enforce both.
 - [ ] Finish broad responsive/accessibility review beyond the touched controls and existing production-browser journey coverage.
-- [ ] Rebase on `main` after PR #304 merges and reconcile the combined store/runtime diff.
-- [ ] Run final exact-head CI after the rebase and update the PR checklist.
+- [x] Integrate the latest `main` after both prerequisite PRs merged; the PR diff remains disjoint from their domain/store paths.
+- [ ] Run final exact-head CI on the integrated head and update the PR checklist.
 
 Validation is tracked on [PR #305](https://github.com/armave/portfolio-terminal/pull/305). The latest passing checkpoint before the most recent touch-target changes is not a substitute for CI on the current head.
