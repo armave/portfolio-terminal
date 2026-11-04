@@ -27,6 +27,18 @@ describe('stylesheet architecture and shared policies', () => {
     expect(stylesheet).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?scroll-behavior:\s*auto\s*!important;/);
   });
 
+  it('defines the mounted auth overlay transition in one canonical rule set', () => {
+    const start = stylesheet.indexOf('/* Keep the auth overlay mounted so its exit transition can finish cleanly. */');
+    const end = stylesheet.indexOf('/* Scenario comparison modal:', start);
+    const transitionRules = stylesheet.slice(start, end);
+
+    expect(transitionRules.match(/#auth-container\.auth-overlay\s*\{/g) ?? []).toHaveLength(1);
+    expect(transitionRules.match(/#auth-container\.auth-overlay \.auth-card\s*\{/g) ?? []).toHaveLength(1);
+    expect(transitionRules.match(/#auth-container\.auth-overlay\.auth-overlay-open\s*\{/g) ?? []).toHaveLength(1);
+    expect(transitionRules.match(/#auth-container\.auth-overlay\.auth-overlay-open \.auth-card\s*\{/g) ?? []).toHaveLength(1);
+    expect(transitionRules).toContain('display: flex;');
+  });
+
   it('retains explicit transform resets for animated workspace, modal, and pagination elements', () => {
     const policyStart = stylesheet.lastIndexOf('@media (prefers-reduced-motion: reduce)');
     const policy = stylesheet.slice(policyStart);
