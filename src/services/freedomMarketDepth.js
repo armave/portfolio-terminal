@@ -26,6 +26,8 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
   let deletionsApplied = 0;
   let insertionsApplied = 0;
   let rowUpdatesApplied = 0;
+  // Retain a compact, bounded update trail so position drift can be traced to the first bad delta.
+  const recentUpdates = [];
 
   const normalizeRow = (value, requireValues = true) => {
     if (!isRecord(value)) return null;
@@ -48,7 +50,7 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
   };
 
   const describePositionConflict = (operation, update, row, existing) => {
-    const compactRows = value => rows(value).slice(0, 8).map(item => {
+    const compactRows = value => rows(value).slice(0, 24).map(item => {
       const normalized = normalizeRow(item, false);
       return normalized
         ? `${normalized.position}:${normalized.side}${Number.isFinite(normalized.price) ? `@${normalized.price}` : ""}`
@@ -61,7 +63,11 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
         ? `${position}:${level.side}@${level.price}`
         : `${position}:empty`);
     }
-    return `TradeNet Market Depth ${operation} side mismatch at k=${row.position}: incoming=${row.side}${Number.isFinite(row.price) ? `@${row.price}` : ""}, existing=${existing.side}${Number.isFinite(existing.price) ? `@${existing.price}` : ""}, n=${Number.isSafeInteger(update.n) ? update.n : "unknown"}, del=[${compactRows(update.del)}], ins=[${compactRows(update.ins)}], upd=[${compactRows(update.upd)}], nearby=[${nearby.join(",")}]`;
+    const history = recentUpdates.map(entry =>
+      `n${entry.sequence}[d:${entry.del};i:${entry.ins};u:${entry.upd}]`
+    ).join("|");
+    const message = `TradeNet Market Depth ${operation} side mismatch at k=${row.position}: incoming=${row.side}${Number.isFinite(row.price) ? `@${row.price}` : ""}, existing=${existing.side}${Number.isFinite(existing.price) ? `@${existing.price}` : ""}, n=${Number.isSafeInteger(update.n) ? update.n : "unknown"}, del=[${compactRows(update.del)}], ins=[${compactRows(update.ins)}], upd=[${compactRows(update.upd)}], nearby=[${nearby.join(",")}], history=[${history}]`;
+    return message.length > 5000 ? message.slice(0, 4997) + "..." : message;
   };
 
   // Delete one global position and shift every later row, including the other side.
@@ -112,6 +118,20 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
       if (rowCount > MAX_UPDATE_ROWS) {
         throw new Error("TradeNet sent more Market Depth rows than this stream can safely process.");
       }
+
+      const historyRows = value => rows(value).slice(0, 24).map(item => {
+        const normalized = normalizeRow(item, false);
+        return normalized
+          ? `${normalized.position}:${normalized.side}${Number.isFinite(normalized.price) ? `@${normalized.price}` : ""}`
+          : "invalid";
+      }).join(",");
+      recentUpdates.push({
+        sequence: Number.isSafeInteger(update.n) ? update.n : "?",
+        del: historyRows(update.del),
+        ins: historyRows(update.ins),
+        upd: historyRows(update.upd)
+      });
+      if (recentUpdates.length > 12) recentUpdates.shift();
 
       // n is a per-ticker ordinal. A gap means deltas were missed and the book is unsafe.
       if (Number.isSafeInteger(update.n)) {

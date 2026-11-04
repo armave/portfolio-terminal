@@ -187,7 +187,7 @@ describe('TradeNet Market Depth accumulator', () => {
       i: 'AAPL.US',
       n: 2,
       upd: [{ k: 1, p: 99, q: 2, s: 'S' }]
-    })).toThrow(/update side mismatch at k=1: incoming=S@99, existing=B@100, n=2/);
+    })).toThrow(/update side mismatch at k=1: incoming=S@99, existing=B@100, n=2.*history=\[n1\[d:;i:0:S@101,1:B@100;u:\]/);
     expect(() => mismatchBook.apply({
       i: 'MSFT.US',
       n: 2,
