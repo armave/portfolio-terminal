@@ -7,57 +7,151 @@ import {
 } from './freedomMarketDepth.js';
 
 describe('TradeNet Market Depth accumulator', () => {
-  it('applies live inserts, updates, deletes, and position shifts', () => {
+  it('uses one global position space and shifts both sides on insertions and deletions', () => {
     const book = createFreedomMarketDepthBook('AAPL.US');
     book.apply({
       i: 'AAPL.US',
       n: 1,
-      cnt: 2,
+      cnt: 6,
       ins: [
-        { k: 0, p: 100, q: 10, s: 'B' },
-        { k: 1, p: 99, q: 20, s: 'B' },
         { k: 0, p: 101, q: 11, s: 'S' },
-        { k: 1, p: 102, q: 22, s: 'S' }
+        { k: 1, p: 102, q: 22, s: 'S' },
+        { k: 2, p: 103, q: 33, s: 'S' },
+        { k: 3, p: 100, q: 10, s: 'B' },
+        { k: 4, p: 99, q: 20, s: 'B' },
+        { k: 5, p: 98, q: 30, s: 'B' }
+      ]
+    });
+    book.apply({ i: 'AAPL.US', n: 2, ins: [{ k: 0, p: 100.5, q: 12, s: 'S' }] });
+    book.apply({
+      i: 'AAPL.US',
+      n: 3,
+      del: [{ k: 2, s: 'S' }],
+      upd: [{ k: 3, p: 100.25, q: 13, s: 'B' }]
+    });
+
+    const snapshot = book.snapshot();
+    expect(snapshot).toMatchObject({
+      sequence: 3,
+      reportedDepth: 6,
+      updateCount: 3,
+      insertionsApplied: 7,
+      rowUpdatesApplied: 1,
+      deletionsApplied: 1,
+      asks: [
+        { position: 0, price: 100.5, quantity: 12 },
+        { position: 1, price: 101, quantity: 11 },
+        { position: 2, price: 103, quantity: 33 }
+      ],
+      bids: [
+        { position: 3, price: 100.25, quantity: 13 },
+        { position: 4, price: 99, quantity: 20 },
+        { position: 5, price: 98, quantity: 30 }
+      ]
+    });
+    expect(snapshot.asks[0].price - snapshot.bids[0].price).toBeCloseTo(0.25, 8);
+  });
+
+  it('applies batched deletes, inserts, and updates in TradeNet documented order', () => {
+    const book = createFreedomMarketDepthBook('AAPL.US');
+    book.apply({
+      i: 'AAPL.US',
+      n: 1,
+      ins: [
+        { k: 0, p: 101, q: 11, s: 'S' },
+        { k: 1, p: 102, q: 22, s: 'S' },
+        { k: 2, p: 103, q: 33, s: 'S' },
+        { k: 3, p: 100, q: 10, s: 'B' },
+        { k: 4, p: 99, q: 20, s: 'B' },
+        { k: 5, p: 98, q: 30, s: 'B' },
+        { k: 6, p: 97, q: 40, s: 'B' }
       ]
     });
     book.apply({
       i: 'AAPL.US',
       n: 2,
-      ins: [{ k: 1, p: 99.5, q: 15, s: 'B' }],
-      upd: [{ k: 0, p: 100.25, q: 12, s: 'B' }]
-    });
-    book.apply({
-      i: 'AAPL.US',
-      n: 3,
-      del: [{ k: 2, s: 'B' }, { k: 1, s: 'S' }],
-      upd: [{ k: 1, p: 101.5, q: 25, s: 'S' }]
+      del: [{ k: 1, s: 'S' }, { k: 5, s: 'B' }],
+      ins: [
+        { k: 0, p: 100.75, q: 8, s: 'S' },
+        { k: 4, p: 99.5, q: 15, s: 'B' }
+      ],
+      upd: [
+        { k: 3, p: 100.1, q: 12, s: 'B' },
+        { k: 4, p: 99.6, q: 16, s: 'B' }
+      ]
     });
 
     expect(book.snapshot()).toMatchObject({
-      sequence: 3,
-      reportedDepth: 2,
-      updateCount: 3,
-      bids: [
-        { position: 0, price: 100.25, quantity: 12 },
-        { position: 1, price: 99.5, quantity: 15 }
-      ],
+      sequence: 2,
+      updateCount: 2,
+      insertionsApplied: 9,
+      rowUpdatesApplied: 2,
+      deletionsApplied: 2,
       asks: [
-        { position: 0, price: 101, quantity: 11 },
-        { position: 1, price: 101.5, quantity: 25 }
+        { position: 0, price: 100.75, quantity: 8 },
+        { position: 1, price: 101, quantity: 11 },
+        { position: 2, price: 103, quantity: 33 }
+      ],
+      bids: [
+        { position: 3, price: 100.1, quantity: 12 },
+        { position: 4, price: 99.6, quantity: 16 },
+        { position: 5, price: 99, quantity: 20 },
+        { position: 6, price: 97, quantity: 40 }
       ]
     });
   });
 
-  it('rejects symbol mismatches and limits each side at the high safety cap', () => {
+  it('rejects sequence gaps, missing positions, side mismatches, and symbol mismatches', () => {
+    const sequenceBook = createFreedomMarketDepthBook('AAPL.US');
+    sequenceBook.apply({
+      i: 'AAPL.US',
+      n: 1,
+      ins: [
+        { k: 0, p: 101, q: 1, s: 'S' },
+        { k: 1, p: 100, q: 1, s: 'B' }
+      ]
+    });
+    expect(() => sequenceBook.apply({
+      i: 'AAPL.US',
+      n: 3,
+      upd: [{ k: 1, p: 99, q: 2, s: 'B' }]
+    })).toThrow(/sequence gap/);
+
+    const mismatchBook = createFreedomMarketDepthBook('AAPL.US');
+    mismatchBook.apply({
+      i: 'AAPL.US',
+      n: 1,
+      ins: [
+        { k: 0, p: 101, q: 1, s: 'S' },
+        { k: 1, p: 100, q: 1, s: 'B' }
+      ]
+    });
+    expect(() => mismatchBook.apply({
+      i: 'AAPL.US',
+      n: 2,
+      upd: [{ k: 1, p: 99, q: 2, s: 'S' }]
+    })).toThrow(/side did not match/);
+    expect(() => mismatchBook.apply({
+      i: 'MSFT.US',
+      n: 2,
+      ins: []
+    })).toThrow(/requested symbol/);
+    expect(() => mismatchBook.apply({
+      i: 'AAPL.US',
+      n: 2,
+      ins: [{ k: 4, p: 98, q: 1, s: 'B' }]
+    })).toThrow(/missing book position/);
+  });
+
+  it('limits each displayed side to the safety cap', () => {
     const book = createFreedomMarketDepthBook('AAPL.US');
-    expect(() => book.apply({ i: 'MSFT.US', ins: [] })).toThrow(/requested symbol/);
-    const rows = Array.from({ length: MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE }, (_, k) => ({
+    const levels = Array.from({ length: MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE }, (_, k) => ({
       k, p: 2000 - k, q: 1, s: 'B'
     }));
-    book.apply({ i: 'AAPL.US', ins: rows });
+    book.apply({ i: 'AAPL.US', ins: levels });
     book.apply(Array.from({ length: 20 }, () => ({
       i: 'AAPL.US',
-      ins: [{ k: MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE, p: 900, q: 1, s: 'B' }]
+      ins: [{ k: 1000, p: 900, q: 1, s: 'B' }]
     })));
     expect(book.snapshot().bids).toHaveLength(MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE);
   });
@@ -66,9 +160,9 @@ describe('TradeNet Market Depth accumulator', () => {
     const grouped = groupFreedomMarketDepthByPrice({
       symbol: 'AAPL.US',
       bids: [
-        { position: 0, price: 100, quantity: 2 },
-        { position: 1, price: 100, quantity: 3 },
-        { position: 2, price: 99.5, quantity: 4 }
+        { position: 3, price: 100, quantity: 2 },
+        { position: 4, price: 100, quantity: 3 },
+        { position: 5, price: 99.5, quantity: 4 }
       ],
       asks: [
         { position: 0, price: 101, quantity: 1 },
@@ -86,48 +180,17 @@ describe('TradeNet Market Depth accumulator', () => {
     ]);
   });
 
-  it('preserves position ordering across batched deletes, inserts, and row updates', () => {
-    const book = createFreedomMarketDepthBook('AAPL.US');
-    book.apply({
-      i: 'AAPL.US',
-      ins: [
-        { k: 0, p: 100, q: 10, s: 'B' },
-        { k: 1, p: 99, q: 20, s: 'B' },
-        { k: 2, p: 98, q: 30, s: 'B' },
-        { k: 3, p: 97, q: 40, s: 'B' },
-        { k: 0, p: 101, q: 11, s: 'S' },
-        { k: 1, p: 102, q: 22, s: 'S' },
-        { k: 2, p: 103, q: 33, s: 'S' }
-      ]
-    });
-    book.apply({
-      i: 'AAPL.US',
-      del: [{ k: 1, s: 'B' }, { k: 3, s: 'B' }, { k: 1, s: 'S' }],
-      ins: [{ k: 1, p: 99.5, q: 15, s: 'B' }, { k: 3, p: 97.5, q: 45, s: 'B' }],
-      upd: [{ k: 2, p: 98.25, q: 35, s: 'B' }]
-    });
-
-    expect(book.snapshot().bids).toEqual([
-      { position: 0, price: 100, quantity: 10 },
-      { position: 1, price: 99.5, quantity: 15 },
-      { position: 2, price: 98.25, quantity: 35 },
-      { position: 3, price: 97.5, quantity: 45 }
-    ]);
-    expect(book.snapshot().asks).toEqual([
-      { position: 0, price: 101, quantity: 11 },
-      { position: 1, price: 103, quantity: 33 }
-    ]);
-  });
-
-  it('keeps the existing sanitized snapshot contract and returns all levels up to the cap', () => {
+  it('keeps sanitized output free of raw broker and account fields', () => {
     const sanitized = sanitizeFreedomMarketDepth({
       i: 'AAPL.US',
+      n: 1,
       ins: [
-        { k: 0, p: 100, q: 1, s: 'B', account_id: 'private' },
+        { k: 0, p: 100, q: 1, s: 'S', account_id: 'private' },
         { k: 1, p: 99, q: 2, s: 'B' }
       ]
     }, 'AAPL.US');
-    expect(sanitized.bids).toHaveLength(2);
+    expect(sanitized.bids).toEqual([{ position: 1, price: 99, quantity: 2 }]);
+    expect(sanitized.asks).toEqual([{ position: 0, price: 100, quantity: 1 }]);
     expect(JSON.stringify(sanitized)).not.toContain('private');
   });
 });

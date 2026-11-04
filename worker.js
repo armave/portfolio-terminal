@@ -1,5 +1,6 @@
 import { requestTradeNet } from "./src/services/freedomTradeNet.js";
-import { MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE } from "./src/services/freedomMarketDepth.js";
+import { sanitizeFreedomMarketDepth } from "./src/services/freedomMarketDepth.js";
+export { sanitizeFreedomMarketDepth };
 
 const MAX_REQUEST_BYTES = 20 * 1024 * 1024;
 const MAX_PROMPT_LENGTH = 12_000;
@@ -354,120 +355,6 @@ export function sanitizeFreedomActiveOrders(response) {
         });
     });
     return { orders: { order }, trades: { trade } };
-}
-
-export function sanitizeFreedomMarketDepth(payload, requestedSymbol, captureDurationMs = undefined) {
-    const isRecord = value => value !== null && typeof value === "object" && !Array.isArray(value);
-    const symbol = String(requestedSymbol || "").trim().toUpperCase();
-    if (!symbol) {
-        throw new Error("TradeNet market-depth update did not match the requested symbol.");
-    }
-
-    const levels = new Map();
-    const rows = value => Array.isArray(value) ? value : isRecord(value) ? [value] : [];
-    const normalizeRow = (value, requireValues = true) => {
-        if (!isRecord(value)) return null;
-        const sideValue = String(value.s ?? "").trim().toUpperCase();
-        const side = sideValue === "B" || sideValue === "BUY"
-            ? "B"
-            : sideValue === "S" || sideValue === "SELL" ? "S" : null;
-        const position = value.k;
-        const price = value.p;
-        const quantity = value.q;
-        if (!side || !Number.isSafeInteger(position) || position < 0 ||
-            (requireValues && (!Number.isFinite(price) || price <= 0 ||
-                !Number.isFinite(quantity) || quantity < 0))) {
-            return null;
-        }
-        return {
-            side,
-            position,
-            ...(Number.isFinite(price) && price > 0 ? { price } : {}),
-            ...(Number.isFinite(quantity) && quantity >= 0 ? { quantity } : {})
-        };
-    };
-
-    const updates = Array.isArray(payload) ? payload : [payload];
-    let updateCount = 0;
-    let sequence;
-    let reportedDepth;
-    let minStep;
-    let stepPrice;
-    let deletionsApplied = 0;
-    let insertionsApplied = 0;
-    let rowUpdatesApplied = 0;
-    for (const update of updates) {
-        if (!isRecord(update)) continue;
-        const responseSymbol = typeof update.i === "string" ? update.i.trim().toUpperCase() : symbol;
-        if (responseSymbol !== symbol) {
-            throw new Error("TradeNet market-depth update did not match the requested symbol.");
-        }
-        updateCount += 1;
-        if (Number.isSafeInteger(update.n)) sequence = update.n;
-        if (Number.isSafeInteger(update.cnt) && update.cnt >= 0) reportedDepth = update.cnt;
-        if (Number.isFinite(update.min_step) && update.min_step > 0) minStep = update.min_step;
-        if (Number.isFinite(update.step_price) && update.step_price > 0) stepPrice = update.step_price;
-
-        const deletions = rows(update.del).map(row => normalizeRow(row, false)).filter(Boolean)
-            .sort((left, right) => left.side.localeCompare(right.side) || right.position - left.position);
-        for (const row of deletions) {
-            const key = `${row.side}:${row.position}`;
-            if (!levels.has(key)) continue;
-            levels.delete(key);
-            const followingLevels = [...levels].filter(([, level]) =>
-                level.side === row.side && level.position > row.position
-            ).sort((left, right) => right[1].position - left[1].position);
-            for (const [levelKey, level] of followingLevels) {
-                levels.delete(levelKey);
-                level.position -= 1;
-                levels.set(`${level.side}:${level.position}`, level);
-            }
-            deletionsApplied += 1;
-        }
-
-        const insertions = rows(update.ins).map(row => normalizeRow(row)).filter(Boolean)
-            .sort((left, right) => left.side.localeCompare(right.side) || left.position - right.position);
-        for (const row of insertions) {
-            const displacedLevels = [...levels].filter(([, level]) =>
-                level.side === row.side && level.position >= row.position
-            ).sort((left, right) => right[1].position - left[1].position);
-            for (const [levelKey, level] of displacedLevels) {
-                levels.delete(levelKey);
-                level.position += 1;
-                levels.set(`${level.side}:${level.position}`, level);
-            }
-            levels.set(`${row.side}:${row.position}`, row);
-            insertionsApplied += 1;
-        }
-
-        for (const row of rows(update.upd).map(value => normalizeRow(value)).filter(Boolean)) {
-            levels.set(`${row.side}:${row.position}`, row);
-            rowUpdatesApplied += 1;
-        }
-    }
-    if (updateCount === 0) throw new Error("TradeNet returned an invalid market-depth update.");
-
-    const orderedLevels = [...levels.values()].sort((left, right) =>
-        left.position - right.position || left.side.localeCompare(right.side)
-    );
-    const bids = orderedLevels.filter(level => level.side === "B").slice(0, MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE)
-        .map(({ position, price, quantity }) => ({ position, price, quantity }));
-    const asks = orderedLevels.filter(level => level.side === "S").slice(0, MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE)
-        .map(({ position, price, quantity }) => ({ position, price, quantity }));
-    return {
-        symbol,
-        ...(Number.isSafeInteger(sequence) ? { sequence } : {}),
-        ...(Number.isSafeInteger(reportedDepth) && reportedDepth >= 0 ? { reportedDepth } : {}),
-        ...(Number.isFinite(minStep) && minStep > 0 ? { minStep } : {}),
-        ...(Number.isFinite(stepPrice) && stepPrice > 0 ? { stepPrice } : {}),
-        updateCount,
-        insertionsApplied,
-        rowUpdatesApplied,
-        deletionsApplied,
-        ...(Number.isFinite(captureDurationMs) && captureDurationMs >= 0 ? { captureDurationMs } : {}),
-        bids,
-        asks
-    };
 }
 
 
