@@ -3424,6 +3424,59 @@ describe('Durable Object administrator Market Depth live stream', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('clears the WebSocket connect timeout after upgrade so it cannot abort the live stream', async () => {
+    vi.useFakeTimers();
+    const listeners = new Map();
+    const upstream = {
+      addEventListener: vi.fn((name, callback) => {
+        listeners.set(name, [...(listeners.get(name) || []), callback]);
+      }),
+      accept: vi.fn(),
+      send: vi.fn(() => queueMicrotask(() => {
+        for (const callback of listeners.get('message') || []) {
+          callback({ data: JSON.stringify(['userData', { isDemo: false, real: true, mode: 'prod' }]) });
+        }
+      })),
+      close: vi.fn(),
+      readyState: 1
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 101, webSocket: upstream, headers: new Headers()
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { storage } = createStorage();
+    const store = new PortfolioStateDO({ storage }, {});
+    store.freedomTradeNetSession = { sid: 's'.repeat(48), expiresAt: Date.now() + 60_000 };
+    const session = {
+      streamId: 'stream-timeout',
+      accountId: 'admin-1',
+      role: 'admin',
+      symbol: 'AAPL.US',
+      createdAt: Date.now(),
+      lastActivityAt: Date.now(),
+      upstream: null,
+      client: null,
+      ready: false,
+      waiter: null,
+      pendingUpdates: [],
+      book: createFreedomMarketDepthBook('AAPL.US'),
+      lastUpdatedAt: 0
+    };
+    store.freedomDepthStreams.set(session.streamId, session);
+
+    try {
+      await store.connectFreedomMarketDepthUpstream(session);
+      const { signal } = fetchMock.mock.calls[0][1];
+      expect(signal.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(12_001);
+      expect(signal.aborted).toBe(false);
+      expect(upstream.close).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('Durable Object guest portfolio ownership', () => {

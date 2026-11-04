@@ -32,6 +32,19 @@ const FREEDOM_DEPTH_STREAM_MAX_SESSIONS = 4;
 const FREEDOM_DEPTH_STREAM_MAX_MESSAGE_BYTES = 256 * 1024;
 const FREEDOM_DEPTH_STREAM_MAX_PENDING_UPDATES = 20;
 
+async function fetchFreedomTradeNetWebSocket(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FREEDOM_TRADENET_SOCKET_CONNECT_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      headers: { Upgrade: "websocket" },
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function sanitizeFreedomTradeNetLoginError(value) {
   if (typeof value !== "string") return null;
   const sanitized = value
@@ -614,10 +627,7 @@ export class PortfolioStateDO {
     }
     const url = new URL("https://wss.tradernet.com/");
     url.searchParams.set("SID", sid);
-    const response = await fetch(url.toString(), {
-      headers: { Upgrade: "websocket" },
-      signal: AbortSignal.timeout(FREEDOM_TRADENET_SOCKET_CONNECT_TIMEOUT_MS)
-    });
+    const response = await fetchFreedomTradeNetWebSocket(url.toString());
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {
       const error = new Error("TradeNet rejected the Market Depth WebSocket connection.");
@@ -841,10 +851,7 @@ export class PortfolioStateDO {
     const sid = await this.getFreedomTradeNetSession();
     const url = new URL("https://wss.tradernet.com/");
     url.searchParams.set("SID", sid);
-    const response = await fetch(url.toString(), {
-      headers: { Upgrade: "websocket" },
-      signal: AbortSignal.timeout(FREEDOM_TRADENET_SOCKET_CONNECT_TIMEOUT_MS)
-    });
+    const response = await fetchFreedomTradeNetWebSocket(url.toString());
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {
       const error = new Error("TradeNet rejected the persistent portfolio/orders WebSocket connection.");
@@ -1197,10 +1204,7 @@ export class PortfolioStateDO {
     const sid = await this.getFreedomTradeNetSession();
     const url = new URL("https://wss.tradernet.com/");
     url.searchParams.set("SID", sid);
-    const response = await fetch(url.toString(), {
-      headers: { Upgrade: "websocket" },
-      signal: AbortSignal.timeout(FREEDOM_TRADENET_SOCKET_CONNECT_TIMEOUT_MS)
-    });
+    const response = await fetchFreedomTradeNetWebSocket(url.toString());
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {
       const error = new Error("TradeNet rejected the persistent quote WebSocket connection.");
