@@ -28,6 +28,18 @@ describe('portfolio metric quote updates', () => {
     expect(priceMetric).not.toContain('quote-flash');
     expect(source).not.toContain('previousPricesRef');
   });
+
+  it('exposes source timestamps and provisional valuation warnings for all holdings', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    const provenance = readFileSync(new URL('./QuoteProvenance.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain('<QuoteProvenanceList holdings={quoteProvenanceHoldings} />');
+    expect(provenance).toContain('quoteDetails?.sourceTimestamp');
+    expect(provenance).toContain('Observation time unavailable');
+    expect(source).toContain("valuationStatus === 'provisional'");
+    expect(source).toContain('Provisional valuation: one or more quotes or the broker balance may be stale, delayed, or unverified.');
+    expect(source).toContain('kind: \'Cash holding\'');
+  });
 });
 
 describe('margin tranche preview', () => {

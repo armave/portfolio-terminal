@@ -545,6 +545,7 @@ async function performPushCloudState(
   const handlers: SyncOptions = typeof options === 'function' ? {} : options;
   const {
     getState,
+    logTerminal = (msg: string) => console.log(msg),
     showToast = (msg: string, type: string) => console.log(`[${type}] ${msg}`)
   } = handlers;
   const isCurrentSession = handlers.isCurrentSession || (() => true);
@@ -648,6 +649,16 @@ async function performPushCloudState(
     if (!isCurrentSession()) return false;
 
     if (!res.ok) {
+      if (res.status === 409) {
+        const conflictMessage = translateText(
+          'Cloud data changed on another device. Export this device’s backup, pull the latest shared state, reconcile your changes, then sync again.',
+          getAppLanguage()
+        );
+        handlers.onStatusChange?.('error');
+        showToast(conflictMessage, 'error');
+        logTerminal(`[Cloud Conflict]: ${await responseError(res)}`);
+        return false;
+      }
       throw new Error(await responseError(res));
     }
 

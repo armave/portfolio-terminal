@@ -1511,6 +1511,37 @@ describe('PortfolioStateDO optimistic concurrency', () => {
     expect(latest.headers.get('ETag')).toBe('"1"');
   });
 
+  it('allows only one of two simultaneous writes using the same revision', async () => {
+    const values = new Map();
+    let transactionQueue = Promise.resolve();
+    const storage = {
+      get: async (key) => values.get(key),
+      put: async (key, value) => values.set(key, value),
+      delete: async (key) => values.delete(key),
+      transaction: (callback) => {
+        const transaction = transactionQueue.then(() => callback({
+          get: async (key) => values.get(key),
+          put: async (key, value) => values.set(key, value),
+          delete: async (key) => values.delete(key)
+        }));
+        transactionQueue = transaction.then(() => undefined, () => undefined);
+        return transaction;
+      }
+    };
+    const store = new PortfolioStateDO({ storage }, {});
+    const write = (encryptedPayload) => store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload })
+    }));
+
+    const responses = await Promise.all([write('first'), write('second')]);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    const latest = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(latest.headers.get('ETag')).toBe('"1"');
+    expect(['first', 'second']).toContain((await latest.json()).encryptedPayload);
+  });
+
 
   it('stores independent server-synced digests for portfolio and ticker keys', async () => {
     const store = makeDurableObject();
@@ -3105,6 +3136,29 @@ describe('Durable Object guest portfolio ownership', () => {
     expect(guestWrite.status).toBe(403);
     expect(cloudKey.status).toBe(403);
     expect(adminRead.status).toBe(403);
+  });
+
+  it('revokes a guest’s existing session when an administrator resets that guest’s password', async () => {
+    const { store } = await makeScopedStore();
+    const update = await store.fetch(new Request('https://store.test/api/auth/users', {
+      method: 'POST',
+      headers: authHeaders('admin-token'),
+      body: JSON.stringify({
+        action: 'update',
+        id: 'guest-1',
+        password: 'a-new-valid-password'
+      })
+    }));
+    expect(update.status).toBe(200);
+
+    const revokedGuestSession = await store.fetch(new Request('https://store.test/api/auth/me', {
+      headers: authHeaders('guest-one-token')
+    }));
+    const unaffectedGuestSession = await store.fetch(new Request('https://store.test/api/auth/me', {
+      headers: authHeaders('guest-two-token')
+    }));
+    expect(revokedGuestSession.status).toBe(401);
+    expect(unaffectedGuestSession.status).toBe(200);
   });
 
   it('persists an encrypted per-guest tranche ledger and keeps it scoped to that guest', async () => {

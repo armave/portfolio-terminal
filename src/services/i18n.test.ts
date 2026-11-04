@@ -178,6 +178,18 @@ describe('app localization', () => {
       .toBe('Не удалось сохранить изменения портфеля. Текущий портфель остаётся открытым; экспортируйте резервную копию перед перезагрузкой.');
   });
 
+  it('localizes valuation warnings and the cloud conflict recovery path', () => {
+    expect(translateText(
+      'Cloud data changed on another device. Export this device’s backup, pull the latest shared state, reconcile your changes, then sync again.',
+      'ru'
+    )).toContain('изменились на другом устройстве');
+    expect(translateText(
+      'Scenario interpretation is provisional because one or more account balances or quotes are stale, delayed, or lack a verified observation time.',
+      'ru'
+    )).toContain('Интерпретация сценария предварительная');
+    expect(translateText('Quote sources and observation times', 'ru')).toBe('Источники котировок и время наблюдения');
+  });
+
   it('localizes cost-basis sale rejection messaging into Russian', () => {
     expect(translateText(
       'Sale blocked because purchase lots are missing or inconsistent. Reconcile the cost basis before selling.',

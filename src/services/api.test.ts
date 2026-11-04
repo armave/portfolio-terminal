@@ -308,6 +308,36 @@ describe('cloud state sync', () => {
     expect(onStatusChange).toHaveBeenCalledWith('synced');
   });
 
+  it('gives an actionable recovery path for cloud revision conflicts without retrying a stale write', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      headers: new Headers({ ETag: '"8"' }),
+      json: async () => ({
+        error: 'Cloud portfolio changed since this device last synced. Pull the latest state before saving.',
+        conflict: true,
+        currentRevision: 8
+      })
+    });
+    const showToast = vi.fn();
+    const logTerminal = vi.fn();
+    const onStatusChange = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(pushCloudState(
+      { activeView: 'CONFLICT-RECOVERY-TEST', balance: 42 },
+      { secret: 'cloud-conflict-test-secret', showToast, logTerminal, onStatusChange }
+    )).resolves.toBe(false);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(
+      'Cloud data changed on another device. Export this device’s backup, pull the latest shared state, reconcile your changes, then sync again.',
+      'error'
+    );
+    expect(logTerminal).toHaveBeenCalledWith(expect.stringContaining('[Cloud Conflict]'));
+    expect(onStatusChange).toHaveBeenCalledWith('error');
+  });
+
   it('does not mutate the live state when excluding local-only fields from cloud backup', async () => {
     const state = {
       activeView: 'AAPL',
@@ -537,7 +567,7 @@ describe('cloud revision conflict handling', () => {
 
     expect(result).toBe(false);
     expect(showToast).toHaveBeenCalledWith(
-      'Cloud push failed: Cloud portfolio changed since this device last synced.',
+      'Cloud data changed on another device. Export this device’s backup, pull the latest shared state, reconcile your changes, then sync again.',
       'error'
     );
   });

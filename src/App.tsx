@@ -5,6 +5,7 @@ import { lazy, memo, Suspense } from 'preact/compat';
 import { AuthModal } from './components/AuthModal';
 import { DeskLoading } from './components/DeskLoading';
 import { TickerTabs } from './components/TickerTab';
+import type { QuoteProvenanceHolding } from './components/QuoteProvenance';
 import { MarketStatusBadge } from './components/MarketStatusBadge';
 import { CloudSyncIndicator } from './components/CloudSyncIndicator';
 import { ProjectionsTable } from './components/ProjectionsTable';
@@ -16,9 +17,12 @@ import type { ScenarioModalData } from './features/terminal/scenarioContracts';
 import { fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
 import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
+import { calculatePortfolioValuation, getPortfolioValuationReliability } from './domain/portfolioValuation';
 import { addErrorToast, dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './services/i18n';
 import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';
+import { summarizeQuoteFreshness } from './utils/formatters';
+import { useQuoteRefreshInterval } from './ui/useQuoteRefreshInterval';
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
 import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerDataRuntime';
@@ -82,6 +86,74 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   );
   const activeDeskView = useActiveView();
   const hasMarginPositions = usePortfolioSelector((state) => Object.keys(state.positions || {}).length > 0);
+  const scenarioValuationSnapshot = usePortfolioSelector(
+    (state) => ({
+      positions: state.positions || {},
+      cashHoldings: state.cashCushion?.holdings || [],
+      balance: state.balance,
+      freeCash: state.cashCushion?.freeCash,
+      brokerAccountInfo: state.brokerAccountInfo
+    }),
+    (previous, next) =>
+      previous.positions === next.positions &&
+      previous.cashHoldings === next.cashHoldings &&
+      previous.balance === next.balance &&
+      previous.freeCash === next.freeCash &&
+      previous.brokerAccountInfo === next.brokerAccountInfo
+  );
+  const scenarioRefreshIntervalMs = useQuoteRefreshInterval(
+    60000,
+    currentUser?.role === 'guest' ? 'guest' : 'admin'
+  );
+  const scenarioQuoteProvenanceHoldings: QuoteProvenanceHolding[] = [
+    ...Object.values(scenarioValuationSnapshot.positions)
+      .filter((position) => Number(position.shares) > 0)
+      .map((position) => ({ ...position, kind: 'Margin position' as const })),
+    ...scenarioValuationSnapshot.cashHoldings
+      .filter((holding) => Number(holding.shares) > 0)
+      .map((holding) => ({ ...holding, kind: 'Cash holding' as const }))
+  ];
+  const scenarioQuoteHoldings = scenarioQuoteProvenanceHoldings.map((holding) => {
+    const price = holding.kind === 'Margin position'
+      ? Number(holding.currentPrice)
+      : Number(holding.currentPrice ?? holding.price);
+    return Number.isFinite(price) && price > 0
+      ? holding
+      : { ...holding, quoteUpdatedAt: undefined, quoteSource: undefined, quoteDetails: undefined };
+  });
+  const scenarioQuoteSummary = summarizeQuoteFreshness(
+    scenarioQuoteHoldings,
+    Date.now(),
+    scenarioRefreshIntervalMs
+  );
+  const scenarioValuation = calculatePortfolioValuation({
+    signedAccountBalance: scenarioValuationSnapshot.balance,
+    freeCash: scenarioValuationSnapshot.freeCash,
+    marginPositions: Object.values(scenarioValuationSnapshot.positions),
+    cashHoldings: scenarioValuationSnapshot.cashHoldings
+  });
+  const scenarioHasCurrentBrokerBalance = scenarioValuationSnapshot.brokerAccountInfo?.loaded === true &&
+    Array.isArray(scenarioValuationSnapshot.brokerAccountInfo.balances) &&
+    scenarioValuationSnapshot.brokerAccountInfo.balances.some((balance) =>
+      String(balance.currency ?? '').toUpperCase() === 'USD' &&
+      balance.amount !== null && balance.amount !== undefined &&
+      Number.isFinite(Number(balance.amount))
+    );
+  const scenarioValuationStatus = getPortfolioValuationReliability({
+    accountBalanceAvailable: scenarioValuation.accountBalanceAvailable,
+    accountBalanceStale: scenarioValuationSnapshot.brokerAccountInfo?.status === 'stale' ||
+      (scenarioValuationSnapshot.brokerAccountInfo?.loaded === true && !scenarioHasCurrentBrokerBalance),
+    unpricedHoldings: scenarioValuation.unpricedHoldings,
+    staleQuotes: scenarioQuoteSummary.stale,
+    delayedQuotes: scenarioQuoteSummary.delayed,
+    unknownQuotes: scenarioQuoteSummary.unknown,
+    unavailableQuotes: scenarioQuoteSummary.unavailable
+  });
+  const scenarioDataQualityWarning = scenarioValuationStatus === 'incomplete'
+    ? translateText('Scenario interpretation may be incomplete because the current account balance or one or more holding prices are unavailable.', getAppLanguage())
+    : scenarioValuationStatus === 'provisional'
+      ? translateText('Scenario interpretation is provisional because one or more account balances or quotes are stale, delayed, or lack a verified observation time.', getAppLanguage())
+      : null;
   const guestHistorySnapshot = usePortfolioSelector(
     (state) => ({
       guestTrancheLedger: state.guestTrancheLedger || [],
@@ -647,7 +719,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         <AuthModal isOpen={authOpen} onSaveSecret={onSaveGatewaySecret} />
       </div>
       {scenarioModalData && <Suspense fallback={null}><ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} /></Suspense>}
-      {scenarioReport !== null && <Suspense fallback={null}><ScenarioReportModal key={scenarioReport} report={scenarioReport} onClose={dismissScenarioReport} /></Suspense>}
+      {scenarioReport !== null && <Suspense fallback={null}><ScenarioReportModal key={scenarioReport} report={scenarioReport} dataQualityWarning={scenarioDataQualityWarning} quoteProvenanceHoldings={scenarioQuoteProvenanceHoldings} onClose={dismissScenarioReport} /></Suspense>}
       {permissions.canViewMarginDesk && marginIntelligence && <Suspense fallback={null}><MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} /></Suspense>}
       <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="assertive">
         {errorToasts.map((toast) => <div key={toast.id} role="alert" class={'pointer-events-auto rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all ' + (toast.isClosing ? 'opacity-0 translate-x-2' : '')}>{toast.message}</div>)}

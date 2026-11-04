@@ -114,8 +114,21 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('cashHoldingsForQuotes');
     expect(source).toContain('accountBalanceStale: brokerBalanceIsStale');
     expect(source).toContain("translateText('Margin risk estimate unavailable until the account balance and every holding can be valued.', getAppLanguage())");
-    expect(source).not.toContain('Provisional valuation');
     expect(source).not.toContain('Some market quotes or broker account data are stale, delayed, or lack verifiable observation times.');
+  });
+
+  it('surfaces current valuation quality and quote provenance in scenario reports', () => {
+    const app = readSource('../App.tsx');
+    const report = readSource('../components/ScenarioReportModal.tsx');
+    const provenance = readSource('../components/QuoteProvenance.tsx');
+
+    expect(app).toContain('scenarioDataQualityWarning');
+    expect(app).toContain('quoteProvenanceHoldings={scenarioQuoteProvenanceHoldings}');
+    expect(report).toContain('role="status"');
+    expect(report).toContain('<QuoteProvenanceList holdings={quoteProvenanceHoldings} />');
+    expect(provenance).toContain('quoteDetails?.sourceTimestamp');
+    expect(provenance).toContain('quoteDetails?.receivedAt');
+    expect(provenance).toContain('Observation time unavailable');
   });
 
   it('marks the compact admin Balance equity badge as partial when holdings are unpriced', () => {

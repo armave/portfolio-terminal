@@ -43,7 +43,7 @@ import {
 import { getMarketInsightsTicker, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
 import { commitPortfolioBackupImport } from './src/services/backupImport';
-import { buildPortfolioBackupFilename, createPortfolioBackupBlob } from './src/services/portfolioBackupFile';
+import { buildPortfolioBackupFilename, createPortfolioBackupBlob, validatePortfolioBackupFileSize } from './src/services/portfolioBackupFile';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
   fetchYahooDeepStockData,
@@ -1561,12 +1561,21 @@ function exportBackupJSON() {
 
 async function importBackupFile(file: File) {
   try {
+    validatePortfolioBackupFileSize(file.size);
     const parsed = JSON.parse(await file.text());
     if (parsed && typeof parsed === 'object' && 'marginBalance' in parsed) {
       delete parsed.marginBalance;
     }
     const importedState: any = normalizePortfolioBackup(parsed);
-    if (!confirm(`Replace this browser's portfolio with "${file.name}"? If KV cloud sync is configured, the imported portfolio will replace its remote copy too.`)) {
+    const importedPositionCount = Object.keys(importedState.positions || {}).length;
+    const importedCashHoldingCount = Array.isArray(importedState.cashCushion?.holdings)
+      ? importedState.cashCushion.holdings.length
+      : 0;
+    if (!confirm(
+      `Restore "${file.name}" (${importedPositionCount} margin positions, ${importedCashHoldingCount} cash holdings)? ` +
+      `This replaces this browser's portfolio and, if cloud sync is available, the shared administrator workspace. ` +
+      `Export a current backup first if you may need the existing data.`
+    )) {
       logTerminal('[Backup Import]: Import cancelled; the current portfolio was not changed.');
       return;
     }

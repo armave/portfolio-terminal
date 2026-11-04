@@ -2,9 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChild } from 'preact';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { scheduleDialogClose } from '../ui/dialogClose';
+import { QuoteProvenanceList, type QuoteProvenanceHolding } from './QuoteProvenance';
 
 interface ScenarioReportModalProps {
   report: string;
+  dataQualityWarning?: string | null;
+  quoteProvenanceHoldings?: QuoteProvenanceHolding[];
   onClose: () => void;
 }
 
@@ -64,7 +67,7 @@ function renderReportLines(report: string): ComponentChild[] {
   return content;
 }
 
-export function ScenarioReportModal({ report, onClose }: ScenarioReportModalProps) {
+export function ScenarioReportModal({ report, dataQualityWarning, quoteProvenanceHoldings = [], onClose }: ScenarioReportModalProps) {
   const [isClosing, setIsClosing] = useState(false);
   const closingRef = useRef(false);
   const dialogRef = useRef<HTMLElement>(null);
@@ -103,7 +106,11 @@ export function ScenarioReportModal({ report, onClose }: ScenarioReportModalProp
           </div>
           <button ref={closeButtonRef} type="button" class="shrink-0 min-h-11 rounded-lg border border-slate-700/80 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors duration-150 hover:border-slate-500 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" onClick={requestClose} aria-label="Close scenario report">Close</button>
         </header>
-        <div class="scenario-report-content min-h-0 flex-1 overflow-auto break-words bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/90 px-3 py-3 text-[13px] leading-snug selection:bg-violet-500/30 sm:px-5 sm:py-4 sm:text-sm" role="region" aria-labelledby="scenarioReportTitle" tabIndex={0}>{renderReportLines(report)}</div>
+        <div class="scenario-report-content min-h-0 flex-1 overflow-auto break-words bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900/90 px-3 py-3 text-[13px] leading-snug selection:bg-violet-500/30 sm:px-5 sm:py-4 sm:text-sm" role="region" aria-labelledby="scenarioReportTitle" tabIndex={0}>
+          {dataQualityWarning && <p class="mb-3 rounded-lg border border-amber-700/70 bg-amber-950/40 px-3 py-2 text-xs leading-relaxed text-amber-200" role="status">{dataQualityWarning}</p>}
+          <QuoteProvenanceList holdings={quoteProvenanceHoldings} />
+          {renderReportLines(report)}
+        </div>
         <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900/80 px-4 py-3.5 sm:px-6">
           <p class="max-w-xl text-[11px] leading-relaxed text-slate-400">Estimates only · actual results may differ.</p>
           <button type="button" class="min-h-11 rounded-lg bg-purple-400 px-5 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-purple-950/30 transition duration-150 hover:-translate-y-px hover:bg-purple-300 hover:shadow-purple-900/30 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" onClick={requestClose}>Done</button>

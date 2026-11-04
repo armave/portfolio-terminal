@@ -21,6 +21,7 @@ import { loadSavedHistory } from '../services/storage';
 import { normalizeFreedomTrades } from '../services/api';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { BoardExternalLinks } from './BoardExternalLinks';
+import { QuoteProvenanceList, type QuoteProvenanceHolding } from './QuoteProvenance';
 
 export function getUsableMarketPrice(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -56,6 +57,9 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
             {translateText('Unpriced holdings', getAppLanguage())}: {unpricedHoldings}
           </p>
         )}
+        <p class="mt-1 text-[10px] text-slate-400">
+          {translateText('Scenario interpretation may be incomplete because the current account balance or one or more holding prices are unavailable.', getAppLanguage())}
+        </p>
       </section>
     );
   }
@@ -75,6 +79,11 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <div><span class="margin-risk-label">ACCOUNT EQUITY HEALTH</span><strong class="margin-risk-equity">{equityText}</strong></div>
         <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
       </div>
+      {valuationStatus === 'provisional' && (
+        <p class="mt-2 text-xs leading-relaxed text-amber-200" role="status">
+          {translateText('Provisional valuation: one or more quotes or the broker balance may be stale, delayed, or unverified. Review quote sources and observation times before relying on this risk estimate.', getAppLanguage())}
+        </p>
+      )}
       <div class="margin-risk-meter" role="progressbar" aria-label="Account equity percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth}>
         <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, 40 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
         <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
@@ -422,6 +431,10 @@ function SummaryMetricsGridView() {
     const quoteCoverageClass = unpricedMarginPositionCount > 0 || quoteSummary.stale > 0 || quoteSummary.unknown > 0 || quoteSummary.unavailable > 0
       ? 'text-amber-300'
       : quoteSummary.delayed > 0 ? 'text-sky-300' : 'text-emerald-400';
+    const quoteProvenanceHoldings: QuoteProvenanceHolding[] = [
+      ...tickers.map((ticker) => ({ ...state.positions![ticker], kind: 'Margin position' as const })),
+      ...(state.cashCushion?.holdings || []).map((holding) => ({ ...holding, kind: 'Cash holding' as const }))
+    ];
 
     const valuation = calculatePortfolioValuation({
       signedAccountBalance: state.balance,
@@ -518,6 +531,7 @@ function SummaryMetricsGridView() {
             <span id="boardQuoteMeta" class={`portfolio-micro-quote-meta inline-flex items-center gap-1.5 text-[10px] ${quoteCoverageClass}`} aria-label={quoteStatusLabel}>
               <span class="text-slate-400"> · </span><span>{quoteMetaText}</span>
             </span>
+            <QuoteProvenanceList holdings={quoteProvenanceHoldings} />
           </div>
           <div class="portfolio-micro-column portfolio-micro-costs">
             <span class="portfolio-micro-heading">DEBT &amp; CARRYING COSTS</span>
@@ -743,6 +757,10 @@ function SummaryMetricsGridView() {
               <span>{quoteMetaText} {pos.quoteUpdatedAt ? ' · ' + formatRelativeTime(pos.quoteUpdatedAt) : ''}</span>
             </span>
           </span>
+          <QuoteProvenanceList holdings={[
+            { ...pos, kind: 'Margin position' },
+            ...(state.cashCushion?.holdings || []).map((holding) => ({ ...holding, kind: 'Cash holding' as const }))
+          ]} />
         </div>
         <div class="portfolio-micro-column portfolio-micro-costs">
           <span class="portfolio-micro-heading">DEBT &amp; CARRYING COSTS</span>

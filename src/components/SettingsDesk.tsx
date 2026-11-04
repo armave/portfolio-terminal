@@ -347,7 +347,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       {account?.role === "admin" && <section class="settings-panel settings-user-panel space-y-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3" aria-labelledby="userManagementTitle">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div><h3 id="userManagementTitle" class="text-sm font-bold text-slate-200">User management</h3>
-            <p class="text-[10px] text-slate-500">Accounts share this portfolio. Guests have read-only access; admins can manage accounts.</p></div>
+            <p class="text-[10px] text-slate-500">Admins share the owner workspace. Guests see only assigned read-only projections; they do not have independent portfolios.</p></div>
           {account?.role === "admin" && <span class="text-[10px] uppercase tracking-wider text-emerald-400">Admin controls</span>}
         </div>
         {account?.role === "admin" ? <>
