@@ -166,6 +166,100 @@ export function restoreScrollPositionImmediately(
   }
 }
 
+
+interface DialogScrollLockState {
+  count: number;
+  body: HTMLElement;
+  documentElement: HTMLElement;
+  view: Window;
+  previousBodyStyles: {
+    overflow: string;
+    position: string;
+    top: string;
+    left: string;
+    right: string;
+    width: string;
+  };
+  previousDocumentOverflow: string;
+  scrollX: number;
+  scrollY: number;
+}
+
+const activeDialogScrollLocks = new WeakMap<Document, DialogScrollLockState>();
+
+/**
+ * Acquires a page scroll lock shared by every open dialog in the same document.
+ * The original styles and scroll offset are restored only after the last dialog
+ * releases its lock, including when dialogs unmount out of order.
+ */
+export function acquireDialogScrollLock(ownerDocument: Document): () => void {
+  const view = ownerDocument.defaultView;
+  const body = ownerDocument.body;
+  const documentElement = ownerDocument.documentElement;
+
+  if (!view || !body || !documentElement) return () => undefined;
+
+  let state = activeDialogScrollLocks.get(ownerDocument);
+  if (!state) {
+    state = {
+      count: 0,
+      body,
+      documentElement,
+      view,
+      previousBodyStyles: {
+        overflow: body.style.overflow,
+        position: body.style.position,
+        top: body.style.top,
+        left: body.style.left,
+        right: body.style.right,
+        width: body.style.width
+      },
+      previousDocumentOverflow: documentElement.style.overflow,
+      scrollX: view.scrollX,
+      scrollY: view.scrollY
+    };
+    activeDialogScrollLocks.set(ownerDocument, state);
+
+    // A fixed body prevents touch scrolling behind the dialog on mobile Safari.
+    documentElement.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.top = `-${state.scrollY}px`;
+    body.style.left = `-${state.scrollX}px`;
+    body.style.right = '0';
+    body.style.width = '100%';
+  }
+
+  state.count += 1;
+  let released = false;
+
+  return () => {
+    if (released) return;
+    released = true;
+
+    const activeState = activeDialogScrollLocks.get(ownerDocument);
+    if (!activeState || activeState !== state) return;
+
+    activeState.count -= 1;
+    if (activeState.count > 0) return;
+
+    activeState.body.style.overflow = activeState.previousBodyStyles.overflow;
+    activeState.body.style.position = activeState.previousBodyStyles.position;
+    activeState.body.style.top = activeState.previousBodyStyles.top;
+    activeState.body.style.left = activeState.previousBodyStyles.left;
+    activeState.body.style.right = activeState.previousBodyStyles.right;
+    activeState.body.style.width = activeState.previousBodyStyles.width;
+    activeState.documentElement.style.overflow = activeState.previousDocumentOverflow;
+    activeDialogScrollLocks.delete(ownerDocument);
+    restoreScrollPositionImmediately(
+      activeState.documentElement,
+      (x, y) => activeState.view.scrollTo(x, y),
+      activeState.scrollX,
+      activeState.scrollY
+    );
+  };
+}
+
 interface UseDialogFocusOptions {
   active?: boolean;
   initialFocusRef?: DialogElementRef;
@@ -186,32 +280,12 @@ export function useDialogFocus(
     const dialog = dialogRef.current;
     if (!dialog) return;
 
-    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const ownerDocument = dialog.ownerDocument;
+    const activeElement = ownerDocument.activeElement instanceof HTMLElement ? ownerDocument.activeElement : null;
     const previousFocus = resolveDialogRestoreTarget(restoreFocusRef?.current, activeElement);
     const unregisterDialog = registerActiveDialog(dialog);
     const restoreDialogBackground = isolateDialogBackground(dialog);
-    const body = document.body;
-    const documentElement = document.documentElement;
-    const previousBodyStyles = {
-      overflow: body.style.overflow,
-      position: body.style.position,
-      top: body.style.top,
-      left: body.style.left,
-      right: body.style.right,
-      width: body.style.width
-    };
-    const previousDocumentOverflow = documentElement.style.overflow;
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
-
-    // A fixed body prevents touch scrolling behind the dialog on mobile Safari.
-    documentElement.style.overflow = 'hidden';
-    body.style.overflow = 'hidden';
-    body.style.position = 'fixed';
-    body.style.top = `-${scrollY}px`;
-    body.style.left = `-${scrollX}px`;
-    body.style.right = '0';
-    body.style.width = '100%';
+    const releaseScrollLock = acquireDialogScrollLock(ownerDocument);
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isTopmostActiveDialog(dialog)) return;
@@ -220,25 +294,18 @@ export function useDialogFocus(
         onEscapeRef.current();
         return;
       }
-      trapDialogTabKey(event, dialog, document.activeElement);
+      trapDialogTabKey(event, dialog, ownerDocument.activeElement);
     };
 
-    document.addEventListener('keydown', onKeyDown);
+    ownerDocument.addEventListener('keydown', onKeyDown);
     focusElementWithoutScrolling(initialFocusRef?.current ?? getDialogFocusableElements(dialog)[0] ?? dialog);
 
     return () => {
-      document.removeEventListener('keydown', onKeyDown);
+      ownerDocument.removeEventListener('keydown', onKeyDown);
       const wasTopmostDialog = isTopmostActiveDialog(dialog);
       unregisterDialog();
       restoreDialogBackground();
-      body.style.overflow = previousBodyStyles.overflow;
-      body.style.position = previousBodyStyles.position;
-      body.style.top = previousBodyStyles.top;
-      body.style.left = previousBodyStyles.left;
-      body.style.right = previousBodyStyles.right;
-      body.style.width = previousBodyStyles.width;
-      documentElement.style.overflow = previousDocumentOverflow;
-      restoreScrollPositionImmediately(documentElement, (x, y) => window.scrollTo(x, y), scrollX, scrollY);
+      releaseScrollLock();
       if (wasTopmostDialog && previousFocus?.isConnected) focusElementWithoutScrolling(previousFocus);
     };
   }, [active, dialogRef, initialFocusRef, restoreFocusRef]);
