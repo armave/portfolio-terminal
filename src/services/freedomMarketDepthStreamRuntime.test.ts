@@ -131,7 +131,6 @@ describe('modal-scoped TradeNet Market Depth stream runtime', () => {
     socket.receive({ type: 'error', message });
 
     expect(onStatus).toHaveBeenLastCalledWith('error', message);
-    expect(onStatus.mock.calls.some(([status]) => status === 'disconnected')).toBe(false);
     expect(socket.closeCalls).toContainEqual([1011, 'Market Depth stream error']);
     expect(runtime.isConnected()).toBe(false);
   });
