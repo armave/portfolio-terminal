@@ -286,4 +286,141 @@ describe('portfolio transaction calculations', () => {
       cashSurplus: 0
     });
   });
+
+  it('rejects non-finite sale commission inputs and invalid broker fee assumptions', () => {
+    expect(() => calculateSaleCommission(Number.NaN, 1_000, brokerRules))
+      .toThrow('Sale quantity must be finite');
+    expect(() => calculateSaleCommission(10, Number.POSITIVE_INFINITY, brokerRules))
+      .toThrow('Sale proceeds must be finite');
+    expect(() => calculateSaleCommission(10, 1_000, {
+      ...brokerRules,
+      commissionMin: Number.POSITIVE_INFINITY
+    })).toThrow('Commission configuration must contain finite, non-negative rates and minimums.');
+
+    // A non-positive finite quantity remains a no-op for legacy callers.
+    expect(calculateSaleCommission(0, Number.NaN, brokerRules)).toBe(0);
+  });
+
+  it('rejects sale accounting when the sold quantity exceeds the open position', () => {
+    const position: PositionRecord = {
+      ticker: 'AAPL',
+      shares: 10,
+      currentPrice: 100,
+      pt: 110,
+      commBuy: 2,
+      tranches: [{ qty: 10, price: 100, date: '2026-10-15' }]
+    };
+
+    expect(() => calculateSaleAccounting({
+      tranches: position.tranches || [],
+      positions: { AAPL: position },
+      positionShares: 10,
+      sharesSold: 10 + 1e-4,
+      balance: -1_000,
+      brokerAssumptions: { annualBorrowRate: 0.15, dayCountBasis: 365 },
+      sellProceeds: 1_100,
+      soldCostBasis: 1_000,
+      buyCommissionAllocated: 1,
+      sellCommission: 1
+    })).toThrow('Sale quantity cannot exceed the open position');
+  });
+
+  it('rejects malformed sale accounting amounts and invalid rollover assumptions', () => {
+    const position: PositionRecord = {
+      ticker: 'AAPL',
+      shares: 10,
+      currentPrice: 100,
+      pt: 110,
+      commBuy: 2,
+      tranches: [{ qty: 10, price: 100, date: '2026-10-15' }]
+    };
+    const validInput = {
+      tranches: position.tranches || [],
+      positions: { AAPL: position },
+      positionShares: 10,
+      sharesSold: 5,
+      balance: -1_000,
+      brokerAssumptions: { annualBorrowRate: 0.15, dayCountBasis: 365 },
+      sellProceeds: 550,
+      soldCostBasis: 500,
+      buyCommissionAllocated: 1,
+      sellCommission: 1
+    };
+
+    expect(() => calculateSaleAccounting({
+      ...validInput,
+      sellProceeds: Number.POSITIVE_INFINITY
+    })).toThrow('Sale proceeds must be finite');
+    expect(() => calculateSaleAccounting({
+      ...validInput,
+      brokerAssumptions: { annualBorrowRate: 0.15, dayCountBasis: 0 }
+    })).toThrow('Day-count basis must be positive');
+    expect(() => calculateSaleAccounting({
+      ...validInput,
+      balance: Number.NaN
+    })).toThrow('Signed account balance must be finite');
+    expect(() => calculateSaleAccounting({
+      ...validInput,
+      now: new Date('invalid')
+    })).toThrow('Sale accounting clock must be a valid date');
+  });
+
+  it('rejects selected-position investment that is absent from the portfolio ledger', () => {
+    expect(() => calculateSaleAccounting({
+      tranches: [{ qty: 10, price: 100 }],
+      positions: {},
+      positionShares: 10,
+      sharesSold: 5,
+      balance: -1_000,
+      brokerAssumptions: { annualBorrowRate: 0.15, dayCountBasis: 365 },
+      sellProceeds: 550,
+      soldCostBasis: 500,
+      buyCommissionAllocated: 1,
+      sellCommission: 1
+    })).toThrow('Selected position investment is missing from the portfolio position ledger');
+  });
+
+  it('rejects malformed portfolio investment lots instead of misallocating margin debt', () => {
+    const position: PositionRecord = {
+      ticker: 'AAPL',
+      shares: 10,
+      currentPrice: 100,
+      pt: 110,
+      commBuy: 2,
+      tranches: [{ qty: 10, price: 100 }]
+    };
+
+    expect(() => calculateSaleAccounting({
+      tranches: position.tranches || [],
+      positions: {
+        AAPL: {
+          ...position,
+          tranches: [{ qty: Number.POSITIVE_INFINITY, price: 100 }]
+        }
+      },
+      positionShares: 10,
+      sharesSold: 5,
+      balance: -1_000,
+      brokerAssumptions: { annualBorrowRate: 0.15, dayCountBasis: 365 },
+      sellProceeds: 550,
+      soldCostBasis: 500,
+      buyCommissionAllocated: 1,
+      sellCommission: 1
+    })).toThrow('quantity must be finite and non-negative');
+  });
+
+  it('rejects non-finite settlement inputs without changing legacy negative-value clamping', () => {
+    expect(() => settleSaleProceeds(Number.POSITIVE_INFINITY, 0, 100))
+      .toThrow('Margin debt must be finite');
+    expect(() => settleSaleProceeds(100, 0, Number.NaN))
+      .toThrow('Net sale proceeds must be finite');
+
+    expect(settleSaleProceeds(-10, -5, -1)).toEqual({
+      remainingDebt: 0,
+      freeCash: 0,
+      debtRepaid: 0,
+      cashSurplus: 0
+    });
+  });
+
 });
