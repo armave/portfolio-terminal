@@ -10,7 +10,6 @@
 - [x] Added Vitest regression coverage for lower-first and upper-first modal cleanup, idempotent release, preservation of original inline styles, and exactly-once final scroll restoration.
 - [ ] Continue the remaining frontend runtime, component, localization, CSS, accessibility, and browser-validation audit.
 
-
 **Proposed PR title:** `refactor(frontend): simplify runtime boundaries and strengthen UI consistency`
 
 **Branch:** `refactor/frontend-runtime-ui-cleanup-2026-11`  
