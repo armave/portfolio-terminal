@@ -32,6 +32,8 @@ export interface ClosedHistorySnapshot {
 export interface PortfolioSnapshotOptions {
   /** Keep the device-local desk preference consistent with the committed snapshot. */
   deviceActiveView?: string;
+  /** Keep the separately-preferred broker settings record consistent with the portfolio snapshot. */
+  brokerRules?: BrokerAssumptions;
 }
 
 /** Returns browser storage only when it is available to the current runtime. */
@@ -364,6 +366,7 @@ function persistPortfolioSnapshot(
   const savedAt = Date.now();
   let persistedStateJson: string;
   let historyJson: string | null = null;
+  let brokerRulesJson: string | null = null;
   let nextComparable: string;
   try {
     const persistedState: Record<string, unknown> = { ...state, lastUpdated: savedAt };
@@ -380,6 +383,9 @@ function persistPortfolioSnapshot(
         cashflows: history.cashflows
       });
     }
+    if (options.brokerRules) {
+      brokerRulesJson = JSON.stringify(options.brokerRules);
+    }
   } catch (err) {
     console.error('Failed to serialize portfolio snapshot:', err);
     return { success: false, stateChanged: false, savedAt: null };
@@ -393,6 +399,9 @@ function persistPortfolioSnapshot(
   }
   if (typeof options.deviceActiveView === 'string') {
     writes.push({ key: 'portfolio_active_view', value: options.deviceActiveView });
+  }
+  if (brokerRulesJson !== null) {
+    writes.push({ key: STORAGE_KEY_RULES, value: brokerRulesJson });
   }
 
   const previousValues = new Map<string, string | null>();
