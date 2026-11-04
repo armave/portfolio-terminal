@@ -47,7 +47,7 @@ function BoardExternalLinksView() {
           rel="noopener noreferrer"
           title={`Open ${ticker} on ${p.name} in a new tab`}
           aria-label={`Open ${ticker} on ${p.name} in a new tab`}
-          class={`stock-external-link ${p.brandClass} px-2 py-1 rounded text-[10px] font-bold font-mono uppercase`}
+          class={`stock-external-link ${p.brandClass} inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 py-1 text-[10px] font-bold font-mono uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950`}
         >
           {p.name}
         </a>
