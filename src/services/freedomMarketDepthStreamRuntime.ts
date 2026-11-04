@@ -163,14 +163,17 @@ export function createFreedomMarketDepthStreamRuntime(
               message.symbol === activeSymbol &&
               message.data !== null && typeof message.data === 'object' &&
               !Array.isArray(message.data)) {
+            const updatedAt = message.updatedAt;
+            if (typeof updatedAt !== 'number' || !Number.isFinite(updatedAt) || updatedAt <= 0) {
+              connected = false;
+              report('error', 'TradeNet returned Market Depth without a valid update timestamp.');
+              finish(false);
+              try { nextSocket.close(1008, 'Invalid Market Depth timestamp'); } catch { /* ignore */ }
+              return;
+            }
             connected = true;
             lastPongAt = now();
-            dependencies.onDepth(
-              activeSymbol,
-              message.data,
-              Number(message.updatedAt) || now(),
-              sessionKey
-            );
+            dependencies.onDepth(activeSymbol, message.data, updatedAt, sessionKey);
             return;
           }
           if (message.type === 'error') {
