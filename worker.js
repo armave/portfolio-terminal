@@ -355,6 +355,71 @@ export function sanitizeFreedomActiveOrders(response) {
     return { orders: { order }, trades: { trade } };
 }
 
+export function sanitizeFreedomMarketDepth(payload, requestedSymbol) {
+    const isRecord = value => value !== null && typeof value === "object" && !Array.isArray(value);
+    if (!isRecord(payload)) {
+        throw new Error("TradeNet returned an invalid market-depth update.");
+    }
+
+    const symbol = String(requestedSymbol || "").trim().toUpperCase();
+    const responseSymbol = typeof payload.i === "string" ? payload.i.trim().toUpperCase() : symbol;
+    if (!symbol || responseSymbol !== symbol) {
+        throw new Error("TradeNet market-depth update did not match the requested symbol.");
+    }
+
+    const levels = new Map();
+    const rows = value => Array.isArray(value) ? value : isRecord(value) ? [value] : [];
+    const normalizeRow = value => {
+        if (!isRecord(value)) return null;
+        const sideValue = String(value.s ?? "").trim().toUpperCase();
+        const side = sideValue === "B" || sideValue === "BUY"
+            ? "B"
+            : sideValue === "S" || sideValue === "SELL" ? "S" : null;
+        const { k: position, p: price, q: quantity } = value;
+        if (!side || !Number.isSafeInteger(position) || position < 0 ||
+            !Number.isFinite(price) || price <= 0 ||
+            !Number.isFinite(quantity) || quantity < 0) {
+            return null;
+        }
+        return { side, position, price, quantity };
+    };
+
+    for (const row of rows(payload.del)) {
+        const normalized = normalizeRow(row);
+        if (normalized) levels.delete(`${normalized.side}:${normalized.position}`);
+    }
+    for (const field of ["ins", "upd"]) {
+        for (const row of rows(payload[field])) {
+            const normalized = normalizeRow(row);
+            if (normalized) {
+                levels.set(`${normalized.side}:${normalized.position}`, normalized);
+            }
+        }
+    }
+
+    const orderedLevels = [...levels.values()].sort((left, right) =>
+        left.position - right.position || left.side.localeCompare(right.side)
+    );
+    const bids = orderedLevels.filter(level => level.side === "B").slice(0, 100)
+        .map(({ position, price, quantity }) => ({ position, price, quantity }));
+    const asks = orderedLevels.filter(level => level.side === "S").slice(0, 100)
+        .map(({ position, price, quantity }) => ({ position, price, quantity }));
+    const sequence = payload.n;
+    const reportedDepth = payload.cnt;
+    const minStep = payload.min_step;
+    const stepPrice = payload.step_price;
+
+    return {
+        symbol,
+        ...(Number.isSafeInteger(sequence) ? { sequence } : {}),
+        ...(Number.isSafeInteger(reportedDepth) && reportedDepth >= 0 ? { reportedDepth } : {}),
+        ...(Number.isFinite(minStep) && minStep > 0 ? { minStep } : {}),
+        ...(Number.isFinite(stepPrice) && stepPrice > 0 ? { stepPrice } : {}),
+        bids,
+        asks
+    };
+}
+
 
 /**
  * Return a bounded login error description without exposing identifiers or secrets.
@@ -1510,7 +1575,7 @@ export default {
             const sharedDataPath = ["/api/state", "/api/history", "/api/margin-digest"].includes(pathname);
             const sharedDataAction = [
                 "state", "history", "freedom-test", "freedom-positions", "freedom-trades",
-                "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-portfolio-snapshot",
+                "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-market-depth", "freedom-portfolio-snapshot",
                 "freedom-account-stream-ticket"
             ].includes(action);
             // Market quotes and exchange schedules are public, read-only data.
@@ -1526,10 +1591,10 @@ export default {
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-status", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-status", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -1738,6 +1803,60 @@ export default {
                         error: error instanceof Error ? error.message : "TradeNet event diagnostic failed.",
                         diagnostics: error?.diagnostics || null
                     }), { status: 200, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                }
+            }
+
+            if (action === "freedom-market-depth") {
+                if (accountRole !== "admin") {
+                    return jsonError("Market Depth is available to administrator accounts only.", 403, corsHeaders);
+                }
+                const rawSymbol = incomingUrl.searchParams.get("symbol") || "";
+                if (!rawSymbol || rawSymbol.includes(",")) {
+                    return jsonError("Provide exactly one symbol for Market Depth.", 400, corsHeaders);
+                }
+                const normalized = rawSymbol.trim().toUpperCase();
+                const requestedSymbol = normalized.includes(".") ? normalized : normalized + ".US";
+                if (!/^[A-Z0-9.^=-]{1,32}$/.test(requestedSymbol)) {
+                    return jsonError("Provide one valid TradeNet ticker symbol for Market Depth.", 400, corsHeaders);
+                }
+
+                try {
+                    const result = await diagnoseFreedomEventStream(env, "b", true, [requestedSymbol]);
+                    const eventsConfirmed = result.connectionOpened &&
+                        result.userDataReceived && result.eventReceived &&
+                        result.isDemo !== true && result.sessionMode === "prod";
+                    if (!eventsConfirmed) {
+                        return new Response(JSON.stringify({
+                            ok: false,
+                            provider: "Freedom TradeNet",
+                            symbol: requestedSymbol,
+                            error: "Authenticated TradeNet Market Depth snapshot was not received.",
+                            diagnostics: Object.fromEntries(Object.entries(result)
+                                .filter(([key]) => !["eventSummary", "eventPayload"].includes(key)))
+                        }), { status: 502, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                    }
+
+                    const depth = sanitizeFreedomMarketDepth(result.eventPayload, requestedSymbol);
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Freedom TradeNet",
+                        source: "authenticated_websocket_snapshot",
+                        symbol: requestedSymbol,
+                        updatedAt: Date.now(),
+                        data: depth
+                    }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+                } catch (error) {
+                    if (error?.freedomDiagnosticSid) {
+                        await invalidateFreedomDiagnosticSession(env, error.freedomDiagnosticSid);
+                    }
+                    const upstreamStatus = Number(error?.status);
+                    const status = [401, 403, 429, 503].includes(upstreamStatus) ? upstreamStatus : 502;
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        provider: "Freedom TradeNet",
+                        symbol: requestedSymbol,
+                        error: error instanceof Error ? error.message : "TradeNet Market Depth snapshot failed."
+                    }), { status, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                 }
             }
 

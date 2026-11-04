@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomActiveOrders } from './worker.js';
+import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
 
 describe('upstream timeout coverage', () => {
@@ -734,6 +734,52 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('returns an authenticated one-shot depth snapshot without raw broker fields', async () => {
+    const payload = {
+      i: 'AAPL.US',
+      n: 24,
+      cnt: 1,
+      ins: [
+        { k: 0, p: 205.5, q: 3, s: 'B', owner_login: 'private-login' },
+        { k: 0, p: 205.75, q: 4, s: 'S' }
+      ],
+      account: 'private-value'
+    };
+    const { response, socket } = await runEventDiagnostic(
+      'b', payload, { isDemo: false, mode: 'prod' }, 'freedom-market-depth', 'AAPL'
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      ok: true,
+      source: 'authenticated_websocket_snapshot',
+      symbol: 'AAPL.US',
+      data: {
+        bids: [{ position: 0, price: 205.5, quantity: 3 }],
+        asks: [{ position: 0, price: 205.75, quantity: 4 }]
+      }
+    });
+    expect(body.updatedAt).toEqual(expect.any(Number));
+    expect(JSON.stringify(body)).not.toMatch(/private-login|private-value|owner_login|account/);
+    expect(socket.send).toHaveBeenCalledWith(JSON.stringify(['orderBook', ['AAPL.US']]));
+  });
+
+  it('rejects multiple symbols before creating an authenticated depth session', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-market-depth&symbol=AAPL%2CMSFT',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), { GATEWAY_SECRET: 'test-secret' });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: 'Provide exactly one symbol for Market Depth.'
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('sanitizeFreedomActiveOrders', () => {
@@ -827,6 +873,49 @@ describe('sanitizeFreedomPositions', () => {
     expect(() => sanitizeFreedomPositions({ data: { result: { ps: { loaded: false } } } })).toThrow();
     expect(() => sanitizeFreedomPositions({})).toThrow();
   });
+});
+
+describe('Freedom Market Depth snapshot', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('applies depth updates and returns bounded public bid and ask levels only', () => {
+    const result = sanitizeFreedomMarketDepth({
+      i: 'AAPL.US',
+      n: 17,
+      cnt: 2,
+      min_step: 0.01,
+      step_price: 0.01,
+      ins: [
+        { k: 0, p: 202.5, q: 12, s: 'B', owner_login: 'private-login' },
+        { k: 0, p: 202.75, q: 8, s: 'S' }
+      ],
+      upd: [{ k: 0, p: 202.6, q: 14, s: 'B', account_id: 'private-account' }],
+      del: [{ k: 1, p: 202.4, q: 5, s: 'B' }],
+      account: 'private-value'
+    }, 'AAPL.US');
+
+    expect(result).toEqual({
+      symbol: 'AAPL.US',
+      sequence: 17,
+      reportedDepth: 2,
+      minStep: 0.01,
+      stepPrice: 0.01,
+      bids: [{ position: 0, price: 202.6, quantity: 14 }],
+      asks: [{ position: 0, price: 202.75, quantity: 8 }]
+    });
+    expect(JSON.stringify(result)).not.toMatch(/private-login|private-account|private-value/);
+    expect(() => sanitizeFreedomMarketDepth({ i: 'MSFT.US', ins: [] }, 'AAPL.US')).toThrow(/requested symbol/);
+  });
+
+  it('limits each side to 100 levels', () => {
+    const ins = Array.from({ length: 125 }, (_, k) => ({
+      k, p: 100 + k, q: 1, s: 'B'
+    }));
+    const result = sanitizeFreedomMarketDepth({ i: 'AAPL.US', ins }, 'AAPL.US');
+    expect(result.bids).toHaveLength(100);
+    expect(result.asks).toHaveLength(0);
+  });
+
 });
 
 describe('normalizeMarketState', () => {
@@ -2474,6 +2563,7 @@ describe('guest data isolation at the Worker boundary', () => {
     const portfolioSnapshotResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-portfolio-snapshot', { headers }), env);
     const cashflowsResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows', { headers }), env);
     const portfolioEventResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-event-stream&event=portfolio', { headers }), env);
+    const marketDepthResponse = await worker.fetch(new Request('https://worker.test/?action=freedom-market-depth&symbol=AAPL', { headers }), env);
 
     expect(stateResponse.status).toBe(403);
     expect(historyResponse.status).toBe(403);
@@ -2483,7 +2573,8 @@ describe('guest data isolation at the Worker boundary', () => {
     expect(portfolioSnapshotResponse.status).toBe(403);
     expect(cashflowsResponse.status).toBe(403);
     expect(portfolioEventResponse.status).toBe(403);
-    expect(stateStub.fetch).toHaveBeenCalledTimes(8);
+    expect(marketDepthResponse.status).toBe(403);
+    expect(stateStub.fetch).toHaveBeenCalledTimes(9);
     expect(stateStub.fetch.mock.calls.every(([request]) => new URL(request.url).pathname === '/api/auth/verify')).toBe(true);
   });
 

@@ -30,11 +30,11 @@ The market event uses `n` (market name), `n2` (abbreviation/code), and `s` (curr
 
 The `markets` event is the exchange trading-status source, not a quote-price feed. The separate `sessions` / `session` API concerns user security sessions (authorization/session management), not exchange trading hours, so it is deliberately not subscribed to or treated as a market calendar. Per-symbol last-trade quotes use the separately verified q WebSocket snapshot below; `getStockQuotesJson` / `freedom-quote` remains only as the corresponding REST fallback when q cannot provide a valid quote.
 
-## Administrator Market Depth protocol probe
+## Administrator Market Depth snapshot
 
-Settings includes an administrator-only **TradeNet Market Depth Probe** for one stock symbol. Enter a ticker such as `AAPL` (the Worker appends `.US` if no exchange suffix is supplied) and select **Test Market Depth**. The authenticated Worker sends the `["orderBook", ["AAPL.US"]]` subscription for that symbol and waits for the `b` response event plus production-session confirmation. `orderBook` is the subscription command; `b` is the response event. Guests cannot access the diagnostic.
+Settings includes an administrator-only read-only Market Depth view for one stock symbol. Enter a ticker such as `AAPL` (the Worker appends `.US` if no exchange suffix is supplied) and select **Load Depth**. The authenticated Worker sends the `["orderBook", ["AAPL.US"]]` subscription and waits for the `b` response event plus production-session confirmation. `orderBook` is the subscription command; `b` is the response event. Guests cannot access the endpoint.
 
-The probe is for protocol discovery, not a depth display: its response contains only bounded payload structure, field names, value types, and array lengths. It never returns bid/ask prices, quantities, raw broker payloads, the SID, or credentials. A successful response confirms the event arrived but does not yet establish a stable field contract or instrument entitlement; a timeout, empty shape, or server error means live depth has not been verified. No market-depth UI, polling stream, or trading/order action is enabled by this diagnostic.
+The Worker applies the event's `del`, `ins`, and `upd` rows by side and position, validates the requested instrument, and returns at most 100 normalized levels per side with safe sequence/depth metadata. The browser never receives raw broker fields, account identifiers, the SID, or credentials. The view is a one-shot snapshot, not a persistent or continuously refreshed stream; select **Refresh Depth** to request another snapshot. The separate **Test Market Depth** control remains a schema-only diagnostic and does not display prices or quantities. No trading or order-placement action is enabled.
 
 ## Authenticated live quote WebSocket probe
 
