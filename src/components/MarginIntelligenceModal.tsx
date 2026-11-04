@@ -3,15 +3,9 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { formatRelativeTime } from '../utils/relativeTime';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
+import type { MarginIntelligenceArticle, MarginNewsCoverage } from '../features/ai/marginIntelligence';
 
-export interface MarginIntelligenceArticle {
-  ticker: string;
-  headline: string;
-  source: string;
-  url: string;
-  publishedAt?: number;
-  summary?: string;
-}
+export type { MarginIntelligenceArticle } from '../features/ai/marginIntelligence';
 
 export interface MarginIntelligenceState {
   title: string;
@@ -20,8 +14,12 @@ export interface MarginIntelligenceState {
   loading: boolean;
   analysis: string;
   articles: MarginIntelligenceArticle[];
+  coverage?: MarginNewsCoverage[];
+  stale?: boolean;
+  staleReasons?: string[];
   error?: string;
   syncedAt?: string;
+  snapshotAsOf?: string;
   digestRevision?: number;
 }
 
@@ -45,6 +43,14 @@ function relativeSyncLabel(syncedAt?: string, now = Date.now()): string {
   const timestamp = Date.parse(syncedAt);
   if (!Number.isFinite(timestamp)) return translateText('Sync time unavailable');
   return `${translateText('Synced')} ${formatRelativeTime(timestamp, now)}`;
+}
+
+function dateTimeLabel(value?: string): string {
+  if (!value) return 'Unavailable';
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')
+    : 'Unavailable';
 }
 
 function renderInlineMarkdown(text: string) {
@@ -125,6 +131,7 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
   const [now, setNow] = useState(Date.now());
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const coverage = Array.isArray(data.coverage) ? data.coverage : [];
   useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: onClose });
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -140,6 +147,7 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
             <h2 id="marginIntelligenceTitle" class="mt-1 text-lg font-bold text-white">{data.title}</h2>
             <p class="mt-1 text-xs text-slate-400">Read-only · No broker orders are changed</p>
             <p class="mt-1 text-[11px] text-slate-500" title={data.syncedAt ? new Date(data.syncedAt).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US') : 'No server-synced digest yet'}>{relativeSyncLabel(data.syncedAt, now)}{data.syncedAt ? ` · ${new Date(data.syncedAt).toLocaleString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}` : ''}</p>
+            <p class="mt-1 text-[11px] text-slate-500">Portfolio snapshot: {dateTimeLabel(data.snapshotAsOf)}</p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <button type="button" onClick={onRefresh} disabled={data.loading} class="rounded border border-cyan-800 px-3 py-1.5 text-xs text-cyan-200 hover:bg-cyan-950/50 disabled:cursor-not-allowed disabled:opacity-50">{data.loading ? 'Refreshing…' : '↻ Refresh'}</button>
@@ -147,15 +155,38 @@ export function MarginIntelligenceModal({ data, onClose, onRefresh }: MarginInte
           </div>
         </header>
         <div class="min-h-0 flex-1 overflow-y-auto p-4" role="region" aria-labelledby="marginIntelligenceTitle" tabIndex={0}>
+          {data.stale && <div class="mb-3 rounded-lg border border-amber-800/60 bg-amber-950/25 p-3 text-xs leading-5 text-amber-200" role="status">
+            This saved review may no longer match the current portfolio or news. Refresh it before relying on its conclusions.
+            {data.staleReasons?.includes('snapshot-changed') && <span class="block">The portfolio facts have changed since this review was generated.</span>}
+            {data.staleReasons?.includes('prompt-changed') && <span class="block">The review instructions have changed since this analysis was generated.</span>}
+            {data.staleReasons?.includes('news-old') && <span class="block">The news evidence is more than 24 hours old or its timestamp is unavailable.</span>}
+            {data.staleReasons?.includes('metadata-missing') && <span class="block">This review predates the current evidence and freshness metadata.</span>}
+          </div>}
           {data.loading && <div class="flex items-center gap-3 rounded-lg border border-cyan-900/40 bg-cyan-950/20 p-4 text-sm text-cyan-100" role="status"><span class="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />Syncing fresh news and regenerating the review…</div>}
           {data.error && <div class="rounded-lg border border-rose-900/60 bg-rose-950/30 p-3 text-sm text-rose-200">{data.error}</div>}
           {data.analysis && <div data-animate-content class="break-words text-sm leading-6 text-slate-200">{renderAnalysisMarkdown(data.analysis)}</div>}
-          {!data.loading && !data.error && data.articles.length === 0 && data.analysis && <p class="mt-4 rounded border border-amber-900/50 bg-amber-950/20 p-3 text-xs text-amber-200">No news articles were returned by the connected provider. Treat any news-dependent conclusions as limited.</p>}
+          {coverage.length > 0 && <section class="mt-4 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+            <h3 class="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">News coverage by position</h3>
+            <ul class="grid gap-1 text-xs sm:grid-cols-2">
+              {coverage.map(item => <li key={item.ticker} class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span class="font-semibold text-cyan-200">{item.ticker}</span>
+                <span class={item.status === 'error' ? 'text-rose-300' : item.status === 'empty' ? 'text-amber-300' : 'text-slate-300'}>
+                  {item.status === 'error' ? `Feed unavailable${item.error ? `: ${item.error}` : ''}` : item.status === 'empty' ? 'Feed returned no articles' : `${item.availableArticleCount} available · ${item.selectedArticleCount} reviewed`}
+                </span>
+                <span class="w-full text-right text-[10px] text-slate-500">Fetched {dateTimeLabel(item.fetchedAt)}</span>
+              </li>)}
+            </ul>
+          </section>}
+          {!data.loading && !data.error && data.articles.length === 0 && data.analysis && <p class="mt-4 rounded border border-amber-900/50 bg-amber-950/20 p-3 text-xs text-amber-200">
+            {coverage.some(item => item.status === 'error')
+              ? 'Some news feeds failed. No source-backed news claims should be inferred from those positions.'
+              : 'No articles were available from the connected news feeds. News-dependent conclusions are limited.'}
+          </p>}
           {data.articles.length > 0 && <section class="mt-5 border-t border-slate-800 pt-4">
             <h3 class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Sources reviewed ({data.articles.length})</h3>
             <ul class="space-y-2">
               {data.articles.map((article, index) => <li key={article.url + index} data-animate-content class="rounded-lg border border-slate-800 bg-slate-900/50 p-3">
-                <div class="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500"><span class="font-bold text-cyan-300">{article.ticker}</span><span>{article.source || 'News source'}</span><span>{publishedLabel(article.publishedAt)}</span></div>
+                <div class="mb-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500"><span class="font-bold text-cyan-300">{article.ticker}</span>{article.sourceId && <span class="rounded border border-cyan-900/70 px-1 text-cyan-200">[{article.sourceId}]</span>}<span>{article.source || 'News source'}</span><span>{publishedLabel(article.publishedAt)}</span></div>
                 {article.url ? <a href={article.url} target="_blank" rel="noreferrer" class="text-sm font-semibold text-slate-100 underline decoration-slate-600 underline-offset-2 hover:text-cyan-300">{article.headline}</a> : <p class="text-sm font-semibold text-slate-100">{article.headline}</p>}
                 {article.summary && <p class="mt-1 text-xs leading-5 text-slate-400">{article.summary}</p>}
               </li>)}

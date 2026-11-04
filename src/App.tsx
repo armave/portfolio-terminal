@@ -12,16 +12,17 @@ import { ProjectionsTable } from './components/ProjectionsTable';
 import { TableScrollRegion } from './components/TableScrollRegion';
 import { TradingConsole } from './components/TradingConsole';
 import { EmptyStatePanel } from './components/EmptyStatePanel';
-import type { MarginIntelligenceState, MarginIntelligenceArticle } from './components/MarginIntelligenceModal';
+import type { MarginIntelligenceState } from './components/MarginIntelligenceModal';
+import type { MarginNewsFetchResult } from './features/ai/marginIntelligence';
 import type { ScenarioModalData } from './features/terminal/scenarioContracts';
-import { fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser, type MarketNewsItem } from './services/api';
+import { fetchMarketNews, proxyFetch, loadSyncedMarginDigest, saveSyncedMarginDigest, type AuthUser } from './services/api';
 import { portfolioStore, useActiveView, usePortfolioSelector } from './store/portfolioStore';
 import { getAccountPermissions } from './domain/accountPermissions';
 import { calculatePortfolioValuation, getPortfolioValuationReliability } from './domain/portfolioValuation';
 import { addErrorToast, dismissScenarioReport, useErrorToasts, useScenarioReport } from './ui/notificationStore';
 import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './services/i18n';
 import { PORTFOLIO_BACKUP_FILE_EXTENSION } from './services/portfolioBackupFile';
-import { summarizeQuoteFreshness } from './utils/formatters';
+import { getQuoteFreshness, summarizeQuoteFreshness } from './utils/formatters';
 import { useQuoteRefreshInterval } from './ui/useQuoteRefreshInterval';
 import { emitBrokerEvent } from './services/brokerEventBus';
 import { bindPortfolioBrokerRequestRuntime } from './services/portfolioBrokerRequestRuntime';
@@ -29,6 +30,16 @@ import { createPortfolioBrokerDataRuntime } from './services/portfolioBrokerData
 import { createLatestRequestGuard } from './utils/requestGeneration';
 import { getMatchingMarginIntelligenceState } from './features/ai/marginIntelligenceState';
 import { createSessionIdentityGuard } from './utils/sessionIdentityGuard';
+import {
+  buildMarginReviewPrompt,
+  fingerprintMarginReviewSnapshot,
+  getMarginDigestFreshness,
+  MARGIN_REVIEW_PROMPT_VERSION,
+  selectMarginReviewNews
+} from './features/ai/marginIntelligence';
+import { calculateMarginRiskMetrics } from './domain/marginRisk';
+import { getCashCushionTotal } from './domain/portfolioSelectors';
+import type { BoardState, PositionRecord } from './types/portfolio';
 
 
 const MemoTickerTabs = memo(TickerTabs);
@@ -68,6 +79,168 @@ const MarginIntelligenceModal = lazy(() =>
 interface AppProps {
   onSaveGatewaySecret: (secret: string) => Promise<boolean>;
 }
+
+function finiteReviewNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildMarginReviewContext(
+  snapshot: BoardState,
+  requestedTicker: string | null,
+  now = Date.now(),
+  refreshIntervalMs = 60000
+) {
+  const allPositions = Object.values(snapshot.positions || {}).filter(
+    (position): position is PositionRecord => Boolean(position && Number(position.shares) > 0)
+  ).sort((a, b) => a.ticker.localeCompare(b.ticker));
+  const focusPosition = requestedTicker
+    ? allPositions.find(position => position.ticker.toUpperCase() === requestedTicker)
+    : null;
+  const brokerPositions = snapshot.brokerAccountInfo?.positions || [];
+  const summarizePosition = (position: PositionRecord) => {
+    const tranches = (position.tranches || []).filter(tranche =>
+      Number.isFinite(Number(tranche.qty)) && Number(tranche.qty) > 0 &&
+      Number.isFinite(Number(tranche.price)) && Number(tranche.price) > 0
+    );
+    const lotShares = tranches.reduce((total, tranche) => total + Number(tranche.qty), 0);
+    const entryCost = tranches.reduce((total, tranche) => total + Number(tranche.qty) * Number(tranche.price), 0);
+    const averageEntryPrice = lotShares > 0 ? entryCost / lotShares : null;
+    const observedPrice = finiteReviewNumber(position.currentPrice);
+    const marketPrice = observedPrice !== null && observedPrice > 0 ? observedPrice : null;
+    const appShares = Number(position.shares);
+    const brokerPosition = brokerPositions.find(item => item.ticker.toUpperCase() === position.ticker.toUpperCase());
+    const brokerShares = finiteReviewNumber(brokerPosition?.quantity);
+    const targetPrice = finiteReviewNumber(position.pt);
+    const lotSharesMatchPosition = Math.abs(lotShares - appShares) < 0.000001;
+    const brokerSharesMatchPosition = brokerShares === null || Math.abs(brokerShares - appShares) < 0.000001;
+    const lotBasedPnl = marketPrice !== null && tranches.length > 0
+      ? tranches.reduce((total, tranche) => total + (marketPrice - Number(tranche.price)) * Number(tranche.qty), 0)
+      : null;
+    return {
+      ticker: position.ticker,
+      appTrackedShares: appShares,
+      brokerReportedShares: brokerShares,
+      entryLotShares: lotShares,
+      quantityReconciliation: {
+        appSharesMatchEntryLots: lotSharesMatchPosition,
+        appSharesMatchBroker: brokerSharesMatchPosition,
+        status: !lotSharesMatchPosition || !brokerSharesMatchPosition
+          ? 'discrepancy'
+          : brokerShares === null ? 'broker quantity unavailable' : 'matched'
+      },
+      marketPrice,
+      quoteSource: position.quoteSource || null,
+      quoteUpdatedAt: position.quoteUpdatedAt || null,
+      quoteFreshness: getQuoteFreshness(position, now, refreshIntervalMs),
+      quoteSourceTimestamp: position.quoteDetails?.sourceTimestamp || null,
+      targetOrActiveSellLimit: targetPrice !== null && targetPrice > 0 ? targetPrice : null,
+      marketValue: marketPrice === null ? null : appShares * marketPrice,
+      entryLots: tranches.slice(-8).map(tranche => ({
+        shares: Number(tranche.qty),
+        entryPrice: Number(tranche.price),
+        purchaseDate: tranche.date || null,
+        buyCommission: Number(tranche.buyCommission || 0)
+      })),
+      averageEntryPrice,
+      unrealizedGrossPnl: lotBasedPnl,
+      unrealizedGrossPnlBasis: lotBasedPnl === null
+        ? 'unavailable: valid entry lots or market price missing'
+        : 'sum of open-lot P&L; excludes commissions, fees, and interest',
+      holdingStartDate: position.startDate || null,
+      recordedBuyCommission: Number(position.commBuy || 0)
+    };
+  };
+  const summarizedPositions = allPositions.map(summarizePosition);
+  const totalMarginMarketValue = summarizedPositions.reduce((sum, position) => sum + (position.marketValue || 0), 0);
+  const positionsWithWeight = summarizedPositions.map(position => ({
+    ...position,
+    marginMarketValueWeightPct: totalMarginMarketValue > 0 && position.marketValue !== null
+      ? position.marketValue / totalMarginMarketValue * 100
+      : null
+  }));
+  const positionsByTicker = new Map(positionsWithWeight.map(position => [position.ticker.toUpperCase(), position]));
+  const marginPositions = allPositions.map(position => ({
+    ...position,
+    currentPrice: finiteReviewNumber(position.currentPrice),
+    shares: Number(position.shares)
+  }));
+  const cashHoldings = snapshot.cashCushion?.holdings || [];
+  const valuation = calculatePortfolioValuation({
+    signedAccountBalance: snapshot.balance,
+    freeCash: snapshot.cashCushion?.freeCash,
+    marginPositions,
+    cashHoldings
+  });
+  const grossAssets = valuation.totalHoldingsValue + valuation.cashBalance;
+  const equityPct = valuation.accountBalanceAvailable && grossAssets > 0
+    ? valuation.equity / grossAssets * 100
+    : null;
+  const debt = valuation.marginDebt;
+  const assumptions = snapshot.brokerAssumptions;
+  const cashCushion = getCashCushionTotal(snapshot);
+  const marginRisk = assumptions
+    ? calculateMarginRiskMetrics(debt, valuation.marginHoldingsValue, cashCushion, assumptions)
+    : null;
+  const brokerSnapshotStatus = snapshot.brokerAccountInfo?.status ||
+    (snapshot.brokerAccountInfo?.loaded ? 'loaded' : 'not-loaded');
+  const quotesProvisional = [...allPositions, ...cashHoldings.filter(holding => Number(holding.shares) > 0)]
+    .some(position => getQuoteFreshness(position, now, refreshIntervalMs) !== 'fresh');
+  const valuationReliability = !valuation.accountBalanceAvailable || valuation.unpricedHoldings > 0
+    ? 'incomplete'
+    : brokerSnapshotStatus !== 'current' || quotesProvisional ? 'provisional' : 'current';
+  const account = {
+    reportingCurrency: 'USD',
+    brokerSnapshotStatus,
+    brokerSnapshotReceivedAt: snapshot.brokerAccountInfo?.receivedAt || null,
+    balance: finiteReviewNumber(snapshot.balance),
+    cashBalance: finiteReviewNumber(snapshot.cashBalance),
+    freeCash: finiteReviewNumber(snapshot.cashCushion?.freeCash),
+    realizedMarginCharged: finiteReviewNumber(snapshot.realizedMarginCharged),
+    brokerAssumptions: assumptions || null,
+    valuation: {
+      accountBalanceAvailable: valuation.accountBalanceAvailable,
+      equity: valuation.accountBalanceAvailable ? valuation.equity : null,
+      grossAssets: valuation.accountBalanceAvailable ? grossAssets : null,
+      equityPct,
+      marginDebt: valuation.marginDebt,
+      marginHoldingsValue: valuation.marginHoldingsValue,
+      cashHoldingsValue: valuation.cashHoldingsValue,
+      unpricedHoldings: valuation.unpricedHoldings,
+      reliability: valuationReliability
+    },
+    marginRisk: marginRisk && assumptions ? {
+      equityRatioPct: Number.isFinite(marginRisk.equityRatio) ? marginRisk.equityRatio * 100 : null,
+      maintenanceEquityRatioPct: assumptions.maintenanceEquityRatio * 100,
+      stopOutRatioPct: assumptions.stopOutRatio * 100,
+      marginCallBufferPct: Number.isFinite(marginRisk.marginCallBufferPct) ? marginRisk.marginCallBufferPct : null,
+      stopOutBufferPct: Number.isFinite(marginRisk.stopOutBufferPct) ? marginRisk.stopOutBufferPct : null,
+      dailyBorrowCostEstimate: debt * assumptions.annualBorrowRate / assumptions.dayCountBasis,
+      annualBorrowRatePct: assumptions.annualBorrowRate * 100,
+      dayCountBasis: assumptions.dayCountBasis,
+      qualification: 'Application estimate using configured assumptions; not a live broker margin or liquidation indicator.'
+    } : null
+  };
+  const identity = {
+    focusTicker: requestedTicker,
+    account,
+    focusPosition: focusPosition ? positionsByTicker.get(focusPosition.ticker.toUpperCase()) : null,
+    otherOpenPositions: positionsWithWeight.filter(position =>
+      !requestedTicker || position.ticker.toUpperCase() !== requestedTicker
+    )
+  };
+  const portfolioContext = {
+    asOf: new Date(now).toISOString(),
+    ...identity
+  };
+  const priorityTickers = [...positionsWithWeight]
+    .sort((a, b) => (b.marketValue || 0) - (a.marketValue || 0) || a.ticker.localeCompare(b.ticker))
+    .map(position => position.ticker);
+
+  return { allPositions, focusPosition, portfolioContext, snapshotIdentity: identity, priorityTickers };
+}
+
 
 export function App({ onSaveGatewaySecret }: AppProps) {
   const [authOpen, setAuthOpen] = useState(false);
@@ -206,12 +379,8 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const detail = event.detail;
       const requestedTicker = String(detail?.ticker || '').trim().toUpperCase();
       const snapshot = portfolioStore.getState();
-      const allPositions = Object.values(snapshot.positions || {}).filter((position: any) =>
-        position && Number(position.shares) > 0
-      ) as Array<{ ticker: string; shares: number; currentPrice: number; pt: number; commBuy?: number; startDate?: string; tranches?: Array<{ qty: number; price: number; date?: string; buyCommission?: number }>; quoteUpdatedAt?: number; quoteSource?: string; quoteDetails?: Record<string, unknown> }>;
-      const focusPosition = requestedTicker
-        ? allPositions.find((position) => String(position.ticker).toUpperCase() === requestedTicker)
-        : null;
+      const reviewInput = buildMarginReviewContext(snapshot, requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
+      const { allPositions, focusPosition } = reviewInput;
 
       if (requestedTicker && !focusPosition) {
         setMarginIntelligence({
@@ -240,15 +409,23 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           loading: true,
           analysis: previous?.analysis || '',
           articles: previous?.articles || [],
+          ...(previous?.coverage ? { coverage: previous.coverage } : {}),
+          ...(previous?.stale !== undefined ? { stale: previous.stale } : {}),
+          ...(previous?.staleReasons ? { staleReasons: previous.staleReasons } : {}),
+          ...(previous?.snapshotAsOf ? { snapshotAsOf: previous.snapshotAsOf } : {}),
           ...(previous?.syncedAt ? { syncedAt: previous.syncedAt } : {}),
           ...(previous?.digestRevision !== undefined ? { digestRevision: previous.digestRevision } : {})
         };
       });
 
       try {
+        const snapshotFingerprint = await fingerprintMarginReviewSnapshot(reviewInput.snapshotIdentity);
         const cached = await loadSyncedMarginDigest(digestKey);
         if (!requestGuard.isCurrent(requestId)) return;
+        const latestCacheInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
+        const latestCacheFingerprint = await fingerprintMarginReviewSnapshot(latestCacheInput.snapshotIdentity);
         if (cached && !detail?.refresh) {
+          const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint);
           setMarginIntelligence({
             title: cached.digest.title || title,
             scope: cached.digest.scope,
@@ -256,12 +433,17 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             loading: false,
             analysis: cached.digest.analysis,
             articles: cached.digest.articles,
+            ...(cached.digest.coverage ? { coverage: cached.digest.coverage } : {}),
+            stale: freshness.stale,
+            staleReasons: freshness.reasons,
+            ...(cached.digest.snapshotAsOf ? { snapshotAsOf: cached.digest.snapshotAsOf } : {}),
             syncedAt: cached.digest.syncedAt,
             digestRevision: cached.revision
           });
           return;
         }
         if (cached) {
+          const freshness = getMarginDigestFreshness(cached.digest, latestCacheFingerprint);
           setMarginIntelligence({
             title: cached.digest.title || title,
             scope: cached.digest.scope,
@@ -269,123 +451,34 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             loading: true,
             analysis: cached.digest.analysis,
             articles: cached.digest.articles,
+            ...(cached.digest.coverage ? { coverage: cached.digest.coverage } : {}),
+            stale: freshness.stale,
+            staleReasons: freshness.reasons,
+            ...(cached.digest.snapshotAsOf ? { snapshotAsOf: cached.digest.snapshotAsOf } : {}),
             syncedAt: cached.digest.syncedAt,
             digestRevision: cached.revision
           });
         }
-        // Explicit refresh fetches fresh news and regenerates the analysis.
-        // Initial open only reaches this point when no synced digest exists.
-        // Single-position reviews fetch news for the selected ticker; portfolio
-        // reviews fetch news for each active margin position. The full portfolio
-        // snapshot is included in both cases so Gemini can reason about concentration.
         const newsPositions = isPortfolio ? allPositions : focusPosition ? [focusPosition] : [];
-        const newsByTicker = await Promise.all(newsPositions.map(async (position) => {
+        const newsResults: MarginNewsFetchResult[] = await Promise.all(newsPositions.map(async position => {
           try {
             const items = await fetchMarketNews(position.ticker, true);
-            return { ticker: position.ticker, items: items.slice(0, 4) };
-          } catch {
-            return { ticker: position.ticker, items: [] as MarketNewsItem[] };
+            return {
+              ticker: position.ticker,
+              fetchedAt: new Date().toISOString(),
+              items: Array.isArray(items) ? items : []
+            };
+          } catch (error) {
+            return {
+              ticker: position.ticker,
+              fetchedAt: new Date().toISOString(),
+              items: [],
+              error: error instanceof Error ? error.message : 'News provider request failed.'
+            };
           }
         }));
-        const articles: MarginIntelligenceArticle[] = newsByTicker.flatMap(({ ticker, items }) =>
-          items.map((item) => ({
-            ticker,
-            headline: String(item?.headline || item?.title || 'Untitled news item'),
-            source: String(item?.source || item?.publisher || ''),
-            url: String(item?.url || item?.link || ''),
-            publishedAt: Number(item?.datetime || item?.publishedAt || 0) || undefined,
-            summary: String(item?.summary || item?.description || '').slice(0, 280)
-          }))
-        ).sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0)).slice(0, isPortfolio ? 5 : 3);
-
-        const brokerPositions = snapshot.brokerAccountInfo?.positions || [];
-        const summarizePosition = (position: typeof allPositions[number]) => {
-          const tranches = (position.tranches || []).filter((tranche) =>
-            Number.isFinite(Number(tranche.qty)) && Number(tranche.qty) > 0 &&
-            Number.isFinite(Number(tranche.price)) && Number(tranche.price) > 0
-          );
-          const lotShares = tranches.reduce((total, tranche) => total + Number(tranche.qty), 0);
-          const entryCost = tranches.reduce((total, tranche) => total + Number(tranche.qty) * Number(tranche.price), 0);
-          const averageEntryPrice = lotShares > 0 ? entryCost / lotShares : null;
-          const marketPrice = Number.isFinite(Number(position.currentPrice)) && Number(position.currentPrice) > 0
-            ? Number(position.currentPrice) : null;
-          const appShares = Number(position.shares);
-          const brokerPosition = brokerPositions.find((item: any) => String(item.ticker || '').toUpperCase() === String(position.ticker).toUpperCase());
-          const brokerShares = brokerPosition ? Number(brokerPosition.quantity) : null;
-          const lotSharesMatchPosition = Math.abs(lotShares - appShares) < 0.000001;
-          const brokerSharesMatchPosition = brokerShares === null || Math.abs(brokerShares - appShares) < 0.000001;
-          const lotBasedPnl = marketPrice !== null && tranches.length > 0
-            ? tranches.reduce((total, tranche) => total + (marketPrice - Number(tranche.price)) * Number(tranche.qty), 0)
-            : null;
-          return {
-            ticker: position.ticker,
-            appTrackedShares: appShares,
-            brokerReportedShares: brokerShares,
-            entryLotShares: lotShares,
-            quantityReconciliation: {
-              appSharesMatchEntryLots: lotSharesMatchPosition,
-              appSharesMatchBroker: brokerSharesMatchPosition,
-              status: !lotSharesMatchPosition || !brokerSharesMatchPosition ? 'discrepancy' : brokerShares === null ? 'broker quantity unavailable' : 'matched'
-            },
-            marketPrice,
-            quoteSource: position.quoteSource || null,
-            quoteUpdatedAt: position.quoteUpdatedAt || null,
-            quoteFreshness: position.quoteDetails?.freshness || 'unknown',
-            quoteSourceTimestamp: position.quoteDetails?.sourceTimestamp || null,
-            targetOrActiveSellLimit: Number.isFinite(Number(position.pt)) && Number(position.pt) > 0 ? Number(position.pt) : null,
-            marketValue: marketPrice === null ? null : appShares * marketPrice,
-            entryLots: tranches.slice(-8).map((tranche) => ({
-              shares: Number(tranche.qty),
-              entryPrice: Number(tranche.price),
-              purchaseDate: tranche.date || null,
-              buyCommission: Number(tranche.buyCommission || 0)
-            })),
-            averageEntryPrice,
-            unrealizedGrossPnl: lotBasedPnl,
-            unrealizedGrossPnlBasis: lotBasedPnl === null ? 'unavailable: valid entry lots or market price missing' : 'sum of open-lot P&L; excludes commissions, fees, and interest',
-            holdingStartDate: position.startDate || null,
-            recordedBuyCommission: Number(position.commBuy || 0)
-          };
-        };
-        const summarizeBalance = (value: unknown) => {
-          if (value === null || value === undefined || value === '') return null;
-          const numeric = Number(value);
-          return Number.isFinite(numeric) ? numeric : null;
-        };
-        const portfolioContext = {
-          asOf: new Date().toISOString(),
-          focusTicker: requestedTicker || null,
-          account: {
-            brokerSnapshotStatus: snapshot.brokerAccountInfo?.status || (snapshot.brokerAccountInfo?.loaded ? 'loaded' : 'not-loaded'),
-            brokerSnapshotReceivedAt: snapshot.brokerAccountInfo?.receivedAt || null,
-            balance: summarizeBalance(snapshot.balance),
-            cashBalance: summarizeBalance(snapshot.cashBalance),
-            freeCash: summarizeBalance(snapshot.cashCushion?.freeCash),
-            realizedMarginCharged: summarizeBalance(snapshot.realizedMarginCharged),
-            brokerAssumptions: snapshot.brokerAssumptions || null
-          },
-          focusPosition: focusPosition ? summarizePosition(focusPosition) : null,
-          otherOpenPositions: allPositions
-            .filter((position) => !requestedTicker || String(position.ticker).toUpperCase() !== requestedTicker)
-            .map(summarizePosition)
-        };
-        const prompt = [
-          'Act as a cautious, concise margin-position research assistant. Maximum 350 words. No introduction, no generic preface, no repeated disclaimer, no preset/template data.',
-          'Output exactly these sections in this order: **Stance** (one sentence plus confidence: low/medium/high); **What matters now** (up to 3 news items and why each matters); **Risks / invalidation** (up to 3 bullets); **Monitor next** (up to 3 concrete items); **Position facts** (brief factual snapshot at the end).',
-          'Use only supplied account data and article headlines/summaries. Do not invent prices, dates, events, rates, broker rules, or liquidation thresholds. Clearly label fact versus interpretation. If a key field is missing or stale, state it briefly.',
-          'If app-tracked shares, broker-reported shares, and entry-lot shares disagree, put a concise DATA QUALITY WARNING first, list the three quantities and their sources, and do not make a firm size-dependent recommendation. Do not silently choose a quantity.',
-          'Use the application-calculated gross P&L as supplied; do not recompute it. It excludes commissions, fees, and interest. Do not suggest a new price target unless the supplied data supports a transparent calculation. Do not submit or modify orders.',
-          'Mention a news claim only when supported by a supplied headline/summary. Do not include inline source citations, provider IDs, numeric article IDs, or parentheticals like (Yahoo, 1793156968); source cards below the analysis are the citations. Do not infer earnings timing; call an earnings date unverified unless explicitly provided. No more than 3 key news developments for a ticker and no repeated source list in the prose.',
-          'PORTFOLIO DATA:', JSON.stringify(portfolioContext),
-          'NEWS (newest first):', JSON.stringify(articles.map((article) => ({
-            ticker: article.ticker,
-            headline: article.headline.slice(0, 180),
-            source: article.source,
-            url: article.url,
-            publishedAt: article.publishedAt,
-            summary: (article.summary || '').slice(0, 220)
-          })))
-        ].join('\n\n');
+        const { articles, coverage } = selectMarginReviewNews(newsResults, reviewInput.priorityTickers);
+        const prompt = buildMarginReviewPrompt(reviewInput.portfolioContext, coverage, articles);
         const response = await proxyFetch('gemini', {}, {
           method: 'POST',
           body: JSON.stringify({ prompt, model: 'gemini-3.8-flash' }),
@@ -396,6 +489,24 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           .filter(Boolean).join('\n\n');
         if (!analysis) throw new Error(response?.error?.message || response?.error || 'Gemini returned an empty analysis.');
         if (!requestGuard.isCurrent(requestId)) return;
+        const latestInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
+        const latestFingerprint = await fingerprintMarginReviewSnapshot(latestInput.snapshotIdentity);
+        if (latestFingerprint !== snapshotFingerprint) {
+          setMarginIntelligence({
+            title,
+            scope,
+            ...(requestedTicker ? { ticker: requestedTicker } : {}),
+            loading: false,
+            analysis,
+            articles,
+            coverage,
+            snapshotAsOf: reviewInput.portfolioContext.asOf,
+            stale: true,
+            staleReasons: ['snapshot-changed'],
+            error: 'The portfolio changed while this review was being generated. Refresh to review the current snapshot.'
+          });
+          return;
+        }
         const syncedAt = new Date().toISOString();
         const digest = {
           key: digestKey,
@@ -404,10 +515,17 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           ...(requestedTicker ? { ticker: requestedTicker } : {}),
           analysis,
           articles,
+          coverage,
+          snapshotFingerprint,
+          snapshotAsOf: reviewInput.portfolioContext.asOf,
+          promptVersion: MARGIN_REVIEW_PROMPT_VERSION,
           syncedAt
         };
         const nextRevision = await saveSyncedMarginDigest(digest, cached?.revision ?? 0);
         if (!requestGuard.isCurrent(requestId)) return;
+        const postSaveInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
+        const postSaveFingerprint = await fingerprintMarginReviewSnapshot(postSaveInput.snapshotIdentity);
+        const freshness = getMarginDigestFreshness(digest, postSaveFingerprint);
         setMarginIntelligence({
           title,
           scope: isPortfolio ? 'portfolio' : 'position',
@@ -415,6 +533,11 @@ export function App({ onSaveGatewaySecret }: AppProps) {
           loading: false,
           analysis,
           articles,
+          coverage,
+          snapshotAsOf: reviewInput.portfolioContext.asOf,
+          stale: freshness.stale,
+          staleReasons: freshness.reasons,
+          ...(freshness.stale ? { error: 'The portfolio changed while the review was being saved. Refresh to review the current snapshot.' } : {}),
           syncedAt,
           digestRevision: nextRevision
         });
@@ -430,6 +553,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             loading: false,
             analysis: previous?.analysis || '',
             articles: previous?.articles || [],
+            ...(previous?.coverage ? { coverage: previous.coverage } : {}),
+            ...(previous?.stale !== undefined ? { stale: previous.stale } : {}),
+            ...(previous?.staleReasons ? { staleReasons: previous.staleReasons } : {}),
+            ...(previous?.snapshotAsOf ? { snapshotAsOf: previous.snapshotAsOf } : {}),
             ...(previous?.syncedAt ? { syncedAt: previous.syncedAt } : {}),
             ...(previous?.digestRevision !== undefined ? { digestRevision: previous.digestRevision } : {}),
             error: message
@@ -442,7 +569,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       requestGuard.invalidate();
       removeUiEventListener('terminal:margin-intelligence-request', handleMarginIntelligence);
     };
-  }, [permissions.canViewMarginDesk]);
+  }, [permissions.canViewMarginDesk, scenarioRefreshIntervalMs]);
 
   // Register shell event listeners synchronously after mount. Startup dispatches
   // auth/loading events immediately after render; passive effects can miss them.

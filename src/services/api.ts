@@ -12,6 +12,7 @@ import { processRollovers } from '../domain/portfolio';
 import { getGatewaySecret, loadSavedHistory, loadSavedState, saveState } from './storage';
 import { ActiveBrokerTranche, GuestTrancheLedgerRecord, PortfolioState } from '../types/portfolio';
 import { normalizeFreedomTrades } from './freedomTradeContracts';
+import type { MarginIntelligenceArticle, MarginNewsCoverage } from '../features/ai/marginIntelligence';
 export { normalizeFreedomTrades } from './freedomTradeContracts';
 export type { FreedomExecutedTrade } from '../types/freedomTrade';
 export { normalizeFreedomActiveOrders, normalizeFreedomPortfolio } from './freedomAccountContracts';
@@ -25,7 +26,11 @@ export interface SyncedMarginDigest {
   scope: 'position' | 'portfolio';
   ticker?: string;
   analysis: string;
-  articles: Array<{ ticker: string; headline: string; source: string; url: string; publishedAt?: number; summary?: string }>;
+  articles: MarginIntelligenceArticle[];
+  snapshotFingerprint?: string;
+  snapshotAsOf?: string;
+  promptVersion?: number;
+  coverage?: MarginNewsCoverage[];
   syncedAt: string;
 }
 

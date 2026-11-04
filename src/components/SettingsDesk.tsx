@@ -7,7 +7,7 @@ import {
 } from '../services/portfolioAutoRefresh';
 import type { BrokerAssumptions } from '../types/portfolio';
 import { usePortfolio } from '../store/portfolioStore';
-import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, type AuthUser } from '../services/api';
+import { listUsers, createUser, updateUser, updateMyLanguage, deleteUser, proxyFetch, type AuthUser } from '../services/api';
 import { getAccountPermissions } from '../domain/accountPermissions';
 import { translateText, type AppLanguage } from '../services/i18n';
 import type { ManualPortfolioSyncResult } from '../services/manualPortfolioSync';
@@ -64,6 +64,10 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [languageError, setLanguageError] = useState("");
   const [syncingPortfolio, setSyncingPortfolio] = useState(false);
   const portfolioSyncPromise = useRef<Promise<ManualPortfolioSyncResult> | null>(null);
+  const [depthProbeSymbol, setDepthProbeSymbol] = useState('AAPL');
+  const [depthProbeLoading, setDepthProbeLoading] = useState(false);
+  const [depthProbeResult, setDepthProbeResult] = useState<Record<string, unknown> | null>(null);
+  const [depthProbeError, setDepthProbeError] = useState('');
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
   const refreshUsers = async () => {
@@ -237,6 +241,26 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     }
   };
 
+  const handleMarketDepthProbe = async (): Promise<void> => {
+    const symbol = depthProbeSymbol.trim().toUpperCase();
+    if (!symbol || depthProbeLoading) return;
+    setDepthProbeLoading(true);
+    setDepthProbeError('');
+    setDepthProbeResult(null);
+    try {
+      const result = await proxyFetch(
+        'freedom-event-stream',
+        { event: 'b', symbol },
+        { cache: 'no-store' }
+      ) as Record<string, unknown>;
+      setDepthProbeResult(result);
+    } catch (error) {
+      setDepthProbeError(error instanceof Error ? error.message : 'TradeNet market-depth probe failed.');
+    } finally {
+      setDepthProbeLoading(false);
+    }
+  };
+
   if (initialUsersLoading) {
     return <DeskLoading
       title="Preparing settings"
@@ -339,6 +363,50 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
           </>}
         </div>
       </div>
+
+      {account?.role === 'admin' && <section class="rounded-lg border border-slate-700 bg-slate-900/60 p-3 space-y-2" aria-labelledby="marketDepthProbeHeading">
+        <div>
+          <h3 id="marketDepthProbeHeading" class="text-xs font-bold uppercase tracking-wider text-slate-200">TradeNet Market Depth Probe</h3>
+          <p class="mt-1 text-[10px] leading-relaxed text-slate-400">Test the read-only authenticated <code>b</code> stream for one stock symbol. The result shows field names and value types only; order-book prices and quantities are not displayed.</p>
+        </div>
+        <div class="flex flex-wrap items-end gap-2">
+          <label class="flex flex-col gap-1 text-[10px] uppercase tracking-wider text-slate-500">
+            Stock symbol
+            <input
+              type="text"
+              value={depthProbeSymbol}
+              onInput={(event) => setDepthProbeSymbol((event.currentTarget as HTMLInputElement).value)}
+              aria-label="Stock symbol for Market Depth probe"
+              placeholder="AAPL"
+              maxLength={32}
+              class="h-8 w-40 rounded border border-slate-700 bg-slate-950 px-2 text-xs uppercase text-slate-200"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void handleMarketDepthProbe()}
+            disabled={depthProbeLoading || !depthProbeSymbol.trim()}
+            aria-busy={depthProbeLoading}
+            class="h-8 rounded border border-cyan-700 bg-slate-800 px-3 text-xs font-bold text-cyan-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >{depthProbeLoading ? 'Testing…' : 'Test Market Depth'}</button>
+        </div>
+        {depthProbeError && <p role="alert" class="text-xs text-rose-300">{depthProbeError}</p>}
+        {depthProbeResult && <div role="status" aria-live="polite">
+          <p class={`text-xs ${depthProbeResult.ok === true ? 'text-emerald-300' : 'text-amber-300'}`}>
+            {typeof depthProbeResult.message === 'string'
+              ? depthProbeResult.message
+              : typeof depthProbeResult.error === 'string'
+                ? depthProbeResult.error
+                : 'TradeNet Market Depth probe completed.'}
+            {typeof depthProbeResult.symbol === 'string' ? ` (${depthProbeResult.symbol})` : ''}
+          </p>
+          <pre class="mt-2 max-h-56 overflow-auto rounded bg-slate-950 p-2 text-[10px] text-slate-400">{JSON.stringify(
+            depthProbeResult.data ?? depthProbeResult.diagnostics ?? {},
+            null,
+            2
+          )}</pre>
+        </div>}
+      </section>}
 
       {permissions.canManageBackups && <div class="settings-data-safety-note w-full rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-[10px] leading-relaxed text-amber-100/90" role="note" aria-label={translateText('Portfolio data safety warning')}>
         <p class="mt-1 font-semibold text-amber-200 text-center">{translateText("Export a JSON backup before pulling cloud state or resetting the portfolio.")}</p>

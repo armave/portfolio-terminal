@@ -16,6 +16,7 @@ import {
   calculatePortfolioValuation,
   getPortfolioValuationReliability
 } from '../domain/portfolioValuation';
+import { calculateMarginRiskMetrics } from '../domain/marginRisk';
 import { getActiveTranchesFromTrades } from '../domain/freedomPortfolio';
 import { loadSavedHistory } from '../services/storage';
 import { normalizeFreedomTrades } from '../services/api';
@@ -79,6 +80,11 @@ function MarginRiskGaugeCard({ equityPct, risk, equityText, collateralText, rule
         <div><span class="margin-risk-label">ACCOUNT EQUITY HEALTH</span><strong class="margin-risk-equity">{equityText}</strong></div>
         <span class={risk.summaryText.startsWith('Healthy') || risk.summaryText.startsWith('No margin debt') ? 'margin-risk-status healthy' : risk.summaryText.startsWith('Elevated') ? 'margin-risk-status elevated' : 'margin-risk-status danger'}>{risk.summaryText.split(' · ')[0]}</span>
       </div>
+      {valuationStatus === 'provisional' && (
+        <p class="mt-2 text-xs leading-relaxed text-amber-200">
+          Provisional valuation: one or more quotes or the broker balance may be stale, delayed, or unverified.
+        </p>
+      )}
       <div class="margin-risk-meter" role="progressbar" aria-label="Account equity percentage" aria-valuemin={0} aria-valuemax={100} aria-valuenow={equityWidth}>
         <span class="margin-risk-segment-floor" style={{ width: Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100)) + '%' }}></span><span class="margin-risk-segment-buffer" style={{ width: Math.max(0, 40 - Math.min(100, Math.max(0, rules.maintenanceEquityRatio * 100))) + '%' }}></span><span class="margin-risk-segment-capacity"></span>
         <span class="margin-risk-marker" style={{ left: equityWidth + '%' }}></span>
@@ -155,9 +161,8 @@ function computeMarginRiskDisplay(
     };
   }
 
-  const assets = positionValue + collateral;
-  const equity = assets - debt;
-  const equityRatio = assets > 0 ? (equity / assets) * 100 : -Infinity;
+  const metrics = calculateMarginRiskMetrics(debt, positionValue, collateral, rules);
+  const equityRatio = metrics.equityRatio * 100;
   const maintenanceRatio = rules.maintenanceEquityRatio * 100;
   const stopOutRatio = rules.stopOutRatio * 100;
 
@@ -178,21 +183,13 @@ function computeMarginRiskDisplay(
   const summaryText = `${riskLevel} · ${Number.isFinite(equityRatio) ? `${equityRatio.toFixed(1)}% equity` : 'negative equity'
     } (${maintenanceRatio.toFixed(1)}% maintenance)`;
 
-  const marginCallAssetsRequired = debt / (1 - rules.maintenanceEquityRatio);
-  const stopOutAssetsRequired = debt / (1 - rules.stopOutRatio);
-
-  const showMarginCall = collateral < marginCallAssetsRequired;
-  const showStopOut = collateral < stopOutAssetsRequired;
-
-  const marginCallValue = Math.max(0, marginCallAssetsRequired - collateral);
-  const stopOutValue = Math.max(0, stopOutAssetsRequired - collateral);
-  // Match formatRiskTrigger's buffer definition: remaining position value after
-  // the estimated trigger amount, expressed as a percentage of current value.
-  const marginCallBufferPct =
-    positionValue > 0 ? ((positionValue - marginCallValue) / positionValue) * 100 : -Infinity;
-  const stopOutBufferPct =
-    positionValue > 0 ? ((positionValue - stopOutValue) / positionValue) * 100 : -Infinity;
-  const showRiskTriggers = showMarginCall && marginCallBufferPct < 60;
+  const showMarginCall = metrics.showMarginCall;
+  const showStopOut = metrics.showStopOut;
+  const marginCallValue = metrics.marginCallValue;
+  const stopOutValue = metrics.stopOutValue;
+  const marginCallBufferPct = metrics.marginCallBufferPct;
+  const stopOutBufferPct = metrics.stopOutBufferPct;
+  const showRiskTriggers = metrics.showRiskTriggers;
 
   return {
     summaryText,

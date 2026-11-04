@@ -59,3 +59,14 @@ describe('integrated market status', () => {
     expect(source).not.toContain('marketStatusTest');
   });
 });
+
+describe('administrator Market Depth probe', () => {
+  it('exposes a one-symbol read-only probe without displaying broker depth values', () => {
+    const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain("account?.role === 'admin' && <section");
+    expect(source).toContain("event: 'b', symbol");
+    expect(source).toContain("depthProbeResult.data ?? depthProbeResult.diagnostics ?? {}");
+    expect(source).toContain('order-book prices and quantities are not displayed');
+  });
+});
