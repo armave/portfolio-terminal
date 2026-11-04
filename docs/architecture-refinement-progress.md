@@ -311,8 +311,8 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Add Russian localization regression coverage for auth, scenario modal, and market-status copy while preserving the existing Preact VNode translation hook.
 - [x] Add 44px minimum hit targets and visible keyboard focus rings to common scenario, auth-submit, empty-state, and external-quote actions.
 - [x] Preserve existing lazy desk/modal imports and entry bundle budgets; existing Vitest architecture tests continue to enforce both.
-- [ ] Finish broad responsive/accessibility review beyond the touched controls and existing production-browser journey coverage.
+- [ ] Finish broad component-by-component responsive/accessibility review beyond the changed controls and existing production-browser journey coverage.
 - [x] Integrate the latest `main` after both prerequisite PRs merged; the PR diff remains disjoint from their domain/store paths.
-- [ ] Run final exact-head CI on the integrated head and update the PR checklist.
+- [x] Run final exact-head CI on the integrated head and update the PR checklist.
 
-Validation is tracked on [PR #305](https://github.com/armave/portfolio-terminal/pull/305). The latest passing checkpoint before the most recent touch-target changes is not a substitute for CI on the current head.
+Exact-head validation passed on `8e0bef23a64d16ab0e408579ffb2b65fb48ecd54` in [Pull Request CI run 41775241690](https://github.com/armave/portfolio-terminal/actions/runs/41775241690): TypeScript, 117 Vitest files, production build, production browser smoke, dead-code validation, full dependency audit at the configured high-severity threshold, and production-only audit (0 vulnerabilities). The production entry bundle was 435,336 raw bytes / 134,747 gzip bytes. Four low-severity development dependency advisories remain through `deepmerge`.
