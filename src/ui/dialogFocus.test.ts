@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { focusElementWithoutScrolling, getDialogFocusableElements, isolateDialogBackground, isTopmostActiveDialog, registerActiveDialog, resolveDialogRestoreTarget, restoreScrollPositionImmediately, trapDialogTabKey } from './dialogFocus';
+import { acquireDialogScrollLock, focusElementWithoutScrolling, getDialogFocusableElements, isolateDialogBackground, isTopmostActiveDialog, registerActiveDialog, resolveDialogRestoreTarget, restoreScrollPositionImmediately, trapDialogTabKey } from './dialogFocus';
 
 interface FocusableOptions {
   rendered?: boolean;
   hiddenAncestor?: boolean;
   tabIndex?: number;
 }
-
 
 interface FakeTreeElement {
   children: FakeTreeElement[];
@@ -336,6 +335,7 @@ describe('dialog focus management', () => {
     expect(trapDialogTabKey({ key: 'Escape', shiftKey: false, preventDefault: () => undefined }, dialog, middle)).toBe(false);
     expect(focused).toEqual([]);
   });
+
   it('keeps the page locked until the last dialog releases its scroll lock', () => {
     const bodyStyle = {
       overflow: 'auto',
