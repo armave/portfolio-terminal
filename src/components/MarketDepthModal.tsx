@@ -166,7 +166,7 @@ function MarketDepthSide({ side, levels, maxQuantity }: {
     };
   });
 
-  return <section class="min-w-0 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60" aria-label={`${isBid ? 'Bid' : 'Ask'} liquidity ladder`}>
+  return <section class="min-w-0 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60" aria-label={depthText(isBid ? 'Bid liquidity ladder' : 'Ask liquidity ladder')}>
     <h3 class={`flex items-center justify-between border-b border-slate-800 px-3 py-2 text-xs font-bold uppercase tracking-wider ${isBid ? 'text-emerald-300' : 'text-rose-300'}`}>
       <span>{depthText(isBid ? 'Buyers · bids' : 'Sellers · asks')}</span>
       <span class="text-[10px] font-normal text-slate-500">{levels.length} {depthText('levels')}</span>
@@ -392,10 +392,11 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
           </details>
 
           <p class="mt-3 text-[10px] leading-relaxed text-slate-500">
-            Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined. This account's feed currently contains {liveSnapshot.bids.length} bid and {liveSnapshot.asks.length} ask price levels.
-            {liveSnapshot.reportedDepth !== undefined ? ` TradeNet depth indicator: ${liveSnapshot.reportedDepth} (provider metadata, not a UI level target).` : ''}
+            {depthText('Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined.')}
+            {' '}{depthText('Visible levels:')} {liveSnapshot.bids.length} {depthText('bid')} / {liveSnapshot.asks.length} {depthText('ask')}.
+            {liveSnapshot.reportedDepth !== undefined ? ` ${depthText('TradeNet depth indicator:')} ${liveSnapshot.reportedDepth} (${depthText('provider metadata, not a UI level target')}).` : ''}
             {liveSnapshot.insertionsApplied !== undefined || liveSnapshot.rowUpdatesApplied !== undefined || liveSnapshot.deletionsApplied !== undefined
-              ? ` Changes captured: +${liveSnapshot.insertionsApplied ?? 0} / ~${liveSnapshot.rowUpdatesApplied ?? 0} / −${liveSnapshot.deletionsApplied ?? 0}.`
+              ? ` ${depthText('Changes captured:')} +${liveSnapshot.insertionsApplied ?? 0} / ~${liveSnapshot.rowUpdatesApplied ?? 0} / −${liveSnapshot.deletionsApplied ?? 0}.`
               : ''}
           </p>
         </>}
