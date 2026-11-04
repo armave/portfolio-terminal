@@ -8,6 +8,16 @@ const MARKET_STATUS_REFRESH_MS = 5 * 60 * 1000;
 
 export type MarketSessionStatus = 'PREMARKET' | 'MARKET' | 'POSTMARKET' | 'CLOSED';
 
+/** Prevents a response started under an older session from updating the current UI. */
+export function isCurrentMarketStatusRequest(
+  active: boolean,
+  requestGeneration: number,
+  currentGeneration: number
+): boolean {
+  return active && requestGeneration === currentGeneration;
+}
+
+
 export function normalizeMarketSessionStatus(status: string | null | undefined): MarketSessionStatus | null {
   const normalized = String(status || '').trim().toUpperCase().replaceAll(' ', '').replaceAll('_', '').replaceAll('-', '');
   switch (normalized) {
@@ -73,6 +83,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
     let refreshPending = false;
     let authenticated = false;
     let hasLoaded = false;
+    let authGeneration = 0;
 
     const refresh = async () => {
       if (!active || document.visibilityState === 'hidden') return;
@@ -81,10 +92,11 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
         return;
       }
       inFlight = true;
+      const requestGeneration = authGeneration;
       if (!hasLoaded) setLoading(true);
       try {
         const result = await fetchFreedomMarketStatus();
-        if (!active) return;
+        if (!isCurrentMarketStatusRequest(active, requestGeneration, authGeneration)) return;
         authenticated = true;
         hasLoaded = true;
         setHasAuthenticatedSession(true);
@@ -103,6 +115,7 @@ export function MarketStatusBadge({ isAdmin }: { isAdmin: boolean }) {
     };
 
     const handleUserChanged = (event: UiEvent<{ user: AuthUser | null }>) => {
+      authGeneration += 1;
       authenticated = Boolean(event.detail.user);
       setHasAuthenticatedSession(authenticated);
       if (!authenticated) {
