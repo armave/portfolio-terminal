@@ -181,7 +181,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'No recent Stocktwits messages found.': 'Свежих сообщений Stocktwits не найдено.',
   'Refresh failed; showing previously loaded messages.': 'Не удалось обновить данные; показаны ранее загруженные сообщения.',
   'No single-ticker messages found.': 'Сообщений по этому тикеру не найдено.',
-  'Untitled article': 'Новость без заголовка',
   'Read full article ↗': 'Читать статью полностью ↗',
   'Company news articles': 'Новости компаний',
   'Refresh company news': 'Обновить новости компании',
