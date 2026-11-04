@@ -126,7 +126,7 @@ describe('Market Depth modal wiring', () => {
     expect(modalSource).toContain('aria-modal="true"');
     expect(modalSource).toContain("aria-label={depthText('Proportional market depth ladder')}");
     expect(modalSource).toContain('<details');
-    expect(modalSource).toContain('maximum depth available to this account');
+    expect(modalSource).toContain('depth supplied by TradeNet');
     expect(modalSource).toContain('summary.spread < 0');
     expect(modalSource).toContain("Crossed order book: highest bid is above lowest ask.");
     expect(modalSource).toContain("TradeNet reported book depth:");

@@ -302,7 +302,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
         <div>
           <div class="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-emerald-300">{depthText('TradeNet · Order Book')}</div>
           <h2 id="marketDepthTitle" class="mt-1 text-xl font-black tracking-tight text-white">{ticker.trim().toUpperCase()} {depthText('Market Depth')}</h2>
-          <p class="mt-1 text-xs text-slate-400">{depthText('Authenticated live book · read-only · maximum depth available to this account')}</p>
+          <p class="mt-1 text-xs text-slate-400">{depthText('Authenticated live book · read-only · depth supplied by TradeNet')}</p>
         </div>
         <div class="flex shrink-0 items-center gap-2">
           <span class={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusTone}`} role="status" aria-live="polite" aria-label={depthText(statusLabel)}>

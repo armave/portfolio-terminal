@@ -757,7 +757,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Value shows current market value for open tranches and sale proceeds for closed trades. Net P&L appears only when the closed trade\'s net result is available.': 'Стоимость показывает текущую рыночную стоимость открытых лотов и выручку от закрытых сделок. Чистая прибыль или убыток отображается только при наличии итогового результата закрытой сделки.',
   "TradeNet · Order Book": "TradeNet · Стакан заявок",
   "Market Depth": "Глубина рынка",
-  "Authenticated live book · read-only · maximum depth available to this account": "Авторизованный поток стакана · только просмотр · максимальная глубина, доступная счёту",
+  "Authenticated live book · read-only · depth supplied by TradeNet": "Авторизованный поток стакана · только просмотр · максимальная глубина, доступная счёту",
   "Live": "Онлайн",
   "Connected · awaiting data": "Подключено · ожидание данных",
   "Connecting…": "Подключение…",
