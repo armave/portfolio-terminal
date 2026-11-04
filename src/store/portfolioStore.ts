@@ -42,7 +42,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * A malformed collection must not be normalized to an empty collection and
  * accidentally replace recoverable portfolio data.
  */
-function hasValidPortfolioImportShape(value: unknown): value is Partial<PortfolioState> {
+function hasValidPortfolioImportShape(value: unknown): boolean {
   if (!isRecord(value)) return false;
 
   const arrayFields = [
