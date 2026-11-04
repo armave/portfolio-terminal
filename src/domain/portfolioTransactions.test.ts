@@ -409,7 +409,7 @@ describe('portfolio transaction calculations', () => {
       soldCostBasis: 500,
       buyCommissionAllocated: 1,
       sellCommission: 1
-    })).toThrow('quantity must be finite and non-negative');
+    })).toThrow('quantity must be a finite positive number');
   });
 
   it('rejects non-finite settlement inputs without changing legacy negative-value clamping', () => {
@@ -423,6 +423,51 @@ describe('portfolio transaction calculations', () => {
       freeCash: 0,
       debtRepaid: 0,
       cashSurplus: 0
+    });
+  });
+
+
+  it('uses positive legacy tranche aliases for portfolio margin-debt weighting', () => {
+    const selectedPosition: PositionRecord = {
+      ticker: 'AAPL',
+      shares: 2,
+      currentPrice: 110,
+      pt: 120,
+      commBuy: 0,
+      tranches: [{ qty: 2, price: 100, date: '2026-10-15' }]
+    };
+    const legacyPosition = {
+      ...selectedPosition,
+      tranches: [{
+        qty: 0,
+        shares: 2,
+        quantity: 3,
+        price: 0,
+        entryPrice: 100,
+        averagePrice: 105
+      }] as unknown as TrancheItem[]
+    };
+
+    const result = calculateSaleAccounting({
+      tranches: selectedPosition.tranches || [],
+      positions: { AAPL: legacyPosition },
+      positionShares: 2,
+      sharesSold: 1,
+      balance: -1_000,
+      brokerAssumptions: { ...brokerRules, annualBorrowRate: 0 },
+      sellProceeds: 110,
+      soldCostBasis: 100,
+      buyCommissionAllocated: 0,
+      sellCommission: 0,
+      now: new Date('2026-10-17T12:00:00.000Z')
+    });
+
+    expect(result).toEqual({
+      marginInterestAllocated: 0,
+      totalCommissions: 0,
+      grossProfit: 10,
+      netProfit: 10,
+      netCashProceeds: 110
     });
   });
 
