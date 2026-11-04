@@ -115,7 +115,7 @@ describe('modal-scoped TradeNet Market Depth stream runtime', () => {
     const onStatus = vi.fn();
     const runtime = createFreedomMarketDepthStreamRuntime({
       createTicket: async () => ({ ticket: 'e'.repeat(64), symbol: 'GOOGL.US' }),
-      buildSocketUrl: ticket => \`wss://worker.test/?ticket=\${ticket}\`,
+      buildSocketUrl: ticket => 'wss://worker.test/?ticket=' + ticket,
       createSocket: () => socket,
       onDepth: vi.fn(),
       onStatus
@@ -141,28 +141,7 @@ describe('modal-scoped TradeNet Market Depth stream runtime', () => {
     const onStatus = vi.fn();
     const runtime = createFreedomMarketDepthStreamRuntime({
       createTicket: async () => ({ ticket: 'f'.repeat(64), symbol: 'GOOGL.US' }),
-      buildSocketUrl: ticket => \`wss://worker.test/?ticket=\${ticket}\`,
-      createSocket: () => socket,
-      onDepth: vi.fn(),
-      onStatus
-    });
-
-    const connecting = runtime.start('GOOGL', 'admin:account-1');
-    await Promise.resolve();
-    socket.open();
-    socket.receive({ type: 'ready', symbol: 'GOOGL.US' });
-    await expect(connecting).resolves.toBe(true);
-
-    socket.readyState = 3;
-    socket['emitForTest']?.('close', { code: 1006, reason: 'upstream closed' });
-  });
-
-  it('includes the remote WebSocket close code and reason in unexplained disconnects', async () => {
-    const socket = new FakeSocket();
-    const onStatus = vi.fn();
-    const runtime = createFreedomMarketDepthStreamRuntime({
-      createTicket: async () => ({ ticket: 'f'.repeat(64), symbol: 'GOOGL.US' }),
-      buildSocketUrl: ticket => \`wss://worker.test/?ticket=\${ticket}\`,
+      buildSocketUrl: ticket => 'wss://worker.test/?ticket=' + ticket,
       createSocket: () => socket,
       onDepth: vi.fn(),
       onStatus
