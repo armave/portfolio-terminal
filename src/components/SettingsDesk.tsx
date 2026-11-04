@@ -38,6 +38,11 @@ interface FreedomMarketDepthSnapshot {
   reportedDepth?: number;
   minStep?: number;
   stepPrice?: number;
+  updateCount: number;
+  insertionsApplied: number;
+  rowUpdatesApplied: number;
+  deletionsApplied: number;
+  captureDurationMs: number;
   bids: FreedomMarketDepthLevel[];
   asks: FreedomMarketDepthLevel[];
   updatedAt: number;
@@ -88,6 +93,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
   const [marketDepthLoading, setMarketDepthLoading] = useState(false);
   const [marketDepthSnapshot, setMarketDepthSnapshot] = useState<FreedomMarketDepthSnapshot | null>(null);
   const [marketDepthError, setMarketDepthError] = useState('');
+  const [marketDepthExpanded, setMarketDepthExpanded] = useState(false);
   const [editValues, setEditValues] = useState<Record<string, { name: string; role: "guest" | "admin"; language: AppLanguage; password: string }>>({});
 
   const refreshUsers = async () => {
@@ -287,6 +293,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
     setMarketDepthLoading(true);
     setMarketDepthError('');
     setMarketDepthSnapshot(null);
+    setMarketDepthExpanded(false);
     try {
       const response = await proxyFetch(
         'freedom-market-depth',
@@ -308,6 +315,11 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
         throw new Error('TradeNet returned an invalid Market Depth snapshot.');
       }
       const snapshot = data as Partial<FreedomMarketDepthSnapshot>;
+      const updateCount = snapshot.updateCount;
+      const insertionsApplied = snapshot.insertionsApplied;
+      const rowUpdatesApplied = snapshot.rowUpdatesApplied;
+      const deletionsApplied = snapshot.deletionsApplied;
+      const captureDurationMs = snapshot.captureDurationMs;
       const isLevel = (level: unknown): level is FreedomMarketDepthLevel =>
         Boolean(level) && typeof level === 'object' && !Array.isArray(level) &&
         Number.isSafeInteger((level as FreedomMarketDepthLevel).position) &&
@@ -316,12 +328,22 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       if (snapshot.symbol !== (symbol.includes('.') ? symbol : `${symbol}.US`) ||
           !Array.isArray(snapshot.bids) || !snapshot.bids.every(isLevel) ||
           !Array.isArray(snapshot.asks) || !snapshot.asks.every(isLevel) ||
+          typeof updateCount !== 'number' || !Number.isSafeInteger(updateCount) ||
+          typeof insertionsApplied !== 'number' || !Number.isSafeInteger(insertionsApplied) ||
+          typeof rowUpdatesApplied !== 'number' || !Number.isSafeInteger(rowUpdatesApplied) ||
+          typeof deletionsApplied !== 'number' || !Number.isSafeInteger(deletionsApplied) ||
+          typeof captureDurationMs !== 'number' || !Number.isFinite(captureDurationMs) ||
           typeof response.updatedAt !== 'number' || !Number.isFinite(response.updatedAt)) {
         throw new Error('TradeNet returned an incomplete Market Depth snapshot.');
       }
       setMarketDepthSnapshot({
         ...snapshot,
         symbol: snapshot.symbol,
+        updateCount,
+        insertionsApplied,
+        rowUpdatesApplied,
+        deletionsApplied,
+        captureDurationMs,
         bids: snapshot.bids,
         asks: snapshot.asks,
         updatedAt: response.updatedAt
@@ -451,6 +473,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
                 setDepthProbeSymbol((event.currentTarget as HTMLInputElement).value);
                 setMarketDepthSnapshot(null);
                 setMarketDepthError('');
+                setMarketDepthExpanded(false);
               }}
               aria-label="Stock symbol for Market Depth"
               placeholder="AAPL"
@@ -473,37 +496,95 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
             class="h-8 rounded border border-cyan-700 bg-slate-800 px-3 text-xs font-bold text-cyan-300 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
           >{depthProbeLoading ? 'Testing…' : 'Test Market Depth'}</button>
         </div>
-        <p class="text-[10px] leading-relaxed text-slate-500">Load a one-time production snapshot. Refresh manually to request another update; this is not a continuous stream.</p>
+        <p class="text-[10px] leading-relaxed text-slate-500">
+          {marketDepthLoading
+            ? 'Collecting authenticated depth updates for up to 8 seconds…'
+            : 'Each request collects a bounded production snapshot; refresh manually to request another. This is not a continuous stream.'}
+        </p>
         {marketDepthError && <p role="alert" class="text-xs text-rose-300">{marketDepthError}</p>}
-        {marketDepthSnapshot && <div role="region" aria-label={`${marketDepthSnapshot.symbol} market depth`} class="space-y-2">
-          <p class="text-[10px] text-slate-400">
-            {marketDepthSnapshot.symbol} snapshot
-            {marketDepthSnapshot.sequence !== undefined ? ` · sequence ${marketDepthSnapshot.sequence}` : ''}
-            {marketDepthSnapshot.reportedDepth !== undefined ? ` · reported depth ${marketDepthSnapshot.reportedDepth}` : ''}
-            {' · '}{new Date(marketDepthSnapshot.updatedAt).toLocaleTimeString()}
-          </p>
-          <div class="grid gap-3 md:grid-cols-2">
-            {(['bids', 'asks'] as const).map((side) => <div key={side} class="min-w-0 overflow-hidden rounded border border-slate-800">
-              <h4 class={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${side === 'bids' ? 'text-emerald-300' : 'text-rose-300'}`}>
-                {side === 'bids' ? 'Bids' : 'Asks'}
-              </h4>
-              <table class="w-full text-right text-[10px] tabular-nums">
-                <thead class="text-slate-500"><tr>
-                  <th scope="col" class="px-2 py-1 text-left">Level</th>
-                  <th scope="col" class="px-2 py-1">Price</th>
-                  <th scope="col" class="px-2 py-1">Quantity</th>
-                </tr></thead>
-                <tbody>{marketDepthSnapshot[side].map((level) => <tr key={level.position} class="border-t border-slate-800 text-slate-300">
-                  <td class="px-2 py-1 text-left">{level.position + 1}</td>
-                  <td class="px-2 py-1">{level.price.toLocaleString(undefined, { maximumFractionDigits: 8 })}</td>
-                  <td class="px-2 py-1">{level.quantity.toLocaleString(undefined, { maximumFractionDigits: 8 })}</td>
-                </tr>)}
-                {marketDepthSnapshot[side].length === 0 && <tr><td colspan={3} class="px-2 py-3 text-center text-slate-500">No levels received.</td></tr>}
-                </tbody>
-              </table>
-            </div>)}
-          </div>
-        </div>}
+        {marketDepthSnapshot && (() => {
+          const bestBid = marketDepthSnapshot.bids.reduce<FreedomMarketDepthLevel | null>(
+            (best, level) => !best || level.price > best.price ? level : best,
+            null
+          );
+          const bestAsk = marketDepthSnapshot.asks.reduce<FreedomMarketDepthLevel | null>(
+            (best, level) => !best || level.price < best.price ? level : best,
+            null
+          );
+          const spread = bestBid && bestAsk ? bestAsk.price - bestBid.price : null;
+          const totalBidQuantity = marketDepthSnapshot.bids.reduce((total, level) => total + level.quantity, 0);
+          const totalAskQuantity = marketDepthSnapshot.asks.reduce((total, level) => total + level.quantity, 0);
+          const formatDepthValue = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 8 });
+
+          return <div role="region" aria-label={`${marketDepthSnapshot.symbol} market depth`} class="space-y-2">
+            <p class="text-[10px] text-slate-400">
+              {marketDepthSnapshot.symbol} · {marketDepthSnapshot.bids.length} bid / {marketDepthSnapshot.asks.length} ask levels
+              {' · '}{marketDepthSnapshot.updateCount} updates over {(marketDepthSnapshot.captureDurationMs / 1000).toFixed(1)}s
+              {marketDepthSnapshot.sequence !== undefined ? ` · sequence ${marketDepthSnapshot.sequence}` : ''}
+              {' · '}{new Date(marketDepthSnapshot.updatedAt).toLocaleTimeString()}
+            </p>
+            <div class="grid grid-cols-3 gap-2 text-[10px]">
+              <div class="rounded border border-slate-800 bg-slate-950/60 p-2">
+                <p class="text-slate-500">Best bid</p>
+                <p class="font-semibold tabular-nums text-emerald-300">{bestBid ? formatDepthValue(bestBid.price) : '—'}</p>
+              </div>
+              <div class="rounded border border-slate-800 bg-slate-950/60 p-2">
+                <p class="text-slate-500">Best ask</p>
+                <p class="font-semibold tabular-nums text-rose-300">{bestAsk ? formatDepthValue(bestAsk.price) : '—'}</p>
+              </div>
+              <div class="rounded border border-slate-800 bg-slate-950/60 p-2">
+                <p class="text-slate-500">Spread</p>
+                <p class="font-semibold tabular-nums text-slate-200">{spread !== null ? formatDepthValue(spread) : '—'}</p>
+              </div>
+            </div>
+            <p class="text-[10px] text-slate-500">
+              Visible quantity: bids {formatDepthValue(totalBidQuantity)} · asks {formatDepthValue(totalAskQuantity)}
+              {' · '}inserted {marketDepthSnapshot.insertionsApplied}, updated {marketDepthSnapshot.rowUpdatesApplied}, deleted {marketDepthSnapshot.deletionsApplied}
+            </p>
+            <div class="grid gap-3 md:grid-cols-2">
+              {(['bids', 'asks'] as const).map((side) => {
+                const levels = [...marketDepthSnapshot[side]].sort((left, right) =>
+                  side === 'bids' ? right.price - left.price : left.price - right.price
+                );
+                const shownLevels = marketDepthExpanded ? levels : levels.slice(0, 5);
+                let cumulativeQuantity = 0;
+                const rows = shownLevels.map((level) => {
+                  cumulativeQuantity += level.quantity;
+                  return { level, cumulativeQuantity };
+                });
+                return <div key={side} class="min-w-0 overflow-hidden rounded border border-slate-800">
+                  <h4 class={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${side === 'bids' ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {side === 'bids' ? 'Bids' : 'Asks'}
+                  </h4>
+                  <table class="w-full text-right text-[10px] tabular-nums">
+                    <thead class="text-slate-500"><tr>
+                      <th scope="col" class="px-2 py-1 text-left">Level</th>
+                      <th scope="col" class="px-2 py-1">Price</th>
+                      <th scope="col" class="px-2 py-1">Size</th>
+                      <th scope="col" class="px-2 py-1">Cum. size</th>
+                    </tr></thead>
+                    <tbody>{rows.map(({ level, cumulativeQuantity }) => <tr key={level.position} class="border-t border-slate-800 text-slate-300">
+                      <td class="px-2 py-1 text-left">{level.position + 1}</td>
+                      <td class="px-2 py-1">{formatDepthValue(level.price)}</td>
+                      <td class="px-2 py-1">{formatDepthValue(level.quantity)}</td>
+                      <td class="px-2 py-1">{formatDepthValue(cumulativeQuantity)}</td>
+                    </tr>)}
+                    {levels.length === 0 && <tr><td colspan={4} class="px-2 py-3 text-center text-slate-500">No levels received.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>;
+              })}
+            </div>
+            {(marketDepthSnapshot.bids.length > 5 || marketDepthSnapshot.asks.length > 5) && <button
+              type="button"
+              onClick={() => setMarketDepthExpanded((expanded) => !expanded)}
+              aria-expanded={marketDepthExpanded}
+              class="text-[10px] font-semibold text-cyan-300 hover:text-cyan-200"
+            >{marketDepthExpanded ? 'Show top 5 levels' : 'Show all captured levels'}</button>}
+            {(marketDepthSnapshot.bids.length < 5 || marketDepthSnapshot.asks.length < 5) &&
+              <p class="text-[10px] text-slate-500">TradeNet supplied {marketDepthSnapshot.bids.length} bid and {marketDepthSnapshot.asks.length} ask levels during this capture.</p>}
+          </div>;
+        })()}
         {depthProbeError && <p role="alert" class="text-xs text-rose-300">{depthProbeError}</p>}
         {depthProbeResult && <div role="status" aria-live="polite">
           <p class={`text-xs ${depthProbeResult.ok === true ? 'text-emerald-300' : 'text-amber-300'}`}>

@@ -61,18 +61,25 @@ describe('integrated market status', () => {
 });
 
 describe('administrator Market Depth view', () => {
-  it('exposes a one-symbol read-only snapshot and retains the schema-only probe', () => {
+  it('exposes bounded depth summaries and expandable levels while retaining the schema-only probe', () => {
     const source = readFileSync(new URL('./SettingsDesk.tsx', import.meta.url), 'utf8');
 
     expect(source).toContain("account?.role === 'admin' && <section");
     expect(source).toContain("'freedom-market-depth'");
     expect(source).toContain('handleLoadMarketDepth');
     expect(source).toContain('Refresh Depth');
+    expect(source).toContain('Collecting authenticated depth updates for up to 8 seconds');
+    expect(source).toContain('Best bid');
+    expect(source).toContain('Best ask');
+    expect(source).toContain('Spread');
+    expect(source).toContain('Cum. size');
+    expect(source).toContain('Show all captured levels');
+    expect(source).toContain('TradeNet supplied');
     expect(source).toContain('No levels received.');
     expect(source).toContain("event: 'b', symbol");
     expect(source).toContain("depthProbeResult.data ?? depthProbeResult.diagnostics ?? {}");
     expect(source).toContain('the snapshot displays normalized bid and ask levels');
     expect(source).toContain('TradeNet returns depth updates on <code>b</code>');
-    expect(source).toContain('this is not a continuous stream');
+    expect(source).toContain('This is not a continuous stream');
   });
 });

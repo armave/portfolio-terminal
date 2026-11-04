@@ -206,7 +206,10 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
         queueMicrotask(() => {
           for (const callback of listeners.get('message') || []) {
             callback({ data: JSON.stringify(['userData', userData]) });
-            callback({ data: JSON.stringify([expectedEvent, payload]) });
+            const eventPayloads = expectedEvent === 'b' && Array.isArray(payload) ? payload : [payload];
+            for (const eventPayload of eventPayloads) {
+              callback({ data: JSON.stringify([expectedEvent, eventPayload]) });
+            }
           }
         });
       }),
@@ -228,7 +231,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     vi.stubGlobal('fetch', fetchMock);
     const query = new URLSearchParams({ action, event: eventName });
     if (symbol) query.set('symbol', symbol);
-    const response = await worker.fetch(new Request(
+    const responsePromise = worker.fetch(new Request(
       'https://worker.test/?' + query.toString(),
       { headers: { 'X-App-Auth': 'test-secret' } }
     ), {
@@ -236,6 +239,10 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
       FREEDOM_LOGIN: 'broker-login',
       FREEDOM_PASSWORD: 'broker-password'
     });
+    if (action === 'freedom-market-depth' && vi.isFakeTimers()) {
+      await vi.advanceTimersByTimeAsync(8000);
+    }
+    const response = await responsePromise;
     return { response, socket, fetchMock };
   }
 
@@ -735,19 +742,29 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('returns an authenticated one-shot depth snapshot without raw broker fields', async () => {
-    const payload = {
-      i: 'AAPL.US',
-      n: 24,
-      cnt: 1,
-      ins: [
-        { k: 0, p: 205.5, q: 3, s: 'B', owner_login: 'private-login' },
-        { k: 0, p: 205.75, q: 4, s: 'S' }
-      ],
-      account: 'private-value'
-    };
+  it('collects an authenticated depth window and returns accumulated levels without raw broker fields', async () => {
+    vi.useFakeTimers();
+    const updates = [
+      {
+        i: 'AAPL.US', n: 1, cnt: 2,
+        ins: [
+          { k: 0, p: 205.5, q: 3, s: 'B', owner_login: 'private-login' },
+          { k: 0, p: 205.75, q: 4, s: 'S' }
+        ],
+        account: 'private-value'
+      },
+      {
+        i: 'AAPL.US', n: 2, cnt: 3,
+        ins: [{ k: 1, p: 205.25, q: 7, s: 'B' }],
+        upd: [{ k: 0, p: 205.6, q: 5, s: 'B' }]
+      },
+      {
+        i: 'AAPL.US', n: 3, cnt: 2,
+        del: [{ k: 1, s: 'B' }]
+      }
+    ];
     const { response, socket } = await runEventDiagnostic(
-      'b', payload, { isDemo: false, mode: 'prod' }, 'freedom-market-depth', 'AAPL'
+      'b', updates, { isDemo: false, mode: 'prod' }, 'freedom-market-depth', 'AAPL'
     );
 
     expect(response.status).toBe(200);
@@ -757,13 +774,21 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
       source: 'authenticated_websocket_snapshot',
       symbol: 'AAPL.US',
       data: {
-        bids: [{ position: 0, price: 205.5, quantity: 3 }],
+        sequence: 3,
+        reportedDepth: 2,
+        updateCount: 3,
+        insertionsApplied: 3,
+        rowUpdatesApplied: 1,
+        deletionsApplied: 1,
+        captureDurationMs: 8000,
+        bids: [{ position: 0, price: 205.6, quantity: 5 }],
         asks: [{ position: 0, price: 205.75, quantity: 4 }]
       }
     });
     expect(body.updatedAt).toEqual(expect.any(Number));
     expect(JSON.stringify(body)).not.toMatch(/private-login|private-value|owner_login|account/);
     expect(socket.send).toHaveBeenCalledWith(JSON.stringify(['orderBook', ['AAPL.US']]));
+    expect(socket.close).toHaveBeenCalled();
   });
 
   it('rejects multiple symbols before creating an authenticated depth session', async () => {
@@ -779,6 +804,37 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
       error: 'Provide exactly one symbol for Market Depth.'
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns an explicit failure when no depth event arrives during the collection window', async () => {
+    vi.useFakeTimers();
+    const { response, socket } = await runEventDiagnostic(
+      'b', [], { isDemo: false, mode: 'prod' }, 'freedom-market-depth', 'AAPL'
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: 'Authenticated TradeNet Market Depth snapshot was not received.'
+    });
+    expect(socket.close).toHaveBeenCalled();
+  });
+
+  it('rejects oversized depth updates instead of silently truncating the order book', async () => {
+    const payload = {
+      i: 'AAPL.US',
+      ins: Array.from({ length: 1001 }, (_, k) => ({ k, p: 100 + k, q: 1, s: 'B' }))
+    };
+    const { response, socket } = await runEventDiagnostic(
+      'b', payload, { isDemo: false, mode: 'prod' }, 'freedom-market-depth', 'AAPL'
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: 'TradeNet sent more Market Depth data than this snapshot can safely process.'
+    });
+    expect(socket.close).toHaveBeenCalled();
   });
 });
 
@@ -876,7 +932,10 @@ describe('sanitizeFreedomPositions', () => {
 });
 
 describe('Freedom Market Depth snapshot', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
   it('applies depth updates and returns bounded public bid and ask levels only', () => {
     const result = sanitizeFreedomMarketDepth({
@@ -900,6 +959,10 @@ describe('Freedom Market Depth snapshot', () => {
       reportedDepth: 2,
       minStep: 0.01,
       stepPrice: 0.01,
+      updateCount: 1,
+      insertionsApplied: 2,
+      rowUpdatesApplied: 1,
+      deletionsApplied: 0,
       bids: [{ position: 0, price: 202.6, quantity: 14 }],
       asks: [{ position: 0, price: 202.75, quantity: 8 }]
     });
@@ -914,6 +977,54 @@ describe('Freedom Market Depth snapshot', () => {
     const result = sanitizeFreedomMarketDepth({ i: 'AAPL.US', ins }, 'AAPL.US');
     expect(result.bids).toHaveLength(100);
     expect(result.asks).toHaveLength(0);
+  });
+
+  it('accumulates inserts, updates, and deletes while preserving each side’s level positions', () => {
+    const result = sanitizeFreedomMarketDepth([
+      {
+        i: 'AAPL.US', n: 1, cnt: 4,
+        ins: [
+          { k: 0, p: 100, q: 10, s: 'B' },
+          { k: 1, p: 99, q: 20, s: 'B' },
+          { k: 0, p: 101, q: 11, s: 'S' },
+          { k: 1, p: 102, q: 22, s: 'S' }
+        ]
+      },
+      {
+        i: 'AAPL.US', n: 2, cnt: 6,
+        ins: [
+          { k: 1, p: 99.5, q: 15, s: 'B' },
+          { k: 0, p: 100.5, q: 8, s: 'S' }
+        ]
+      },
+      {
+        i: 'AAPL.US', n: 3, cnt: 4,
+        del: [{ k: 2, s: 'B' }, { k: 1, s: 'S' }],
+        upd: [
+          { k: 0, p: 100.25, q: 12, s: 'B' },
+          { k: 1, p: 101.5, q: 25, s: 'S' }
+        ]
+      }
+    ], 'AAPL.US', 8000);
+
+    expect(result).toMatchObject({
+      symbol: 'AAPL.US',
+      sequence: 3,
+      reportedDepth: 4,
+      updateCount: 3,
+      insertionsApplied: 6,
+      rowUpdatesApplied: 2,
+      deletionsApplied: 2,
+      captureDurationMs: 8000,
+      bids: [
+        { position: 0, price: 100.25, quantity: 12 },
+        { position: 1, price: 99.5, quantity: 15 }
+      ],
+      asks: [
+        { position: 0, price: 100.5, quantity: 8 },
+        { position: 1, price: 101.5, quantity: 25 }
+      ]
+    });
   });
 
 });

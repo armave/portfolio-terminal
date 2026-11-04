@@ -27,7 +27,7 @@ It is **not** a broker connection, order-entry system, source of official accoun
 
 * **Multi-Provider Market Data:** Streams live prices, premarket indicators, and analyst targets via Finnhub, Twelve Data, Alpha Vantage, RapidAPI Yahoo Finance, and Stooq.
 
-* **TradeNet WebSocket Account Refresh:** Live `q`, `portfolio`, and `orders` WebSocket streams provide quotes, USD balances/positions, and active orders, with REST fallbacks or history backfills where applicable. The `markets` event provides exchange-level status/schedule metadata, not security quote prices. Administrators can load a one-shot, read-only Market Depth snapshot for one stock from Settings using the `orderBook` subscription and `b` response event; a separate protocol diagnostic exposes schema only.
+* **TradeNet WebSocket Account Refresh:** Live `q`, `portfolio`, and `orders` WebSocket streams provide quotes, USD balances/positions, and active orders, with REST fallbacks or history backfills where applicable. The `markets` event provides exchange-level status/schedule metadata, not security quote prices. Administrators can collect a bounded, read-only Market Depth snapshot for one stock from Settings using the `orderBook` subscription and `b` updates; the view summarizes the best prices and spread and can expand the available levels. A separate protocol diagnostic exposes schema only.
 
 * **Freedom Broker Account Reconciliation:** When the authenticated read-only Freedom TradeNet account API returns a valid snapshot, the app prioritizes the broker's USD balance, aggregate share quantities, and available broker-reported prices. App-owned trade lots and cost basis remain separate; quantity mismatches are surfaced instead of silently rewriting lots.
 

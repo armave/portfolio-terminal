@@ -355,47 +355,96 @@ export function sanitizeFreedomActiveOrders(response) {
     return { orders: { order }, trades: { trade } };
 }
 
-export function sanitizeFreedomMarketDepth(payload, requestedSymbol) {
+export function sanitizeFreedomMarketDepth(payload, requestedSymbol, captureDurationMs = undefined) {
     const isRecord = value => value !== null && typeof value === "object" && !Array.isArray(value);
-    if (!isRecord(payload)) {
-        throw new Error("TradeNet returned an invalid market-depth update.");
-    }
-
     const symbol = String(requestedSymbol || "").trim().toUpperCase();
-    const responseSymbol = typeof payload.i === "string" ? payload.i.trim().toUpperCase() : symbol;
-    if (!symbol || responseSymbol !== symbol) {
+    if (!symbol) {
         throw new Error("TradeNet market-depth update did not match the requested symbol.");
     }
 
     const levels = new Map();
     const rows = value => Array.isArray(value) ? value : isRecord(value) ? [value] : [];
-    const normalizeRow = value => {
+    const normalizeRow = (value, requireValues = true) => {
         if (!isRecord(value)) return null;
         const sideValue = String(value.s ?? "").trim().toUpperCase();
         const side = sideValue === "B" || sideValue === "BUY"
             ? "B"
             : sideValue === "S" || sideValue === "SELL" ? "S" : null;
-        const { k: position, p: price, q: quantity } = value;
+        const position = value.k;
+        const price = value.p;
+        const quantity = value.q;
         if (!side || !Number.isSafeInteger(position) || position < 0 ||
-            !Number.isFinite(price) || price <= 0 ||
-            !Number.isFinite(quantity) || quantity < 0) {
+            (requireValues && (!Number.isFinite(price) || price <= 0 ||
+                !Number.isFinite(quantity) || quantity < 0))) {
             return null;
         }
-        return { side, position, price, quantity };
+        return {
+            side,
+            position,
+            ...(Number.isFinite(price) && price > 0 ? { price } : {}),
+            ...(Number.isFinite(quantity) && quantity >= 0 ? { quantity } : {})
+        };
     };
 
-    for (const row of rows(payload.del)) {
-        const normalized = normalizeRow(row);
-        if (normalized) levels.delete(`${normalized.side}:${normalized.position}`);
-    }
-    for (const field of ["ins", "upd"]) {
-        for (const row of rows(payload[field])) {
-            const normalized = normalizeRow(row);
-            if (normalized) {
-                levels.set(`${normalized.side}:${normalized.position}`, normalized);
+    const updates = Array.isArray(payload) ? payload : [payload];
+    let updateCount = 0;
+    let sequence;
+    let reportedDepth;
+    let minStep;
+    let stepPrice;
+    let deletionsApplied = 0;
+    let insertionsApplied = 0;
+    let rowUpdatesApplied = 0;
+    for (const update of updates) {
+        if (!isRecord(update)) continue;
+        const responseSymbol = typeof update.i === "string" ? update.i.trim().toUpperCase() : symbol;
+        if (responseSymbol !== symbol) {
+            throw new Error("TradeNet market-depth update did not match the requested symbol.");
+        }
+        updateCount += 1;
+        if (Number.isSafeInteger(update.n)) sequence = update.n;
+        if (Number.isSafeInteger(update.cnt) && update.cnt >= 0) reportedDepth = update.cnt;
+        if (Number.isFinite(update.min_step) && update.min_step > 0) minStep = update.min_step;
+        if (Number.isFinite(update.step_price) && update.step_price > 0) stepPrice = update.step_price;
+
+        const deletions = rows(update.del).map(row => normalizeRow(row, false)).filter(Boolean)
+            .sort((left, right) => left.side.localeCompare(right.side) || right.position - left.position);
+        for (const row of deletions) {
+            const key = `${row.side}:${row.position}`;
+            if (!levels.has(key)) continue;
+            levels.delete(key);
+            const followingLevels = [...levels].filter(([, level]) =>
+                level.side === row.side && level.position > row.position
+            ).sort((left, right) => right[1].position - left[1].position);
+            for (const [levelKey, level] of followingLevels) {
+                levels.delete(levelKey);
+                level.position -= 1;
+                levels.set(`${level.side}:${level.position}`, level);
             }
+            deletionsApplied += 1;
+        }
+
+        const insertions = rows(update.ins).map(row => normalizeRow(row)).filter(Boolean)
+            .sort((left, right) => left.side.localeCompare(right.side) || left.position - right.position);
+        for (const row of insertions) {
+            const displacedLevels = [...levels].filter(([, level]) =>
+                level.side === row.side && level.position >= row.position
+            ).sort((left, right) => right[1].position - left[1].position);
+            for (const [levelKey, level] of displacedLevels) {
+                levels.delete(levelKey);
+                level.position += 1;
+                levels.set(`${level.side}:${level.position}`, level);
+            }
+            levels.set(`${row.side}:${row.position}`, row);
+            insertionsApplied += 1;
+        }
+
+        for (const row of rows(update.upd).map(value => normalizeRow(value)).filter(Boolean)) {
+            levels.set(`${row.side}:${row.position}`, row);
+            rowUpdatesApplied += 1;
         }
     }
+    if (updateCount === 0) throw new Error("TradeNet returned an invalid market-depth update.");
 
     const orderedLevels = [...levels.values()].sort((left, right) =>
         left.position - right.position || left.side.localeCompare(right.side)
@@ -404,17 +453,17 @@ export function sanitizeFreedomMarketDepth(payload, requestedSymbol) {
         .map(({ position, price, quantity }) => ({ position, price, quantity }));
     const asks = orderedLevels.filter(level => level.side === "S").slice(0, 100)
         .map(({ position, price, quantity }) => ({ position, price, quantity }));
-    const sequence = payload.n;
-    const reportedDepth = payload.cnt;
-    const minStep = payload.min_step;
-    const stepPrice = payload.step_price;
-
     return {
         symbol,
         ...(Number.isSafeInteger(sequence) ? { sequence } : {}),
         ...(Number.isSafeInteger(reportedDepth) && reportedDepth >= 0 ? { reportedDepth } : {}),
         ...(Number.isFinite(minStep) && minStep > 0 ? { minStep } : {}),
         ...(Number.isFinite(stepPrice) && stepPrice > 0 ? { stepPrice } : {}),
+        updateCount,
+        insertionsApplied,
+        rowUpdatesApplied,
+        deletionsApplied,
+        ...(Number.isFinite(captureDurationMs) && captureDurationMs >= 0 ? { captureDurationMs } : {}),
         bids,
         asks
     };
@@ -1083,13 +1132,21 @@ function summarizeFreedomStreamEvent(eventName, payload) {
     throw new Error("Unsupported TradeNet stream event.");
 }
 
-async function diagnoseFreedomEventStream(env, eventName, includePayload = false, subscriptionData = undefined) {
+async function diagnoseFreedomEventStream(
+    env,
+    eventName,
+    includePayload = false,
+    subscriptionData = undefined,
+    onPayload = undefined,
+    collectWindowMs = 0
+) {
     const sid = await createFreedomDiagnosticSession(env);
     const startedAt = Date.now();
     const responseEventName = eventName === "quotes" ? "q" : eventName;
     const subscriptionEventName = eventName === "b" ? "orderBook" : eventName;
     let eventSummary = null;
     let eventPayload = null;
+    let collectionStartedAt = null;
     const diagnostics = {
         endpoint: "wss.tradernet.com",
         requestedEvent: eventName,
@@ -1116,6 +1173,9 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
         eventCounts: { ...diagnostics.eventCounts },
         eventSummary,
         ...(includePayload ? { eventPayload } : {}),
+        ...(collectionStartedAt !== null
+            ? { collectionDurationMs: Math.max(0, Date.now() - collectionStartedAt) }
+            : {}),
         elapsedMs: Date.now() - startedAt
     });
 
@@ -1143,7 +1203,9 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
             }
         };
         timeoutId = setTimeout(() => {
-            diagnostics.phase = diagnostics.connectionOpened ? "event_timeout" : "handshake_timeout";
+            diagnostics.phase = diagnostics.connectionOpened
+                ? collectWindowMs > 0 && diagnostics.eventReceived ? "collection_complete" : "event_timeout"
+                : "handshake_timeout";
             if (!diagnostics.connectionOpened) abortController.abort();
             finish(null);
         }, 8000);
@@ -1204,7 +1266,24 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
                     } else if (name === responseEventName) {
                         diagnostics.eventReceived = true;
                         eventPayload = includePayload ? packet[1] : null;
-                        eventSummary = summarizeFreedomStreamEvent(eventName, packet[1]);
+                        if (typeof onPayload !== "function") {
+                            eventSummary = summarizeFreedomStreamEvent(eventName, packet[1]);
+                        }
+                        if (typeof onPayload === "function") {
+                            try {
+                                if (onPayload(packet[1]) === false) {
+                                    throw new Error("TradeNet sent more Market Depth data than this snapshot can safely process.");
+                                }
+                            } catch (error) {
+                                diagnostics.phase = "payload_processing_failed";
+                                const payloadError = error instanceof Error
+                                    ? error
+                                    : new Error("TradeNet stream payload could not be processed.");
+                                if (!Number.isFinite(Number(payloadError.status))) payloadError.status = 502;
+                                finish(payloadError);
+                                return;
+                            }
+                        }
                     } else if (name === "error") {
                         const text = typeof packet[1] === "string" ? packet[1] : "";
                         diagnostics.serverErrorCategory = /sid|session|auth|login|unauthori[sz]ed|expired/i.test(text)
@@ -1218,8 +1297,8 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
                         return;
                     }
                     if (diagnostics.userDataReceived && diagnostics.eventReceived) {
-                        diagnostics.phase = "event_received";
-                        finish(null);
+                        diagnostics.phase = collectWindowMs > 0 ? "collecting_depth_updates" : "event_received";
+                        if (collectWindowMs <= 0) finish(null);
                     }
                 });
                 socket.addEventListener("error", () => {
@@ -1240,6 +1319,14 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
                     : [subscriptionEventName, subscriptionData]));
                 diagnostics.subscriptionSent = true;
                 diagnostics.phase = "awaiting_events";
+                if (collectWindowMs > 0) {
+                    clearTimeout(timeoutId);
+                    collectionStartedAt = Date.now();
+                    timeoutId = setTimeout(() => {
+                        diagnostics.phase = diagnostics.eventReceived ? "collection_complete" : "event_timeout";
+                        finish(null);
+                    }, collectWindowMs);
+                }
             } catch {
                 const error = new Error("TradeNet WebSocket opened, but the " + eventName + " subscription could not be sent.");
                 error.status = 502;
@@ -1821,7 +1908,54 @@ export default {
                 }
 
                 try {
-                    const result = await diagnoseFreedomEventStream(env, "b", true, [requestedSymbol]);
+                    const depthUpdates = [];
+                    let depthUpdateRowCount = 0;
+                    const result = await diagnoseFreedomEventStream(
+                        env,
+                        "b",
+                        false,
+                        [requestedSymbol],
+                        payload => {
+                            if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+                                depthUpdates.push(payload);
+                                return depthUpdates.length <= 10000;
+                            }
+                            const sourceRows = field => Array.isArray(payload[field])
+                                ? payload[field]
+                                : payload[field] !== null && typeof payload[field] === "object"
+                                    ? [payload[field]]
+                                    : [];
+                            const rowCount = ["ins", "upd", "del"].reduce(
+                                (total, field) => total + sourceRows(field).length,
+                                0
+                            );
+                            if (depthUpdates.length >= 10000 || rowCount > 1000 ||
+                                depthUpdateRowCount + rowCount > 10000) {
+                                return false;
+                            }
+                            depthUpdateRowCount += rowCount;
+                            const safeUpdate = {
+                                ...(typeof payload.i === "string" ? { i: payload.i } : {}),
+                                ...(Number.isSafeInteger(payload.n) ? { n: payload.n } : {}),
+                                ...(Number.isSafeInteger(payload.cnt) ? { cnt: payload.cnt } : {}),
+                                ...(Number.isFinite(payload.min_step) ? { min_step: payload.min_step } : {}),
+                                ...(Number.isFinite(payload.step_price) ? { step_price: payload.step_price } : {})
+                            };
+                            for (const field of ["ins", "upd", "del"]) {
+                                const fieldRows = sourceRows(field);
+                                if (fieldRows.length) {
+                                    safeUpdate[field] = fieldRows.map(row =>
+                                        row !== null && typeof row === "object"
+                                            ? { k: row.k, p: row.p, q: row.q, s: row.s }
+                                            : null
+                                    );
+                                }
+                            }
+                            depthUpdates.push(safeUpdate);
+                            return true;
+                        },
+                        8000
+                    );
                     const eventsConfirmed = result.connectionOpened &&
                         result.userDataReceived && result.eventReceived &&
                         result.isDemo !== true && result.sessionMode === "prod";
@@ -1836,7 +1970,7 @@ export default {
                         }), { status: 502, headers: { ...corsHeaders, "Cache-Control": "no-store" } });
                     }
 
-                    const depth = sanitizeFreedomMarketDepth(result.eventPayload, requestedSymbol);
+                    const depth = sanitizeFreedomMarketDepth(depthUpdates, requestedSymbol, result.collectionDurationMs);
                     return new Response(JSON.stringify({
                         ok: true,
                         provider: "Freedom TradeNet",
