@@ -970,6 +970,40 @@ describe('Freedom Market Depth snapshot', () => {
     expect(() => sanitizeFreedomMarketDepth({ i: 'MSFT.US', ins: [] }, 'AAPL.US')).toThrow(/requested symbol/);
   });
 
+  it('preserves position-only and numeric delete rows while sanitizing broker depth updates', () => {
+    const result = sanitizeFreedomMarketDepth([
+      {
+        i: 'AAPL.US',
+        n: 0,
+        ins: [
+          { k: 0, p: 101, q: 10, s: 'S' },
+          { k: 1, p: 100, q: 20, s: 'B' }
+        ]
+      },
+      {
+        i: 'AAPL.US',
+        n: 1,
+        del: [{ k: 0 }],
+        ins: [{ k: 0, p: 101.5, q: 12, s: 'S' }],
+        upd: [{ k: 1, p: 100.1, q: 25, s: 'B' }]
+      },
+      {
+        i: 'AAPL.US',
+        n: 2,
+        del: [0],
+        ins: [{ k: 0, p: 102, q: 13, s: 'S' }],
+        upd: [{ k: 1, p: 100.2, q: 26, s: 'B' }]
+      }
+    ], 'AAPL.US');
+
+    expect(result).toMatchObject({
+      sequence: 2,
+      deletionsApplied: 2,
+      asks: [{ position: 0, price: 102, quantity: 13 }],
+      bids: [{ position: 1, price: 100.2, quantity: 26 }]
+    });
+  });
+
   it('retains the maximum bounded depth per side', () => {
     const ins = Array.from({ length: 1205 }, (_, k) => ({
       k, p: 100 + k, q: 1, s: 'B'

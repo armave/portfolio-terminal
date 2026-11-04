@@ -64,6 +64,63 @@ describe('TradeNet Market Depth accumulator', () => {
     expect(book.snapshot().bids).toEqual([{ position: 1, price: 100, quantity: 4 }]);
   });
 
+  it('applies position-only deletion before insertion and update in one packet', () => {
+    const book = createFreedomMarketDepthBook('GOOGL.US');
+    book.apply({
+      i: 'GOOGL.US',
+      n: 0,
+      cnt: 2,
+      ins: [
+        { k: 0, p: 291.44, q: 10, s: 'S' },
+        { k: 1, p: 291.42, q: 20, s: 'B' }
+      ]
+    });
+
+    book.apply({
+      i: 'GOOGL.US',
+      n: 1,
+      del: [{ k: 0 }],
+      ins: [{ k: 0, p: 291.48, q: 12, s: 'S' }],
+      upd: [{ k: 1, p: 291.42, q: 24, s: 'B' }]
+    });
+
+    expect(book.snapshot()).toMatchObject({
+      sequence: 1,
+      deletionsApplied: 1,
+      insertionsApplied: 3,
+      rowUpdatesApplied: 1,
+      asks: [{ position: 0, price: 291.48, quantity: 12 }],
+      bids: [{ position: 1, price: 291.42, quantity: 24 }]
+    });
+  });
+
+  it('accepts a numeric deletion position and keeps subsequent global positions aligned', () => {
+    const book = createFreedomMarketDepthBook('GOOGL.US');
+    book.apply({
+      i: 'GOOGL.US',
+      n: 0,
+      ins: [
+        { k: 0, p: 291.44, q: 10, s: 'S' },
+        { k: 1, p: 291.42, q: 20, s: 'B' }
+      ]
+    });
+
+    book.apply({
+      i: 'GOOGL.US',
+      n: 1,
+      del: [0],
+      ins: [{ k: 0, p: 291.48, q: 12, s: 'S' }],
+      upd: [{ k: 1, p: 291.42, q: 24, s: 'B' }]
+    });
+
+    expect(book.snapshot()).toMatchObject({
+      sequence: 1,
+      deletionsApplied: 1,
+      asks: [{ position: 0, price: 291.48, quantity: 12 }],
+      bids: [{ position: 1, price: 291.42, quantity: 24 }]
+    });
+  });
+
   it('uses one global position space and shifts both sides on insertions and deletions', () => {
     const book = createFreedomMarketDepthBook('AAPL.US');
     book.apply({
