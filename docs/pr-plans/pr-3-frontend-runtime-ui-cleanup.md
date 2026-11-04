@@ -8,6 +8,8 @@
 - [x] Added document-scoped, reference-counted scroll locking. Original body/document overflow styles and the initial page offset are restored only after the final active dialog releases its lock.
 - [x] Bound key handling and active-element reads to the dialog's owning document.
 - [x] Added Vitest regression coverage for lower-first and upper-first modal cleanup, idempotent release, preservation of original inline styles, and exactly-once final scroll restoration.
+- [x] Added a cancellable delayed-close helper and wired both scenario modals to cancel pending exit-animation callbacks during unmount.
+- [x] Added fake-timer tests for delayed execution, cancellation on unmount, idempotent cancellation, and cleanup after execution.
 - [ ] Continue the remaining frontend runtime, component, localization, CSS, accessibility, and browser-validation audit.
 
 **Proposed PR title:** `refactor(frontend): simplify runtime boundaries and strengthen UI consistency`
