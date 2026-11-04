@@ -84,6 +84,18 @@ describe('Market Depth book summary', () => {
     });
   });
 
+  it('calculates a negative spread for a crossed snapshot so the UI can explicitly warn', () => {
+    const crossed = normalizeMarketDepthSnapshot({
+      ...response,
+      data: {
+        ...response.data,
+        bids: [{ position: 0, price: 341.1, quantity: 100 }],
+        asks: [{ position: 0, price: 340.9, quantity: 50 }]
+      }
+    }, 'AAPL.US');
+    expect(summarizeMarketDepth(crossed).spread).toBeLessThan(0);
+  });
+
   it('reports missing two-sided prices and zero-size imbalance without inventing values', () => {
     const snapshot = normalizeMarketDepthSnapshot({
       ok: true,
@@ -115,6 +127,8 @@ describe('Market Depth modal wiring', () => {
     expect(modalSource).toContain("aria-label={depthText('Proportional market depth ladder')}");
     expect(modalSource).toContain('<details');
     expect(modalSource).toContain('maximum depth available to this account');
+    expect(modalSource).toContain('summary.spread < 0');
+    expect(modalSource).toContain("Crossed order book: highest bid is above lowest ask.");
     expect(modalSource).toContain('Rows at identical prices are combined');
     expect(modalSource).toContain('runtime.stop()');
     expect(modalSource).toContain("const liveSnapshot = displayState === 'live' ? snapshot : null;");
