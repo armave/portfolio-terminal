@@ -1876,9 +1876,11 @@ export default {
                             }
                             const sourceRows = field => Array.isArray(payload[field])
                                 ? payload[field]
-                                : payload[field] !== null && typeof payload[field] === "object"
+                                : field === "del" && Number.isSafeInteger(payload[field])
                                     ? [payload[field]]
-                                    : [];
+                                    : payload[field] !== null && typeof payload[field] === "object"
+                                        ? [payload[field]]
+                                        : [];
                             const rowCount = ["ins", "upd", "del"].reduce(
                                 (total, field) => total + sourceRows(field).length,
                                 0
@@ -1899,9 +1901,11 @@ export default {
                                 const fieldRows = sourceRows(field);
                                 if (fieldRows.length) {
                                     safeUpdate[field] = fieldRows.map(row =>
-                                        row !== null && typeof row === "object"
-                                            ? { k: row.k, p: row.p, q: row.q, s: row.s }
-                                            : null
+                                        field === "del" && Number.isSafeInteger(row) && row >= 0
+                                            ? row
+                                            : row !== null && typeof row === "object"
+                                                ? { k: row.k, p: row.p, q: row.q, s: row.s }
+                                                : null
                                     );
                                 }
                             }
