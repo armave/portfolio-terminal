@@ -122,9 +122,34 @@ describe('Market Depth modal wiring', () => {
     expect(modalSource).not.toContain('latest book remains visible');
     expect(modalSource).toContain("depthText('Last depth update')");
     expect(modalSource).toContain("depthText('Retry connection')");
+    expect(modalSource).toContain('createLatestFramePublisher(setSnapshot)');
+    expect(modalSource).toContain('snapshotPublisherRef.current?.clear()');
+    expect(modalSource).toContain('{detailsOpen &&');
+    expect(modalSource).toContain('max-h-80 overflow-y-auto');
+    expect(modalSource).not.toContain('sortLevels(');
+    expect(modalSource).toContain('maxDisplayedBid');
     expect(appSource).toContain('if (permissions.isAdmin) setMarketDepthTicker');
     expect(appSource).toContain('{permissions.isAdmin && marketDepthTicker');
     expect(appSource).toContain('setMarketDepthTicker(null)');
+  });
+
+  it('returns bid and ask levels in best-price-first display order', () => {
+    const grouped = groupFreedomMarketDepthByPrice({
+      symbol: 'GOOGL.US',
+      bids: [
+        { position: 0, price: 287.5, quantity: 4 },
+        { position: 1, price: 288, quantity: 8 },
+        { position: 2, price: 287.8, quantity: 6 }
+      ],
+      asks: [
+        { position: 0, price: 288.5, quantity: 5 },
+        { position: 1, price: 288.2, quantity: 7 },
+        { position: 2, price: 288.4, quantity: 3 }
+      ]
+    });
+
+    expect(grouped.bids.map((level: { price: number }) => level.price)).toEqual([288, 287.8, 287.5]);
+    expect(grouped.asks.map((level: { price: number }) => level.price)).toEqual([288.2, 288.4, 288.5]);
   });
 
   it('aggregates multiple broker levels at the same price for the displayed book', () => {

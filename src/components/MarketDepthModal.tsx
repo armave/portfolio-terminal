@@ -4,6 +4,7 @@ import { groupFreedomMarketDepthByPrice } from '../services/freedomMarketDepth.j
 import { createFreedomMarketDepthStreamRuntime, type FreedomMarketDepthStreamRuntime, type FreedomMarketDepthStreamStatus } from '../services/freedomMarketDepthStreamRuntime';
 import { useDialogFocus } from '../ui/dialogFocus';
 import { getAppLanguage, translateText } from '../services/i18n';
+import { createLatestFramePublisher, type LatestFramePublisher } from '../services/marketDepthFramePublisher';
 
 export interface MarketDepthLevel {
   position: number;
@@ -144,12 +145,6 @@ function formatDepthNumber(value: number): string {
   return value.toLocaleString(undefined, { maximumFractionDigits: 8 });
 }
 
-function sortLevels(levels: MarketDepthLevel[], side: 'bids' | 'asks'): MarketDepthLevel[] {
-  return [...levels].sort((left, right) =>
-    side === 'bids' ? right.price - left.price : left.price - right.price
-  );
-}
-
 function MarketDepthSide({ side, levels, maxQuantity }: {
   side: 'bids' | 'asks';
   levels: MarketDepthLevel[];
@@ -157,7 +152,8 @@ function MarketDepthSide({ side, levels, maxQuantity }: {
 }) {
   const isBid = side === 'bids';
   let cumulativeQuantity = 0;
-  const rows = sortLevels(levels, side).slice(0, 5).map((level) => {
+  // Provider position order is converted to price order by groupFreedomMarketDepthByPrice.
+  const rows = levels.slice(0, 5).map((level) => {
     cumulativeQuantity += level.quantity;
     return {
       ...level,
@@ -184,6 +180,11 @@ function MarketDepthSide({ side, levels, maxQuantity }: {
 
 export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthModalProps) {
   const [snapshot, setSnapshot] = useState<MarketDepthSnapshot | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const snapshotPublisherRef = useRef<LatestFramePublisher<MarketDepthSnapshot> | null>(null);
+  if (!snapshotPublisherRef.current) {
+    snapshotPublisherRef.current = createLatestFramePublisher(setSnapshot);
+  }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [streamStatus, setStreamStatus] = useState<FreedomMarketDepthStreamStatus>('connecting');
@@ -198,7 +199,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
       onDepth: (symbol, data, updatedAt, activeSessionKey) => {
         if (activeSessionKey !== sessionKey || symbol !== expectedDepthSymbol(ticker)) return;
         try {
-          setSnapshot(groupFreedomMarketDepthByPrice(normalizeMarketDepthSnapshot({
+          snapshotPublisherRef.current?.publish(groupFreedomMarketDepthByPrice(normalizeMarketDepthSnapshot({
             symbol,
             data,
             updatedAt
@@ -206,6 +207,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
           setError('');
           setLoading(false);
         } catch (snapshotError) {
+          snapshotPublisherRef.current?.clear();
           setSnapshot(null);
           setLoading(false);
           setError(snapshotError instanceof Error ? snapshotError.message : 'TradeNet Market Depth update was invalid.');
@@ -214,6 +216,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
       onStatus: (status, message) => {
         setStreamStatus(status);
         if (status === 'connecting') {
+          snapshotPublisherRef.current?.clear();
           setSnapshot(null);
           setError('');
           setLoading(true);
@@ -223,6 +226,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
           setLoading(false);
         } else if (status === 'error' || status === 'disconnected') {
           // A book from a failed session must never remain visible.
+          snapshotPublisherRef.current?.clear();
           setSnapshot(null);
           setError(message || (status === 'error'
             ? 'The live TradeNet Market Depth connection failed.'
@@ -236,9 +240,11 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
 
   useEffect(() => {
     let active = true;
+    snapshotPublisherRef.current?.clear();
     setLoading(true);
     setError('');
     setSnapshot(null);
+    setDetailsOpen(false);
     setStreamStatus('connecting');
     const runtime = streamRef.current!;
     void runtime.start(ticker, sessionKey).then((opened) => {
@@ -249,6 +255,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
     });
     return () => {
       active = false;
+      snapshotPublisherRef.current?.clear();
       runtime.stop();
     };
   }, [ticker, sessionKey, connectionAttempt]);
@@ -256,9 +263,16 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
   const displayState = getMarketDepthDisplayState(streamStatus, snapshot);
   const liveSnapshot = displayState === 'live' ? snapshot : null;
   const summary = liveSnapshot ? summarizeMarketDepth(liveSnapshot) : null;
-  const levels = liveSnapshot ? [...liveSnapshot.bids, ...liveSnapshot.asks] : [];
-  const maxQuantity = Math.max(0, ...levels.map((level) => level.quantity));
-  const hasLevels = Boolean(liveSnapshot && (liveSnapshot.bids.length || liveSnapshot.asks.length));
+  const levelCount = liveSnapshot ? liveSnapshot.bids.length + liveSnapshot.asks.length : 0;
+  // Scale the ladder against the same top-five levels that are actually drawn.
+  const maxDisplayedBid = liveSnapshot?.bids
+    .slice(0, 5)
+    .reduce((max, level) => Math.max(max, level.quantity), 0) ?? 0;
+  const maxDisplayedAsk = liveSnapshot?.asks
+    .slice(0, 5)
+    .reduce((max, level) => Math.max(max, level.quantity), 0) ?? 0;
+  const maxQuantity = Math.max(maxDisplayedBid, maxDisplayedAsk);
+  const hasLevels = Boolean(liveSnapshot && levelCount > 0);
   const imbalanceLabel = summary?.imbalancePercent === null || summary?.imbalancePercent === undefined
     ? '—'
     : `${summary.imbalancePercent > 0 ? '+' : ''}${summary.imbalancePercent.toFixed(1)}% ${depthText(summary.imbalancePercent > 0 ? 'bid-heavy' : summary.imbalancePercent < 0 ? 'ask-heavy' : 'balanced')}`;
@@ -359,15 +373,19 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
             {depthText('No price levels were received for this symbol. TradeNet may not provide depth for every instrument or market session.')}
           </div>}
 
-          <details class="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60">
+          <details
+            class="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60"
+            onToggle={(event: Event) => setDetailsOpen((event.currentTarget as HTMLDetailsElement).open)}
+          >
             <summary class="cursor-pointer list-none px-3 py-3 text-xs font-bold text-cyan-200 hover:bg-slate-900/70">
-              <span class="mr-2 text-cyan-400">＋</span>{depthText('Detailed level table')} · {levels.length} {depthText('distinct prices')}
+              <span class="mr-2 text-cyan-400">＋</span>{depthText('Detailed level table')} · {levelCount} {depthText('distinct prices')}
             </summary>
-            <div class="grid gap-3 border-t border-slate-800 p-3 md:grid-cols-2">
+            {detailsOpen && <div class="max-h-80 overflow-y-auto border-t border-slate-800 p-3">
+              <div class="grid gap-3 md:grid-cols-2">
               {(['bids', 'asks'] as const).map((side) => <div key={side} class="min-w-0 overflow-x-auto">
                 <h4 class={`mb-1 text-[10px] font-bold uppercase tracking-wider ${side === 'bids' ? 'text-emerald-300' : 'text-rose-300'}`}>{depthText(side === 'bids' ? 'Bids' : 'Asks')}</h4>
                 <table class="w-full min-w-[300px] text-right text-[10px] tabular-nums">
-                  <thead class="text-slate-500"><tr>
+                  <thead class="sticky top-0 bg-slate-950 text-slate-500"><tr>
                     <th scope="col" class="px-2 py-1 text-left">{depthText('Level')}</th>
                     <th scope="col" class="px-2 py-1">{depthText('Price')}</th>
                     <th scope="col" class="px-2 py-1">{depthText('Size')}</th>
@@ -375,7 +393,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
                   </tr></thead>
                   <tbody>{(() => {
                     let cumulative = 0;
-                    const rows = sortLevels(liveSnapshot[side], side).map((level) => {
+                    const rows = liveSnapshot[side].map((level) => {
                       cumulative += level.quantity;
                       return { level, cumulative };
                     });
@@ -388,7 +406,8 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
                   })()}</tbody>
                 </table>
               </div>)}
-            </div>
+              </div>
+            </div>}
           </details>
 
           <p class="mt-3 text-[10px] leading-relaxed text-slate-500">

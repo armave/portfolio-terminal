@@ -549,3 +549,23 @@ The modal could retain a previous order-book snapshot after a socket error or di
 **Scope**
 
 Frontend Market Depth presentation and stream-message validation only. No Worker routes, broker credentials, order placement, account permissions, portfolio calculations, persisted schemas or dependencies changed.
+
+
+## Stage 16 — Market Depth live-render and ladder performance (2026-11-04)
+
+**Finding**
+
+The live modal re-sorted price-grouped levels on every update, derived the ladder scale from the entire book even though only five levels per side were drawn, and rendered the full detailed table while its disclosure was closed. Rapid socket updates could also schedule repeated Preact renders even when several updates arrived in the same browser frame.
+
+**Implementation**
+
+- [x] Coalesce live snapshots to the latest provider update per animation frame; invalidate queued updates on disconnect, error, retry and unmount.
+- [x] Reuse the price-ranked output of the market-depth aggregation service rather than sorting the same book again in the modal.
+- [x] Scale ladder bars against the top-five levels actually displayed.
+- [x] Render the full-depth table only while its disclosure is open and constrain it to a scrollable region.
+- [x] Add Vitest coverage for frame coalescing, cancellation and provider price ordering.
+- [ ] Verify burst updates and the expanded table in a real authenticated TradeNet browser session on mobile and desktop.
+
+**Scope**
+
+Frontend render scheduling and Market Depth presentation only. No provider protocol, broker authentication, server session policy, trading behavior, account permissions, or persisted data semantics changed.
