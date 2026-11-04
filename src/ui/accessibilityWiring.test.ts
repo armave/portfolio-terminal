@@ -92,6 +92,16 @@ describe('Stage 10 accessibility wiring', () => {
     expect(source).toContain('<th scope="row"');
   });
 
+  it('keeps Market Insights news controls touch-sized and visibly keyboard-focused', () => {
+    const source = readSource('../components/MarketInsightsPanel.tsx');
+
+    expect(source).toContain('news-feed-item block min-h-11');
+    expect(source).toContain('insight-tab min-h-11');
+    expect(source).toContain('min-h-11 min-w-11 items-center justify-center');
+    expect(source).toContain('inline-flex min-h-11 items-center gap-2');
+    expect(source).toContain('focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400');
+  });
+
   it('does not display missing margin quotes as zero-value positions or false negative returns', () => {
     const source = readSource('../components/SummaryMetricsGrid.tsx');
     expect(source).toContain('getUsableMarketPrice(pos.currentPrice)');

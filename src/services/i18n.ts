@@ -26,6 +26,14 @@ function russianPlural(value: number, one: string, few: string, many: string): s
 }
 
 function translateDynamicText(normalized: string): string | undefined {
+  const readNewsLabel = normalized.match(/^Read news:\s*(.+)$/i);
+  if (readNewsLabel) {
+    const headline = /^untitled article$/i.test(readNewsLabel[1])
+      ? (RU['Untitled article'] || readNewsLabel[1])
+      : readNewsLabel[1];
+    return 'Читать новость: ' + headline;
+  }
+
   const replaceCommandHelp = normalized.match(/^Please replace \[(.+)\] with a value before running this command\.$/i);
   if (replaceCommandHelp) return 'Замените [' + replaceCommandHelp[1] + '] на значение перед выполнением команды.';
 

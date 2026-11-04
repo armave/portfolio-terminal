@@ -220,8 +220,9 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
     }
     setCashflowAllocationReady(false);
     let active = true;
-    void processCashflowRows(cashflows).then((success) => {
-      if (!active || !isSessionCurrent()) return;
+    const isEffectCurrent = () => active && isSessionCurrent();
+    void processCashflowRows(cashflows, false, isEffectCurrent).then((success) => {
+      if (!isEffectCurrent()) return;
       if (success) lastRecalculationKey.current = key;
       setCashflowAllocationReady(true);
     });
@@ -231,9 +232,11 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
   }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, state.closedTrades, brokerTrades]);
   const processCashflowRows = async (
     cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
-    requireCloudSync = false
+    requireCloudSync = false,
+    isOperationActive: () => boolean = () => true
   ): Promise<boolean> => {
-    if (!isSessionCurrent()) return false;
+    const isOperationCurrent = () => isSessionCurrent() && isOperationActive();
+    if (!isOperationCurrent()) return false;
     try {
       // An empty confirmed snapshot is still a calculation input: it must clear
       // any stale allocations left by older imports or a previously saved broker row.
@@ -269,7 +272,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       if (changedAppRows && JSON.stringify(appTrades) !== JSON.stringify(updatedTrades)) {
         nextState.closedTrades = updatedTrades;
       }
-      if (!isSessionCurrent()) return false;
+      if (!isOperationCurrent()) return false;
       const previousPortfolioState = portfolioStore.getState();
       if (Object.keys(nextState).length) portfolioStore.setState(nextState, false);
       // Keep canonical portfolio fields and the independently stored history
@@ -301,11 +304,11 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           const synced = await pushCloudHistory({
             brokerExecutedTrades: brokerExecutionsChanged ? updatedExecutions : brokerExecutions,
             cashflows: cashflowRows
-          }, undefined, undefined, { isCurrentSession: isSessionCurrent });
-          if (!isSessionCurrent()) return false;
+          }, undefined, undefined, { isCurrentSession: isOperationCurrent });
+          if (!isOperationCurrent()) return false;
           if (!synced) throw new Error('Cloud history did not confirm the update.');
         } catch (error) {
-          if (!isSessionCurrent()) return false;
+          if (!isOperationCurrent()) return false;
           console.error('Failed to sync closed-history cashflows and fees:', error);
           if (requireCloudSync) {
             setCashflowSyncMessage(`History was updated locally, but cloud sync failed: ${error instanceof Error ? error.message : 'unknown sync error'}.`);
@@ -318,7 +321,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       }
       return true;
     } catch (error) {
-      if (!isSessionCurrent()) return false;
+      if (!isOperationCurrent()) return false;
       const detail = error instanceof Error ? error.message : 'Unknown cashflow processing error.';
       console.error('Unable to process saved closed-history cashflows:', detail);
       if (requireCloudSync) setCashflowSyncMessage(`Freedom cashflow processing failed: ${detail}`);
