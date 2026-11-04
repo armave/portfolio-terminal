@@ -76,6 +76,22 @@ describe('app localization', () => {
       .toBe('Объём указан поставщиком котировок; период данных зависит от источника.');
   });
 
+  it('localizes the live-only Market Depth modal and status states in Russian', () => {
+    const marketDepthCopy = [
+      'TradeNet · Order Book', 'Market Depth',
+      'Authenticated live book · read-only · maximum depth available to this account',
+      'Live', 'Connected · awaiting data', 'Connecting…', 'Disconnected', 'Stream error',
+      'Opening the authenticated live book stream…',
+      'The live stream is connected. Waiting for the first TradeNet depth update…',
+      'No live Market Depth data is available.', 'Retry connection', 'Last depth update',
+      'Best bid', 'Best ask', 'Visible size', 'Book balance', 'Visible size imbalance',
+      'Price-grouped liquidity ladder', 'Buyers · bids', 'Sellers · asks', 'Detailed level table'
+    ];
+    for (const copy of marketDepthCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('defaults to English', () => {
     expect(getAppLanguage()).toBe('en');
     expect(translateText('Sign out')).toBe('Sign out');
