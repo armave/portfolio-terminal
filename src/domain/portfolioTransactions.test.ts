@@ -340,7 +340,7 @@ describe('portfolio transaction calculations', () => {
       positionShares: 10,
       sharesSold: 5,
       balance: -1_000,
-      brokerAssumptions: { annualBorrowRate: 0.15, dayCountBasis: 365 },
+      brokerAssumptions: { annualBorrowRate: 0.15, dayCountBasis: 365 as const },
       sellProceeds: 550,
       soldCostBasis: 500,
       buyCommissionAllocated: 1,
@@ -353,7 +353,10 @@ describe('portfolio transaction calculations', () => {
     })).toThrow('Sale proceeds must be finite');
     expect(() => calculateSaleAccounting({
       ...validInput,
-      brokerAssumptions: { annualBorrowRate: 0.15, dayCountBasis: 0 }
+      brokerAssumptions: {
+        annualBorrowRate: 0.15,
+        dayCountBasis: 0 as unknown as 365
+      }
     })).toThrow('Day-count basis must be positive');
     expect(() => calculateSaleAccounting({
       ...validInput,
