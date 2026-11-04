@@ -112,7 +112,7 @@ describe('Market Depth modal wiring', () => {
     expect(modalSource).toContain('groupFreedomMarketDepthByPrice');
     expect(modalSource).toContain('role="dialog"');
     expect(modalSource).toContain('aria-modal="true"');
-    expect(modalSource).toContain('aria-label="Proportional market depth ladder"');
+    expect(modalSource).toContain("aria-label={depthText('Proportional market depth ladder')}");
     expect(modalSource).toContain('<details');
     expect(modalSource).toContain('maximum depth available to this account');
     expect(modalSource).toContain('Rows at identical prices are combined');
