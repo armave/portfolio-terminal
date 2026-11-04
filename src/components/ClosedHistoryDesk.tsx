@@ -219,11 +219,15 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
       return;
     }
     setCashflowAllocationReady(false);
+    let active = true;
     void processCashflowRows(cashflows).then((success) => {
-      if (!isSessionCurrent()) return;
+      if (!active || !isSessionCurrent()) return;
       if (success) lastRecalculationKey.current = key;
       setCashflowAllocationReady(true);
     });
+    return () => {
+      active = false;
+    };
   }, [cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, state.cashflows, state.brokerExecutedTrades, state.closedTrades, brokerTrades]);
   const processCashflowRows = async (
     cashflowRows: Array<Omit<NormalizedFreedomCashflow, 'raw'> & { raw?: Record<string, string> }>,
