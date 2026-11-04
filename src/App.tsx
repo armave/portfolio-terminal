@@ -75,6 +75,9 @@ const ScenarioReportModal = lazy(() =>
 const MarginIntelligenceModal = lazy(() =>
   import('./components/MarginIntelligenceModal').then(({ MarginIntelligenceModal }) => ({ default: MarginIntelligenceModal }))
 );
+const MarketDepthModal = lazy(() =>
+  import('./components/MarketDepthModal').then(({ MarketDepthModal }) => ({ default: MarketDepthModal }))
+);
 
 interface AppProps {
   onSaveGatewaySecret: (secret: string) => Promise<boolean>;
@@ -359,6 +362,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [startupState, setStartupState] = useState({ visible: true, failed: false });
   const [scenarioModalData, setScenarioModalData] = useState<ScenarioModalData | null>(null);
   const [marginIntelligence, setMarginIntelligence] = useState<MarginIntelligenceState | null>(null);
+  const [marketDepthTicker, setMarketDepthTicker] = useState<string | null>(null);
   const closeMarginIntelligence = useCallback(() => setMarginIntelligence(null), []);
   const closeScenarioModal = useCallback(() => setScenarioModalData(null), []);
 
@@ -578,6 +582,9 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       setAuthOpen(event.detail.isOpen);
     };
     const handleScenarioModal = (event: UiEvent<ScenarioModalData>) => setScenarioModalData(event.detail);
+    const handleMarketDepthRequest = (event: UiEvent<{ ticker: string }>) => {
+      if (permissions.isAdmin) setMarketDepthTicker(event.detail.ticker);
+    };
     const handleBackupImportRequest = () => {
       if (permissions.canManageBackups) backupImportInputRef.current?.click();
     };
@@ -585,6 +592,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const user = event.detail.user;
       // Invalidate broker work synchronously, before Preact schedules the state update.
       brokerSessionIdentityRef.current.setIdentity(user ? `${user.role}:${user.id}` : null);
+      if (user?.role !== 'admin') setMarketDepthTicker(null);
       setCurrentUser(user);
       setAppLanguage(user?.language ?? 'en');
     };
@@ -599,6 +607,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
     addUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
     addUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
     addUiEventListener('terminal:scenario-modal', handleScenarioModal);
+    addUiEventListener('terminal:market-depth-request', handleMarketDepthRequest);
     addUiEventListener('terminal:auth-visibility', handleAuthVisibility);
     addUiEventListener('auth:user-changed', handleAuthUserChanged);
     const handleStartupState = (event: UiEvent<{ visible: boolean; failed: boolean }>) => setStartupState(event.detail);
@@ -607,12 +616,13 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       removeUiEventListener('terminal:backup-import-request', handleBackupImportRequest);
       removeUiEventListener('terminal:scroll-workspace', handleScrollWorkspace);
       removeUiEventListener('terminal:scenario-modal', handleScenarioModal);
+      removeUiEventListener('terminal:market-depth-request', handleMarketDepthRequest);
       removeUiEventListener('terminal:auth-visibility', handleAuthVisibility);
       removeUiEventListener('auth:user-changed', handleAuthUserChanged);
       removeUiEventListener('terminal:startup-state', handleStartupState);
       unsubscribeLanguage();
     };
-  }, [permissions.canManageBackups]);
+  }, [permissions.canManageBackups, permissions.isAdmin]);
 
   useEffect(() => {
     const previousUser = previousCurrentUserRef.current;
@@ -733,7 +743,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 {permissions.canViewMarginDesk &&
                   !["CASH_CUSHION", "BALANCE", "CLOSED_HISTORY", "GUEST_HISTORY", "SETTINGS"].includes(activeDeskView) && (
                     <Suspense fallback={<DeskLoading title="Preparing portfolio metrics" message="Loading portfolio metrics…" accent="cyan" />}>
-                      <MemoSummaryMetricsGrid />
+                      <MemoSummaryMetricsGrid isAdmin={permissions.isAdmin} />
                     </Suspense>
                   )}
               </div>
@@ -848,6 +858,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       {scenarioModalData && <Suspense fallback={null}><ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} /></Suspense>}
       {scenarioReport !== null && <Suspense fallback={null}><ScenarioReportModal key={scenarioReport} report={scenarioReport} dataQualityWarning={scenarioDataQualityWarning} quoteProvenanceHoldings={scenarioQuoteProvenanceHoldings} onClose={dismissScenarioReport} /></Suspense>}
       {permissions.canViewMarginDesk && marginIntelligence && <Suspense fallback={null}><MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} /></Suspense>}
+      {permissions.isAdmin && marketDepthTicker && <Suspense fallback={null}><MarketDepthModal key={marketDepthTicker} ticker={marketDepthTicker} onClose={() => setMarketDepthTicker(null)} /></Suspense>}
       <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="assertive">
         {errorToasts.map((toast) => <div key={toast.id} role="alert" class={'pointer-events-auto rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all ' + (toast.isClosing ? 'opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
       </div>

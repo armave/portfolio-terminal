@@ -9,6 +9,7 @@ export interface UiEventPayloads {
   'terminal:backup-import-request': undefined;
   'terminal:backup-import-file': { file: File };
   'terminal:command-prefill': { command: string; selectText?: string | null; cursorAtEnd?: boolean };
+  'terminal:market-depth-request': { ticker: string };
   'terminal:margin-intelligence-request': { ticker?: string; refresh?: boolean };
   'terminal:scenario-modal': ScenarioModalData;
   'terminal:startup-offline': undefined;

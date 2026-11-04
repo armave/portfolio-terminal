@@ -18,6 +18,17 @@ describe('typed UI event bus', () => {
     removeUiEventListener('terminal:margin-intelligence-request', listener);
   });
 
+  it('delivers ticker-specific Market Depth requests', () => {
+    const listener = vi.fn();
+    addUiEventListener('terminal:market-depth-request', listener);
+
+    emitUiEvent('terminal:market-depth-request', { ticker: 'AAPL.US' });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0].detail).toEqual({ ticker: 'AAPL.US' });
+    removeUiEventListener('terminal:market-depth-request', listener);
+  });
+
   it('delivers the discriminated scenario modal contract to subscribers', () => {
     const listener = vi.fn((event: { detail: ScenarioModalData }) => event.detail);
     const scenario: ScenarioModalData = {

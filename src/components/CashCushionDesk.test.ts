@@ -118,6 +118,17 @@ describe('cash holdings quote context', () => {
     expect(deskSource).toContain('renderDailyQuoteSubtext(holding.quoteDetails)');
     expect(deskSource).toContain('Provider-reported volume; reporting period may vary by source.');
   });
+
+  it('adds Market Depth only to administrator holdings table rows, not guest holding cards', () => {
+    const deskSource = readFileSync(new URL('./CashCushionDesk.tsx', import.meta.url), 'utf8');
+    const marketDepthAction = deskSource.indexOf("emitUiEvent('terminal:market-depth-request'");
+    const guestCards = deskSource.indexOf('guestHoldings.map((holding)');
+
+    expect(marketDepthAction).toBeGreaterThan(-1);
+    expect(deskSource).toMatch(/\{isAdmin && <button[\s\S]{0,500}emitUiEvent\('terminal:market-depth-request'/);
+    expect(guestCards).toBeGreaterThan(-1);
+    expect(deskSource.slice(guestCards, marketDepthAction)).not.toContain("emitUiEvent('terminal:market-depth-request'");
+  });
 });
 
 describe('Balance cache-first history retention', () => {

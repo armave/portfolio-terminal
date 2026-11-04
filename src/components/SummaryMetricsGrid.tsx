@@ -304,7 +304,7 @@ export function getMarginTrancheQuantity(
 }
 
 
-function MarginMarketTools({ ticker }: { ticker?: string }) {
+function MarginMarketTools({ ticker, isAdmin }: { ticker?: string; isAdmin: boolean }) {
   const language = getAppLanguage();
   const reviewLabel = ticker ? 'News + Review' : 'Portfolio Review';
   const reviewTitle = ticker
@@ -324,6 +324,15 @@ function MarginMarketTools({ ticker }: { ticker?: string }) {
         >
           ✦ {translateText(reviewLabel, language)}
         </button>
+        {ticker && isAdmin && <button
+          type="button"
+          title={`View live market depth for ${ticker}`}
+          aria-label={`Market Depth for ${ticker}`}
+          onClick={() => emitUiEvent('terminal:market-depth-request', { ticker })}
+          class="rounded border border-emerald-800/70 bg-slate-900/90 px-2 py-1 text-[10px] font-mono font-bold text-emerald-200 transition hover:bg-emerald-950/50"
+        >
+          ▤ Market Depth
+        </button>}
       </div>
       {ticker && (
         <div class="flex flex-wrap items-center gap-1.5" aria-label={translateText('External market research links', language)}>
@@ -334,7 +343,7 @@ function MarginMarketTools({ ticker }: { ticker?: string }) {
   );
 }
 
-function SummaryMetricsGridView() {
+function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
   const state = usePortfolio();
   const activeView = useActiveView();
   const rules = state.brokerAssumptions;
@@ -564,7 +573,7 @@ function SummaryMetricsGridView() {
               <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
             </div>
           </div>
-          <MarginMarketTools />
+          <MarginMarketTools isAdmin={isAdmin} />
         </section>
 
         <MarginRiskGaugeCard
@@ -797,7 +806,7 @@ function SummaryMetricsGridView() {
             <span id="boardMarginCharged" class="portfolio-metric-value text-xs sm:text-sm">{marginChargedText}</span>
           </div>
         </div>
-        <MarginMarketTools ticker={pos.ticker} />
+        <MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />
       </section>
 
       <MarginRiskGaugeCard

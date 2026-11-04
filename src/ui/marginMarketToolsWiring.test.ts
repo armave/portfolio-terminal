@@ -9,9 +9,11 @@ describe('Margin Market Tools placement', () => {
   it('provides news review and external research in the fourth metrics column', () => {
     expect(summarySource).toContain('class="portfolio-micro-column portfolio-micro-actions"');
     expect(summarySource).toContain('<BoardExternalLinks />');
-    expect(summarySource).toContain('<MarginMarketTools />');
-    expect(summarySource).toContain('<MarginMarketTools ticker={pos.ticker} />');
+    expect(summarySource).toContain('<MarginMarketTools isAdmin={isAdmin} />');
+    expect(summarySource).toContain('<MarginMarketTools ticker={pos.ticker} isAdmin={isAdmin} />');
     expect(summarySource).toContain("emitUiEvent('terminal:margin-intelligence-request', ticker ? { ticker } : {})");
+    expect(summarySource).toContain("emitUiEvent('terminal:market-depth-request', { ticker })");
+    expect(summarySource).toContain('ticker && isAdmin && <button');
     expect(summarySource).toContain("const reviewLabel = ticker ? 'News + Review' : 'Portfolio Review'");
   });
 

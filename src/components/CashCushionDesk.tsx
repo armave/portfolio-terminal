@@ -15,6 +15,7 @@ import { createGuestDirectoryState, guestDirectoryReducer } from '../domain/gues
 import { getAssignableActiveTrancheCashQuantity } from '../domain/activeTrancheGuestAssignment';
 import { getGuestAssignedCashHoldings, getGuestHoldingValuation } from '../domain/guestPortfolio';
 import { getAppLanguage, translateText } from '../services/i18n';
+import { emitUiEvent } from '../ui/uiEventBus';
 import { DeskLoading } from './DeskLoading';
 import { TableScrollRegion } from './TableScrollRegion';
 
@@ -667,7 +668,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                         </tr>}
                         <tr key={`${h.groupKey}-${h.ticker}`} class="cash-holding-row hover:bg-slate-900/40">
                           <td data-label="Ticker" class="py-2 px-3 text-cyan-300 font-bold">
-                            <div class="inline-flex items-center gap-1.5">
+                            <div class="inline-flex flex-wrap items-center gap-1.5">
                               <span>{h.ticker}</span>
                               <span
                                 data-sentiment={direction}
@@ -681,6 +682,13 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                               >
                                 {badgeText}
                               </span>
+                              {isAdmin && <button
+                                type="button"
+                                title={`View live market depth for ${h.ticker}`}
+                                aria-label={`Market Depth for ${h.ticker}`}
+                                onClick={() => emitUiEvent('terminal:market-depth-request', { ticker: h.ticker })}
+                                class="rounded border border-emerald-800/70 px-1.5 py-0.5 text-[9px] font-bold text-emerald-300 hover:bg-emerald-950/40"
+                              >Depth</button>}
                             </div>
                           </td>
                           <td data-label="Shares" class="py-2 px-3 text-right text-slate-200 tabular-nums w-20 whitespace-nowrap">
