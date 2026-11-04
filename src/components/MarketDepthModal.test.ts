@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { normalizeMarketDepthSnapshot, summarizeMarketDepth } from './MarketDepthModal';
+import { getMarketDepthDisplayState, normalizeMarketDepthSnapshot, summarizeMarketDepth } from './MarketDepthModal';
 import { groupFreedomMarketDepthByPrice } from '../services/freedomMarketDepth.js';
 
 const response = {
@@ -38,6 +38,13 @@ describe('Market Depth response normalization', () => {
     });
   });
 
+  it('rejects missing, zero and invalid timestamps instead of presenting an unverified update as fresh', () => {
+    expect(() => normalizeMarketDepthSnapshot({ ...response, updatedAt: 0 }, 'AAPL'))
+      .toThrow('incomplete Market Depth snapshot');
+    expect(() => normalizeMarketDepthSnapshot({ ...response, updatedAt: Number.NaN }, 'AAPL'))
+      .toThrow('incomplete Market Depth snapshot');
+  });
+
   it('rejects unsuccessful, mismatched, or malformed snapshots', () => {
     expect(() => normalizeMarketDepthSnapshot({ ok: false, error: 'Access denied' }, 'AAPL')).toThrow('Access denied');
     expect(() => normalizeMarketDepthSnapshot(response, 'MSFT')).toThrow('incomplete Market Depth snapshot');
@@ -45,6 +52,20 @@ describe('Market Depth response normalization', () => {
       ...response,
       data: { ...response.data, asks: [{ position: 0, price: Number.NaN, quantity: 1 }] }
     }, 'AAPL')).toThrow('incomplete Market Depth snapshot');
+  });
+});
+
+describe('Market Depth live-only display policy', () => {
+  it('does not call a ready socket live before a valid depth snapshot arrives', () => {
+    expect(getMarketDepthDisplayState('connecting', null)).toBe('connecting');
+    expect(getMarketDepthDisplayState('connected', null)).toBe('waiting');
+  });
+
+  it('only exposes the live state while the current stream is connected and a validated snapshot exists', () => {
+    const snapshot = normalizeMarketDepthSnapshot(response, 'AAPL');
+    expect(getMarketDepthDisplayState('connected', snapshot)).toBe('live');
+    expect(getMarketDepthDisplayState('disconnected', snapshot)).toBe('disconnected');
+    expect(getMarketDepthDisplayState('error', snapshot)).toBe('error');
   });
 });
 
@@ -96,6 +117,11 @@ describe('Market Depth modal wiring', () => {
     expect(modalSource).toContain('maximum depth available to this account');
     expect(modalSource).toContain('Rows at identical prices are combined');
     expect(modalSource).toContain('runtime.stop()');
+    expect(modalSource).toContain("const liveSnapshot = displayState === 'live' ? snapshot : null;");
+    expect(modalSource).toContain('setSnapshot(null);');
+    expect(modalSource).not.toContain('latest book remains visible');
+    expect(modalSource).toContain("depthText('Last depth update')");
+    expect(modalSource).toContain("depthText('Retry connection')");
     expect(appSource).toContain('if (permissions.isAdmin) setMarketDepthTicker');
     expect(appSource).toContain('{permissions.isAdmin && marketDepthTicker');
     expect(appSource).toContain('setMarketDepthTicker(null)');
