@@ -5,7 +5,6 @@ import { getAppLanguage, translateText } from '../services/i18n';
 import { useDialogFocus } from '../ui/dialogFocus';
 import type { MarginIntelligenceArticle, MarginNewsCoverage } from '../features/ai/marginIntelligence';
 
-export type { MarginIntelligenceArticle } from '../features/ai/marginIntelligence';
 
 export interface MarginIntelligenceState {
   title: string;
