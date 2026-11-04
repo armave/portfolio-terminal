@@ -1,5 +1,6 @@
 export const MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE = 1000;
-const MAX_UPDATE_ROWS = 1000;
+const MAX_BOOK_POSITIONS = MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE * 2;
+const MAX_UPDATE_ROWS = MAX_BOOK_POSITIONS;
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -9,12 +10,14 @@ function rows(value) {
   return Array.isArray(value) ? value : isRecord(value) ? [value] : [];
 }
 
-/** Stateful position-based book accumulator shared by snapshot and live relays. */
+/** Stateful accumulator for TradeNet's single, shared bid/ask position space. */
 export function createFreedomMarketDepthBook(requestedSymbol) {
   const symbol = String(requestedSymbol || "").trim().toUpperCase();
   if (!symbol) throw new Error("TradeNet market-depth update did not match the requested symbol.");
 
+  // TradeNet k is a global order-book index, not an index local to each side.
   const levels = new Map();
+  let maxPosition = -1;
   let updateCount = 0;
   let sequence;
   let reportedDepth;
@@ -44,31 +47,26 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
     };
   };
 
-  const maxPositionBySide = { B: -1, S: -1 };
-
-  // Position indices are contiguous in normal TradeNet books. Track each side's
-  // upper bound so inserts/deletes can shift map keys directly instead of
-  // allocating, filtering, and sorting the entire book for every provider row.
-  const trimSide = side => {
-    const maxPosition = maxPositionBySide[side];
-    for (let position = MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE; position <= maxPosition; position += 1) {
-      levels.delete(`${side}:${position}`);
+  // Delete one global position and shift every later row, including the other side.
+  const deleteAt = position => {
+    const removed = levels.get(position);
+    if (!removed) return null;
+    levels.delete(position);
+    for (let index = position + 1; index <= maxPosition; index += 1) {
+      const following = levels.get(index);
+      if (!following) continue;
+      levels.delete(index);
+      following.position = index - 1;
+      levels.set(index - 1, following);
     }
-    maxPositionBySide[side] = Math.min(maxPosition, MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE - 1);
-  };
-
-  const refreshMaxPosition = side => {
-    let position = Math.min(
-      maxPositionBySide[side],
-      MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE - 1
-    );
-    while (position >= 0 && !levels.has(`${side}:${position}`)) position -= 1;
-    maxPositionBySide[side] = position;
+    maxPosition -= 1;
+    return removed;
   };
 
   const apply = payload => {
     const updates = Array.isArray(payload) ? payload : [payload];
     let applied = 0;
+
     for (const update of updates) {
       if (!isRecord(update)) continue;
       const responseSymbol = typeof update.i === "string" ? update.i.trim().toUpperCase() : symbol;
@@ -84,67 +82,77 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
         throw new Error("TradeNet sent more Market Depth rows than this stream can safely process.");
       }
 
+      // n is a per-ticker ordinal. A gap means deltas were missed and the book is unsafe.
+      if (Number.isSafeInteger(update.n)) {
+        if (sequence !== undefined && update.n !== sequence + 1) {
+          throw new Error("TradeNet Market Depth sequence gap detected; a fresh snapshot is required.");
+        }
+      }
+
       updateCount += 1;
       applied += 1;
-      if (Number.isSafeInteger(update.n)) sequence = update.n;
       if (Number.isSafeInteger(update.cnt) && update.cnt >= 0) reportedDepth = update.cnt;
       if (Number.isFinite(update.min_step) && update.min_step > 0) minStep = update.min_step;
       if (Number.isFinite(update.step_price) && update.step_price > 0) stepPrice = update.step_price;
 
-      deletions.sort((left, right) => left.side.localeCompare(right.side) || right.position - left.position);
+      // TradeNet specifies del -> ins -> upd. Delete from highest k downward.
+      deletions.sort((left, right) => right.position - left.position);
       for (const row of deletions) {
-        const key = `${row.side}:${row.position}`;
-        if (!levels.has(key)) continue;
-        levels.delete(key);
-        const maxPosition = maxPositionBySide[row.side];
-        for (let position = row.position + 1; position <= maxPosition; position += 1) {
-          const followingKey = `${row.side}:${position}`;
-          const following = levels.get(followingKey);
-          if (!following) continue;
-          levels.delete(followingKey);
-          following.position = position - 1;
-          levels.set(`${row.side}:${following.position}`, following);
+        if (row.position >= MAX_BOOK_POSITIONS) continue;
+        const existing = levels.get(row.position);
+        if (!existing) {
+          throw new Error("TradeNet Market Depth deletion referenced a missing book position.");
         }
-        maxPositionBySide[row.side] = Math.min(
-          maxPosition - 1,
-          MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE - 1
-        );
-        refreshMaxPosition(row.side);
+        if (existing.side !== row.side) {
+          throw new Error("TradeNet Market Depth deletion side did not match its book position.");
+        }
+        deleteAt(row.position);
         deletionsApplied += 1;
       }
 
-      insertions.sort((left, right) => left.side.localeCompare(right.side) || left.position - right.position);
+      // Insert from lowest k upward; each insert shifts all later positions.
+      insertions.sort((left, right) => left.position - right.position);
+      for (let index = 1; index < insertions.length; index += 1) {
+        if (insertions[index - 1].position === insertions[index].position) {
+          throw new Error("TradeNet Market Depth update contained duplicate insertion positions.");
+        }
+      }
       for (const row of insertions) {
-        const maxPosition = maxPositionBySide[row.side];
+        if (row.position >= MAX_BOOK_POSITIONS) continue;
+        if (row.position > maxPosition + 1) {
+          throw new Error("TradeNet Market Depth insertion referenced a missing book position.");
+        }
         for (let position = maxPosition; position >= row.position; position -= 1) {
-          const displacedKey = `${row.side}:${position}`;
-          const displaced = levels.get(displacedKey);
+          const displaced = levels.get(position);
           if (!displaced) continue;
-          levels.delete(displacedKey);
+          levels.delete(position);
           const nextPosition = position + 1;
-          if (nextPosition >= MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE) continue;
-          displaced.position = nextPosition;
-          levels.set(`${row.side}:${nextPosition}`, displaced);
+          if (nextPosition < MAX_BOOK_POSITIONS) {
+            displaced.position = nextPosition;
+            levels.set(nextPosition, displaced);
+          }
         }
-        if (row.position < MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE) {
-          levels.set(`${row.side}:${row.position}`, row);
-          maxPositionBySide[row.side] = Math.min(
-            Math.max(maxPosition + 1, row.position),
-            MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE - 1
-          );
-          trimSide(row.side);
-        }
+        levels.set(row.position, row);
+        maxPosition = Math.min(maxPosition + 1, MAX_BOOK_POSITIONS - 1);
         insertionsApplied += 1;
       }
 
+      // Updates replace the row at global k and must match its existing side.
       for (const row of rowUpdates) {
-        if (row.position < MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE) {
-          levels.set(`${row.side}:${row.position}`, row);
-          maxPositionBySide[row.side] = Math.max(maxPositionBySide[row.side], row.position);
-          trimSide(row.side);
+        if (row.position >= MAX_BOOK_POSITIONS) continue;
+        const existing = levels.get(row.position);
+        if (!existing) {
+          throw new Error("TradeNet Market Depth update referenced a missing book position.");
         }
+        if (existing.side !== row.side) {
+          throw new Error("TradeNet Market Depth update side did not match its book position.");
+        }
+        levels.set(row.position, row);
         rowUpdatesApplied += 1;
       }
+
+      // Commit the ordinal only after the entire delta was applied successfully.
+      if (Number.isSafeInteger(update.n)) sequence = update.n;
     }
     return applied;
   };
@@ -152,13 +160,15 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
   const snapshot = (captureDurationMs = undefined) => {
     const collectSide = side => {
       const result = [];
-      for (let position = 0; position <= maxPositionBySide[side]; position += 1) {
-        const level = levels.get(`${side}:${position}`);
-        if (level) result.push({
-          position: level.position,
-          price: level.price,
-          quantity: level.quantity
-        });
+      for (let position = 0; position <= maxPosition && result.length < MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE; position += 1) {
+        const level = levels.get(position);
+        if (level?.side === side) {
+          result.push({
+            position: level.position,
+            price: level.price,
+            quantity: level.quantity
+          });
+        }
       }
       return result;
     };
