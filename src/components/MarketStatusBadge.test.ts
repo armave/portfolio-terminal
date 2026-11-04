@@ -91,9 +91,9 @@ describe('US-equities market status presentation', () => {
     expect(getMarketStatusCountdown('PRE', new Date('2026-11-02T13:00:00.000Z')))
       .toBe('Opens in 1h 30m');
     expect(getMarketStatusCountdown('MARKET', new Date('2026-11-02T14:30:00.000Z')))
-      .toBe('Postmarket in 6h 30m');
+      .toBe('Closes in 6h 30m');
     expect(getMarketStatusCountdown('POST', new Date('2026-11-02T22:00:00.000Z')))
-      .toBe('Market closes in 3h');
+      .toBe('Closes in 3h');
     expect(getMarketStatusCountdown('CLOSED', new Date('2026-11-06T22:00:00.000Z')))
       .toBe('Premarket in 2d 11h');
     expect(getMarketStatusCountdown('UNKNOWN', new Date('2026-11-02T13:00:00.000Z'))).toBeNull();

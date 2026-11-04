@@ -139,9 +139,7 @@ export function getMarketStatusCountdown(status: string | null | undefined, now 
     ? 'Premarket in {time}'
     : normalized === 'PREMARKET'
       ? 'Opens in {time}'
-      : normalized === 'MARKET'
-        ? 'Postmarket in {time}'
-        : 'Market closes in {time}';
+      : 'Closes in {time}';
   return translateText(template).replace('{time}', time);
 }
 
