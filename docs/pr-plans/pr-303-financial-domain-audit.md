@@ -37,11 +37,20 @@ The repository already contains dedicated domain modules and Vitest suites for F
 ## Validation status
 
 - [x] Implementation and focused regression tests committed to the PR branch.
-- [ ] TypeScript check on exact PR head.
-- [ ] Full Vitest suite on exact PR head.
-- [ ] Production build and bundle budget on exact PR head.
-- [ ] Production browser smoke on exact PR head.
-- [ ] Dead-code validation and dependency audits on exact PR head.
-- [ ] Final diff review after CI.
+- [x] TypeScript check on exact implementation commit `0363ff79b710aa88f4f91f669ed34e006f2590a8`.
+- [x] Full Vitest suite on exact implementation commit: 116 test files / 1,371 tests passed.
+- [x] Production build and bundle budget passed: 432,253 bytes / 500,000 bytes; 134,028 gzip bytes / 165,000 bytes.
+- [x] Production browser smoke passed: responsive mount, admin bootstrap, broker partial failure, cloud revision conflict, backup export/import/reset, guest assignment, sign-out/account switch, failed sign-in recovery, and guest-only workspace hydration.
+- [x] Dead-code validation passed. Full dependency audit passed at the configured high-severity threshold; it still reports four low-severity vulnerabilities. Production dependency audit passed with zero vulnerabilities.
+- [x] Final scoped diff reviewed: changes are confined to the finance-domain sale helpers/tests and PR documentation.
 
 The local container could not resolve `github.com`, so project validation must be taken from the GitHub Actions run for the exact PR head. No tests are claimed as passed until that workflow reports success.
+
+
+## GitHub Actions result
+
+Run: [Pull Request CI #41772930576](https://github.com/armave/portfolio-terminal/actions/runs/41772930576)  
+Validated commit: `0363ff79b710aa88f4f91f669ed34e006f2590a8`  
+Conclusion: **success** (all workflow steps passed).
+
+Audit interpretation: `npm audit --audit-level=high` exits successfully because no high-or-higher findings were reported, but it still prints four low-severity vulnerabilities in the full dependency tree. `npm audit --omit=dev --audit-level=high` reports zero production vulnerabilities. This PR does not change dependencies.
