@@ -1,6 +1,15 @@
 # PR 3 — Frontend runtime, UI, localization, and accessibility cleanup
 
-**Status:** Draft planning scaffold. This initial commit contains the implementation specification only; production-code changes and regression tests are still to be added.
+**Status:** Draft — implementation in progress. The first production change hardens shared nested-dialog scroll locking and adds Vitest regression coverage. The wider runtime/UI cleanup scope remains open.
+
+## Implementation progress — 2026-11-04
+
+- [x] Audited the existing shared modal focus manager and identified a nested-dialog scroll-lock lifecycle defect.
+- [x] Added document-scoped, reference-counted scroll locking. Original body/document overflow styles and the initial page offset are restored only after the final active dialog releases its lock.
+- [x] Bound key handling and active-element reads to the dialog's owning document.
+- [x] Added Vitest regression coverage for lower-first and upper-first modal cleanup, idempotent release, preservation of original inline styles, and exactly-once final scroll restoration.
+- [ ] Continue the remaining frontend runtime, component, localization, CSS, accessibility, and browser-validation audit.
+
 
 **Proposed PR title:** `refactor(frontend): simplify runtime boundaries and strengthen UI consistency`
 
