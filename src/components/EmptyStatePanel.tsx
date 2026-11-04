@@ -23,13 +23,13 @@ export function EmptyStatePanel() {
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button type="button" onClick={onQuickBuy} class="bg-emerald-600 hover:bg-emerald-500 text-black text-[11px] font-bold px-3 py-1.5 rounded transition">
+        <button type="button" onClick={onQuickBuy} class="min-h-11 bg-emerald-600 hover:bg-emerald-500 text-black text-[11px] font-bold px-3 py-1.5 rounded transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
           Quick Buy
         </button>
-        <button type="button" onClick={onAddCashStock} class="bg-cyan-700 hover:bg-cyan-600 text-white text-[11px] font-bold px-3 py-1.5 rounded transition">
+        <button type="button" onClick={onAddCashStock} class="min-h-11 bg-cyan-700 hover:bg-cyan-600 text-white text-[11px] font-bold px-3 py-1.5 rounded transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
           Add Cash Stock
         </button>
-        <button type="button" onClick={onImportBackup} class="bg-slate-800 hover:bg-slate-700 text-purple-300 text-[11px] font-bold px-3 py-1.5 rounded border border-purple-700 transition">
+        <button type="button" onClick={onImportBackup} class="min-h-11 bg-slate-800 hover:bg-slate-700 text-purple-300 text-[11px] font-bold px-3 py-1.5 rounded border border-purple-700 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
           Import Backup
         </button>
       </div>

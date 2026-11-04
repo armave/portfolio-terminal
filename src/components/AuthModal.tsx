@@ -102,7 +102,7 @@ export function AuthModal({ isOpen, onSaveSecret }: AuthModalProps) {
               required autoComplete="off" disabled={submitting}
               class="auth-input bg-slate-900 text-slate-200 border border-slate-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-cyan-500" />
           </label>}
-          <button type="submit" disabled={submitting} class="auth-submit-button bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-black text-xs font-bold px-4 py-2 rounded transition">
+          <button type="submit" disabled={submitting} class="auth-submit-button bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-black text-xs font-bold px-4 py-2 rounded transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">
             {submitting ? "Loading portfolio…" : setupRequired ? "Create admin account" : "Sign in"}
           </button>
           {submitting && <div class="auth-feedback auth-feedback--pending flex items-center justify-center gap-2 rounded border border-cyan-900/70 bg-cyan-950/30 px-3 py-3 text-xs text-cyan-200" role="status" aria-live="polite">

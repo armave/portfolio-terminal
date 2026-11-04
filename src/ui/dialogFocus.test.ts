@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { focusElementWithoutScrolling, getDialogFocusableElements, isolateDialogBackground, isTopmostActiveDialog, registerActiveDialog, resolveDialogRestoreTarget, restoreScrollPositionImmediately, trapDialogTabKey } from './dialogFocus';
+import { acquireDialogScrollLock, focusElementWithoutScrolling, getDialogFocusableElements, isolateDialogBackground, isTopmostActiveDialog, registerActiveDialog, resolveDialogRestoreTarget, restoreScrollPositionImmediately, trapDialogTabKey } from './dialogFocus';
 
 interface FocusableOptions {
   rendered?: boolean;
   hiddenAncestor?: boolean;
   tabIndex?: number;
 }
-
 
 interface FakeTreeElement {
   children: FakeTreeElement[];
@@ -336,4 +335,93 @@ describe('dialog focus management', () => {
     expect(trapDialogTabKey({ key: 'Escape', shiftKey: false, preventDefault: () => undefined }, dialog, middle)).toBe(false);
     expect(focused).toEqual([]);
   });
+
+  it('keeps the page locked until the last dialog releases its scroll lock', () => {
+    const bodyStyle = {
+      overflow: 'auto',
+      position: 'relative',
+      top: '12px',
+      left: '4px',
+      right: 'auto',
+      width: '90%'
+    };
+    const documentStyle = { overflow: 'visible', scrollBehavior: 'smooth' };
+    const scrollCalls: Array<[number, number]> = [];
+    const ownerDocument = {
+      body: { style: bodyStyle },
+      documentElement: { style: documentStyle },
+      defaultView: {
+        scrollX: 18,
+        scrollY: 742,
+        scrollTo: (x: number, y: number) => { scrollCalls.push([x, y]); }
+      }
+    } as unknown as Document;
+
+    const releaseLowerDialog = acquireDialogScrollLock(ownerDocument);
+    const releaseUpperDialog = acquireDialogScrollLock(ownerDocument);
+
+    expect(bodyStyle).toMatchObject({
+      overflow: 'hidden',
+      position: 'fixed',
+      top: '-742px',
+      left: '-18px',
+      right: '0',
+      width: '100%'
+    });
+    expect(documentStyle.overflow).toBe('hidden');
+
+    // The lower modal may unmount while the upper modal is still active.
+    releaseLowerDialog();
+    expect(bodyStyle.overflow).toBe('hidden');
+    expect(bodyStyle.position).toBe('fixed');
+    expect(documentStyle.overflow).toBe('hidden');
+    expect(scrollCalls).toEqual([]);
+
+    // Cleanup must be idempotent and must not release the upper modal's lock.
+    releaseLowerDialog();
+    expect(bodyStyle.overflow).toBe('hidden');
+
+    releaseUpperDialog();
+    expect(bodyStyle).toEqual({
+      overflow: 'auto',
+      position: 'relative',
+      top: '12px',
+      left: '4px',
+      right: 'auto',
+      width: '90%'
+    });
+    expect(documentStyle.overflow).toBe('visible');
+    expect(documentStyle.scrollBehavior).toBe('smooth');
+    expect(scrollCalls).toEqual([[18, 742]]);
+  });
+
+  it('restores the page only after the final dialog closes when cleanup happens top-first', () => {
+    const bodyStyle = { overflow: 'scroll', position: 'static', top: '', left: '', right: '', width: '' };
+    const documentStyle = { overflow: 'auto', scrollBehavior: 'smooth' };
+    const scrollCalls: Array<[number, number]> = [];
+    const ownerDocument = {
+      body: { style: bodyStyle },
+      documentElement: { style: documentStyle },
+      defaultView: {
+        scrollX: 0,
+        scrollY: 320,
+        scrollTo: (x: number, y: number) => { scrollCalls.push([x, y]); }
+      }
+    } as unknown as Document;
+
+    const releaseLowerDialog = acquireDialogScrollLock(ownerDocument);
+    const releaseUpperDialog = acquireDialogScrollLock(ownerDocument);
+    releaseUpperDialog();
+
+    expect(bodyStyle.overflow).toBe('hidden');
+    expect(documentStyle.overflow).toBe('hidden');
+    expect(scrollCalls).toEqual([]);
+
+    releaseLowerDialog();
+    expect(bodyStyle.overflow).toBe('scroll');
+    expect(bodyStyle.position).toBe('static');
+    expect(documentStyle.overflow).toBe('auto');
+    expect(scrollCalls).toEqual([[0, 320]]);
+  });
+
 });
