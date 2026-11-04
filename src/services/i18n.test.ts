@@ -112,6 +112,28 @@ describe('app localization', () => {
     expect(translateText('Stocktwits unavailable: connection lost', 'ru')).toBe('Stocktwits недоступен: connection lost');
   });
 
+  it('localizes Market Insights article controls and dynamic accessible headlines', () => {
+    const expected: Array<[string, string]> = [
+      ['Read full article ↗', 'Читать статью полностью ↗'],
+      ['Untitled article', 'Новость без заголовка'],
+      ['Company news articles', 'Новости компаний'],
+      ['Refresh company news', 'Обновить новости компании'],
+      ['Market insight categories', 'Категории рыночной аналитики'],
+      ['Refresh Stocktwits messages', 'Обновить сообщения Stocktwits'],
+      ['Stocktwits messages', 'Сообщения Stocktwits'],
+      ['Close news article', 'Закрыть новость'],
+      ['Open Stocktwits ↗', 'Открыть Stocktwits ↗']
+    ];
+
+    for (const [english, russian] of expected) {
+      expect(translateText(english, 'ru'), english).toBe(russian);
+    }
+    expect(translateText('Read news: Smoke Test Market Update', 'ru'))
+      .toBe('Читать новость: Smoke Test Market Update');
+    expect(translateText('Read news: Untitled article', 'ru'))
+      .toBe('Читать новость: Новость без заголовка');
+  });
+
   it('localizes unpriced cash holding guidance', () => {
     expect(translateText('Unpriced holdings', 'ru')).toBe('Позиции без котировки');
     expect(translateText('Their market value and allocation are unavailable until a valid quote is received.', 'ru'))

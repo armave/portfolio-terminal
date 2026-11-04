@@ -59,8 +59,18 @@ describe('Trades cache-first rendering', () => {
     );
 
     expect(allocationEffect).toContain('let active = true;');
-    expect(allocationEffect).toContain('if (!active || !isSessionCurrent()) return;');
+    expect(allocationEffect).toContain('const isEffectCurrent = () => active && isSessionCurrent();');
+    expect(allocationEffect).toContain('processCashflowRows(cashflows, false, isEffectCurrent)');
+    expect(allocationEffect).toContain('if (!isEffectCurrent()) return;');
     expect(allocationEffect).toContain('return () => {\n      active = false;\n    };');
+
+    const processEffect = source.slice(
+      source.indexOf('const processCashflowRows'),
+      source.indexOf('const syncCashflowsFromFreedom')
+    );
+    expect(processEffect).toContain('const isOperationCurrent = () => isSessionCurrent() && isOperationActive();');
+    expect(processEffect).toContain('if (!isOperationCurrent()) return false;');
+    expect(processEffect).toContain('{ isCurrentSession: isOperationCurrent }');
   });
 
   it('allows retrying a failed automatic cashflow refresh without remounting Trades', () => {

@@ -220,7 +220,14 @@ async function mockWorkerApi(page) {
           return;
         }
         case 'news':
-          await json(route, 200, [], {}, call);
+          await json(route, 200, [{
+            id: 'smoke-news-1',
+            url: 'https://example.com/smoke-news',
+            headline: 'Smoke Test Market Update',
+            datetime: 1_799_999_940,
+            source: 'Smoke Test Wire',
+            summary: 'Deterministic news content for modal accessibility coverage.'
+          }], {}, call);
           return;
         case 'stocktwits':
           await json(route, 200, { messages: [] }, {}, call);
@@ -398,6 +405,51 @@ async function assertResponsiveLayout(page, width) {
     control.tickerStripWidth < 1
   )) {
     throw new Error(`The ticker navigation strip is not visible at ${width}px.`);
+  }
+}
+
+async function assertResponsiveSurface(page, selector, surface) {
+  for (const width of [320, 360, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+    const layout = await page.locator(selector).evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        visible: element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden',
+        viewportWidth: document.documentElement.clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        left: bounds.left,
+        right: bounds.right
+      };
+    });
+    if (!layout.visible) {
+      throw new Error(`${surface} is not visible at ${width}px.`);
+    }
+    if (layout.documentWidth > layout.viewportWidth + 1) {
+      throw new Error(`${surface} caused page-level horizontal overflow at ${width}px: ${layout.documentWidth}px content in ${layout.viewportWidth}px viewport.`);
+    }
+    if (layout.left < -1 || layout.right > layout.viewportWidth + 1) {
+      throw new Error(`${surface} is clipped at ${width}px: ${JSON.stringify(layout)}`);
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+}
+
+async function assertNewsDialogTouchTargets(page) {
+  const controls = await page.locator('.news-article-dialog button, .news-article-dialog a[href]').evaluateAll((elements) =>
+    elements.map((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        name: element.getAttribute('aria-label') || element.textContent?.trim() || element.tagName,
+        width: bounds.width,
+        height: bounds.height
+      };
+    })
+  );
+  const undersized = controls.filter((control) => control.height < 43 || control.width < 43);
+  if (undersized.length) {
+    throw new Error('News dialog actions are below the 44px touch target: ' + JSON.stringify(undersized));
   }
 }
 
@@ -625,6 +677,53 @@ try {
     await assertResponsiveLayout(page, width);
   }
 
+  // Exercise the real News dialog with a deterministic provider response.
+  const marginTickerTab = page.locator('#tickerTabs [aria-label^="Margin:"]').first();
+  await marginTickerTab.waitFor({ state: 'visible', timeout: 20_000 });
+  await marginTickerTab.click();
+  const marketInsights = page.locator('#marketInsightsPanel');
+  await marketInsights.waitFor({ state: 'visible', timeout: 20_000 });
+  await waitForCondition(
+    () => worker.calls.some((call) => call.action === 'news'),
+    'Market Insights company news request'
+  );
+  const newsTrigger = page.getByRole('button', { name: 'Read news: Smoke Test Market Update' });
+  await newsTrigger.waitFor({ state: 'visible', timeout: 20_000 });
+  await newsTrigger.click();
+
+  const newsDialog = page.getByRole('dialog', { name: 'Smoke Test Market Update' });
+  await newsDialog.waitFor({ state: 'visible', timeout: 10_000 });
+  await assertVisibleControlsHaveNames(page, 'Market Insights news dialog');
+  await assertResponsiveSurface(page, '.news-article-dialog', 'Market Insights news article dialog');
+  await assertNewsDialogTouchTargets(page);
+
+  const newsDialogInitialFocus = await page.evaluate(() =>
+    document.activeElement?.matches('[data-news-dialog-close]') === true
+  );
+  if (!newsDialogInitialFocus) {
+    throw new Error('Opening a news article did not focus its Close button.');
+  }
+  const newsBackgroundIsolated = await page.locator('#root').evaluate((element) =>
+    element.hasAttribute('inert') && element.getAttribute('aria-hidden') === 'true'
+  );
+  if (!newsBackgroundIsolated) {
+    throw new Error('The news dialog did not isolate the application root from focus and assistive technology.');
+  }
+
+  await page.keyboard.press('Escape');
+  await newsDialog.waitFor({ state: 'hidden', timeout: 10_000 });
+  const newsTriggerRestored = await newsTrigger.evaluate((element) => element === document.activeElement);
+  if (!newsTriggerRestored) {
+    throw new Error('Closing the news dialog with Escape did not restore focus to its article trigger.');
+  }
+  const newsBackgroundRestored = await page.locator('#root').evaluate((element) =>
+    !element.hasAttribute('inert') && !element.hasAttribute('aria-hidden')
+  );
+  if (!newsBackgroundRestored) {
+    throw new Error('Closing the news dialog did not restore the application root accessibility state.');
+  }
+  await assertResponsiveSurface(page, '#marketInsightsPanel', 'Market Insights panel');
+
   await assertManyTickerNavigation(page);
   await page.setViewportSize({ width: 1440, height: 900 });
 
@@ -637,6 +736,8 @@ try {
   }
   await page.keyboard.press('Enter');
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  await assertVisibleControlsHaveNames(page, 'administrator Settings desk navigation');
+  await assertResponsiveSurface(page, '#settings', 'administrator Settings desk');
   await page.locator('#settingsBtn').focus();
   await page.keyboard.press('ArrowRight');
   if (!(await navigationTabs.first().evaluate((element) => element === document.activeElement))) {
@@ -658,8 +759,10 @@ try {
   await page.getByRole('button', { name: /BALANCE/ }).click();
   await page.locator('#activeTranches').waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'Balance desk before expanding tranches');
+  await assertResponsiveSurface(page, '#cashCushionContainer', 'Balance desk');
   await page.locator('#activeTranches').getByRole('button', { name: 'Expand' }).click();
   await page.locator('#activeTranchesTable .active-tranche-row').first().waitFor({ state: 'visible', timeout: 20_000 });
+  await assertVisibleControlsHaveNames(page, 'Expanded Balance tranche table');
   const guestAssignment = page.locator('#activeTranchesTable select').first();
   await guestAssignment.waitFor({ state: 'visible', timeout: 20_000 });
   await waitForCondition(
@@ -684,6 +787,13 @@ try {
     ),
     'guest snapshot and active assignment ledger publication'
   );
+
+  await page.getByRole('button', { name: 'Trades' }).click();
+  await page.locator('#closedHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });
+  await assertVisibleControlsHaveNames(page, 'Administrator Closed History desk');
+  await assertResponsiveSurface(page, '#closedHistoryContainer', 'Administrator Closed History desk');
+  await page.getByRole('button', { name: /BALANCE/ }).click();
+  await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
 
   // The first explicit sync may be the first snapshot trigger in this browser
   // session. It may therefore make the one allowed WebSocket/REST request per
@@ -831,9 +941,15 @@ try {
     throw new Error('Guest login could not verify the AAPL assignment published by the administrator.');
   }
 
+  await page.getByRole('button', { name: 'LOTS' }).click();
+  await page.locator('#guestHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });
+  await assertVisibleControlsHaveNames(page, 'Guest LOTS history desk');
+  await assertResponsiveSurface(page, '#guestHistoryContainer', 'Guest LOTS history desk');
+
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'guest Settings desk');
+  await assertResponsiveSurface(page, '#settings', 'guest Settings desk');
   if (!(await page.locator('#settingsDesk').innerText()).includes('Smoke Guest')) {
     throw new Error('The guest identity was not reflected in Settings after account switching.');
   }
@@ -841,7 +957,7 @@ try {
     throw new Error(`Uncaught browser errors during authenticated journeys: ${pageErrors.join('; ')}`);
   }
 
-  console.log('Browser smoke passed: responsive mounting, admin bootstrap, broker partial failure, cloud revision conflict, backup export/import/reset, guest assignment publication, sign-out/account switch, failed sign-in recovery, and guest-only workspace hydration.');
+  console.log('Browser smoke passed: responsive admin/guest desks, News dialog focus and background isolation, named controls, touch targets, broker partial failure, cloud revision conflict, backup export/import/reset, guest assignment publication, account switching, and guest-only workspace hydration.');
 } finally {
   await browser?.close();
   if (server.exitCode === null && server.signalCode === null) {

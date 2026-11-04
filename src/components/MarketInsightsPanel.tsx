@@ -326,7 +326,7 @@ function MarketInsightsPanelView() {
           <button
             type="button"
             onClick={() => setDeepDataRefreshRequest((value) => value + 1)}
-            class="rounded border border-rose-800/70 px-2.5 py-1.5 font-semibold text-rose-200 transition hover:bg-rose-950/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-400"
+            class="min-h-11 rounded border border-rose-800/70 px-2.5 py-1.5 font-semibold text-rose-200 transition hover:bg-rose-950/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-400"
             aria-label="Retry market data refresh"
           >
             Retry
@@ -359,7 +359,7 @@ function MarketInsightsPanelView() {
                   setSelectedNews({ ticker, article: n });
                 }}
                 aria-label={`Read news: ${n.headline || 'Untitled article'}`}
-                class="news-feed-item block w-full text-left bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
+                class="news-feed-item block min-h-11 w-full text-left bg-slate-900/60 p-2.5 rounded border border-slate-800 hover:border-cyan-800 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
               >
                 <div class="text-[10px] text-cyan-400 mb-1">
                   {formatNewsRelativeTime(n.datetime)} · {n.source || 'News'}
@@ -574,7 +574,7 @@ function MarketInsightsPanelView() {
             onClick={() => setDeepDataRefreshRequest((value) => value + 1)}
             disabled={deepDataRequest.ticker === ticker && deepDataRequest.loading}
             aria-busy={deepDataRequest.ticker === ticker && deepDataRequest.loading}
-            class="rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 transition hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+            class="min-h-11 rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 transition hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Refresh market data"
           >
             {deepDataRequest.ticker === ticker && deepDataRequest.loading ? 'Refreshing…' : 'Refresh'}
@@ -582,7 +582,7 @@ function MarketInsightsPanelView() {
         )}
         {activeSection === 'news' && (
           <button type="button" onClick={() => setNewsRefreshRequest((value) => value + 1)}
-            class="rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
+            class="min-h-11 rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
             aria-label="Refresh company news">
             {currentNewsLoading ? 'Refreshing…' : 'Refresh'}
           </button>
@@ -613,7 +613,7 @@ function MarketInsightsPanelView() {
               aria-controls="marketInsightsContent"
               aria-selected={selected}
               tabIndex={selected ? 0 : -1}
-              class={`insight-tab whitespace-nowrap rounded px-3 py-1.5 text-[10px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 ${selected
+              class={`insight-tab min-h-11 whitespace-nowrap rounded px-3 py-1.5 text-[10px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 ${selected
                 ? 'bg-cyan-400 text-slate-950 shadow-sm shadow-cyan-950'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
                 }`}
@@ -641,7 +641,7 @@ function MarketInsightsPanelView() {
             <button
               type="button"
               onClick={() => setDeepDataRefreshRequest((value) => value + 1)}
-              class="rounded border border-amber-800/70 px-2.5 py-1 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300"
+              class="min-h-11 rounded border border-amber-800/70 px-2.5 py-1 font-semibold text-amber-100 transition hover:bg-amber-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300"
               aria-label="Retry market data refresh"
             >
               Retry
@@ -662,13 +662,13 @@ function MarketInsightsPanelView() {
             if (stocktwitsRequested) setStocktwitsRefreshRequest((value) => value + 1);
             else setStocktwitsRequested(true);
           }}
-            class="rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
+            class="min-h-11 rounded border border-slate-700 px-2.5 py-1 text-[10px] font-semibold text-cyan-300 hover:border-cyan-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
             aria-label="Refresh Stocktwits messages">
             {currentStocktwitsLoading ? 'Refreshing…' : stocktwitsRequested ? 'Refresh' : 'Load'}
           </button>
           {currentStocktwitsData?.streamUrl && (
             <a href={currentStocktwitsData.streamUrl} target="_blank" rel="noopener noreferrer"
-              class="text-[10px] font-semibold text-cyan-400 hover:text-cyan-300">
+              class="inline-flex min-h-11 items-center text-[10px] font-semibold text-cyan-400 hover:text-cyan-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
               Open Stocktwits ↗
             </a>
           )}
@@ -740,13 +740,13 @@ function MarketInsightsPanelView() {
                   {currentSelectedNews.headline || 'Untitled article'}
                 </h2>
               </div>
-              <button ref={newsCloseButtonRef} type="button" class="shrink-0 rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white" onClick={closeNewsDialog} aria-label="Close news article" data-news-dialog-close>✕</button>
+              <button ref={newsCloseButtonRef} type="button" class="shrink-0 flex min-h-11 min-w-11 items-center justify-center rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400" onClick={closeNewsDialog} aria-label="Close news article" data-news-dialog-close>✕</button>
             </header>
             <div class="news-article-content min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5" role="region" aria-labelledby="newsArticleModalTitle" tabIndex={0}>
               <div class="whitespace-pre-wrap break-words leading-relaxed text-slate-300">
                 {currentSelectedNews.summary || currentSelectedNews.description || currentSelectedNews.content || 'A summary is not available from the news provider. Open the original article for the full story.'}
               </div>
-              {currentSelectedNews.url && <a href={currentSelectedNews.url} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded border border-cyan-800/80 bg-cyan-950/40 px-3 py-2 text-xs font-semibold text-cyan-300 transition hover:bg-cyan-900/50">Read full article ↗</a>}
+              {currentSelectedNews.url && <a href={currentSelectedNews.url} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center gap-2 rounded border border-cyan-800/80 bg-cyan-950/40 px-3 py-2 text-xs font-semibold text-cyan-300 transition hover:bg-cyan-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">Read full article ↗</a>}
             </div>
           </section>
         </div>,
