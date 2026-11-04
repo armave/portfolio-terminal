@@ -189,7 +189,7 @@ describe('Freedom authenticated orders WebSocket diagnostic', () => {
 describe('Freedom authenticated portfolio and market WebSocket event diagnostics', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  function makeEventSocket(expectedEvent, payload, userData = { mode: 'prod' }) {
+  function makeEventSocket(expectedEvent, payload, userData = { mode: 'prod' }, subscriptionData) {
     const listeners = new Map();
     const socket = {
       addEventListener: vi.fn((name, callback) => {
@@ -199,7 +199,9 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
       }),
       accept: vi.fn(),
       send: vi.fn((message) => {
-        expect(JSON.parse(message)).toEqual([expectedEvent]);
+        expect(JSON.parse(message)).toEqual(subscriptionData === undefined
+          ? [expectedEvent]
+          : [expectedEvent, subscriptionData]);
         queueMicrotask(() => {
           for (const callback of listeners.get('message') || []) {
             callback({ data: JSON.stringify(['userData', userData]) });
@@ -212,16 +214,21 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     return socket;
   }
 
-  async function runEventDiagnostic(eventName, payload, userData, action = 'freedom-event-stream') {
-    const socket = makeEventSocket(eventName, payload, userData);
+  async function runEventDiagnostic(eventName, payload, userData, action = 'freedom-event-stream', symbol) {
+    const subscriptionData = eventName === 'b' && symbol
+      ? [symbol.includes('.') ? symbol : `${symbol}.US`]
+      : undefined;
+    const socket = makeEventSocket(eventName, payload, userData, subscriptionData);
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
         success: true, logged: true, SID: 's'.repeat(48), real: true
       }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
       .mockResolvedValueOnce({ status: 101, headers: new Headers(), webSocket: socket });
     vi.stubGlobal('fetch', fetchMock);
+    const query = new URLSearchParams({ action, event: eventName });
+    if (symbol) query.set('symbol', symbol);
     const response = await worker.fetch(new Request(
-      'https://worker.test/?action=' + action + '&event=' + eventName,
+      'https://worker.test/?' + query.toString(),
       { headers: { 'X-App-Auth': 'test-secret' } }
     ), {
       GATEWAY_SECRET: 'test-secret',
@@ -230,6 +237,68 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     });
     return { response, socket, fetchMock };
   }
+
+  it('probes one market-depth symbol and returns only bounded payload schema', async () => {
+    const payload = {
+      bids: [{ price: 99.5, quantity: 12, privateAccount: 'must-not-leak' }],
+      asks: [{ price: 100.5, quantity: 9, owner_login: 'private-login' }],
+      secret: 'private-value'
+    };
+    const { response, socket, fetchMock } = await runEventDiagnostic(
+      'b', payload, { isDemo: false, mode: 'prod' }, 'freedom-event-stream', 'AAPL'
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body, JSON.stringify(body)).toMatchObject({
+      ok: true,
+      event: 'b',
+      symbol: 'AAPL.US',
+      data: {
+        event: 'b',
+        payloadType: 'object',
+        shape: {
+          type: 'object',
+          keys: ['asks', 'bids', 'secret'],
+          fieldTypes: {
+            asks: {
+              type: 'array',
+              length: 1,
+              item: {
+                type: 'object',
+                keys: ['owner_login', 'price', 'quantity'],
+                fieldTypes: { owner_login: 'string', price: 'number', quantity: 'number' }
+              }
+            }
+          }
+        }
+      }
+    });
+    expect(JSON.stringify(body)).not.toContain('private-value');
+    expect(JSON.stringify(body)).not.toContain('private-login');
+    expect(JSON.stringify(body)).not.toContain('must-not-leak');
+    expect(socket.send).toHaveBeenCalledWith(JSON.stringify(['b', ['AAPL.US']]));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires exactly one valid symbol before opening a depth stream', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request(
+      'https://worker.test/?action=freedom-event-stream&event=b&symbol=AAPL%2CMSFT',
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: 'Provide exactly one symbol to test TradeNet market depth.'
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 
   it('reports the full observed portfolio field schema without returning financial values or identifiers', async () => {
     const portfolio = {
@@ -443,7 +512,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
-      error: 'Unsupported TradeNet stream event. Allowed events: portfolio, markets.'
+      error: 'Unsupported TradeNet stream event. Allowed events: portfolio, markets, b.'
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -655,7 +724,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
     ), { GATEWAY_SECRET: 'test-secret' });
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: 'Unsupported TradeNet stream event. Allowed events: portfolio, markets.'
+      error: 'Unsupported TradeNet stream event. Allowed events: portfolio, markets, b.'
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });

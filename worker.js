@@ -983,6 +983,38 @@ function summarizeFreedomStreamEvent(eventName, payload) {
             keyedSymbols
         };
     }
+    if (eventName === "b") {
+        const summarizeShape = (value, depth = 0) => {
+            if (Array.isArray(value)) {
+                const sample = value.find(item => item !== null && typeof item === "object");
+                return {
+                    type: "array",
+                    length: value.length,
+                    item: sample === undefined
+                        ? value.length ? describeRedactedValueType(value[0]) : null
+                        : summarizeShape(sample, depth + 1)
+                };
+            }
+            if (!isRecord(value) || depth >= 3) return describeRedactedValueType(value);
+            const fields = Object.keys(value)
+                .filter(key => /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key))
+                .sort()
+                .slice(0, 40);
+            return {
+                type: "object",
+                keys: fields,
+                fieldTypes: Object.fromEntries(fields.map(key => [
+                    key,
+                    summarizeShape(value[key], depth + 1)
+                ]))
+            };
+        };
+        return {
+            event: eventName,
+            payloadType,
+            shape: summarizeShape(payload)
+        };
+    }
     throw new Error("Unsupported TradeNet stream event.");
 }
 
@@ -1655,11 +1687,24 @@ export default {
             // Authenticated, read-only diagnostics for allowlisted TradeNet event subscriptions.
             if (action === "freedom-event-stream") {
                 const eventName = incomingUrl.searchParams.get("event") || "";
-                if (!["portfolio", "markets"].includes(eventName)) {
-                    return jsonError("Unsupported TradeNet stream event. Allowed events: portfolio, markets.", 400, corsHeaders);
+                let subscriptionData;
+                let requestedSymbol;
+                if (eventName === "b") {
+                    const rawSymbol = incomingUrl.searchParams.get("symbol") || "";
+                    if (!rawSymbol || rawSymbol.includes(",")) {
+                        return jsonError("Provide exactly one symbol to test TradeNet market depth.", 400, corsHeaders);
+                    }
+                    const normalized = rawSymbol.trim().toUpperCase();
+                    requestedSymbol = normalized.includes(".") ? normalized : normalized + ".US";
+                    if (!/^[A-Z0-9.^=-]{1,32}$/.test(requestedSymbol)) {
+                        return jsonError("Provide one valid TradeNet ticker symbol for market depth.", 400, corsHeaders);
+                    }
+                    subscriptionData = [requestedSymbol];
+                } else if (!["portfolio", "markets"].includes(eventName)) {
+                    return jsonError("Unsupported TradeNet stream event. Allowed events: portfolio, markets, b.", 400, corsHeaders);
                 }
                 try {
-                    const result = await diagnoseFreedomEventStream(env, eventName);
+                    const result = await diagnoseFreedomEventStream(env, eventName, false, subscriptionData);
                     const eventsConfirmed = result.connectionOpened &&
                         result.userDataReceived && result.eventReceived &&
                         result.isDemo !== true && result.sessionMode === "prod";
@@ -1667,10 +1712,13 @@ export default {
                         ok: eventsConfirmed,
                         provider: "Freedom TradeNet",
                         event: eventName,
+                        ...(requestedSymbol ? { symbol: requestedSymbol } : {}),
                         message: eventsConfirmed
                             ? eventName === "markets"
                                 ? "Authenticated market status and schedule received; public fields only."
-                                : "Authenticated portfolio event received; schema summary only."
+                                : eventName === "b"
+                                    ? "Authenticated market depth event received; field names and types only."
+                                    : "Authenticated portfolio event received; schema summary only."
                             : "TradeNet event diagnostic completed; inspect the event flags and phase.",
                         data: result.eventSummary,
                         diagnostics: Object.fromEntries(Object.entries(result).filter(([key]) => key !== "eventSummary"))
