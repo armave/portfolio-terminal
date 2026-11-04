@@ -10,6 +10,11 @@
 - [x] Added Vitest regression coverage for lower-first and upper-first modal cleanup, idempotent release, preservation of original inline styles, and exactly-once final scroll restoration.
 - [x] Added a cancellable delayed-close helper and wired both scenario modals to cancel pending exit-animation callbacks during unmount.
 - [x] Added fake-timer tests for delayed execution, cancellation on unmount, idempotent cancellation, and cleanup after execution.
+- [x] Guarded market-status responses with an auth-session generation so stale success/error results cannot restore previous-session UI after logout or account switching; clear the prior snapshot when the auth identity changes.
+- [x] Added regression coverage for market-status request generation and verified the guard is wired into the component request path.
+- [x] Consolidated the exact duplicate auth-overlay transition declarations while preserving the mounted `display: flex` behavior.
+- [x] Added a stylesheet architecture assertion for one canonical auth-overlay transition rule set.
+- [x] Added a Russian localization coverage test for all static authentication-modal copy; existing translations were already present, so no translation text needed to change.
 - [ ] Continue the remaining frontend runtime, component, localization, CSS, accessibility, and browser-validation audit.
 
 **Proposed PR title:** `refactor(frontend): simplify runtime boundaries and strengthen UI consistency`
