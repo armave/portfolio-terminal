@@ -1022,11 +1022,14 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
     const sid = await createFreedomDiagnosticSession(env);
     const startedAt = Date.now();
     const responseEventName = eventName === "quotes" ? "q" : eventName;
+    const subscriptionEventName = eventName === "b" ? "orderBook" : eventName;
     let eventSummary = null;
     let eventPayload = null;
     const diagnostics = {
         endpoint: "wss.tradernet.com",
         requestedEvent: eventName,
+        subscriptionEvent: subscriptionEventName,
+        responseEvent: responseEventName,
         phase: "connecting",
         handshakeResponseReceived: false,
         handshakeStatus: null,
@@ -1166,8 +1169,10 @@ async function diagnoseFreedomEventStream(env, eventName, includePayload = false
                 });
                 socket.accept();
                 diagnostics.connectionOpened = true;
-                diagnostics.phase = "subscribing_" + eventName;
-                socket.send(JSON.stringify(subscriptionData === undefined ? [eventName] : [eventName, subscriptionData]));
+                diagnostics.phase = "subscribing_" + subscriptionEventName;
+                socket.send(JSON.stringify(subscriptionData === undefined
+                    ? [subscriptionEventName]
+                    : [subscriptionEventName, subscriptionData]));
                 diagnostics.subscriptionSent = true;
                 diagnostics.phase = "awaiting_events";
             } catch {

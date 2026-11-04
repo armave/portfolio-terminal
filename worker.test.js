@@ -199,9 +199,10 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
       }),
       accept: vi.fn(),
       send: vi.fn((message) => {
+        const subscriptionEvent = expectedEvent === 'b' ? 'orderBook' : expectedEvent;
         expect(JSON.parse(message)).toEqual(subscriptionData === undefined
-          ? [expectedEvent]
-          : [expectedEvent, subscriptionData]);
+          ? [subscriptionEvent]
+          : [subscriptionEvent, subscriptionData]);
         queueMicrotask(() => {
           for (const callback of listeners.get('message') || []) {
             callback({ data: JSON.stringify(['userData', userData]) });
@@ -274,10 +275,15 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
         }
       }
     });
+    expect(body.diagnostics).toMatchObject({
+      requestedEvent: 'b',
+      subscriptionEvent: 'orderBook',
+      responseEvent: 'b'
+    });
     expect(JSON.stringify(body)).not.toContain('private-value');
     expect(JSON.stringify(body)).not.toContain('private-login');
     expect(JSON.stringify(body)).not.toContain('must-not-leak');
-    expect(socket.send).toHaveBeenCalledWith(JSON.stringify(['b', ['AAPL.US']]));
+    expect(socket.send).toHaveBeenCalledWith(JSON.stringify(['orderBook', ['AAPL.US']]));
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

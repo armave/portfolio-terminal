@@ -32,7 +32,7 @@ The `markets` event is the exchange trading-status source, not a quote-price fee
 
 ## Administrator Market Depth protocol probe
 
-Settings includes an administrator-only **TradeNet Market Depth Probe** for one stock symbol. Enter a ticker such as `AAPL` (the Worker appends `.US` if no exchange suffix is supplied) and select **Test Market Depth**. The authenticated Worker sends the documented `b` subscription for that single symbol and waits up to eight seconds for the matching event plus production-session confirmation. Guests cannot access the diagnostic.
+Settings includes an administrator-only **TradeNet Market Depth Probe** for one stock symbol. Enter a ticker such as `AAPL` (the Worker appends `.US` if no exchange suffix is supplied) and select **Test Market Depth**. The authenticated Worker sends the `["orderBook", ["AAPL.US"]]` subscription for that symbol and waits for the `b` response event plus production-session confirmation. `orderBook` is the subscription command; `b` is the response event. Guests cannot access the diagnostic.
 
 The probe is for protocol discovery, not a depth display: its response contains only bounded payload structure, field names, value types, and array lengths. It never returns bid/ask prices, quantities, raw broker payloads, the SID, or credentials. A successful response confirms the event arrived but does not yet establish a stable field contract or instrument entitlement; a timeout, empty shape, or server error means live depth has not been verified. No market-depth UI, polling stream, or trading/order action is enabled by this diagnostic.
 

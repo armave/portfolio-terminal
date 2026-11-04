@@ -50,7 +50,7 @@ export interface MarginDigestFreshness {
 
 export const MARGIN_REVIEW_PROMPT_VERSION = 2;
 export const MARGIN_REVIEW_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const MARGIN_REVIEW_MAX_ARTICLES = 12;
+export const MARGIN_REVIEW_MAX_ARTICLES = 12;
 const MAX_ARTICLES_PER_TICKER = 3;
 
 export function buildMarginReviewPrompt(

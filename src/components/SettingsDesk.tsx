@@ -367,7 +367,7 @@ export function SettingsDesk({ currentUser }: SettingsDeskProps) {
       {account?.role === 'admin' && <section class="rounded-lg border border-slate-700 bg-slate-900/60 p-3 space-y-2" aria-labelledby="marketDepthProbeHeading">
         <div>
           <h3 id="marketDepthProbeHeading" class="text-xs font-bold uppercase tracking-wider text-slate-200">TradeNet Market Depth Probe</h3>
-          <p class="mt-1 text-[10px] leading-relaxed text-slate-400">Test the read-only authenticated <code>b</code> stream for one stock symbol. The result shows field names and value types only; order-book prices and quantities are not displayed.</p>
+          <p class="mt-1 text-[10px] leading-relaxed text-slate-400">Test the read-only authenticated <code>orderBook</code> subscription for one stock symbol. TradeNet returns depth updates on <code>b</code>. The result shows field names and value types only; order-book prices and quantities are not displayed.</p>
         </div>
         <div class="flex flex-wrap items-end gap-2">
           <label class="flex flex-col gap-1 text-[10px] uppercase tracking-wider text-slate-500">

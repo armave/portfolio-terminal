@@ -68,5 +68,6 @@ describe('administrator Market Depth probe', () => {
     expect(source).toContain("event: 'b', symbol");
     expect(source).toContain("depthProbeResult.data ?? depthProbeResult.diagnostics ?? {}");
     expect(source).toContain('order-book prices and quantities are not displayed');
+    expect(source).toContain('TradeNet returns depth updates on <code>b</code>');
   });
 });
