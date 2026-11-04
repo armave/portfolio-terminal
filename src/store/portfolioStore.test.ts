@@ -2208,3 +2208,80 @@ describe('portfolio store subscriber failure isolation', () => {
     }
   });
 });
+
+describe('portfolio import boundary validation', () => {
+  it('rejects malformed top-level containers without replacing the committed portfolio', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        AAPL: {
+          ticker: 'AAPL',
+          shares: 2,
+          currentPrice: 190,
+          pt: 210,
+          commBuy: 1,
+          tranches: [{ qty: 2, price: 180, date: '2026-10-01' }]
+        }
+      },
+      balance: -250,
+      closedTrades: [{ ticker: 'MSFT', shares: 1, netProfit: 20 }]
+    });
+
+    const previousState = store.getState();
+    const previousSnapshot = sharedTestStorage.get('margin_portfolio_state_dynamic_v2');
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    const malformedImports: unknown[] = [
+      null,
+      [],
+      { positions: null },
+      { positions: [] },
+      { cashCushion: null },
+      { cashCushion: { holdings: {} } },
+      { closedTrades: {} },
+      { brokerExecutedTrades: {} },
+      { cashflows: {} },
+      { apiKeys: [] },
+      { guestPortfolioSnapshot: { updatedAt: 1, tranches: {} } },
+      { brokerAccountInfo: { balances: {}, positions: [] } }
+    ];
+
+    for (const malformed of malformedImports) {
+      expect(store.importState(malformed as Partial<import('../types/portfolio').PortfolioState>)).toBe(false);
+      expect(store.getState()).toBe(previousState);
+      expect(sharedTestStorage.get('margin_portfolio_state_dynamic_v2')).toBe(previousSnapshot);
+    }
+
+    expect(store.getState().positions.AAPL.shares).toBe(2);
+    expect(store.getState().closedTrades).toEqual([
+      { ticker: 'MSFT', shares: 1, netProfit: 20 }
+    ]);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('continues to support valid partial imports without clearing omitted portfolio fields', () => {
+    const store = new PortfolioStore();
+    store.importState({
+      positions: {
+        GOOGL: {
+          ticker: 'GOOGL',
+          shares: 3,
+          currentPrice: 300,
+          pt: 350,
+          commBuy: 0,
+          tranches: [{ qty: 3, price: 280, date: '2026-10-02' }]
+        }
+      },
+      closedTrades: [{ ticker: 'AAPL', shares: 1, netProfit: 15 }]
+    });
+
+    expect(store.importState({ balance: -75 })).toBe(true);
+
+    expect(store.getState().balance).toBe(-75);
+    expect(store.getState().positions.GOOGL.shares).toBe(3);
+    expect(store.getState().closedTrades).toEqual([
+      { ticker: 'AAPL', shares: 1, netProfit: 15 }
+    ]);
+  });
+});
