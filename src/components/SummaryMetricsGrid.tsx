@@ -712,6 +712,7 @@ function SummaryMetricsGridView() {
 
   const risk = computeMarginRiskDisplay(allocatedDebt, currentMktVal, allocatedCushion, rules);
 
+  const volume = '$' + formatQuoteVolume(pos.quoteDetails?.volume);
   return (
     <>
       <section class="portfolio-micro-summary" aria-label="Portfolio financial summary">
@@ -777,7 +778,7 @@ function SummaryMetricsGridView() {
             </span>
           </span>
           <span class="mt-0.5 block text-[10px] text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
-            {translateText('Volume', getAppLanguage())} {formatQuoteVolume(pos.quoteDetails?.volume) ?? '—'}
+            {translateText('Volume', getAppLanguage())} {volume ?? '—'}
           </span>
           <QuoteProvenanceList holdings={[
             { ...pos, kind: 'Margin position' },

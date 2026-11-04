@@ -24,6 +24,27 @@ function newYorkParts(date: Date) {
   };
 }
 
+function getDateAtNewYorkTime(year: number, month: number, day: number, minutesAfterMidnight: number): Date {
+  const hours = Math.floor(minutesAfterMidnight / 60);
+  const minutes = minutesAfterMidnight % 60;
+  const targetUtc = Date.UTC(year, month - 1, day, hours, minutes);
+  const result = new Date(targetUtc);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const observed = newYorkParts(result);
+    const observedUtc = Date.UTC(observed.year, observed.month - 1, observed.day, observed.hour, observed.minute);
+    const correction = targetUtc - observedUtc;
+    if (correction === 0) break;
+    result.setTime(result.getTime() + correction);
+  }
+
+  return result;
+}
+
+function getRegularCloseMinutes(year: number, month: number, day: number): number {
+  return isEarlyCloseDay(year, month, day) ? 13 * 60 : 16 * 60;
+}
+
 function isEarlyCloseDay(year: number, month: number, day: number): boolean {
   const date = new Date(year, month - 1, day);
   if (month === 11) {
@@ -54,12 +75,43 @@ export function getUsEquityMarketSession(date = new Date()): UsEquityMarketSessi
   if (!isUsEquityTradingDay(localDate)) return 'CLOSED';
 
   const minutes = parts.hour * 60 + parts.minute;
-  const regularClose = isEarlyCloseDay(parts.year, parts.month, parts.day) ? 13 * 60 : 16 * 60;
+  const regularClose = getRegularCloseMinutes(parts.year, parts.month, parts.day);
   const postClose = regularClose + 4 * 60;
   if (minutes >= 4 * 60 && minutes < 9 * 60 + 30) return 'PRE';
   if (minutes >= 9 * 60 + 30 && minutes < regularClose) return 'REGULAR';
   if (minutes >= regularClose && minutes < postClose) return 'POST';
   return 'CLOSED';
+}
+
+/** Returns the scheduled start of the next phase for the supplied session state. */
+export function getUsEquityNextTransitionAt(session: UsEquityMarketSession, date = new Date()): Date {
+  const parts = newYorkParts(date);
+  const localDate = new Date(parts.year, parts.month - 1, parts.day);
+
+  if (session === 'CLOSED') {
+    const minutes = parts.hour * 60 + parts.minute;
+    let nextTradingDate = localDate;
+    if (!isUsEquityTradingDay(localDate) || minutes >= 4 * 60) {
+      nextTradingDate = new Date(localDate);
+      do {
+        nextTradingDate.setDate(nextTradingDate.getDate() + 1);
+      } while (!isUsEquityTradingDay(nextTradingDate));
+    }
+    return getDateAtNewYorkTime(
+      nextTradingDate.getFullYear(),
+      nextTradingDate.getMonth() + 1,
+      nextTradingDate.getDate(),
+      4 * 60
+    );
+  }
+
+  const regularClose = getRegularCloseMinutes(parts.year, parts.month, parts.day);
+  const transitionMinutes = session === 'PRE'
+    ? 9 * 60 + 30
+    : session === 'REGULAR'
+      ? regularClose
+      : regularClose + 4 * 60;
+  return getDateAtNewYorkTime(parts.year, parts.month, parts.day, transitionMinutes);
 }
 
 

@@ -51,6 +51,16 @@ describe('app localization', () => {
       'Market',
       'Postmarket',
       'Closed',
+      'Premarket in {time}',
+      'Opens in {time}',
+      'Postmarket in {time}',
+      'Market closes in {time}',
+      '{minutes}m',
+      '{hours}h',
+      '{hours}h {minutes}m',
+      '{days}d',
+      '{days}d {hours}h',
+      '{days}d {hours}h {minutes}m',
       'Unavailable'
     ];
 

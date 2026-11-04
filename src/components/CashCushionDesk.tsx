@@ -548,6 +548,8 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                 })
                 .filter((tranche) => tranche.assignedShares > 0)
                 .sort((a, b) => (b.purchasedAt ?? 0) - (a.purchasedAt ?? 0));
+
+              const volume = '$' + formatQuoteVolume(holding.quoteDetails?.volume);
               return (
                 <article key={holding.ticker} class="guest-stock-card-enter rounded-xl border border-slate-800 bg-slate-950/60 p-4 shadow-sm">
                   <div class="flex items-start justify-between gap-3">
@@ -564,7 +566,7 @@ export function CashCushionDesk({ showActiveTranches = false, isAdmin = false, g
                     {!hasMarketPrice && <p class="mt-1 text-[10px] leading-relaxed text-amber-300" role="status">Market quote unavailable. Market value and unrealized P/L will appear when a valid quote is received.</p>}
                     {renderDailyQuoteSubtext(holding.quoteDetails)}
                     <p class="mt-1 text-[10px] text-slate-500" title="Provider-reported volume; reporting period may vary by source.">
-                      {translateText('Volume', getAppLanguage())} {formatQuoteVolume(holding.quoteDetails?.volume) ?? '—'} · {formatQuoteMetadata(holding, refreshIntervalMs)}
+                      {translateText('Volume', getAppLanguage())} {volume ?? '—'} · {formatQuoteMetadata(holding, refreshIntervalMs)}
                     </p>
                   </div>
                   <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-800 pt-3">

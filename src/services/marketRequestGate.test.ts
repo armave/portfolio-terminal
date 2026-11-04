@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getUsEquityMarketSession, getUsEquityMarketSessionKey } from './marketSession';
+import {
+  getUsEquityMarketSession,
+  getUsEquityMarketSessionKey,
+  getUsEquityNextTransitionAt
+} from './marketSession';
 import { createMarketRequestGate } from './marketRequestGate';
 
 describe('US equity market session', () => {
@@ -23,6 +27,30 @@ describe('US equity market session', () => {
     expect(getUsEquityMarketSessionKey(new Date('2026-10-31T15:00:00.000Z'))).toBe('2026-11-02:CLOSED');
     expect(getUsEquityMarketSessionKey(new Date('2026-11-02T07:00:00.000Z'))).toBe('2026-11-02:CLOSED');
     expect(getUsEquityMarketSessionKey(new Date('2026-11-02T09:00:00.000Z'))).toBe('2026-11-02:PRE');
+  });
+
+  it('calculates the next phase transition in New York time across normal and early-close sessions', () => {
+    expect(getUsEquityNextTransitionAt('CLOSED', new Date('2026-11-02T07:00:00.000Z')))
+      .toEqual(new Date('2026-11-02T09:00:00.000Z'));
+    expect(getUsEquityNextTransitionAt('PRE', new Date('2026-11-02T13:00:00.000Z')))
+      .toEqual(new Date('2026-11-02T14:30:00.000Z'));
+    expect(getUsEquityNextTransitionAt('PRE', new Date('2026-10-30T12:00:00.000Z')))
+      .toEqual(new Date('2026-10-30T13:30:00.000Z'));
+    expect(getUsEquityNextTransitionAt('REGULAR', new Date('2026-11-02T14:30:00.000Z')))
+      .toEqual(new Date('2026-11-02T21:00:00.000Z'));
+    expect(getUsEquityNextTransitionAt('POST', new Date('2026-11-02T22:00:00.000Z')))
+      .toEqual(new Date('2026-11-03T01:00:00.000Z'));
+    expect(getUsEquityNextTransitionAt('REGULAR', new Date('2026-11-27T15:00:00.000Z')))
+      .toEqual(new Date('2026-11-27T18:00:00.000Z'));
+    expect(getUsEquityNextTransitionAt('POST', new Date('2026-11-27T19:00:00.000Z')))
+      .toEqual(new Date('2026-11-27T22:00:00.000Z'));
+  });
+
+  it('skips weekends and holidays when finding the next premarket', () => {
+    expect(getUsEquityNextTransitionAt('CLOSED', new Date('2026-11-06T22:00:00.000Z')))
+      .toEqual(new Date('2026-11-09T09:00:00.000Z'));
+    expect(getUsEquityNextTransitionAt('CLOSED', new Date('2026-11-26T15:00:00.000Z')))
+      .toEqual(new Date('2026-11-27T09:00:00.000Z'));
   });
 });
 
