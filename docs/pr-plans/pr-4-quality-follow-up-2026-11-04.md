@@ -15,7 +15,7 @@
 - [x] Raise Market Insights news/action controls to 44px minimum height and add visible keyboard focus treatment to News dialog actions.
 - [x] Add Russian coverage for News dialog labels, external article links, dynamic accessible article headlines, and the untitled-article fallback.
 - [x] Keep all financial formulas, persisted formats, account roles, API transports, cloud revision/encryption protocols, and Worker routes unchanged.
-- [ ] Exact-head GitHub CI (typecheck, full Vitest, production build, Playwright smoke, dead-code, dependency audits) — pending CI result.
+- [x] Exact-head GitHub CI — [run 41780619794](https://github.com/armave/portfolio-terminal/actions/runs/41780619794) passed on `e0a6e9cc16751475e321689bfae730891cff5015`.
 
 ## Lifecycle correction
 
@@ -43,4 +43,16 @@ All static News dialog/control labels were already present in the Russian dictio
 
 ## Validation
 
-Validation is performed by GitHub Actions on the exact PR head. Local execution is not claimed. Record the linked run and final test/build counts here after the PR CI run completes.
+Exact-head GitHub Actions: [Pull Request CI run 41780619794](https://github.com/armave/portfolio-terminal/actions/runs/41780619794) — **success** on `e0a6e9cc16751475e321689bfae730891cff5015`.
+
+- [x] Dependency installation and TypeScript typecheck.
+- [x] Full Vitest suite — **117 test files / 1,396 tests passed**.
+- [x] Production build and entry-bundle budget — **435,460 / 500,000 bytes raw; 134,795 / 165,000 bytes gzip**.
+- [x] Chromium production-browser smoke — responsive admin/guest desks, actual News dialog interaction, accessible names, focus/background isolation and restoration, 44px dialog actions, broker partial failure, cloud revision conflict, backup export/import/reset, guest assignment publication, account switching, and guest-only workspace hydration.
+- [x] Dead-code validation.
+- [x] Full dependency audit at the configured high-severity threshold. It exits successfully with **four low-severity development-tree advisories** in the `deepmerge` dependency chain.
+- [x] Production dependency audit — **zero vulnerabilities**.
+
+The production-browser smoke passed after the test fixture was expanded with a second broker ticker classified as Margin using the actual Balance-desk UI. The cash-funded AAPL operation remained available for the guest-assignment journey.
+
+Validation is provided by GitHub Actions on the exact PR head; no local test execution is claimed.
