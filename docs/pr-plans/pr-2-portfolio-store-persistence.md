@@ -1,6 +1,6 @@
 # PR 2 — Portfolio store atomicity and persistence boundaries
 
-**Status:** Draft implementation in progress. The branch now includes portfolio import-container validation and subscriber-notification isolation, with focused Vitest regression tests. The remaining audit and validation checklist is still open.
+**Status:** Implementation and audit completed on the PR branch. The final exact-head CI run is the release gate; this branch remains a draft until that run and the PR dependency sequence are confirmed.
 
 **Proposed PR title:** `refactor(store): harden portfolio mutations and persistence boundaries`
 
@@ -15,6 +15,24 @@ Improve maintainability and reliability of portfolio state transitions while pre
 
 `PortfolioStore` remains the sole owner of portfolio state. This PR may extract cohesive pure validation, normalization, or transaction-preparation helpers, but must not create a second store or move ownership into components or services.
 
+## Audit findings and ownership decisions
+
+The public store surface was reviewed against its callers, storage helpers, and existing tests. The state-transition ownership remains intentionally centralized; domain accounting and compatibility migration remain in their existing focused modules.
+
+| Mutation family | Canonical owner and durability contract | Regression coverage |
+| --- | --- | --- |
+| `update`, `setState`, `importState` | PortfolioStore commits a normalized candidate through `saveState` before publishing it; malformed imports are rejected before update. | Persistence rollback, publication order, partial imports, malformed containers, subscriber isolation. |
+| Buy, tranche, margin-sale, closed-trade operations | PortfolioStore owns the position, cash/debt, tranche, and closed-trade transition; FIFO and sale accounting remain in `portfolioTransactions` and `saleCostBasis`. | Buy, tranche add/remove, partial/full sale, invalid cost basis, confirmed-sale parity, persistence failure. |
+| Cash-cushion holdings and cash/debt | PortfolioStore owns cash holdings, free cash, and debt; rejected input/removal requests do not commit. | Cash/debt mutations, atomic cash sale, invalid cash values, invalid removals. |
+| Rollover and broker assumptions | Rollover fields commit together; broker assumptions and their separately preferred settings record now commit in one rollback-capable storage transaction. | Rollover atomicity, assumptions persistence failure/rollback. |
+| Live/manual quote updates | Quote updates run against the latest state without durable persistence; request ordering, source timestamps, WebSocket arrival order, and post-trade protections stay in the store. | Stale response, sequence tie-break, source-time regression, closed-position, and no-op quote tests. |
+| Reset and device navigation | Reset preparation remains in the store; the application-level reset commits portfolio, explicit empty history, and device view together. Desk navigation remains device-local. | Reset preservation, storage multi-key rollback, reset orchestration checks, device-view tests. |
+| Subscriptions and transient UI state | Subscription cleanup stays with subscription helpers; listener failures are isolated. Pending confirmation state is published as derived/transient and is not serialized. | Immediate subscription, selector filtering, unsubscribe, listener failure, and transient-write tests. |
+
+**Compatibility decisions:** `positions` remains canonical; `holdings` is rebuilt as a compatibility projection. Legacy local/cloud holdings migration and public compatibility exports remain in their existing migration module. Snapshot and history-sidecar formats are unchanged. Prototype-sensitive JSON ticker keys are normalized as ordinary uppercase own-properties. Device navigation, provider keys, broker assumptions, and session credentials retain their existing ownership boundaries.
+
+**No additional extraction was justified:** after reviewing the mutation surface, remaining methods coordinate store commit/publication semantics while accounting and migration logic already have typed domain/module owners. Splitting those orchestration methods further would add indirection without a stable new boundary.
+
 ## Scope
 
 - `src/store/portfolioStore.ts`
@@ -28,22 +46,22 @@ Do not modify Cloudflare Worker routes, Durable Object storage, encrypted cloud 
 
 ## Implementation checklist
 
-- [ ] Map every public store mutation to fields owned, validation rules, persistence behavior, and subscriber notifications.
-- [ ] Identify remaining cohesive responsibilities coupled inside PortfolioStore; extract only where stable typed boundaries are demonstrated.
-- [ ] Keep `positions` authoritative and `holdings` a derived compatibility projection.
-- [ ] Preserve existing migration helpers and compatibility exports.
-- [ ] Verify buy, tranche add/remove, partial sale, full liquidation, cash holding, cash/debt update, and closed-trade deletion for all-or-nothing mutation behavior.
-- [ ] Ensure rejected operations do not partially mutate quantity, cash, debt, tranche data, closed history, timestamps, or persistence state.
-- [ ] Ensure persistence failures are observable and do not leave in-memory state falsely marked as durably saved.
-- [ ] Verify notification behavior: durable mutations notify with the correct source; rejected/no-op quote updates do not persist or notify unnecessarily.
-- [ ] Verify quote updates apply to the latest state and reject stale request sequences/timestamps; a quote must not recreate a closed position or overwrite a later trade.
-- [x] Validate import top-level containers before committing; malformed collection/object containers are rejected without replacing the committed snapshot. Focused tests cover malformed positions, cash holdings, history arrays, API-key maps, guest snapshots, and broker-account containers.
-- [ ] Verify reset preserves established device/account configuration and role-specific settings while clearing only intended portfolio-owned fields.
-- [ ] Verify legacy snapshot migrations and current exports remain compatible, including aliases and prototype-sensitive position keys.
-- [x] Add focused failure/edge-case regression coverage for malformed imports and subscriber exceptions; existing atomic-persistence tests already cover storage write failures and closed-history sidecar rollback.
-- [ ] Extend any remaining uncovered failure-injection cases for subscription cleanup and recovery after failure.
-- [ ] Keep cloud revision coordination, encryption, guest/admin authorization, and session identity in their existing service/runtime owners.
-- [ ] Record compatibility decisions and migration scenarios in the PR description and architecture tracker.
+- [x] Map every public store mutation to fields owned, validation rules, persistence behavior, and subscriber notifications (see the ownership matrix above).
+- [x] Review cohesive responsibilities; retain PortfolioStore as the commit/publication orchestrator and keep accounting/migration logic in existing typed modules.
+- [x] Keep `positions` authoritative and `holdings` a derived compatibility projection.
+- [x] Preserve existing migration helpers and compatibility exports.
+- [x] Verify buy, tranche add/remove, partial sale, full liquidation, cash holding, cash/debt update, and closed-trade deletion for all-or-nothing mutation behavior.
+- [x] Ensure rejected operations do not partially mutate quantity, cash, debt, tranche data, closed history, timestamps, or persistence state; invalid cash values and invalid removal identifiers now leave the committed snapshot unchanged.
+- [x] Ensure persistence failures are observable and do not leave in-memory state falsely marked as durably saved; broker assumptions now share the rollback-capable snapshot transaction.
+- [x] Verify notification behavior: durable mutations notify with the correct source; rejected/no-op operations and stale quotes do not publish unnecessary updates.
+- [x] Verify quote updates apply to the latest state and reject stale request sequences/timestamps; a quote cannot recreate a closed position or overwrite a later trade.
+- [x] Validate import containers before committing; malformed collection/object containers are rejected without replacing the committed snapshot, and valid partial imports retain omitted fields.
+- [x] Verify reset preserves established device/account configuration and role-specific settings while clearing portfolio-owned fields; the app reset coordinator commits empty broker history and device view with the portfolio snapshot.
+- [x] Verify legacy snapshot migrations and current exports remain compatible, including the `holdings` alias, credential/history separation, and prototype-sensitive position keys.
+- [x] Add focused failure/edge-case regression coverage for malformed imports, subscriber exceptions, invalid/no-op mutations, broker-rule sidecar rollback, and successful recovery after a failed write.
+- [x] Verify subscription cleanup and selector behavior remain covered; transient pending-confirmation changes are published as derived state without portfolio persistence.
+- [x] Keep cloud revision coordination, encryption, guest/admin authorization, and session identity in their existing service/runtime owners.
+- [x] Record compatibility decisions, mutation ownership, and remaining limitations in this audit note and the PR description.
 
 ## Non-goals and guardrails
 
@@ -56,14 +74,14 @@ Do not modify Cloudflare Worker routes, Durable Object storage, encrypted cloud 
 
 ## Acceptance criteria
 
-- [ ] All portfolio mutations remain routed through the canonical store.
-- [ ] Invalid or failed operations cannot partially mutate portfolio state.
-- [ ] `positions` remains canonical and `holdings` remains a compatibility projection.
-- [ ] Existing persisted snapshots, exports, legacy migrations, and device/account settings remain compatible.
-- [ ] Quote ordering and closed-position protections remain intact.
-- [ ] Persistence failures are observable and recoverable; no silent data loss is introduced.
-- [ ] Extracted helpers have stable contracts and focused tests; compatibility wrappers remain where required.
-- [ ] TypeScript, Vitest, dead-code validation, audits, and production build pass on the exact PR head.
+- [x] All portfolio mutations remain routed through the canonical store.
+- [x] Invalid or failed operations cannot partially mutate portfolio state.
+- [x] `positions` remains canonical and `holdings` remains a compatibility projection.
+- [x] Existing persisted snapshots, exports, legacy migrations, and device/account settings remain compatible.
+- [x] Quote ordering and closed-position protections remain intact.
+- [x] Persistence failures are observable and recoverable; storage rollback remains best-effort if the browser itself also rejects rollback writes.
+- [x] No extraction was required; existing domain/migration helpers retain focused contracts and compatibility wrappers remain in place.
+- [ ] TypeScript, Vitest, dead-code validation, audits, production browser smoke test, and production build pass on the exact final PR head (recorded below after final CI).
 
 ## Required validation
 
@@ -94,3 +112,10 @@ docs: record store and persistence boundary decisions
 PR 1 must be merged first. After that, update/rebase this branch on the latest `main`, resolve conflicts semantically, rerun all validation, and only then request review/merge.
 
 Do not stack this branch on a stale copy of main or silently reimplement domain behavior.
+
+
+## Remaining limitations
+
+- Browser `localStorage` does not provide native multi-key transactions. The storage service snapshots prior values and attempts reverse-order rollback; if the browser also rejects rollback writes, it logs the error and cannot guarantee repair.
+- This PR does not change cloud revision coordination, encrypted envelopes, Durable Objects, authorization, or Worker behavior.
+- The final branch must still be reconciled with the merged PR #303 domain contract before merge; PR #305 remains a separate frontend workstream.
