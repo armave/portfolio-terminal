@@ -661,13 +661,20 @@ export class PortfolioStateDO {
     socket.addEventListener("message", event => {
       void this.handleFreedomMarketDepthUpstreamMessage(session, socket, event?.data);
     });
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", event => {
       if (this.freedomDepthStreams.get(session.streamId) !== session || session.upstream !== socket) return;
       session.upstream = null;
       session.ready = false;
-      session.waiter?.reject(new Error("TradeNet closed the Market Depth stream."));
-      this.sendFreedomMarketDepthError(session, "TradeNet closed the live Market Depth stream.");
-      this.closeFreedomMarketDepthSession(session.streamId, "TradeNet closed the live Market Depth stream");
+      const closeCode = Number.isFinite(Number(event?.code)) ? Number(event.code) : null;
+      const closeReason = typeof event?.reason === "string" ? event.reason.trim().slice(0, 160) : "";
+      const message = closeReason
+        ? `TradeNet closed the live Market Depth stream (code ${closeCode ?? "unknown"}): ${closeReason}`
+        : closeCode !== null
+          ? `TradeNet closed the live Market Depth stream (WebSocket close code ${closeCode}).`
+          : "TradeNet closed the live Market Depth stream without a close code or reason.";
+      session.waiter?.reject(new Error(message));
+      this.sendFreedomMarketDepthError(session, message);
+      this.closeFreedomMarketDepthSession(session.streamId, message.slice(0, 120));
     });
     socket.addEventListener("error", () => {
       if (this.freedomDepthStreams.get(session.streamId) !== session || session.upstream !== socket) return;
