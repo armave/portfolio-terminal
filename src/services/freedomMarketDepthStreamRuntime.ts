@@ -107,6 +107,8 @@ export function createFreedomMarketDepthStreamRuntime(
 
       return await new Promise<boolean>((resolve) => {
         let settled = false;
+        // Keep a Worker error frame authoritative when its close frame follows immediately.
+        let streamErrorMessage = '';
         const finish = (success: boolean): void => {
           if (settled) return;
           settled = true;
@@ -181,6 +183,7 @@ export function createFreedomMarketDepthStreamRuntime(
               ? message.message.slice(0, 300)
               : 'TradeNet Market Depth stream failed.';
             connected = false;
+            streamErrorMessage = text;
             report('error', text);
             finish(false);
             try { nextSocket.close(1011, 'Market Depth stream error'); } catch { /* ignore */ }
@@ -199,10 +202,14 @@ export function createFreedomMarketDepthStreamRuntime(
           connected = false;
           clearTimers();
           socket = null;
-          if (activeSessionKey === sessionKey) {
-            const reason = typeof event?.reason === 'string' && event.reason
-              ? event.reason.slice(0, 300)
-              : 'TradeNet Market Depth stream closed.';
+          if (activeSessionKey === sessionKey && !streamErrorMessage) {
+            const closeCode = Number.isFinite(Number(event?.code)) ? Number(event.code) : null;
+            const closeReason = typeof event?.reason === 'string' ? event.reason.trim().slice(0, 220) : '';
+            const reason = closeReason
+              ? `TradeNet Market Depth stream closed (code ${closeCode ?? 'unknown'}): ${closeReason}`
+              : closeCode !== null
+                ? `TradeNet Market Depth stream closed (WebSocket close code ${closeCode}).`
+                : 'TradeNet Market Depth stream closed without a close code or reason.';
             report('disconnected', reason);
           }
           finish(false);

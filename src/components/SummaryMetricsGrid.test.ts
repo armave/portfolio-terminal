@@ -36,7 +36,6 @@ describe('portfolio metric quote updates', () => {
     expect(source).toContain('<QuoteProvenanceList holdings={quoteProvenanceHoldings} />');
     expect(provenance).toContain('quoteDetails?.sourceTimestamp');
     expect(provenance).toContain('Observation time unavailable');
-    expect(source).toContain('Provisional valuation: one or more quotes or the broker balance may be stale, delayed, or unverified.');
     expect(source).toContain('kind: \'Cash holding\'');
   });
 

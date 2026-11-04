@@ -302,7 +302,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
         <div>
           <div class="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-emerald-300">{depthText('TradeNet · Order Book')}</div>
           <h2 id="marketDepthTitle" class="mt-1 text-xl font-black tracking-tight text-white">{ticker.trim().toUpperCase()} {depthText('Market Depth')}</h2>
-          <p class="mt-1 text-xs text-slate-400">{depthText('Authenticated live book · read-only · maximum depth available to this account')}</p>
+          <p class="mt-1 text-xs text-slate-400">{depthText('Authenticated live book · read-only · depth supplied by TradeNet')}</p>
         </div>
         <div class="flex shrink-0 items-center gap-2">
           <span class={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusTone}`} role="status" aria-live="polite" aria-label={depthText(statusLabel)}>
@@ -359,6 +359,9 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
               <p class="text-[10px] text-slate-500">{depthText('Visible size imbalance')}</p>
             </div>
           </div>
+          {summary.spread !== null && summary.spread < 0 && <p role="alert" class="mb-4 rounded-lg border border-rose-800/70 bg-rose-950/30 px-3 py-2 text-xs font-semibold text-rose-200">
+            {depthText('Crossed order book: highest bid is above lowest ask. Treat this snapshot as inconsistent and do not rely on its displayed liquidity.')}
+          </p>}
 
           {hasLevels ? <section aria-label={depthText('Proportional market depth ladder')} class="mb-4">
             <div class="mb-2 flex flex-wrap items-end justify-between gap-2">
@@ -413,7 +416,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
           <p class="mt-3 text-[10px] leading-relaxed text-slate-500">
             {depthText('Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined.')}
             {' '}{depthText('Visible levels:')} {liveSnapshot.bids.length} {depthText('bid')} / {liveSnapshot.asks.length} {depthText('ask')}.
-            {liveSnapshot.reportedDepth !== undefined ? ` ${depthText('TradeNet depth indicator:')} ${liveSnapshot.reportedDepth} (${depthText('provider metadata, not a UI level target')}).` : ''}
+            {liveSnapshot.reportedDepth !== undefined ? ` ${depthText('TradeNet reported book depth:')} ${liveSnapshot.reportedDepth} (${depthText('total positions in the combined book')}).` : ''}
             {liveSnapshot.insertionsApplied !== undefined || liveSnapshot.rowUpdatesApplied !== undefined || liveSnapshot.deletionsApplied !== undefined
               ? ` ${depthText('Changes captured:')} +${liveSnapshot.insertionsApplied ?? 0} / ~${liveSnapshot.rowUpdatesApplied ?? 0} / −${liveSnapshot.deletionsApplied ?? 0}.`
               : ''}
