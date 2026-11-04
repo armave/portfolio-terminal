@@ -804,4 +804,11 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Mid": "Средняя",
   "Proportional market depth ladder": "Пропорциональная шкала глубины рынка",
   "No price levels were received for this symbol. TradeNet may not provide depth for every instrument or market session.": "Для этого инструмента не получены ценовые уровни. TradeNet может не предоставлять глубину рынка для некоторых инструментов или торговых сессий.",
+  "Bid liquidity ladder": "Шкала заявок на покупку",
+  "Ask liquidity ladder": "Шкала заявок на продажу",
+  "Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined.": "Отображаемый объём — это количество в текущем стакане, а не вся ликвидность биржи. Заявки с одинаковой ценой объединены.",
+  "Visible levels:": "Видимые уровни:",
+  "TradeNet depth indicator:": "Индикатор глубины TradeNet:",
+  "provider metadata, not a UI level target": "метаданные провайдера, не целевое число уровней интерфейса",
+  "Changes captured:": "Полученные изменения:",
 };
