@@ -33,7 +33,7 @@ import {
 } from './freedomAccountStreamHealth';
 
 export interface PortfolioBrokerDataRuntimeDependencies {
-  /** Current account ID is captured by the caller for the active React session. */
+  /** Current account ID is captured by the caller for the active account session. */
   getAccountId: () => string;
   /** Session-generation guard; all asynchronous boundaries recheck it. */
   isSessionCurrent: (session: SessionIdentityToken) => boolean;

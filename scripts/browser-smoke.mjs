@@ -834,6 +834,11 @@ try {
   // source. A second sync must reuse those results and create no backup traffic.
   worker.failNextStateConflict();
   const previousConflicts = worker.stateConflictCount();
+  await page.locator('#settingsBtn').click();
+  await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  const syncButton = page.locator('#settingsDesk button[aria-label="Sync portfolio"]');
+  await syncButton.waitFor({ state: 'visible', timeout: 10_000 });
+  await syncButton.click();
   await waitForCondition(
     () => worker.stateConflictCount() > previousConflicts,
     'cloud state revision conflict response'
@@ -848,10 +853,6 @@ try {
   };
   const previousSecondSyncWrites = worker.count('POST', '/api/state');
   const previousSecondSyncTrades = worker.countAction('freedom-trades');
-  await page.locator('#settingsBtn').click();
-  await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
-  const syncButton = page.locator('#settingsDesk button[aria-label="Sync portfolio"]');
-  await syncButton.waitFor({ state: 'visible', timeout: 10_000 });
   await syncButton.click();
   await waitForCondition(
     () => worker.count('POST', '/api/state') > previousSecondSyncWrites,

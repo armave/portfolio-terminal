@@ -3,6 +3,16 @@
 ## Goal
 Complete the remaining Preact integration without adding a second renderer or changing portfolio calculations, persistence formats, provider behavior, or the Worker boundary.
 
+## Detailed migration plan and completion
+
+1. **Audit the runtime boundary:** identify the browser entry point, mount target, root owner, app runtime orchestration, JSX transform, Vite preset, and all direct UI dependencies. Preserve `app.ts` as runtime orchestration; do not infer that it is obsolete from its size.
+2. **Establish one Preact renderer:** use Preact's `render` at `#root`, keep authentication, dialogs, notifications, and desks inside the same Preact tree, and avoid a React root or a second renderer.
+3. **Finish component ownership:** let Preact components own rendered UI and element refs; use canonical portfolio stores for durable state and typed event channels for transient commands. Keep browser APIs and service orchestration outside component markup where appropriate.
+4. **Align tooling and compatibility:** use `@preact/preset-vite` and TypeScript's automatic JSX runtime with `jsxImportSource: "preact"`. Keep `preact/compat` only for supported compatibility APIs such as `lazy`, `memo`, `Suspense`, and portals; it does not require the React runtime.
+5. **Lock in and verify the boundary:** add regression checks for Preact dependencies, JSX configuration, and the single root; remove stale React terminology; run typecheck, the complete test suite, and the production build. Do not change financial logic, persistence formats, provider behavior, or Worker contracts as part of this migration.
+
+All five phases are complete. The repository was already using Preact at runtime; this pass completed the remaining stale terminology, added a runtime-boundary regression test, and verified the current setup locally.
+
 ## Baseline audit
 - [x] Audited the repository tree and runtime entry points via GitHub API.
 - [x] Confirmed main already uses Preact 11, TypeScript, Vite's Preact preset, and a single root rendered by src/main.ts.
@@ -24,7 +34,7 @@ Complete the remaining Preact integration without adding a second renderer or ch
 - [x] Typecheck, tests, production build, dead-code validation, and production dependency audit passed in both workflows on implementation head `2f01939d365af369c402d7c5810ccd13fbd32158`: [Validate](https://github.com/armave/portfolio-terminal/actions/runs/40700051081) and [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/40700050880). This tracker-only update should be checked against the live PR workflows before merge.
 
 ## Validation policy
-Typecheck, tests, production build, dead-code validation, and production dependency security audit must pass on the exact final PR head before merge. Keep the PR draft for human review. A local clone could not be established in the current environment, so no local validation is claimed.
+Typecheck, tests, production build, dead-code validation, and production dependency security audit must pass on the exact final PR head before merge. Keep the PR draft for human review. The local verification for this migration is recorded below; dead-code validation and dependency audit were not part of this migration pass.
 
 
 ## Notification and component-boundary completion
@@ -90,3 +100,12 @@ Typecheck, tests, production build, dead-code validation, and production depende
 - [x] Replace AuthModal form queries and post-submit browser timeout focus with button refs and Preact effect-driven focus restoration.
 - [x] Final PR-branch source scan finds no `CustomEvent` use, imperative HTML renderer APIs, generic component prop-state bridge, or component-level DOM query selectors.
 - Remaining browser APIs are limited to application bootstrap/autofill configuration, visibility lifecycle, file download, element-owned text-area sizing, focus/keyboard/resize handling, and ref-based scrolling. These remain browser/platform responsibilities and do not create a second renderer.
+
+## Final migration verification — 2026-11-04
+- [x] `npm run typecheck` passed.
+- [x] `npm test` passed on the final head: 118 test files and 1,398 tests.
+- [x] `npm run build` passed, including PWA generation and the existing bundle budget check.
+- [x] `node scripts/browser-smoke.mjs` passed: responsive admin/guest desks, dialog focus and isolation, cloud conflict handling, backup export/import/reset, guest assignment, account switching, and guest-only workspace hydration.
+- [x] `npm ls react react-dom @types/react --depth=0` showed no direct React runtime or type dependencies.
+- [x] Added `src/ui/preactRuntime.test.ts` to guard the Preact JSX/runtime configuration and single-root entry point; both checks passed in the final suite.
+- [x] Fixed the browser smoke sequence to explicitly trigger the initial sync after arming its one-shot cloud conflict response; the prior test waited for a response before issuing a write.
