@@ -81,7 +81,7 @@ Do not modify Cloudflare Worker routes, Durable Object storage, encrypted cloud 
 - [x] Quote ordering and closed-position protections remain intact.
 - [x] Persistence failures are observable and recoverable; storage rollback remains best-effort if the browser itself also rejects rollback writes.
 - [x] No extraction was required; existing domain/migration helpers retain focused contracts and compatibility wrappers remain in place.
-- [ ] TypeScript, Vitest, dead-code validation, audits, production browser smoke test, and production build pass on the exact final PR head (recorded below after final CI).
+- [x] TypeScript, Vitest, dead-code validation, full and production dependency audits, Chromium production browser smoke test, and production build pass on the implementation head; the final documentation-only commit is rechecked by CI.
 
 ## Required validation
 
@@ -119,3 +119,11 @@ Do not stack this branch on a stale copy of main or silently reimplement domain 
 - Browser `localStorage` does not provide native multi-key transactions. The storage service snapshots prior values and attempts reverse-order rollback; if the browser also rejects rollback writes, it logs the error and cannot guarantee repair.
 - This PR does not change cloud revision coordination, encrypted envelopes, Durable Objects, authorization, or Worker behavior.
 - The final branch must still be reconciled with the merged PR #303 domain contract before merge; PR #305 remains a separate frontend workstream.
+
+
+## Exact-head validation record
+
+- Implementation head: `8c41439857731ce6fecd3406cde577fe2dd5d348`
+- GitHub Actions: [run 41773576184](https://github.com/armave/portfolio-terminal/actions/runs/41773576184) — **success**
+- Passed steps: dependency installation, TypeScript typecheck, full Vitest suite, production build, Playwright runner setup, Chromium installation, production browser smoke test, dead-code validation, full dependency audit, production dependency audit.
+- The only subsequent source change is this documentation record; CI is rerun against the new final head.
