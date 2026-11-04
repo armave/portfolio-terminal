@@ -749,19 +749,19 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
       {
         i: 'AAPL.US', n: 1, cnt: 2,
         ins: [
-          { k: 0, p: 205.5, q: 3, s: 'B', owner_login: 'private-login' },
-          { k: 0, p: 205.75, q: 4, s: 'S' }
+          { k: 0, p: 205.75, q: 4, s: 'S' },
+          { k: 1, p: 205.5, q: 3, s: 'B', owner_login: 'private-login' }
         ],
         account: 'private-value'
       },
       {
         i: 'AAPL.US', n: 2, cnt: 3,
-        ins: [{ k: 1, p: 205.25, q: 7, s: 'B' }],
-        upd: [{ k: 0, p: 205.6, q: 5, s: 'B' }]
+        ins: [{ k: 1, p: 205.6, q: 7, s: 'B' }],
+        upd: [{ k: 2, p: 205.55, q: 5, s: 'B' }]
       },
       {
         i: 'AAPL.US', n: 3, cnt: 2,
-        del: [{ k: 1, s: 'B' }]
+        del: [{ k: 2, s: 'B' }]
       }
     ];
     const { response, socket } = await runEventDiagnostic(
@@ -782,7 +782,7 @@ describe('Freedom authenticated portfolio and market WebSocket event diagnostics
         rowUpdatesApplied: 1,
         deletionsApplied: 1,
         captureDurationMs: 8000,
-        bids: [{ position: 0, price: 205.6, quantity: 5 }],
+        bids: [{ position: 1, price: 205.6, quantity: 7 }],
         asks: [{ position: 0, price: 205.75, quantity: 4 }]
       }
     });
@@ -946,11 +946,10 @@ describe('Freedom Market Depth snapshot', () => {
       min_step: 0.01,
       step_price: 0.01,
       ins: [
-        { k: 0, p: 202.5, q: 12, s: 'B', owner_login: 'private-login' },
-        { k: 0, p: 202.75, q: 8, s: 'S' }
+        { k: 0, p: 202.75, q: 8, s: 'S', owner_login: 'private-login' },
+        { k: 1, p: 202.5, q: 12, s: 'B' }
       ],
-      upd: [{ k: 0, p: 202.6, q: 14, s: 'B', account_id: 'private-account' }],
-      del: [{ k: 1, p: 202.4, q: 5, s: 'B' }],
+      upd: [{ k: 1, p: 202.6, q: 14, s: 'B', account_id: 'private-account' }],
       account: 'private-value'
     }, 'AAPL.US');
 
@@ -964,7 +963,7 @@ describe('Freedom Market Depth snapshot', () => {
       insertionsApplied: 2,
       rowUpdatesApplied: 1,
       deletionsApplied: 0,
-      bids: [{ position: 0, price: 202.6, quantity: 14 }],
+      bids: [{ position: 1, price: 202.6, quantity: 14 }],
       asks: [{ position: 0, price: 202.75, quantity: 8 }]
     });
     expect(JSON.stringify(result)).not.toMatch(/private-login|private-account|private-value/);
@@ -980,31 +979,26 @@ describe('Freedom Market Depth snapshot', () => {
     expect(result.asks).toHaveLength(0);
   });
 
-  it('accumulates inserts, updates, and deletes while preserving each side’s level positions', () => {
+  it('accumulates inserts, updates, and deletes across the shared bid/ask position space', () => {
     const result = sanitizeFreedomMarketDepth([
       {
         i: 'AAPL.US', n: 1, cnt: 4,
         ins: [
-          { k: 0, p: 100, q: 10, s: 'B' },
-          { k: 1, p: 99, q: 20, s: 'B' },
           { k: 0, p: 101, q: 11, s: 'S' },
-          { k: 1, p: 102, q: 22, s: 'S' }
+          { k: 1, p: 102, q: 22, s: 'S' },
+          { k: 2, p: 100, q: 10, s: 'B' },
+          { k: 3, p: 99, q: 20, s: 'B' }
         ]
       },
       {
-        i: 'AAPL.US', n: 2, cnt: 6,
-        ins: [
-          { k: 1, p: 99.5, q: 15, s: 'B' },
-          { k: 0, p: 100.5, q: 8, s: 'S' }
-        ]
+        i: 'AAPL.US', n: 2, cnt: 5,
+        ins: [{ k: 0, p: 100.5, q: 8, s: 'S' }],
+        upd: [{ k: 3, p: 100.25, q: 14, s: 'B' }]
       },
       {
         i: 'AAPL.US', n: 3, cnt: 4,
-        del: [{ k: 2, s: 'B' }, { k: 1, s: 'S' }],
-        upd: [
-          { k: 0, p: 100.25, q: 12, s: 'B' },
-          { k: 1, p: 101.5, q: 25, s: 'S' }
-        ]
+        del: [{ k: 2, s: 'S' }],
+        upd: [{ k: 2, p: 100.3, q: 15, s: 'B' }]
       }
     ], 'AAPL.US', 8000);
 
@@ -1013,21 +1007,20 @@ describe('Freedom Market Depth snapshot', () => {
       sequence: 3,
       reportedDepth: 4,
       updateCount: 3,
-      insertionsApplied: 6,
+      insertionsApplied: 5,
       rowUpdatesApplied: 2,
-      deletionsApplied: 2,
+      deletionsApplied: 1,
       captureDurationMs: 8000,
-      bids: [
-        { position: 0, price: 100.25, quantity: 12 },
-        { position: 1, price: 99.5, quantity: 15 }
-      ],
       asks: [
         { position: 0, price: 100.5, quantity: 8 },
-        { position: 1, price: 101.5, quantity: 25 }
+        { position: 1, price: 101, quantity: 11 }
+      ],
+      bids: [
+        { position: 2, price: 100.3, quantity: 15 },
+        { position: 3, price: 99, quantity: 20 }
       ]
     });
   });
-
 });
 
 describe('normalizeMarketState', () => {
@@ -3360,9 +3353,9 @@ describe('Durable Object administrator Market Depth live stream', () => {
             n: 1,
             cnt: 2,
             ins: [
-              { k: 0, p: 287.72, q: 10, s: 'B', owner_login: 'private-login' },
-              { k: 1, p: 287.72, q: 5, s: 'B' },
-              { k: 0, p: 287.79, q: 20, s: 'S', account_id: 'private-account' }
+              { k: 0, p: 287.79, q: 20, s: 'S', account_id: 'private-account' },
+              { k: 1, p: 287.72, q: 10, s: 'B', owner_login: 'private-login' },
+              { k: 2, p: 287.72, q: 5, s: 'B' }
             ]
           }]) });
         }
@@ -3409,8 +3402,8 @@ describe('Durable Object administrator Market Depth live stream', () => {
         symbol: 'GOOGL.US',
         data: expect.objectContaining({
           bids: [
-            { position: 0, price: 287.72, quantity: 10 },
-            { position: 1, price: 287.72, quantity: 5 }
+            { position: 1, price: 287.72, quantity: 10 },
+            { position: 2, price: 287.72, quantity: 5 }
           ],
           asks: [{ position: 0, price: 287.79, quantity: 20 }]
         })
