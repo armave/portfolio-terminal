@@ -45,8 +45,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function hasValidPortfolioImportShape(value: unknown): boolean {
   if (!isRecord(value)) return false;
 
+  const requiredArrayFields = ['closedTrades'] as const;
+  for (const field of requiredArrayFields) {
+    if (Object.prototype.hasOwnProperty.call(value, field) && !Array.isArray(value[field])) {
+      return false;
+    }
+  }
+
   const arrayFields = [
-    'closedTrades',
     'brokerExecutedTrades',
     'closedHistory',
     'cashflows',
@@ -61,8 +67,14 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
     }
   }
 
+  const requiredRecordFields = ['positions', 'apiKeys', 'brokerAssumptions'] as const;
+  for (const field of requiredRecordFields) {
+    if (Object.prototype.hasOwnProperty.call(value, field) && !isRecord(value[field])) {
+      return false;
+    }
+  }
+
   const recordFields = [
-    'positions',
     'activeTrancheTypes',
     'activeTrancheMixes',
     'activeTrancheGuestAssignments',
@@ -78,7 +90,7 @@ function hasValidPortfolioImportShape(value: unknown): boolean {
     }
   }
 
-  if (Object.prototype.hasOwnProperty.call(value, 'cashCushion') && value.cashCushion !== undefined) {
+  if (Object.prototype.hasOwnProperty.call(value, 'cashCushion')) {
     if (!isRecord(value.cashCushion)) return false;
     if (Object.prototype.hasOwnProperty.call(value.cashCushion, 'holdings') &&
         value.cashCushion.holdings !== undefined && !Array.isArray(value.cashCushion.holdings)) {
