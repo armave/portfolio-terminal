@@ -22,6 +22,16 @@ describe('US-equities market status presentation', () => {
     expect(isCurrentMarketStatusRequest(false, requestGeneration, requestGeneration)).toBe(false);
   });
 
+  it('invalidates in-flight responses and clears the previous snapshot when the account changes', () => {
+    const source = readFileSync(new URL('./MarketStatusBadge.tsx', import.meta.url), 'utf8');
+
+    expect(source).toContain('const requestGeneration = authGeneration;');
+    expect(source).toContain('if (!isCurrentMarketStatusRequest(active, requestGeneration, authGeneration)) return;');
+    expect(source).toContain('authGeneration += 1;');
+    expect(source).toContain('hasLoaded = false;');
+    expect(source).toContain('setSnapshot(null);');
+  });
+
   it('uses different labels for administrator and guest workspaces', () => {
     expect(getMarketStatusRoleLabel(true)).toBe('Portfolio market');
     expect(getMarketStatusRoleLabel(false)).toBe('Your market');
