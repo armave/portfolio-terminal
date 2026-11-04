@@ -2156,3 +2156,55 @@ describe('atomic portfolio-store persistence', () => {
     expect(values.has('portfolio_closed_history_v1')).toBe(false);
   });
 });
+
+describe('portfolio store subscriber failure isolation', () => {
+  it('continues notifying state subscribers when an earlier subscriber throws', () => {
+    const store = new PortfolioStore();
+    const error = new Error('broken state subscriber');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const laterSubscriber = vi.fn();
+
+    store.subscribe(() => {
+      throw error;
+    });
+    store.subscribe(laterSubscriber);
+
+    try {
+      expect(store.setState({ balance: -125 })).toBe(true);
+      expect(store.getState().balance).toBe(-125);
+      expect(laterSubscriber).toHaveBeenCalledTimes(1);
+      expect(laterSubscriber).toHaveBeenCalledWith(store.getState(), 'durable');
+      expect(consoleError).toHaveBeenCalledWith(
+        'Failed to notify a portfolio state subscriber:',
+        error
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it('continues notifying active-view subscribers when an earlier subscriber throws', () => {
+    const store = new PortfolioStore();
+    const error = new Error('broken active-view subscriber');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const laterSubscriber = vi.fn();
+
+    store.subscribeActiveView(() => {
+      throw error;
+    });
+    store.subscribeActiveView(laterSubscriber);
+
+    try {
+      expect(() => store.setActiveView('SETTINGS')).not.toThrow();
+      expect(store.getState().activeView).toBe('SETTINGS');
+      expect(laterSubscriber).toHaveBeenCalledTimes(1);
+      expect(laterSubscriber).toHaveBeenCalledWith('SETTINGS');
+      expect(consoleError).toHaveBeenCalledWith(
+        'Failed to notify a portfolio active-view subscriber:',
+        error
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+});
