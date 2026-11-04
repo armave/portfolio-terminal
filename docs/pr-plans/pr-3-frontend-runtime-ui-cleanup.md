@@ -17,6 +17,9 @@
 - [x] Added a Russian localization coverage test for all static authentication-modal copy; existing translations were already present, so no translation text needed to change.
 - [x] Guarded the Closed History fee-allocation effect so a disposed effect cannot update its readiness state or recalculation key after its async work completes.
 - [x] Audited the application composition boundary: startup, authentication/session, navigation, broker refresh, quote refresh, portfolio sync, and equity sync already have dedicated runtime modules; `src/App.tsx` shell listeners are registered in `useLayoutEffect` and removed during cleanup. No additional extraction was justified in this pass because remaining root functions coordinate those established service/guard boundaries.
+- [x] Audited existing accessibility wiring for named keyboard-scrollable regions, modal title relationships, focus restoration, and scoped table headers; retained the shared `TableScrollRegion` and `useDialogFocus` patterns.
+- [x] Standardized compact high-use controls across scenario dialogs, auth submit, empty-state actions, and external quote links with 44px minimum hit targets and visible keyboard-focus rings.
+- [x] Added an accessibility regression test to prevent those touch-target and focus treatments from regressing.
 - [ ] Continue the remaining frontend runtime, component, localization, CSS, accessibility, and browser-validation audit.
 
 ## Runtime audit findings — 2026-11-04
