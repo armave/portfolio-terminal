@@ -2193,6 +2193,27 @@ describe('atomic portfolio-store persistence', () => {
     expect(storageMock.setItem).not.toHaveBeenCalled();
   });
 
+  it('recovers cleanly after a failed storage commit', () => {
+    const store = new PortfolioStore();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    storageMock.setItem.mockImplementation(() => {
+      throw new Error('temporary quota failure');
+    });
+    expect(store.setState({ balance: -200 })).toBe(false);
+    expect(store.getState().balance).toBe(0);
+    expect(listener).not.toHaveBeenCalled();
+
+    storageMock.setItem.mockImplementation((key, value) => {
+      values.set(key, String(value));
+    });
+    expect(store.setState({ balance: -300 })).toBe(true);
+    expect(store.getState().balance).toBe(-300);
+    expect(JSON.parse(values.get('margin_portfolio_state_dynamic_v2') || '{}').balance).toBe(-300);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it('returns failed commits for debt, rollover, and broker-assumption mutations', () => {
     const store = new PortfolioStore();
     store.setState({
