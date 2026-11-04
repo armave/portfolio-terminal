@@ -419,6 +419,45 @@ export function buildFreedomAccountStreamSocketUrl(ticket: string): string {
   return url.toString();
 }
 
+export interface FreedomMarketDepthStreamTicket {
+  ticket: string;
+  expiresAt: number;
+  symbol: string;
+}
+
+/** Mint a one-use administrator ticket bound to one ticker for the live depth socket. */
+export async function createFreedomMarketDepthStreamTicket(ticker: string): Promise<FreedomMarketDepthStreamTicket> {
+  const normalized = ticker.trim().toUpperCase();
+  const symbol = normalized && !normalized.includes('.') ? `${normalized}.US` : normalized;
+  if (!/^[A-Z0-9.^=-]{1,32}$/.test(symbol)) {
+    throw new Error('Provide one valid ticker for the Market Depth stream.');
+  }
+  const response = await proxyFetch(
+    'freedom-market-depth-stream-ticket',
+    { symbol },
+    { cache: 'no-store' }
+  );
+  if (response?.ok !== true || typeof response.ticket !== 'string' ||
+      !/^[a-f0-9]{64}$/i.test(response.ticket) || response.symbol !== symbol) {
+    throw new Error(response?.error || 'The server did not issue a valid Market Depth stream ticket.');
+  }
+  return {
+    ticket: response.ticket,
+    expiresAt: Number(response.expiresAt) || 0,
+    symbol
+  };
+}
+
+/** The browser URL carries only a short-lived single-use ticket, never the TradeNet SID. */
+export function buildFreedomMarketDepthStreamSocketUrl(ticket: string): string {
+  if (!/^[a-f0-9]{64}$/i.test(ticket)) throw new Error('A valid Market Depth stream ticket is required.');
+  const url = new URL(WORKER_PROXY_URL);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.searchParams.set('action', 'freedom-market-depth-socket');
+  url.searchParams.set('ticket', ticket);
+  return url.toString();
+}
+
 
 const guestPortfolioPublicationFingerprints = new Map<string, string>();
 const guestPortfolioPublicationRequests = new Map<string, Promise<void>>();

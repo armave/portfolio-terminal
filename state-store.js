@@ -1,3 +1,5 @@
+import { createFreedomMarketDepthBook } from "./src/services/freedomMarketDepth.js";
+
 const CORS_HEADERS = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
@@ -22,6 +24,13 @@ const FREEDOM_TRADENET_SESSION_TTL_MS = 30 * 60 * 1000;
 const FREEDOM_TRADENET_RATE_LIMIT_BASE_MS = 60 * 1000;
 const FREEDOM_TRADENET_RATE_LIMIT_MAX_MS = 15 * 60 * 1000;
 const FREEDOM_TRADENET_SOCKET_CONNECT_TIMEOUT_MS = 12_000;
+const FREEDOM_DEPTH_STREAM_TICKET_TTL_MS = 60_000;
+const FREEDOM_DEPTH_STREAM_MAX_LIFETIME_MS = 30 * 60 * 1000;
+const FREEDOM_DEPTH_STREAM_IDLE_TIMEOUT_MS = 60_000;
+const FREEDOM_DEPTH_STREAM_HANDSHAKE_TIMEOUT_MS = 10_000;
+const FREEDOM_DEPTH_STREAM_MAX_SESSIONS = 4;
+const FREEDOM_DEPTH_STREAM_MAX_MESSAGE_BYTES = 256 * 1024;
+const FREEDOM_DEPTH_STREAM_MAX_PENDING_UPDATES = 20;
 
 function sanitizeFreedomTradeNetLoginError(value) {
   if (typeof value !== "string") return null;
@@ -167,6 +176,7 @@ export class PortfolioStateDO {
     this.freedomAccountOrdersById = new Map();
     this.freedomAccountOrdersSnapshotReceived = false;
     this.freedomAccountPendingEvents = [];
+    this.freedomDepthStreams = new Map();
   }
 
   async requestFreedomTradeNetSession() {
@@ -498,6 +508,308 @@ export class PortfolioStateDO {
       }
     }
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async handleFreedomMarketDepthStreamTicketRequest(request) {
+    if (request.method !== "POST") return authJson({ error: "Method not allowed." }, 405);
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body) ||
+        body.role !== "admin" ||
+        typeof body.accountId !== "string" || !body.accountId.trim() || body.accountId.length > 128) {
+      return authJson({ error: "An administrator account is required for Market Depth." }, 403);
+    }
+    const rawSymbol = typeof body.symbol === "string" ? body.symbol.trim().toUpperCase() : "";
+    const symbol = rawSymbol && !rawSymbol.includes(".") ? `${rawSymbol}.US` : rawSymbol;
+    if (!/^[A-Z0-9.^=-]{1,32}$/.test(symbol)) {
+      return authJson({ error: "Provide one valid ticker for Market Depth." }, 400);
+    }
+
+    const ticket = toHex(crypto.getRandomValues(new Uint8Array(32)));
+    const ticketKey = `freedom:market-depth-stream-ticket:${await digestHex(ticket)}`;
+    const expiresAt = Date.now() + FREEDOM_DEPTH_STREAM_TICKET_TTL_MS;
+    await this.ctx.storage.put(ticketKey, {
+      accountId: body.accountId,
+      role: "admin",
+      symbol,
+      expiresAt
+    });
+    return authJson({ ok: true, ticket, expiresAt, symbol });
+  }
+
+  async consumeFreedomMarketDepthStreamTicket(ticket) {
+    if (typeof ticket !== "string" || !/^[a-f0-9]{64}$/i.test(ticket)) return null;
+    const ticketKey = `freedom:market-depth-stream-ticket:${await digestHex(ticket)}`;
+    return this.ctx.storage.transaction(async (transaction) => {
+      const stored = await transaction.get(ticketKey);
+      if (!stored) return null;
+      await transaction.delete(ticketKey);
+      if (!Number.isFinite(stored.expiresAt) || stored.expiresAt <= Date.now() ||
+          stored.role !== "admin" || typeof stored.accountId !== "string" || !stored.accountId.trim() ||
+          typeof stored.symbol !== "string" || !/^[A-Z0-9.^=-]{1,32}$/.test(stored.symbol)) return null;
+      return { accountId: stored.accountId, role: "admin", symbol: stored.symbol };
+    });
+  }
+
+  async handleFreedomMarketDepthStreamSocketRequest(request) {
+    if (request.method !== "GET" || request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+      return authJson({ error: "A WebSocket upgrade is required." }, 426);
+    }
+    const url = new URL(request.url);
+    const claims = await this.consumeFreedomMarketDepthStreamTicket(url.searchParams.get("ticket"));
+    if (!claims) return authJson({ error: "Market Depth ticket is invalid, expired, or already used." }, 401);
+    if (this.freedomDepthStreams.size >= FREEDOM_DEPTH_STREAM_MAX_SESSIONS) {
+      return authJson({ error: "The maximum number of live Market Depth sessions is already open." }, 429);
+    }
+
+    const streamId = toHex(crypto.getRandomValues(new Uint8Array(16)));
+    const session = {
+      streamId,
+      ...claims,
+      createdAt: Date.now(),
+      lastActivityAt: Date.now(),
+      upstream: null,
+      client: null,
+      ready: false,
+      waiter: null,
+      pendingUpdates: [],
+      book: createFreedomMarketDepthBook(claims.symbol),
+      lastUpdatedAt: 0
+    };
+    this.freedomDepthStreams.set(streamId, session);
+
+    try {
+      await this.connectFreedomMarketDepthUpstream(session);
+    } catch (error) {
+      this.closeFreedomMarketDepthSession(streamId, "Market Depth connection failed", false);
+      const message = error instanceof Error ? error.message : "TradeNet Market Depth stream could not be established.";
+      return authJson({ error: message }, 502);
+    }
+
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    session.client = server;
+    server.serializeAttachment({
+      accountId: claims.accountId,
+      role: claims.role,
+      symbol: claims.symbol,
+      streamId,
+      stream: "market-depth"
+    });
+    this.ctx.acceptWebSocket(server, ["freedom-tradenet-depth"]);
+    server.send(JSON.stringify({
+      type: "ready",
+      provider: "Freedom TradeNet",
+      transport: "websocket",
+      symbol: claims.symbol
+    }));
+    if (session.book.updateCount > 0) this.sendFreedomMarketDepthSnapshot(session);
+    void this.scheduleFreedomMarketDepthAlarm();
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async connectFreedomMarketDepthUpstream(session) {
+    const sid = await this.getFreedomTradeNetSession();
+    if (this.freedomDepthStreams.get(session.streamId) !== session) {
+      throw new Error("Market Depth session was closed before TradeNet connected.");
+    }
+    const url = new URL("https://wss.tradernet.com/");
+    url.searchParams.set("SID", sid);
+    const response = await fetch(url.toString(), {
+      headers: { Upgrade: "websocket" },
+      signal: AbortSignal.timeout(FREEDOM_TRADENET_SOCKET_CONNECT_TIMEOUT_MS)
+    });
+    const socket = response.webSocket;
+    if (response.status !== 101 || !socket) {
+      const error = new Error("TradeNet rejected the Market Depth WebSocket connection.");
+      error.status = response.status === 401 || response.status === 403 ? response.status : 502;
+      throw error;
+    }
+
+    session.upstream = socket;
+    const handshake = new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        if (session.waiter?.socket === socket) session.waiter = null;
+        reject(new Error("TradeNet did not confirm the production Market Depth stream."));
+        try { socket.close(1011, "Market Depth handshake timeout"); } catch { /* ignore */ }
+      }, FREEDOM_DEPTH_STREAM_HANDSHAKE_TIMEOUT_MS);
+      session.waiter = {
+        socket,
+        resolve: () => {
+          clearTimeout(timeout);
+          session.waiter = null;
+          resolve();
+        },
+        reject: error => {
+          clearTimeout(timeout);
+          session.waiter = null;
+          reject(error);
+        }
+      };
+    });
+
+    socket.addEventListener("message", event => {
+      void this.handleFreedomMarketDepthUpstreamMessage(session, socket, event?.data);
+    });
+    socket.addEventListener("close", () => {
+      if (this.freedomDepthStreams.get(session.streamId) !== session || session.upstream !== socket) return;
+      session.upstream = null;
+      session.ready = false;
+      session.waiter?.reject(new Error("TradeNet closed the Market Depth stream."));
+      this.sendFreedomMarketDepthError(session, "TradeNet closed the live Market Depth stream.");
+      this.closeFreedomMarketDepthSession(session.streamId, "TradeNet closed the live Market Depth stream");
+    });
+    socket.addEventListener("error", () => {
+      if (this.freedomDepthStreams.get(session.streamId) !== session || session.upstream !== socket) return;
+      session.upstream = null;
+      session.ready = false;
+      session.waiter?.reject(new Error("TradeNet Market Depth stream failed."));
+      this.sendFreedomMarketDepthError(session, "TradeNet's live Market Depth connection failed.");
+      this.closeFreedomMarketDepthSession(session.streamId, "TradeNet Market Depth connection failed");
+      try { socket.close(1011, "Market Depth socket error"); } catch { /* ignore */ }
+    });
+
+    try {
+      socket.accept();
+      socket.send(JSON.stringify(["orderBook", [session.symbol]]));
+      await handshake;
+    } catch (error) {
+      session.waiter?.reject(error);
+      try { socket.close(1011, "Market Depth subscription failed"); } catch { /* ignore */ }
+      throw error;
+    }
+  }
+
+  async handleFreedomMarketDepthUpstreamMessage(session, socket, rawMessage) {
+    if (this.freedomDepthStreams.get(session.streamId) !== session || session.upstream !== socket) return;
+    const text = typeof rawMessage === "string" ? rawMessage : String(rawMessage || "");
+    if (new TextEncoder().encode(text).byteLength > FREEDOM_DEPTH_STREAM_MAX_MESSAGE_BYTES) {
+      this.sendFreedomMarketDepthError(session, "TradeNet sent an oversized Market Depth update.");
+      this.closeFreedomMarketDepthSession(session.streamId, "Oversized Market Depth update");
+      return;
+    }
+    let packet;
+    try { packet = JSON.parse(text); } catch { return; }
+    if (!Array.isArray(packet) || typeof packet[0] !== "string") return;
+    const eventName = packet[0];
+    if (eventName === "userData") {
+      const userData = packet[1];
+      const mode = String(userData?.mode || "").trim().toLowerCase();
+      if (userData?.isDemo === true || userData?.real === false || mode !== "prod") {
+        const error = new Error("TradeNet authenticated a demo or non-production Market Depth session.");
+        session.waiter?.reject(error);
+        this.sendFreedomMarketDepthError(session, error.message);
+        this.closeFreedomMarketDepthSession(session.streamId, "Production session required");
+        return;
+      }
+      session.ready = true;
+      session.waiter?.resolve();
+      const pendingUpdates = session.pendingUpdates.splice(0);
+      for (const payload of pendingUpdates) this.processFreedomMarketDepthUpdate(session, payload);
+      return;
+    }
+    if (eventName === "error") {
+      const error = new Error("TradeNet rejected the Market Depth subscription.");
+      session.waiter?.reject(error);
+      this.sendFreedomMarketDepthError(session, error.message);
+      this.closeFreedomMarketDepthSession(session.streamId, "TradeNet subscription rejected");
+      return;
+    }
+    if (eventName !== "b") return;
+    if (!session.ready) {
+      if (session.pendingUpdates.length < FREEDOM_DEPTH_STREAM_MAX_PENDING_UPDATES) {
+        session.pendingUpdates.push(packet[1]);
+      }
+      return;
+    }
+    this.processFreedomMarketDepthUpdate(session, packet[1]);
+  }
+
+  processFreedomMarketDepthUpdate(session, payload) {
+    try {
+      const applied = session.book.apply(payload);
+      if (applied === 0) return;
+      session.lastActivityAt = Date.now();
+      session.lastUpdatedAt = session.lastActivityAt;
+      this.sendFreedomMarketDepthSnapshot(session);
+    } catch (error) {
+      this.sendFreedomMarketDepthError(
+        session,
+        error instanceof Error ? error.message : "TradeNet Market Depth update could not be processed."
+      );
+      this.closeFreedomMarketDepthSession(session.streamId, "Invalid Market Depth update");
+    }
+  }
+
+  sendFreedomMarketDepthSnapshot(session) {
+    if (!session.client || session.client.readyState !== 1) return;
+    const snapshot = session.book.snapshot();
+    try {
+      session.client.send(JSON.stringify({
+        type: "depth",
+        symbol: session.symbol,
+        updatedAt: session.lastUpdatedAt || Date.now(),
+        data: snapshot
+      }));
+    } catch {
+      this.closeFreedomMarketDepthSession(session.streamId, "Market Depth client disconnected");
+    }
+  }
+
+  sendFreedomMarketDepthError(session, message) {
+    if (!session.client || session.client.readyState !== 1) return;
+    try { session.client.send(JSON.stringify({ type: "error", message })); } catch { /* socket is closing */ }
+  }
+
+  closeFreedomMarketDepthSession(streamId, reason = "Market Depth session closed", closeClient = true) {
+    const session = this.freedomDepthStreams.get(streamId);
+    if (!session) return;
+    this.freedomDepthStreams.delete(streamId);
+    session.waiter?.reject(new Error(reason));
+    session.waiter = null;
+    session.pendingUpdates = [];
+    const upstream = session.upstream;
+    session.upstream = null;
+    if (upstream) {
+      try { upstream.close(1000, reason.slice(0, 120)); } catch { /* ignore */ }
+    }
+    const client = session.client;
+    session.client = null;
+    if (closeClient && client?.readyState === 1) {
+      try { client.close(1000, reason.slice(0, 120)); } catch { /* ignore */ }
+    }
+    void this.scheduleFreedomMarketDepthAlarm();
+  }
+
+  getFreedomMarketDepthClients() {
+    if (typeof this.ctx.getWebSockets !== "function") return [];
+    return this.ctx.getWebSockets("freedom-tradenet-depth").filter(socket => socket.readyState === 1);
+  }
+
+  async scheduleFreedomMarketDepthAlarm() {
+    if (typeof this.ctx.storage?.setAlarm !== "function") return;
+    const now = Date.now();
+    const deadlines = [...this.freedomDepthStreams.values()].map(session =>
+      Math.min(session.createdAt + FREEDOM_DEPTH_STREAM_MAX_LIFETIME_MS,
+        session.lastActivityAt + FREEDOM_DEPTH_STREAM_IDLE_TIMEOUT_MS)
+    );
+    if (deadlines.length === 0) {
+      if (typeof this.ctx.storage.deleteAlarm === "function") await this.ctx.storage.deleteAlarm();
+      return;
+    }
+    await this.ctx.storage.setAlarm(Math.max(now + 1000, Math.min(...deadlines)));
+  }
+
+  async alarm() {
+    const now = Date.now();
+    for (const session of [...this.freedomDepthStreams.values()]) {
+      if (now - session.createdAt >= FREEDOM_DEPTH_STREAM_MAX_LIFETIME_MS) {
+        this.sendFreedomMarketDepthError(session, "This live Market Depth session reached its maximum duration. Close and reopen the modal to continue.");
+        this.closeFreedomMarketDepthSession(session.streamId, "Maximum Market Depth session duration reached");
+      } else if (now - session.lastActivityAt >= FREEDOM_DEPTH_STREAM_IDLE_TIMEOUT_MS) {
+        this.closeFreedomMarketDepthSession(session.streamId, "Market Depth session idle timeout");
+      }
+    }
+    await this.scheduleFreedomMarketDepthAlarm();
   }
 
   getFreedomAccountClients() {
@@ -1051,6 +1363,23 @@ export class PortfolioStateDO {
   }
 
   webSocketMessage(webSocket, message) {
+    const attachment = webSocket.deserializeAttachment?.();
+    if (attachment?.stream === "market-depth") {
+      const session = this.freedomDepthStreams.get(attachment.streamId);
+      if (!session || session.accountId !== attachment.accountId || session.symbol !== attachment.symbol) {
+        try { webSocket.close(1011, "Market Depth session is no longer active"); } catch { /* ignore */ }
+        return;
+      }
+      session.lastActivityAt = Date.now();
+      const text = typeof message === "string" ? message : String(message || "");
+      if (text === "ping") {
+        try { webSocket.send(JSON.stringify({ type: "pong", at: Date.now() })); } catch { /* ignore */ }
+      } else {
+        try { webSocket.close(1008, "Unexpected Market Depth client message"); } catch { /* ignore */ }
+      }
+      void this.scheduleFreedomMarketDepthAlarm();
+      return;
+    }
     const text = typeof message === "string" ? message : String(message || "");
     if (text === "ping") {
       try { webSocket.send(JSON.stringify({ type: "pong", at: Date.now() })); } catch { /* ignore */ }
@@ -1063,7 +1392,12 @@ export class PortfolioStateDO {
     }
   }
 
-  webSocketClose() {
+  webSocketClose(webSocket) {
+    const attachment = webSocket?.deserializeAttachment?.();
+    if (attachment?.stream === "market-depth" && typeof attachment.streamId === "string") {
+      this.closeFreedomMarketDepthSession(attachment.streamId, "Market Depth client disconnected", false);
+      return;
+    }
     if (this.getFreedomAccountClients().length === 0) {
       this.closeFreedomAccountUpstream();
     }
@@ -2107,6 +2441,12 @@ export class PortfolioStateDO {
     }
     if (requestUrl.pathname === "/internal/freedom-account-stream-socket") {
       return this.handleFreedomAccountStreamSocketRequest(request);
+    }
+    if (requestUrl.pathname === "/internal/freedom-market-depth-stream-ticket") {
+      return this.handleFreedomMarketDepthStreamTicketRequest(request);
+    }
+    if (requestUrl.pathname === "/internal/freedom-market-depth-stream-socket") {
+      return this.handleFreedomMarketDepthStreamSocketRequest(request);
     }
     if (requestUrl.pathname.startsWith("/internal/freedom-tradenet-session")) {
       const sessionResponse = await this.handleFreedomTradeNetSessionRequest(request);

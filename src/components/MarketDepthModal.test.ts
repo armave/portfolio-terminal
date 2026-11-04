@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { normalizeMarketDepthSnapshot, summarizeMarketDepth } from './MarketDepthModal';
+import { groupFreedomMarketDepthByPrice } from '../services/freedomMarketDepth.js';
 
 const response = {
   ok: true,
@@ -82,19 +83,37 @@ describe('Market Depth book summary', () => {
 });
 
 describe('Market Depth modal wiring', () => {
-  it('uses the bounded endpoint and offers an accessible ladder, details table, refresh, and read-only state', () => {
+  it('uses a live admin socket and offers an accessible price-grouped ladder and details table', () => {
     const modalSource = readFileSync(new URL('./MarketDepthModal.tsx', import.meta.url), 'utf8');
     const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
 
-    expect(modalSource).toContain("proxyFetch('freedom-market-depth'");
+    expect(modalSource).toContain('createFreedomMarketDepthStreamRuntime');
+    expect(modalSource).toContain('groupFreedomMarketDepthByPrice');
     expect(modalSource).toContain('role="dialog"');
     expect(modalSource).toContain('aria-modal="true"');
     expect(modalSource).toContain('aria-label="Proportional market depth ladder"');
     expect(modalSource).toContain('<details');
-    expect(modalSource).toContain('Refresh depth');
-    expect(modalSource).toContain('broker-provided levels only');
+    expect(modalSource).toContain('maximum depth available to this account');
+    expect(modalSource).toContain('Rows at identical prices are combined');
+    expect(modalSource).toContain('runtime.stop()');
     expect(appSource).toContain('if (permissions.isAdmin) setMarketDepthTicker');
     expect(appSource).toContain('{permissions.isAdmin && marketDepthTicker');
-    expect(appSource).toContain("if (user?.role !== 'admin') setMarketDepthTicker(null)");
+    expect(appSource).toContain('setMarketDepthTicker(null)');
+  });
+
+  it('aggregates multiple broker levels at the same price for the displayed book', () => {
+    const grouped = groupFreedomMarketDepthByPrice({
+      symbol: 'GOOGL.US',
+      bids: [
+        { position: 0, price: 287.72, quantity: 10 },
+        { position: 1, price: 287.72, quantity: 5 }
+      ],
+      asks: [
+        { position: 0, price: 287.79, quantity: 20 },
+        { position: 1, price: 287.79, quantity: 7 }
+      ]
+    });
+    expect(grouped.bids).toEqual([{ position: 0, price: 287.72, quantity: 15 }]);
+    expect(grouped.asks).toEqual([{ position: 0, price: 287.79, quantity: 27 }]);
   });
 });

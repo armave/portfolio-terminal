@@ -27,7 +27,7 @@ It is **not** a broker connection, order-entry system, source of official accoun
 
 * **Multi-Provider Market Data:** Streams live prices, premarket indicators, and analyst targets via Finnhub, Twelve Data, Alpha Vantage, RapidAPI Yahoo Finance, and Stooq.
 
-* **TradeNet WebSocket Account Refresh:** Live `q`, `portfolio`, and `orders` WebSocket streams provide quotes, USD balances/positions, and active orders, with REST fallbacks or history backfills where applicable. The `markets` event provides exchange-level status/schedule metadata, not security quote prices. Administrators can open a bounded, read-only Market Depth modal from margin-position cards and Balance holdings; its `orderBook` snapshot summarizes best prices, spread, visible liquidity, and detailed levels.
+* **TradeNet WebSocket Account Refresh:** Live `q`, `portfolio`, and `orders` WebSocket streams provide quotes, USD balances/positions, and active orders, with REST fallbacks or history backfills where applicable. The `markets` event provides exchange-level status/schedule metadata, not security quote prices. Administrators can open a read-only, modal-scoped Market Depth stream from margin-position cards and Balance holdings. It requests TradeNet's `orderBook` feed, displays the maximum depth returned to the account, groups rows by price, and closes the stream with the modal.
 
 * **Freedom Broker Account Reconciliation:** When the authenticated read-only Freedom TradeNet account API returns a valid snapshot, the app prioritizes the broker's USD balance, aggregate share quantities, and available broker-reported prices. App-owned trade lots and cost basis remain separate; quantity mismatches are surfaced instead of silently rewriting lots.
 
@@ -156,7 +156,7 @@ The Worker exposes a compact public US-equities market status through `?action=f
 
 The active account refresh now uses `?action=freedom-portfolio-snapshot` as its primary source for sanitized, loaded USD balances and positions from the authenticated `portfolio` event; REST `freedom-positions` (`getPositionJson`) is the automatic fallback. Both use the same portfolio normalizer. The admin Settings comparison remains available to reconcile the WebSocket and REST values with a 0.01 numeric tolerance without changing saved holdings or portfolio state.
 
-The signed REST market-data endpoints continue to use `FREEDOM_PUBLIC_KEY` and `FREEDOM_PRIVATE_KEY`. `GATEWAY_SECRET` remains the Worker gateway/bootstrap secret. Market Depth is administrator-only and read-only; the dashboard modal makes a bounded snapshot request and does not expose order placement.
+The signed REST market-data endpoints continue to use `FREEDOM_PUBLIC_KEY` and `FREEDOM_PRIVATE_KEY`. `GATEWAY_SECRET` remains the Worker gateway/bootstrap secret. Market Depth is administrator-only and read-only; a single-use ticket binds each live modal stream to its ticker, and the browser never receives the TradeNet SID or credentials. TradeNet determines the available depth for the account; the relay applies a 1,000-level-per-side safety cap and the UI combines rows at identical prices. Closing the modal closes both the browser socket and its upstream TradeNet connection. No order placement is exposed.
 
 If TradeNet requires an additional SMS or verification challenge during password login, the diagnostic login will fail safely; interactive challenge handling is not implemented.
 

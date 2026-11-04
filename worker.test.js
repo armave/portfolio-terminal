@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import worker, { fetchWithTimeout, normalizeMarketState, normalizeFreedomUsMarketPhase, selectFreedomUsMarketStatus, sanitizeFreedomPositions, sanitizeFreedomActiveOrders, sanitizeFreedomMarketDepth } from './worker.js';
 import { PortfolioStateDO } from './state-store.js';
+import { createFreedomMarketDepthBook } from './src/services/freedomMarketDepth.js';
 
 describe('upstream timeout coverage', () => {
   afterEach(() => {
@@ -970,12 +971,12 @@ describe('Freedom Market Depth snapshot', () => {
     expect(() => sanitizeFreedomMarketDepth({ i: 'MSFT.US', ins: [] }, 'AAPL.US')).toThrow(/requested symbol/);
   });
 
-  it('limits each side to 100 levels', () => {
-    const ins = Array.from({ length: 125 }, (_, k) => ({
+  it('retains the maximum bounded depth per side', () => {
+    const ins = Array.from({ length: 1205 }, (_, k) => ({
       k, p: 100 + k, q: 1, s: 'B'
     }));
     const result = sanitizeFreedomMarketDepth({ i: 'AAPL.US', ins }, 'AAPL.US');
-    expect(result.bids).toHaveLength(100);
+    expect(result.bids).toHaveLength(1000);
     expect(result.asks).toHaveLength(0);
   });
 
@@ -2731,6 +2732,52 @@ describe('guest data isolation at the Worker boundary', () => {
     expect(namespace.idFromName).toHaveBeenCalledWith('portfolio_state');
   });
 
+  it('issues a ticker-scoped Market Depth socket ticket only for authenticated administrators', async () => {
+    let role = 'admin';
+    const stateStub = {
+      fetch: vi.fn(async request => {
+        const url = new URL(request.url);
+        if (url.pathname === '/api/auth/verify') {
+          return new Response(JSON.stringify({ user: { id: 'admin-2', role } }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        if (url.pathname === '/internal/freedom-market-depth-stream-ticket') {
+          expect(await request.json()).toEqual({
+            accountId: 'admin-2',
+            role: 'admin',
+            symbol: 'GOOGL.US'
+          });
+          return new Response(JSON.stringify({
+            ok: true, ticket: 'f'.repeat(64), expiresAt: Date.now() + 60_000, symbol: 'GOOGL.US'
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        throw new Error('Unexpected Durable Object path: ' + url.pathname);
+      })
+    };
+    const namespace = {
+      idFromName: vi.fn(name => name),
+      get: vi.fn(() => stateStub)
+    };
+    const request = () => worker.fetch(new Request(
+      'https://worker.test/?action=freedom-market-depth-stream-ticket&symbol=googl',
+      { headers: { 'X-App-Auth': 'admin-session-token', Authorization: '******' } }
+    ), { PORTFOLIO_STATE_DO: namespace });
+
+    const response = await request();
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      provider: 'Freedom TradeNet',
+      ticket: 'f'.repeat(64),
+      symbol: 'GOOGL.US'
+    });
+
+    role = 'guest';
+    const guestResponse = await request();
+    expect(guestResponse.status).toBe(403);
+  });
+
   it('allows guests to receive the sanitized public q quote stream through the server-side broker session', async () => {
     const listeners = new Map();
     const socket = {
@@ -3237,6 +3284,142 @@ describe('Durable Object private portfolio and orders stream', () => {
       expect(serialized).not.toContain('private-login');
       expect(serialized).not.toContain('hidden');
       expect(store.freedomAccountUpstreamReady).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('Durable Object administrator Market Depth live stream', () => {
+  function createStorage() {
+    const values = new Map();
+    return {
+      storage: {
+        get: vi.fn(async key => values.get(key)),
+        put: vi.fn(async (key, value) => values.set(key, value)),
+        delete: vi.fn(async key => values.delete(key)),
+        transaction: vi.fn(async callback => callback({
+          get: async key => values.get(key),
+          put: async (key, value) => values.set(key, value),
+          delete: async key => values.delete(key)
+        })),
+        setAlarm: vi.fn(async () => undefined),
+        deleteAlarm: vi.fn(async () => undefined)
+      }
+    };
+  }
+
+  it('issues ticker-bound single-use tickets only for administrators', async () => {
+    const { storage } = createStorage();
+    const store = new PortfolioStateDO({ storage }, {});
+    const guest = await store.handleFreedomMarketDepthStreamTicketRequest(new Request(
+      'https://state.test/internal/freedom-market-depth-stream-ticket',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: 'guest-1', role: 'guest', symbol: 'AAPL' }) }
+    ));
+    expect(guest.status).toBe(403);
+
+    const response = await store.handleFreedomMarketDepthStreamTicketRequest(new Request(
+      'https://state.test/internal/freedom-market-depth-stream-ticket',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: 'admin-1', role: 'admin', symbol: 'googl' }) }
+    ));
+    expect(response.status).toBe(200);
+    const issued = await response.json();
+    expect(issued).toMatchObject({ ok: true, symbol: 'GOOGL.US' });
+    await expect(store.consumeFreedomMarketDepthStreamTicket(issued.ticket)).resolves.toEqual({
+      accountId: 'admin-1', role: 'admin', symbol: 'GOOGL.US'
+    });
+    await expect(store.consumeFreedomMarketDepthStreamTicket(issued.ticket)).resolves.toBeNull();
+  });
+
+  it('subscribes upstream with the documented maximum book request and sanitizes live updates', async () => {
+    const listeners = new Map();
+    const upstream = {
+      addEventListener: vi.fn((name, callback) => {
+        listeners.set(name, [...(listeners.get(name) || []), callback]);
+      }),
+      accept: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+      readyState: 1
+    };
+    const browserMessages = [];
+    const client = {
+      readyState: 1,
+      send: vi.fn(message => browserMessages.push(JSON.parse(message))),
+      close: vi.fn()
+    };
+    upstream.send.mockImplementation(message => {
+      expect(JSON.parse(message)).toEqual(['orderBook', ['GOOGL.US']]);
+      queueMicrotask(() => {
+        for (const callback of listeners.get('message') || []) {
+          callback({ data: JSON.stringify(['userData', { isDemo: false, real: true, mode: 'prod' }]) });
+          callback({ data: JSON.stringify(['b', {
+            i: 'GOOGL.US',
+            n: 1,
+            cnt: 2,
+            ins: [
+              { k: 0, p: 287.72, q: 10, s: 'B', owner_login: 'private-login' },
+              { k: 1, p: 287.72, q: 5, s: 'B' },
+              { k: 0, p: 287.79, q: 20, s: 'S', account_id: 'private-account' }
+            ]
+          }]) });
+        }
+      });
+    });
+    const { storage } = createStorage();
+    const ctx = {
+      storage,
+      getWebSockets: vi.fn(() => [client])
+    };
+    const store = new PortfolioStateDO(ctx, {
+      FREEDOM_LOGIN: 'broker-login',
+      FREEDOM_PASSWORD: 'broker-password'
+    });
+    const session = {
+      streamId: 'stream-1',
+      accountId: 'admin-1',
+      role: 'admin',
+      symbol: 'GOOGL.US',
+      createdAt: Date.now(),
+      lastActivityAt: Date.now(),
+      upstream: null,
+      client,
+      ready: false,
+      waiter: null,
+      pendingUpdates: [],
+      book: createFreedomMarketDepthBook('GOOGL.US'),
+      lastUpdatedAt: 0
+    };
+    store.freedomDepthStreams.set(session.streamId, session);
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true, logged: true, SID: 's'.repeat(48), real: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce({ status: 101, webSocket: upstream, headers: new Headers() });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await store.connectFreedomMarketDepthUpstream(session);
+      await Promise.resolve();
+      expect(upstream.accept).toHaveBeenCalled();
+      expect(browserMessages).toContainEqual(expect.objectContaining({
+        type: 'depth',
+        symbol: 'GOOGL.US',
+        data: expect.objectContaining({
+          bids: [
+            { position: 0, price: 287.72, quantity: 10 },
+            { position: 1, price: 287.72, quantity: 5 }
+          ],
+          asks: [{ position: 0, price: 287.79, quantity: 20 }]
+        })
+      }));
+      expect(JSON.stringify(browserMessages)).not.toMatch(/private-login|private-account|owner_login|account_id/);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      store.closeFreedomMarketDepthSession(session.streamId, 'Modal closed');
+      expect(upstream.close).toHaveBeenCalledWith(1000, 'Modal closed');
+      expect(store.freedomDepthStreams.has(session.streamId)).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }

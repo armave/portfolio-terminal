@@ -1,4 +1,5 @@
 import { requestTradeNet } from "./src/services/freedomTradeNet.js";
+import { MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE } from "./src/services/freedomMarketDepth.js";
 
 const MAX_REQUEST_BYTES = 20 * 1024 * 1024;
 const MAX_PROMPT_LENGTH = 12_000;
@@ -449,9 +450,9 @@ export function sanitizeFreedomMarketDepth(payload, requestedSymbol, captureDura
     const orderedLevels = [...levels.values()].sort((left, right) =>
         left.position - right.position || left.side.localeCompare(right.side)
     );
-    const bids = orderedLevels.filter(level => level.side === "B").slice(0, 100)
+    const bids = orderedLevels.filter(level => level.side === "B").slice(0, MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE)
         .map(({ position, price, quantity }) => ({ position, price, quantity }));
-    const asks = orderedLevels.filter(level => level.side === "S").slice(0, 100)
+    const asks = orderedLevels.filter(level => level.side === "S").slice(0, MAX_FREEDOM_MARKET_DEPTH_LEVELS_PER_SIDE)
         .map(({ position, price, quantity }) => ({ position, price, quantity }));
     return {
         symbol,
@@ -1533,6 +1534,38 @@ export default {
             }
         }
 
+        if (incomingUrl.searchParams.get("action") === "freedom-market-depth-socket") {
+            if (request.method !== "GET" || request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+                return jsonError("A WebSocket upgrade is required.", 426, corsHeaders);
+            }
+            const ticket = incomingUrl.searchParams.get("ticket") || "";
+            if (!/^[a-f0-9]{64}$/i.test(ticket)) {
+                return jsonError("A valid Market Depth stream ticket is required.", 401, corsHeaders);
+            }
+            if (!env.PORTFOLIO_STATE_DO) return jsonError("PORTFOLIO_STATE_DO binding is missing.", 500, corsHeaders);
+            try {
+                const streamStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
+                const socketUrl = new URL("https://portfolio-state.internal/internal/freedom-market-depth-stream-socket");
+                socketUrl.searchParams.set("ticket", ticket);
+                const response = await streamStub.fetch(new Request(socketUrl.toString(), {
+                    method: "GET",
+                    headers: { Upgrade: "websocket" }
+                }));
+                if (response.status === 101 && response.webSocket) return response;
+                const responseHeaders = new Headers(response.headers);
+                Object.entries(corsHeaders).forEach(([name, value]) => responseHeaders.set(name, value));
+                return new Response(response.body, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: responseHeaders
+                });
+            } catch (error) {
+                console.error("Persistent TradeNet Market Depth socket failed", error);
+                return jsonError("Could not establish the TradeNet Market Depth socket.", 502, corsHeaders);
+            }
+        }
+
+
         if (incomingUrl.pathname.startsWith("/api/auth/")) {
             if (request.method === "POST" && AUTH_EDGE_RATE_LIMITED_PATHS.has(incomingUrl.pathname)) {
                 const rateLimitResponse = await enforceAuthEdgeRateLimit(
@@ -1663,7 +1696,7 @@ export default {
             const sharedDataAction = [
                 "state", "history", "freedom-test", "freedom-positions", "freedom-trades",
                 "freedom-orders", "freedom-cashflows", "freedom-orders-stream", "freedom-market-depth", "freedom-portfolio-snapshot",
-                "freedom-account-stream-ticket"
+                "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket"
             ].includes(action);
             // Market quotes and exchange schedules are public, read-only data.
             // Guests may use the same server-side authenticated q / markets
@@ -1678,10 +1711,10 @@ export default {
             }
         }
 
-        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
+        if (action && !["state", "history", "news", "gemini", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"].includes(action)) {
             return jsonError("Unsupported action.", 400, corsHeaders);
         }
-        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-status", "quote"]);
+        const getOnlyActions = new Set(["news", "provider-quote", "stocktwits", "freedom-test", "freedom-positions", "freedom-trades", "freedom-quote", "freedom-news", "freedom-history", "freedom-cashflows", "freedom-orders", "freedom-orders-stream", "freedom-market-depth", "freedom-event-stream", "freedom-portfolio-snapshot", "freedom-quote-stream", "freedom-quote-stream-ticket", "freedom-account-stream-ticket", "freedom-market-depth-stream-ticket", "freedom-market-status", "quote"]);
         if (getOnlyActions.has(action) && request.method !== "GET") {
             return jsonError("This action only supports GET.", 405, corsHeaders);
         }
@@ -1713,6 +1746,39 @@ export default {
                 ticket: ticketPayload.ticket,
                 expiresAt: ticketPayload.expiresAt,
                 events: ["portfolio", "orders"]
+            }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
+        }
+
+        if (action === "freedom-market-depth-stream-ticket") {
+            if (!env.PORTFOLIO_STATE_DO || !accountId || accountRole !== "admin") {
+                return jsonError("An administrator account is required for Market Depth.", 403, corsHeaders);
+            }
+            const rawSymbol = url.searchParams.get("symbol") || "";
+            const normalized = rawSymbol.trim().toUpperCase();
+            const requestedSymbol = normalized && !normalized.includes(".") ? `${normalized}.US` : normalized;
+            if (!/^[A-Z0-9.^=-]{1,32}$/.test(requestedSymbol)) {
+                return jsonError("Provide one valid ticker for Market Depth.", 400, corsHeaders);
+            }
+            const streamStub = env.PORTFOLIO_STATE_DO.get(env.PORTFOLIO_STATE_DO.idFromName("portfolio_state"));
+            const ticketResponse = await streamStub.fetch(new Request(
+                "https://portfolio-state.internal/internal/freedom-market-depth-stream-ticket",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ accountId, role: "admin", symbol: requestedSymbol })
+                }
+            ));
+            const ticketPayload = await ticketResponse.json().catch(() => null);
+            if (!ticketResponse.ok || ticketPayload?.ok !== true ||
+                typeof ticketPayload.ticket !== "string" || typeof ticketPayload.symbol !== "string") {
+                return jsonError(ticketPayload?.error || "Could not create a Market Depth stream ticket.", ticketResponse.status || 502, corsHeaders);
+            }
+            return new Response(JSON.stringify({
+                ok: true,
+                provider: "Freedom TradeNet",
+                ticket: ticketPayload.ticket,
+                expiresAt: ticketPayload.expiresAt,
+                symbol: ticketPayload.symbol
             }), { headers: { ...corsHeaders, "Cache-Control": "no-store" } });
         }
 

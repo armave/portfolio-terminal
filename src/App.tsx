@@ -592,7 +592,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       const user = event.detail.user;
       // Invalidate broker work synchronously, before Preact schedules the state update.
       brokerSessionIdentityRef.current.setIdentity(user ? `${user.role}:${user.id}` : null);
-      if (user?.role !== 'admin') setMarketDepthTicker(null);
+      setMarketDepthTicker(null);
       setCurrentUser(user);
       setAppLanguage(user?.language ?? 'en');
     };
@@ -858,7 +858,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       {scenarioModalData && <Suspense fallback={null}><ScenarioComparisonModal data={scenarioModalData} onClose={closeScenarioModal} /></Suspense>}
       {scenarioReport !== null && <Suspense fallback={null}><ScenarioReportModal key={scenarioReport} report={scenarioReport} dataQualityWarning={scenarioDataQualityWarning} quoteProvenanceHoldings={scenarioQuoteProvenanceHoldings} onClose={dismissScenarioReport} /></Suspense>}
       {permissions.canViewMarginDesk && marginIntelligence && <Suspense fallback={null}><MarginIntelligenceModal data={marginIntelligence} onClose={closeMarginIntelligence} onRefresh={() => emitUiEvent('terminal:margin-intelligence-request', { ticker: marginIntelligence.ticker, refresh: true })} /></Suspense>}
-      {permissions.isAdmin && marketDepthTicker && <Suspense fallback={null}><MarketDepthModal key={marketDepthTicker} ticker={marketDepthTicker} onClose={() => setMarketDepthTicker(null)} /></Suspense>}
+      {permissions.isAdmin && marketDepthTicker && <Suspense fallback={null}><MarketDepthModal key={`${marketDepthTicker}:${currentUser?.id || ''}`} ticker={marketDepthTicker} sessionKey={`admin:${currentUser?.id || ''}`} onClose={() => setMarketDepthTicker(null)} /></Suspense>}
       <div id="toastContainer" class="pointer-events-none fixed top-4 right-4 z-50 flex flex-col gap-2" aria-live="assertive">
         {errorToasts.map((toast) => <div key={toast.id} role="alert" class={'pointer-events-auto rounded-lg border border-rose-800 bg-slate-900/95 px-3.5 py-2 text-xs font-mono font-semibold text-rose-200 shadow-lg backdrop-blur transition-all ' + (toast.isClosing ? 'opacity-0 translate-x-2' : '')}>{toast.message}</div>)}
       </div>

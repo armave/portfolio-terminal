@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { proxyFetch } from '../services/api';
+import { buildFreedomMarketDepthStreamSocketUrl, createFreedomMarketDepthStreamTicket } from '../services/api';
+import { groupFreedomMarketDepthByPrice } from '../services/freedomMarketDepth.js';
+import { createFreedomMarketDepthStreamRuntime, type FreedomMarketDepthStreamRuntime, type FreedomMarketDepthStreamStatus } from '../services/freedomMarketDepthStreamRuntime';
 import { useDialogFocus } from '../ui/dialogFocus';
 
 export interface MarketDepthLevel {
@@ -26,6 +28,7 @@ export interface MarketDepthSnapshot {
 
 interface MarketDepthModalProps {
   ticker: string;
+  sessionKey: string;
   onClose: () => void;
 }
 
@@ -57,14 +60,17 @@ function isMarketDepthLevel(value: unknown): value is MarketDepthLevel {
 }
 
 export function normalizeMarketDepthSnapshot(value: unknown, ticker: string): MarketDepthSnapshot {
-  if (!isRecord(value) || value.ok !== true || !isRecord(value.data)) {
-    const message = isRecord(value) && typeof value.error === 'string'
-      ? value.error
-      : 'TradeNet did not return a Market Depth snapshot.';
-    throw new Error(message);
+  if (!isRecord(value)) {
+    throw new Error('TradeNet did not return a Market Depth update.');
   }
 
-  const data = value.data;
+  if (value.ok !== true && (typeof value.symbol !== 'string' || typeof value.updatedAt !== 'number')) {
+    const message = typeof value.error === 'string'
+      ? value.error
+      : 'TradeNet did not return a Market Depth update.';
+    throw new Error(message);
+  }
+  const data = isRecord(value.data) ? value.data : value;
   const expectedSymbol = expectedDepthSymbol(ticker);
   if (data.symbol !== expectedSymbol ||
       !Array.isArray(data.bids) || !data.bids.every(isMarketDepthLevel) ||
@@ -88,7 +94,7 @@ export function normalizeMarketDepthSnapshot(value: unknown, ticker: string): Ma
       : {}),
     bids: data.bids,
     asks: data.asks,
-    updatedAt: value.updatedAt
+    updatedAt: value.updatedAt as number
   };
 }
 
@@ -161,34 +167,67 @@ function MarketDepthSide({ side, levels, maxQuantity }: {
   </section>;
 }
 
-export function MarketDepthModal({ ticker, onClose }: MarketDepthModalProps) {
+export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthModalProps) {
   const [snapshot, setSnapshot] = useState<MarketDepthSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [requestNumber, setRequestNumber] = useState(0);
+  const [streamStatus, setStreamStatus] = useState<FreedomMarketDepthStreamStatus>('connecting');
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const streamRef = useRef<FreedomMarketDepthStreamRuntime | null>(null);
+  if (!streamRef.current) {
+    streamRef.current = createFreedomMarketDepthStreamRuntime({
+      createTicket: createFreedomMarketDepthStreamTicket,
+      buildSocketUrl: buildFreedomMarketDepthStreamSocketUrl,
+      onDepth: (symbol, data, updatedAt, activeSessionKey) => {
+        if (activeSessionKey !== sessionKey || symbol !== expectedDepthSymbol(ticker)) return;
+        try {
+          setSnapshot(groupFreedomMarketDepthByPrice(normalizeMarketDepthSnapshot({
+            symbol,
+            data,
+            updatedAt
+          }, ticker)));
+          setError('');
+          setLoading(false);
+        } catch (snapshotError) {
+          setError(snapshotError instanceof Error ? snapshotError.message : 'TradeNet Market Depth update was invalid.');
+        }
+      },
+      onStatus: (status, message) => {
+        setStreamStatus(status);
+        if (status === 'connected') {
+          setError('');
+          setLoading(false);
+        } else if (status === 'error') {
+          setError(message || 'The live TradeNet Market Depth connection failed.');
+          setLoading(false);
+        } else if (status === 'disconnected' && message) {
+          setError(message);
+          setLoading(false);
+        }
+      }
+    });
+  }
   useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: onClose });
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError('');
-    void proxyFetch('freedom-market-depth', { symbol: ticker }, { cache: 'no-store' })
-      .then((response: unknown) => normalizeMarketDepthSnapshot(response, ticker))
-      .then((depth) => {
-        if (active) setSnapshot(depth);
-      })
-      .catch((requestError: unknown) => {
-        if (!active) return;
-        setError(requestError instanceof Error ? requestError.message : 'TradeNet Market Depth request failed.');
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => { active = false; };
-  }, [ticker, requestNumber]);
+    setSnapshot(null);
+    setStreamStatus('connecting');
+    const runtime = streamRef.current!;
+    void runtime.start(ticker, sessionKey).then((opened) => {
+      if (active && !opened && !runtime.isConnected()) {
+        setLoading(false);
+        setError((current) => current || 'Could not establish the live TradeNet Market Depth stream.');
+      }
+    });
+    return () => {
+      active = false;
+      runtime.stop();
+    };
+  }, [ticker, sessionKey]);
 
   const summary = snapshot ? summarizeMarketDepth(snapshot) : null;
   const levels = snapshot ? [...snapshot.bids, ...snapshot.asks] : [];
@@ -214,29 +253,28 @@ export function MarketDepthModal({ ticker, onClose }: MarketDepthModalProps) {
         <div>
           <div class="text-[10px] font-mono font-bold uppercase tracking-[0.2em] text-emerald-300">TradeNet · Order Book</div>
           <h2 id="marketDepthTitle" class="mt-1 text-xl font-black tracking-tight text-white">{ticker.trim().toUpperCase()} Market Depth</h2>
-          <p class="mt-1 text-xs text-slate-400">Authenticated snapshot · read-only · broker-provided levels only</p>
+          <p class="mt-1 text-xs text-slate-400">Authenticated live book · read-only · maximum depth available to this account</p>
         </div>
         <div class="flex shrink-0 items-center gap-2">
-          <button type="button" onClick={() => setRequestNumber((number) => number + 1)} disabled={loading} aria-busy={loading} class="rounded-lg border border-emerald-800 px-3 py-2 text-xs font-bold text-emerald-200 hover:bg-emerald-950/50 disabled:cursor-not-allowed disabled:opacity-50">
-            {loading ? 'Collecting…' : '↻ Refresh depth'}
-          </button>
+          <span class={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${streamStatus === 'connected' ? 'border-emerald-800 bg-emerald-950/30 text-emerald-300' : streamStatus === 'error' ? 'border-rose-800 bg-rose-950/30 text-rose-300' : 'border-cyan-900 bg-cyan-950/20 text-cyan-200'}`} role="status" aria-live="polite">
+            {streamStatus === 'connected' ? '● Live' : streamStatus === 'error' ? 'Stream error' : 'Connecting…'}
+          </span>
           <button ref={closeButtonRef} type="button" onClick={onClose} class="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800">Close</button>
         </div>
       </header>
 
       <div class="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5" role="region" aria-labelledby="marketDepthTitle" tabIndex={0}>
         {loading && <p class="mb-3 rounded-lg border border-cyan-900/50 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-200" role="status" aria-live="polite">
-          Collecting authenticated book updates for up to 8 seconds{snapshot ? ' · previous snapshot remains visible' : '…'}
+          Opening the authenticated live book stream{snapshot ? ' · latest book remains visible' : '…'}
         </p>}
         {error && <p class="mb-3 rounded-lg border border-rose-800/60 bg-rose-950/30 px-3 py-2 text-xs text-rose-200" role="alert">{error}</p>}
 
         {snapshot && summary && <>
           <div class="mb-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
-            <span>{snapshot.symbol} · captured {new Date(snapshot.updatedAt).toLocaleTimeString()}</span>
+            <span>{snapshot.symbol} · updated {new Date(snapshot.updatedAt).toLocaleTimeString()}</span>
             <span>
-              {snapshot.bids.length} bids / {snapshot.asks.length} asks
+              {snapshot.bids.length} bid prices / {snapshot.asks.length} ask prices
               {snapshot.updateCount !== undefined ? ` · ${snapshot.updateCount} updates` : ''}
-              {snapshot.captureDurationMs !== undefined ? ` over ${(snapshot.captureDurationMs / 1000).toFixed(1)}s` : ''}
               {snapshot.sequence !== undefined ? ` · seq ${snapshot.sequence}` : ''}
             </span>
           </div>
@@ -271,7 +309,7 @@ export function MarketDepthModal({ ticker, onClose }: MarketDepthModalProps) {
 
           {hasLevels ? <section aria-label="Proportional market depth ladder" class="mb-4">
             <div class="mb-2 flex flex-wrap items-end justify-between gap-2">
-              <div><h3 class="text-sm font-bold text-slate-100">Liquidity ladder</h3><p class="text-[10px] text-slate-500">Bars scale to the largest displayed level · cumulative size is shown per side</p></div>
+              <div><h3 class="text-sm font-bold text-slate-100">Price-grouped liquidity ladder</h3><p class="text-[10px] text-slate-500">Quantities at identical prices are combined · bars scale to the largest displayed price level</p></div>
               {summary.midpoint !== null && <span class="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-mono text-slate-300">Mid {formatDepthNumber(summary.midpoint)}</span>}
             </div>
             <div class="grid gap-3 md:grid-cols-2">
@@ -284,7 +322,7 @@ export function MarketDepthModal({ ticker, onClose }: MarketDepthModalProps) {
 
           <details class="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60">
             <summary class="cursor-pointer list-none px-3 py-3 text-xs font-bold text-cyan-200 hover:bg-slate-900/70">
-              <span class="mr-2 text-cyan-400">＋</span>Detailed level table · {levels.length} captured levels
+              <span class="mr-2 text-cyan-400">＋</span>Detailed level table · {levels.length} distinct prices
             </summary>
             <div class="grid gap-3 border-t border-slate-800 p-3 md:grid-cols-2">
               {(['bids', 'asks'] as const).map((side) => <div key={side} class="min-w-0 overflow-x-auto">
@@ -315,14 +353,18 @@ export function MarketDepthModal({ ticker, onClose }: MarketDepthModalProps) {
           </details>
 
           <p class="mt-3 text-[10px] leading-relaxed text-slate-500">
-            Displayed size is the quantity visible in this bounded snapshot, not total exchange liquidity. TradeNet provided {snapshot.bids.length} bid and {snapshot.asks.length} ask levels.
-            {snapshot.reportedDepth !== undefined ? ` Broker depth indicator: ${snapshot.reportedDepth}.` : ''}
+            Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined. This account's feed currently contains {snapshot.bids.length} bid and {snapshot.asks.length} ask price levels.
+            {snapshot.reportedDepth !== undefined ? ` TradeNet depth indicator: ${snapshot.reportedDepth} (provider metadata, not a UI level target).` : ''}
             {snapshot.insertionsApplied !== undefined || snapshot.rowUpdatesApplied !== undefined || snapshot.deletionsApplied !== undefined
               ? ` Changes captured: +${snapshot.insertionsApplied ?? 0} / ~${snapshot.rowUpdatesApplied ?? 0} / −${snapshot.deletionsApplied ?? 0}.`
               : ''}
           </p>
         </>}
-        {!snapshot && !loading && !error && <p role="status" class="rounded-lg border border-amber-900/60 bg-amber-950/20 p-4 text-sm text-amber-200">No Market Depth snapshot is available.</p>}
+        {!snapshot && !loading && !error && <p role="status" class="rounded-lg border border-amber-900/60 bg-amber-950/20 p-4 text-sm text-amber-200">
+          {streamStatus === 'connected'
+            ? 'The authenticated maximum-available order-book subscription is open. Waiting for the first TradeNet depth update…'
+            : 'No live Market Depth data is available.'}
+        </p>}
       </div>
     </section>
   </div>;

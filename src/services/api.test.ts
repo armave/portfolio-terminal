@@ -25,6 +25,8 @@ import {
   fetchYahooQuoteData,
   createFreedomQuoteStreamTicket,
   buildFreedomQuoteStreamSocketUrl,
+  createFreedomMarketDepthStreamTicket,
+  buildFreedomMarketDepthStreamSocketUrl,
   fetchFreedomMarketStatus,
   fetchMarketNews,
   fetchStocktwitsStream,
@@ -216,6 +218,56 @@ describe('persistent Freedom quote stream transport', () => {
       Array.from({ length: 11 }, (_, index) => `TICKER${index}`)
     )).rejects.toThrow('between 1 and 10');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('administrator Market Depth stream transport', () => {
+  it('requests a ticker-bound one-use ticket over authenticated HTTPS', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      ticket: 'd'.repeat(64),
+      expiresAt: 1_800_000_000_000,
+      symbol: 'GOOGL.US'
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(createFreedomMarketDepthStreamTicket(' googl '))
+      .resolves.toEqual({
+        ticket: 'd'.repeat(64),
+        expiresAt: 1_800_000_000_000,
+        symbol: 'GOOGL.US'
+      });
+
+    const [requestUrl, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new URL(requestUrl).searchParams.get('action')).toBe('freedom-market-depth-stream-ticket');
+    expect(new URL(requestUrl).searchParams.get('symbol')).toBe('GOOGL.US');
+    expect(requestInit.cache).toBe('no-store');
+    const requestHeaders = new Headers(requestInit.headers);
+    expect(requestHeaders.get('X-App-Auth')).toBe('test-gateway-secret');
+    expect(requestHeaders.get('Authorization')).toBeTruthy();
+  });
+
+  it('builds a browser socket URL with only the scoped ticket', () => {
+    const url = new URL(buildFreedomMarketDepthStreamSocketUrl('e'.repeat(64)));
+    expect(url.protocol).toBe('wss:');
+    expect(url.searchParams.get('action')).toBe('freedom-market-depth-socket');
+    expect(url.searchParams.get('ticket')).toBe('e'.repeat(64));
+    expect(url.searchParams.has('symbol')).toBe(false);
+    expect(url.searchParams.has('SID')).toBe(false);
+    expect(url.searchParams.has('secret')).toBe(false);
+  });
+
+  it('rejects invalid tickers and invalid ticket payloads', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      ticket: 'invalid',
+      symbol: 'AAPL.US'
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(createFreedomMarketDepthStreamTicket('AAPL,MSFT')).rejects.toThrow('valid ticker');
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(createFreedomMarketDepthStreamTicket('AAPL')).rejects.toThrow('valid Market Depth stream ticket');
   });
 });
 
