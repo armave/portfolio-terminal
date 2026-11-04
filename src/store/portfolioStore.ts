@@ -17,9 +17,9 @@ import {
   loadSavedState,
   saveState,
   loadBrokerRules,
-  saveBrokerRules,
   getQuoteRefreshInterval
 } from '../services/storage';
+import type { PortfolioSnapshotOptions } from '../services/storage';
 import { calculateCommission, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
 import { validateSaleCostBasisTranches } from '../domain/saleCostBasis';
 import { allocateFifoSaleTranches, calculateSaleAccounting, calculateSaleCommission, createClosedTradeRecord, resolveClosedTradeTimestamp, settleSaleProceeds } from '../domain/portfolioTransactions';
@@ -435,7 +435,8 @@ export class PortfolioStore {
   public update(
     updater: (state: PortfolioState) => PortfolioState,
     persist = true,
-    source: PortfolioStoreChangeSource = 'durable'
+    source: PortfolioStoreChangeSource = 'durable',
+    persistenceOptions?: PortfolioSnapshotOptions
   ): boolean {
     const next = updater(this.state);
 
@@ -448,7 +449,7 @@ export class PortfolioStore {
       lastUpdated: Date.now()
     });
 
-    if (persist && !saveState(candidate)) {
+    if (persist && !saveState(candidate, undefined, persistenceOptions)) {
       this.notifyPersistenceFailure();
       return false;
     }
@@ -578,14 +579,16 @@ export class PortfolioStore {
   }
 
   public updateAssumptions(rules: unknown): boolean {
-    let mergedRules: ReturnType<typeof normalizeBrokerAssumptions> | null = null;
-    const committed = this.update((state) => {
-      mergedRules = normalizeBrokerAssumptions(rules, state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS);
-      return { ...state, brokerAssumptions: mergedRules };
-    });
-    if (!committed || !mergedRules) return false;
-    saveBrokerRules(mergedRules);
-    return true;
+    const mergedRules = normalizeBrokerAssumptions(
+      rules,
+      this.state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS
+    );
+    return this.update(
+      (state) => ({ ...state, brokerAssumptions: mergedRules }),
+      true,
+      'durable',
+      { brokerRules: mergedRules }
+    );
   }
 
   /** Persist a rollover boundary through the canonical store. */
@@ -638,7 +641,8 @@ export class PortfolioStore {
   }
 
   public setCashBalance(amount: number): boolean {
-    const num = Number(amount) || 0;
+    if (!Number.isFinite(amount)) return false;
+    const num = amount;
     return this.update((state) => {
       const freeCash = Math.max(0, num);
       // A positive balance entry represents available cash and clears any old margin debt.
@@ -777,14 +781,20 @@ export class PortfolioStore {
 
   public removeTranche(ticker: string, trancheId: string): void {
     const clean = ticker.trim().toUpperCase();
+    const prefix = clean ? `${clean}-` : '';
+    if (!prefix || !trancheId.startsWith(prefix)) return;
+
+    const indexText = trancheId.slice(prefix.length);
+    if (!/^\d+$/.test(indexText)) return;
+    const idxToRemove = Number(indexText);
+
     this.update((state) => {
       const positions = { ...(state.positions || {}) };
       const pos = positions[clean];
-      if (!pos) return state;
+      if (!pos || !Array.isArray(pos.tranches) || idxToRemove >= pos.tranches.length) return state;
 
-      const idxMatch = trancheId.match(/-(\d+)$/);
-      const idxToRemove = idxMatch ? parseInt(idxMatch[1], 10) : -1;
-      const nextTranches = (pos.tranches || []).filter((_, i) => i !== idxToRemove);
+      const nextTranches = pos.tranches.filter((_, i) => i !== idxToRemove);
+      if (nextTranches.length === pos.tranches.length) return state;
 
       if (nextTranches.length === 0) {
         delete positions[clean];
@@ -1240,11 +1250,22 @@ export class PortfolioStore {
   public removeCashStock(indexOrTicker: number | string): boolean {
     return this.update((state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
-      const nextHoldings =
-        typeof indexOrTicker === 'number'
-          ? holdings.filter((_, idx) => idx !== indexOrTicker)
-          : holdings.filter((h) => h.ticker.toUpperCase() !== indexOrTicker.toUpperCase());
+      let nextHoldings: typeof holdings;
 
+      if (typeof indexOrTicker === 'number') {
+        if (!Number.isInteger(indexOrTicker) || indexOrTicker < 0 || indexOrTicker >= holdings.length) {
+          return state;
+        }
+        nextHoldings = holdings.filter((_, idx) => idx !== indexOrTicker);
+      } else {
+        const clean = indexOrTicker.trim().toUpperCase();
+        if (!clean || !holdings.some((holding) => holding.ticker.toUpperCase() === clean)) {
+          return state;
+        }
+        nextHoldings = holdings.filter((holding) => holding.ticker.toUpperCase() !== clean);
+      }
+
+      if (nextHoldings.length === holdings.length) return state;
       return {
         ...state,
         cashCushion: {
@@ -1351,7 +1372,9 @@ export class PortfolioStore {
 
   public deleteClosedTrade(index: number): void {
     this.update((state) => {
-      const nextClosed = (state.closedTrades || []).filter((_, idx) => idx !== index);
+      const closedTrades = state.closedTrades || [];
+      if (!Number.isInteger(index) || index < 0 || index >= closedTrades.length) return state;
+      const nextClosed = closedTrades.filter((_, idx) => idx !== index);
       return {
         ...state,
         closedTrades: nextClosed
@@ -1359,8 +1382,9 @@ export class PortfolioStore {
     });
   }
 
+  /** Pending confirmation UI state is transient and is never restored from a portfolio snapshot. */
   public setPendingMutation(mutation: PendingMutation | null): void {
-    this.setState({ pendingMutation: mutation });
+    this.setState({ pendingMutation: mutation }, false, 'derived');
   }
 
   public setApiKey(provider: keyof PortfolioState['apiKeys'], key: string): void {
