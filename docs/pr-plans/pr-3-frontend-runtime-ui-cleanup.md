@@ -1,6 +1,6 @@
 # PR 3 — Frontend runtime, UI, localization, and accessibility cleanup
 
-**Status:** Draft — implementation in progress. The first production change hardens shared nested-dialog scroll locking and adds Vitest regression coverage. The wider runtime/UI cleanup scope remains open.
+**Status:** Draft — targeted runtime lifecycle, stale-session, stylesheet, localization, and accessibility fixes are implemented with regression coverage. The wider responsive/accessibility review and final integration after PR #304 remain open.
 
 ## Implementation progress — 2026-11-04
 
@@ -57,23 +57,23 @@ Do not include `worker.js`, `state-store.js`, `src/services/freedomTradeNet.ts`,
 
 ## Implementation checklist
 
-- [ ] Trace remaining `app.ts` responsibilities and callers before extraction; retain `app.ts` as the runtime composition root.
+- [x] Trace remaining `app.ts` responsibilities and callers before extraction; retain `app.ts` as the runtime composition root.
 - [ ] Extract only cohesive lifecycle/event groups with explicit typed dependencies, disposers, and tests.
-- [ ] Preserve startup ordering, account-generation guards, role checks, request coalescing, and retry behavior.
+- [x] Preserve startup ordering, account-generation guards, role checks, request coalescing, and retry behavior.
 - [ ] Preserve `src/services/api.ts` compatibility exports and centralized `proxyFetch(action, params, options)` handling; do not introduce a parallel HTTP client or bypass auth/session-aware caching.
 - [ ] Review Preact components for duplicated business logic, redundant state mirrors, unnecessary subscriptions, lifecycle leaks, and sibling-owned DOM manipulation.
-- [ ] Keep financial calculations in the domain layer and portfolio mutations in the canonical store.
-- [ ] Use typed event channels (`uiEventBus` and `brokerEventBus`) rather than ad-hoc global custom events or mutable global caches.
+- [x] Keep financial calculations in the domain layer and portfolio mutations in the canonical store; this PR adds no financial formulas or portfolio mutation paths.
+- [x] Use typed event channels (`uiEventBus` and `brokerEventBus`) rather than ad-hoc global custom events or mutable global caches.
 - [ ] Review user-facing text for hardcoded strings and ensure supported English/Russian copy uses the existing i18n system.
 - [ ] Verify interpolation, dynamic labels, errors, empty/loading states, dialog actions, and accessibility names in both languages.
 - [ ] Inspect residual CSS for duplicate selectors, conflicting overrides, specificity problems, responsive overflow, and unnecessary animation.
-- [ ] Preserve the already-consolidated root tokens and reduced-motion policy. Do not reimplement CSS Stage 4.
-- [ ] Keep `startup-critical.css` separate unless a measured runtime/build issue justifies changing its role.
+- [x] Preserve the already-consolidated root tokens and reduced-motion policy. Do not reimplement CSS Stage 4.
+- [x] Keep `startup-critical.css` separate; no startup-critical CSS changes were necessary.
 - [ ] Verify keyboard navigation, visible focus, dialog focus trapping/restoration, semantic table headers, narrow-screen table behavior, touch targets, and reduced motion.
-- [ ] Preserve existing lazy-loaded desk/dialog chunks; avoid creating dynamic imports for modules already statically imported in the same entry graph.
-- [ ] Keep existing bundle budgets; add assertions only when they encode a real architecture invariant.
-- [ ] Expand production-browser coverage only for gaps found in this pass; reuse the existing Playwright harness and mocked Worker routes.
-- [ ] Update architecture/refinement documentation to describe actual resulting boundaries and known limitations.
+- [x] Preserve existing lazy-loaded desk/dialog chunks; `appCodeSplitting.test.ts` continues to assert desk and modal dynamic imports.
+- [x] Keep existing entry bundle limits (500 KB raw / 165 KB gzip); existing budget tests remain in place and the production build passes.
+- [x] Reuse the existing production-browser Playwright harness and mocked Worker routes; the current smoke suite already covers auth switching, backup flows, cloud conflicts, guest publishing, and responsive mounting.
+- [x] Update architecture/refinement documentation with the audited runtime boundaries, UI lifecycle invariants, and remaining review scope.
 
 ## Non-goals and guardrails
 
