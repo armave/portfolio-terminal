@@ -5,6 +5,31 @@ import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } f
 afterEach(() => setAppLanguage('en'));
 
 describe('app localization', () => {
+  it('keeps authentication modal copy localized in Russian', () => {
+    const authenticationCopy = [
+      'Create administrator account',
+      'Portfolio Terminal sign in',
+      'Initial setup is one-time. Use the Worker Gateway Secret to create the first admin account.',
+      'Sign in with the account created by an administrator.',
+      'Could not connect to the authentication service.',
+      'The account was created, but this device could not establish its session.',
+      'Checking account setup…',
+      'Name',
+      'Password',
+      'Use at least 6 characters.',
+      'Gateway Secret',
+      'Create admin account',
+      'Sign in',
+      'Loading portfolio…',
+      'Loading your portfolio and assigned stocks. Please wait…',
+      'Authentication failed.'
+    ];
+
+    for (const copy of authenticationCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('defaults to English', () => {
     expect(getAppLanguage()).toBe('en');
     expect(translateText('Sign out')).toBe('Sign out');
