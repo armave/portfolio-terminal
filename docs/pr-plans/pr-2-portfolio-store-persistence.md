@@ -109,21 +109,22 @@ docs: record store and persistence boundary decisions
 
 ## Dependency and merge protocol
 
-PR 1 must be merged first. After that, update/rebase this branch on the latest `main`, resolve conflicts semantically, rerun all validation, and only then request review/merge.
+PR #303 is merged. This branch was synchronized with that latest `main` using a two-parent merge commit; the branch is now based on the merged financial-domain contract. The synchronized head was revalidated by the complete CI workflow before review.
 
-Do not stack this branch on a stale copy of main or silently reimplement domain behavior.
+Do not stack future changes on a stale copy of main or silently reimplement domain behavior.
 
 
 ## Remaining limitations
 
 - Browser `localStorage` does not provide native multi-key transactions. The storage service snapshots prior values and attempts reverse-order rollback; if the browser also rejects rollback writes, it logs the error and cannot guarantee repair.
 - This PR does not change cloud revision coordination, encrypted envelopes, Durable Objects, authorization, or Worker behavior.
-- The final branch must still be reconciled with the merged PR #303 domain contract before merge; PR #305 remains a separate frontend workstream.
+- PR #303 was merged into `main` at `d96516cff777ece1b2c2c6f4646aa17515d0b526` and integrated into this branch as the first parent of `2b172ecd50d0c4b0c870711f0b79aea00eebd3d6`. The four changed paths in this PR do not overlap PR #303's domain files. PR #305 remains a separate frontend workstream.
 
 
 ## Exact-head validation record
 
-- Implementation head: `8c41439857731ce6fecd3406cde577fe2dd5d348`
-- GitHub Actions: [run 41773576184](https://github.com/armave/portfolio-terminal/actions/runs/41773576184) — **success**
+- Integrated PR head: `2b172ecd50d0c4b0c870711f0b79aea00eebd3d6`
+- Included main/PR #303 head: `d96516cff777ece1b2c2c6f4646aa17515d0b526`
+- GitHub Actions: [run 41774603726](https://github.com/armave/portfolio-terminal/actions/runs/41774603726) — **success**
 - Passed steps: dependency installation, TypeScript typecheck, full Vitest suite, production build, Playwright runner setup, Chromium installation, production browser smoke test, dead-code validation, full dependency audit, production dependency audit.
-- The only subsequent source change is this documentation record; CI is rerun against the new final head.
+- All checks passed on the synchronized PR head.
