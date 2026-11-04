@@ -30,6 +30,35 @@ describe('app localization', () => {
     }
   });
 
+  it('keeps scenario modal and market-status copy localized in Russian', () => {
+    const scenarioAndMarketCopy = [
+      'Close · Esc',
+      'Close scenario comparison',
+      'Compare',
+      'BEST',
+      'What-if analysis',
+      'Close',
+      'Close scenario report',
+      'Scenario report',
+      'Estimates only · actual results may differ.',
+      'Done',
+      'Current position vs. proposed purchase · profit, downside, exposure and fees',
+      'Sell now vs. future exits · estimated net results after costs',
+      'Before vs. after · estimated values',
+      'Portfolio market',
+      'Your market',
+      'Premarket',
+      'Market',
+      'Postmarket',
+      'Closed',
+      'Unavailable'
+    ];
+
+    for (const copy of scenarioAndMarketCopy) {
+      expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+    }
+  });
+
   it('defaults to English', () => {
     expect(getAppLanguage()).toBe('en');
     expect(translateText('Sign out')).toBe('Sign out');
