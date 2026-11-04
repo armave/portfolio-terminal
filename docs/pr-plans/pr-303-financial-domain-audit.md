@@ -2,7 +2,7 @@
 
 **Branch:** `refactor/financial-domain-invariants-2026-11`  
 **Base reviewed:** `main` at `4d4980b09fce33670abe5062023a8e200063b5ff`  
-**Implementation status:** Code and regression tests committed; full PR CI is pending.
+**Implementation status:** Code, regression tests, and documentation are committed. Full PR CI passed on the final PR head.
 
 ## Existing coverage confirmed
 
@@ -44,13 +44,13 @@ The repository already contains dedicated domain modules and Vitest suites for F
 - [x] Dead-code validation passed. Full dependency audit passed at the configured high-severity threshold; it still reports four low-severity vulnerabilities. Production dependency audit passed with zero vulnerabilities.
 - [x] Final scoped diff reviewed: changes are confined to the finance-domain sale helpers/tests and PR documentation.
 
-The local container could not resolve `github.com`, so project validation must be taken from the GitHub Actions run for the exact PR head. No tests are claimed as passed until that workflow reports success.
+Validation is provided by GitHub Actions on the exact PR head; no local test execution is claimed.
 
 
 ## GitHub Actions result
 
-Run: [Pull Request CI #41772930576](https://github.com/armave/portfolio-terminal/actions/runs/41772930576)  
-Validated commit: `0363ff79b710aa88f4f91f669ed34e006f2590a8`  
-Conclusion: **success** (all workflow steps passed).
+Implementation run: [Pull Request CI #41772930576](https://github.com/armave/portfolio-terminal/actions/runs/41772930576) passed on `0363ff79b710aa88f4f91f669ed34e006f2590a8`.  
+Final PR-head run: [Pull Request CI #41773089776](https://github.com/armave/portfolio-terminal/actions/runs/41773089776) passed on `74a75d3bdb3742e774bf3306ca9369ec0522f68c`.  
+Both runs concluded **success** with all workflow steps passed.
 
 Audit interpretation: `npm audit --audit-level=high` exits successfully because no high-or-higher findings were reported, but it still prints four low-severity vulnerabilities in the full dependency tree. `npm audit --omit=dev --audit-level=high` reports zero production vulnerabilities. This PR does not change dependencies.
