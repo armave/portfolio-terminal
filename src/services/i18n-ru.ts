@@ -809,7 +809,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Ask liquidity ladder": "Шкала заявок на продажу",
   "Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined.": "Отображаемый объём — это количество в текущем стакане, а не вся ликвидность биржи. Заявки с одинаковой ценой объединены.",
   "Visible levels:": "Видимые уровни:",
-  "TradeNet depth indicator:": "Индикатор глубины TradeNet:",
-  "provider metadata, not a UI level target": "метаданные провайдера, не целевое число уровней интерфейса",
+  "TradeNet reported book depth:": "Заявленная TradeNet глубина стакана:",
+  "total positions in the combined book": "позиций в объединённом стакане",
   "Changes captured:": "Полученные изменения:",
 };

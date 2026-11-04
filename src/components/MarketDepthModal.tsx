@@ -416,7 +416,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
           <p class="mt-3 text-[10px] leading-relaxed text-slate-500">
             {depthText('Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined.')}
             {' '}{depthText('Visible levels:')} {liveSnapshot.bids.length} {depthText('bid')} / {liveSnapshot.asks.length} {depthText('ask')}.
-            {liveSnapshot.reportedDepth !== undefined ? ` ${depthText('TradeNet depth indicator:')} ${liveSnapshot.reportedDepth} (${depthText('provider metadata, not a UI level target')}).` : ''}
+            {liveSnapshot.reportedDepth !== undefined ? ` ${depthText('TradeNet reported book depth:')} ${liveSnapshot.reportedDepth} (${depthText('total positions in the combined book')}).` : ''}
             {liveSnapshot.insertionsApplied !== undefined || liveSnapshot.rowUpdatesApplied !== undefined || liveSnapshot.deletionsApplied !== undefined
               ? ` ${depthText('Changes captured:')} +${liveSnapshot.insertionsApplied ?? 0} / ~${liveSnapshot.rowUpdatesApplied ?? 0} / −${liveSnapshot.deletionsApplied ?? 0}.`
               : ''}

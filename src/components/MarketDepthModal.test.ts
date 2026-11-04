@@ -129,6 +129,9 @@ describe('Market Depth modal wiring', () => {
     expect(modalSource).toContain('maximum depth available to this account');
     expect(modalSource).toContain('summary.spread < 0');
     expect(modalSource).toContain("Crossed order book: highest bid is above lowest ask.");
+    expect(modalSource).toContain("TradeNet reported book depth:");
+    expect(modalSource).toContain("total positions in the combined book");
+    expect(modalSource).not.toContain("provider metadata, not a UI level target");
     expect(modalSource).toContain('Rows at identical prices are combined');
     expect(modalSource).toContain('runtime.stop()');
     expect(modalSource).toContain("const liveSnapshot = displayState === 'live' ? snapshot : null;");
