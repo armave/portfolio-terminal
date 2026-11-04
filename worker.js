@@ -1,5 +1,6 @@
 import { requestTradeNet } from "./src/services/freedomTradeNet.js";
 import { sanitizeFreedomMarketDepth } from "./src/services/freedomMarketDepth.js";
+// Keep the live stream and one-shot diagnostic on the same global-position book model.
 export { sanitizeFreedomMarketDepth };
 
 const MAX_REQUEST_BYTES = 20 * 1024 * 1024;
