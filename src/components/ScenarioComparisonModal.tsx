@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ScenarioModalData } from '../features/terminal/scenarioContracts';
 import { emitUiEvent } from '../ui/uiEventBus';
 import { useDialogFocus } from '../ui/dialogFocus';
+import { scheduleDialogClose } from '../ui/dialogClose';
 
 interface ScenarioComparisonModalProps {
   data: ScenarioModalData;
@@ -23,11 +24,12 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
   const closingRef = useRef(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const cancelCloseRef = useRef<(() => void) | null>(null);
   const requestClose = () => {
     if (closingRef.current) return;
     closingRef.current = true;
     setIsClosing(true);
-    window.setTimeout(onClose, 180);
+    cancelCloseRef.current = scheduleDialogClose(onClose, 180);
   };
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches);
   const isExit = data.kind === 'exit-comparison';
@@ -38,7 +40,11 @@ export function ScenarioComparisonModal({ data, onClose }: ScenarioComparisonMod
   useEffect(() => {
     const onResize = () => setIsMobile(window.matchMedia('(max-width: 767px)').matches);
     window.addEventListener('resize', onResize, { passive: true });
-    return () => window.removeEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      cancelCloseRef.current?.();
+      cancelCloseRef.current = null;
+    };
   }, []);
 
   const shownColumns = isBuyMore ? data.columns.map((_, index) => index) : activeColumns;
