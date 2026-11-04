@@ -47,6 +47,23 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
     };
   };
 
+  const describePositionConflict = (operation, update, row, existing) => {
+    const compactRows = value => rows(value).slice(0, 8).map(item => {
+      const normalized = normalizeRow(item, false);
+      return normalized
+        ? `${normalized.position}:${normalized.side}${Number.isFinite(normalized.price) ? `@${normalized.price}` : ""}`
+        : "invalid";
+    }).join(",");
+    const nearby = [];
+    for (let position = Math.max(0, row.position - 2); position <= row.position + 2; position += 1) {
+      const level = levels.get(position);
+      nearby.push(level
+        ? `${position}:${level.side}@${level.price}`
+        : `${position}:empty`);
+    }
+    return `TradeNet Market Depth ${operation} side mismatch at k=${row.position}: incoming=${row.side}${Number.isFinite(row.price) ? `@${row.price}` : ""}, existing=${existing.side}${Number.isFinite(existing.price) ? `@${existing.price}` : ""}, n=${Number.isSafeInteger(update.n) ? update.n : "unknown"}, del=[${compactRows(update.del)}], ins=[${compactRows(update.ins)}], upd=[${compactRows(update.upd)}], nearby=[${nearby.join(",")}]`;
+  };
+
   // Delete one global position and shift every later row, including the other side.
   const deleteAt = position => {
     const removed = levels.get(position);
@@ -118,7 +135,7 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
           throw new Error("TradeNet Market Depth deletion referenced a missing book position.");
         }
         if (existing.side !== row.side) {
-          throw new Error("TradeNet Market Depth deletion side did not match its book position.");
+          throw new Error(describePositionConflict("deletion", update, row, existing));
         }
         deleteAt(row.position);
         deletionsApplied += 1;
@@ -159,7 +176,7 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
           throw new Error("TradeNet Market Depth update referenced a missing book position.");
         }
         if (existing.side !== row.side) {
-          throw new Error("TradeNet Market Depth update side did not match its book position.");
+          throw new Error(describePositionConflict("update", update, row, existing));
         }
         levels.set(row.position, row);
         rowUpdatesApplied += 1;
