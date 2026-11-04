@@ -1248,7 +1248,8 @@ export class PortfolioStore {
   }
 
   public removeCashStock(indexOrTicker: number | string): boolean {
-    return this.update((state) => {
+    let removed = false;
+    const committed = this.update((state) => {
       const holdings = [...(state.cashCushion?.holdings || [])];
       let nextHoldings: typeof holdings;
 
@@ -1266,6 +1267,7 @@ export class PortfolioStore {
       }
 
       if (nextHoldings.length === holdings.length) return state;
+      removed = true;
       return {
         ...state,
         cashCushion: {
@@ -1274,6 +1276,7 @@ export class PortfolioStore {
         }
       };
     });
+    return removed && committed;
   }
 
   /**
