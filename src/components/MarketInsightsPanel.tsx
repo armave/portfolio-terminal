@@ -740,7 +740,7 @@ function MarketInsightsPanelView() {
                   {currentSelectedNews.headline || 'Untitled article'}
                 </h2>
               </div>
-              <button ref={newsCloseButtonRef} type="button" class="shrink-0 flex min-h-11 min-w-11 items-center justify-center rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400" onClick={closeNewsDialog} aria-label="Close news article" data-news-dialog-close>✕</button>
+              <button ref={newsCloseButtonRef} type="button" class="shrink-0 flex min-h-11 min-w-11 items-center justify-center rounded border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-cyan-700 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400" style={{ minHeight: '44px', minWidth: '44px' }} onClick={closeNewsDialog} aria-label="Close news article" data-news-dialog-close>✕</button>
             </header>
             <div class="news-article-content min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-5" role="region" aria-labelledby="newsArticleModalTitle" tabIndex={0}>
               <div class="whitespace-pre-wrap break-words leading-relaxed text-slate-300">
