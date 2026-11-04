@@ -1,6 +1,7 @@
-import { useCallback, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import type { ComponentChild } from 'preact';
 import { useDialogFocus } from '../ui/dialogFocus';
+import { scheduleDialogClose } from '../ui/dialogClose';
 
 interface ScenarioReportModalProps {
   report: string;
@@ -68,12 +69,18 @@ export function ScenarioReportModal({ report, onClose }: ScenarioReportModalProp
   const closingRef = useRef(false);
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const cancelCloseRef = useRef<(() => void) | null>(null);
   const requestClose = useCallback(() => {
     if (closingRef.current) return;
     closingRef.current = true;
     setIsClosing(true);
-    window.setTimeout(onClose, 200);
+    cancelCloseRef.current = scheduleDialogClose(onClose, 200);
   }, [onClose]);
+
+  useEffect(() => () => {
+    cancelCloseRef.current?.();
+    cancelCloseRef.current = null;
+  }, []);
 
   useDialogFocus(dialogRef, { initialFocusRef: closeButtonRef, onEscape: requestClose });
 
