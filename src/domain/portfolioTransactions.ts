@@ -2,6 +2,65 @@ import type { BrokerAssumptions, ClosedTrade, PositionRecord, TrancheItem } from
 import { calculateCommission, calculateMarginInterest, resolveCommissionConfig } from './portfolio';
 import { validateSaleCostBasisTranches } from './saleCostBasis';
 
+function requireFiniteNumber(value: number, label: string): number {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(`${label} must be finite.`);
+  }
+  return value;
+}
+
+function requireNonNegativeNumber(value: number, label: string): number {
+  requireFiniteNumber(value, label);
+  if (value < 0) {
+    throw new RangeError(`${label} must be non-negative.`);
+  }
+  return value;
+}
+
+function roundMoney(value: number, label: string): number {
+  requireFiniteNumber(value, label);
+  const rounded = Number(value.toFixed(2));
+  return requireFiniteNumber(rounded, label);
+}
+
+type InvestmentTrancheLike = {
+  qty?: unknown;
+  shares?: unknown;
+  price?: unknown;
+  entryPrice?: unknown;
+};
+
+function sumTrancheInvestment(
+  tranches: readonly InvestmentTrancheLike[],
+  label: string
+): number {
+  return tranches.reduce((total, tranche, index) => {
+    if (!tranche || typeof tranche !== 'object' || Array.isArray(tranche)) {
+      throw new RangeError(`${label} tranche ${index + 1} is invalid.`);
+    }
+
+    const quantity = Number(tranche.qty ?? tranche.shares);
+    const price = Number(tranche.price ?? tranche.entryPrice);
+    if (!Number.isFinite(quantity) || quantity < 0) {
+      throw new RangeError(`${label} tranche ${index + 1} quantity must be finite and non-negative.`);
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      throw new RangeError(`${label} tranche ${index + 1} entry price must be finite and non-negative.`);
+    }
+
+    const invested = quantity * price;
+    if (!Number.isFinite(invested)) {
+      throw new RangeError(`${label} tranche ${index + 1} investment value must be finite.`);
+    }
+
+    const nextTotal = total + invested;
+    if (!Number.isFinite(nextTotal)) {
+      throw new RangeError(`${label} investment total must be finite.`);
+    }
+    return nextTotal;
+  }, 0);
+}
+
 export interface FifoSaleAllocation {
   soldCostBasis: number;
   buyCommissionAllocated: number;
@@ -99,21 +158,13 @@ export function calculateSaleCommission(
   proceeds: number,
   rules: BrokerAssumptions
 ): number {
-  const { commPerShare, commVolumePct, minCommOrder } = resolveCommissionConfig(rules);
-  const fallback = Number(Math.max(minCommOrder, shares * commPerShare + proceeds * commVolumePct).toFixed(2));
+  requireFiniteNumber(shares, 'Sale quantity');
+  if (shares <= 0) return 0;
+  requireNonNegativeNumber(proceeds, 'Sale proceeds');
 
-  try {
-    const calculated = calculateCommission(shares, proceeds, {
-      commPerShare,
-      commVolumePct,
-      minCommOrder
-    });
-    return Number.isFinite(calculated) && calculated > 0
-      ? Number(calculated.toFixed(2))
-      : fallback;
-  } catch {
-    return fallback;
-  }
+  const config = resolveCommissionConfig(rules);
+  const calculated = calculateCommission(shares, proceeds, config);
+  return roundMoney(calculated, 'Sale commission');
 }
 
 export interface SaleProceedsSettlement {
@@ -129,15 +180,19 @@ export function settleSaleProceeds(
   freeCash: number,
   netProceeds: number
 ): SaleProceedsSettlement {
-  const normalizedDebt = Math.max(0, Number(debt) || 0);
-  const normalizedCash = Math.max(0, Number(freeCash) || 0);
-  const normalizedProceeds = Math.max(0, Number(netProceeds) || 0);
+  // Negative legacy values remain clamped to zero, but NaN/Infinity must not
+  // silently enter the settlement ledger or be mistaken for a valid amount.
+  const normalizedDebt = Math.max(0, requireFiniteNumber(debt, 'Margin debt'));
+  const normalizedCash = Math.max(0, requireFiniteNumber(freeCash, 'Free cash'));
+  const normalizedProceeds = Math.max(0, requireFiniteNumber(netProceeds, 'Net sale proceeds'));
   const debtRepaid = Math.min(normalizedDebt, normalizedProceeds);
   const cashSurplus = Math.max(0, normalizedProceeds - debtRepaid);
+  const remainingDebt = Math.max(0, normalizedDebt - debtRepaid);
+  const nextFreeCash = requireFiniteNumber(normalizedCash + cashSurplus, 'Settled free cash');
 
   return {
-    remainingDebt: Math.max(0, normalizedDebt - debtRepaid),
-    freeCash: normalizedCash + cashSurplus,
+    remainingDebt,
+    freeCash: nextFreeCash,
     debtRepaid,
     cashSurplus
   };
@@ -188,50 +243,106 @@ export function calculateSaleAccounting(input: SaleAccountingInput): SaleAccount
     sellCommission,
     now
   } = input;
-  const dailyRate = brokerAssumptions.annualBorrowRate / brokerAssumptions.dayCountBasis;
-  const totalPortfolioInvested = Object.values(positions).reduce(
-    (acc, position) =>
-      acc +
-      (position.tranches || []).reduce(
-        (sum, tranche) =>
-          sum +
-          (Number(tranche.qty ?? tranche.shares) || 0) *
-          (Number(tranche.price ?? tranche.entryPrice) || 0),
-        0
-      ),
-    0
-  );
-  const positionInvested = tranches.reduce(
-    (sum, tranche) =>
-      sum +
-      (Number(tranche.qty ?? tranche.shares) || 0) *
-      (Number(tranche.price ?? tranche.entryPrice) || 0),
-    0
-  );
-  const weight = totalPortfolioInvested > 0 ? positionInvested / totalPortfolioInvested : 1;
-  const totalDebt = Math.abs(Number(balance) || 0);
-  const allocatedDebt = totalDebt * weight;
 
-  let positionMarginInterest = 0;
-  try {
-    positionMarginInterest = calculateMarginInterest([...tranches], {
-      dailyRate,
-      marginDebt: allocatedDebt,
-      totalDebt,
-      ...(now ? { now } : {})
-    });
-  } catch {
-    positionMarginInterest = 0;
+  requireFiniteNumber(positionShares, 'Open position quantity');
+  if (positionShares <= 0) {
+    throw new RangeError('Open position quantity must be positive.');
   }
+  requireFiniteNumber(sharesSold, 'Sale quantity');
+  if (sharesSold <= 0) {
+    throw new RangeError('Sale quantity must be positive.');
+  }
+  const shareTolerance = Math.max(1e-8, Math.abs(positionShares) * 1e-8);
+  if (sharesSold - positionShares > shareTolerance) {
+    throw new RangeError('Sale quantity cannot exceed the open position.');
+  }
+
+  requireFiniteNumber(balance, 'Signed account balance');
+  requireNonNegativeNumber(sellProceeds, 'Sale proceeds');
+  requireNonNegativeNumber(soldCostBasis, 'Sold cost basis');
+  requireNonNegativeNumber(buyCommissionAllocated, 'Allocated buy commission');
+  requireNonNegativeNumber(sellCommission, 'Sell commission');
+
+  const annualBorrowRate = requireNonNegativeNumber(
+    brokerAssumptions.annualBorrowRate,
+    'Annual borrow rate'
+  );
+  const dayCountBasis = requireFiniteNumber(brokerAssumptions.dayCountBasis, 'Day-count basis');
+  if (dayCountBasis <= 0) {
+    throw new RangeError('Day-count basis must be positive.');
+  }
+  const dailyRate = annualBorrowRate / dayCountBasis;
+  requireNonNegativeNumber(dailyRate, 'Daily margin rate');
+
+  if (!Array.isArray(tranches)) {
+    throw new RangeError('Selected position tranches must be an array.');
+  }
+  const positionInvested = sumTrancheInvestment(tranches, 'Selected position');
+
+  if (!positions || typeof positions !== 'object' || Array.isArray(positions)) {
+    throw new RangeError('Portfolio positions must be a record.');
+  }
+  const totalPortfolioInvested = Object.entries(positions).reduce((total, [ticker, position]) => {
+    if (!position || typeof position !== 'object') {
+      throw new RangeError(`Portfolio position ${ticker} is invalid.`);
+    }
+    if (position.tranches === undefined || position.tranches === null) return total;
+    if (!Array.isArray(position.tranches)) {
+      throw new RangeError(`Portfolio position ${ticker} tranches must be an array.`);
+    }
+
+    const invested = sumTrancheInvestment(position.tranches, `Portfolio position ${ticker}`);
+    return requireNonNegativeNumber(total + invested, 'Total portfolio investment');
+  }, 0);
+
+  if (totalPortfolioInvested > 0) {
+    const investmentTolerance = Math.max(1e-8, totalPortfolioInvested * 1e-8);
+    if (positionInvested - totalPortfolioInvested > investmentTolerance) {
+      throw new RangeError('Selected position investment exceeds total portfolio investment.');
+    }
+  } else if (positionInvested > 0) {
+    throw new RangeError('Selected position investment is missing from the portfolio position ledger.');
+  }
+
+  const weight = totalPortfolioInvested > 0
+    ? Math.min(1, positionInvested / totalPortfolioInvested)
+    : 1;
+  requireNonNegativeNumber(weight, 'Position investment weight');
+
+  const totalDebt = Math.abs(balance);
+  const allocatedDebt = requireNonNegativeNumber(totalDebt * weight, 'Allocated margin debt');
+
+  let positionMarginInterest = calculateMarginInterest([...tranches], {
+    dailyRate,
+    marginDebt: allocatedDebt,
+    totalDebt,
+    ...(now ? { now } : {})
+  });
+  positionMarginInterest = requireNonNegativeNumber(positionMarginInterest, 'Calculated margin interest');
+
+  const recordedPositionCharge = positionMarginCharged === undefined
+    ? 0
+    : requireNonNegativeNumber(positionMarginCharged, 'Recorded position margin charge');
   // Keep any already-recorded position charge if the current accrual is lower.
-  positionMarginInterest = Math.max(positionMarginInterest, Number(positionMarginCharged) || 0);
-  const sellRatio = positionShares > 0 ? sharesSold / positionShares : 1;
-  const marginInterestAllocated = Number((positionMarginInterest * sellRatio).toFixed(2));
-  const totalCommissions = Number((buyCommissionAllocated + sellCommission).toFixed(2));
-  const grossProfit = Number((sellProceeds - soldCostBasis).toFixed(2));
-  const netProfit = Number((grossProfit - totalCommissions - marginInterestAllocated).toFixed(2));
+  positionMarginInterest = Math.max(positionMarginInterest, recordedPositionCharge);
+
+  const normalizedSharesSold = Math.min(sharesSold, positionShares);
+  const sellRatio = normalizedSharesSold / positionShares;
+  const marginInterestAllocated = roundMoney(
+    positionMarginInterest * sellRatio,
+    'Allocated margin interest'
+  );
+  const totalCommissions = roundMoney(
+    buyCommissionAllocated + sellCommission,
+    'Total sale commissions'
+  );
+  const grossProfit = roundMoney(sellProceeds - soldCostBasis, 'Gross realized profit');
+  const netProfit = roundMoney(
+    grossProfit - totalCommissions - marginInterestAllocated,
+    'Net realized profit'
+  );
   // Rollover interest is already reflected in balance before a sale. Do not deduct it again from cash proceeds.
-  const netCashProceeds = Number((sellProceeds - sellCommission).toFixed(2));
+  const netCashProceeds = roundMoney(sellProceeds - sellCommission, 'Net cash proceeds');
 
   return {
     marginInterestAllocated,
