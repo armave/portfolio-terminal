@@ -300,7 +300,7 @@ This is the continuing checklist for the architecture-refinement program. A chec
 
 ## PR #305 — frontend runtime, UI lifecycle, and accessibility follow-up
 
-**Status:** Open draft. PRs #303 and #304 have both merged, and their mainline changes are integrated into this branch at `8242ae2`; the branch is zero commits behind `main`.
+**Status:** Focused PR scope implemented. PRs #303 and #304 have both merged, and their mainline changes are integrated into this branch at `8242ae2`; the branch is zero commits behind `main`. The wider component-by-component responsive/accessibility review remains follow-up work.
 
 - [x] Preserve `app.ts` as the runtime composition root; the audit confirmed existing dedicated startup, authentication/session, navigation, broker-refresh, quote-refresh, portfolio-sync, and equity-sync runtimes.
 - [x] Reference-count nested-dialog background isolation and page scroll locking; restore the original styles and scroll position only after the final dialog closes.
@@ -315,4 +315,4 @@ This is the continuing checklist for the architecture-refinement program. A chec
 - [x] Integrate the latest `main` after both prerequisite PRs merged; the PR diff remains disjoint from their domain/store paths.
 - [x] Run final exact-head CI on the integrated head and update the PR checklist.
 
-Exact-head validation passed on `8e0bef23a64d16ab0e408579ffb2b65fb48ecd54` in [Pull Request CI run 41775241690](https://github.com/armave/portfolio-terminal/actions/runs/41775241690): TypeScript, 117 Vitest files, production build, production browser smoke, dead-code validation, full dependency audit at the configured high-severity threshold, and production-only audit (0 vulnerabilities). The production entry bundle was 435,336 raw bytes / 134,747 gzip bytes. Four low-severity development dependency advisories remain through `deepmerge`.
+Earlier integrated-head validation checkpoint passed on `8e0bef23a64d16ab0e408579ffb2b65fb48ecd54` in [Pull Request CI run 41775241690](https://github.com/armave/portfolio-terminal/actions/runs/41775241690): TypeScript, 117 Vitest files, production build, production browser smoke, dead-code validation, full dependency audit at the configured high-severity threshold, and production-only audit (0 vulnerabilities). The production entry bundle was 435,336 raw bytes / 134,747 gzip bytes. Four low-severity development dependency advisories remain through `deepmerge`. The latest exact-head validation is recorded in the PR description.
