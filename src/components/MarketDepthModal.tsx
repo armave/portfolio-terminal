@@ -168,17 +168,17 @@ function MarketDepthSide({ side, levels, maxQuantity }: {
 
   return <section class="min-w-0 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60" aria-label={`${isBid ? 'Bid' : 'Ask'} liquidity ladder`}>
     <h3 class={`flex items-center justify-between border-b border-slate-800 px-3 py-2 text-xs font-bold uppercase tracking-wider ${isBid ? 'text-emerald-300' : 'text-rose-300'}`}>
-      <span>{isBid ? 'Buyers · bids' : 'Sellers · asks'}</span>
-      <span class="text-[10px] font-normal text-slate-500">{levels.length} levels</span>
+      <span>{depthText(isBid ? 'Buyers · bids' : 'Sellers · asks')}</span>
+      <span class="text-[10px] font-normal text-slate-500">{levels.length} {depthText('levels')}</span>
     </h3>
     {rows.length ? <ol class="space-y-1 p-2">
       {rows.map((level) => <li key={level.position} class="relative isolate grid grid-cols-[minmax(4.5rem,1fr)_minmax(4rem,auto)_minmax(4rem,1fr)] items-center gap-2 overflow-hidden rounded px-2 py-1.5 text-[11px] tabular-nums">
         <span class={`absolute inset-y-0 ${isBid ? 'right-1/2 rounded-l bg-emerald-500/10' : 'left-1/2 rounded-r bg-rose-500/10'}`} style={{ width: `${level.barWidth / 2}%` }} aria-hidden="true" />
         <span class={`relative ${isBid ? 'text-right text-emerald-200' : 'text-right text-slate-400'}`}>{formatDepthNumber(level.price)}</span>
         <span class="relative text-center font-bold text-slate-200">{formatDepthNumber(level.quantity)}</span>
-        <span class={`relative ${isBid ? 'text-left text-slate-400' : 'text-left text-rose-200'}`}>{formatDepthNumber(level.cumulativeQuantity)} cum.</span>
+        <span class={`relative ${isBid ? 'text-left text-slate-400' : 'text-left text-rose-200'}`}>{formatDepthNumber(level.cumulativeQuantity)} {depthText('cum.')}</span>
       </li>)}
-    </ol> : <p class="px-3 py-5 text-center text-xs text-slate-500">No {isBid ? 'bid' : 'ask'} levels received.</p>}
+    </ol> : <p class="px-3 py-5 text-center text-xs text-slate-500">{depthText(isBid ? 'No bid levels received.' : 'No ask levels received.')}</p>}
   </section>;
 }
 
@@ -313,8 +313,8 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
             <span>{liveSnapshot.symbol} · {depthText('Last depth update')} {new Date(liveSnapshot.updatedAt).toLocaleTimeString(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US')}</span>
             <span>
               {liveSnapshot.bids.length} {depthText('bid prices')} / {liveSnapshot.asks.length} {depthText('ask prices')}
-              {snapshot.updateCount !== undefined ? ` · ${snapshot.updateCount} updates` : ''}
-              {snapshot.sequence !== undefined ? ` · seq ${snapshot.sequence}` : ''}
+              {liveSnapshot.updateCount !== undefined ? ` · ${liveSnapshot.updateCount} updates` : ''}
+              {liveSnapshot.sequence !== undefined ? ` · seq ${liveSnapshot.sequence}` : ''}
             </span>
           </div>
 
@@ -322,17 +322,17 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
             <div class="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-3">
               <p class="text-[10px] uppercase tracking-wider text-slate-500">{depthText('Best bid')}</p>
               <p class="mt-1 font-mono text-lg font-bold tabular-nums text-emerald-300">{summary.bestBid ? formatDepthNumber(summary.bestBid.price) : '—'}</p>
-              <p class="text-[10px] text-slate-500">{summary.bestBid ? `${formatDepthNumber(summary.bestBid.quantity)} shares` : depthText('No quote')}</p>
+              <p class="text-[10px] text-slate-500">{summary.bestBid ? `${formatDepthNumber(summary.bestBid.quantity)} ${depthText('shares')}` : depthText('No quote')}</p>
             </div>
             <div class="rounded-xl border border-rose-900/60 bg-rose-950/20 p-3">
               <p class="text-[10px] uppercase tracking-wider text-slate-500">{depthText('Best ask')}</p>
               <p class="mt-1 font-mono text-lg font-bold tabular-nums text-rose-300">{summary.bestAsk ? formatDepthNumber(summary.bestAsk.price) : '—'}</p>
-              <p class="text-[10px] text-slate-500">{summary.bestAsk ? `${formatDepthNumber(summary.bestAsk.quantity)} shares` : depthText('No quote')}</p>
+              <p class="text-[10px] text-slate-500">{summary.bestAsk ? `${formatDepthNumber(summary.bestAsk.quantity)} ${depthText('shares')}` : depthText('No quote')}</p>
             </div>
             <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-3">
               <p class="text-[10px] uppercase tracking-wider text-slate-500">{depthText('Spread')}</p>
               <p class="mt-1 font-mono text-lg font-bold tabular-nums text-white">{summary.spread !== null ? formatDepthNumber(summary.spread) : '—'}</p>
-              <p class="text-[10px] text-slate-500">{summary.spreadPercent !== null ? `${summary.spreadPercent.toFixed(3)}% {depthText('of midpoint')}` : 'Two-sided quote unavailable'}</p>
+              <p class="text-[10px] text-slate-500">{summary.spreadPercent !== null ? `${summary.spreadPercent.toFixed(3)}% ${depthText('of midpoint')}` : depthText('Two-sided quote unavailable')}</p>
             </div>
             <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-3">
               <p class="text-[10px] uppercase tracking-wider text-slate-500">{depthText('Visible size')}</p>
@@ -348,15 +348,15 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
 
           {hasLevels ? <section aria-label={depthText('Proportional market depth ladder')} class="mb-4">
             <div class="mb-2 flex flex-wrap items-end justify-between gap-2">
-              <div><h3 class="text-sm font-bold text-slate-100">{depthText('Price-grouped liquidity ladder')}</h3><p class="text-[10px] text-slate-500">Quantities at identical prices are combined · bars scale to the largest displayed price level</p></div>
-              {summary.midpoint !== null && <span class="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-mono text-slate-300">Mid {formatDepthNumber(summary.midpoint)}</span>}
+              <div><h3 class="text-sm font-bold text-slate-100">{depthText('Price-grouped liquidity ladder')}</h3><p class="text-[10px] text-slate-500">{depthText('Quantities at identical prices are combined · bars scale to the largest displayed price level')}</p></div>
+              {summary.midpoint !== null && <span class="rounded-full border border-slate-700 bg-slate-900 px-2.5 py-1 text-[10px] font-mono text-slate-300">{depthText('Mid')} {formatDepthNumber(summary.midpoint)}</span>}
             </div>
             <div class="grid gap-3 md:grid-cols-2">
               <MarketDepthSide side="bids" levels={liveSnapshot.bids} maxQuantity={maxQuantity} />
               <MarketDepthSide side="asks" levels={liveSnapshot.asks} maxQuantity={maxQuantity} />
             </div>
           </section> : <div class="mb-4 rounded-xl border border-amber-900/60 bg-amber-950/20 p-4 text-sm text-amber-200" role="status">
-            No price levels were received for this symbol. TradeNet may not provide depth for every instrument or market session.
+            {depthText('No price levels were received for this symbol. TradeNet may not provide depth for every instrument or market session.')}
           </div>}
 
           <details class="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60">
@@ -365,7 +365,7 @@ export function MarketDepthModal({ ticker, sessionKey, onClose }: MarketDepthMod
             </summary>
             <div class="grid gap-3 border-t border-slate-800 p-3 md:grid-cols-2">
               {(['bids', 'asks'] as const).map((side) => <div key={side} class="min-w-0 overflow-x-auto">
-                <h4 class={`mb-1 text-[10px] font-bold uppercase tracking-wider ${side === 'bids' ? 'text-emerald-300' : 'text-rose-300'}`}>{side}</h4>
+                <h4 class={`mb-1 text-[10px] font-bold uppercase tracking-wider ${side === 'bids' ? 'text-emerald-300' : 'text-rose-300'}`}>{depthText(side === 'bids' ? 'Bids' : 'Asks')}</h4>
                 <table class="w-full min-w-[300px] text-right text-[10px] tabular-nums">
                   <thead class="text-slate-500"><tr>
                     <th scope="col" class="px-2 py-1 text-left">{depthText('Level')}</th>
