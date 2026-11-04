@@ -33,6 +33,79 @@ export type PortfolioStoreChangeSource = 'durable' | 'live-quote' | 'derived';
 export const PORTFOLIO_PERSISTENCE_ERROR_MESSAGE =
   'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Validate the containers at the import boundary before merging a snapshot.
+ * A malformed collection must not be normalized to an empty collection and
+ * accidentally replace recoverable portfolio data.
+ */
+function hasValidPortfolioImportShape(value: unknown): value is Partial<PortfolioState> {
+  if (!isRecord(value)) return false;
+
+  const arrayFields = [
+    'closedTrades',
+    'brokerExecutedTrades',
+    'closedHistory',
+    'cashflows',
+    'tranches',
+    'cashStocks',
+    'guestTrancheLedger'
+  ] as const;
+  for (const field of arrayFields) {
+    if (Object.prototype.hasOwnProperty.call(value, field) &&
+        value[field] !== undefined && !Array.isArray(value[field])) {
+      return false;
+    }
+  }
+
+  const recordFields = [
+    'positions',
+    'activeTrancheTypes',
+    'activeTrancheMixes',
+    'activeTrancheGuestAssignments',
+    'activeTrancheGuestAssignmentDetails',
+    'closedTradeAllocations',
+    'apiKeys',
+    'brokerAssumptions'
+  ] as const;
+  for (const field of recordFields) {
+    if (Object.prototype.hasOwnProperty.call(value, field) &&
+        value[field] !== undefined && !isRecord(value[field])) {
+      return false;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'cashCushion') && value.cashCushion !== undefined) {
+    if (!isRecord(value.cashCushion)) return false;
+    if (Object.prototype.hasOwnProperty.call(value.cashCushion, 'holdings') &&
+        value.cashCushion.holdings !== undefined && !Array.isArray(value.cashCushion.holdings)) {
+      return false;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'guestPortfolioSnapshot') &&
+      value.guestPortfolioSnapshot !== undefined) {
+    if (!isRecord(value.guestPortfolioSnapshot) ||
+        !Array.isArray(value.guestPortfolioSnapshot.tranches)) {
+      return false;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, 'brokerAccountInfo') &&
+      value.brokerAccountInfo !== undefined) {
+    if (!isRecord(value.brokerAccountInfo) ||
+        !Array.isArray(value.brokerAccountInfo.balances) ||
+        !Array.isArray(value.brokerAccountInfo.positions)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function todayIso(): string {
   const d = new Date();
   const y = d.getFullYear();
@@ -391,6 +464,8 @@ export class PortfolioStore {
   }
 
   public importState(newState: Partial<PortfolioState>): boolean {
+    if (!hasValidPortfolioImportShape(newState)) return false;
+
     return this.update((state) => ({
       ...state,
       ...newState
