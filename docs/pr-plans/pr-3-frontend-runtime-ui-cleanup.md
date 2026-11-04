@@ -1,6 +1,6 @@
 # PR 3 — Frontend runtime, UI, localization, and accessibility cleanup
 
-**Status:** Draft — targeted runtime lifecycle, stale-session, stylesheet, localization, and accessibility fixes are implemented with regression coverage. The wider responsive/accessibility review and final integration after PR #304 remain open.
+**Status:** Draft — targeted runtime lifecycle, stale-session, stylesheet, localization, and accessibility fixes are implemented and exact-head CI passes after PRs #303 and #304 were merged and integrated. The wider component-by-component responsive/accessibility review remains open.
 
 ## Implementation progress — 2026-11-04
 
@@ -60,12 +60,12 @@ Do not include `worker.js`, `state-store.js`, `src/services/freedomTradeNet.ts`,
 - [x] Trace remaining `app.ts` responsibilities and callers before extraction; retain `app.ts` as the runtime composition root.
 - [ ] Extract only cohesive lifecycle/event groups with explicit typed dependencies, disposers, and tests.
 - [x] Preserve startup ordering, account-generation guards, role checks, request coalescing, and retry behavior.
-- [ ] Preserve `src/services/api.ts` compatibility exports and centralized `proxyFetch(action, params, options)` handling; do not introduce a parallel HTTP client or bypass auth/session-aware caching.
+- [x] Preserve `src/services/api.ts` compatibility exports and centralized `proxyFetch(action, params, options)` handling; this PR does not change API transport or add a parallel client.
 - [ ] Review Preact components for duplicated business logic, redundant state mirrors, unnecessary subscriptions, lifecycle leaks, and sibling-owned DOM manipulation.
 - [x] Keep financial calculations in the domain layer and portfolio mutations in the canonical store; this PR adds no financial formulas or portfolio mutation paths.
 - [x] Use typed event channels (`uiEventBus` and `brokerEventBus`) rather than ad-hoc global custom events or mutable global caches.
-- [ ] Review user-facing text for hardcoded strings and ensure supported English/Russian copy uses the existing i18n system.
-- [ ] Verify interpolation, dynamic labels, errors, empty/loading states, dialog actions, and accessibility names in both languages.
+- [x] Verify changed user-facing copy in authentication, scenario dialogs, and market-status labels uses the existing English/Russian i18n system; broader app-wide copy audit remains outside this completed slice.
+- [x] Verify changed dialog actions, market-status labels, and authentication states remain localizable and accessible in both languages; general interpolation/dynamic-copy audit remains open.
 - [ ] Inspect residual CSS for duplicate selectors, conflicting overrides, specificity problems, responsive overflow, and unnecessary animation.
 - [x] Preserve the already-consolidated root tokens and reduced-motion policy. Do not reimplement CSS Stage 4.
 - [x] Keep `startup-critical.css` separate; no startup-critical CSS changes were necessary.
@@ -91,11 +91,11 @@ Do not include `worker.js`, `state-store.js`, `src/services/freedomTradeNet.ts`,
 - [ ] API facade compatibility exports remain available and proxy traffic stays on the centralized request path.
 - [ ] UI components do not duplicate financial calculations or own independent portfolio state.
 - [ ] No memory, listener, or lifecycle leaks are introduced.
-- [ ] New/modified user-facing copy is localized in English and Russian.
-- [ ] Keyboard, focus, dialog, table, reduced-motion, and responsive behavior pass relevant tests.
-- [ ] Existing lazy-loading behavior and JavaScript entry-bundle budgets remain intact.
-- [ ] Full CI and relevant production-browser journeys pass on the exact PR head.
-- [ ] Documentation reflects the resulting architecture and outstanding limitations.
+- [x] Changed user-facing copy is localized in English and Russian.
+- [x] Keyboard focus, dialog, table, reduced-motion, and responsive smoke checks pass on the integrated head; the broader component-specific viewport review remains open.
+- [x] Existing lazy-loading behavior and JavaScript entry-bundle budgets remain intact.
+- [x] Full CI and relevant production-browser journeys pass on the exact PR head.
+- [x] Documentation reflects the resulting architecture and outstanding limitations.
 
 ## Required validation
 
@@ -124,7 +124,21 @@ docs: reconcile frontend architecture and cleanup tracker
 
 ## Dependency and merge protocol
 
-PR #303 (financial domain) and PR #304 (portfolio store/persistence) are merged. Their `main` changes are integrated into this branch at `8242ae2ddfc5c4f85c9bebcd94c5dec8b25e8f75`. The branch compares against current `main` with zero behind commits. The incoming domain/store files were disjoint from this PR's frontend files; verify the integrated head with the full validation suite before requesting review/merge.
+PR #303 (financial domain) and PR #304 (portfolio store/persistence) are merged. Their `main` changes are integrated into this branch at `8242ae2ddfc5c4f85c9bebcd94c5dec8b25e8f75`. The branch compares against current `main` with zero behind commits. The incoming domain/store files were disjoint from this PR's frontend files. Exact integrated-head validation passed on `8e0bef23a64d16ab0e408579ffb2b65fb48ecd54`.
+
+## Exact-head validation — 2026-11-04
+
+[Pull Request CI run 41775241690](https://github.com/armave/portfolio-terminal/actions/runs/41775241690) passed on exact PR head `8e0bef23a64d16ab0e408579ffb2b65fb48ecd54`.
+
+- [x] `npm ci` and TypeScript typecheck.
+- [x] Vitest — 117 test files passed, including dialog scroll-lock, delayed-close cancellation, stale-session, disposed-effect, stylesheet, localization, and accessibility regressions.
+- [x] Production build — entry bundle 435,336 / 500,000 bytes; gzip 134,747 / 165,000 bytes.
+- [x] Chromium production-browser smoke — responsive mounting, admin bootstrap, broker partial failure, cloud revision conflict, backup export/import/reset, guest assignment publication, sign-out/account switch, failed-login recovery, and guest-only workspace hydration.
+- [x] Dead-code validation.
+- [x] Full dependency audit at the configured high-severity threshold.
+- [x] Production dependency audit — 0 vulnerabilities reported.
+
+The full dependency tree still reports four low-severity advisories from the unpatched `deepmerge` dependency chain. The configured high-severity audit passes; the production dependency audit reports zero vulnerabilities. No forced breaking downgrade was applied.
 
 ## Separate server lane
 
