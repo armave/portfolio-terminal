@@ -15,7 +15,16 @@
 - [x] Consolidated the exact duplicate auth-overlay transition declarations while preserving the mounted `display: flex` behavior.
 - [x] Added a stylesheet architecture assertion for one canonical auth-overlay transition rule set.
 - [x] Added a Russian localization coverage test for all static authentication-modal copy; existing translations were already present, so no translation text needed to change.
+- [x] Guarded the Closed History fee-allocation effect so a disposed effect cannot update its readiness state or recalculation key after its async work completes.
+- [x] Audited the application composition boundary: startup, authentication/session, navigation, broker refresh, quote refresh, portfolio sync, and equity sync already have dedicated runtime modules; `src/App.tsx` shell listeners are registered in `useLayoutEffect` and removed during cleanup. No additional extraction was justified in this pass because remaining root functions coordinate those established service/guard boundaries.
 - [ ] Continue the remaining frontend runtime, component, localization, CSS, accessibility, and browser-validation audit.
+
+## Runtime audit findings — 2026-11-04
+
+The root runtime still has a substantial orchestration file, but the audit confirmed that the principal lifecycle domains are already delegated to dedicated modules: `portfolioNavigationRuntime`, `portfolioSyncRuntime`, `portfolioBrokerRefreshRuntime`, `portfolioStartupLifecycleRuntime`, `portfolioEquitySyncRuntime`, `portfolioStartupRuntime`, `portfolioAuthenticatedStartupRuntime`, `portfolioSessionRuntime`, and `portfolioAuthenticationRuntime`. `src/App.tsx` registers shell UI events synchronously in a layout effect and removes each listener and language subscription during cleanup. The remaining root flows are composed around shared session guards, store ownership, and command side effects; this pass deliberately avoids creating thin wrappers that would duplicate those existing boundaries.
+
+The component review also confirmed abort/request-generation handling in Market Insights and account-session checks in Closed History. The targeted fixes in this PR close the specific lifecycle gaps found in nested dialogs, delayed scenario-modal closing, market-status auth transitions, and Closed History allocation completion.
+
 
 **Proposed PR title:** `refactor(frontend): simplify runtime boundaries and strengthen UI consistency`
 
