@@ -85,7 +85,10 @@ describe('app localization', () => {
       'The live stream is connected. Waiting for the first TradeNet depth update…',
       'No live Market Depth data is available.', 'Retry connection', 'Last depth update',
       'Best bid', 'Best ask', 'Visible size', 'Book balance', 'Visible size imbalance',
-      'Price-grouped liquidity ladder', 'Buyers · bids', 'Sellers · asks', 'Detailed level table'
+      'Price-grouped liquidity ladder', 'Buyers · bids', 'Sellers · asks', 'Detailed level table',
+      'Bid liquidity ladder', 'Ask liquidity ladder',
+      'Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined.',
+      'Visible levels:', 'TradeNet depth indicator:', 'provider metadata, not a UI level target', 'Changes captured:'
     ];
     for (const copy of marketDepthCopy) {
       expect(translateText(copy, 'ru'), copy).not.toBe(copy);
