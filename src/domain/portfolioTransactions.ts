@@ -39,8 +39,26 @@ function sumTrancheInvestment(
       throw new RangeError(`${label} tranche ${index + 1} is invalid.`);
     }
 
-    const quantity = Number(tranche.qty ?? tranche.shares);
-    const price = Number(tranche.price ?? tranche.entryPrice);
+    const rawQuantity = tranche.qty ?? tranche.shares;
+    const rawPrice = tranche.price ?? tranche.entryPrice;
+    if (
+      rawQuantity === undefined ||
+      rawQuantity === null ||
+      typeof rawQuantity === 'boolean' ||
+      (typeof rawQuantity === 'string' && rawQuantity.trim() === '')
+    ) {
+      throw new RangeError(`${label} tranche ${index + 1} quantity must be finite and non-negative.`);
+    }
+    if (
+      rawPrice === undefined ||
+      rawPrice === null ||
+      typeof rawPrice === 'boolean' ||
+      (typeof rawPrice === 'string' && rawPrice.trim() === '')
+    ) {
+      throw new RangeError(`${label} tranche ${index + 1} entry price must be finite and non-negative.`);
+    }
+    const quantity = Number(rawQuantity);
+    const price = Number(rawPrice);
     if (!Number.isFinite(quantity) || quantity < 0) {
       throw new RangeError(`${label} tranche ${index + 1} quantity must be finite and non-negative.`);
     }
@@ -311,6 +329,9 @@ export function calculateSaleAccounting(input: SaleAccountingInput): SaleAccount
 
   const totalDebt = Math.abs(balance);
   const allocatedDebt = requireNonNegativeNumber(totalDebt * weight, 'Allocated margin debt');
+  if (now !== undefined && (!(now instanceof Date) || !Number.isFinite(now.getTime()))) {
+    throw new RangeError('Sale accounting clock must be a valid date.');
+  }
 
   let positionMarginInterest = calculateMarginInterest([...tranches], {
     dailyRate,
