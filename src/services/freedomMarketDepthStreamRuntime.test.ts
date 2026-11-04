@@ -81,6 +81,30 @@ describe('modal-scoped TradeNet Market Depth stream runtime', () => {
     expect(runtime.isConnected()).toBe(false);
   });
 
+  it('rejects depth updates without a valid timestamp rather than substituting the browser clock', async () => {
+    const socket = new FakeSocket();
+    const onDepth = vi.fn();
+    const onStatus = vi.fn();
+    const runtime = createFreedomMarketDepthStreamRuntime({
+      createTicket: async () => ({ ticket: 'd'.repeat(64), symbol: 'AAPL.US' }),
+      buildSocketUrl: ticket => `wss://worker.test/?ticket=${ticket}`,
+      createSocket: () => socket,
+      onDepth,
+      onStatus
+    });
+
+    const connecting = runtime.start('AAPL', 'admin:account-1');
+    await Promise.resolve();
+    socket.open();
+    socket.receive({ type: 'ready', symbol: 'AAPL.US' });
+    await expect(connecting).resolves.toBe(true);
+    socket.receive({ type: 'depth', symbol: 'AAPL.US', data: { bids: [], asks: [] } });
+
+    expect(onDepth).not.toHaveBeenCalled();
+    expect(onStatus).toHaveBeenCalledWith('error', expect.stringContaining('valid update timestamp'));
+    expect(socket.closeCalls).toContainEqual([1008, 'Invalid Market Depth timestamp']);
+  });
+
   it('does not open a stale socket after the modal closes while requesting a ticket', async () => {
     let resolveTicket: ((value: { ticket: string; symbol: string }) => void) | undefined;
     const createTicket = vi.fn(() => new Promise<{ ticket: string; symbol: string }>((resolve) => {
