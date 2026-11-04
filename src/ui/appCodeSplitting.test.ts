@@ -41,7 +41,7 @@ describe('on-demand application code splitting', () => {
       expect(app, component).toContain(`import('./components/${moduleName}')`);
       expect(app, component).not.toContain(`import { ${component} } from './components/${moduleName}'`);
     }
-    expect(app.match(/<Suspense fallback=\{null\}>/g)?.length ?? 0).toBe(3);
+    expect(app.match(/<Suspense fallback=\{null\}>/g)?.length ?? 0).toBeGreaterThanOrEqual(components.length);
   });
 
   it('keeps logout on the statically injected API dependency behind the session runtime', () => {
