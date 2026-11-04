@@ -32,7 +32,7 @@ The component review also confirmed abort/request-generation handling in Market 
 **Proposed PR title:** `refactor(frontend): simplify runtime boundaries and strengthen UI consistency`
 
 **Branch:** `refactor/frontend-runtime-ui-cleanup-2026-11`  
-**Base:** `main` after PRs 1 and 2 are merged.  
+**Base:** `main`, with merged PRs #303 and #304 integrated into the implementation branch.  
 **Dependencies:** PR 1 — financial-domain invariants; PR 2 — canonical store and persistence boundaries.  
 **Priority:** Medium/high. This is the final client-side consolidation and regression pass.
 
@@ -124,7 +124,7 @@ docs: reconcile frontend architecture and cleanup tracker
 
 ## Dependency and merge protocol
 
-PRs 1 and 2 must be merged first. Rebase this branch on the latest `main`, reconcile conflicts with the merged domain/store contracts, run the complete validation suite, and then request review/merge.
+PR #303 (financial domain) and PR #304 (portfolio store/persistence) are merged. Their `main` changes are integrated into this branch at `8242ae2ddfc5c4f85c9bebcd94c5dec8b25e8f75`. The branch compares against current `main` with zero behind commits. The incoming domain/store files were disjoint from this PR's frontend files; verify the integrated head with the full validation suite before requesting review/merge.
 
 ## Separate server lane
 
