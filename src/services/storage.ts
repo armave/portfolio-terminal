@@ -705,7 +705,17 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
 
     // The committed database record is written to one local checkpoint key.
     // Pending journals are removed only after that checkpoint is also saved.
-    storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, JSON.stringify(current));
+    const serializedCheckpoint = JSON.stringify(current);
+    try {
+      storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, serializedCheckpoint);
+    } catch (error) {
+      // During a flush, the previous atomic checkpoint still matches the last
+      // known durable generation. Reclaim only its verified compatibility
+      // mirrors and retry the checkpoint write once.
+      if (!isQuotaExceededError(error) || !hasVerifiedLocalPortfolioCheckpoint(storage)) throw error;
+      removeLegacyPortfolioMirrors(storage);
+      storage.setItem(STORAGE_KEY_ATOMIC_SNAPSHOT, serializedCheckpoint);
+    }
     hydratedPortfolioSnapshot = current;
     // Any older journal not consumed by the active commit chain is a preserved
     // recovery branch, not a reason to block the current portfolio. Archive its
