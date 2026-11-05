@@ -1220,10 +1220,35 @@ export function clearLocalData(): void {
   const storage = getBrowserStorage();
   if (!storage) return;
   try {
-    // The tombstone is written first so a crash before the IndexedDB delete
-    // cannot cause an old database snapshot to be restored on the next launch.
-    storage.setItem(STORAGE_KEY_CLEAR_MARKER, String(Date.now()));
-    const keysToRemove: string[] = [STORAGE_KEY_LEGACY_STATE, STORAGE_KEY_STATE, STORAGE_KEY_CLOSED_HISTORY, STORAGE_KEY_ATOMIC_SNAPSHOT];
+    // Preserve settings that this legacy API intentionally does not clear.
+    const previous = resolveLocalPortfolioSnapshot(storage).record || readLegacyPortfolioSnapshot(storage);
+    let brokerRules = previous?.brokerRules ?? null;
+    let deviceActiveView = previous?.deviceActiveView ?? null;
+    try {
+      if (brokerRules === null) {
+        const rawRules = storage.getItem(STORAGE_KEY_RULES);
+        if (rawRules) brokerRules = JSON.parse(rawRules);
+      }
+      deviceActiveView = storage.getItem('portfolio_active_view') ?? deviceActiveView;
+    } catch {
+      // Settings are best-effort metadata; the clear marker remains authoritative.
+    }
+
+    // The tombstone is the first write. It remains until the empty generation
+    // is committed to IndexedDB and its local checkpoint is written, preventing
+    // an interrupted delete from reviving an old local or IndexedDB snapshot.
+    storage.setItem(STORAGE_KEY_CLEAR_MARKER, JSON.stringify({
+      schemaVersion: 1,
+      clearedAt: Date.now(),
+      brokerRules,
+      deviceActiveView
+    }));
+    const keysToRemove: string[] = [
+      STORAGE_KEY_LEGACY_STATE,
+      STORAGE_KEY_STATE,
+      STORAGE_KEY_CLOSED_HISTORY,
+      STORAGE_KEY_ATOMIC_SNAPSHOT
+    ];
     for (let index = 0; index < storage.length; index += 1) {
       const key = storage.key(index);
       if (key?.startsWith(STORAGE_KEY_PENDING_PREFIX)) keysToRemove.push(key);
