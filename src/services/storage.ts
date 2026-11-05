@@ -1324,9 +1324,12 @@ export function savePortfolioSnapshot<TState extends object>(
 export async function savePortfolioSnapshotAfterFlush<TState extends object>(
   state: TState,
   history: ClosedHistorySnapshot,
-  options: PortfolioSnapshotOptions = {}
+  options: PortfolioSnapshotOptions = {},
+  isCurrentSession: () => boolean = () => true
 ): Promise<boolean> {
+  if (!isCurrentSession()) return false;
   const status = await flushPortfolioPersistence();
+  if (!isCurrentSession()) return false;
   if (status.state === 'conflict') return false;
   if (status.state === 'degraded' && isPortfolioStateDatabaseAvailable()) return false;
   const saved = savePortfolioSnapshot(state, history, options);
@@ -1334,7 +1337,9 @@ export async function savePortfolioSnapshotAfterFlush<TState extends object>(
   // Wait for this generation to leave localStorage's active journal. This
   // serializes consecutive large history snapshots and lets the next caller
   // start only after the preceding IndexedDB commit has freed its WAL entry.
-  await flushPortfolioPersistence();
+  const activeFlush = portfolioPersistenceFlush;
+  if (activeFlush) await activeFlush;
+  else await flushPortfolioPersistence();
   return true;
 }
 
