@@ -100,6 +100,16 @@ describe('Market Depth provider depth indication', () => {
       }
     }, 'AAPL');
     const multiLevel = normalizeMarketDepthSnapshot(response, 'AAPL');
+    const oneSided = normalizeMarketDepthSnapshot({
+      ...response,
+      data: {
+        ...response.data,
+        bids: [],
+        providerLevelCount: 2,
+        providerBidRowCount: 0,
+        providerAskRowCount: 2
+      }
+    }, 'AAPL');
     const groupedButManyProviderRows = normalizeMarketDepthSnapshot({
       ...response,
       data: {
@@ -113,6 +123,7 @@ describe('Market Depth provider depth indication', () => {
 
     expect(isShallowMarketDepthSnapshot(shallow)).toBe(true);
     expect(isShallowMarketDepthSnapshot(multiLevel)).toBe(false);
+    expect(isShallowMarketDepthSnapshot(oneSided)).toBe(false);
     expect(isShallowMarketDepthSnapshot(groupedButManyProviderRows)).toBe(false);
   });
 });
@@ -179,7 +190,7 @@ describe('Market Depth modal wiring', () => {
     expect(modalSource).toContain("Crossed order book: highest bid is above lowest ask.");
     expect(modalSource).toContain("TradeNet reported book depth:");
     expect(modalSource).toContain("total positions in the combined book");
-    expect(modalSource).toContain("TradeNet returned only one bid and one ask price level.");
+    expect(modalSource).toContain("TradeNet returned only one bid price and one ask price in this snapshot.");
     expect(modalSource).toContain("isShallowMarketDepthSnapshot(liveSnapshot)");
     expect(modalSource).toContain("Current provider rows:");
     expect(modalSource).toContain("First payload:");
