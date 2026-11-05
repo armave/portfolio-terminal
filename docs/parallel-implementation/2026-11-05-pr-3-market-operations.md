@@ -70,7 +70,7 @@ The browser journey uses a deterministic mocked Worker API. It tests browser/UI 
 
 ### Market-data browser evidence
 
-- [ ] Add/complete browser-level request-count checks: News only on News; deep-data only on Fundamentals/Earnings/Analysts; Stocktwits only after opt-in.
+- [x] Add browser-level request checks for News failure/retry, Fundamentals-only deep-data loading, no News refetch on tab switch, and Stocktwits opt-in.
 - [ ] Exercise explicit refresh, cache revisit and ticker switching while older requests are delayed.
 - [ ] Verify source fallback and stale/unknown timestamp presentation in a real browser trace.
 - [ ] Verify Market Insights provider outage → visible error → retry recovery in the actual app browser journey.
@@ -114,7 +114,8 @@ The new first-depth watchdog is unit-tested; its behavior is not represented as 
 - [ ] Dedicated operations browser journey on newest exact PR head
 - [x] Vitest regressions for news failure/retry and Market Depth first-book timeout/cancellation
 - [x] Settings browser journey covers admin/guest CRUD, permission boundaries, language, cadence, broker-rule validation and responsive widths
-- [ ] Browser-level Market Insights and Market Depth live/recovery checks
+- [x] Mocked-browser Market Insights outage → visible error → manual refresh recovery; Fundamentals-only deep-data request; Stocktwits opt-in and no News refetch on tab switch.
+- [ ] Market Depth browser/live recovery checks (successful first book, disconnect/reconnect, retry, ticker invalidation).
 - [ ] Authenticated live TradeNet release check with diagnostics recorded
 - [ ] Final broker-permission, stale-data, secrets and server/client-boundary review
 
