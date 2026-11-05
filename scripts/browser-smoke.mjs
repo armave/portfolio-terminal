@@ -909,6 +909,35 @@ try {
     'valid backup import cloud write'
   );
 
+  await page.waitForFunction(async () => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('portfolio-terminal-state', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Could not open the local portfolio database.'));
+      request.onblocked = () => reject(new Error('Local portfolio database upgrade is blocked.'));
+    });
+    try {
+      if (!database.objectStoreNames.contains('snapshots')) return false;
+      return await new Promise((resolve, reject) => {
+        const transaction = database.transaction('snapshots', 'readonly');
+        const request = transaction.objectStore('snapshots').get('current');
+        request.onsuccess = () => {
+          const snapshot = request.result;
+          resolve(Boolean(snapshot &&
+            snapshot.schemaVersion === 1 &&
+            Number.isInteger(snapshot.revision) &&
+            snapshot.state &&
+            typeof snapshot.state === 'object' &&
+            Array.isArray(snapshot.history?.brokerExecutedTrades) &&
+            Array.isArray(snapshot.history?.cashflows)));
+        };
+        request.onerror = () => reject(request.error || new Error('Could not read the local portfolio snapshot.'));
+      });
+    } finally {
+      database.close();
+    }
+  }, null, { timeout: 20_000 });
+
   const stateWritesBeforeReset = worker.count('POST', '/api/state');
   const historyWritesBeforeReset = worker.count('POST', '/api/history');
   page.once('dialog', (dialog) => { void dialog.accept(); });
