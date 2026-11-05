@@ -316,7 +316,7 @@ export function createPortfolioBrokerDataRuntime(
       if (dependencies.isSessionCurrent(session)) {
         const fillResponse = parseFreedomOrderFillsResponse(response);
         orderStreamFillsMalformed = fillResponse.present && !fillResponse.valid;
-        orderStreamFills = fillResponse.valid ? fillResponse.fills : [];
+        orderStreamFills = fillResponse.valid ? normalizeOrderFills(response) : [];
       }
       return response;
     };
