@@ -371,6 +371,56 @@ describe('storage service', () => {
       expect(databaseFixture.getCurrent()?.history.cashflows).toHaveLength(250);
     });
 
+    it('reclaims verified mirrors when the atomic checkpoint itself hits localStorage quota', async () => {
+      const initialized = await hydratePortfolioPersistence();
+      expect(initialized.state).toBe('ready');
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify({
+        activeView: 'AAPL',
+        closedTrades: Array.from({ length: 100 }, (_, index) => ({ id: `trade-${index}` }))
+      }));
+      storageMap.set('portfolio_closed_history_v1', JSON.stringify({
+        brokerExecutedTrades: Array.from({ length: 100 }, (_, index) => ({ id: `execution-${index}` })),
+        cashflows: Array.from({ length: 100 }, (_, index) => ({ id: `cashflow-${index}` }))
+      }));
+
+      const record = {
+        schemaVersion: 1,
+        revision: 1,
+        parentRevision: 0,
+        commitId: 'checkpoint-quota-retry',
+        originId: 'current-tab',
+        committedAt: Date.now(),
+        state: { activeView: 'MSFT', balance: 250 }
+      };
+      storageMap.set(
+        `portfolio_terminal_state_pending_v1:${record.commitId}`,
+        JSON.stringify(record)
+      );
+
+      let rejectedCheckpoint = false;
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        if (key === 'portfolio_terminal_state_snapshot_v1' && !rejectedCheckpoint) {
+          rejectedCheckpoint = true;
+          throw new DOMException('Atomic checkpoint exceeded quota', 'QuotaExceededError');
+        }
+        storageMap.set(key, String(value));
+      });
+
+      const status = await flushPortfolioPersistence();
+
+      expect(rejectedCheckpoint).toBe(true);
+      expect(status.state).toBe('ready');
+      expect(status.pendingWrites).toBe(0);
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+      expect(storageMap.has('portfolio_closed_history_v1')).toBe(false);
+      expect(JSON.parse(storageMap.get('portfolio_terminal_state_snapshot_v1')!).revision).toBe(1);
+      expect(databaseFixture.getCurrent()).toMatchObject({
+        revision: 1,
+        commitId: 'checkpoint-quota-retry',
+        state: { activeView: 'MSFT', balance: 250 }
+      });
+    });
+
     it('flushes an earlier pending journal before writing a large closed-history snapshot', async () => {
       databaseFixture.setFailure(new Error('temporary IndexedDB interruption'));
       expect(saveState({ activeView: 'AAPL', balance: 100 })).toBe(true);
