@@ -394,27 +394,45 @@ try {
   await waitForAuthOverlay(page, false);
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
+  for (const width of [320, 360, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await page.locator('#settingsDesk').evaluate((element) => ({
+      viewportWidth: document.documentElement.clientWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      left: element.getBoundingClientRect().left,
+      right: element.getBoundingClientRect().right
+    }));
+    if (layout.documentWidth > layout.viewportWidth + 1 || layout.left < -1 || layout.right > layout.viewportWidth + 1) {
+      throw new Error(`Settings desk is clipped or causes page overflow at ${width}px: ${JSON.stringify(layout)}`);
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   // Create two users, then exercise editing and deletion through the actual Settings form.
   const createUser = async (name, password) => {
     await page.getByLabel('User name').fill(name);
     await page.getByLabel('Password (6+ characters)').fill(password);
-    await page.getByLabel('New user role').selectOption('guest');
+    if (await page.getByLabel('New user role').inputValue() !== 'guest') {
+      throw new Error('New accounts must default to the guest role.');
+    }
     await page.getByLabel('New user language').selectOption('en');
     await page.getByRole('button', { name: 'Add user' }).click();
-    await page.getByRole('row', { name: new RegExp(name) }).waitFor({ state: 'visible', timeout: 10_000 });
+    await page.locator('#settingsDesk tbody tr').filter({ has: page.locator(`input[aria-label="Name for ${name}"]`) })
+      .waitFor({ state: 'visible', timeout: 10_000 });
   };
   await createUser('Browser Guest Delete', 'delete-guest-password');
   await createUser('Browser Guest Keep', 'keep-guest-password');
 
-  const deleteRow = page.getByRole('row', { name: /Browser Guest Delete/ });
+  const rowForUser = (name) => page.locator('#settingsDesk tbody tr')
+    .filter({ has: page.locator(`input[aria-label="Name for ${name}"]`) });
+  const deleteRow = rowForUser('Browser Guest Delete');
   const deleteDialogPromise = page.waitForEvent('dialog');
   await deleteRow.getByRole('button', { name: 'Delete' }).click();
   const deleteDialog = await deleteDialogPromise;
   await deleteDialog.accept();
   await deleteRow.waitFor({ state: 'detached', timeout: 10_000 });
 
-  const keepRow = page.getByRole('row', { name: /Browser Guest Keep/ });
+  const keepRow = rowForUser('Browser Guest Keep');
   await keepRow.getByLabel('Name for Browser Guest Keep').fill('Browser Guest Updated');
   await keepRow.getByLabel('Role for Browser Guest Keep').selectOption('admin');
   await keepRow.getByLabel('Language for Browser Guest Keep').selectOption('ru');
@@ -426,7 +444,7 @@ try {
     'user rename, role, language and password update'
   );
 
-  const updatedRow = page.getByRole('row', { name: /Browser Guest Updated/ });
+  const updatedRow = rowForUser('Browser Guest Updated');
   await updatedRow.getByLabel('Role for Browser Guest Updated').selectOption('guest');
   await updatedRow.getByRole('button', { name: 'Save' }).click();
   await waitForCondition(
@@ -435,7 +453,10 @@ try {
   );
 
   // The server remains authoritative: the sole administrator cannot be demoted.
-  const adminRow = page.getByRole('row', { name: /Operations Admin/ });
+  const adminRow = rowForUser('Operations Admin');
+  if (await adminRow.getByRole('button', { name: 'Delete' }).count() !== 0) {
+    throw new Error('Settings exposed a self-delete action for the signed-in administrator.');
+  }
   await adminRow.getByLabel('Role for Operations Admin').selectOption('guest');
   await adminRow.getByRole('button', { name: 'Save' }).click();
   await page.getByRole('alert').filter({ hasText: 'At least one admin account must remain.' })
