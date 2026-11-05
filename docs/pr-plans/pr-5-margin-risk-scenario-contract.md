@@ -1,6 +1,6 @@
 # PR 5 — Margin-risk input validity and scenario coverage
 
-**Status:** Implementation committed on this branch; final-head validation is in progress.
+**Status:** Implementation and exact-head validation complete.
 
 **Proposed PR title:** `fix(finance): fail closed on invalid margin-risk assumptions`
 
@@ -61,7 +61,7 @@ Do not modify FIFO, sale accounting, commission rules, margin-interest/rollover 
 - [x] Both application and summary-metrics consumers handle unavailable results correctly.
 - [x] New visible strings are localized in English and Russian.
 - [x] No financial accounting formula or persisted format changes.
-- [ ] TypeScript, full Vitest, localization checks, dead-code validation, dependency audits, production build, and relevant browser smoke tests pass on the exact PR head.
+- [x] TypeScript, full Vitest (1,501 tests / 124 files), localization checks, dead-code validation, both dependency audits, production build, and Chromium browser smoke passed on exact PR head `a4f9897e76d568c8b9264a5ec54b8657682385a6` ([CI run](https://github.com/armave/portfolio-terminal/actions/runs/41978274969)).
 
 ## Required validation
 
