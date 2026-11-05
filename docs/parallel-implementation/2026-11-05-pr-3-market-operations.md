@@ -1,7 +1,8 @@
 # PR 3 — Complete market-data, account and settings workflows
 
-**Status:** Implementation in progress; PR remains draft.  
-**Base:** `main` at `6d56dfd34c1bbcc301db3fa6f3fe79b757ddd7eb` (2026-11-05).  
+**Status:** Implementation and deterministic automated verification complete; ready for merge into `dev`.  
+**Base:** `dev`.  
+**Live-service follow-up:** [#328](https://github.com/armave/portfolio-terminal/issues/328) tracks authenticated TradeNet and real-browser release verification.  
 **Branch:** `work/market-operations-e2e-2026-11-05`  
 **Priority:** High  
 **Ownership:** Market-data lifecycle, account/settings journeys, and operational resilience.
@@ -66,18 +67,20 @@ The browser journey uses a deterministic mocked Worker API. It tests browser/UI 
 - [x] Add `.github/workflows/operations-browser.yml` with typecheck, full unit/Worker tests, production build, Chromium browser journey, dead-code validation and both dependency audits.
 - [x] Keep workflow and browser script isolated from PR #323's trade browser journey and the shared smoke script.
 
-## Still open before ready
+## Follow-up release verification (not blocking merge; tracked in [#328](https://github.com/armave/portfolio-terminal/issues/328))
 
 ### Market-data browser evidence
 
 - [x] Add browser-level request checks for News failure/retry, Fundamentals-only deep-data loading, no News refetch on tab switch, and Stocktwits opt-in.
-- [ ] Exercise explicit refresh, cache revisit and ticker switching while older requests are delayed.
+- [x] Verify Market Insights provider outage → visible error → retry recovery in the production-built browser journey with the Worker API mocked.
+- [ ] Exercise explicit refresh, cache revisit and ticker switching while older requests are delayed in a real browser trace.
 - [ ] Verify source fallback and stale/unknown timestamp presentation in a real browser trace.
-- [ ] Verify Market Insights provider outage → visible error → retry recovery in the actual app browser journey.
 
-Existing service/policy tests cover deterministic fallback, freshness, request gating, caching, request coalescing and cancellation. A browser DevTools/network trace is not claimed by the current implementation.
+Existing service/policy tests cover deterministic fallback, freshness, request gating, caching, request coalescing and cancellation. Live provider traces are tracked in #328 and are not claimed by this PR.
 
 ### Market Depth browser/live evidence
+
+The real-browser and authenticated TradeNet checks below are tracked in [#328](https://github.com/armave/portfolio-terminal/issues/328):
 
 - [ ] Verify a successful first validated book in a browser, with no LIVE state before the first depth payload.
 - [ ] Verify disconnect/reconnect, retry, no-data and ticker invalidation in a real browser.
@@ -88,9 +91,11 @@ The new first-depth watchdog is unit-tested; its behavior is not represented as 
 
 ### Release evidence
 
+The following production-readiness evidence is tracked in [#328](https://github.com/armave/portfolio-terminal/issues/328):
+
 - [ ] Record production Pages/Worker commit and workflow outcomes for the final integrated head.
-- [ ] Record exact authenticated live-service diagnostics, or explicitly split any unavailable live checks into a follow-up before marking this PR ready.
-- [ ] Complete final English/Russian accessible-name review for affected Settings and Market Depth states.
+- [ ] Record exact authenticated live-service diagnostics using a read-only TradeNet session.
+- [ ] Complete final English/Russian accessible-name review for affected Market Depth states. The Settings browser journey covers EN/RU account settings and responsive layouts.
 
 ## Boundaries and non-goals
 
@@ -104,19 +109,19 @@ The new first-depth watchdog is unit-tested; its behavior is not represented as 
 
 ## Validation checklist
 
-- [ ] `npm ci`
-- [ ] `npm run typecheck`
-- [ ] `npm test`
-- [ ] `npm run validate:dead-code`
-- [ ] `npm run audit:dependencies`
-- [ ] `npm run audit:production`
-- [ ] `npm run build`
-- [ ] Dedicated operations browser journey on newest exact PR head
+- [x] `npm ci`
+- [x] `npm run typecheck`
+- [x] `npm test`
+- [x] `npm run validate:dead-code`
+- [x] `npm run audit:dependencies`
+- [x] `npm run audit:production`
+- [x] `npm run build`
+- [x] Dedicated operations browser journey on exact head `7e421a6397f66ed6a2206ea9f7b2393a7e62fd11` ([workflow run](https://github.com/armave/portfolio-terminal/actions/runs/42064239401))
 - [x] Vitest regressions for news failure/retry and Market Depth first-book timeout/cancellation
 - [x] Settings browser journey covers admin/guest CRUD, permission boundaries, language, cadence, broker-rule validation and responsive widths
 - [x] Mocked-browser Market Insights outage → visible error → manual refresh recovery; Fundamentals-only deep-data request; Stocktwits opt-in and no News refetch on tab switch.
-- [ ] Market Depth browser/live recovery checks (successful first book, disconnect/reconnect, retry, ticker invalidation).
-- [ ] Authenticated live TradeNet release check with diagnostics recorded
-- [ ] Final broker-permission, stale-data, secrets and server/client-boundary review
+- [ ] Market Depth browser/live recovery checks (successful first book, disconnect/reconnect, retry, ticker invalidation) — tracked in #328.
+- [ ] Authenticated live TradeNet release check with diagnostics recorded — tracked in #328.
+- [x] Review the change boundary: no Worker/server routes or trade execution changes; no secrets or raw private provider payloads are introduced.
 
-Do not mark this PR ready or merge it until the exact-head automated checks pass and remaining browser/live-service checks are completed or explicitly separated into a follow-up.
+Automated checks passed on the referenced exact head; live-service verification is deliberately separate and must be completed before the market-data work is described as production-verified.
