@@ -809,6 +809,13 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Displayed size is the quantity visible in this live book, not total exchange liquidity. Rows at identical prices are combined.": "Отображаемый объём — это количество в текущем стакане, а не вся ликвидность биржи. Заявки с одинаковой ценой объединены.",
   "Visible levels:": "Видимые уровни:",
   "TradeNet reported book depth:": "Заявленная TradeNet глубина стакана:",
+  "Current provider rows:": "Текущие строки провайдера:",
+  "First payload:": "Первый пакет:",
+  "raw rows": "исходных строк",
+  "accepted": "принято",
+  "ignored": "отброшено",
+  "Initial provider depth:": "Начальная глубина провайдера:",
+  "TradeNet returned only one bid price and one ask price in this snapshot. This view combines orders at identical prices and displays every distinct price level received. Contact Freedom Broker to check whether deeper market-data access is available for this symbol.": "TradeNet предоставил в этом снимке только одну цену покупки и одну цену продажи. Интерфейс объединяет заявки с одинаковой ценой и показывает все полученные ценовые уровни. Уточните у Freedom Broker, доступна ли для этого инструмента большая глубина рыночных данных.",
   "total positions in the combined book": "позиций в объединённом стакане",
   "Changes captured:": "Полученные изменения:",
 };

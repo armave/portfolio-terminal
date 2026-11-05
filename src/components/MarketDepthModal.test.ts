@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { getMarketDepthDisplayState, normalizeMarketDepthSnapshot, summarizeMarketDepth } from './MarketDepthModal';
+import { getMarketDepthDisplayState, isShallowMarketDepthSnapshot, normalizeMarketDepthSnapshot, summarizeMarketDepth } from './MarketDepthModal';
 import { groupFreedomMarketDepthByPrice } from '../services/freedomMarketDepth.js';
 
 const response = {
@@ -9,12 +9,22 @@ const response = {
   data: {
     symbol: 'AAPL.US',
     sequence: 12,
-    reportedDepth: 2,
+    reportedDepth: 4,
     updateCount: 3,
     insertionsApplied: 2,
     rowUpdatesApplied: 1,
     deletionsApplied: 0,
     captureDurationMs: 408,
+    providerLevelCount: 4,
+    providerBidRowCount: 2,
+    providerAskRowCount: 2,
+    initialSequence: 0,
+    initialReportedDepth: 4,
+    initialRawInsertionCount: 4,
+    initialAcceptedInsertionCount: 4,
+    initialRejectedInsertionCount: 0,
+    initialBidInsertionCount: 2,
+    initialAskInsertionCount: 2,
     bids: [
       { position: 0, price: 340.74, quantity: 100 },
       { position: 1, price: 340.7, quantity: 50 }
@@ -31,7 +41,14 @@ describe('Market Depth response normalization', () => {
     expect(normalizeMarketDepthSnapshot(response, ' aapl ')).toMatchObject({
       symbol: 'AAPL.US',
       sequence: 12,
-      reportedDepth: 2,
+      reportedDepth: 4,
+      providerLevelCount: 4,
+      providerBidRowCount: 2,
+      providerAskRowCount: 2,
+      initialSequence: 0,
+      initialRawInsertionCount: 4,
+      initialAcceptedInsertionCount: 4,
+      initialRejectedInsertionCount: 0,
       bids: response.data.bids,
       asks: response.data.asks,
       updatedAt: response.updatedAt
@@ -66,6 +83,48 @@ describe('Market Depth live-only display policy', () => {
     expect(getMarketDepthDisplayState('connected', snapshot)).toBe('live');
     expect(getMarketDepthDisplayState('disconnected', snapshot)).toBe('disconnected');
     expect(getMarketDepthDisplayState('error', snapshot)).toBe('error');
+  });
+});
+
+describe('Market Depth provider depth indication', () => {
+  it('flags a one-price-per-side book without treating a multi-level book as shallow', () => {
+    const shallow = normalizeMarketDepthSnapshot({
+      ...response,
+      data: {
+        ...response.data,
+        bids: [response.data.bids[0]],
+        asks: [response.data.asks[0]],
+        providerLevelCount: 2,
+        providerBidRowCount: 1,
+        providerAskRowCount: 1
+      }
+    }, 'AAPL');
+    const multiLevel = normalizeMarketDepthSnapshot(response, 'AAPL');
+    const oneSided = normalizeMarketDepthSnapshot({
+      ...response,
+      data: {
+        ...response.data,
+        bids: [],
+        providerLevelCount: 2,
+        providerBidRowCount: 0,
+        providerAskRowCount: 2
+      }
+    }, 'AAPL');
+    const groupedButManyProviderRows = normalizeMarketDepthSnapshot({
+      ...response,
+      data: {
+        ...response.data,
+        bids: [response.data.bids[0]],
+        asks: [response.data.asks[0]],
+        providerBidRowCount: 10,
+        providerAskRowCount: 10
+      }
+    }, 'AAPL');
+
+    expect(isShallowMarketDepthSnapshot(shallow)).toBe(true);
+    expect(isShallowMarketDepthSnapshot(multiLevel)).toBe(false);
+    expect(isShallowMarketDepthSnapshot(oneSided)).toBe(false);
+    expect(isShallowMarketDepthSnapshot(groupedButManyProviderRows)).toBe(false);
   });
 });
 
@@ -131,6 +190,12 @@ describe('Market Depth modal wiring', () => {
     expect(modalSource).toContain("Crossed order book: highest bid is above lowest ask.");
     expect(modalSource).toContain("TradeNet reported book depth:");
     expect(modalSource).toContain("total positions in the combined book");
+    expect(modalSource).toContain("TradeNet returned only one bid price and one ask price in this snapshot.");
+    expect(modalSource).toContain("isShallowMarketDepthSnapshot(liveSnapshot)");
+    expect(modalSource).toContain("Current provider rows:");
+    expect(modalSource).toContain("First payload:");
+    expect(modalSource).toContain("Initial provider depth:");
+    expect(modalSource).toContain("providerBidRowCount ?? snapshot.bids.length");
     expect(modalSource).not.toContain("provider metadata, not a UI level target");
     expect(modalSource).toContain('Rows at identical prices are combined');
     expect(modalSource).toContain('runtime.stop()');
