@@ -2470,5 +2470,6 @@ describe('portfolio import boundary validation', () => {
     expect(store.getState().positions.NVDA.shares).toBe(2);
     expect(sharedTestStorage).toEqual(previousStorage);
     expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][1]).toBe('derived');
   });
 });
