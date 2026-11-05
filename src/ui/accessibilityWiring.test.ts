@@ -167,7 +167,7 @@ describe('Stage 10 accessibility wiring', () => {
     const app = readSource('../../app.ts');
     const cash = readSource('../components/CashCushionDesk.tsx');
     expect(app).toContain('getPositiveMarketPrice(holding.currentPrice, holding.price)');
-    expect(app.split('const brokerCashHoldings = classified.cashStocks.map((holding) => {').length - 1).toBe(3);
+    expect(app.split('const brokerCashHoldings = refreshed.cashStocks.map((holding) => {').length - 1).toBe(3);
     expect(cash).toContain('getCashHoldingMarketPrice(cashHolding || {}) ??');
     expect(cash).toContain('getCashHoldingMarketPrice({ currentPrice: tranche.marketPrice })');
   });
