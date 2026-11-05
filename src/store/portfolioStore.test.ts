@@ -2239,12 +2239,9 @@ describe('atomic portfolio-store persistence', () => {
     expect(store.getState().balance).toBe(-100);
   });
 
-  it('rolls back the portfolio snapshot when broker rules cannot be saved', () => {
+  it('keeps broker assumptions committed in the recovery journal when the legacy rules mirror fails', () => {
     const store = new PortfolioStore();
     expect(store.updateAssumptions({ annualBorrowRate: 0.12 })).toBe(true);
-    const previousState = store.getState();
-    const previousPortfolioSnapshot = values.get('margin_portfolio_state_dynamic_v2');
-    const previousBrokerRules = values.get('tradernet_rules_v1');
     const listener = vi.fn();
     const persistenceErrorListener = vi.fn();
     store.subscribe(listener);
@@ -2255,12 +2252,16 @@ describe('atomic portfolio-store persistence', () => {
       values.set(key, String(value));
     });
 
-    expect(store.updateAssumptions({ annualBorrowRate: 0.2 })).toBe(false);
-    expect(store.getState()).toBe(previousState);
-    expect(values.get('margin_portfolio_state_dynamic_v2')).toBe(previousPortfolioSnapshot);
-    expect(values.get('tradernet_rules_v1')).toBe(previousBrokerRules);
-    expect(listener).not.toHaveBeenCalled();
-    expect(persistenceErrorListener).toHaveBeenCalledTimes(1);
+    expect(store.updateAssumptions({ annualBorrowRate: 0.2 })).toBe(true);
+    expect(store.getState().brokerAssumptions.annualBorrowRate).toBe(0.2);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(persistenceErrorListener).not.toHaveBeenCalled();
+
+    const journalKey = Array.from(values.keys()).find((key) =>
+      key.startsWith('portfolio_terminal_state_pending_v1:')
+    );
+    expect(journalKey).toBeDefined();
+    expect(JSON.parse(values.get(journalKey!)!).brokerRules).toMatchObject({ annualBorrowRate: 0.2 });
   });
 
   it('publishes a committed journal when a legacy closed-history mirror cannot be updated', () => {
