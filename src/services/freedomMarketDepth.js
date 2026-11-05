@@ -28,47 +28,75 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
   let rowUpdatesApplied = 0;
   // Retain a compact, bounded update trail so position drift can be traced to the first bad delta.
   const recentUpdates = [];
+  let initialSequence;
+  let initialReportedDepth;
+  let initialRawInsertionCount;
+  let initialAcceptedInsertionCount;
+  let initialRejectedInsertionCount;
+  let initialBidInsertionCount;
+  let initialAskInsertionCount;
+
+  // Tradernet payloads can encode numeric fields as JSON numbers or numeric strings.
+  const finiteNumber = value => {
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    if (typeof value !== "string" || value.trim() === "") return null;
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const normalizePosition = value => {
+    const position = finiteNumber(value);
+    return Number.isSafeInteger(position) && position >= 0 ? position : null;
+  };
+  const normalizeSide = value => {
+    if (typeof value === "boolean") return value ? "B" : "S";
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value > 0 ? "B" : value < 0 ? "S" : null;
+    }
+    const sideValue = String(value ?? "").trim().toUpperCase();
+    return sideValue === "B" || sideValue === "BUY"
+      ? "B"
+      : sideValue === "S" || sideValue === "SELL" ? "S" : null;
+  };
 
   const normalizeRow = (value, requireValues = true) => {
     if (!isRecord(value)) return null;
-    const sideValue = String(value.s ?? "").trim().toUpperCase();
-    const side = sideValue === "B" || sideValue === "BUY"
-      ? "B"
-      : sideValue === "S" || sideValue === "SELL" ? "S" : null;
-    const position = value.k;
-    const price = value.p;
-    const quantity = value.q;
-    if (!side || !Number.isSafeInteger(position) || position < 0 ||
-        (requireValues && (!Number.isFinite(price) || price <= 0 ||
-          !Number.isFinite(quantity) || quantity < 0))) return null;
+    const side = normalizeSide(value.s);
+    const position = normalizePosition(value.k);
+    const price = finiteNumber(value.p);
+    const quantity = finiteNumber(value.q);
+    if (!side || position === null ||
+        (requireValues && (price === null || price <= 0 ||
+          quantity === null || quantity < 0))) return null;
     return {
       side,
       position,
-      ...(Number.isFinite(price) && price > 0 ? { price } : {}),
-      ...(Number.isFinite(quantity) && quantity >= 0 ? { quantity } : {})
+      ...(price !== null && price > 0 ? { price } : {}),
+      ...(quantity !== null && quantity >= 0 ? { quantity } : {})
     };
   };
 
   // Some live TradeNet del rows contain only a position (or a numeric k).
   // A delete needs the global position; side/price/quantity are optional hints.
   const normalizeDeletion = value => {
-    if (Number.isSafeInteger(value) && value >= 0) return { position: value };
+    const numericPosition = typeof value === "number" || typeof value === "string"
+      ? normalizePosition(value)
+      : null;
+    if (numericPosition !== null) return { position: numericPosition };
     if (!isRecord(value)) return null;
-    const position = value.k;
-    if (!Number.isSafeInteger(position) || position < 0) return null;
+    const position = normalizePosition(value.k);
+    if (position === null) return null;
     let side = null;
     if (value.s !== undefined && value.s !== null && String(value.s).trim() !== "") {
-      const sideValue = String(value.s).trim().toUpperCase();
-      side = sideValue === "B" || sideValue === "BUY"
-        ? "B"
-        : sideValue === "S" || sideValue === "SELL" ? "S" : null;
+      side = normalizeSide(value.s);
       if (!side) return null;
     }
+    const price = finiteNumber(value.p);
+    const quantity = finiteNumber(value.q);
     return {
       position,
       ...(side ? { side } : {}),
-      ...(Number.isFinite(value.p) && value.p > 0 ? { price: value.p } : {}),
-      ...(Number.isFinite(value.q) && value.q >= 0 ? { quantity: value.q } : {})
+      ...(price !== null && price > 0 ? { price } : {}),
+      ...(quantity !== null && quantity >= 0 ? { quantity } : {})
     };
   };
 
@@ -89,7 +117,7 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
     const history = recentUpdates.map(entry =>
       `n${entry.sequence}[d:${entry.del};i:${entry.ins};u:${entry.upd}]`
     ).join("|");
-    const message = `TradeNet Market Depth ${operation} side mismatch at k=${row.position}: incoming=${row.side}${Number.isFinite(row.price) ? `@${row.price}` : ""}, existing=${existing.side}${Number.isFinite(existing.price) ? `@${existing.price}` : ""}, n=${Number.isSafeInteger(update.n) ? update.n : "unknown"}, del=[${compactRows(update.del, true)}], ins=[${compactRows(update.ins)}], upd=[${compactRows(update.upd)}], nearby=[${nearby.join(",")}], history=[${history}]`;
+    const message = `TradeNet Market Depth ${operation} side mismatch at k=${row.position}: incoming=${row.side}${Number.isFinite(row.price) ? `@${row.price}` : ""}, existing=${existing.side}${Number.isFinite(existing.price) ? `@${existing.price}` : ""}, n=${normalizePosition(update.m ?? update.n) ?? "unknown"}, del=[${compactRows(update.del, true)}], ins=[${compactRows(update.ins)}], upd=[${compactRows(update.upd)}], nearby=[${nearby.join(",")}], history=[${history}]`;
     return message.length > 5000 ? message.slice(0, 4997) + "..." : message;
   };
 
@@ -134,13 +162,30 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
         throw new Error("TradeNet market-depth update did not match the requested symbol.");
       }
 
+      // Current DomInfoBlock uses m; accept legacy n as well.
+      const updateSequence = normalizePosition(update.m ?? update.n);
+      const updateDepth = normalizePosition(update.cnt);
       const rawDeletions = rows(update.del);
       const deletions = rawDeletions.map(normalizeDeletion);
       if (deletions.some(row => row === null)) {
         throw new Error("TradeNet Market Depth deletion row did not contain a valid global position.");
       }
-      const insertions = rows(update.ins).map(row => normalizeRow(row)).filter(Boolean);
-      const rowUpdates = rows(update.upd).map(row => normalizeRow(row)).filter(Boolean);
+      const rawInsertions = rows(update.ins);
+      const insertions = rawInsertions.map(row => normalizeRow(row)).filter(Boolean);
+      const rawRowUpdates = rows(update.upd);
+      const rowUpdates = rawRowUpdates.map(row => normalizeRow(row)).filter(Boolean);
+
+      // Capture the first provider snapshot before any normalization/aggregation so a shallow
+      // account feed can be distinguished from rows rejected by the parser or grouped by price.
+      if (updateCount === 0) {
+        initialSequence = updateSequence ?? undefined;
+        initialReportedDepth = updateDepth ?? undefined;
+        initialRawInsertionCount = rawInsertions.length;
+        initialAcceptedInsertionCount = insertions.length;
+        initialRejectedInsertionCount = rawInsertions.length - insertions.length;
+        initialBidInsertionCount = insertions.filter(row => row.side === "B").length;
+        initialAskInsertionCount = insertions.filter(row => row.side === "S").length;
+      }
       const rowCount = deletions.length + insertions.length + rowUpdates.length;
       if (rowCount > MAX_UPDATE_ROWS) {
         throw new Error("TradeNet sent more Market Depth rows than this stream can safely process.");
@@ -153,7 +198,7 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
           : "invalid";
       }).join(",");
       recentUpdates.push({
-        sequence: Number.isSafeInteger(update.n) ? update.n : "?",
+        sequence: updateSequence ?? "?",
         del: historyRows(update.del, true),
         ins: historyRows(update.ins),
         upd: historyRows(update.upd)
@@ -161,17 +206,19 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
       if (recentUpdates.length > 12) recentUpdates.shift();
 
       // n is a per-ticker ordinal. A gap means deltas were missed and the book is unsafe.
-      if (Number.isSafeInteger(update.n)) {
-        if (sequence !== undefined && update.n !== sequence + 1) {
+      if (updateSequence !== null) {
+        if (sequence !== undefined && updateSequence !== sequence + 1) {
           throw new Error("TradeNet Market Depth sequence gap detected; a fresh snapshot is required.");
         }
       }
 
       updateCount += 1;
       applied += 1;
-      if (Number.isSafeInteger(update.cnt) && update.cnt >= 0) reportedDepth = update.cnt;
-      if (Number.isFinite(update.min_step) && update.min_step > 0) minStep = update.min_step;
-      if (Number.isFinite(update.step_price) && update.step_price > 0) stepPrice = update.step_price;
+      if (updateDepth !== null) reportedDepth = updateDepth;
+      const nextMinStep = finiteNumber(update.min_step);
+      const nextStepPrice = finiteNumber(update.step_price);
+      if (nextMinStep !== null && nextMinStep > 0) minStep = nextMinStep;
+      if (nextStepPrice !== null && nextStepPrice > 0) stepPrice = nextStepPrice;
 
       // TradeNet specifies del -> ins -> upd. Delete from highest k downward.
       deletions.sort((left, right) => right.position - left.position);
@@ -230,7 +277,7 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
       }
 
       // Commit the ordinal only after the entire delta was applied successfully.
-      if (Number.isSafeInteger(update.n)) sequence = update.n;
+      if (updateSequence !== null) sequence = updateSequence;
     }
     return applied;
   };
@@ -250,19 +297,31 @@ export function createFreedomMarketDepthBook(requestedSymbol) {
       }
       return result;
     };
+    const bids = collectSide("B");
+    const asks = collectSide("S");
     return {
       symbol,
       ...(Number.isSafeInteger(sequence) ? { sequence } : {}),
       ...(Number.isSafeInteger(reportedDepth) && reportedDepth >= 0 ? { reportedDepth } : {}),
       ...(Number.isFinite(minStep) && minStep > 0 ? { minStep } : {}),
       ...(Number.isFinite(stepPrice) && stepPrice > 0 ? { stepPrice } : {}),
+      providerLevelCount: bids.length + asks.length,
+      providerBidRowCount: bids.length,
+      providerAskRowCount: asks.length,
+      ...(Number.isSafeInteger(initialSequence) ? { initialSequence } : {}),
+      ...(Number.isSafeInteger(initialReportedDepth) ? { initialReportedDepth } : {}),
+      ...(Number.isSafeInteger(initialRawInsertionCount) ? { initialRawInsertionCount } : {}),
+      ...(Number.isSafeInteger(initialAcceptedInsertionCount) ? { initialAcceptedInsertionCount } : {}),
+      ...(Number.isSafeInteger(initialRejectedInsertionCount) ? { initialRejectedInsertionCount } : {}),
+      ...(Number.isSafeInteger(initialBidInsertionCount) ? { initialBidInsertionCount } : {}),
+      ...(Number.isSafeInteger(initialAskInsertionCount) ? { initialAskInsertionCount } : {}),
       updateCount,
       insertionsApplied,
       rowUpdatesApplied,
       deletionsApplied,
       ...(Number.isFinite(captureDurationMs) && captureDurationMs >= 0 ? { captureDurationMs } : {}),
-      bids: collectSide("B"),
-      asks: collectSide("S")
+      bids,
+      asks
     };
   };
 
