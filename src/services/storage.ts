@@ -553,8 +553,14 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
     return getPortfolioPersistenceStatus();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const local = storage ? resolveLocalPortfolioSnapshot(storage).record : null;
-    updatePortfolioPersistenceStatus('degraded', local?.revision ?? 0, message);
+    let localRevision = hydratedPortfolioSnapshot?.revision ?? 0;
+    try {
+      const local = storage ? resolveLocalPortfolioSnapshot(storage).record : null;
+      localRevision = local?.revision ?? localRevision;
+    } catch {
+      // Preserve the original storage/IndexedDB failure as the surfaced cause.
+    }
+    updatePortfolioPersistenceStatus('degraded', localRevision, message);
     return getPortfolioPersistenceStatus();
   }
 }
@@ -1087,11 +1093,16 @@ export function saveSavedHistory(history: { brokerExecutedTrades?: unknown[]; ca
 export function loadSavedHistory(): ClosedHistorySnapshot {
   const storage = getBrowserStorage();
   if (!storage) return { brokerExecutedTrades: [], cashflows: [] };
-  if (storage.getItem(STORAGE_KEY_CLEAR_MARKER)) {
+  let resolved: ReturnType<typeof resolveLocalPortfolioSnapshot>;
+  try {
+    if (storage.getItem(STORAGE_KEY_CLEAR_MARKER)) {
+      return { brokerExecutedTrades: [], cashflows: [] };
+    }
+    resolved = resolveLocalPortfolioSnapshot(storage);
+  } catch (error) {
+    console.warn('Failed to read saved portfolio history:', error);
     return { brokerExecutedTrades: [], cashflows: [] };
   }
-
-  const resolved = resolveLocalPortfolioSnapshot(storage);
   if (resolved.record) {
     const history = cloneHistory(resolved.record.history);
     lastPersistedHistory = history;
