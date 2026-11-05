@@ -476,13 +476,18 @@ export class PortfolioStore {
     return this.setState(partial, persist, 'derived');
   }
 
-  public importState(newState: Partial<PortfolioState>): boolean {
+  /**
+   * Import a portfolio snapshot. Backup restoration can stage the replacement
+   * with persist=false and commit it once through the backup transaction; other
+   * callers retain the durable-by-default behavior.
+   */
+  public importState(newState: Partial<PortfolioState>, persist = true): boolean {
     if (!hasValidPortfolioImportShape(newState)) return false;
 
     return this.update((state) => ({
       ...state,
       ...newState
-    }));
+    }), persist);
   }
 
   /**
