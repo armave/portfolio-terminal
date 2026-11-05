@@ -40,7 +40,6 @@ export function createPortfolioAuthenticatedStartupRuntime(
     // Establish role and write permission before reading any local administrator
     // state. Guest sessions must never hydrate the administrator's local database.
     // The local IndexedDB snapshot is reconciled before admin portfolio import.
-    //
     if (secret) await dependencies.publishCurrentUser();
     else dependencies.clearAccountIdentity();
 
