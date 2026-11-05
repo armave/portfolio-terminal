@@ -453,7 +453,7 @@ describe('storage service', () => {
       }));
       const cashflows = Array.from({ length: 160 }, (_, index) => ({
         id: `updated-cashflow-${index}`,
-        amount: -index
+        amount: index === 0 ? 0 : -index
       }));
       const state = {
         activeView: 'CLOSED_HISTORY',
