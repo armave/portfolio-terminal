@@ -490,7 +490,7 @@ try {
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
   await page.waitForFunction(
-    () => document.querySelector('select[aria-label="Account language"]')?.value === 'ru',
+    () => document.querySelector('#settingsDesk select')?.value === 'ru',
     null,
     { timeout: 20_000 }
   );
@@ -498,20 +498,20 @@ try {
   // A guest sees the account preference and manual sync controls, never admin-only user,
   // backup or broker-rule management. The shared owner workspace is not read.
   const sharedWorkspaceReadsBeforeGuest = worker.count('GET', '/api/state');
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByRole('button', { name: 'Выйти' }).click();
   await waitForAuthOverlay(page, true);
   await submitAuth(page, { name: 'Browser Guest Updated', password: 'updated-guest-password' });
   await waitForAuthOverlay(page, false);
   await page.locator('#settingsBtn').click();
   await page.locator('#settingsDesk').waitFor({ state: 'visible', timeout: 20_000 });
-  const guestSettingsText = await page.locator('#settingsDesk').innerText();
-  if (guestSettingsText.includes('User management') || guestSettingsText.includes('Broker Rules')) {
-    throw new Error('Guest Settings exposed administrator-only controls.');
+  if (await page.locator('#settingsDesk section.settings-user-panel').count() ||
+      await page.locator('#settingsDesk details.settings-broker-rules').count()) {
+    throw new Error('Guest Settings exposed administrator-only account or broker-rule controls.');
   }
-  if (await page.getByRole('button', { name: 'Export portfolio backup as JSON' }).count()) {
+  if (await page.getByRole('button', { name: /Экспорт/ }).count()) {
     throw new Error('Guest Settings exposed the administrator backup action.');
   }
-  if (!(await page.locator('#settingsDesk button[aria-label="Sync portfolio"]').count())) {
+  if (!(await page.getByRole('button', { name: 'Синхронизировать портфель' }).count())) {
     throw new Error('Guest Settings lost the manual portfolio sync control.');
   }
   if (worker.count('GET', '/api/guest-portfolio') < 1) {
