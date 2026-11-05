@@ -319,7 +319,7 @@ Earlier integrated-head validation checkpoint passed on `8e0bef23a64d16ab0e40857
 
 ## PR #313 — margin-risk input validity and scenario coverage
 
-**Status:** Implementation committed; exact-head validation is pending.
+**Status:** Implementation and exact-head validation complete.
 
 - [x] Validate finite non-negative debt, position value, and collateral inputs.
 - [x] Validate configured maintenance and stop-out ratios, including their ordering and denominator boundaries.
@@ -329,4 +329,4 @@ Earlier integrated-head validation checkpoint passed on `8e0bef23a64d16ab0e40857
 - [x] Update application/AI context and Summary Metrics consumers to preserve unavailable risk status.
 - [x] Add deterministic Vitest coverage for zero debt/assets, negative equity, threshold equality, invalid inputs/ratios, and overflow.
 - [x] Add English/Russian copy and localization assertions.
-- [ ] Complete exact-head TypeScript, full Vitest, dead-code validation, dependency audits, production build, and browser smoke on the final PR head.
+- [x] Exact-head validation passed on `a4f9897e76d568c8b9264a5ec54b8657682385a6`: TypeScript, 1,501 Vitest tests across 124 files, dead-code validation, both dependency audits, production build, and Chromium browser smoke. [CI run](https://github.com/armave/portfolio-terminal/actions/runs/41978274969).
