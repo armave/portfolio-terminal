@@ -2,7 +2,8 @@ import type { BrokerAssumptions } from '../types/portfolio';
 import {
   createIndexedDbPortfolioStateDatabase,
   type PortfolioStateDatabase,
-  type PortfolioStateSnapshotRecord
+  type PortfolioStateSnapshotRecord,
+  type PortfolioRecoveryArchiveRecord
 } from './portfolioStateDatabase';
 import {
   DEFAULT_ADMIN_REFRESH_INTERVAL_MS,
@@ -418,6 +419,11 @@ export function getPortfolioPersistenceStatus(): PortfolioPersistenceStatus {
   return { ...portfolioPersistenceStatus };
 }
 
+/** Reads preserved superseded recovery branches without changing the active portfolio. */
+export async function getArchivedPortfolioRecoveryRecords(): Promise<PortfolioRecoveryArchiveRecord[]> {
+  return getPortfolioStateDatabase().readRecoveryRecords();
+}
+
 export function subscribePortfolioPersistenceStatus(
   listener: (status: PortfolioPersistenceStatus) => void
 ): () => void {
@@ -602,6 +608,39 @@ async function flushPortfolioPersistenceOnce(): Promise<PortfolioPersistenceStat
         return getPortfolioPersistenceStatus();
       }
       current = baseline;
+    }
+
+    // A matching local checkpoint proves that this browser has a complete,
+    // committed generation. Journals from older revisions may belong to a
+    // crashed or superseded tab and cannot safely be replayed onto that newer
+    // generation. Preserve them in IndexedDB first, then remove their local
+    // copies so they neither block future saves nor exhaust localStorage quota.
+    const localCheckpoint = readAtomicPortfolioSnapshot(storage);
+    const checkpointMatchesCurrent = Boolean(
+      current && localCheckpoint &&
+      localCheckpoint.revision === current.revision &&
+      localCheckpoint.commitId === current.commitId &&
+      localCheckpoint.originId === current.originId
+    );
+    if (checkpointMatchesCurrent && current) {
+      const superseded = readPendingPortfolioSnapshots(storage).filter((item) =>
+        item.record.commitId !== current!.commitId &&
+        item.record.revision <= current!.revision
+      );
+      if (superseded.length > 0) {
+        const archivedAt = Date.now();
+        const archiveRecords: PortfolioRecoveryArchiveRecord[] = superseded.map((item) => ({
+          id: item.record.commitId,
+          originalKey: item.key,
+          archivedAt,
+          reason: 'superseded-by-committed-checkpoint',
+          payload: item.record
+        }));
+        // The adapter resolves only after the IndexedDB transaction commits.
+        // If archiving fails, the local journals remain untouched for retry.
+        await database.archiveRecoveryRecords(archiveRecords);
+        removeStoredKeys(storage, superseded.map((item) => item.key));
+      }
     }
 
     const committedKeys = new Set<string>();
