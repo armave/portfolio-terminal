@@ -170,7 +170,8 @@ export function parseAiIntent(
       assert(isOptionalTicker(value.ticker), 'Simulation requires a valid ticker or null.');
       assert(isPositiveNumber(value.simPrice), 'Simulation price must be positive.');
       assert(isFiniteNumber(value.daysOffset) && Number.isInteger(value.daysOffset) && value.daysOffset >= 0, 'Simulation days must be a non-negative integer.');
-      assert(typeof value.label === 'string' && value.label.length <= 120, 'Simulation label must be a string up to 120 characters.');
+      assert(typeof value.label === 'string' && value.label.trim().length > 0 && value.label.length <= 120, 'Simulation label must be a non-empty string up to 120 characters.');
+      assert(value.daysOffset <= 3650, 'Simulation days must be within the next 10 years.');
       return {
         intent: 'simulation',
         ticker: value.ticker,
@@ -186,9 +187,9 @@ export function parseAiIntent(
         ticker: value.ticker,
         scenarios: value.scenarios.map(scenario => {
           assert(isRecord(scenario), 'Comparison scenario must be an object.');
-          assert(typeof scenario.label === 'string' && scenario.label.length <= 120, 'Comparison scenario label must be a short string.');
+          assert(typeof scenario.label === 'string' && scenario.label.trim().length > 0 && scenario.label.length <= 120, 'Comparison scenario label must be a non-empty short string.');
           assert(isPositiveNumber(scenario.price), 'Comparison scenario price must be positive.');
-          assert(isFiniteNumber(scenario.days) && Number.isInteger(scenario.days) && scenario.days >= 0, 'Comparison scenario days must be a non-negative integer.');
+          assert(isFiniteNumber(scenario.days) && Number.isInteger(scenario.days) && scenario.days >= 0 && scenario.days <= 3650, 'Comparison scenario days must be a non-negative integer within the next 10 years.');
           return { label: scenario.label, price: scenario.price, days: scenario.days };
         })
       };

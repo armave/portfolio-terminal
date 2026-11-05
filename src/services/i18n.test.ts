@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { getAppLanguage, setAppLanguage, subscribeAppLanguage, translateText } from './i18n';
+import { formatMarginCoverageStatus, formatMarginFetchedLabel, formatMarginSourcesHeading } from '../features/ai/marginIntelligenceCopy';
 
 afterEach(() => setAppLanguage('en'));
 
@@ -66,6 +67,43 @@ describe('app localization', () => {
     for (const copy of scenarioAndMarketCopy) {
       expect(translateText(copy, 'ru'), copy).not.toBe(copy);
     }
+  });
+
+  it('localizes the complete margin intelligence evidence and stale-state copy', () => {
+    const copy = [
+      'This saved review may no longer match the current portfolio or news. Refresh it before relying on its conclusions.',
+      'The portfolio facts have changed since this review was generated.',
+      'The review instructions have changed since this analysis was generated.',
+      'The news evidence is more than 24 hours old or its timestamp is unavailable.',
+      'This review predates the current evidence and freshness metadata.',
+      'News coverage by position', 'Feed unavailable', 'Feed returned no articles',
+      'available', 'reviewed', 'Fetched',
+      'Some news feeds failed. No source-backed news claims should be inferred from those positions.',
+      'No articles were available from the connected news feeds. News-dependent conclusions are limited.',
+      'No server-synced digest yet', 'Portfolio snapshot',
+      'Refresh margin intelligence', 'Close margin intelligence',
+      'Switch to 7d', 'Lock 14d Best', 'Invert Comparison', 'Stage target command',
+      'Portfolio context changed while the AI response was being prepared. No changes were made. Run the request again.',
+      'Select or mention an active stock before requesting an AI simulation, comparison, or quote.'
+    ];
+    for (const value of copy) expect(translateText(value, 'ru'), value).not.toBe(value);
+  });
+
+  it('localizes margin intelligence dynamic feed counts and evidence timestamps', () => {
+    expect(formatMarginCoverageStatus({
+      ticker: 'AAPL', status: 'loaded', fetchedAt: '2026-11-05T08:00:00.000Z',
+      availableArticleCount: 4, selectedArticleCount: 2
+    }, 'ru')).toBe('4 доступно · 2 просмотрено');
+    expect(formatMarginCoverageStatus({
+      ticker: 'MSFT', status: 'empty', fetchedAt: '2026-11-05T08:00:00.000Z',
+      availableArticleCount: 0, selectedArticleCount: 0
+    }, 'ru')).toBe('Лента не вернула статей');
+    expect(formatMarginCoverageStatus({
+      ticker: 'GOOGL', status: 'error', fetchedAt: '2026-11-05T08:00:00.000Z',
+      availableArticleCount: 0, selectedArticleCount: 0, error: 'Timeout'
+    }, 'ru')).toBe('Лента недоступна: Timeout');
+    expect(formatMarginFetchedLabel('Nov 5, 2026', 'ru')).toBe('Получено Nov 5, 2026');
+    expect(formatMarginSourcesHeading(3, 'ru')).toBe('Изученные источники (3)');
   });
 
   it('localizes ticker market-volume labels and context', () => {
