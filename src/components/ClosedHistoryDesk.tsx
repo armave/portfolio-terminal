@@ -286,7 +286,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true }: 
           ? updatedExecutions
           : (portfolioStore.getState().brokerExecutedTrades || []),
         cashflows: cashflowRows
-      });
+      }, {}, isOperationCurrent);
       if (!historyPersisted) {
         portfolioStore.update(() => previousPortfolioState, false);
         const message = 'Closed history was recalculated but could not be saved on this device. Cloud synchronization was skipped.';
