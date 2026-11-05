@@ -77,7 +77,7 @@ async function mockWorkerApi(page) {
     let body = {};
     try { body = request.postDataJSON() || {}; } catch { body = {}; }
     const action = url.searchParams.get('action') || '';
-    const call = { method, pathname, action, token, body };
+    const call = { method, pathname, action, symbol: url.searchParams.get('symbol') || '', token, body };
     calls.push(call);
 
     if (method === 'OPTIONS') {
@@ -424,7 +424,7 @@ try {
   await page.locator('#marketInsightsContent').getByText('Recovered Market News').waitFor({ state: 'visible', timeout: 10_000 });
   const newsCallsBeforeDeepData = worker.findCalls('GET', '/').filter((call) => call.action === 'news').length;
   await page.getByRole('tab', { name: 'Fundamentals' }).click();
-  await waitForCondition(() => worker.findCalls('POST', '/').some((call) => !call.action && call.body.symbol === undefined), 'deep market data request');
+  await waitForCondition(() => worker.findCalls('POST', '/').some((call) => !call.action && call.symbol === 'AAPL'), 'deep market data request');
   if (worker.findCalls('GET', '/').filter((call) => call.action === 'news').length !== newsCallsBeforeDeepData) {
     throw new Error('Switching to Fundamentals unexpectedly retriggered company News.');
   }
