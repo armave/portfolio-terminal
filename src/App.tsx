@@ -35,7 +35,8 @@ import {
   fingerprintMarginReviewSnapshot,
   getMarginDigestFreshness,
   MARGIN_REVIEW_PROMPT_VERSION,
-  selectMarginReviewNews
+  selectMarginReviewNews,
+  normalizeMarginReviewTicker
 } from './features/ai/marginIntelligence';
 import { calculateMarginRiskMetrics } from './domain/marginRisk';
 import { getCashCushionTotal } from './domain/portfolioSelectors';
@@ -99,7 +100,7 @@ function buildMarginReviewContext(
     (position): position is PositionRecord => Boolean(position && Number(position.shares) > 0)
   ).sort((a, b) => a.ticker.localeCompare(b.ticker));
   const focusPosition = requestedTicker
-    ? allPositions.find(position => position.ticker.toUpperCase() === requestedTicker)
+    ? allPositions.find(position => normalizeMarginReviewTicker(position.ticker) === normalizeMarginReviewTicker(requestedTicker))
     : null;
   const brokerPositions = snapshot.brokerAccountInfo?.positions || [];
   const summarizePosition = (position: PositionRecord) => {
@@ -113,7 +114,9 @@ function buildMarginReviewContext(
     const observedPrice = finiteReviewNumber(position.currentPrice);
     const marketPrice = observedPrice !== null && observedPrice > 0 ? observedPrice : null;
     const appShares = Number(position.shares);
-    const brokerPosition = brokerPositions.find(item => item.ticker.toUpperCase() === position.ticker.toUpperCase());
+    const brokerPosition = brokerPositions.find(item =>
+      normalizeMarginReviewTicker(item.ticker) === normalizeMarginReviewTicker(position.ticker)
+    );
     const brokerShares = finiteReviewNumber(brokerPosition?.quantity);
     const targetPrice = finiteReviewNumber(position.pt);
     const lotSharesMatchPosition = Math.abs(lotShares - appShares) < 0.000001;
@@ -163,7 +166,7 @@ function buildMarginReviewContext(
       ? position.marketValue / totalMarginMarketValue * 100
       : null
   }));
-  const positionsByTicker = new Map(positionsWithWeight.map(position => [position.ticker.toUpperCase(), position]));
+  const positionsByTicker = new Map(positionsWithWeight.map(position => [normalizeMarginReviewTicker(position.ticker), position]));
   const marginPositions = allPositions.map(position => ({
     ...position,
     currentPrice: finiteReviewNumber(position.currentPrice),
@@ -228,9 +231,9 @@ function buildMarginReviewContext(
   const identity = {
     focusTicker: requestedTicker,
     account,
-    focusPosition: focusPosition ? positionsByTicker.get(focusPosition.ticker.toUpperCase()) : null,
+    focusPosition: focusPosition ? positionsByTicker.get(normalizeMarginReviewTicker(focusPosition.ticker)) : null,
     otherOpenPositions: positionsWithWeight.filter(position =>
-      !requestedTicker || position.ticker.toUpperCase() !== requestedTicker
+      !requestedTicker || normalizeMarginReviewTicker(position.ticker) !== normalizeMarginReviewTicker(requestedTicker)
     )
   };
   const portfolioContext = {
@@ -381,7 +384,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       // Every request supersedes older work, including a ticker that fails validation.
       const requestId = requestGuard.begin();
       const detail = event.detail;
-      const requestedTicker = String(detail?.ticker || '').trim().toUpperCase();
+      const requestedTicker = normalizeMarginReviewTicker(detail?.ticker);
       const snapshot = portfolioStore.getState();
       const reviewInput = buildMarginReviewContext(snapshot, requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
       const { allPositions, focusPosition } = reviewInput;
@@ -505,8 +508,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
             articles,
             coverage,
             snapshotAsOf: reviewInput.portfolioContext.asOf,
-            stale: true,
-            staleReasons: ['snapshot-changed'],
             error: 'The portfolio changed while this review was being generated. Refresh to review the current snapshot.'
           });
           return;

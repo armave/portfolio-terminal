@@ -5,6 +5,7 @@ import {
   getMarginDigestFreshness,
   MARGIN_REVIEW_MAX_AGE_MS,
   MARGIN_REVIEW_PROMPT_VERSION,
+  normalizeMarginReviewTicker,
   selectMarginReviewNews
 } from './marginIntelligence';
 
@@ -20,12 +21,19 @@ describe('margin review prompt', () => {
     expect(prompt).toContain('cite its supplied source ID exactly, e.g. [N2]');
     expect(prompt).toContain('"sourceId":"N1"');
     expect(prompt).toContain('a failed feed means news is unavailable, not that no news exists');
+    expect(prompt).toContain('do not describe the missing broker value as a confirmed mismatch or infer its quantity');
     expect(prompt).toContain('do not fill space with generic market risks');
     expect(prompt).not.toContain('Do not include inline source citations');
   });
 });
 
 describe('margin review snapshot identity', () => {
+  it('normalizes broker market suffixes without changing other ticker suffixes', () => {
+    expect(normalizeMarginReviewTicker(' googl.us ')).toBe('GOOGL');
+    expect(normalizeMarginReviewTicker('brk.b')).toBe('BRK.B');
+    expect(normalizeMarginReviewTicker(null)).toBe('');
+  });
+
   it('is stable regardless of object key order and changes when supplied facts change', async () => {
     const first = await fingerprintMarginReviewSnapshot({ ticker: 'AAPL', facts: { price: 10, shares: 2 } });
     const reordered = await fingerprintMarginReviewSnapshot({ facts: { shares: 2, price: 10 }, ticker: 'AAPL' });
@@ -33,6 +41,29 @@ describe('margin review snapshot identity', () => {
 
     expect(first).toBe(reordered);
     expect(first).not.toBe(changed);
+  });
+
+  it('ignores broker/quote observation timestamps but still fingerprints financial fact changes', async () => {
+    const original = {
+      brokerSnapshotReceivedAt: 1000,
+      positions: [{ ticker: 'GOOGL', appTrackedShares: 68, brokerReportedShares: 68, marketPrice: 294, quoteFreshness: 'fresh', quoteUpdatedAt: 1000, quoteSourceTimestamp: 900 }]
+    };
+    const refreshed = {
+      brokerSnapshotReceivedAt: 2000,
+      positions: [{ ticker: 'GOOGL', appTrackedShares: 68, brokerReportedShares: 68, marketPrice: 294, quoteFreshness: 'fresh', quoteUpdatedAt: 2000, quoteSourceTimestamp: 1900 }]
+    };
+    const resized = {
+      ...refreshed,
+      positions: [{ ...refreshed.positions[0], appTrackedShares: 69 }]
+    };
+    const quoteBecameStale = {
+      ...refreshed,
+      positions: [{ ...refreshed.positions[0], quoteFreshness: 'stale' }]
+    };
+
+    expect(await fingerprintMarginReviewSnapshot(original)).toBe(await fingerprintMarginReviewSnapshot(refreshed));
+    expect(await fingerprintMarginReviewSnapshot(original)).not.toBe(await fingerprintMarginReviewSnapshot(resized));
+    expect(await fingerprintMarginReviewSnapshot(original)).not.toBe(await fingerprintMarginReviewSnapshot(quoteBecameStale));
   });
 });
 
