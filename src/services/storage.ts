@@ -1304,6 +1304,25 @@ export function savePortfolioSnapshot<TState extends object>(
 }
 
 /**
+ * Serializes large history snapshots behind the current IndexedDB drain. This
+ * prevents Closed History recalculation from appending another multi-megabyte
+ * localStorage journal while an earlier generation still occupies the journal.
+ * If IndexedDB remains degraded, do not create an unbounded second journal when
+ * the durable database is available. Environments without IndexedDB retain the
+ * existing local-journal fallback.
+ */
+export async function savePortfolioSnapshotAfterFlush<TState extends object>(
+  state: TState,
+  history: ClosedHistorySnapshot,
+  options: PortfolioSnapshotOptions = {}
+): Promise<boolean> {
+  const status = await flushPortfolioPersistence();
+  if (status.state === 'conflict') return false;
+  if (status.state === 'degraded' && isPortfolioStateDatabaseAvailable()) return false;
+  return savePortfolioSnapshot(state, history, options);
+}
+
+/**
  * Persists application state to a single local recovery-journal record and
  * schedules its revision-checked IndexedDB commit. A true return value means
  * the recovery journal is committed locally; IndexedDB mirroring is tracked
