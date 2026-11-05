@@ -36,7 +36,9 @@ import {
   getMarginDigestFreshness,
   MARGIN_REVIEW_PROMPT_VERSION,
   selectMarginReviewNews,
-  normalizeMarginReviewTicker
+  normalizeMarginReviewTicker,
+  reconcileMarginReviewShares,
+  sumMarginReviewCashShares
 } from './features/ai/marginIntelligence';
 import { calculateMarginRiskMetrics } from './domain/marginRisk';
 import { getCashCushionTotal } from './domain/portfolioSelectors';
@@ -103,6 +105,7 @@ function buildMarginReviewContext(
     ? allPositions.find(position => normalizeMarginReviewTicker(position.ticker) === normalizeMarginReviewTicker(requestedTicker))
     : null;
   const brokerPositions = snapshot.brokerAccountInfo?.positions || [];
+  const cashHoldings = snapshot.cashCushion?.holdings || [];
   const summarizePosition = (position: PositionRecord) => {
     const tranches = (position.tranches || []).filter(tranche =>
       Number.isFinite(Number(tranche.qty)) && Number(tranche.qty) > 0 &&
@@ -114,27 +117,35 @@ function buildMarginReviewContext(
     const observedPrice = finiteReviewNumber(position.currentPrice);
     const marketPrice = observedPrice !== null && observedPrice > 0 ? observedPrice : null;
     const appShares = Number(position.shares);
-    const brokerPosition = brokerPositions.find(item =>
-      normalizeMarginReviewTicker(item.ticker) === normalizeMarginReviewTicker(position.ticker)
+    const normalizedTicker = normalizeMarginReviewTicker(position.ticker);
+    const matchingBrokerPositions = brokerPositions.filter(item =>
+      normalizeMarginReviewTicker(item.ticker) === normalizedTicker
     );
-    const brokerShares = finiteReviewNumber(brokerPosition?.quantity);
+    const brokerShares = matchingBrokerPositions.length
+      ? matchingBrokerPositions.reduce((total, item) => total + Math.max(0, finiteReviewNumber(item.quantity) ?? 0), 0)
+      : null;
+    const appCashShares = sumMarginReviewCashShares(normalizedTicker, cashHoldings);
+    const shareReconciliation = reconcileMarginReviewShares({
+      appMarginShares: appShares,
+      appCashShares,
+      brokerReportedShares: brokerShares,
+      entryLotShares: lotShares
+    });
     const targetPrice = finiteReviewNumber(position.pt);
-    const lotSharesMatchPosition = Math.abs(lotShares - appShares) < 0.000001;
-    const brokerSharesMatchPosition = brokerShares === null || Math.abs(brokerShares - appShares) < 0.000001;
     const lotBasedPnl = marketPrice !== null && tranches.length > 0
       ? tranches.reduce((total, tranche) => total + (marketPrice - Number(tranche.price)) * Number(tranche.qty), 0)
       : null;
     return {
       ticker: position.ticker,
-      appTrackedShares: appShares,
+      appMarginShares: appShares,
+      appCashShares,
+      appTotalShares: shareReconciliation.appTotalShares,
       brokerReportedShares: brokerShares,
       entryLotShares: lotShares,
       quantityReconciliation: {
-        appSharesMatchEntryLots: lotSharesMatchPosition,
-        appSharesMatchBroker: brokerSharesMatchPosition,
-        status: !lotSharesMatchPosition || !brokerSharesMatchPosition
-          ? 'discrepancy'
-          : brokerShares === null ? 'broker quantity unavailable' : 'matched'
+        appMarginSharesMatchEntryLots: shareReconciliation.appMarginSharesMatchEntryLots,
+        appTotalSharesMatchBroker: shareReconciliation.appTotalSharesMatchBroker,
+        status: shareReconciliation.status
       },
       marketPrice,
       quoteSource: position.quoteSource || null,
@@ -172,7 +183,6 @@ function buildMarginReviewContext(
     currentPrice: finiteReviewNumber(position.currentPrice),
     shares: Number(position.shares)
   }));
-  const cashHoldings = snapshot.cashCushion?.holdings || [];
   const valuation = calculatePortfolioValuation({
     signedAccountBalance: snapshot.balance,
     freeCash: snapshot.cashCushion?.freeCash,
@@ -379,7 +389,10 @@ export function App({ onSaveGatewaySecret }: AppProps) {
       return;
     }
     const requestGuard = createLatestRequestGuard();
-    const handleMarginIntelligence = async (event: UiEvent<{ ticker?: string; refresh?: boolean }>) => {
+    const handleMarginIntelligence = async (
+      event: UiEvent<{ ticker?: string; refresh?: boolean }>,
+      snapshotRetry = 0
+    ) => {
       if (!permissions.canViewMarginDesk) return;
       // Every request supersedes older work, including a ticker that fails validation.
       const requestId = requestGuard.begin();
@@ -498,7 +511,15 @@ export function App({ onSaveGatewaySecret }: AppProps) {
         if (!requestGuard.isCurrent(requestId)) return;
         const latestInput = buildMarginReviewContext(portfolioStore.getState(), requestedTicker || null, Date.now(), scenarioRefreshIntervalMs);
         const latestFingerprint = await fingerprintMarginReviewSnapshot(latestInput.snapshotIdentity);
+        if (!requestGuard.isCurrent(requestId)) return;
         if (latestFingerprint !== snapshotFingerprint) {
+          if (snapshotRetry < 1) {
+            await handleMarginIntelligence({
+              type: event.type,
+              detail: { ...detail, refresh: true }
+            }, snapshotRetry + 1);
+            return;
+          }
           setMarginIntelligence({
             title,
             scope,

@@ -6,6 +6,8 @@ import {
   MARGIN_REVIEW_MAX_AGE_MS,
   MARGIN_REVIEW_PROMPT_VERSION,
   normalizeMarginReviewTicker,
+  reconcileMarginReviewShares,
+  sumMarginReviewCashShares,
   selectMarginReviewNews
 } from './marginIntelligence';
 
@@ -21,13 +23,58 @@ describe('margin review prompt', () => {
     expect(prompt).toContain('cite its supplied source ID exactly, e.g. [N2]');
     expect(prompt).toContain('"sourceId":"N1"');
     expect(prompt).toContain('a failed feed means news is unavailable, not that no news exists');
-    expect(prompt).toContain('do not describe the missing broker value as a confirmed mismatch or infer its quantity');
+    expect(prompt).toContain('If brokerReportedShares is null or unavailable');
+    expect(prompt).toContain('Compare brokerReportedShares with appTotalShares');
+    expect(prompt).toContain('Compare entryLotShares only with appMarginShares');
     expect(prompt).toContain('do not fill space with generic market risks');
     expect(prompt).not.toContain('Do not include inline source citations');
   });
 });
 
 describe('margin review snapshot identity', () => {
+  it('sums cash holdings for the same normalized ticker only', () => {
+    expect(sumMarginReviewCashShares('GOOGL', [
+      { ticker: 'GOOGL.US', shares: 38 },
+      { ticker: 'AAPL', shares: 10 },
+      { ticker: 'GOOGL', shares: '2' },
+      { ticker: 'GOOGL', shares: 'invalid' }
+    ])).toBe(40);
+  });
+
+  it('reconciles account-wide broker shares against combined margin and cash holdings', () => {
+    expect(reconcileMarginReviewShares({
+      appMarginShares: 68,
+      appCashShares: 38,
+      brokerReportedShares: 106,
+      entryLotShares: 68
+    })).toEqual({
+      appTotalShares: 106,
+      appMarginSharesMatchEntryLots: true,
+      appTotalSharesMatchBroker: true,
+      status: 'matched'
+    });
+  });
+
+  it('still flags real broker-total or margin-lot discrepancies', () => {
+    expect(reconcileMarginReviewShares({
+      appMarginShares: 68, appCashShares: 38, brokerReportedShares: 105, entryLotShares: 68
+    }).status).toBe('discrepancy');
+    expect(reconcileMarginReviewShares({
+      appMarginShares: 68, appCashShares: 38, brokerReportedShares: 106, entryLotShares: 67
+    }).status).toBe('discrepancy');
+  });
+
+  it('keeps missing broker totals distinct from a confirmed mismatch', () => {
+    expect(reconcileMarginReviewShares({
+      appMarginShares: 68, appCashShares: 38, brokerReportedShares: null, entryLotShares: 68
+    })).toEqual({
+      appTotalShares: 106,
+      appMarginSharesMatchEntryLots: true,
+      appTotalSharesMatchBroker: null,
+      status: 'broker quantity unavailable'
+    });
+  });
+
   it('normalizes broker market suffixes without changing other ticker suffixes', () => {
     expect(normalizeMarginReviewTicker(' googl.us ')).toBe('GOOGL');
     expect(normalizeMarginReviewTicker('brk.b')).toBe('BRK.B');
@@ -46,11 +93,15 @@ describe('margin review snapshot identity', () => {
   it('ignores broker/quote observation timestamps but still fingerprints financial fact changes', async () => {
     const original = {
       brokerSnapshotReceivedAt: 1000,
-      positions: [{ ticker: 'GOOGL', appTrackedShares: 68, brokerReportedShares: 68, marketPrice: 294, quoteFreshness: 'fresh', quoteUpdatedAt: 1000, quoteSourceTimestamp: 900 }]
+      brokerSnapshotStatus: 'stale',
+      reliability: 'provisional',
+      positions: [{ ticker: 'GOOGL', appTrackedShares: 68, brokerReportedShares: 68, marketPrice: 294, quoteFreshness: 'stale', quoteSource: 'Yahoo Finance', quoteUpdatedAt: 1000, quoteSourceTimestamp: 900 }]
     };
     const refreshed = {
       brokerSnapshotReceivedAt: 2000,
-      positions: [{ ticker: 'GOOGL', appTrackedShares: 68, brokerReportedShares: 68, marketPrice: 294, quoteFreshness: 'fresh', quoteUpdatedAt: 2000, quoteSourceTimestamp: 1900 }]
+      brokerSnapshotStatus: 'current',
+      reliability: 'current',
+      positions: [{ ticker: 'GOOGL', appTrackedShares: 68, brokerReportedShares: 68, marketPrice: 294, quoteFreshness: 'fresh', quoteSource: 'Freedom TradeNet', quoteUpdatedAt: 2000, quoteSourceTimestamp: 1900 }]
     };
     const resized = {
       ...refreshed,
@@ -58,12 +109,19 @@ describe('margin review snapshot identity', () => {
     };
     const quoteBecameStale = {
       ...refreshed,
+      brokerSnapshotStatus: 'stale',
+      reliability: 'provisional',
       positions: [{ ...refreshed.positions[0], quoteFreshness: 'stale' }]
+    };
+    const priceChanged = {
+      ...refreshed,
+      positions: [{ ...refreshed.positions[0], marketPrice: 295 }]
     };
 
     expect(await fingerprintMarginReviewSnapshot(original)).toBe(await fingerprintMarginReviewSnapshot(refreshed));
     expect(await fingerprintMarginReviewSnapshot(original)).not.toBe(await fingerprintMarginReviewSnapshot(resized));
-    expect(await fingerprintMarginReviewSnapshot(original)).not.toBe(await fingerprintMarginReviewSnapshot(quoteBecameStale));
+    expect(await fingerprintMarginReviewSnapshot(original)).toBe(await fingerprintMarginReviewSnapshot(quoteBecameStale));
+    expect(await fingerprintMarginReviewSnapshot(original)).not.toBe(await fingerprintMarginReviewSnapshot(priceChanged));
   });
 });
 
