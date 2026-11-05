@@ -42,7 +42,10 @@ import {
 } from './src/services/portfolioAutoRefresh';
 import { getMarketInsightsTicker, isCurrentMarketInsightsTicker } from './src/domain/portfolioSelectors';
 import { getPositiveMarketPrice } from './src/domain/portfolioValuation';
-import { commitPortfolioBackupImport } from './src/services/backupImport';
+import {
+  commitPortfolioBackupImport,
+  retryPendingBackupCloudSync as retryBackupCloudSync
+} from './src/services/backupImport';
 import { buildPortfolioBackupFilename, createPortfolioBackupBlob, validatePortfolioBackupFileSize } from './src/services/portfolioBackupFile';
 import { getLatestRolloverTimestamp, getRolloverTimestampForLocalDate, getZonedDateParts, shiftCalendarDate } from './src/domain/rolloverCalendar';
 import {
@@ -1639,28 +1642,22 @@ async function retryPendingBackupCloudSync(accountId: string): Promise<boolean> 
   if (!isCurrentSession()) return false;
 
   const importedSnapshot = portfolioStore.getState();
-  try {
-    // Even if a pull is temporarily unavailable, the subsequent conditional
-    // push is still safe: a stale revision is rejected and the local marker stays.
-    await syncCloudState('pull');
-    if (!isCurrentSession()) return false;
-    if (!portfolioStore.importState(importedSnapshot)) return false;
-    state = portfolioStore.getState();
-    if (!saveState(state)) return false;
-
-    const pushed = await pushStateToCloud(true);
-    if (!isCurrentSession() || !pushed) return false;
-    if (!clearPendingBackupCloudSync(accountId)) {
-      logTerminal('[Backup Import]: Cloud accepted the backup, but its local retry marker could not be cleared; it will be checked again on the next start.');
+  return retryBackupCloudSync(importedSnapshot, {
+    refreshCloudRevision: async () => { await syncCloudState('pull'); },
+    isCurrentSession,
+    restoreLocalSnapshot: (snapshot) => {
+      const restored = portfolioStore.importState(snapshot);
+      state = portfolioStore.getState();
+      return restored;
+    },
+    persistLocalSnapshot: () => saveState(state),
+    pushCloudSnapshot: () => pushStateToCloud(true),
+    clearPendingMarker: () => {
+      if (!clearPendingBackupCloudSync(accountId)) {
+        logTerminal('[Backup Import]: Cloud accepted the backup, but its local retry marker could not be cleared; it will be checked again on the next start.');
+      }
     }
-    return true;
-  } catch (error) {
-    if (isCurrentSession()) {
-      const detail = error instanceof Error ? error.message : String(error);
-      logTerminal(`[Backup Import]: Cloud replacement is still pending: ${detail}`);
-    }
-    return false;
-  }
+  });
 }
 
 function pullSharedCloudStateUnlessBackupPending(): Promise<boolean | void> {
