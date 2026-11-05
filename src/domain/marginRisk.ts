@@ -1,6 +1,6 @@
 import type { BrokerAssumptions } from '../types/portfolio';
 
-export type MarginRiskUnavailableReason =
+type MarginRiskUnavailableReason =
   | 'invalid-financial-inputs'
   | 'invalid-broker-assumptions'
   | 'calculation-overflow';
@@ -23,7 +23,7 @@ export interface AvailableMarginRiskMetrics {
   showRiskTriggers: boolean;
 }
 
-export interface UnavailableMarginRiskMetrics {
+interface UnavailableMarginRiskMetrics {
   status: 'unavailable';
   reason: MarginRiskUnavailableReason;
 }
