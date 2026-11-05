@@ -449,7 +449,7 @@ describe('storage service', () => {
       }));
       const cashflows = Array.from({ length: 100 }, (_, index) => ({
         id: `cashflow-${index}`,
-        amount: -index
+        amount: index === 0 ? 0 : -index
       }));
       const saved = await savePortfolioSnapshotAfterFlush(
         { activeView: 'CLOSED_HISTORY', closedTrades: [{ id: 'closed-1', ticker: 'AAPL' }] },
