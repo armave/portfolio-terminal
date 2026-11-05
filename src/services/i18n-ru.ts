@@ -13,6 +13,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Migrating…': 'Выполняется миграция…',
   'Retry encryption migration': 'Повторить миграцию шифрования',
   'Could not save portfolio changes. The current portfolio remains open; export a backup before reloading.': 'Не удалось сохранить изменения портфеля. Текущий портфель остаётся открытым; экспортируйте резервную копию перед перезагрузкой.',
+  'Local recovery writes are still pending. Finish saving before importing a backup.': 'Локальные операции сохранения ещё не завершены. Дождитесь их окончания перед импортом резервной копии.',
   'Backup is saved locally, but its shared cloud replacement is still pending. This device will keep the imported copy and retry the sync.': 'Резервная копия сохранена локально, но её замена в общем облаке ещё не подтверждена. Это устройство сохранит импортированную копию и повторит синхронизацию.',
   'Local portfolio data could not be fully synchronized to durable browser storage. Your recovery journal has been kept; retry before clearing browser data.': 'Не удалось полностью синхронизировать данные портфеля с постоянным хранилищем браузера. Журнал восстановления сохранён; повторите попытку, прежде чем очищать данные браузера.',
   'Another browser tab has a newer portfolio snapshot. Your local recovery data has been preserved; reload and reconcile before continuing.': 'В другой вкладке сохранена более новая версия портфеля. Локальные данные восстановления сохранены; перезагрузите страницу и согласуйте изменения перед продолжением.',
