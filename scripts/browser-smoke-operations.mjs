@@ -423,6 +423,19 @@ try {
   const terminalCommand = page.getByRole('textbox', { name: 'Terminal command' });
   await terminalCommand.fill('bought 5 AAPL for 10');
   await terminalCommand.press('Enter');
+  // Wait for the local terminal mutation to finish (including its quote/cloud follow-up)
+  // before asserting on the board. The broker snapshot request alone is unrelated.
+  await page.waitForFunction(() => {
+    const output = document.querySelector('#terminalLog')?.textContent || '';
+    return output.includes('Bought 5 AAPL @ 10.00') ||
+      output.includes('Could not save the margin rollover') ||
+      output.includes('Could not save portfolio changes') ||
+      output.includes('Unrecognized command.');
+  }, null, { timeout: 15_000 });
+  const terminalOutput = await page.locator('#terminalLog').innerText();
+  if (!terminalOutput.includes('Bought 5 AAPL @ 10.00')) {
+    throw new Error('Quick Buy seed command did not create a tracked position: ' + terminalOutput.slice(-1200));
+  }
 
   // Market Insights: provider outages must be visible and recoverable; deep data
   // is fetched only for its selected tab, and Stocktwits remains opt-in.
