@@ -319,6 +319,37 @@ describe('storage service', () => {
       expect(Array.from(storageMap.keys()).filter((key) => key.startsWith('portfolio_terminal_state_pending_v1:'))).toHaveLength(0);
     });
 
+    it('does not copy unchanged large history arrays into every local recovery journal', async () => {
+      const executions = Array.from({ length: 250 }, (_, index) => ({ id: `execution-${index}`, ticker: 'AAPL' }));
+      const cashflows = Array.from({ length: 250 }, (_, index) => ({ id: `cashflow-${index}`, amount: -1 }));
+      const initial = {
+        activeView: 'AAPL',
+        balance: 100,
+        brokerExecutedTrades: executions,
+        cashflows
+      };
+
+      expect(saveState(initial)).toBe(true);
+      await flushPortfolioPersistence();
+      expect(databaseFixture.getCurrent()?.history.brokerExecutedTrades).toHaveLength(250);
+
+      expect(saveState({ ...initial, activeView: 'MSFT', balance: 200 })).toBe(true);
+      const pendingKey = Array.from(storageMap.keys()).find((key) =>
+        key.startsWith('portfolio_terminal_state_pending_v1:')
+      );
+      expect(pendingKey).toBeDefined();
+      const journal = JSON.parse(storageMap.get(pendingKey!)!);
+
+      expect(journal.state).toMatchObject({ activeView: 'MSFT', balance: 200 });
+      expect(journal).not.toHaveProperty('history');
+
+      const status = await flushPortfolioPersistence();
+      expect(status.state).toBe('ready');
+      expect(databaseFixture.getCurrent()?.state).toMatchObject({ activeView: 'MSFT', balance: 200 });
+      expect(databaseFixture.getCurrent()?.history.brokerExecutedTrades).toHaveLength(250);
+      expect(databaseFixture.getCurrent()?.history.cashflows).toHaveLength(250);
+    });
+
     it('keeps a failed IndexedDB transaction journaled and recovers it on retry', async () => {
       databaseFixture.setFailure(new Error('IndexedDB quota exceeded'));
 
