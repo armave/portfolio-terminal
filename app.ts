@@ -1714,11 +1714,14 @@ async function importBackupFile(file: File) {
     // snapshot. This lets IndexedDB checkpoint the previous generation and safely
     // reclaim duplicate legacy state/history mirrors before the import is written.
     const persistenceBeforeImport = await flushPortfolioPersistence();
-    if (persistenceBeforeImport.state === 'conflict') {
-      throw new Error(
-        persistenceBeforeImport.message ||
-        'Local portfolio storage has a revision conflict. Reload and reconcile before importing a backup.'
-      );
+    if (persistenceBeforeImport.state === 'conflict' || persistenceBeforeImport.pendingWrites > 0) {
+      const reason = persistenceBeforeImport.message
+        ? translateText(persistenceBeforeImport.message, getAppLanguage())
+        : translateText(
+          'Local recovery writes are still pending. Finish saving before importing a backup.',
+          getAppLanguage()
+        );
+      throw new Error(reason);
     }
 
     const backupAccountId = currentAccountRole === 'admin' ? (currentAccountId || '') : '';
