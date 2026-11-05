@@ -950,13 +950,13 @@ try {
 
   await page.waitForFunction(async () => {
     const database = await new Promise((resolve, reject) => {
-      const request = indexedDB.open('portfolio-terminal-state', 1);
+      const request = indexedDB.open('portfolio-terminal-state', 2);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error || new Error('Could not open the local portfolio database.'));
       request.onblocked = () => reject(new Error('Local portfolio database upgrade is blocked.'));
     });
     try {
-      if (!database.objectStoreNames.contains('snapshots')) return false;
+      if (!database.objectStoreNames.contains('snapshots') || !database.objectStoreNames.contains('recovery')) return false;
       return await new Promise((resolve, reject) => {
         const transaction = database.transaction('snapshots', 'readonly');
         const request = transaction.objectStore('snapshots').get('current');
