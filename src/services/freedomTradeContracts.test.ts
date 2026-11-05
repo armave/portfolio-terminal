@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeFreedomOrderFills, normalizeFreedomTrades } from './freedomTradeContracts';
+import {
+  isCompleteFreedomTradeHistoryResponse,
+  normalizeFreedomOrderFills,
+  normalizeFreedomTrades,
+  parseFreedomOrderFillsResponse
+} from './freedomTradeContracts';
 
 describe('Freedom execution contract normalization', () => {
   it('normalizes the nested TradeNet execution envelope and keeps provider facts', () => {
@@ -158,6 +163,30 @@ describe('Freedom execution contract normalization', () => {
       orders: { order: [{ order_id: 'open-1', instr: 'GOOGL.US' }] },
       trades: { trade: [] }
     })).toEqual([]);
+  });
+
+  
+  it('distinguishes explicit empty history from missing and incomplete responses', () => {
+    expect(isCompleteFreedomTradeHistoryResponse([], [])).toBe(true);
+    expect(isCompleteFreedomTradeHistoryResponse({ data: { trades: [] } }, [])).toBe(true);
+    expect(isCompleteFreedomTradeHistoryResponse(null, [])).toBe(false);
+    expect(isCompleteFreedomTradeHistoryResponse({ data: { trades: 'invalid' } }, [])).toBe(false);
+    const incomplete = [{
+      id: 'partial-fill', ticker: 'AAPL.US', side: 'SELL', quantity: 1,
+      price: null, currency: 'USD', executedAt: '2026-11-03T10:00:00Z'
+    }] as never;
+    expect(isCompleteFreedomTradeHistoryResponse(incomplete, incomplete)).toBe(false);
+  });
+
+  it('distinguishes missing, valid-empty, and malformed embedded order fills', () => {
+    expect(parseFreedomOrderFillsResponse({ orders: { order: [] } }))
+      .toEqual({ present: false, valid: true, fills: [] });
+    expect(parseFreedomOrderFillsResponse({ orders: { order: [] }, trades: { trade: [] } }))
+      .toEqual({ present: true, valid: true, fills: [] });
+    expect(parseFreedomOrderFillsResponse({
+      orders: { order: [] },
+      trades: { trade: [{ id: 'partial', instr: 'AAPL.US', side: 'BUY', q: 1, date: '2026-11-03T10:00:00Z' }] }
+    })).toEqual({ present: true, valid: false, fills: [] });
   });
 
 });
