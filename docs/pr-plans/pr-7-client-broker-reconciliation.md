@@ -1,6 +1,6 @@
 # PR 7 — Client-side broker reconciliation and data-quality states
 
-**Status:** Implemented; final combined-tree verification against the post-#313 `main` is in progress.
+**Status:** Implemented and validated against the post-#313 `main` tree.
 
 **PR:** [#315](https://github.com/armave/portfolio-terminal/pull/315)  
 **Branch:** `fix/broker-client-reconciliation-2026-11-05`  
@@ -37,4 +37,16 @@
 
 ## Validation
 
-The earlier pre-#313 exact-head run passed TypeScript, 1,490 Vitest tests across 124 files, production build, Chromium production smoke, dead-code validation, and both dependency audits. The final combined tree is being revalidated after #313 merged to `main`.
+The final combined-tree run passed after #313 merged to `main`:
+
+- [x] TypeScript typecheck
+- [x] Vitest: **1,513 tests passed across 124 files**
+- [x] Production build
+- [x] Chromium production-browser smoke test
+- [x] Dead-code validation
+- [x] Dependency audit
+- [x] Production dependency audit
+
+[GitHub Actions run](https://github.com/armave/portfolio-terminal/actions/runs/41981657029)
+
+Live authorized Freedom/TradeNet traffic remains a manual verification item; CI uses deterministic mocked broker responses.
