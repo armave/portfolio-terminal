@@ -677,7 +677,8 @@ export class PortfolioStore {
     pt?: number
   ): boolean {
     const clean = ticker.trim().toUpperCase();
-    if (!clean || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) || price <= 0 ) return false;
+    if (!clean || !Number.isFinite(shares) || shares <= 0 || !Number.isFinite(price) ||
+      price <= 0 || !Number.isFinite(shares * price)) return false;
 
     const purchaseDate = date || todayIso();
 
@@ -693,6 +694,8 @@ export class PortfolioStore {
       const buyComm = Number(calculateCommission(
         shares, totalVal, resolveCommissionConfig(rules)
       ).toFixed(2));
+      const totalOrderCost = totalVal + buyComm;
+      if (!Number.isFinite(buyComm) || buyComm < 0 || !Number.isFinite(totalOrderCost)) return state;
 
       const positions = { ...(state.positions || {}) };
       const existingPos = positions[clean];
@@ -741,7 +744,9 @@ export class PortfolioStore {
 
       let freeCash = Math.max(0, Number(state.cashCushion?.freeCash) || 0);
       let currentDebt = Math.abs(Number(state.balance) || 0);
-      const totalOrderCost = totalVal + buyComm;
+
+      if (!Number.isFinite(nextShares) || !Number.isFinite(nextCommBuy) ||
+        !Number.isFinite(currentDebt) || !Number.isFinite(freeCash)) return state;
 
       if (freeCash >= totalOrderCost) {
         freeCash -= totalOrderCost;
@@ -750,6 +755,7 @@ export class PortfolioStore {
         freeCash = 0;
         currentDebt += remainingCost;
       }
+      if (!Number.isFinite(currentDebt) || !Number.isFinite(freeCash)) return state;
 
       return {
         ...state,
@@ -841,13 +847,13 @@ export class PortfolioStore {
     this.update((state) => {
       const positions = { ...(state.positions || {}) };
       const pos = positions[clean];
-      if (!pos || pos.shares <= 0) return state;
+      if (!pos || !Number.isFinite(pos.shares) || pos.shares <= 0) return state;
+      if (sharesToSell !== 'ALL' && sharesToSell - pos.shares > 1e-8) return state;
 
-      const actualSold =
-        sharesToSell === 'ALL'
-          ? pos.shares
-          : Math.min(pos.shares, Math.max(0, Number(sharesToSell) || 0));
-      if (actualSold <= 0) return state;
+      // A tolerance accepts insignificant floating-point noise at the boundary;
+      // clamp that noise so the closed ledger can never exceed owned shares.
+      const actualSold = sharesToSell === 'ALL' ? pos.shares : Math.min(pos.shares, sharesToSell);
+      if (actualSold <= 0 || !Number.isFinite(actualSold * sellPrice)) return state;
 
       const rules = state.brokerAssumptions || DEFAULT_BROKER_ASSUMPTIONS;
       // Fail closed for legacy or corrupted records without a trustworthy
@@ -874,6 +880,7 @@ export class PortfolioStore {
 
       // Shared with the AI-confirmed sale path to keep broker fees consistent.
       const sellComm = calculateSaleCommission(actualSold, sellProceeds, rules);
+      if (!Number.isFinite(sellComm) || sellComm < 0) return state;
 
       const accounting = calculateSaleAccounting({
         tranches: origTranches,
@@ -895,6 +902,8 @@ export class PortfolioStore {
         netProfit,
         netCashProceeds
       } = accounting;
+      if (![marginInterestAllocated, totalCommissions, grossProfit, netProfit, netCashProceeds]
+        .every(Number.isFinite)) return state;
 
       const totalDebt = Math.abs(Number(state.balance) || 0);
       const settlement = settleSaleProceeds(
@@ -902,6 +911,8 @@ export class PortfolioStore {
         Number(state.cashCushion?.freeCash) || 0,
         netCashProceeds
       );
+      if (![settlement.remainingDebt, settlement.debtRepaid, settlement.cashSurplus, settlement.freeCash]
+        .every(Number.isFinite)) return state;
       const currentDebt = settlement.remainingDebt;
       const freeCash = settlement.freeCash;
 
